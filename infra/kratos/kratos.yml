@@ -1,0 +1,101 @@
+# Ory Kratos — local development configuration.
+# Secrets, the database DSN and the registration hooks (which carry the webhook
+# secret) are injected as environment variables by docker-compose.dev.yml.
+#
+# Browsers reach Kratos through the web app's /kratos proxy, so every URL here is
+# on the web app's origin and the session cookie is first-party.
+
+serve:
+  public:
+    base_url: http://127.0.0.1:3000/kratos/
+  admin:
+    base_url: http://kratos:4434/
+
+selfservice:
+  default_browser_return_url: http://127.0.0.1:3000/
+  allowed_return_urls:
+    - http://127.0.0.1:3000
+
+  methods:
+    password:
+      enabled: true
+      config:
+        min_password_length: 10
+        identifier_similarity_check_enabled: true
+        # Checks new passwords against known breaches via a k-anonymity lookup
+        # (only a 5-character hash prefix leaves the server).
+        haveibeenpwned_enabled: true
+        ignore_network_errors: true
+    # One-time codes by email, used for verification and recovery only.
+    code:
+      enabled: true
+
+  flows:
+    error:
+      ui_url: http://127.0.0.1:3000/auth-error
+
+    login:
+      ui_url: http://127.0.0.1:3000/login
+      lifespan: 15m
+
+    registration:
+      ui_url: http://127.0.0.1:3000/signup
+      lifespan: 15m
+      # One form (email, handle, password, invite code) instead of two steps, so
+      # the invite code is submitted together with the password.
+      enable_legacy_one_step: true
+      # after.password.hooks lives in docker-compose.dev.yml (it holds a secret):
+      # invite check via webhook to our API, then session, then show_verification_ui.
+
+    verification:
+      enabled: true
+      ui_url: http://127.0.0.1:3000/verification
+      use: code
+      after:
+        default_browser_return_url: http://127.0.0.1:3000/
+
+    recovery:
+      enabled: true
+      ui_url: http://127.0.0.1:3000/recovery
+      use: code
+
+    settings:
+      ui_url: http://127.0.0.1:3000/settings
+      privileged_session_max_age: 15m
+
+    logout:
+      after:
+        default_browser_return_url: http://127.0.0.1:3000/
+
+session:
+  lifespan: 336h # 14 days
+  cookie:
+    name: hn_session
+    same_site: Lax
+
+hashers:
+  algorithm: bcrypt
+  bcrypt:
+    cost: 12
+
+ciphers:
+  algorithm: xchacha20-poly1305
+
+identity:
+  default_schema_id: member
+  schemas:
+    - id: member
+      url: file:///etc/config/kratos/identity.schema.json
+
+courier:
+  smtp:
+    connection_uri: smtp://mailpit:1025/?disable_starttls=true
+    from_address: no-reply@heynaija.test
+    from_name: heynaija
+
+log:
+  level: info
+  format: text
+
+feature_flags:
+  use_continue_with_transitions: true

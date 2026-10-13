@@ -1,0 +1,18 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# @fastify/cookie augments Fastify's types but does not declare it as a peer, so
+# under pnpm's strict layout it would otherwise bind to a different Fastify copy.
+packageExtensions:
+  "@fastify/cookie":
+    peerDependencies:
+      fastify: "*"
+
+# Native post-install scripts we do not need (prebuilt binaries are used instead).
+ignoredBuiltDependencies:
+  - "@parcel/watcher"
+  - core-js
+  - esbuild
+  - sharp
+  - unrs-resolver

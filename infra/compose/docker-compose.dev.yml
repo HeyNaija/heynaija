@@ -1,0 +1,116 @@
+# Local development stack: Postgres, Redis, Ory Kratos (identity) and Mailpit.
+# Host ports are offset so they do not clash with other local projects.
+name: heynaija-dev
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: heynaija
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run pnpm infra:env}
+      POSTGRES_DB: heynaija
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - ./.data/postgres:/var/lib/postgresql/data
+      - ../postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heynaija -d heynaija"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?run pnpm infra:env}"]
+    ports:
+      - "127.0.0.1:6380:6379"
+
+  kratos-migrate:
+    image: oryd/kratos:v26.2.0
+    environment: &kratos-env
+      DSN: postgres://heynaija:${POSTGRES_PASSWORD}@postgres:5432/kratos?sslmode=disable
+      SECRETS_COOKIE: ${KRATOS_SECRETS_COOKIE:?run pnpm infra:env}
+      SECRETS_CIPHER: ${KRATOS_SECRETS_CIPHER:?run pnpm infra:env}
+    volumes:
+      - ../kratos:/etc/config/kratos:ro
+    configs: &kratos-configs
+      - source: kratos-hooks
+        target: /etc/config/kratos-hooks.yml
+    command: -c /etc/config/kratos/kratos.yml -c /etc/config/kratos-hooks.yml migrate sql -e --yes
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  kratos:
+    image: oryd/kratos:v26.2.0
+    environment: *kratos-env
+    volumes:
+      - ../kratos:/etc/config/kratos:ro
+    configs: *kratos-configs
+    # --dev allows plain-http cookies on 127.0.0.1. Never use it in production.
+    command: serve -c /etc/config/kratos/kratos.yml -c /etc/config/kratos-hooks.yml --dev --watch-courier
+    ports:
+      - "127.0.0.1:4533:4433" # public API (browsers use the web app's /kratos proxy)
+      - "127.0.0.1:4534:4434" # admin API — never expose publicly
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Catches every email Kratos sends in development. Inbox: http://127.0.0.1:8026
+  mailpit:
+    image: axllent/mailpit:v1.31.5
+    ports:
+      - "127.0.0.1:8026:8025"
+
+configs:
+  # Kratos cannot read a hook list from environment variables, and this one holds
+  # the webhook secret, so Compose renders it here and Kratos merges it over
+  # kratos.yml.
+  #
+  # Registration is invite-only, in two steps:
+  #   1. Before the account is saved, Kratos asks our API whether the invite code
+  #      is usable and aborts signup with a message if it is not. Nothing is spent
+  #      yet, so a signup that then fails (email already taken, say) costs nothing.
+  #   2. Once the account exists, Kratos tells our API, which spends the invite.
+  #      The API only treats an identity as a member if this step succeeded.
+  # Then Kratos signs the new member in and shows the email verification screen.
+  kratos-hooks:
+    content: |
+      selfservice:
+        flows:
+          registration:
+            after:
+              password:
+                hooks:
+                  - hook: web_hook
+                    config:
+                      url: http://host.docker.internal:4000/internal/kratos/registration
+                      method: POST
+                      body: file:///etc/config/kratos/invite-check.jsonnet
+                      auth:
+                        type: api_key
+                        config:
+                          name: x-webhook-secret
+                          value: ${KRATOS_WEBHOOK_SECRET:?run pnpm infra:env}
+                          in: header
+                      response:
+                        parse: true
+                  # After the account is saved: spend the invite for that identity.
+                  - hook: web_hook
+                    config:
+                      url: http://host.docker.internal:4000/internal/kratos/registered
+                      method: POST
+                      body: file:///etc/config/kratos/invite-check.jsonnet
+                      auth:
+                        type: api_key
+                        config:
+                          name: x-webhook-secret
+                          value: ${KRATOS_WEBHOOK_SECRET}
+                          in: header
+                  - hook: session
+                  - hook: show_verification_ui

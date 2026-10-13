@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.next/
+.turbo/
+coverage/
+*.log
+.DS_Store
+
+# Secrets and local state — never commit
+.env
+.env.*
+!.env.example
+infra/compose/.data/

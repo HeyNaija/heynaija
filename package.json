@@ -1,0 +1,26 @@
+{
+  "name": "heynaija",
+  "private": true,
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "infra:env": "infra/scripts/gen-dev-env.sh",
+    "infra:up": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml up -d --remove-orphans",
+    "infra:down": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml down",
+    "infra:logs": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml logs -f",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @heynaija/db generate",
+    "db:migrate": "pnpm --filter @heynaija/db migrate",
+    "dev:api": "pnpm --filter @heynaija/api dev",
+    "test": "pnpm -r --workspace-concurrency=1 test",
+    "dev:web": "pnpm --filter @heynaija/web dev",
+    "invite:create": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api invite:create"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}
