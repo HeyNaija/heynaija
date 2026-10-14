@@ -4,8 +4,8 @@ A Nigeria-first, community-owned social network. [PLAN.md](PLAN.md) has the prod
 plan, what is built, and what comes next; [ADR 0002](docs/adr/0002-conventional-stack-with-kratos.md)
 explains the architecture and lists every known limitation.
 
-**Status:** early local build, nothing deployed yet; everything needed to deploy
-staging and production is in `infra/deploy/` and `.github/workflows/`, with
+**Status:** staging is live at https://staging.heynaija.ng; production is not
+deployed yet. Everything needed to deploy is in `infra/deploy/` and `.github/workflows/`, with
 step-by-step guides in [docs/deployment/](docs/deployment/staging.md). What works:
 
 - **Accounts:** join with an invite code, sign up, confirm email, sign in and out,
@@ -148,4 +148,9 @@ pnpm typecheck
 pnpm test        # API tests, against a scratch Postgres database (needs `pnpm infra:up`)
 ```
 
-CI (`.github/workflows/ci.yml`) runs build, typecheck, tests and a dependency audit.
+```bash
+pnpm e2e         # browser tests with Playwright against the local stack (docs/e2e.md)
+```
+
+CI (`.github/workflows/ci.yml`) runs build, typecheck, tests and a dependency audit,
+and the browser end-to-end tests against a production build ([docs/e2e.md](docs/e2e.md)).

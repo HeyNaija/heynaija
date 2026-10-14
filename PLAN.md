@@ -2,7 +2,7 @@
 ## Phase 1 plan — v3.0
 
 **Updated:** 14 October 2026
-**Status:** Core product built and working locally. Not deployed.
+**Status:** Core product built; staging live at https://staging.heynaija.ng (15 October 2026). Production not deployed.
 **Strategy:** Ship a focused, invite-only web beta; validate retention before expanding infrastructure.
 **Initial cohort:** Up to 200 invited users in 3–5 active communities; Nigeria-first, open to the diaspora.
 
@@ -23,7 +23,7 @@ Following, community and trending feeds; search; reporting, a moderation queue,
 appeals and a decision log; notifications (replies, likes, follows, moderation
 outcomes); rate limits; light, dark and system themes.
 
-**Not built:** deployment of any kind. See [§8 Roadmap](#8-roadmap) for the order.
+**Not built:** production deployment. See [§8 Roadmap](#8-roadmap) for the order.
 
 **Key documents**
 
@@ -46,7 +46,7 @@ outcomes); rate limits; light, dark and system themes.
 | Accounts and sign-in | **Ory Kratos**, self-hosted | Passwords, sessions, verification and recovery are security-critical and already solved |
 | Signup | **Invite-only.** Kratos asks our API to check the code before saving an account and to spend it after | Controlled growth; a failed signup never burns an invite |
 | Where posts live | **PostgreSQL**, as the source of truth | Simple, private communities possible later, full moderation control |
-| Frontend | **Next.js 16** (App Router, Cache Components), server-rendered, works without JavaScript for core reading and posting | Fast on low-end Android and slow networks |
+| Frontend | **Next.js 16** (App Router, Cache Components), server-rendered, meant to work without JavaScript for core reading and posting. **Not true at present:** streamed pages stay on their loading skeleton without JavaScript (found by the e2e tests, 15 October 2026; [docs/e2e.md](docs/e2e.md)) | Fast on low-end Android and slow networks |
 | Backend | **NestJS + Fastify** | A separate API with its own tests and deploys |
 | Media storage | **S3-compatible**: MinIO locally, **Cloudflare R2** in production | No download fees on R2; same code everywhere |
 | Queue/cache | **Redis with BullMQ** for background jobs: post-image processing and an hourly media sweep, run inside the API process. Next: shared rate limits, email or push notifications | Add only when measured or needed |
@@ -155,7 +155,7 @@ Browser ──> Next.js web app
 - [x] Appeals from suspended members; append-only decision log; restore a removed post
 - [x] Rate limits on posting, actions, reports, search, invite checks and uploads
 - [x] Moderators can remove a profile photo, or clear a name and bio, without suspending the account
-- [ ] Scanning uploads for known child sexual abuse material (required before uploads open beyond the pilot). Plan written and the hook built: [docs/safety/abuse-material-scanning.md](docs/safety/abuse-material-scanning.md)
+- [ ] Scanning uploads for known child sexual abuse material (required before uploads open beyond the pilot). Plan written and the hook built; Cloudflare's CSAM Scanning Tool is on (15 October 2026); PhotoDNA still to come: [docs/safety/abuse-material-scanning.md](docs/safety/abuse-material-scanning.md)
 - [x] Assigning community moderators in the app (site-wide roles stay on the command line)
 - [x] Images taken down by moderators are moved out of public view and kept privately as evidence
 - [x] Notifying people about moderation decisions that affect them (post removed or restored, report outcome, reinstatement; a rejected appeal shows on the suspended account)
@@ -168,11 +168,11 @@ Browser ──> Next.js web app
 
 ### Operations
 - [x] CI: build, typecheck, tests, dependency audit (never run: no GitHub remote yet)
-- [ ] Staging and production environments; TLS; real domains (everything built and tested locally: [staging guide](docs/deployment/staging.md); not provisioned)
+- [ ] Staging and production environments; TLS; real domains (staging live at staging.heynaija.ng behind Cloudflare, 15 October 2026; production not provisioned: [production guide](docs/deployment/production.md))
 - [x] Production Kratos config and an email provider (Resend)
 - [ ] Backups and a rehearsed restore (Postgres, Kratos database, media bucket): scripts built, backup and restore rehearsed locally; media not copied outside R2
 - [ ] Logging, metrics, uptime alerts (logs capped per service; uptime check and backup ping described in the guide; no error alerts yet)
-- [ ] Browser end-to-end tests; load test
+- [ ] Browser end-to-end tests (Playwright suite passing locally, 15 October 2026, and added to CI; first GitHub run still to confirm: [docs/e2e.md](docs/e2e.md)); load test (kit built: [docs/loadtest.md](docs/loadtest.md))
 - [ ] Privacy-respecting product metrics (signup → first follow → first post → week-1 return)
 
 ---
@@ -226,7 +226,7 @@ Everything visual comes from tokens in `apps/web/app/globals.css`; the full syst
 
 ## 7. Production infrastructure
 
-Built and tested on a laptop; **nothing is provisioned yet.** Step-by-step guides:
+**Staging is live** at https://staging.heynaija.ng (15 October 2026); **production is not provisioned yet.** Step-by-step guides:
 [staging](docs/deployment/staging.md) and [production](docs/deployment/production.md);
 the files are in `infra/deploy/` and `.github/workflows/`.
 
@@ -263,12 +263,14 @@ In order; each step is a vertical slice with tests and a browser check.
    and moderation outcomes. No email or push yet.
 4. ~~**Safety gaps**~~ Done 14 October 2026: moderators can remove photos and
    clear names and bios, assign community moderators in the app, and taken-down
-   images are quarantined. The scanning plan is written; carrying it out
-   (PhotoDNA, Cloudflare's tool, legal advice) is part of the launch checklist.
-5. **Staging deployment** (§7), including R2, email and backups. The deployment
-   is built and tested locally (14 October 2026); provisioning the server and
-   accounts follows [docs/deployment/staging.md](docs/deployment/staging.md).
+   images are quarantined. The scanning plan is written; Cloudflare's tool is on
+   (15 October 2026); PhotoDNA and legal advice remain on the launch checklist.
+5. ~~**Staging deployment**~~ Live 15 October 2026 at https://staging.heynaija.ng
+   ([docs/deployment/staging.md](docs/deployment/staging.md)).
 6. **Browser end-to-end tests** of signup, posting, moderation; a basic load test.
+   The Playwright suite runs locally and is in CI (15 October 2026,
+   [docs/e2e.md](docs/e2e.md)). It found that pages do not work without
+   JavaScript (see §0).
 7. **Governance pages:** licence, charter, rules, privacy policy, data export.
 8. **Pilot launch:** onboard 20–30 seed members, then invite in batches.
 
