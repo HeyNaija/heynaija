@@ -15,6 +15,7 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import { eq } from 'drizzle-orm'
+import type { FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import type { Env } from '../env.js'
 import { InvitesService } from '../invites/invites.service.js'
@@ -23,6 +24,7 @@ import { avatarPath } from '../media/media.service.js'
 import { NotificationsService } from '../notifications/notifications.service.js'
 import { RateLimiter } from '../rate-limit.js'
 import { DB, ENV } from '../tokens.js'
+import { KratosService, SESSION_COOKIE } from './kratos.service.js'
 import { type AuthedRequest, SessionGuard } from './session.guard.js'
 
 // identity_id is all zeros in the first hook (the account is not saved yet).
@@ -48,6 +50,7 @@ export class AuthController {
     @Inject(RateLimiter) private readonly limits: RateLimiter,
     @Inject(ENV) private readonly env: Env,
     @Inject(DB) private readonly db: Db,
+    @Inject(KratosService) private readonly kratos: KratosService,
   ) {}
 
   @Get('v1/me')
@@ -71,6 +74,18 @@ export class AuthController {
       unreadNotifications: unread,
       moderates: scope.siteWide || scope.communityIds.length > 0,
     }
+  }
+
+  /**
+   * The web app's /logout calls this just before sending the browser to Kratos to
+   * end the session, so the cached whoami answer for the cookie is not reused.
+   * No guard: all it can do is make the caller's own next request ask Kratos.
+   */
+  @Post('v1/logout')
+  @HttpCode(204)
+  async logout(@Req() req: FastifyRequest) {
+    const cookie = req.cookies[SESSION_COOKIE]
+    if (cookie) await this.kratos.forgetSession(cookie)
   }
 
   /** Lets /join tell someone their code is wrong before they fill in a signup form. */

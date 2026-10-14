@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm'
 import { InvitesService } from '../invites/invites.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import type { Identity } from './kratos.service.js'
-import { type AuthedRequest, SessionGuard, SuspendedAllowedGuard } from './session.guard.js'
+import { type AuthedRequest, LAST_SEEN_EVERY_MS, SessionGuard, SuspendedAllowedGuard } from './session.guard.js'
 
 const WEB = 'http://127.0.0.1:3000'
 const invites = new InvitesService(db)
@@ -68,6 +68,35 @@ test('a changed handle is picked up on the next request', async () => {
   await guardFor(identity).canActivate(request({ cookie: 'good' }).context)
   await guardFor({ ...identity, handle: 'ada_o' }).canActivate(request({ cookie: 'good' }).context)
   assert.equal((await db.select().from(members))[0]!.handle, 'ada_o')
+})
+
+test('last_seen_at is written at most once every few minutes', async () => {
+  const identity = await invited('ada')
+  const guard = guardFor(identity)
+  const lastSeen = async () => (await db.select().from(members))[0]!.lastSeenAt!.getTime()
+  const setLastSeen = (msAgo: number) =>
+    db.update(members).set({ lastSeenAt: new Date(Date.now() - msAgo) }).where(eq(members.id, identity.id))
+
+  await guard.canActivate(request({ cookie: 'good' }).context)
+  // Seen a minute ago: further requests leave it alone.
+  await setLastSeen(60_000)
+  const before = await lastSeen()
+  for (let i = 0; i < 3; i++) await guard.canActivate(request({ cookie: 'good' }).context)
+  assert.equal(await lastSeen(), before)
+
+  // Seen longer ago than the interval: the next request refreshes it.
+  await setLastSeen(LAST_SEEN_EVERY_MS + 1000)
+  await guard.canActivate(request({ cookie: 'good' }).context)
+  assert.ok(Date.now() - (await lastSeen()) < 5000)
+})
+
+test('a suspension applies to the very next request, even right after one that passed', async () => {
+  const identity = await invited('ada')
+  const guard = guardFor(identity)
+  await guard.canActivate(request({ cookie: 'good' }).context)
+  await guard.canActivate(request({ cookie: 'good' }).context)
+  await db.update(members).set({ active: false }).where(eq(members.id, identity.id))
+  await assert.rejects(guard.canActivate(request({ cookie: 'good' }).context), ForbiddenException)
 })
 
 test('a suspended member is refused', async () => {

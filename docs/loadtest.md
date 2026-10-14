@@ -49,11 +49,13 @@ is the rate at the front door. Behind each request there is more work:
 - **A page view** (`/`, `/p/:id`, `/u/:handle`, `/notifications`) is one Next.js
   render that makes 3–5 API calls: `/v1/me`, `/v1/communities` and `/v1/trending`
   for the shell, plus the page's own data.
-- **Every signed-in API call** asks Kratos `whoami` and runs an `UPDATE members`
-  in the session guard before doing any work of its own.
+- **Every signed-in API call** reads the member's row in the session guard, and
+  asks Kratos `whoami` unless the answer for that cookie is cached (30 s). It
+  writes `last_seen_at` at most every 5 minutes.
 
-So 500 page views per second becomes about 2,000 API requests, 2,000 Kratos
-lookups and 2,000 member updates per second.
+So 500 page views per second becomes about 2,000 API requests and 2,000
+`members` reads per second, but only as many Kratos lookups as there are active
+sessions every 30 seconds.
 
 **What target to aim for.** With 1M registered members, assume 10–20% are active
 on a given day (100–200k). Each active member makes about 100 requests a day,
@@ -386,28 +388,47 @@ Next.js and the API each stayed near 10%.
    `members` to drop inactive accounts. A popular post with 100k likes costs 100k
    rows every time someone scrolls past it. Fix: counter columns updated on
    like, unlike and reply, or a periodically refreshed count.
-3. **Kratos `whoami` and a `members` UPDATE on every API call.** The session
-   guard asks Kratos about the cookie on each request, and Kratos queries its
-   own tables in the same Postgres. Then the guard writes `last_seen_at`. A page
-   view makes 3–5 API calls, so that is 3–5 Kratos round trips and 3–5 row
-   writes, all for the same member within a few milliseconds. Fix: cache `whoami`
-   per cookie for a short time (30–60 s) in Redis or in memory, and update
-   `last_seen_at` at most once every few minutes. Also have Next.js fetch the
-   shell's `/v1/me` once per render (it already uses React `cache`).
-4. **Postgres connections and settings.** The API's `pg.Pool` keeps the default of
-   **10 connections**, so under load requests queue inside the API while
-   Postgres has idle capacity, or the reverse. The deploy stack also runs
-   Postgres with stock settings (`shared_buffers=128MB` on an 8 GB machine).
-   Check the `pg_stat_activity` query above, try `max: 20–30` in
-   `packages/db/src/index.ts`, and set `shared_buffers≈2GB`,
-   `effective_cache_size≈5GB` and `work_mem≈16MB` for production.
+3. **Kratos `whoami` and a `members` UPDATE on every API call.** *Done
+   (14 October 2026).* The session guard used to ask Kratos about the cookie on
+   every request (Kratos queries its own tables in the same Postgres) and then
+   write `last_seen_at`: 3–5 Kratos round trips and 3–5 row writes per page view.
+   Now `KratosService` reuses a valid `whoami` answer for `WHOAMI_CACHE_TTL_S`
+   (30 s) in Redis, keyed by a SHA-256 of the cookie, and the guard writes
+   `last_seen_at` at most every 5 minutes. `members.active` is still read on
+   every request, so suspensions apply at once, and the web app's `/logout`
+   drops the cached entry before Kratos ends the session. Still to do: have
+   Next.js fetch the shell's `/v1/me` once per render (it already uses React
+   `cache`).
+4. **Postgres connections and settings.** *Done (14 October 2026).* The API's
+   `pg.Pool` now keeps **20 connections** (`DATABASE_POOL_MAX`; pg's default was
+   10), and `infra/deploy/compose.yml` runs Postgres with `shared_buffers=2GB`,
+   `effective_cache_size=5GB`, `work_mem=16MB` and `maintenance_work_mem=256MB`
+   for the 8 GB production server. Staging sets smaller values in its `.env`
+   ([deployment/staging.md](deployment/staging.md)). Check the
+   `pg_stat_activity` query above to see whether 20 is still the right number.
+
+   **Measured on a laptop** (10k-member seed, production web build, 200
+   sessions, `-e PROFILE=ramp -e RAMP=20,40,60 -e CLIMB_S=10 -e HOLD_S=30`):
+
+   | | Before | After |
+   | --- | --: | --: |
+   | Kratos `whoami` calls | 14,070 | 1,714 (−88%) |
+   | p95, all requests | 66 ms | 52 ms |
+   | p95 at 60 req/s | 72 ms | 48 ms |
+   | errors | 0% | 0% |
+
+   With a harder ramp (`RAMP=60,90,120`, 60 s climbs) both versions fail from
+   90 req/s: pages time out at about the same rate, while API calls are faster
+   after (p95 2.75 s before, 1.85 s after). Past that point the limit is the page
+   renders (items 1 and 6), not the session guard.
 5. **Indexes for the feed queries.** The Following feed filters on
    `author_id in (followed)` or `community_id in (joined)` and sorts by
    `created_at`. For a member who follows many busy accounts, Postgres may walk
    `posts_created_idx` backwards through a lot of rows. Check the plan with
    `explain (analyze, buffers)` for a heavy follower. `notifications` has no index
    on `actor_id` or `post_id`, so deleting a post or member scans the whole table
-   (`clean.mjs` shows this).
+   (`clean.mjs` shows this). *Fixed:* migration `0010` adds
+   `notifications_actor_idx` and `notifications_post_idx`.
 6. **Next.js SSR CPU.** One `next start` process renders on one core. When the
    database is no longer the limit, expect `web` to sit at about 100% in
    `docker stats`. Fixes: run two or more web replicas (or Node cluster) behind

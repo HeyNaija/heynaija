@@ -80,6 +80,7 @@ As `heynaija`, clone to `/srv/heynaija`, run `./gen-env.sh`, and edit `.env`:
 | `BACKUP_DESTINATION` | `r2backup:heynaija-backups/production` |
 | `IMAGE_PREFIX` | `ghcr.io/heynaija/heynaija`, lower case, as for staging |
 | `S3_*`, `SMTP_*`, `BACKUP_AGE_RECIPIENT` | as for staging, with production's tokens and keys |
+| `POSTGRES_*`, `DATABASE_POOL_MAX` | delete these lines: `compose.yml`'s defaults are sized for this 8 GB server |
 
 Then check no `<…>` placeholder is left: `grep -n '^[^#]*<' .env` prints nothing.
 

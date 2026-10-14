@@ -22,6 +22,15 @@ services:
   postgres:
     command:
       - postgres
+      # Same memory settings as infra/deploy/compose.yml (this list replaces its).
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-2GB}
+      - -c
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-5GB}
+      - -c
+      - work_mem=${POSTGRES_WORK_MEM:-16MB}
+      - -c
+      - maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-256MB}
       - -c
       - cluster_name=heynaija-loadtest
       - -c

@@ -307,6 +307,10 @@ export const notifications = pgTable(
   },
   (t) => [
     index('notifications_recipient_created_idx').on(t.recipientId, t.createdAt),
+    // Deleting a post or a member must find the notifications pointing at it;
+    // without these each delete scanned the whole table.
+    index('notifications_actor_idx').on(t.actorId),
+    index('notifications_post_idx').on(t.postId),
     // Liking, unliking and liking again (or following again) notifies once.
     uniqueIndex('notifications_like_once_idx')
       .on(t.recipientId, t.actorId, t.postId)

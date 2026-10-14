@@ -17,6 +17,9 @@ const schema = z.object({
   API_HOST: z.string().default('127.0.0.1'),
   // Background jobs (image processing) run on BullMQ over this Redis.
   REDIS_URL: z.url(),
+  // How long a Kratos whoami answer is reused for the same session cookie, in
+  // seconds (see KratosService). 0 asks Kratos on every request.
+  WHOAMI_CACHE_TTL_S: z.coerce.number().int().min(0).max(300).default(30),
   // Object storage for media: MinIO locally, Cloudflare R2 in production.
   S3_ENDPOINT: z.url().transform((u) => u.replace(/\/$/, '')),
   S3_REGION: z.string().min(1),

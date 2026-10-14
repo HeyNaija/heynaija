@@ -219,9 +219,10 @@ async function UserMenu() {
         <p className="px-3 py-2 text-sm text-muted">This account cannot post.</p>
       )}
       {/* A plain link, not a router navigation: Kratos ends the session on this
-          request and must receive it exactly once, straight from the browser. */}
+          request and must receive it exactly once, straight from the browser.
+          /logout drops the API's cached session first, then redirects there. */}
       {logoutUrl ? (
-        <a href={logoutUrl} className="menu-item menu-item-danger">
+        <a href={`/logout?to=${encodeURIComponent(logoutUrl)}`} className="menu-item menu-item-danger">
           Sign out
         </a>
       ) : null}

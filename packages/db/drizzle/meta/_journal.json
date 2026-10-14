@@ -71,6 +71,13 @@
       "when": 1791985608092,
       "tag": "0009_dry_master_mold",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792006916431,
+      "tag": "0010_notifications_actor_post_idx",
+      "breakpoints": true
     }
   ]
 }

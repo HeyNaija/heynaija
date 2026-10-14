@@ -65,6 +65,23 @@ restore rehearsal, and the uptime check. Work through step 7.
   `nginx -t` fails, so a mistake never reaches Koinovera's sites.
 - **Do not run `setup-server.sh` here.** It is for a fresh server: it rewrites SSH
   and firewall settings and restarts Docker, which would restart Koinovera.
+- **Memory.** `infra/deploy/compose.yml` sizes Postgres for production's own
+  8 GB server (`shared_buffers=2GB`, `effective_cache_size=5GB`, `work_mem=16MB`,
+  `maintenance_work_mem=256MB`) and gives the API 20 database connections. That
+  is too much for a server shared with Koinovera, so staging's `.env` sets smaller
+  values (they are in `.env.example`):
+
+  ```ini
+  POSTGRES_SHARED_BUFFERS=256MB
+  POSTGRES_EFFECTIVE_CACHE_SIZE=768MB
+  POSTGRES_WORK_MEM=4MB
+  POSTGRES_MAINTENANCE_WORK_MEM=64MB
+  DATABASE_POOL_MAX=10
+  ```
+
+  A `.env` made before these settings existed does not have them, and would get
+  production's sizes: **add these lines to `/srv/heynaija/infra/deploy/.env`
+  before deploying a commit that includes them.**
 - **One Docker daemon.** Any user in the `docker` group can manage every container
   on the server, Koinovera's included. Fine while both projects are yours.
 
