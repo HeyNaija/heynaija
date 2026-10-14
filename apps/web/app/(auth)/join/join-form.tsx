@@ -1,10 +1,16 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useEffect } from 'react'
 import { acceptInvite, type JoinState } from '@/app/actions'
 
 export function JoinForm({ initialCode }: { initialCode: string }) {
   const [state, action, pending] = useActionState<JoinState, FormData>(acceptInvite, {})
+
+  // A full page load, so the browser itself follows Kratos's redirects and keeps its cookies.
+  useEffect(() => {
+    if (state.next) window.location.assign(state.next)
+  }, [state.next])
+  const busy = pending || Boolean(state.next)
 
   return (
     <form action={action} className="flex flex-col gap-4">
@@ -31,10 +37,10 @@ export function JoinForm({ initialCode }: { initialCode: string }) {
       </div>
       <button
         type="submit"
-        disabled={pending}
+        disabled={busy}
         className="btn btn-primary btn-lg btn-block"
       >
-        {pending ? 'Checking…' : 'Check invite code'}
+        {busy ? 'Checking…' : 'Check invite code'}
       </button>
     </form>
   )

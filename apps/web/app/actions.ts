@@ -286,7 +286,7 @@ export async function setFollow(formData: FormData): Promise<void> {
   refresh()
 }
 
-export type JoinState = { error?: string; code?: string }
+export type JoinState = { error?: string; code?: string; next?: string }
 
 export async function acceptInvite(_prev: JoinState, formData: FormData): Promise<JoinState> {
   const typed = String(formData.get('code') ?? '').slice(0, 40)
@@ -310,5 +310,9 @@ export async function acceptInvite(_prev: JoinState, formData: FormData): Promis
     path: '/',
     maxAge: 60 * 60,
   })
-  redirect(startFlowUrl('registration'))
+  // Not redirect(): for a server action Next renders the redirect target on the
+  // server, so Kratos's anti-CSRF cookie never reaches the browser and /signup is
+  // rendered without the invite cookie, which sends the visitor back to /join.
+  // The form navigates the browser itself instead.
+  return { next: startFlowUrl('registration') }
 }
