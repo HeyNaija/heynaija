@@ -16,7 +16,15 @@ export const LIMITS = {
   report: [{ max: 10, windowMs: HOUR }],
   search: [{ max: 60, windowMs: MINUTE }],
   inviteCheck: [{ max: 20, windowMs: MINUTE }],
+  // Name and bio changes.
+  profile: [{ max: 20, windowMs: HOUR }],
+  // Profile photo changes.
   upload: [{ max: 10, windowMs: HOUR }],
+  // Images attached to posts: up to four a post, so a bigger budget than photos.
+  postImage: [
+    { max: 12, windowMs: MINUTE },
+    { max: 60, windowMs: HOUR },
+  ],
 } satisfies Record<string, { max: number; windowMs: number }[]>
 
 /**

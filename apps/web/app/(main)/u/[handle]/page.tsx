@@ -44,8 +44,10 @@ async function ProfileView({ params, searchParams }: Props) {
       <header className="page-header flex items-start gap-4">
         <Avatar handle={profile.handle} src={profile.avatar} size={64} />
         <div className="min-w-0 flex-1">
-          <h1 className="page-title truncate">@{profile.handle}</h1>
-          <p className="mt-1 flex flex-wrap gap-x-4 text-sm text-muted">
+          <h1 className="page-title break-words">{profile.displayName ?? `@${profile.handle}`}</h1>
+          {profile.displayName ? <p className="truncate text-sm text-muted">@{profile.handle}</p> : null}
+          {profile.bio ? <p className="mt-2 whitespace-pre-wrap break-words text-[15px] leading-6">{profile.bio}</p> : null}
+          <p className="mt-2 flex flex-wrap gap-x-4 text-sm text-muted">
             {count(profile.postCount, 'post', 'posts')}
             {count(profile.followerCount, 'follower', 'followers')}
             {count(profile.followingCount, 'following', 'following')}

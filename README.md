@@ -1,26 +1,29 @@
-# heynaija
+# HeyNaija
 
-A Nigeria-first, community-owned social network. See [PLAN.md](PLAN.md) for the
-product plan; note that its AT Protocol architecture has been replaced (see
-[ADR 0002](docs/adr/0002-conventional-stack-with-kratos.md)).
+A Nigeria-first, community-owned social network. [PLAN.md](PLAN.md) has the product
+plan, what is built, and what comes next; [ADR 0002](docs/adr/0002-conventional-stack-with-kratos.md)
+explains the architecture and lists every known limitation.
 
 **Status:** early local build, nothing deployed yet. What works:
 
 - **Accounts:** join with an invite code, sign up, confirm email, sign in and out,
   recover an account (all handled by Ory Kratos).
-- **Posting:** posts, threaded replies, likes, private bookmarks.
-- **People:** profiles with a photo, follow, mute and block.
+- **Posting:** posts and threaded replies with up to four images each (with
+  descriptions for screen readers, and a full-screen viewer), likes, private bookmarks.
+- **People:** profiles with a photo, display name and bio; follow, mute and block.
 - **Communities:** five launch communities to join and post in.
 - **Feeds:** Latest, Following (people and communities, each post says why it is
   there), per-community, trending, and search over members, communities and posts.
 - **Safety:** report a post or account, a moderation queue (remove post, suspend
   account, dismiss), appeals from suspended members, a decision log, rate limits.
+- **Look:** light, dark and system themes; works down to phone width.
 
 ## How it fits together
 
 ```text
 Browser ──> Next.js web app (127.0.0.1:3000)
               ├── /api/v1/*  ──> NestJS API ──> Postgres (members, posts, invites)
+              │                      └──> Redis (BullMQ: image processing jobs)
               ├── /media/*   ──> object storage (public bucket of processed images)
               └── /kratos/*  ──> Ory Kratos ──> Postgres (identities, sessions)
                                      │  └──> Mailpit (dev email inbox)
@@ -79,20 +82,17 @@ Go to `http://127.0.0.1:3000/join?code=<the code>` (use `127.0.0.1`, not
 
 ## Media
 
-Profile photos are the only uploads so far. The browser shrinks the image, uploads
-it straight to a private bucket using a short-lived signed URL, and the API then
-checks it is a real image, re-encodes it at two sizes (which removes any location
-data), and publishes those to a public bucket.
+Profile photos and post images. The browser shrinks the image, uploads it straight
+to a private bucket using a short-lived signed URL, and the API then checks it is a
+real image, re-encodes it at two sizes (which removes any location data), and
+publishes those to a public bucket. Profile photos are processed during the
+request; post images by a background job (BullMQ on Redis, running inside the API
+process), while the composer shows "Processing…" until they are ready. An hourly
+job clears uploads that were never finished or never posted.
 
-Storage is any S3-compatible service, set by the `S3_*` variables: MinIO locally,
-Cloudflare R2 in production. For R2:
-
-- create two buckets, one private (uploads) and one with public access (media);
-- set `S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com` and `S3_REGION=auto`;
-- add a CORS rule on the uploads bucket allowing `PUT` with a `Content-Type` header
-  from the site's origin, since browsers upload to it directly;
-- serve the media bucket at `/media` on the site's own domain (a Cloudflare route,
-  or `MEDIA_INTERNAL_URL` for the web app's built-in proxy).
+Storage is any S3-compatible service, set by the `S3_*` variables: MinIO locally
+(console at <http://127.0.0.1:9101>), Cloudflare R2 in production. For R2, follow
+[docs/deployment/cloudflare-r2.md](docs/deployment/cloudflare-r2.md).
 
 ## Moderators
 
@@ -111,6 +111,16 @@ pnpm mod:grant ada --community lagos    # only reports about posts in that commu
 app.
 
 `pnpm infra:down` stops the stack. Local state lives in `infra/compose/.data/`.
+
+## Design
+
+Tokens, primitives and the layout live in `apps/web/app/globals.css`; the rules
+(palette, radius by role, rows rather than cards, no gradients) are in
+[PLAN.md §6](PLAN.md#6-design-system). Icons come only from `apps/web/app/ui/icons.tsx`.
+
+If the dev site suddenly looks unstyled after a CSS change, restart `pnpm dev:web`;
+the dev server has served a stale stylesheet more than once. If that is not enough,
+stop it, delete `apps/web/.next`, and start it again.
 
 ## Checks
 

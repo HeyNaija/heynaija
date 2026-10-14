@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Delete,
   Get,
@@ -21,7 +22,7 @@ import {
 import { handleParam, paged, pageQuery, parse } from '../http.js'
 import { PostsService } from '../posts/posts.service.js'
 import { RateLimiter } from '../rate-limit.js'
-import { CannotFollowSelfError, MembersService } from './members.service.js'
+import { CannotFollowSelfError, MembersService, profileInput } from './members.service.js'
 
 const handleOf = (raw: string): string => {
   const parsed = handleParam.safeParse(raw)
@@ -103,5 +104,23 @@ export class MembersController {
   @UseGuards(SessionGuard)
   async unmute(@Req() req: AuthedRequest, @Param('handle') handle: string) {
     await this.members.unmute(req.member.id, handleOf(handle))
+  }
+}
+
+/** The member's own name and bio. */
+@Controller('v1/me/profile')
+export class OwnProfileController {
+  constructor(
+    @Inject(MembersService) private readonly members: MembersService,
+    @Inject(RateLimiter) private readonly limits: RateLimiter,
+  ) {}
+
+  @Put()
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async update(@Req() req: AuthedRequest, @Body() body: unknown) {
+    const profile = parse(profileInput, body)
+    this.limits.hit('profile', req.member.id)
+    await this.members.updateProfile(req.member.id, profile)
   }
 }

@@ -6,6 +6,7 @@ import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
 import { BookmarkIcon, BubbleIcon, DotsIcon, HeartIcon } from './icons'
 import { Menu } from './menu'
+import { PostImages } from './post-images'
 import { SubmitButton } from './submit-button'
 import { timeAgo } from './time'
 
@@ -58,8 +59,9 @@ export function PostItem({
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p className="flex items-baseline gap-2 text-[15px] leading-5">
-                <Link href={`/u/${post.authorHandle}`} className="truncate font-semibold hover:underline">
-                  @{post.authorHandle}
+                <Link href={`/u/${post.authorHandle}`} className="flex min-w-0 items-baseline gap-1.5 hover:underline">
+                  <span className="truncate font-semibold">{post.authorName ?? `@${post.authorHandle}`}</span>
+                  {post.authorName ? <span className="shrink-0 text-[13px] text-muted">@{post.authorHandle}</span> : null}
                 </Link>
                 <Link href={href} className="shrink-0 text-[13px] text-muted hover:underline">
                   <time dateTime={post.createdAt} title={new Date(post.createdAt).toUTCString()}>
@@ -118,9 +120,16 @@ export function PostItem({
             </Link>
           ) : null}
 
-          <p className={`mt-2 whitespace-pre-wrap break-words ${focused ? 'text-[17px] leading-relaxed' : 'post-body'}`}>
-            {post.text}
-          </p>
+          {post.text ? (
+            <p className={`mt-2 whitespace-pre-wrap break-words ${focused ? 'text-[17px] leading-relaxed' : 'post-body'}`}>
+              {post.text}
+            </p>
+          ) : null}
+          {post.images.length ? (
+            <div className="mt-3">
+              <PostImages images={post.images} />
+            </div>
+          ) : null}
 
           <div className="-ml-2 mt-2 flex items-center gap-3">
             <Link href={href} className="icon-btn" aria-label={replies}>

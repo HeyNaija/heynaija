@@ -1,18 +1,21 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { media, members } from '@heynaija/db'
-import { eq } from 'drizzle-orm'
+import { media, members, posts } from '@heynaija/db'
+import { eq, ne } from 'drizzle-orm'
 import sharp from 'sharp'
+import { slugParam } from '../http.js'
 import { MembersService } from '../members/members.service.js'
-import { PostsService } from '../posts/posts.service.js'
+import { ImagesNotReadyError, newPost, PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
-import { AVATAR_MAX_BYTES, MediaError, MediaService } from './media.service.js'
+import { AVATAR_MAX_BYTES, MediaError, type MediaJobs, MediaService, POST_IMAGE_MAX_BYTES } from './media.service.js'
 import type { Bucket, ObjectStore } from './object-store.js'
 
 // Storage is faked in memory; the image handling under test is real.
 class MemoryStore implements ObjectStore {
   readonly objects = new Map<string, Buffer>()
+  /** Runs while a file is being read, to stage something happening mid-job. */
+  duringRead?: () => Promise<unknown>
   private k = (bucket: Bucket, key: string) => `${bucket}/${key}`
   async presignUpload(key: string) {
     return `memory://uploads/${key}`
@@ -21,6 +24,7 @@ class MemoryStore implements ObjectStore {
     return this.objects.get(this.k(bucket, key))?.length ?? null
   }
   async read(bucket: Bucket, key: string) {
+    await this.duringRead?.()
     return this.objects.get(this.k(bucket, key))!
   }
   async write(bucket: Bucket, key: string, body: Buffer) {
@@ -30,15 +34,24 @@ class MemoryStore implements ObjectStore {
     this.objects.delete(this.k(bucket, key))
   }
   /** What a browser would do with the upload URL. */
-  upload(mediaId: string, body: Buffer) {
-    this.objects.set(`uploads/avatars/${mediaId}`, body)
+  upload(mediaId: string, body: Buffer, folder = 'avatars') {
+    this.objects.set(`uploads/${folder}/${mediaId}`, body)
   }
   keys(bucket: Bucket) {
     return [...this.objects.keys()].filter((k) => k.startsWith(`${bucket}/`)).sort()
   }
 }
 
+// The queue is faked too: tests run the job themselves, as the worker would.
+class RecordingJobs implements MediaJobs {
+  readonly queued: string[] = []
+  async processPostImage(mediaId: string) {
+    this.queued.push(mediaId)
+  }
+}
+
 let store: MemoryStore
+let jobs: RecordingJobs
 let service: MediaService
 const ada = randomUUID()
 const bayo = randomUUID()
@@ -58,7 +71,8 @@ beforeEach(async () => {
     { id: bayo, handle: 'bayo' },
   ])
   store = new MemoryStore()
-  service = new MediaService(db, store)
+  jobs = new RecordingJobs()
+  service = new MediaService(db, store, jobs)
 })
 after(() => pool.end())
 
@@ -100,7 +114,7 @@ test('the avatar shows up on the profile, in search and on posts', async () => {
 
   assert.equal((await membersService.profile(null, 'ada'))!.avatar, expected)
   assert.equal((await membersService.profile(null, 'bayo'))!.avatar, null)
-  assert.deepEqual(await membersService.search('ada', 5), [{ handle: 'ada', avatar: expected }])
+  assert.deepEqual(await membersService.search('ada', 5), [{ handle: 'ada', displayName: null, avatar: expected }])
   const feed = (await postsService.feed(null, 10)).posts
   assert.deepEqual(feed.map((p) => [p.authorHandle, p.authorAvatar]), [
     ['bayo', null],
@@ -198,4 +212,180 @@ test('uploads that were started and abandoned are cleared when the member starts
   assert.equal(rows.find((r) => r.id === abandoned)!.status, 'deleted')
   assert.equal(rows.find((r) => r.id === recent)!.status, 'pending')
   assert.deepEqual(store.keys('uploads'), [])
+})
+
+// --- Post images ---
+
+const picture = (width: number, height: number) =>
+  sharp({ create: { width, height, channels: 3, background: '#c63' } })
+    .withExif({ IFD3: { GPSLatitudeRef: 'N', GPSLatitude: '9/1 4/1 0/1', GPSLongitudeRef: 'E', GPSLongitude: '7/1 29/1 0/1' } })
+    .jpeg()
+    .toBuffer()
+
+/** Start, upload and finish, as the browser does; the job has not run yet. */
+const uploadPostImage = async (owner: string, body: Buffer) => {
+  const { mediaId } = await service.startPostImageUpload(owner, 'image/jpeg', body.length)
+  store.upload(mediaId, body, 'posts')
+  assert.equal(await service.finishPostImageUpload(owner, mediaId), 'processing')
+  return mediaId
+}
+
+const readyPostImage = async (owner: string, body?: Buffer) => {
+  const mediaId = await uploadPostImage(owner, body ?? (await picture(800, 600)))
+  await service.processPostImage(mediaId)
+  return mediaId
+}
+
+const statusOf = async (id: string) => (await db.select().from(media).where(eq(media.id, id)))[0]!.status
+
+test('a post image is processed by the job: proportions kept, location data removed', async () => {
+  const mediaId = await uploadPostImage(ada, await picture(2400, 1600))
+  assert.deepEqual(jobs.queued, [mediaId])
+  assert.equal(await service.postImageStatus(ada, mediaId), 'processing')
+  // Nothing is public until the job has run.
+  assert.deepEqual(store.keys('media'), [])
+
+  await service.processPostImage(mediaId)
+  assert.equal(await service.postImageStatus(ada, mediaId), 'ready')
+  assert.deepEqual(store.keys('media'), [`media/posts/${mediaId}/1600.webp`, `media/posts/${mediaId}/640.webp`])
+  for (const [px, w, h] of [
+    [640, 640, 427],
+    [1600, 1600, 1067],
+  ]) {
+    const meta = await sharp(store.objects.get(`media/posts/${mediaId}/${px}.webp`)!).metadata()
+    assert.deepEqual([meta.format, meta.width, meta.height], ['webp', w, h])
+    assert.equal(meta.exif, undefined)
+  }
+  assert.deepEqual(store.keys('uploads'), [])
+  const [row] = await db.select().from(media).where(eq(media.id, mediaId))
+  assert.deepEqual([row!.width, row!.height], [1600, 1067])
+
+  // Running the job again (a retry) changes nothing.
+  await service.processPostImage(mediaId)
+  assert.equal(store.keys('media').length, 2)
+})
+
+test('a small post image is never enlarged', async () => {
+  const mediaId = await readyPostImage(ada, await picture(300, 200))
+  for (const px of [640, 1600]) {
+    const meta = await sharp(store.objects.get(`media/posts/${mediaId}/${px}.webp`)!).metadata()
+    assert.deepEqual([meta.width, meta.height], [300, 200])
+  }
+})
+
+test('a post image that is not an image fails in the job and cannot be retried', async () => {
+  const mediaId = await uploadPostImage(ada, Buffer.from('GIF89a but really a script'))
+  await service.processPostImage(mediaId)
+  assert.equal(await service.postImageStatus(ada, mediaId), 'failed')
+  assert.deepEqual([...store.objects.keys()], [])
+  await assert.rejects(service.finishPostImageUpload(ada, mediaId), (e: MediaError) => e.code === 'not_found')
+})
+
+test('a post image over the limit is refused before it is queued', async () => {
+  const { mediaId } = await service.startPostImageUpload(ada, 'image/jpeg', 1000)
+  store.upload(mediaId, Buffer.alloc(POST_IMAGE_MAX_BYTES + 1), 'posts')
+  await assert.rejects(service.finishPostImageUpload(ada, mediaId), (e: MediaError) => e.code === 'too_large')
+  assert.deepEqual(jobs.queued, [])
+  assert.deepEqual([...store.objects.keys()], [])
+})
+
+test("someone else's post image is invisible to you", async () => {
+  const mediaId = await uploadPostImage(ada, await picture(400, 400))
+  assert.equal(await service.postImageStatus(bayo, mediaId), null)
+  await assert.rejects(service.finishPostImageUpload(bayo, mediaId), (e: MediaError) => e.code === 'not_found')
+})
+
+test('images appear on the post in order, with their descriptions', async () => {
+  const postsService = new PostsService(db)
+  const first = await readyPostImage(ada, await picture(1200, 800))
+  const second = await readyPostImage(ada, await picture(600, 900))
+  const { id } = await postsService.create(ada, 'Lagos at dusk', {
+    images: [
+      { id: second, alt: 'A tall photo' },
+      { id: first, alt: 'Third Mainland Bridge' },
+    ],
+  })
+
+  const thread = await postsService.thread(null, id)
+  assert.deepEqual(thread!.post.images, [
+    { src: `/media/posts/${second}`, alt: 'A tall photo', width: 600, height: 900 },
+    { src: `/media/posts/${first}`, alt: 'Third Mainland Bridge', width: 1200, height: 800 },
+  ])
+  assert.deepEqual((await postsService.feed(null, 10)).posts[0]!.images.length, 2)
+})
+
+test('a post can be only images, but not nothing at all', () => {
+  const schema = newPost(slugParam)
+  const image = { id: randomUUID(), alt: '' }
+  assert.equal(schema.safeParse({ text: '', images: [image] }).success, true)
+  assert.equal(schema.safeParse({ text: '   ', images: [] }).success, false)
+  assert.equal(schema.safeParse({}).success, false)
+  assert.equal(schema.safeParse({ text: 'hi', images: [1, 2, 3, 4, 5].map(() => ({ id: randomUUID() })) }).success, false)
+  assert.equal(schema.safeParse({ text: 'hi', images: [image, image] }).success, false)
+})
+
+test('a post cannot use an image that is still processing, used already, or not yours', async () => {
+  const postsService = new PostsService(db)
+  const processing = await uploadPostImage(ada, await picture(400, 400))
+  const ready = await readyPostImage(ada)
+  const bayos = await readyPostImage(bayo)
+
+  const attempt = (images: string[]) =>
+    postsService.create(ada, 'with pictures', { images: images.map((id) => ({ id, alt: '' })) })
+  await assert.rejects(attempt([ready, processing]), ImagesNotReadyError)
+  await assert.rejects(attempt([bayos]), ImagesNotReadyError)
+  // The failed attempts left nothing behind: no post, and the ready image still free.
+  assert.equal((await db.select().from(posts)).length, 0)
+
+  await attempt([ready])
+  await assert.rejects(attempt([ready]), ImagesNotReadyError)
+  assert.equal((await db.select().from(posts)).length, 1)
+})
+
+test("deleting a post deletes its images; a moderator's removal only hides them", async () => {
+  const postsService = new PostsService(db)
+  const kept = await readyPostImage(ada)
+  const gone = await readyPostImage(ada)
+  const { id: removed } = await postsService.create(ada, 'removed by a moderator', { images: [{ id: kept, alt: '' }] })
+  const { id: deleted } = await postsService.create(ada, 'deleted by its author', { images: [{ id: gone, alt: '' }] })
+
+  await db.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, removed))
+  assert.equal(await postsService.remove(ada, deleted), true)
+  await service.discardPostImages(deleted)
+
+  assert.equal(await statusOf(gone), 'deleted')
+  assert.deepEqual(store.keys('media'), [`media/posts/${kept}/1600.webp`, `media/posts/${kept}/640.webp`])
+  assert.deepEqual((await postsService.byAuthor(null, ada, 10)).posts, [])
+
+  // Restoring the removed post brings its image back.
+  await db.update(posts).set({ removedAt: null }).where(eq(posts.id, removed))
+  assert.deepEqual((await postsService.thread(null, removed))!.post.images.map((i) => i.src), [`/media/posts/${kept}`])
+})
+
+test('images never put on a post are swept after an hour, by the hourly job too', async () => {
+  const postsService = new PostsService(db)
+  const unused = await readyPostImage(ada)
+  const used = await readyPostImage(ada)
+  const fresh = await readyPostImage(bayo)
+  await postsService.create(ada, 'one picture', { images: [{ id: used, alt: '' }] })
+  const anHourAgo = new Date(Date.now() - 61 * 60 * 1000)
+  await db.update(media).set({ readyAt: anHourAgo, createdAt: anHourAgo }).where(ne(media.id, fresh))
+
+  // Everyone's, as the hourly job does: no member given.
+  await service.sweepAbandoned()
+  assert.equal(await statusOf(unused), 'deleted')
+  assert.equal(await statusOf(used), 'ready')
+  assert.equal(await statusOf(fresh), 'ready')
+  assert.deepEqual(
+    store.keys('media').filter((k) => k.includes(unused)),
+    [],
+  )
+})
+
+test('an image abandoned while the job was running does not stay public', async () => {
+  const mediaId = await uploadPostImage(ada, await picture(400, 300))
+  store.duringRead = () => db.update(media).set({ status: 'deleted' }).where(eq(media.id, mediaId))
+  await service.processPostImage(mediaId)
+  assert.equal(await statusOf(mediaId), 'deleted')
+  assert.deepEqual(store.keys('media'), [])
 })

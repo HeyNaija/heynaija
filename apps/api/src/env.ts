@@ -12,6 +12,8 @@ const schema = z.object({
     .default('http://127.0.0.1:3000')
     .transform((u) => u.replace(/\/$/, '')),
   API_PORT: z.coerce.number().default(4000),
+  // Background jobs (image processing) run on BullMQ over this Redis.
+  REDIS_URL: z.url(),
   // Object storage for media: MinIO locally, Cloudflare R2 in production.
   S3_ENDPOINT: z.url().transform((u) => u.replace(/\/$/, '')),
   S3_REGION: z.string().min(1),

@@ -53,13 +53,18 @@ export class AuthController {
   async me(@Req() req: AuthedRequest) {
     const [scope, [row]] = await Promise.all([
       this.moderation.scope(req.member.id),
-      this.db.select({ avatarMediaId: members.avatarMediaId }).from(members).where(eq(members.id, req.member.id)),
+      this.db
+        .select({ avatarMediaId: members.avatarMediaId, displayName: members.displayName, bio: members.bio })
+        .from(members)
+        .where(eq(members.id, req.member.id)),
     ])
     // `moderates` only decides whether the web app shows the moderation link; every
     // moderation endpoint checks the role again.
     return {
       ...req.member,
       avatar: avatarPath(row?.avatarMediaId ?? null),
+      displayName: row?.displayName ?? null,
+      bio: row?.bio ?? '',
       moderates: scope.siteWide || scope.communityIds.length > 0,
     }
   }

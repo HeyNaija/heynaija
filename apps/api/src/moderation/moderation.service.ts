@@ -10,6 +10,7 @@ import {
 } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
 import { and, eq, isNull, or, sql } from 'drizzle-orm'
+import { imagesOf, type PostImage, toPostImages } from '../posts/posts.service.js'
 import { DB } from '../tokens.js'
 
 export type ReportReason = Exclude<(typeof REPORT_REASONS)[number], 'appeal'>
@@ -29,7 +30,7 @@ export type QueueItem = {
   reporterHandle: string
   /** How many open reports there are about the same post or account. */
   reportCount: number
-  post: { id: string; text: string; authorHandle: string; communityName: string | null } | null
+  post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
   member: { handle: string; active: boolean } | null
 }
 
@@ -143,6 +144,7 @@ export class ModerationService {
       report_count: number
       post_id: string | null
       post_text: string | null
+      post_images: { id: string; alt: string; width: number; height: number }[]
       post_author: string | null
       community_name: string | null
       member_handle: string | null
@@ -152,7 +154,7 @@ export class ModerationService {
         (select count(*)::int from reports o where o.status = 'open'
           and ((r.post_id is not null and o.post_id = r.post_id)
             or (r.post_id is null and o.post_id is null and o.member_id = r.member_id))) as report_count,
-        p.id as post_id, p.text as post_text, pa.handle as post_author, c.name as community_name,
+        p.id as post_id, p.text as post_text, ${imagesOf(sql`p.id`)} as post_images, pa.handle as post_author, c.name as community_name,
         tm.handle as member_handle, tm.active as member_active
       from reports r
       join members rep on rep.id = r.reporter_id
@@ -173,7 +175,7 @@ export class ModerationService {
       reporterHandle: r.reporter_handle,
       reportCount: r.report_count,
       post: r.post_id
-        ? { id: r.post_id, text: r.post_text!, authorHandle: r.post_author!, communityName: r.community_name }
+        ? { id: r.post_id, text: r.post_text!, images: toPostImages(r.post_images), authorHandle: r.post_author!, communityName: r.community_name }
         : null,
       member: r.member_handle ? { handle: r.member_handle, active: r.member_active! } : null,
     }))

@@ -3,38 +3,9 @@
 import { useRef, useState } from 'react'
 import { finishAvatarUpload, removeAvatar, startAvatarUpload } from '@/app/actions'
 import { Avatar } from './avatar'
+import { IMAGE_TYPES, shrinkImage } from './shrink-image'
 
-const ACCEPT = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_BYTES = 5 * 1024 * 1024
-const TARGET = 512
-
-/**
- * Crops to a centred square and shrinks to 512px before anything is sent. On a
- * mobile connection this turns a multi-megabyte photo into a few tens of
- * kilobytes. If the browser cannot do it, the original is uploaded as it is.
- */
-async function shrink(file: File): Promise<Blob> {
-  try {
-    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
-    const side = Math.min(bitmap.width, bitmap.height)
-    const canvas = document.createElement('canvas')
-    canvas.width = canvas.height = Math.min(TARGET, side)
-    canvas
-      .getContext('2d')!
-      .drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, canvas.width, canvas.height)
-    bitmap.close()
-
-    const encode = (type: string) => new Promise<Blob | null>((done) => canvas.toBlob(done, type, 0.86))
-    // Some browsers cannot write WebP and quietly hand back a PNG instead.
-    const webp = await encode('image/webp')
-    if (webp?.type === 'image/webp') return webp
-    const jpeg = await encode('image/jpeg')
-    if (jpeg?.type === 'image/jpeg') return jpeg
-  } catch {
-    // Fall through to the original file.
-  }
-  return file
-}
 
 export function AvatarUploader({ handle, avatar }: { handle: string; avatar: string | null }) {
   const input = useRef<HTMLInputElement>(null)
@@ -45,12 +16,12 @@ export function AvatarUploader({ handle, avatar }: { handle: string; avatar: str
 
   const upload = async (file: File) => {
     setError(null)
-    if (!ACCEPT.includes(file.type)) return setError('Choose a JPEG, PNG or WebP image.')
+    if (!IMAGE_TYPES.includes(file.type)) return setError('Choose a JPEG, PNG or WebP image.')
 
     setBusy(true)
     try {
       setStatus('Preparing…')
-      const image = await shrink(file)
+      const image = await shrinkImage(file, { max: 512, square: true })
       if (image.size > MAX_BYTES) return setError('That image is too large. The limit is 5 MB.')
 
       setStatus('Uploading…')
@@ -107,7 +78,7 @@ export function AvatarUploader({ handle, avatar }: { handle: string; avatar: str
         <input
           ref={input}
           type="file"
-          accept={ACCEPT.join(',')}
+          accept={IMAGE_TYPES.join(',')}
           className="sr-only"
           aria-label="Profile photo"
           tabIndex={-1}

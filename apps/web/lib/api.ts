@@ -10,14 +10,27 @@ const API_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000'
 export const SESSION_COOKIE = 'hn_session'
 
 /** `avatar` fields are a path without the size suffix (see app/ui/avatar.tsx), or null. */
-export type Me = { id: string; handle: string; avatar: string | null; moderates: boolean }
+export type Me = {
+  id: string
+  handle: string
+  displayName: string | null
+  bio: string
+  avatar: string | null
+  moderates: boolean
+}
+
+/** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
+export type PostImage = { src: string; alt: string; width: number; height: number }
 
 export type Post = {
   id: string
   authorId: string
   authorHandle: string
+  /** The author's chosen name; show the handle alone when null. */
+  authorName: string | null
   authorAvatar: string | null
   text: string
+  images: PostImage[]
   createdAt: string
   replyParentId: string | null
   likeCount: number
@@ -48,6 +61,8 @@ export type CommunityDetail = Community & { rules: string; moderators: string[] 
 export type Profile = {
   id: string
   handle: string
+  displayName: string | null
+  bio: string
   avatar: string | null
   joinedAt: string
   postCount: number
@@ -145,7 +160,11 @@ export async function getTrending(): Promise<Post[]> {
   return res.json()
 }
 
-export type SearchResults = { members: { handle: string; avatar: string | null }[]; communities: Community[]; posts: Post[] }
+export type SearchResults = {
+  members: { handle: string; displayName: string | null; avatar: string | null }[]
+  communities: Community[]
+  posts: Post[]
+}
 
 /** Null when the query is too short or too long to search for. */
 export async function search(q: string): Promise<SearchResults | null> {
@@ -162,7 +181,7 @@ export type QueueItem = {
   createdAt: string
   reporterHandle: string
   reportCount: number
-  post: { id: string; text: string; authorHandle: string; communityName: string | null } | null
+  post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
   member: { handle: string; active: boolean } | null
 }
 

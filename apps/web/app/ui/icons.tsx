@@ -1,10 +1,13 @@
 import {
   Bookmark,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Ellipsis,
   Flame,
   Heart,
   House,
+  ImagePlus,
   type LucideIcon,
   MessageCircle,
   Plus,
@@ -14,6 +17,7 @@ import {
   User,
   Users,
   Vote,
+  X,
 } from 'lucide-react'
 
 // One icon set (Lucide) behind our own names, so the whole app draws icons at the
@@ -47,3 +51,7 @@ export const ChevronIcon = icon(ChevronDown)
 export const FlameIcon = icon(Flame)
 export const ShieldIcon = icon(Shield)
 export const VoteIcon = icon(Vote)
+export const ImageIcon = icon(ImagePlus)
+export const CloseIcon = icon(X)
+export const PreviousIcon = icon(ChevronLeft)
+export const NextIcon = icon(ChevronRight)

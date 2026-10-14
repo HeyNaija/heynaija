@@ -5,38 +5,70 @@ import {
   type Db,
   follows,
   likes,
+  media,
   members,
   posts,
 } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
 import { and, asc, desc, eq, gt, inArray, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { avatarPath } from '../media/media.service.js'
+import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/media.service.js'
+import { graphemes } from '../text.js'
 import { DB } from '../tokens.js'
 
 export const POST_MAX_GRAPHEMES = 300
 
-const segmenter = new Intl.Segmenter()
-const graphemes = (text: string) => [...segmenter.segment(text)].length
-
 // Counted in graphemes so an emoji or an accented letter is one character, as
-// the person typing sees it.
-export const postText = z
+// the person typing sees it. May be empty: a post can be just images.
+export const postTextOrEmpty = z
   .string()
   .trim()
-  .min(1, 'post is empty')
   .refine((t) => t.length <= POST_MAX_GRAPHEMES * 16 && graphemes(t) <= POST_MAX_GRAPHEMES, {
     message: `post is longer than ${POST_MAX_GRAPHEMES} characters`,
   })
+
+export const postText = postTextOrEmpty.pipe(z.string().min(1, 'post is empty'))
+
+/** Images to attach to a new post: the member's own ready uploads, in order. */
+export const postImagesInput = z
+  .array(z.object({ id: z.uuid(), alt: z.string().trim().max(ALT_MAX).default('') }))
+  .max(POST_IMAGES_MAX, `a post can have at most ${POST_IMAGES_MAX} images`)
+  .refine((images) => new Set(images.map((i) => i.id)).size === images.length, 'the same image twice')
+  .default([])
+
+export type PostImageInput = z.infer<typeof postImagesInput>[number]
+
+/** A new post or reply as the API receives it: text, images, or both. */
+export const newPost = (slug: z.ZodType<string>) =>
+  z
+    .object({
+      text: postTextOrEmpty.default(''),
+      replyTo: z.uuid().optional(),
+      community: slug.optional(),
+      images: postImagesInput,
+    })
+    .refine((p) => p.text.length > 0 || p.images.length > 0, { message: 'post is empty', path: ['text'] })
+
+export type PostImage = {
+  /** Path without the size suffix (see `postImagePath`). */
+  src: string
+  alt: string
+  width: number
+  height: number
+}
 
 export type PostView = {
   id: string
   authorId: string
   authorHandle: string
+  /** The author's chosen name, if they have set one. */
+  authorName: string | null
   /** Path of the author's profile photo without the size suffix, or null. */
   authorAvatar: string | null
   /** Empty when `deleted`. */
   text: string
+  /** Up to four, in order. Empty when `deleted`. */
+  images: PostImage[]
   createdAt: Date
   replyParentId: string | null
   likeCount: number
@@ -66,6 +98,7 @@ export class InvalidCursorError extends Error {}
 export class ParentNotFoundError extends Error {}
 export class CommunityNotFoundError extends Error {}
 export class NotACommunityMemberError extends Error {}
+export class ImagesNotReadyError extends Error {}
 
 const MAX_THREAD_DEPTH = 50
 const MAX_REPLIES_SHOWN = 200
@@ -101,6 +134,13 @@ const outerId = sql`"posts"."id"`
 const likeCount = sql<number>`(select count(*)::int from likes l join members lm on lm.id = l.member_id and lm.active where l.post_id = ${outerId})`
 const replyCount = sql<number>`(select count(*)::int from posts r join members rm on rm.id = r.author_id and rm.active where r.reply_parent_id = ${outerId} and r.deleted_at is null and r.removed_at is null)`
 
+/** A post's ready images in order, as JSON, for any query with `posts` in scope. */
+export const imagesOf = (postId: SQL) =>
+  sql<{ id: string; alt: string; width: number; height: number }[]>`coalesce((select json_agg(json_build_object('id', m.id, 'alt', m.alt, 'width', m.width, 'height', m.height) order by m.position) from media m where m.post_id = ${postId} and m.status = 'ready'), '[]'::json)`
+
+export const toPostImages = (rows: { id: string; alt: string; width: number; height: number }[]): PostImage[] =>
+  rows.map(({ id, alt, width, height }) => ({ src: postImagePath(id), alt, width, height }))
+
 @Injectable()
 export class PostsService {
   constructor(@Inject(DB) private readonly db: Db) {}
@@ -127,8 +167,12 @@ export class PostsService {
         id: posts.id,
         authorId: posts.authorId,
         authorHandle: members.handle,
+        authorName: members.displayName,
         authorAvatarId: members.avatarMediaId,
         text: sql<string>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${posts.text} else '' end`,
+        images: sql<
+          { id: string; alt: string; width: number; height: number }[]
+        >`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${imagesOf(outerId)} else '[]'::json end`,
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
         likeCount,
@@ -162,8 +206,9 @@ export class PostsService {
       .orderBy(...(opts.order ?? []))
       .limit(opts.limit ?? 1000)
 
-    return rows.map(({ communitySlug, communityName, authorAvatarId, ...row }) => ({
+    return rows.map(({ communitySlug, communityName, authorAvatarId, images, ...row }) => ({
       ...row,
+      images: toPostImages(images),
       authorAvatar: avatarPath(authorAvatarId),
       community: communitySlug && communityName ? { slug: communitySlug, name: communityName } : null,
     }))
@@ -300,12 +345,17 @@ export class PostsService {
 
   /**
    * `communitySlug` posts into a community the author has joined. A reply always
-   * lands in its parent's community (or none), whatever is asked for.
+   * lands in its parent's community (or none), whatever is asked for. `images`
+   * must be the author's own uploads, processed and not on another post.
    */
   async create(
     authorId: string,
     text: string,
-    { replyTo, communitySlug }: { replyTo?: string; communitySlug?: string } = {},
+    {
+      replyTo,
+      communitySlug,
+      images = [],
+    }: { replyTo?: string; communitySlug?: string; images?: PostImageInput[] } = {},
   ): Promise<{ id: string }> {
     let parent: { id: string; rootId: string | null; communityId: string | null } | undefined
     let communityId: string | null = null
@@ -339,17 +389,35 @@ export class PostsService {
       communityId = community.id
     }
 
-    const [row] = await this.db
-      .insert(posts)
-      .values({
-        authorId,
-        text,
-        communityId,
-        replyParentId: parent?.id ?? null,
-        rootId: parent ? (parent.rootId ?? parent.id) : null,
-      })
-      .returning({ id: posts.id })
-    return row!
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(posts)
+        .values({
+          authorId,
+          text,
+          communityId,
+          replyParentId: parent?.id ?? null,
+          rootId: parent ? (parent.rootId ?? parent.id) : null,
+        })
+        .returning({ id: posts.id })
+      for (const [position, image] of images.entries()) {
+        const attached = await tx
+          .update(media)
+          .set({ postId: row!.id, position, alt: image.alt })
+          .where(
+            and(
+              eq(media.id, image.id),
+              eq(media.ownerId, authorId),
+              eq(media.kind, 'post_image'),
+              eq(media.status, 'ready'),
+              isNull(media.postId),
+            ),
+          )
+          .returning({ id: media.id })
+        if (attached.length === 0) throw new ImagesNotReadyError('an image is missing, still processing or already used')
+      }
+      return row!
+    })
   }
 
   /** Soft-deletes the post only if it belongs to `authorId`. */

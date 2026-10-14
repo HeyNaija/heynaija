@@ -16,10 +16,16 @@ export async function createPost(_prev: ComposeState, formData: FormData): Promi
   const text = String(formData.get('text') ?? '')
   const replyTo = String(formData.get('replyTo') ?? '') || undefined
   const community = String(formData.get('community') ?? '') || undefined
+  // Each attached image is an `image` field naming the upload, with its description in `alt-<id>`.
+  const images = formData
+    .getAll('image')
+    .map(String)
+    .filter(Boolean)
+    .map((id) => ({ id, alt: String(formData.get(`alt-${id}`) ?? '') }))
   const res = await api('/v1/posts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, replyTo, community }),
+    body: JSON.stringify({ text, replyTo, community, images }),
   })
 
   if (res.status === 401) redirect('/login')
@@ -29,7 +35,11 @@ export async function createPost(_prev: ComposeState, formData: FormData): Promi
     if (body.code === 'parent_gone') return { error: 'The post you are replying to has been deleted.' }
     if (body.code === 'not_a_member') return { error: 'Join that community to post in it.' }
     if (body.code === 'community_gone') return { error: 'That community is no longer available.' }
-    return { error: text.trim() ? 'That post is too long. The limit is 300 characters.' : 'Write something first.' }
+    if (body.code === 'images_not_ready') {
+      return { error: 'One of your images is no longer available. Remove it and add it again.' }
+    }
+    if (text.trim()) return { error: 'That post is too long, or an image description is. The post limit is 300 characters.' }
+    return { error: images.length ? 'Could not post those images. Try again.' : 'Write something first.' }
   }
   if (!res.ok) return { error: 'Could not post. Check your connection and try again.' }
 
@@ -88,6 +98,23 @@ export async function setMute(formData: FormData): Promise<void> {
 
 export type FormState = { error?: string; done?: boolean }
 
+export async function updateProfile(_prev: FormState, formData: FormData): Promise<FormState> {
+  const res = await api('/v1/me/profile', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      displayName: String(formData.get('displayName') ?? ''),
+      bio: String(formData.get('bio') ?? ''),
+    }),
+  })
+  if (res.status === 401) redirect('/login')
+  if (res.status === 429) return { error: 'You have changed your profile a lot. Try again in an hour.' }
+  if (res.status === 400) return { error: 'Keep your name to 50 characters and your bio to 160.' }
+  if (!res.ok) return { error: 'Could not save. Try again in a moment.' }
+  refresh()
+  return { done: true }
+}
+
 // --- Profile photo: the browser uploads straight to storage between these two calls. ---
 
 export type UploadTicket = { mediaId: string; uploadUrl: string } | { error: string }
@@ -122,6 +149,43 @@ export async function finishAvatarUpload(mediaId: string): Promise<{ error?: str
   if (!res.ok) return { error: 'Could not save your photo. Try again in a moment.' }
   refresh()
   return {}
+}
+
+// --- Post images: same two steps, then the browser waits for the background job. ---
+
+export type ImageStatus = 'pending' | 'processing' | 'ready' | 'failed'
+
+export async function startPostImageUpload(contentType: string, bytes: number): Promise<UploadTicket> {
+  const res = await api('/v1/me/images/upload', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ contentType, bytes }),
+  })
+  if (res.status === 401) redirect('/login')
+  if (res.status === 429) return { error: 'You have added a lot of images. Wait a few minutes and try again.' }
+  if (res.status === 400) return { error: 'Choose a JPEG, PNG or WebP image under 10 MB.' }
+  if (!res.ok) return { error: 'Could not start the upload. Try again in a moment.' }
+  return res.json()
+}
+
+export async function finishPostImageUpload(mediaId: string): Promise<{ status: ImageStatus } | { error: string }> {
+  const res = await api(`/v1/me/images/${encodeURIComponent(mediaId)}/complete`, { method: 'POST' })
+  if (res.status === 401) redirect('/login')
+  if (res.status === 400) {
+    const body = (await res.json().catch(() => ({}))) as { code?: string }
+    return { error: body.code === 'too_large' ? 'That image is too large. The limit is 10 MB.' : 'The upload did not finish. Try again.' }
+  }
+  if (!res.ok) return { error: 'Could not save that image. Try again in a moment.' }
+  return res.json()
+}
+
+/** Null when the upload is gone (abandoned, or never this member's). Throws on other failures. */
+export async function postImageStatus(mediaId: string): Promise<ImageStatus | null> {
+  const res = await api(`/v1/me/images/${encodeURIComponent(mediaId)}`)
+  if (res.status === 401) redirect('/login')
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`API image status responded ${res.status}`)
+  return ((await res.json()) as { status: ImageStatus }).status
 }
 
 export async function removeAvatar(): Promise<void> {

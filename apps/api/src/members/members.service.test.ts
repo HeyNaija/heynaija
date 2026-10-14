@@ -5,7 +5,7 @@ import { follows, members } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
-import { CannotFollowSelfError, MembersService } from './members.service.js'
+import { CannotFollowSelfError, MembersService, profileInput } from './members.service.js'
 
 const service = new MembersService(db)
 const postsService = new PostsService(db)
@@ -156,4 +156,46 @@ test('you cannot block or mute yourself or someone who does not exist', async ()
   assert.equal(await service.mute(ada, 'ada'), false)
   assert.equal(await service.block(ada, 'nobody'), false)
   assert.equal(await service.mute(ada, 'nobody'), false)
+})
+
+test('a member can set a name and bio, shown on their profile and their posts', async () => {
+  await service.updateProfile(ada, profileInput.parse({ displayName: '  Adaeze   Okafor ', bio: 'Lagos.\n\n\n\nBuilds things.  ' }))
+  await postsService.create(ada, 'hello')
+
+  const profile = (await service.profile(null, 'ada'))!
+  assert.equal(profile.displayName, 'Adaeze Okafor')
+  assert.equal(profile.bio, 'Lagos.\n\nBuilds things.')
+  assert.equal((await postsService.feed(null, 10)).posts[0]!.authorName, 'Adaeze Okafor')
+
+  // An empty name goes back to just the handle.
+  await service.updateProfile(ada, profileInput.parse({ displayName: '   ', bio: '' }))
+  assert.equal((await service.profile(null, 'ada'))!.displayName, null)
+  assert.equal((await service.profile(null, 'bayo'))!.bio, '')
+})
+
+test('names and bios lose hidden characters and are limited in length', () => {
+  // A right-to-left override would make "Ada" + override + "nimda" display as "Adaadmin".
+  assert.equal(profileInput.parse({ displayName: 'Ada\u202Enimda', bio: '' }).displayName, 'Adanimda')
+  assert.equal(profileInput.parse({ displayName: 'Ch\u200Bidi', bio: 'a\u2066b' }).displayName, 'Chidi')
+  assert.equal(profileInput.parse({ displayName: 'x', bio: 'a\u2066b' }).bio, 'ab')
+  // Emoji sequences survive: the joiner inside them is kept.
+  assert.equal(profileInput.parse({ displayName: 'Family 👨‍👩‍👧', bio: '' }).displayName, 'Family 👨‍👩‍👧')
+  assert.equal(profileInput.safeParse({ displayName: '🇳🇬'.repeat(50), bio: '' }).success, true)
+  assert.equal(profileInput.safeParse({ displayName: 'a'.repeat(51), bio: '' }).success, false)
+  assert.equal(profileInput.safeParse({ displayName: '', bio: 'a'.repeat(161) }).success, false)
+  assert.equal(profileInput.safeParse({ displayName: '', bio: 'a'.repeat(160) }).success, true)
+})
+
+test('search finds members by name as well as handle, handles first', async () => {
+  await service.updateProfile(bayo, profileInput.parse({ displayName: 'Adebayo Ade', bio: '' }))
+  await service.updateProfile(chi, profileInput.parse({ displayName: '100% Chi', bio: '' }))
+  const found = async (q: string) => (await service.search(q, 10)).map((m) => m.handle)
+
+  assert.deepEqual(await found('ad'), ['ada', 'bayo'])
+  assert.deepEqual(await found('Adebayo'), ['bayo'])
+  assert.deepEqual(await found('bayo ade'), ['bayo'])
+  // "%" and "_" are matched literally, not as wildcards.
+  assert.deepEqual(await found('100%'), ['chi'])
+  assert.deepEqual(await found('%'), ['chi'])
+  assert.deepEqual((await service.search('adebayo', 1))[0], { handle: 'bayo', displayName: 'Adebayo Ade', avatar: null })
 })

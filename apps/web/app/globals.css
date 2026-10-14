@@ -26,6 +26,11 @@
   --field-ring: rgb(37 129 83 / 16%);
   --topbar: rgb(255 255 255 / 92%);
   --shadow-pop: 0 12px 32px rgb(16 33 43 / 12%), 0 2px 6px rgb(16 33 43 / 6%);
+  /* The image viewer is dark in both themes, so photos are seen against the same ground. */
+  --scrim: rgb(7 13 11 / 98%);
+  --on-scrim: #eef4f0;
+  --scrim-control: rgb(255 255 255 / 12%);
+  --scrim-control-hover: rgb(255 255 255 / 22%);
 
   /* Radius follows role, not habit: small for things you press or type in, a
      little more for the surfaces that hold them. Only avatars are round. */
@@ -278,6 +283,10 @@ summary.menu::-webkit-details-marker {
     border-color: var(--accent);
     outline: none;
     box-shadow: 0 0 0 3px var(--field-ring);
+  }
+  .field-sm {
+    min-height: 40px;
+    padding: 7px 12px;
   }
   .field-label {
     font-size: 14px;
@@ -695,6 +704,170 @@ ol.post-list .post-card {
 .post-body {
   font-size: 15px;
   line-height: 1.55;
+}
+
+/* Images on a post: one keeps its shape, two to four tile a 16:9 frame. The
+   frame is sized before the images load, so nothing jumps. */
+.post-images {
+  display: grid;
+  overflow: hidden;
+  gap: 2px;
+  width: 100%;
+  max-height: 520px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  background: var(--line);
+}
+.post-images.is-compact {
+  max-width: 360px;
+}
+.post-images[data-count="2"] {
+  grid-template-columns: 1fr 1fr;
+}
+.post-images[data-count="3"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+.post-images[data-count="3"] > .post-image:first-child {
+  grid-row: span 2;
+}
+.post-images[data-count="4"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+.post-image {
+  display: block;
+  min-height: 0;
+  background: var(--panel);
+}
+.post-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.post-image:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: -3px;
+}
+
+/* Full-screen image viewer: a modal <dialog> filling the window. */
+html:has(.image-viewer[open]) {
+  overflow: hidden;
+}
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--scrim);
+  color: var(--on-scrim);
+  overscroll-behavior: contain;
+  /* Sideways drags are swipes between images, not something for the browser to pan. */
+  touch-action: pan-y pinch-zoom;
+}
+.image-viewer::backdrop {
+  background: transparent;
+}
+.image-viewer-stage {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 16px 88px;
+}
+.image-viewer-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  user-select: none;
+}
+.image-viewer-bar {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px 20px;
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+.image-viewer-caption {
+  max-width: 640px;
+  max-height: 4.5em;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.5;
+  pointer-events: auto;
+}
+.image-viewer-btn {
+  position: absolute;
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-control);
+  background: var(--scrim-control);
+  color: var(--on-scrim);
+  transition: background-color 0.15s;
+}
+.image-viewer-btn:hover {
+  background: var(--scrim-control-hover);
+}
+.image-viewer-btn:focus-visible {
+  outline: 2px solid var(--on-scrim);
+  outline-offset: 2px;
+}
+.image-viewer-btn.is-close {
+  top: 12px;
+  right: 12px;
+}
+.image-viewer-btn.is-prev,
+.image-viewer-btn.is-next {
+  top: 50%;
+  translate: 0 -50%;
+}
+.image-viewer-btn.is-prev {
+  left: 12px;
+}
+.image-viewer-btn.is-next {
+  right: 12px;
+}
+
+/* Images being attached in the composer: a row each, preview beside its description. */
+.composer-images {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+.composer-image {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.composer-thumb {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: var(--r-control);
+  background: var(--surface);
+  object-fit: cover;
+  transition: opacity 0.2s;
+}
+.composer-thumb.is-busy {
+  opacity: 0.55;
 }
 .avatar-initial {
   color: var(--brand-deep);

@@ -28,6 +28,9 @@ export const members = pgTable(
     role: text('role', { enum: ['member', 'moderator'] }).notNull().default('member'),
     // The member's current profile photo, if they have set one (see `media`).
     avatarMediaId: uuid('avatar_media_id'),
+    // Shown alongside the handle. Optional; the handle stands alone without it.
+    displayName: text('display_name'),
+    bio: text('bio').notNull().default(''),
     createdAt: ts('created_at').notNull().defaultNow(),
     lastSeenAt: ts('last_seen_at'),
   },
@@ -43,19 +46,31 @@ export const media = pgTable(
     ownerId: uuid('owner_id')
       .notNull()
       .references(() => members.id),
-    kind: text('kind', { enum: ['avatar'] }).notNull(),
-    // pending: an upload URL was issued. ready: processed and public.
-    // failed: it was not a usable image. deleted: replaced or removed by its owner.
-    status: text('status', { enum: ['pending', 'ready', 'failed', 'deleted'] })
+    kind: text('kind', { enum: ['avatar', 'post_image'] }).notNull(),
+    // pending: an upload URL was issued. processing: uploaded, waiting for the
+    // background job. ready: processed and public. failed: it was not a usable
+    // image. deleted: replaced or removed by its owner, or abandoned.
+    status: text('status', { enum: ['pending', 'processing', 'ready', 'failed', 'deleted'] })
       .notNull()
       .default('pending'),
     // What the browser said it would send; the upload URL only accepts exactly this.
     contentType: text('content_type').notNull(),
     bytes: integer('bytes').notNull(),
+    // Dimensions of the largest processed version, so pages can reserve the space.
+    width: integer('width'),
+    height: integer('height'),
+    // Post images only: the post it belongs to (null until the post is made),
+    // its place among that post's images, and its description for screen readers.
+    postId: uuid('post_id').references(() => posts.id),
+    position: integer('position'),
+    alt: text('alt').notNull().default(''),
     createdAt: ts('created_at').notNull().defaultNow(),
     readyAt: ts('ready_at'),
   },
-  (t) => [index('media_owner_status_idx').on(t.ownerId, t.status)],
+  (t) => [
+    index('media_owner_status_idx').on(t.ownerId, t.status),
+    index('media_post_idx').on(t.postId),
+  ],
 )
 
 // A public interest group. Anyone can read it; members can post into it.

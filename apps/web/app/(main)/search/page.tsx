@@ -64,8 +64,12 @@ async function Results({ searchParams }: Pick<PageProps<'/search'>, 'searchParam
               <ul className="mt-3 flex flex-col gap-3">
                 {results.members.map((m) => (
                   <li key={m.handle}>
-                    <Link href={`/u/${m.handle}`} className="flex items-center gap-3 font-semibold hover:underline">
-                      <Avatar handle={m.handle} src={m.avatar} size={36} />@{m.handle}
+                    <Link href={`/u/${m.handle}`} className="group flex items-center gap-3">
+                      <Avatar handle={m.handle} src={m.avatar} size={36} />
+                      <span className="min-w-0">
+                        <span className="block truncate font-semibold group-hover:underline">{m.displayName ?? `@${m.handle}`}</span>
+                        {m.displayName ? <span className="block truncate text-[13px] text-muted">@{m.handle}</span> : null}
+                      </span>
                     </Link>
                   </li>
                 ))}

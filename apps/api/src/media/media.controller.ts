@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   Inject,
   NotFoundException,
@@ -15,12 +16,31 @@ import { z } from 'zod'
 import { type AuthedRequest, SessionGuard } from '../auth/session.guard.js'
 import { parse } from '../http.js'
 import { RateLimiter } from '../rate-limit.js'
-import { AVATAR_MAX_BYTES, AVATAR_TYPES, MediaError, MediaService } from './media.service.js'
+import { AVATAR_MAX_BYTES, IMAGE_TYPES, MediaError, MediaService, POST_IMAGE_MAX_BYTES } from './media.service.js'
 
-const startBody = z.object({
-  contentType: z.enum(AVATAR_TYPES),
-  bytes: z.number().int().min(1).max(AVATAR_MAX_BYTES),
-})
+const startBody = (maxBytes: number) =>
+  z.object({
+    contentType: z.enum(IMAGE_TYPES),
+    bytes: z.number().int().min(1).max(maxBytes),
+  })
+
+const mediaIdParam = (id: string): string => {
+  if (!z.uuid().safeParse(id).success) throw new NotFoundException()
+  return id
+}
+
+/** Turns the media service's refusals into HTTP answers. */
+async function answer<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work()
+  } catch (err) {
+    if (err instanceof MediaError) {
+      if (err.code === 'not_found') throw new NotFoundException()
+      throw new BadRequestException({ code: err.code, message: err.message })
+    }
+    throw err
+  }
+}
 
 @Controller('v1/me/avatar')
 export class MediaController {
@@ -33,7 +53,7 @@ export class MediaController {
   @Post('upload')
   @UseGuards(SessionGuard)
   start(@Req() req: AuthedRequest, @Body() body: unknown) {
-    const { contentType, bytes } = parse(startBody, body)
+    const { contentType, bytes } = parse(startBody(AVATAR_MAX_BYTES), body)
     this.limits.hit('upload', req.member.id)
     return this.media.startAvatarUpload(req.member.id, contentType, bytes)
   }
@@ -43,16 +63,8 @@ export class MediaController {
   @HttpCode(200)
   @UseGuards(SessionGuard)
   async finish(@Req() req: AuthedRequest, @Param('mediaId') mediaId: string) {
-    if (!z.uuid().safeParse(mediaId).success) throw new NotFoundException()
-    try {
-      return { avatar: await this.media.finishAvatarUpload(req.member.id, mediaId) }
-    } catch (err) {
-      if (err instanceof MediaError) {
-        if (err.code === 'not_found') throw new NotFoundException()
-        throw new BadRequestException({ code: err.code, message: err.message })
-      }
-      throw err
-    }
+    const id = mediaIdParam(mediaId)
+    return { avatar: await answer(() => this.media.finishAvatarUpload(req.member.id, id)) }
   }
 
   @Delete()
@@ -60,5 +72,42 @@ export class MediaController {
   @UseGuards(SessionGuard)
   async remove(@Req() req: AuthedRequest) {
     await this.media.removeAvatar(req.member.id)
+  }
+}
+
+/**
+ * Images for a post the member is writing. Same two steps as a profile photo,
+ * but processing happens in a background job: the browser polls the status and
+ * the post can only be made once every image on it is ready.
+ */
+@Controller('v1/me/images')
+export class PostImagesController {
+  constructor(
+    @Inject(MediaService) private readonly media: MediaService,
+    @Inject(RateLimiter) private readonly limits: RateLimiter,
+  ) {}
+
+  @Post('upload')
+  @UseGuards(SessionGuard)
+  start(@Req() req: AuthedRequest, @Body() body: unknown) {
+    const { contentType, bytes } = parse(startBody(POST_IMAGE_MAX_BYTES), body)
+    this.limits.hit('postImage', req.member.id)
+    return this.media.startPostImageUpload(req.member.id, contentType, bytes)
+  }
+
+  @Post(':mediaId/complete')
+  @HttpCode(200)
+  @UseGuards(SessionGuard)
+  async finish(@Req() req: AuthedRequest, @Param('mediaId') mediaId: string) {
+    const id = mediaIdParam(mediaId)
+    return { status: await answer(() => this.media.finishPostImageUpload(req.member.id, id)) }
+  }
+
+  @Get(':mediaId')
+  @UseGuards(SessionGuard)
+  async status(@Req() req: AuthedRequest, @Param('mediaId') mediaId: string) {
+    const status = await this.media.postImageStatus(req.member.id, mediaIdParam(mediaId))
+    if (!status) throw new NotFoundException()
+    return { status }
   }
 }

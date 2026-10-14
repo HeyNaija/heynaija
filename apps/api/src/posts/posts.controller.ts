@@ -22,20 +22,18 @@ import {
   SessionGuard,
 } from '../auth/session.guard.js'
 import { paged, pageQuery, parse, slugParam } from '../http.js'
+import { MediaService } from '../media/media.service.js'
 import { RateLimiter } from '../rate-limit.js'
 import {
   CommunityNotFoundError,
+  ImagesNotReadyError,
   NotACommunityMemberError,
   ParentNotFoundError,
+  newPost,
   PostsService,
-  postText,
 } from './posts.service.js'
 
-const createPostBody = z.object({
-  text: postText,
-  replyTo: z.uuid().optional(),
-  community: slugParam.optional(),
-})
+const createPostBody = newPost(slugParam)
 
 // Same answer for "not yours", "deleted" and "never existed": nothing to learn by probing.
 const postId = (id: string): string => {
@@ -47,6 +45,7 @@ const postId = (id: string): string => {
 export class PostsController {
   constructor(
     @Inject(PostsService) private readonly posts: PostsService,
+    @Inject(MediaService) private readonly media: MediaService,
     @Inject(RateLimiter) private readonly limits: RateLimiter,
   ) {}
 
@@ -88,10 +87,10 @@ export class PostsController {
   @Post('posts')
   @UseGuards(SessionGuard)
   async create(@Req() req: AuthedRequest, @Body() body: unknown) {
-    const { text, replyTo, community } = parse(createPostBody, body)
+    const { text, replyTo, community, images } = parse(createPostBody, body)
     this.limits.hit('post', req.member.id)
     try {
-      return await this.posts.create(req.member.id, text, { replyTo, communitySlug: community })
+      return await this.posts.create(req.member.id, text, { replyTo, communitySlug: community, images })
     } catch (err) {
       const code =
         err instanceof ParentNotFoundError
@@ -100,7 +99,9 @@ export class PostsController {
             ? 'community_gone'
             : err instanceof NotACommunityMemberError
               ? 'not_a_member'
-              : null
+              : err instanceof ImagesNotReadyError
+                ? 'images_not_ready'
+                : null
       if (code) throw new BadRequestException({ code, message: (err as Error).message })
       throw err
     }
@@ -111,6 +112,8 @@ export class PostsController {
   @UseGuards(SessionGuard)
   async remove(@Req() req: AuthedRequest, @Param('id') id: string) {
     if (!(await this.posts.remove(req.member.id, postId(id)))) throw new NotFoundException()
+    // Deleting a post takes its images down too.
+    await this.media.discardPostImages(id)
   }
 
   @Put('posts/:id/like')

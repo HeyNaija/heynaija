@@ -1,9 +1,11 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useEffect, useRef, useState } from 'react'
 import { type ComposeState, createPost } from '@/app/actions'
 import { Avatar } from './avatar'
-import { PeopleIcon } from './icons'
+import { CloseIcon, ImageIcon, PeopleIcon } from './icons'
+import { IMAGE_TYPES } from './shrink-image'
+import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
 
 const LIMIT = 300
 const segmenter = new Intl.Segmenter()
@@ -25,13 +27,22 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
   const [state, action, pending] = useActionState<ComposeState, FormData>(createPost, {})
   const [text, setText] = useState('')
   const [expanded, setExpanded] = useState(false)
+  const images = useImageDrafts()
+  const { clear } = images
+  const picker = useRef<HTMLInputElement>(null)
+  const [tooMany, setTooMany] = useState(false)
 
   // Clear the box once the server confirms the post.
   useEffect(() => {
-    if (state.postedAt) setText('')
-  }, [state.postedAt])
+    if (state.postedAt) {
+      setText('')
+      clear()
+    }
+  }, [state.postedAt, clear])
 
   const left = LIMIT - graphemes(text.trim())
+  const waiting = images.drafts.some((d) => d.status !== 'ready')
+  const empty = left === LIMIT && images.drafts.length === 0
 
   return (
     <form id="compose" action={action} className="square-card square-composer scroll-mt-24">
@@ -49,14 +60,56 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
             name="text"
             rows={replyTo ? 2 : expanded || text ? 3 : 1}
             onFocus={() => setExpanded(true)}
-            required
+            required={images.drafts.length === 0}
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={placeholder}
             className="composer-input"
           />
 
+          {images.drafts.length ? (
+            <ul className="composer-images" aria-label="Images">
+              {images.drafts.map((draft, i) => (
+                <DraftRow
+                  key={draft.key}
+                  draft={draft}
+                  index={i}
+                  onRemove={() => {
+                    setTooMany(false)
+                    images.remove(draft.key)
+                  }}
+                  onDescribe={(alt) => images.describe(draft.key, alt)}
+                />
+              ))}
+            </ul>
+          ) : null}
+
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <button
+              type="button"
+              className="icon-btn -ml-2"
+              aria-label={`Add images (up to ${MAX_IMAGES})`}
+              title="Add images"
+              disabled={images.drafts.length >= MAX_IMAGES}
+              onClick={() => picker.current?.click()}
+            >
+              <ImageIcon size={20} />
+            </button>
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              accept={IMAGE_TYPES.join(',')}
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={(e) => {
+                const files = [...(e.target.files ?? [])]
+                e.target.value = '' // so choosing the same file again still fires
+                setExpanded(true)
+                setTooMany(images.add(files) > 0)
+              }}
+            />
             {choices?.length ? (
               <label className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
                 <PeopleIcon size={18} />
@@ -83,7 +136,7 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
             <span className={`ml-auto text-xs tabular-nums ${left < 0 ? 'text-danger' : 'text-muted'}`}>{left}</span>
             <button
               type="submit"
-              disabled={pending || left < 0 || left === LIMIT}
+              disabled={pending || left < 0 || empty || waiting}
               className="btn btn-primary"
             >
               {pending ? 'Posting…' : replyTo ? 'Reply' : 'Post'}
@@ -92,10 +145,66 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
 
           <p className="mt-2 text-xs text-muted">Posts are public. Anyone can see and copy them.</p>
           <p role="alert" className="mt-1 text-sm text-danger empty:hidden">
-            {state.error}
+            {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : state.error}
           </p>
         </div>
       </div>
     </form>
+  )
+}
+
+const STATUS: Record<ImageDraft['status'], string> = {
+  uploading: 'Uploading…',
+  processing: 'Processing…',
+  ready: '',
+  failed: '',
+}
+
+/** One attached image: its preview, its description, and how its upload is going. */
+function DraftRow({
+  draft,
+  index,
+  onRemove,
+  onDescribe,
+}: {
+  draft: ImageDraft
+  index: number
+  onRemove: () => void
+  onDescribe: (alt: string) => void
+}) {
+  const id = `alt-${draft.key}`
+  return (
+    <li className="composer-image">
+      {/* eslint-disable-next-line @next/next/no-img-element -- a local preview of the member's own file */}
+      <img src={draft.preview} alt="" className={`composer-thumb ${draft.status === 'ready' ? '' : 'is-busy'}`} />
+      <div className="min-w-0 flex-1">
+        <label htmlFor={id} className="sr-only">
+          Description of image {index + 1}
+        </label>
+        <input
+          id={id}
+          // Named only once the upload exists, so the server can match it to the image.
+          name={draft.mediaId ? `alt-${draft.mediaId}` : undefined}
+          value={draft.alt}
+          onChange={(e) => onDescribe(e.target.value)}
+          maxLength={1000}
+          placeholder="Describe this image (optional)"
+          className="field field-sm"
+        />
+        {draft.status === 'ready' && draft.mediaId ? <input type="hidden" name="image" value={draft.mediaId} /> : null}
+        {draft.error ? (
+          <p role="alert" className="mt-1 text-xs text-danger">
+            {draft.error}
+          </p>
+        ) : (
+          <p role="status" className="mt-1 text-xs text-muted empty:hidden">
+            {STATUS[draft.status]}
+          </p>
+        )}
+      </div>
+      <button type="button" className="icon-btn -mr-1" aria-label={`Remove image ${index + 1}`} onClick={onRemove}>
+        <CloseIcon size={18} />
+      </button>
+    </li>
   )
 }

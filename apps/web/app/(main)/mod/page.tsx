@@ -5,6 +5,7 @@ import { Suspense } from 'react'
 import { resolveReport, restorePost } from '@/app/actions'
 import { EmptyState } from '@/app/ui/empty-state'
 import { ShieldIcon } from '@/app/ui/icons'
+import { PostImages } from '@/app/ui/post-images'
 import { card, PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
 import { timeAgo } from '@/app/ui/time'
@@ -104,7 +105,12 @@ function Report({ item, now }: { item: QueueItem; now: number }) {
             @{item.post.authorHandle}
           </Link>
           {item.post.communityName ? <span className="text-muted"> in {item.post.communityName}</span> : null}
-          <p className="mt-1 whitespace-pre-wrap break-words">{item.post.text}</p>
+          {item.post.text ? <p className="mt-1 whitespace-pre-wrap break-words">{item.post.text}</p> : null}
+          {item.post.images.length ? (
+            <div className="mt-2">
+              <PostImages images={item.post.images} compact />
+            </div>
+          ) : null}
         </blockquote>
       ) : item.member ? (
         <p className="text-sm">

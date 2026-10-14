@@ -1,12 +1,33 @@
 import { blocks, type Db, follows, members, mutes } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
-import { and, asc, eq, like, or, sql } from 'drizzle-orm'
+import { and, asc, eq, ilike, like, or, sql } from 'drizzle-orm'
+import { z } from 'zod'
 import { avatarPath } from '../media/media.service.js'
+import { cleanLine, cleanLines, graphemes } from '../text.js'
 import { DB } from '../tokens.js'
+
+export const DISPLAY_NAME_MAX = 50
+export const BIO_MAX = 160
+
+const atMost = (max: number) => (t: string) => t.length <= max * 16 && graphemes(t) <= max
+
+/** What a member can say about themselves. An empty name means "just my handle". */
+export const profileInput = z.object({
+  displayName: z
+    .string()
+    .transform(cleanLine)
+    .refine(atMost(DISPLAY_NAME_MAX), `name is longer than ${DISPLAY_NAME_MAX} characters`)
+    .transform((t) => t || null),
+  bio: z.string().transform(cleanLines).refine(atMost(BIO_MAX), `bio is longer than ${BIO_MAX} characters`),
+})
+
+export type MemberSummary = { handle: string; displayName: string | null; avatar: string | null }
 
 export type Profile = {
   id: string
   handle: string
+  displayName: string | null
+  bio: string
   /** Path of the profile photo without the size suffix, or null. */
   avatar: string | null
   joinedAt: Date
@@ -52,6 +73,8 @@ export class MembersService {
       .select({
         id: members.id,
         handle: members.handle,
+        displayName: members.displayName,
+        bio: members.bio,
         avatarMediaId: members.avatarMediaId,
         joinedAt: members.createdAt,
         postCount: sql<number>`(select count(*)::int from posts p where p.author_id = ${outerId} and p.deleted_at is null)`,
@@ -76,6 +99,14 @@ export class MembersService {
     if (!row || row.blockedByThem) return null
     const { blockedByThem: _hidden, avatarMediaId, ...profile } = row
     return { ...profile, avatar: avatarPath(avatarMediaId), isSelf: row.id === viewerId }
+  }
+
+  /** Replaces the member's name and bio with already-validated values. */
+  async updateProfile(memberId: string, profile: z.infer<typeof profileInput>): Promise<void> {
+    await this.db
+      .update(members)
+      .set({ displayName: profile.displayName, bio: profile.bio })
+      .where(eq(members.id, memberId))
   }
 
   /** Idempotent. False if there is no such member. */
@@ -153,17 +184,24 @@ export class MembersService {
     await this.db.delete(mutes).where(and(eq(mutes.muterId, muterId), sql`${mutes.mutedId} in ${muted}`))
   }
 
-  /** Active members whose handle starts with `prefix`. */
-  async search(prefix: string, limit: number): Promise<{ handle: string; avatar: string | null }[]> {
+  /**
+   * Active members whose handle starts with `query`, or whose name contains it.
+   * Handle matches come first.
+   */
+  async search(query: string, limit: number): Promise<MemberSummary[]> {
     // Handles are [a-z0-9_]; anything else cannot match, and "_" must not act as a wildcard.
-    const cleaned = prefix.toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_]/g, '')
-    if (!cleaned) return []
+    const handlePrefix = query.toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_]/g, '')
+    const name = cleanLine(query.replace(/^@/, ''))
+    if (!handlePrefix && !name) return []
+    const escape = (t: string) => t.replace(/[\\%_]/g, (c) => `\\${c}`)
+    const byHandle = handlePrefix ? like(members.handle, `${escape(handlePrefix)}%`) : undefined
+    const byName = name ? ilike(members.displayName, `%${escape(name)}%`) : undefined
     const rows = await this.db
-      .select({ handle: members.handle, avatarMediaId: members.avatarMediaId })
+      .select({ handle: members.handle, displayName: members.displayName, avatarMediaId: members.avatarMediaId })
       .from(members)
-      .where(and(like(members.handle, `${cleaned.replaceAll('_', '\\_')}%`), eq(members.active, true)))
-      .orderBy(asc(members.handle))
+      .where(and(or(byHandle, byName), eq(members.active, true)))
+      .orderBy(...(byHandle ? [sql`${byHandle} desc`] : []), asc(members.handle))
       .limit(limit)
-    return rows.map((r) => ({ handle: r.handle, avatar: avatarPath(r.avatarMediaId) }))
+    return rows.map((r) => ({ handle: r.handle, displayName: r.displayName, avatar: avatarPath(r.avatarMediaId) }))
   }
 }

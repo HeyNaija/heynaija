@@ -76,8 +76,9 @@ handling, verification and recovery are security-critical and already solved.
 - **Password change after recovery** was exercised up to the settings form but
   not submitted. Changing email or handle in settings is untested.
 - **Tests** cover invites, posts, threads, likes, bookmarks, search, trending,
-  follows, blocks, mutes, profiles, communities, moderation, rate limits, media and
-  the session guard (85 cases, real Postgres, Kratos stubbed). The Kratos flows and
+  follows, blocks, mutes, profiles, communities, moderation, rate limits, media
+  (profile photos and post images) and the session guard (99 cases, real Postgres,
+  Kratos stubbed; storage and the job queue faked in memory, image processing real). The Kratos flows and
   web pages were verified by hand.
 - **Counts are computed on read** (likes, replies, followers) with subqueries.
   Fine at pilot size; revisit with measurements before growth.
@@ -94,22 +95,50 @@ handling, verification and recovery are security-critical and already solved.
   still sign in, but can do nothing except file one appeal at a time.
 - **Reported members are not notified**, and neither is anyone whose post is
   removed. There are no notifications of any kind yet.
-- **Not built from the design mockup:** photos, polls, reposts, notifications,
-  community votes, display names. Members without a photo get a tinted initial.
+- **Not built from the design mockup:** polls, reposts, notifications,
+  community votes. Members without a photo get a tinted initial.
 - **Themes** are light, dark and system. The choice is stored in the browser
   (`localStorage`), not on the account, so it does not follow a member to another
   device. A small inline script applies it before first paint.
-- **Media is avatars only.** The pipeline (signed direct upload, private uploads
-  bucket, server-side check and re-encode, public media bucket, immutable URLs) is
-  built to be reused for post images, but those are not built. Processing runs
-  inside the API request, which is fine for a 512px avatar; post images should
-  move it to a background job.
+- **Media: profile photos and post images.** Both use signed direct upload to a
+  private bucket, a server-side check and re-encode to WebP, and a public bucket
+  with immutable URLs. Profile photos are processed inside the request. Post images
+  (up to four, longest edge 640 and 1600px, proportions kept) are processed by a
+  BullMQ job on Redis; the composer polls until each is ready, and a post can only
+  use ready images. The worker runs inside the API process, two jobs at a time;
+  it can move to its own process without code changes to the producer.
+- **Post images and deletion.** When an author deletes a post, its image files
+  are deleted at once. When a moderator removes a post, its images are hidden
+  everywhere in the app but the files stay in the public bucket, so a restore
+  brings them back; anyone who saved an image's URL can still open it (and a CDN
+  may cache it). Removing the files on moderator removal, and deciding what must
+  be preserved as evidence for abuse-material reports, belong with the scanning
+  work in roadmap step 4.
+- **Abandoned images** (uploads never finished, and post images never posted) are
+  cleared an hour later: for one member whenever they start an upload, and for
+  everyone by an hourly job. A composer left open over an hour loses its images
+  and says so when posting.
+- **Alt text is optional** (up to 1,000 characters). The composer asks for it but
+  does not require it, and there is no "ALT" badge. Tapping an image opens a
+  full-screen viewer (a native modal dialog: arrows, swipe, Escape) that shows
+  the description as a caption; without JavaScript the link opens the large
+  image itself. There is no zoom beyond the browser's own pinch-zoom.
+- **Display names and bios live in our database**, not in Kratos: they are profile
+  content, not identity. Names are up to 50 characters and bios 160, counted as a
+  person counts them. Invisible characters and text-direction overrides are
+  stripped so a name cannot pose as different text, but nothing stops a member
+  choosing someone else's name or "HeyNaija Team"; the handle stays the unique
+  identifier and is always shown beside the name. Moderators cannot clear a name
+  or bio except by suspending the account; that belongs with roadmap step 4.
+  Search matches names anywhere in the name (not just the start), with a plain
+  `ilike` scan that is fine at pilot size.
 - **No scanning of uploads for known abuse material**, and a moderator cannot yet
   remove someone's photo (suspending the account hides it). Both are needed
   before uploads are open beyond the invited pilot.
-- **Verified against MinIO only.** Cloudflare R2 has not been tried; the README
-  lists what it needs. MinIO no longer publishes images, so the dev stack uses
+- **Verified against MinIO only.** Cloudflare R2 has not been tried; the setup
+  and the checks to run are in `docs/deployment/cloudflare-r2.md`. MinIO no longer publishes images, so the dev stack uses
   Chainguard's build, pinned by digest.
 - **Search** matches whole words in posts (no stemming or typo tolerance), handle
   prefixes, and community names or descriptions.
-- Redis is in the dev stack but nothing uses it yet.
+- **Redis is now required by the API** (`REDIS_URL`) for the job queue. Rate
+  limits still live in memory.
