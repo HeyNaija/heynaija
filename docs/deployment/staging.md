@@ -112,8 +112,14 @@ sudo install -m 600 heynaija-origin-key.pem /etc/ssl/cloudflare/
    it under **Settings → Deploy keys** (read-only):
 
    ```bash
-   sudo -iu heynaija ssh-keygen -t ed25519 -N "" -f /home/heynaija/.ssh/id_ed25519
+   sudo -u heynaija mkdir -p -m 700 /home/heynaija/.ssh
    ```
+
+   ```bash
+   sudo -u heynaija ssh-keygen -t ed25519 -N "" -C heynaija-staging -f /home/heynaija/.ssh/id_ed25519
+   ```
+
+   (`sudo -u`, not `sudo -iu`: a login shell drops the empty `""` passphrase.)
 
    ```bash
    sudo cat /home/heynaija/.ssh/id_ed25519.pub
@@ -231,14 +237,14 @@ existing account.
 
 ## Day to day
 
-| Task | How |
-|---|---|
-| Deploy | Push or merge to `staging` |
-| Roll back | **Actions → Deploy staging → Run workflow** on an earlier commit's branch or tag, or on the server: `./deploy.sh <commit from releases.log>` |
-| Status | `docker compose ps` in `/srv/heynaija/infra/deploy` |
-| Logs | `docker compose logs -f --tail 100 api` (or `web`, `kratos`) |
-| Invite people | `docker compose run --rm api node dist/cli/create-invite.js --uses 5 --days 14` |
-| Change the nginx site | edit `infra/deploy/nginx/heynaija.conf.template`, deploy, then `sudo ./install-nginx.sh` |
+| Task                  | How                                                                                                                                          |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Deploy                | Push or merge to `staging`                                                                                                                   |
+| Roll back             | **Actions → Deploy staging → Run workflow** on an earlier commit's branch or tag, or on the server: `./deploy.sh <commit from releases.log>` |
+| Status                | `docker compose ps` in `/srv/heynaija/infra/deploy`                                                                                          |
+| Logs                  | `docker compose logs -f --tail 100 api` (or `web`, `kratos`)                                                                                 |
+| Invite people         | `docker compose run --rm api node dist/cli/create-invite.js --uses 5 --days 14`                                                              |
+| Change the nginx site | edit `infra/deploy/nginx/heynaija.conf.template`, deploy, then `sudo ./install-nginx.sh`                                                     |
 
 The server keeps the last five releases' images, so a rollback to one of them
 needs no registry. For an older one, `deploy.sh` pulls from GitHub's registry,
