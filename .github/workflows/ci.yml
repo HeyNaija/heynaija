@@ -77,10 +77,15 @@ jobs:
       - name: Start the stack (Postgres, Redis, Kratos, MinIO, Mailpit)
         run: |
           pnpm infra:env
+          # MinIO's image runs as user 65532. On Linux, Docker would create this
+          # bind-mounted folder owned by root and MinIO could not write to it.
+          mkdir -p infra/compose/.data/minio
+          sudo chown 65532:65532 infra/compose/.data/minio
           pnpm infra:up
           for i in $(seq 1 90); do
             curl -fsS http://127.0.0.1:4533/health/ready >/dev/null \
-              && curl -fsS http://127.0.0.1:8026/api/v1/info >/dev/null && exit 0
+              && curl -fsS http://127.0.0.1:8026/api/v1/info >/dev/null \
+              && curl -fsS http://127.0.0.1:9100/minio/health/live >/dev/null && exit 0
             sleep 2
           done
           docker compose --env-file .env -f infra/compose/docker-compose.dev.yml logs
