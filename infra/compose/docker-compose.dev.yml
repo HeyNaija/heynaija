@@ -87,23 +87,38 @@ services:
 configs:
   # Kratos cannot read a hook list from environment variables, and this one holds
   # the webhook secret, so Compose renders it here and Kratos merges it over
-  # kratos.yml.
+  # kratos.yml. The same goes for the Google client secret.
   #
-  # Registration is invite-only, in two steps:
+  # Registration is invite-only, in two steps, for both ways of signing up (an
+  # emailed code, or Google):
   #   1. Before the account is saved, Kratos asks our API whether the invite code
   #      is usable and aborts signup with a message if it is not. Nothing is spent
   #      yet, so a signup that then fails (email already taken, say) costs nothing.
   #   2. Once the account exists, Kratos tells our API, which spends the invite.
   #      The API only treats an identity as a member if this step succeeded.
-  # Then Kratos signs the new member in and shows the email verification screen.
+  # Then Kratos signs the new member in.
+  #
+  # Google sign-in is off unless GOOGLE_SIGN_IN=true and a client ID and secret are
+  # in .env (docs/deployment/google-sign-in.md).
   kratos-hooks:
     content: |
       selfservice:
+        methods:
+          oidc:
+            enabled: ${GOOGLE_SIGN_IN:-false}
+            config:
+              providers:
+                - id: google
+                  provider: google
+                  client_id: "${GOOGLE_CLIENT_ID:-}"
+                  client_secret: "${GOOGLE_CLIENT_SECRET:-}"
+                  mapper_url: file:///etc/config/kratos/google.jsonnet
+                  scope: [openid, email]
         flows:
           registration:
             after:
-              password:
-                hooks:
+              code:
+                hooks: &signup-hooks
                   - hook: web_hook
                     config:
                       url: http://host.docker.internal:4000/internal/kratos/registration
@@ -130,4 +145,5 @@ configs:
                           value: ${KRATOS_WEBHOOK_SECRET}
                           in: header
                   - hook: session
-                  - hook: show_verification_ui
+              oidc:
+                hooks: *signup-hooks

@@ -11,6 +11,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 set -a; source .env; set +a
+# The registry only accepts lower case; GitHub owner names may not be.
+IMAGE_PREFIX=${IMAGE_PREFIX:-}
+IMAGE_PREFIX=${IMAGE_PREFIX,,}
 
 ref=${1:-origin/${DEPLOY_BRANCH:-main}}
 git fetch --quiet origin

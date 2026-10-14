@@ -60,5 +60,5 @@ async function NameAndBio() {
 
 async function SettingsForm({ searchParams }: Pick<PageProps<'/settings'>, 'searchParams'>) {
   const flow = await getFlow('settings', (await searchParams).flow)
-  return <FlowForm flow={flow} sections={{ profile: 'Profile', password: 'Change password' }} />
+  return <FlowForm flow={flow} sections={{ profile: 'Email and handle', oidc: 'Connected accounts' }} />
 }

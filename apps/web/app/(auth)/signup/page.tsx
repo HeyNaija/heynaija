@@ -13,7 +13,7 @@ export default function SignupPage({ searchParams }: PageProps<'/signup'>) {
   return (
     <AuthPage
       title="Create your account"
-      intro="Your handle is your public name on HeyNaija. Your email stays private."
+      intro="Your handle is your public name on HeyNaija. Your email stays private, and we send a code to it instead of asking for a password."
       footer={
         <p>
           Already a member?{' '}

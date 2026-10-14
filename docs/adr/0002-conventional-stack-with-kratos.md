@@ -1,7 +1,8 @@
 # ADR 0002 — Drop the AT Protocol; conventional stack with Ory Kratos
 
 **Date:** 13 October 2026 · **Status:** Accepted · **Supersedes:** ADR 0001 and the
-architecture sections of PLAN.md (§0, §2, §3, §5, §6 PDS parts, §8 Phase 0)
+architecture sections of PLAN.md (§0, §2, §3, §5, §6 PDS parts, §8 Phase 0) ·
+**Amended by:** ADR 0003 (no passwords)
 
 ## Decision
 

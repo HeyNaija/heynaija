@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation'
 // Server-to-server address of Ory Kratos. Browsers reach it through /kratos.
 const KRATOS_URL = process.env.KRATOS_INTERNAL_URL ?? 'http://127.0.0.1:4533'
 
-export type FlowKind = 'login' | 'registration' | 'recovery' | 'verification' | 'settings'
+export type FlowKind = 'login' | 'registration' | 'verification' | 'settings'
 
 export type UiMessage = { id: number; text: string; type: 'info' | 'error' | 'success' }
 

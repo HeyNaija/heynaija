@@ -125,8 +125,8 @@ Browser ──> Next.js web app
 
 ### Accounts and onboarding
 - [x] Invite-only signup with shareable invite links (`/join?code=…`)
-- [x] Email verification and account recovery by emailed code
-- [x] Sign in with email or handle; sign out; change email, handle or password
+- [x] No passwords: sign up and sign in with a code emailed to you, or with Google
+      (ADR 0003); sign out; change email or handle; connect or disconnect Google
 - [x] Profile photo (upload, replace, remove)
 - [x] Display name (50 characters) and short bio (160), searchable by name
 - [ ] Onboarding: pick interests and communities, suggested people

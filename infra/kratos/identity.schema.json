@@ -13,9 +13,8 @@
           "title": "Email",
           "maxLength": 320,
           "ory.sh/kratos": {
-            "credentials": { "password": { "identifier": true } },
-            "verification": { "via": "email" },
-            "recovery": { "via": "email" }
+            "credentials": { "code": { "identifier": true, "via": "email" } },
+            "verification": { "via": "email" }
           }
         },
         "handle": {
@@ -24,9 +23,6 @@
           "pattern": "^[a-z0-9_]{3,20}$",
           "not": {
             "enum": ["admin", "administrator", "heynaija", "moderator", "mod", "support", "help", "staff", "official", "system", "root", "security"]
-          },
-          "ory.sh/kratos": {
-            "credentials": { "password": { "identifier": true } }
           }
         }
       },

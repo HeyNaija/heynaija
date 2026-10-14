@@ -1,6 +1,6 @@
 import { Logo } from '@/app/ui/logo'
 
-// Sign-in, sign-up and recovery: one quiet column, nothing to distract.
+// Sign-in and sign-up: one quiet column, nothing to distract.
 export default function AuthLayout({ children }: LayoutProps<'/'>) {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 py-8 sm:py-14">

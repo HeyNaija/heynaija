@@ -10,20 +10,14 @@ export default function LoginPage({ searchParams }: PageProps<'/login'>) {
   return (
     <AuthPage
       title="Sign in"
+      intro="No password needed: we email you a code, or you can use Google."
       footer={
-        <>
-          <p>
-            <Link href="/recovery" className={linkClass}>
-              Forgot your password?
-            </Link>
-          </p>
-          <p>
-            New here? HeyNaija is invite-only during the beta.{' '}
-            <Link href="/join" className={linkClass}>
-              I have an invite code
-            </Link>
-          </p>
-        </>
+        <p>
+          New here? HeyNaija is invite-only during the beta.{' '}
+          <Link href="/join" className={linkClass}>
+            I have an invite code
+          </Link>
+        </p>
       }
     >
       <LoginForm searchParams={searchParams} />

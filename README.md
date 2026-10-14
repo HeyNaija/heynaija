@@ -37,8 +37,8 @@ Browser ──> Next.js web app (127.0.0.1:3000)
                                      └── webhooks ──> API (invite check on signup)
 ```
 
-- **Ory Kratos** owns accounts: email, handle, password, sessions, email
-  verification and recovery. We write none of that ourselves.
+- **Ory Kratos** owns accounts: email, handle, sign-in by emailed code or Google,
+  and sessions. There are no passwords (ADR 0003). We write none of that ourselves.
 - **The API** owns everything else. It asks Kratos who a session cookie belongs
   to on every request, and only accepts identities that joined with an invite.
 - **The web app** is the only thing the browser talks to; it proxies the other two.
@@ -83,7 +83,8 @@ pnpm invite:create --uses 5 --days 14 --note "first testers"
 
 Go to `http://127.0.0.1:3000/join?code=<the code>` (use `127.0.0.1`, not
 `localhost`: Kratos issues its cookies for that host). Emails that Kratos sends
-(verification and recovery codes) land in Mailpit at <http://127.0.0.1:8026>.
+(sign-up and sign-in codes) land in Mailpit at <http://127.0.0.1:8026>. Google
+sign-in is off locally unless you set it up: [google-sign-in.md](docs/deployment/google-sign-in.md).
 
 `dev:api` recompiles and restarts itself when API code changes.
 

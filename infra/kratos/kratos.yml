@@ -18,19 +18,20 @@ selfservice:
   allowed_return_urls:
     - http://127.0.0.1:3000
 
+  # No passwords: members sign up and sign in with a one-time code sent to their
+  # email, or with Google.
   methods:
     password:
-      enabled: true
-      config:
-        min_password_length: 10
-        identifier_similarity_check_enabled: true
-        # Checks new passwords against known breaches via a k-anonymity lookup
-        # (only a 5-character hash prefix leaves the server).
-        haveibeenpwned_enabled: true
-        ignore_network_errors: true
-    # One-time codes by email, used for verification and recovery only.
+      enabled: false
     code:
       enabled: true
+      passwordless_enabled: true
+      config:
+        lifespan: 15m
+    # Google: the provider and on/off switch are in docker-compose.dev.yml, which
+    # fills in the client ID and secret.
+    oidc:
+      enabled: false
 
   flows:
     error:
@@ -43,11 +44,9 @@ selfservice:
     registration:
       ui_url: http://127.0.0.1:3000/signup
       lifespan: 15m
-      # One form (email, handle, password) instead of two steps, so the invite
-      # cookie is sent together with the password.
-      style: unified
-      # after.password.hooks lives in docker-compose.dev.yml (it holds a secret):
-      # invite check via webhook to our API, then session, then show_verification_ui.
+      # The hooks live in docker-compose.dev.yml (they hold a secret): invite check
+      # via webhook to our API, then a session. The emailed code (or Google)
+      # already proves the address, so there is no separate verification step.
 
     verification:
       enabled: true
@@ -56,10 +55,9 @@ selfservice:
       after:
         default_browser_return_url: http://127.0.0.1:3000/
 
+    # Signing in with an emailed code already gets a member back in.
     recovery:
-      enabled: true
-      ui_url: http://127.0.0.1:3000/recovery
-      use: code
+      enabled: false
 
     settings:
       ui_url: http://127.0.0.1:3000/settings
