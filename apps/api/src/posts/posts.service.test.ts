@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { after, before, beforeEach, test } from 'node:test'
-import { follows, members, posts } from '@heynaija/db'
+import { after, before, beforeEach, mock, test } from 'node:test'
+import { blocks, follows, members, mutes, posts } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { db, migrate, pool, reset } from '../test-db.js'
-import { InvalidCursorError, ParentNotFoundError, PostsService, postText } from './posts.service.js'
+import { InvalidCursorError, ParentNotFoundError, PostsService, postText, TRENDING_TTL_MS } from './posts.service.js'
 
 const service = new PostsService(db)
 const ada = randomUUID()
@@ -247,10 +247,117 @@ test('trending ranks this week\'s top-level posts by replies then likes, and ski
   await service.like(ada, old.id)
   await db.update(posts).set({ createdAt: new Date(Date.now() - 8 * 86_400_000) }).where(eq(posts.id, old.id))
 
-  const trending = await service.trending(null, 5)
+  // A fresh service each time: the ranking is cached per instance.
+  const fresh = new PostsService(db)
+  const trending = await fresh.trending(null, 5)
   assert.deepEqual(trending.map((p) => p.text), ['two replies', 'liked twice'])
   assert.ok(!trending.some((p) => p.id === quiet.id))
-  assert.deepEqual((await service.trending(null, 1)).map((p) => p.text), ['two replies'])
+  assert.deepEqual((await fresh.trending(null, 1)).map((p) => p.text), ['two replies'])
+})
+
+const trendingTexts = async (svc: PostsService, viewerId: string | null = null) =>
+  (await svc.trending(viewerId, 5)).map((p) => p.text)
+
+test('trending counts only likes and live replies by active members, and leaves out removed posts', async () => {
+  const dan = randomUUID()
+  await db.insert(members).values({ id: dan, handle: 'dan' })
+  const liked = await service.create(ada, 'liked by an active member')
+  const ghostLiked = await service.create(ada, 'liked by a suspended member')
+  const ghostReplied = await service.create(bayo, 'replied to by a suspended member')
+  const deletedReply = await service.create(bayo, 'its reply was deleted')
+  const takenDown = await service.create(chi, 'taken down')
+  const byInactive = await service.create(dan, 'by a suspended author')
+
+  await service.like(bayo, liked.id)
+  await service.like(dan, ghostLiked.id)
+  await service.create(dan, 'ghost reply', { replyTo: ghostReplied.id })
+  const r = await service.create(ada, 'gone', { replyTo: deletedReply.id })
+  await service.remove(ada, r.id)
+  for (const id of [takenDown.id, byInactive.id]) {
+    await service.like(ada, id)
+    await service.like(bayo, id)
+  }
+  await db.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, takenDown.id))
+  await db.update(members).set({ active: false, status: 'suspended' }).where(eq(members.id, dan))
+
+  assert.deepEqual(await trendingTexts(new PostsService(db)), ['liked by an active member'])
+})
+
+test("trending applies each viewer's blocks and mutes to the shared ranking", async () => {
+  const dan = randomUUID()
+  await db.insert(members).values({ id: dan, handle: 'dan' })
+  const top = await service.create(ada, 'top')
+  const second = await service.create(bayo, 'second')
+  await service.like(bayo, top.id)
+  await service.like(chi, top.id)
+  await service.like(chi, second.id)
+
+  const fresh = new PostsService(db)
+  assert.deepEqual(await trendingTexts(fresh), ['top', 'second'])
+  await db.insert(blocks).values({ blockerId: ada, blockedId: chi })
+  await db.insert(mutes).values({ muterId: dan, mutedId: bayo })
+  assert.deepEqual(await trendingTexts(fresh, chi), ['second']) // blocked by ada
+  assert.deepEqual(await trendingTexts(fresh, dan), ['top'])
+  assert.deepEqual(await trendingTexts(fresh, bayo), ['top', 'second'])
+})
+
+test('a cached trending post that is deleted, taken down or loses its author drops out at once', async () => {
+  const kept = await service.create(ada, 'kept')
+  const deleted = await service.create(ada, 'deleted')
+  const removed = await service.create(bayo, 'removed')
+  const suspended = await service.create(chi, 'author suspended')
+  for (const { id } of [kept, deleted, removed, suspended]) await service.like(bayo, id)
+
+  const fresh = new PostsService(db)
+  assert.equal((await trendingTexts(fresh)).length, 4)
+  await service.remove(ada, deleted.id)
+  await db.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, removed.id))
+  await db.update(members).set({ active: false, status: 'suspended' }).where(eq(members.id, chi))
+  await service.like(chi, kept.id)
+  const shown = await fresh.trending(null, 5)
+  assert.deepEqual(shown.map((p) => p.text), ['kept'])
+  // Counts are read fresh even when the ranking is cached; chi's like does not count.
+  assert.equal(shown[0]!.likeCount, 1)
+})
+
+test('the trending ranking is reused for a minute, then refreshed without making callers wait', async (t) => {
+  mock.timers.enable({ apis: ['Date'], now: Date.now() })
+  t.after(() => mock.timers.reset())
+  const first = await service.create(ada, 'first')
+  const later = await service.create(bayo, 'later')
+  await service.like(chi, first.id)
+
+  const fresh = new PostsService(db)
+  assert.deepEqual(await trendingTexts(fresh), ['first'])
+  await service.like(ada, later.id)
+  await service.like(chi, later.id)
+  mock.timers.tick(TRENDING_TTL_MS - 1)
+  assert.deepEqual(await trendingTexts(fresh), ['first'])
+
+  mock.timers.tick(1)
+  // Expired: this call still gets the old ranking and starts a refresh.
+  assert.deepEqual(await trendingTexts(fresh), ['first'])
+  let now: string[] = []
+  for (let i = 0; i < 100 && now.length < 2; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    now = await trendingTexts(fresh)
+  }
+  assert.deepEqual(now, ['later', 'first'])
+})
+
+test('concurrent first calls share one ranking query', async () => {
+  const { id } = await service.create(ada, 'only')
+  await service.like(bayo, id)
+  const fresh = new PostsService(db)
+  let rankings = 0
+  const rank = (fresh as unknown as { rankTrending: () => Promise<string[]> }).rankTrending.bind(fresh)
+  ;(fresh as unknown as { rankTrending: () => Promise<string[]> }).rankTrending = () => {
+    rankings++
+    return rank()
+  }
+  const results = await Promise.all(Array.from({ length: 5 }, () => trendingTexts(fresh)))
+  assert.deepEqual(results, Array.from({ length: 5 }, () => ['only']))
+  assert.equal(rankings, 1)
 })
 
 test('search finds whole words in posts and replies, and treats input as text, not syntax', async () => {

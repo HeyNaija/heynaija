@@ -10,7 +10,7 @@ import {
   posts,
 } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
-import { and, asc, desc, eq, gt, inArray, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/media.service.js'
 import { decodeCursor, encodeCursor, InvalidCursorError } from '../cursor.js'
@@ -105,6 +105,12 @@ export class ImagesNotReadyError extends Error {}
 const MAX_THREAD_DEPTH = 50
 const MAX_REPLIES_SHOWN = 200
 const TRENDING_WINDOW_DAYS = 7
+// The ranking is the same for every viewer, so it is computed at most once per
+// TTL and each viewer's blocks and mutes are applied to it afterwards. Enough
+// candidates are kept that a viewer who blocks or mutes a few of the authors
+// still sees a full list.
+export const TRENDING_TTL_MS = 60_000
+const TRENDING_CANDIDATES = 50
 
 const topLevel = isNull(posts.replyParentId)
 
@@ -279,17 +285,86 @@ export class PostsService {
     return this.page(viewerId, inArray(posts.id, saved), limit, cursor)
   }
 
+  private trendingRanking: { ids: string[]; expiresAt: number } | null = null
+  private trendingRefresh: Promise<void> | null = null
+
   /**
    * The conversations people are engaging with this week: top-level posts ranked
    * by replies (weighted double) and likes. Posts with neither are left out.
+   *
+   * The ranking may be up to a minute old; whether each post is still live, its
+   * author still active and not blocked or muted by the viewer, and its counts,
+   * are read fresh on every call. So per call this reads at most
+   * `TRENDING_CANDIDATES` posts, however many were posted this week.
    */
-  trending(viewerId: string | null, limit: number): Promise<PostView[]> {
-    const score = sql<number>`(${replyCount} * 2 + ${likeCount})`
-    const since = new Date(Date.now() - TRENDING_WINDOW_DAYS * 86_400_000)
-    return this.select(viewerId, and(topLevel, gt(posts.createdAt, since), sql`${score} > 0`), {
-      order: [sql`${score} desc`, desc(posts.createdAt)],
+  async trending(viewerId: string | null, limit: number): Promise<PostView[]> {
+    const ids = await this.trendingIds()
+    if (ids.length === 0) return []
+    return this.select(viewerId, inArray(posts.id, ids), {
+      order: [sql`array_position(array[${sql.join(ids.map((id) => sql`${id}`), sql`, `)}]::uuid[], "posts"."id")`],
       limit,
     })
+  }
+
+  /**
+   * The cached ranking. Once it is older than `TRENDING_TTL_MS`, one refresh runs
+   * in the background and callers keep getting the old ranking until it lands,
+   * so no page waits on the ranking query after the first.
+   */
+  private async trendingIds(): Promise<string[]> {
+    const cached = this.trendingRanking
+    if (cached && cached.expiresAt > Date.now()) return cached.ids
+    this.trendingRefresh ??= this.rankTrending()
+      .then((ids) => {
+        this.trendingRanking = { ids, expiresAt: Date.now() + TRENDING_TTL_MS }
+      })
+      .finally(() => {
+        this.trendingRefresh = null
+      })
+    if (!cached) {
+      await this.trendingRefresh
+      return this.trendingRanking!.ids
+    }
+    // A failed refresh leaves the old ranking in place; the next call retries.
+    this.trendingRefresh.catch(() => {})
+    return cached.ids
+  }
+
+  /**
+   * Scores this week's live top-level posts by active authors in one pass:
+   * likes by active members, plus twice the live replies by active members.
+   */
+  private async rankTrending(): Promise<string[]> {
+    const since = new Date(Date.now() - TRENDING_WINDOW_DAYS * 86_400_000).toISOString()
+    const { rows } = await this.db.execute<{ id: string }>(sql`
+      with recent as (
+        select p.id, p.created_at from posts p
+        join members m on m.id = p.author_id and m.active
+        where p.reply_parent_id is null and p.deleted_at is null and p.removed_at is null and p.created_at > ${since}
+      ),
+      like_counts as (
+        select l.post_id, count(*)::int as n from likes l
+        join recent on recent.id = l.post_id
+        join members lm on lm.id = l.member_id and lm.active
+        group by l.post_id
+      ),
+      reply_counts as (
+        select r.reply_parent_id as post_id, count(*)::int as n from posts r
+        join recent on recent.id = r.reply_parent_id
+        join members rm on rm.id = r.author_id and rm.active
+        where r.deleted_at is null and r.removed_at is null
+        group by r.reply_parent_id
+      ),
+      scored as (
+        select recent.id, recent.created_at, coalesce(rc.n, 0) * 2 + coalesce(lc.n, 0) as score
+        from recent
+        left join like_counts lc on lc.post_id = recent.id
+        left join reply_counts rc on rc.post_id = recent.id
+      )
+      select id from scored where score > 0
+      order by score desc, created_at desc, id desc
+      limit ${TRENDING_CANDIDATES}`)
+    return rows.map((r) => r.id)
   }
 
   /** Full-text search over post text, newest first. Replies are included. */
