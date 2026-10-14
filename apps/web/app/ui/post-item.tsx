@@ -58,8 +58,8 @@ export function PostItem({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="flex items-baseline gap-2 text-[15px] leading-5">
-                <Link href={`/u/${post.authorHandle}`} className="flex min-w-0 items-baseline gap-1.5 hover:underline">
+              <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[15px] leading-5">
+                <Link href={`/u/${post.authorHandle}`} className="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1.5 hover:underline">
                   <span className="truncate font-semibold">{post.authorName ?? `@${post.authorHandle}`}</span>
                   {post.authorName ? <span className="shrink-0 text-[13px] text-muted">@{post.authorHandle}</span> : null}
                 </Link>
@@ -131,7 +131,7 @@ export function PostItem({
             </div>
           ) : null}
 
-          <div className="-ml-2 mt-2 flex items-center gap-3">
+          <div className="post-actions -ml-2 mt-3 flex items-center gap-3">
             <Link href={href} className="icon-btn" aria-label={replies}>
               <BubbleIcon size={18} />
               <span className="tabular-nums">{post.replyCount}</span>

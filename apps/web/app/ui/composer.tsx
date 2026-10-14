@@ -30,6 +30,18 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
   const images = useImageDrafts()
   const { clear } = images
   const picker = useRef<HTMLInputElement>(null)
+  const form = useRef<HTMLFormElement>(null)
+
+  // A press anywhere outside the form shrinks the box back. On press rather than
+  // on blur: Safari does not focus buttons, so a blur would shrink the form under
+  // the pointer and swallow a click on the image button.
+  useEffect(() => {
+    const outside = (e: PointerEvent) => {
+      if (!form.current?.contains(e.target as Node)) setExpanded(false)
+    }
+    document.addEventListener('pointerdown', outside)
+    return () => document.removeEventListener('pointerdown', outside)
+  }, [])
   const [tooMany, setTooMany] = useState(false)
 
   // Clear the box once the server confirms the post.
@@ -45,7 +57,7 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
   const empty = left === LIMIT && images.drafts.length === 0
 
   return (
-    <form id="compose" action={action} className="square-card square-composer scroll-mt-24">
+    <form ref={form} id="compose" action={action} className="square-card square-composer scroll-mt-24">
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
       {community ? <input type="hidden" name="community" value={community} /> : null}
 
@@ -58,8 +70,13 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
           <textarea
             id="post-text"
             name="text"
-            rows={replyTo ? 2 : expanded || text ? 3 : 1}
+            rows={replyTo ? 2 : expanded || text || images.drafts.length ? 3 : 1}
             onFocus={() => setExpanded(true)}
+            onBlur={(e) => {
+              // Tabbing away from the form shrinks it; clicks are handled above.
+              const next = e.relatedTarget as Node | null
+              if (next && !form.current?.contains(next)) setExpanded(false)
+            }}
             required={images.drafts.length === 0}
             value={text}
             onChange={(e) => setText(e.target.value)}

@@ -3,20 +3,22 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   HttpCode,
   Inject,
   Param,
   Post,
+  Put,
   Req,
   UseGuards,
 } from '@nestjs/common'
 import { z } from 'zod'
 import { type AuthedRequest, SessionGuard, SuspendedAllowedGuard } from '../auth/session.guard.js'
-import { handleParam, parse } from '../http.js'
+import { handleParam, parse, slugParam } from '../http.js'
 import { RateLimiter } from '../rate-limit.js'
-import { ModerationService, ModerationTargetError, NotAModeratorError } from './moderation.service.js'
+import { ModerationService, ModerationTargetError, NotAModeratorError, RESOLUTIONS } from './moderation.service.js'
 
 const reasons = REPORT_REASONS.filter((r) => r !== 'appeal')
 const details = z.string().trim().max(500).default('')
@@ -27,9 +29,7 @@ const reportBody = z.union([
   z.object({ handle: handleParam, reason: z.enum(reasons), details }),
 ])
 const appealBody = z.object({ message: z.string().trim().min(10).max(1000) })
-const resolveBody = note.extend({
-  resolution: z.enum(['dismiss', 'remove_post', 'suspend_member', 'reinstate_member']),
-})
+const resolveBody = note.extend({ resolution: z.enum(RESOLUTIONS) })
 
 /** Maps the service's refusals onto HTTP: not allowed is 403, cannot be done is 400. */
 async function guarded<T>(run: () => Promise<T>): Promise<T> {
@@ -67,6 +67,13 @@ export class ModerationController {
     await guarded(() => this.moderation.appeal(req.member.id, message))
   }
 
+  /** Where the member's latest appeal stands; null if they never appealed. */
+  @Get('appeals/latest')
+  @UseGuards(SuspendedAllowedGuard)
+  async latestAppeal(@Req() req: AuthedRequest) {
+    return { appeal: await this.moderation.latestAppeal(req.member.id) }
+  }
+
   @Get('moderation/reports')
   @UseGuards(SessionGuard)
   queue(@Req() req: AuthedRequest) {
@@ -102,5 +109,28 @@ export class ModerationController {
   async reinstate(@Req() req: AuthedRequest, @Param('handle') handle: string, @Body() body: unknown) {
     const who = parse(handleParam, handle)
     await guarded(() => this.moderation.setSuspended(req.member.id, who, false, parse(note, body ?? {}).note))
+  }
+
+  /** Every community and who moderates it. Site moderators only. */
+  @Get('moderation/moderators')
+  @UseGuards(SessionGuard)
+  roster(@Req() req: AuthedRequest) {
+    return guarded(() => this.moderation.moderatorRoster(req.member.id))
+  }
+
+  @Put('moderation/communities/:slug/moderators/:handle')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async grant(@Req() req: AuthedRequest, @Param('slug') slug: string, @Param('handle') handle: string, @Body() body: unknown) {
+    const [where, who] = [parse(slugParam, slug), parse(handleParam, handle)]
+    await guarded(() => this.moderation.assignCommunityModerator(req.member.id, who, where, true, parse(note, body ?? {}).note))
+  }
+
+  @Delete('moderation/communities/:slug/moderators/:handle')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async revoke(@Req() req: AuthedRequest, @Param('slug') slug: string, @Param('handle') handle: string) {
+    const [where, who] = [parse(slugParam, slug), parse(handleParam, handle)]
+    await guarded(() => this.moderation.assignCommunityModerator(req.member.id, who, where, false))
   }
 }

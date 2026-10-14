@@ -13,6 +13,8 @@ import { Inject, Injectable } from '@nestjs/common'
 import { and, asc, desc, eq, gt, inArray, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/media.service.js'
+import { decodeCursor, encodeCursor, InvalidCursorError } from '../cursor.js'
+import { notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { DB } from '../tokens.js'
 
@@ -94,29 +96,15 @@ export type PostPage = { posts: PostView[]; cursor: string | null }
 
 export type Thread = { ancestors: PostView[]; post: PostView; replies: PostView[] }
 
-export class InvalidCursorError extends Error {}
 export class ParentNotFoundError extends Error {}
 export class CommunityNotFoundError extends Error {}
+export { InvalidCursorError }
 export class NotACommunityMemberError extends Error {}
 export class ImagesNotReadyError extends Error {}
 
 const MAX_THREAD_DEPTH = 50
 const MAX_REPLIES_SHOWN = 200
 const TRENDING_WINDOW_DAYS = 7
-
-const encodeCursor = (createdAt: Date, id: string) =>
-  Buffer.from(JSON.stringify([createdAt.toISOString(), id])).toString('base64url')
-
-const decodeCursor = (cursor: string): [Date, string] => {
-  try {
-    const [iso, id] = z
-      .tuple([z.iso.datetime(), z.uuid()])
-      .parse(JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')))
-    return [new Date(iso), id]
-  } catch {
-    throw new InvalidCursorError('invalid cursor')
-  }
-}
 
 const topLevel = isNull(posts.replyParentId)
 
@@ -357,13 +345,13 @@ export class PostsService {
       images = [],
     }: { replyTo?: string; communitySlug?: string; images?: PostImageInput[] } = {},
   ): Promise<{ id: string }> {
-    let parent: { id: string; rootId: string | null; communityId: string | null } | undefined
+    let parent: { id: string; authorId: string; rootId: string | null; communityId: string | null } | undefined
     let communityId: string | null = null
 
     if (replyTo) {
       // You can only reply to something a reader could currently see.
       ;[parent] = await this.db
-        .select({ id: posts.id, rootId: posts.rootId, communityId: posts.communityId })
+        .select({ id: posts.id, authorId: posts.authorId, rootId: posts.rootId, communityId: posts.communityId })
         .from(posts)
         .innerJoin(members, eq(members.id, posts.authorId))
         .where(
@@ -416,6 +404,7 @@ export class PostsService {
           .returning({ id: media.id })
         if (attached.length === 0) throw new ImagesNotReadyError('an image is missing, still processing or already used')
       }
+      if (parent) await notify(tx, [{ recipientId: parent.authorId, kind: 'reply', actorId: authorId, postId: row!.id }])
       return row!
     })
   }
@@ -435,6 +424,7 @@ export class PostsService {
     const [visible] = await this.select(memberId, eq(posts.id, postId), { limit: 1 })
     if (!visible) return false
     await this.db.insert(likes).values({ memberId, postId }).onConflictDoNothing()
+    await notify(this.db, [{ recipientId: visible.authorId, kind: 'like', actorId: memberId, postId }])
     return true
   }
 

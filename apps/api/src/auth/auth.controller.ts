@@ -20,6 +20,7 @@ import type { Env } from '../env.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
 import { avatarPath } from '../media/media.service.js'
+import { NotificationsService } from '../notifications/notifications.service.js'
 import { RateLimiter } from '../rate-limit.js'
 import { DB, ENV } from '../tokens.js'
 import { type AuthedRequest, SessionGuard } from './session.guard.js'
@@ -43,6 +44,7 @@ export class AuthController {
   constructor(
     @Inject(InvitesService) private readonly invites: InvitesService,
     @Inject(ModerationService) private readonly moderation: ModerationService,
+    @Inject(NotificationsService) private readonly notifications: NotificationsService,
     @Inject(RateLimiter) private readonly limits: RateLimiter,
     @Inject(ENV) private readonly env: Env,
     @Inject(DB) private readonly db: Db,
@@ -51,8 +53,9 @@ export class AuthController {
   @Get('v1/me')
   @UseGuards(SessionGuard)
   async me(@Req() req: AuthedRequest) {
-    const [scope, [row]] = await Promise.all([
+    const [scope, unread, [row]] = await Promise.all([
       this.moderation.scope(req.member.id),
+      this.notifications.unreadCount(req.member.id),
       this.db
         .select({ avatarMediaId: members.avatarMediaId, displayName: members.displayName, bio: members.bio })
         .from(members)
@@ -65,6 +68,7 @@ export class AuthController {
       avatar: avatarPath(row?.avatarMediaId ?? null),
       displayName: row?.displayName ?? null,
       bio: row?.bio ?? '',
+      unreadNotifications: unread,
       moderates: scope.siteWide || scope.communityIds.length > 0,
     }
   }

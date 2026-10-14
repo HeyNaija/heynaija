@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { communities, members, moderationActions, posts, reports } from '@heynaija/db'
+import { communities, members, moderationActions, notifications, posts, reports } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { CommunitiesService } from '../communities/communities.service.js'
 import { PostsService } from '../posts/posts.service.js'
@@ -205,7 +205,7 @@ test('appeals: only when suspended, one at a time, and they can be granted', asy
   assert.equal(queue.length, 1)
   assert.deepEqual(
     { reason: queue[0]!.reason, by: queue[0]!.reporterHandle, member: queue[0]!.member },
-    { reason: 'appeal', by: 'bayo', member: { handle: 'bayo', active: false } },
+    { reason: 'appeal', by: 'bayo', member: { handle: 'bayo', active: false, displayName: null, bio: '', avatar: null } },
   )
 
   await service.resolve(sam, queue[0]!.id, 'reinstate_member', 'fair point')
@@ -221,4 +221,41 @@ test('an author deleting a reported post does not break the queue', async () => 
   assert.equal(item!.post!.text, 'regret')
   await service.resolve(sam, item!.id, 'dismiss')
   assert.equal((await db.select().from(posts))[0]!.removedAt, null)
+})
+
+test('a site moderator assigns community moderators in the app; it is logged and the member told', async () => {
+  await service.assignCommunityModerator(sam, 'ada', 'abuja', true, 'knows the city')
+  assert.equal((await service.scope(ada)).communityIds.length, 1)
+  assert.deepEqual(
+    (await service.moderatorRoster(sam)).map((c) => [c.slug, c.moderators.map((m) => m.handle)]),
+    [
+      ['abuja', ['ada']],
+      ['lagos', ['lola']],
+    ],
+  )
+
+  const [entry] = await service.log(sam)
+  assert.deepEqual([entry!.action, entry!.memberHandle, entry!.communityName, entry!.note], [
+    'grant_community_moderator',
+    'ada',
+    'Abuja',
+    'knows the city',
+  ])
+  const [told] = await db.select().from(notifications).where(eq(notifications.recipientId, ada))
+  assert.equal(told!.kind, 'moderator_granted')
+
+  await assert.rejects(service.assignCommunityModerator(sam, 'ada', 'abuja', true), /already moderates/)
+  await service.assignCommunityModerator(sam, 'ada', 'abuja', false)
+  assert.deepEqual((await service.scope(ada)).communityIds, [])
+  await assert.rejects(service.assignCommunityModerator(sam, 'ada', 'abuja', false), /does not moderate/)
+})
+
+test('only site moderators assign roles, and never to a suspended account', async () => {
+  await assert.rejects(service.assignCommunityModerator(lola, 'ada', 'lagos', true), NotAModeratorError)
+  await assert.rejects(service.assignCommunityModerator(ada, 'bayo', 'lagos', true), NotAModeratorError)
+  await assert.rejects(service.moderatorRoster(lola), NotAModeratorError)
+  await assert.rejects(service.assignCommunityModerator(sam, 'ada', 'nowhere', true), /no community/)
+
+  await service.setSuspended(sam, 'bayo', true)
+  await assert.rejects(service.assignCommunityModerator(sam, 'bayo', 'lagos', true), /suspended/)
 })

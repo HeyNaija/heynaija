@@ -1,6 +1,6 @@
-import { type Db, media, members } from '@heynaija/db'
-import { Inject, Injectable } from '@nestjs/common'
-import { and, eq, inArray, isNull, lt, type SQL } from 'drizzle-orm'
+import { type Db, media, members, posts, reports } from '@heynaija/db'
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
+import { and, eq, inArray, isNotNull, isNull, lt, type SQL, sql } from 'drizzle-orm'
 import sharp from 'sharp'
 import { DB } from '../tokens.js'
 import type { ObjectStore } from './object-store.js'
@@ -12,6 +12,23 @@ export const MEDIA_JOBS = Symbol('MEDIA_JOBS')
 export interface MediaJobs {
   /** Queues an uploaded post image for checking and re-encoding. Safe to repeat. */
   processPostImage(mediaId: string): Promise<void>
+}
+
+export const CONTENT_SCANNER = Symbol('CONTENT_SCANNER')
+
+/**
+ * Checks an upload against known child sexual abuse material before anything is
+ * published. See docs/safety/abuse-material-scanning.md for the plan to plug in
+ * a real one (PhotoDNA); until then every image passes.
+ */
+export interface ContentScanner {
+  scan(image: Buffer): Promise<'clear' | 'match'>
+}
+
+export class NoScanner implements ContentScanner {
+  async scan(): Promise<'clear'> {
+    return 'clear'
+  }
 }
 
 export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
@@ -34,7 +51,7 @@ const ABANDONED_AFTER_MS = 60 * 60 * 1000
 
 export class MediaError extends Error {
   constructor(
-    readonly code: 'not_found' | 'not_uploaded' | 'too_large' | 'not_an_image',
+    readonly code: 'not_found' | 'not_uploaded' | 'too_large' | 'not_an_image' | 'blocked',
     message: string,
   ) {
     super(message)
@@ -47,6 +64,10 @@ const folder: Record<Kind, string> = { avatar: 'avatars', post_image: 'posts' }
 const sizes: Record<Kind, readonly number[]> = { avatar: AVATAR_SIZES, post_image: POST_IMAGE_SIZES }
 const uploadKey = (kind: Kind, mediaId: string) => `${folder[kind]}/${mediaId}`
 const variantKey = (kind: Kind, mediaId: string, size: number) => `${folder[kind]}/${mediaId}/${size}.webp`
+// Private copies of what moderators took down or the scanner blocked, kept as
+// evidence and so a removal can be undone. Never touched by the abandoned-upload
+// clean-up, here or in the bucket's lifecycle rule.
+const quarantineKey = (key: string) => `quarantine/${key}`
 
 /**
  * Where a member's avatar is served from, without the size suffix: the web app
@@ -71,11 +92,29 @@ export type PostImageStatus = 'pending' | 'processing' | 'ready' | 'failed'
 
 @Injectable()
 export class MediaService {
+  private readonly log = new Logger(MediaService.name)
+
   constructor(
     @Inject(DB) private readonly db: Db,
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     @Inject(MEDIA_JOBS) private readonly jobs: MediaJobs,
+    @Optional() @Inject(CONTENT_SCANNER) private readonly scanner: ContentScanner = new NoScanner(),
   ) {}
+
+  /**
+   * Runs the scanner on an upload. On a match the original is kept privately,
+   * the row is marked blocked, and operators are alerted through the log; the
+   * uploader is told only that the image cannot be used.
+   */
+  private async screen(kind: Kind, mediaId: string, ownerId: string, original: Buffer): Promise<boolean> {
+    if ((await this.scanner.scan(original)) === 'clear') return true
+    const key = uploadKey(kind, mediaId)
+    await this.store.write('uploads', quarantineKey(`originals/${key}`), original, 'application/octet-stream')
+    await this.store.remove('uploads', key)
+    await this.db.update(media).set({ status: 'blocked' }).where(eq(media.id, mediaId))
+    this.log.error(`content scanner matched upload ${mediaId} from member ${ownerId}; follow docs/safety/abuse-material-scanning.md`)
+    return false
+  }
 
   /**
    * Step 1: reserves a media ID and returns a URL the browser uploads the file
@@ -110,7 +149,7 @@ export class MediaService {
       .select()
       .from(media)
       .where(and(eq(media.id, mediaId), eq(media.ownerId, ownerId), eq(media.kind, kind)))
-    if (!row || row.status === 'deleted' || row.status === 'failed') {
+    if (!row || !['pending', 'processing', 'ready'].includes(row.status)) {
       throw new MediaError('not_found', 'no such upload')
     }
     return row
@@ -160,6 +199,9 @@ export class MediaService {
     } catch {
       return this.fail('avatar', row.id, new MediaError('not_an_image', 'that file is not a JPEG, PNG or WebP image'))
     }
+    if (!(await this.screen('avatar', row.id, ownerId, original))) {
+      throw new MediaError('blocked', 'that image cannot be used')
+    }
 
     for (const v of variants) await this.store.write('media', variantKey('avatar', row.id, v.size), v.body, 'image/webp')
     await this.store.remove('uploads', key)
@@ -204,7 +246,9 @@ export class MediaService {
       .select({ status: media.status })
       .from(media)
       .where(and(eq(media.id, mediaId), eq(media.ownerId, ownerId), eq(media.kind, 'post_image')))
-    return !row || row.status === 'deleted' ? null : row.status
+    if (!row || row.status === 'deleted' || row.status === 'quarantined') return null
+    // The uploader is not told their image matched; to them it simply failed.
+    return row.status === 'blocked' ? 'failed' : row.status
   }
 
   /**
@@ -241,6 +285,7 @@ export class MediaService {
       await this.store.remove('uploads', key)
       return
     }
+    if (!(await this.screen('post_image', row.id, row.ownerId, original))) return
 
     for (const v of variants) await this.store.write('media', variantKey('post_image', row.id, v.size), v.body, 'image/webp')
     await this.store.remove('uploads', key)
@@ -265,13 +310,78 @@ export class MediaService {
     await this.discard('avatar', [member.avatarMediaId])
   }
 
-  /** Deletes the images of a post its author has deleted. Idempotent. */
+  /**
+   * Takes a post's images out of public view, keeping the files privately, when
+   * a moderator removes the post. Files move before the rows change, so if
+   * storage fails part-way the hourly sweep finishes the job. Idempotent.
+   */
+  async quarantinePostImages(postId: string): Promise<void> {
+    const rows = await this.db
+      .select({ id: media.id })
+      .from(media)
+      .where(and(eq(media.postId, postId), eq(media.status, 'ready')))
+    await this.quarantine('post_image', rows.map((r) => r.id))
+  }
+
+  /** Puts a restored post's images back. Idempotent. */
+  async releasePostImages(postId: string): Promise<void> {
+    const rows = await this.db
+      .select({ id: media.id })
+      .from(media)
+      .where(and(eq(media.postId, postId), eq(media.status, 'quarantined')))
+    for (const { id } of rows) {
+      await this.moveVariants('post_image', id, 'release')
+      await this.db.update(media).set({ status: 'ready' }).where(eq(media.id, id))
+    }
+  }
+
+  /**
+   * Takes down a profile photo a moderator removed. The member's avatar is
+   * cleared by the moderation decision itself; this moves the files.
+   */
+  async quarantineAvatar(mediaId: string): Promise<void> {
+    await this.quarantine('avatar', [mediaId])
+  }
+
+  private async quarantine(kind: Kind, mediaIds: string[]): Promise<void> {
+    for (const id of mediaIds) {
+      await this.moveVariants(kind, id, 'quarantine')
+      await this.db.update(media).set({ status: 'quarantined' }).where(eq(media.id, id))
+    }
+  }
+
+  /** Moves published files between the public bucket and the private quarantine. */
+  private async moveVariants(kind: Kind, mediaId: string, direction: 'quarantine' | 'release'): Promise<void> {
+    for (const px of sizes[kind]) {
+      const key = variantKey(kind, mediaId, px)
+      const [from, fromKey, to, toKey] =
+        direction === 'quarantine'
+          ? (['media', key, 'uploads', quarantineKey(key)] as const)
+          : (['uploads', quarantineKey(key), 'media', key] as const)
+      // Already moved (a retry): nothing to do for this file.
+      if ((await this.store.size(from, fromKey)) === null) continue
+      await this.store.write(to, toKey, await this.store.read(from, fromKey), 'image/webp')
+      await this.store.remove(from, fromKey)
+    }
+  }
+
+  /**
+   * Deletes the images of a post its author has deleted, unless the post has
+   * been reported and not yet decided: then they are kept privately, so the
+   * author cannot destroy what a moderator needs to see. Idempotent.
+   */
   async discardPostImages(postId: string): Promise<void> {
     const rows = await this.db
       .select({ id: media.id })
       .from(media)
       .where(and(eq(media.postId, postId), eq(media.status, 'ready')))
-    await this.discard('post_image', rows.map((r) => r.id))
+    const [reported] = await this.db
+      .select({ id: reports.id })
+      .from(reports)
+      .where(and(eq(reports.postId, postId), eq(reports.status, 'open')))
+      .limit(1)
+    if (reported) await this.quarantine('post_image', rows.map((r) => r.id))
+    else await this.discard('post_image', rows.map((r) => r.id))
   }
 
   /** Deletes published files and marks their rows deleted. */
@@ -313,5 +423,28 @@ export class MediaService {
       )
       .returning({ id: media.id })
     await this.discard('post_image', unused.map((r) => r.id))
+
+    // Taken down by a moderator but somehow still public, because moving the
+    // files failed at the time: images of removed posts, and profile photos no
+    // member uses any more. Everyone's, so only on the hourly run.
+    if (!ownerId) {
+      const exposedImages = await this.db
+        .select({ id: media.id })
+        .from(media)
+        .innerJoin(posts, eq(posts.id, media.postId))
+        .where(and(eq(media.status, 'ready'), isNotNull(posts.removedAt)))
+      await this.quarantine('post_image', exposedImages.map((r) => r.id))
+      const exposedAvatars = await this.db
+        .select({ id: media.id })
+        .from(media)
+        .where(
+          and(
+            eq(media.kind, 'avatar'),
+            eq(media.status, 'ready'),
+            sql`not exists(select 1 from members m where m.avatar_media_id = ${media.id})`,
+          ),
+        )
+      await this.quarantine('avatar', exposedAvatars.map((r) => r.id))
+    }
   }
 }

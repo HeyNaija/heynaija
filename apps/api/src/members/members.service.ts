@@ -3,6 +3,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { and, asc, eq, ilike, like, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { avatarPath } from '../media/media.service.js'
+import { notify } from '../notifications/notifications.service.js'
 import { cleanLine, cleanLines, graphemes } from '../text.js'
 import { DB } from '../tokens.js'
 
@@ -116,6 +117,7 @@ export class MembersService {
     if (followeeId === followerId) throw new CannotFollowSelfError('you cannot follow yourself')
     if (await this.blockedEitherWay(followerId, followeeId)) return false
     await this.db.insert(follows).values({ followerId, followeeId }).onConflictDoNothing()
+    await notify(this.db, [{ recipientId: followeeId, kind: 'follow', actorId: followerId }])
     return true
   }
 

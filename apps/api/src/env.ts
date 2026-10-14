@@ -12,6 +12,9 @@ const schema = z.object({
     .default('http://127.0.0.1:3000')
     .transform((u) => u.replace(/\/$/, '')),
   API_PORT: z.coerce.number().default(4000),
+  // Loopback in development. In a container it must be 0.0.0.0 so the web app and
+  // Kratos can reach it; the port is never published outside the Docker network.
+  API_HOST: z.string().default('127.0.0.1'),
   // Background jobs (image processing) run on BullMQ over this Redis.
   REDIS_URL: z.url(),
   // Object storage for media: MinIO locally, Cloudflare R2 in production.

@@ -1,0 +1,94 @@
+# Deploying production: heynaija.ng
+
+Production runs alone on a **netcup** server. It works exactly like staging (read
+[staging.md](staging.md) first): the same images, Compose file, nginx template,
+scripts and backups, with production settings, and deployed by pushes to `main`.
+
+**Do not launch publicly** until the launch rule in PLAN.md §11 holds and the
+checklist in [docs/safety/abuse-material-scanning.md](../safety/abuse-material-scanning.md)
+is done.
+
+## 1. The server
+
+netcup, **Ubuntu 24.04**, at least **4 vCPU, 8 GB RAM, 120 GB SSD**. Then, from your
+computer (use your own public key file):
+
+```bash
+scp infra/deploy/setup-server.sh root@<server-ip>:
+```
+
+```bash
+ssh root@<server-ip> "bash setup-server.sh '$(cat ~/.ssh/id_ed25519.pub)'"
+```
+
+It installs Docker and nginx, creates the `heynaija` user (with sudo; it is the
+admin account), turns off password and root SSH logins, and enables the firewall
+and automatic security updates. **Check `ssh heynaija@<server-ip>` works in a second
+terminal before closing the root session.** The provider's web console still works
+if you lock yourself out.
+
+## 2. Cloudflare
+
+1. **DNS:** `A` record `heynaija.ng` (`@`) → the netcup server, **Proxied**; `AAAA` if
+   it has IPv6. Optionally `www` redirecting to `heynaija.ng`.
+2. The origin certificate from staging step 1 covers `heynaija.ng`. Copy it, its
+   key and the origin-pull CA into `/etc/ssl/cloudflare/` (as in staging step 3).
+3. **Authenticated Origin Pulls: use the zone-level option** for production, with a
+   certificate you create, instead of the global one. The global certificate proves
+   a request came through Cloudflare, but anyone's Cloudflare account could send
+   it; the zone-level one proves it came through yours. Cloudflare's guide:
+   "Authenticated Origin Pulls → Set up → Zone-level". Point `NGINX_CLIENT_CA` at
+   the CA you used.
+
+## 3. R2 and email
+
+- Buckets `heynaija-uploads` and `heynaija-media` (custom domain `media.heynaija.ng`,
+  CORS origin `https://heynaija.ng`), set up as in [cloudflare-r2.md](cloudflare-r2.md),
+  with a production-only app token.
+- Backups go to the same `heynaija-backups` bucket under `production/`; give
+  production its own backups-only token.
+- Resend: the same sending domain; a separate API key for production, so either can
+  be revoked alone.
+
+## 4. GitHub
+
+Same as staging step 4, with:
+
+- the `production` environment (consider requiring a reviewer, if your GitHub plan
+  allows it for private repositories);
+- a runner on the netcup server, label and name **`heynaija-production`**, running
+  as `heynaija`;
+- the netcup server's own deploy key.
+
+## 5. First deploy
+
+As `heynaija`, clone to `/srv/heynaija`, run `./gen-env.sh`, and edit `.env`:
+
+| Setting | Production |
+|---|---|
+| `COMPOSE_PROJECT_NAME` | `heynaija-production` |
+| `DEPLOY_BRANCH` | `main` |
+| `SITE_URL` | `https://heynaija.ng` |
+| `SITE_ADDRESS` | `heynaija.ng` |
+| `ROBOTS` | `index` |
+| `MEDIA_ORIGIN` | `https://media.heynaija.ng` |
+| `S3_UPLOADS_BUCKET` / `S3_MEDIA_BUCKET` | `heynaija-uploads` / `heynaija-media` |
+| `BACKUP_DESTINATION` | `r2backup:heynaija-backups/production` |
+| `IMAGE_PREFIX`, `S3_*`, `SMTP_*`, `BACKUP_AGE_RECIPIENT` | as for staging, with production's tokens and keys |
+
+`WEB_PORT=3100` is fine: nothing else runs on this server. Then:
+
+```bash
+cd /srv/heynaija/infra/deploy && ./install-nginx.sh
+```
+
+Merge to `main` and watch **Actions → Deploy production**. Then seed, invite and
+grant moderators as in staging step 5.
+
+## 6. Backups and checks
+
+Backups exactly as staging step 6, with production's token and the same age key
+(or a separate one). **Rehearse a restore of production's backup** before launch.
+
+Then every check in staging step 7, except that `curl -I https://heynaija.ng` must
+**not** show `x-robots-tag`, and add an uptime check for `https://heynaija.ng/`.

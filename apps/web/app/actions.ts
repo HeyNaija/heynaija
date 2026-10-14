@@ -47,6 +47,15 @@ export async function createPost(_prev: ComposeState, formData: FormData): Promi
   return { postedAt: Date.now() }
 }
 
+/** `upTo` is the newest notification the member has seen. */
+export async function markNotificationsRead(upTo: string): Promise<void> {
+  await api('/v1/notifications/read', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ upTo }),
+  })
+}
+
 export async function deletePost(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '')
   const res = await api(`/v1/posts/${encodeURIComponent(id)}`, { method: 'DELETE' })
@@ -137,14 +146,12 @@ export async function finishAvatarUpload(mediaId: string): Promise<{ error?: str
   if (res.status === 401) redirect('/login')
   if (res.status === 400) {
     const body = (await res.json().catch(() => ({}))) as { code?: string }
-    return {
-      error:
-        body.code === 'not_an_image'
-          ? 'That file is not a JPEG, PNG or WebP image.'
-          : body.code === 'too_large'
-            ? 'That image is too large. The limit is 5 MB.'
-            : 'The upload did not finish. Try again.',
+    const messages: Record<string, string> = {
+      not_an_image: 'That file is not a JPEG, PNG or WebP image.',
+      too_large: 'That image is too large. The limit is 5 MB.',
+      blocked: 'That image cannot be used.',
     }
+    return { error: messages[body.code ?? ''] ?? 'The upload did not finish. Try again.' }
   }
   if (!res.ok) return { error: 'Could not save your photo. Try again in a moment.' }
   refresh()
@@ -238,6 +245,27 @@ export async function resolveReport(formData: FormData): Promise<void> {
   })
   if (res.status === 401) redirect('/login')
   refresh()
+}
+
+/** A site moderator makes someone a community moderator, or stops them being one. */
+export async function setCommunityModerator(_prev: FormState, formData: FormData): Promise<FormState> {
+  const slug = String(formData.get('community') ?? '')
+  const handle = String(formData.get('handle') ?? '').trim().replace(/^@/, '').toLowerCase()
+  const on = formData.get('on') === '1'
+  const res = await api(`/v1/moderation/communities/${encodeURIComponent(slug)}/moderators/${encodeURIComponent(handle)}`, {
+    method: on ? 'PUT' : 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ note: String(formData.get('note') ?? '') }),
+  })
+  if (res.status === 401) redirect('/login')
+  if (res.status === 400) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string }
+    const message = typeof body.message === 'string' && body.message.length < 120 ? body.message : 'check the handle'
+    return { error: `Could not change that: ${message}.` }
+  }
+  if (!res.ok) return { error: 'Could not change that. Try again in a moment.' }
+  refresh()
+  return { done: true }
 }
 
 export async function restorePost(formData: FormData): Promise<void> {

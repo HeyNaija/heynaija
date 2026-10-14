@@ -1,0 +1,4 @@
+ALTER TABLE "moderation_actions" ADD COLUMN "community_id" uuid;--> statement-breakpoint
+ALTER TABLE "notifications" ADD COLUMN "community_id" uuid;--> statement-breakpoint
+ALTER TABLE "moderation_actions" ADD CONSTRAINT "moderation_actions_community_id_communities_id_fk" FOREIGN KEY ("community_id") REFERENCES "public"."communities"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "notifications" ADD CONSTRAINT "notifications_community_id_communities_id_fk" FOREIGN KEY ("community_id") REFERENCES "public"."communities"("id") ON DELETE no action ON UPDATE no action;

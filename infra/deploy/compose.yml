@@ -1,0 +1,274 @@
+# HeyNaija on one server: staging (shared with Koinovera) or production.
+# Everything runs on a private Docker network. The only published port is the web
+# app's, on 127.0.0.1, for the server's nginx to proxy to (nginx/heynaija.conf).
+# Settings and secrets come from infra/deploy/.env (see .env.example and
+# docs/deployment/). Deploy with ./deploy.sh or the GitHub workflows, not by hand.
+#
+# COMPOSE_PROJECT_NAME in .env (heynaija-staging, heynaija-production) keeps this
+# deployment's containers, network and volumes apart from anything else on the server.
+name: heynaija
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+x-api-env: &api-env
+  DATABASE_URL: postgres://heynaija:${POSTGRES_PASSWORD:?}@postgres:5432/heynaija
+  REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
+  KRATOS_PUBLIC_URL: http://kratos:4433
+  KRATOS_WEBHOOK_SECRET: ${KRATOS_WEBHOOK_SECRET:?}
+  WEB_PUBLIC_URL: ${SITE_URL:?}
+  API_HOST: 0.0.0.0
+  S3_ENDPOINT: ${S3_ENDPOINT:?}
+  S3_REGION: ${S3_REGION:-auto}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?}
+  S3_UPLOADS_BUCKET: ${S3_UPLOADS_BUCKET:?}
+  S3_MEDIA_BUCKET: ${S3_MEDIA_BUCKET:?}
+
+services:
+  web:
+    # Built by GitHub Actions and pulled from its registry; `build` is for local use.
+    image: ${IMAGE_PREFIX:-heynaija}-web:${RELEASE:-latest}
+    build:
+      context: ../..
+      target: web
+    ports:
+      # Loopback only: nginx on the host is the way in.
+      - "127.0.0.1:${WEB_PORT:-3100}:3000"
+    environment:
+      API_INTERNAL_URL: http://api:4000
+      KRATOS_INTERNAL_URL: http://kratos:4433
+    depends_on:
+      api:
+        condition: service_healthy
+      kratos:
+        condition: service_started
+    restart: unless-stopped
+    logging: *logging
+
+  api:
+    image: ${IMAGE_PREFIX:-heynaija}-api:${RELEASE:-latest}
+    build:
+      context: ../..
+      target: api
+    environment: *api-env
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/healthz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+
+  # Applies the app's database migrations, then exits. Runs on every deploy.
+  migrate:
+    image: ${IMAGE_PREFIX:-heynaija}-api:${RELEASE:-latest}
+    command: ["node", "node_modules/@heynaija/db/dist/migrate.js"]
+    environment:
+      DATABASE_URL: postgres://heynaija:${POSTGRES_PASSWORD}@postgres:5432/heynaija
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    logging: *logging
+
+  kratos-migrate:
+    image: oryd/kratos:v26.2.0
+    environment: &kratos-env
+      DSN: postgres://heynaija:${POSTGRES_PASSWORD}@postgres:5432/kratos?sslmode=disable
+      SECRETS_COOKIE: ${KRATOS_SECRETS_COOKIE:?}
+      SECRETS_CIPHER: ${KRATOS_SECRETS_CIPHER:?}
+      COURIER_SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:?}
+    volumes: &kratos-volumes
+      - ../kratos/identity.schema.json:/etc/config/kratos/identity.schema.json:ro
+      - ../kratos/invite-check.jsonnet:/etc/config/kratos/invite-check.jsonnet:ro
+    configs: &kratos-configs
+      - source: kratos
+        target: /etc/config/kratos/kratos.yml
+    command: -c /etc/config/kratos/kratos.yml migrate sql -e --yes
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+    logging: *logging
+
+  # No --dev here: secure cookies and https only. --watch-courier sends the
+  # verification and recovery emails through Resend.
+  kratos:
+    image: oryd/kratos:v26.2.0
+    environment: *kratos-env
+    volumes: *kratos-volumes
+    configs: *kratos-configs
+    command: serve -c /etc/config/kratos/kratos.yml --watch-courier
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    logging: *logging
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: heynaija
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: heynaija
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heynaija -d heynaija"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  postgres-data:
+  redis-data:
+
+configs:
+  # Kratos for a real domain over https. Rendered here so the site address and
+  # the webhook secret can be filled in; the dev version is infra/kratos/kratos.yml.
+  kratos:
+    content: |
+      version: v26.2.0
+
+      serve:
+        public:
+          base_url: ${SITE_URL}/kratos/
+        admin:
+          base_url: http://kratos:4434/
+
+      selfservice:
+        default_browser_return_url: ${SITE_URL}/
+        allowed_return_urls:
+          - ${SITE_URL}
+        methods:
+          password:
+            enabled: true
+            config:
+              min_password_length: 10
+              identifier_similarity_check_enabled: true
+              haveibeenpwned_enabled: true
+              ignore_network_errors: true
+          code:
+            enabled: true
+        flows:
+          error:
+            ui_url: ${SITE_URL}/auth-error
+          login:
+            ui_url: ${SITE_URL}/login
+            lifespan: 15m
+          registration:
+            ui_url: ${SITE_URL}/signup
+            lifespan: 15m
+            # One form (email, handle, password) so the invite cookie arrives with
+            # the password submission.
+            style: unified
+            # Invite-only signup: see the comments in infra/compose/docker-compose.dev.yml.
+            after:
+              password:
+                hooks:
+                  - hook: web_hook
+                    config:
+                      url: http://api:4000/internal/kratos/registration
+                      method: POST
+                      body: file:///etc/config/kratos/invite-check.jsonnet
+                      auth:
+                        type: api_key
+                        config:
+                          name: x-webhook-secret
+                          value: ${KRATOS_WEBHOOK_SECRET}
+                          in: header
+                      response:
+                        parse: true
+                  - hook: web_hook
+                    config:
+                      url: http://api:4000/internal/kratos/registered
+                      method: POST
+                      body: file:///etc/config/kratos/invite-check.jsonnet
+                      auth:
+                        type: api_key
+                        config:
+                          name: x-webhook-secret
+                          value: ${KRATOS_WEBHOOK_SECRET}
+                          in: header
+                  - hook: session
+                  - hook: show_verification_ui
+          verification:
+            enabled: true
+            ui_url: ${SITE_URL}/verification
+            use: code
+            after:
+              default_browser_return_url: ${SITE_URL}/
+          recovery:
+            enabled: true
+            ui_url: ${SITE_URL}/recovery
+            use: code
+          settings:
+            ui_url: ${SITE_URL}/settings
+            privileged_session_max_age: 15m
+          logout:
+            after:
+              default_browser_return_url: ${SITE_URL}/
+
+      session:
+        lifespan: 336h
+        cookie:
+          name: hn_session
+          same_site: Lax
+
+      hashers:
+        algorithm: bcrypt
+        bcrypt:
+          cost: 12
+
+      ciphers:
+        algorithm: xchacha20-poly1305
+
+      identity:
+        default_schema_id: member
+        schemas:
+          - id: member
+            url: file:///etc/config/kratos/identity.schema.json
+
+      courier:
+        smtp:
+          # The connection URI (with the Resend API key) comes from the environment.
+          from_address: ${SMTP_FROM_ADDRESS:?}
+          from_name: ${SMTP_FROM_NAME:-HeyNaija}
+
+      # Never "info" or "debug" here: at those levels Kratos logs webhook request
+      # headers, which carry the webhook secret.
+      log:
+        level: warning
+        format: json
+        leak_sensitive_values: false
+
+      feature_flags:
+        use_continue_with_transitions: true

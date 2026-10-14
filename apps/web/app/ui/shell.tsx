@@ -5,9 +5,12 @@ import { getCommunities, getTrending, getViewer } from '@/lib/api'
 import { getLogoutUrl } from '@/lib/kratos'
 import { Avatar } from './avatar'
 import {
+  ArrowUpRightIcon,
+  BellIcon,
   BookmarkIcon,
   ChevronIcon,
   FlameIcon,
+  GovernanceIcon,
   GearIcon,
   HomeIcon,
   PeopleIcon,
@@ -22,10 +25,13 @@ import { Logo } from './logo'
 import { Menu } from './menu'
 import { NavLink } from './nav-link'
 import { ThemeSwitch } from './theme-switch'
+import { TreasuryPreview } from './treasury-preview'
+import { UnreadBadge } from './unread-badge'
 
 const NAV = [
   { href: '/', label: 'Home', icon: HomeIcon, exact: true },
   { href: '/c', label: 'Communities', icon: PeopleIcon },
+  { href: '/governance', label: 'Governance', icon: GovernanceIcon },
   { href: '/bookmarks', label: 'Bookmarks', icon: BookmarkIcon },
   { href: '/settings', label: 'Settings', icon: GearIcon },
 ]
@@ -46,16 +52,7 @@ export function Sidebar() {
               {label}
             </NavLink>
           ))}
-          <details>
-            <summary className="menu sidebar-nav-item">
-              <VoteIcon />
-              Community votes
-            </summary>
-            <p className="mx-3 mb-2 mt-1 text-[13px] leading-relaxed text-muted">
-              Community voting is on the way. Members will help shape major platform decisions. There
-              are no open votes yet.
-            </p>
-          </details>
+          <NotificationsLink />
           {NAV.slice(2).map(({ href, label, icon: Icon }) => (
             <NavLink key={href} href={href} className="sidebar-nav-item">
               <Icon />
@@ -91,6 +88,19 @@ export function Sidebar() {
 }
 
 /** Only moderators see this; the API checks the role again on every request. */
+/** Members only, with the unread count. */
+async function NotificationsLink() {
+  const viewer = await getViewer()
+  if (viewer.state !== 'member') return null
+  return (
+    <NavLink href="/notifications" className="sidebar-nav-item">
+      <BellIcon />
+      Notifications
+      <UnreadBadge count={viewer.me.unreadNotifications} />
+    </NavLink>
+  )
+}
+
 async function ModerationLink() {
   const viewer = await getViewer()
   if (viewer.state !== 'member' || !viewer.me.moderates) return null
@@ -126,6 +136,9 @@ export function TopBar() {
       </form>
 
       <div className="ml-auto flex items-center gap-1.5">
+        <Link href="/governance" aria-label="Governance" className="icon-btn lg:hidden">
+          <GovernanceIcon />
+        </Link>
         <Link href="/search" aria-label="Search" className="icon-btn lg:hidden">
           <SearchIcon />
         </Link>
@@ -143,7 +156,7 @@ async function UserMenu() {
   if (viewer.state === 'anonymous') {
     return (
       <>
-        <Link href="/login" className="btn btn-ghost btn-sm">
+        <Link href="/login" className="btn btn-ghost btn-sm hidden sm:inline-flex">
           Sign in
         </Link>
         <Link href="/join" className="btn btn-primary btn-sm">
@@ -185,6 +198,10 @@ async function UserMenu() {
             <GearIcon size={18} />
             Settings
           </Link>
+          <Link href="/governance" className="menu-item">
+            <GovernanceIcon size={18} />
+            Governance
+          </Link>
           {viewer.state === 'member' && viewer.me.moderates ? (
             <Link href="/mod" className="menu-item">
               <ShieldIcon size={18} />
@@ -214,37 +231,19 @@ async function UserMenu() {
 export function RightRail() {
   return (
     <aside className="square-rail">
+      <TreasuryPreview />
       <Suspense fallback={<div className="skeleton h-72" />}>
         <PopularCommunities />
       </Suspense>
 
-      <section id="community-voice" className="governance-card my-4">
-        <div className="flex items-start gap-3">
-          <span className="governance-icon">
-            <PeopleIcon size={26} />
-          </span>
-          <div>
-            <h2 className="section-title">Your voice shapes HeyNaija</h2>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
-              Built for its people. Shaped by its people. Help decide what comes next for our
-              community.
-            </p>
-          </div>
-        </div>
-        <details className="governance-details">
-          <summary className="menu flex items-center gap-3">
-            <VoteIcon size={22} />
-            <span className="flex-1">
-              <span className="block text-sm font-semibold">Community votes</span>
-              <span className="block text-xs text-muted">A say in our shared future</span>
-            </span>
-            <ChevronIcon size={16} />
-          </summary>
-          <p className="mt-3 text-[13px] leading-relaxed text-muted">
-            Open community votes are on the way. Members will be able to discuss proposals and vote
-            on major platform decisions. No votes are open yet.
-          </p>
-        </details>
+      <section className="rail-section">
+        <h2 className="section-title flex items-center gap-2"><VoteIcon size={18} /> Community votes</h2>
+        <p className="mt-2 text-[13px] leading-relaxed text-muted">
+          A say in our shared future. See what we’re building toward.
+        </p>
+        <Link href="/governance#votes" className="rail-text-link">
+          Explore governance <ArrowUpRightIcon size={16} />
+        </Link>
       </section>
 
       <Suspense fallback={null}>
@@ -341,13 +340,32 @@ export function BottomNav() {
         >
           <PlusIcon size={24} />
         </Link>
-        <NavLink href="/bookmarks" className="bottom-tab">
-          <BookmarkIcon size={22} />
-          Bookmarks
-        </NavLink>
+        <NotificationsTab />
         <ProfileTab />
       </Suspense>
     </nav>
+  )
+}
+
+/** Bookmarks for visitors; members get Notifications here (Bookmarks moves to the account menu). */
+async function NotificationsTab() {
+  const viewer = await getViewer()
+  if (viewer.state !== 'member') {
+    return (
+      <NavLink href="/bookmarks" className="bottom-tab">
+        <BookmarkIcon size={22} />
+        Bookmarks
+      </NavLink>
+    )
+  }
+  return (
+    <NavLink href="/notifications" className="bottom-tab">
+      <span className="relative">
+        <BellIcon size={22} />
+        <UnreadBadge count={viewer.me.unreadNotifications} dot />
+      </span>
+      Notifications
+    </NavLink>
   )
 }
 

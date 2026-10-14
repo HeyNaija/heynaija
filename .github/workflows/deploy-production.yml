@@ -1,0 +1,52 @@
+# Every push to `main` that passes CI is built and deployed to production.
+# Roll back by running this workflow on an earlier commit (Run workflow, then pick
+# a branch or tag), or on the server: infra/deploy/deploy.sh <commit>.
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time; a newer push waits rather than cancelling one mid-way.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+    with:
+      build_images: false
+
+  images:
+    needs: check
+    uses: ./.github/workflows/build-images.yml
+    permissions:
+      contents: read
+      packages: write
+
+  deploy:
+    name: Deploy to production
+    needs: images
+    # HeyNaija's own runner on the production server (docs/deployment/production.md).
+    runs-on: [self-hosted, heynaija-production]
+    environment: production
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy ${{ github.sha }}
+        env:
+          IMAGE_PREFIX: ${{ needs.images.outputs.image_prefix }}
+        run: /srv/heynaija/infra/deploy/deploy.sh "${{ github.sha }}"

@@ -16,6 +16,8 @@ export type Me = {
   displayName: string | null
   bio: string
   avatar: string | null
+  /** Shown as a badge on the Notifications link. */
+  unreadNotifications: number
   moderates: boolean
 }
 
@@ -182,7 +184,7 @@ export type QueueItem = {
   reporterHandle: string
   reportCount: number
   post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
-  member: { handle: string; active: boolean } | null
+  member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
 }
 
 export type LogEntry = {
@@ -193,11 +195,68 @@ export type LogEntry = {
   actorHandle: string
   postId: string | null
   memberHandle: string | null
+  communityName: string | null
 }
 
-/** Null when the viewer is not a moderator. */
-export async function getModeration(): Promise<{ queue: QueueItem[]; log: LogEntry[] } | null> {
-  const [queue, log] = await Promise.all([api('/v1/moderation/reports'), api('/v1/moderation/log')])
+export type ModeratorRoster = { slug: string; name: string; moderators: { handle: string; displayName: string | null }[] }[]
+
+/**
+ * Null when the viewer is not a moderator. `roster` (who moderates which
+ * community) is only there for site moderators, who are the ones who can assign.
+ */
+export async function getModeration(): Promise<{ queue: QueueItem[]; log: LogEntry[]; roster: ModeratorRoster | null } | null> {
+  const [queue, log, roster] = await Promise.all([
+    api('/v1/moderation/reports'),
+    api('/v1/moderation/log'),
+    api('/v1/moderation/moderators'),
+  ])
   if (!queue.ok || !log.ok) return null
-  return { queue: await queue.json(), log: await log.json() }
+  return { queue: await queue.json(), log: await log.json(), roster: roster.ok ? await roster.json() : null }
+}
+
+export type NotificationKind =
+  | 'reply'
+  | 'like'
+  | 'follow'
+  | 'post_removed'
+  | 'post_restored'
+  | 'report_resolved'
+  | 'account_reinstated'
+  | 'avatar_removed'
+  | 'profile_cleared'
+  | 'moderator_granted'
+  | 'moderator_revoked'
+
+export type Notification = {
+  id: string
+  kind: NotificationKind
+  createdAt: string
+  read: boolean
+  /** Null for moderation decisions. */
+  actor: { handle: string; displayName: string | null; avatar: string | null } | null
+  post: { id: string; excerpt: string } | null
+  subjectHandle: string | null
+  community: { slug: string; name: string } | null
+  /** report_resolved: 'actioned' or 'dismissed'. post_removed: the report reason. */
+  detail: string | null
+}
+
+/** Null when the visitor is not a signed-in member. */
+export async function getNotifications(cursor?: string): Promise<{ notifications: Notification[]; cursor: string | null } | null> {
+  const path = '/v1/notifications'
+  const res = await api(cursor ? `${path}?cursor=${encodeURIComponent(cursor)}` : path)
+  if (res.status === 401 || res.status === 403) return null
+  // A mangled cursor in the URL falls back to the first page.
+  if (res.status === 400 && cursor) return getNotifications()
+  if (!res.ok) throw new Error(`API ${path} responded ${res.status}`)
+  return res.json()
+}
+
+export type Appeal = { status: 'open' | 'actioned' | 'dismissed'; createdAt: string; resolvedAt: string | null }
+
+/** A suspended member's most recent appeal, if any. */
+export async function getLatestAppeal(): Promise<Appeal | null> {
+  const res = await api('/v1/appeals/latest')
+  if (!res.ok) return null
+  return ((await res.json()) as { appeal: Appeal | null }).appeal
 }

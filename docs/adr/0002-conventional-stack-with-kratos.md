@@ -70,32 +70,56 @@ handling, verification and recovery are security-critical and already solved.
   Sign-in attempts are not limited by us; that is left to Kratos's defaults.
 - **Kratos logs webhook request headers, including the shared secret, at `info`
   level.** Production must run at `warning` or otherwise keep those logs private.
-- **Development-only settings:** Kratos runs with `--dev`, plain http, and its
-  hooks call the API via `host.docker.internal`. There is no production Kratos
-  configuration, SMTP provider or TLS yet.
+- **Deployment** (`infra/deploy/`, guides in `docs/deployment/`): Docker Compose
+  behind the host's nginx and Cloudflare; staging shares a server with Koinovera
+  staging, production has its own. GitHub Actions builds the images and a
+  self-hosted runner per server deploys them. nginx rather than Caddy because the
+  staging server's nginx already owns ports 80 and 443, and Caddy's main advantage
+  (obtaining certificates) does not apply behind Cloudflare's origin certificate. Kratos runs without `--dev`, over
+  https, at log level `warning`, with its webhooks on the private Docker network and
+  email through Resend; its configuration lives in `infra/deploy/compose.yml` so the
+  site address and secrets can be filled in. The dev configuration still runs
+  Kratos with `--dev` over plain http. Tested end to end on a laptop, not yet on a
+  real server, Cloudflare, R2 or Resend.
+- **The web app's proxy targets are fixed when it is built** (Next.js reads
+  rewrites at build time), so the Docker image always points at `api:4000` and
+  `kratos:4433`. In a deployment `/media` is served by nginx, not the web app.
 - **Password change after recovery** was exercised up to the settings form but
   not submitted. Changing email or handle in settings is untested.
 - **Tests** cover invites, posts, threads, likes, bookmarks, search, trending,
   follows, blocks, mutes, profiles, communities, moderation, rate limits, media
-  (profile photos and post images) and the session guard (99 cases, real Postgres,
+  (profile photos and post images) and the session guard, notifications and safety actions (116 cases, real Postgres,
   Kratos stubbed; storage and the job queue faked in memory, image processing real). The Kratos flows and
   web pages were verified by hand.
 - **Counts are computed on read** (likes, replies, followers) with subqueries.
   Fine at pilot size; revisit with measurements before growth.
 - **Threads show at most 200 direct replies** and have no pagination yet.
 - **Communities are public** groupings: anyone can read them and any member can
-  join. Private communities are now possible but not built. Moderator roles exist
-  in the schema and are displayed, but there is no way to assign one except by
-  hand in the database, and no pinned welcome post.
-- **Moderation model.** Site moderators see every report and can remove posts and
-  suspend or reinstate accounts. Community moderators see only reports about posts
-  in their community and can only remove those posts. Every decision is written to
-  an append-only log. Roles are assigned with `pnpm mod:grant`, not in the app.
+  join. Private communities are now possible but not built. There is no pinned
+  welcome post.
+- **Moderation model.** Site moderators see every report and can remove posts,
+  remove a profile photo, clear a name and bio, suspend or reinstate accounts,
+  and make members community moderators (in the app, on the moderation page).
+  Community moderators see only reports about posts in their community and can
+  only remove those posts. Every decision, including role changes, is written to
+  an append-only log, and the member affected is notified. **Site-wide** roles are
+  still assigned only with `pnpm mod:grant`, by whoever runs the service, so a
+  compromised moderator account cannot create more site moderators.
 - **A suspended account is blocked by our API, not by Kratos**: the person can
   still sign in, but can do nothing except file one appeal at a time.
-- **Reported members are not notified**, and neither is anyone whose post is
-  removed. There are no notifications of any kind yet.
-- **Not built from the design mockup:** polls, reposts, notifications,
+- **Notifications are in-app only**: a Notifications page and an unread count in
+  the navigation. No email, push or live updates; the count refreshes on the next
+  page load. They are written in the same transaction as the reply, like, follow
+  or moderation decision. A like or follow notifies once, however often it is
+  undone and redone, and stops showing if it is undone. Notifications from
+  someone the member blocked or muted, or who is suspended, and about deleted
+  posts, are hidden when read rather than deleted. Moderation notices carry no
+  moderator name and never the moderator's private note. Reported members are
+  not told they were reported. A suspended member cannot read notifications, so
+  their account page shows whether their appeal is waiting or was turned down.
+  Nothing deletes old notifications yet; at pilot scale that is fine. Opening the
+  Notifications page marks everything up to the newest shown as read.
+- **Not built from the design mockup:** polls, reposts,
   community votes. Members without a photo get a tinted initial.
 - **Themes** are light, dark and system. The choice is stored in the browser
   (`localStorage`), not on the account, so it does not follow a member to another
@@ -107,13 +131,15 @@ handling, verification and recovery are security-critical and already solved.
   BullMQ job on Redis; the composer polls until each is ready, and a post can only
   use ready images. The worker runs inside the API process, two jobs at a time;
   it can move to its own process without code changes to the producer.
-- **Post images and deletion.** When an author deletes a post, its image files
-  are deleted at once. When a moderator removes a post, its images are hidden
-  everywhere in the app but the files stay in the public bucket, so a restore
-  brings them back; anyone who saved an image's URL can still open it (and a CDN
-  may cache it). Removing the files on moderator removal, and deciding what must
-  be preserved as evidence for abuse-material reports, belong with the scanning
-  work in roadmap step 4.
+- **Images taken down are quarantined, not deleted.** When a moderator removes a
+  post or a profile photo, its files move from the public bucket to a private
+  `quarantine/` prefix in the uploads bucket: off the internet, but kept as
+  evidence and so a restore can bring them back. If the move fails, the decision
+  still stands and the hourly sweep finishes it. When an author deletes their own
+  post its images are deleted, unless the post has an open report, in which case
+  they are quarantined too. Nothing yet purges Cloudflare's cache, so a copy
+  cached before removal can still be served; that, and how long quarantine is
+  kept, are open items in `docs/safety/abuse-material-scanning.md`.
 - **Abandoned images** (uploads never finished, and post images never posted) are
   cleared an hour later: for one member whenever they start an upload, and for
   everyone by an hourly job. A composer left open over an hour loses its images
@@ -128,13 +154,16 @@ handling, verification and recovery are security-critical and already solved.
   person counts them. Invisible characters and text-direction overrides are
   stripped so a name cannot pose as different text, but nothing stops a member
   choosing someone else's name or "HeyNaija Team"; the handle stays the unique
-  identifier and is always shown beside the name. Moderators cannot clear a name
-  or bio except by suspending the account; that belongs with roadmap step 4.
+  identifier and is always shown beside the name. Site moderators can clear a
+  name and bio from an account report.
   Search matches names anywhere in the name (not just the start), with a plain
   `ilike` scan that is fine at pilot size.
-- **No scanning of uploads for known abuse material**, and a moderator cannot yet
-  remove someone's photo (suspending the account hides it). Both are needed
-  before uploads are open beyond the invited pilot.
+- **No scanning of uploads for known abuse material yet.** Every upload passes a
+  `ContentScanner` before it is published, and a match is blocked and preserved,
+  but the scanner in use (`NoScanner`) passes everything. The plan (PhotoDNA in
+  the pipeline, Cloudflare's tool at the edge, a runbook and legal questions) is
+  in `docs/safety/abuse-material-scanning.md`, and must be carried out before
+  uploads open beyond the invited pilot.
 - **Verified against MinIO only.** Cloudflare R2 has not been tried; the setup
   and the checks to run are in `docs/deployment/cloudflare-r2.md`. MinIO no longer publishes images, so the dev stack uses
   Chainguard's build, pinned by digest.

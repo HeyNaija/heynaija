@@ -4,19 +4,26 @@ A Nigeria-first, community-owned social network. [PLAN.md](PLAN.md) has the prod
 plan, what is built, and what comes next; [ADR 0002](docs/adr/0002-conventional-stack-with-kratos.md)
 explains the architecture and lists every known limitation.
 
-**Status:** early local build, nothing deployed yet. What works:
+**Status:** early local build, nothing deployed yet; everything needed to deploy
+staging and production is in `infra/deploy/` and `.github/workflows/`, with
+step-by-step guides in [docs/deployment/](docs/deployment/staging.md). What works:
 
 - **Accounts:** join with an invite code, sign up, confirm email, sign in and out,
   recover an account (all handled by Ory Kratos).
 - **Posting:** posts and threaded replies with up to four images each (with
   descriptions for screen readers, and a full-screen viewer), likes, private bookmarks.
 - **People:** profiles with a photo, display name and bio; follow, mute and block.
+- **Notifications:** replies, likes, follows and moderation outcomes, with an
+  unread count in the navigation.
 - **Communities:** five launch communities to join and post in.
 - **Feeds:** Latest, Following (people and communities, each post says why it is
   there), per-community, trending, and search over members, communities and posts.
 - **Safety:** report a post or account, a moderation queue (remove post, suspend
   account, dismiss), appeals from suspended members, a decision log, rate limits.
 - **Look:** light, dark and system themes; works down to phone width.
+- **Governance preview:** a public information page for upcoming community votes,
+  treasury transparency and decision history, with a Public Treasury spotlight.
+  Voting and treasury transactions are not live.
 
 ## How it fits together
 
@@ -96,12 +103,16 @@ Storage is any S3-compatible service, set by the `S3_*` variables: MinIO locally
 
 ## Moderators
 
-There is no screen for assigning moderators; it is done from the command line. The
-member must have signed in at least once.
+Site-wide moderators are assigned only from the command line, by whoever runs the
+service. The member must have signed in at least once.
 
 ```bash
 pnpm mod:grant ada                      # site-wide: every report, can suspend accounts
 ```
+
+Site moderators can then make members **community** moderators from the
+Moderation page in the app (logged, and the member is notified). The command line
+works for that too:
 
 ```bash
 pnpm mod:grant ada --community lagos    # only reports about posts in that community
@@ -109,6 +120,10 @@ pnpm mod:grant ada --community lagos    # only reports about posts in that commu
 
 `pnpm mod:revoke` takes the same arguments. Moderators get a Moderation link in the
 app.
+
+Images that moderators take down are kept privately, not deleted. Before uploads
+open beyond invited testers, follow
+[docs/safety/abuse-material-scanning.md](docs/safety/abuse-material-scanning.md).
 
 `pnpm infra:down` stops the stack. Local state lives in `infra/compose/.data/`.
 

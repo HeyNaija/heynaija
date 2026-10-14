@@ -20,9 +20,10 @@ recovery (Ory Kratos); posts, threaded replies, likes, bookmarks; up to four
 images per post with descriptions, processed in a background job, opening in a
 full-screen viewer; profiles with photos, display names and bios; follow, mute, block; five communities to join and post in; Latest,
 Following, community and trending feeds; search; reporting, a moderation queue,
-appeals and a decision log; rate limits; light, dark and system themes.
+appeals and a decision log; notifications (replies, likes, follows, moderation
+outcomes); rate limits; light, dark and system themes.
 
-**Not built:** notifications, deployment of any kind. See [§8 Roadmap](#8-roadmap) for the order.
+**Not built:** deployment of any kind. See [§8 Roadmap](#8-roadmap) for the order.
 
 **Key documents**
 
@@ -30,7 +31,10 @@ appeals and a decision log; rate limits; light, dark and system themes.
 |---|---|
 | [README.md](README.md) | Running it locally, commands, moderators, checks |
 | [ADR 0002](docs/adr/0002-conventional-stack-with-kratos.md) | Why the stack is what it is, and every known limitation |
+| [docs/deployment/staging.md](docs/deployment/staging.md) | Deploying staging on the shared Contabo server: Cloudflare, nginx, GitHub runner, backups |
+| [docs/deployment/production.md](docs/deployment/production.md) | Deploying production on netcup |
 | [docs/deployment/cloudflare-r2.md](docs/deployment/cloudflare-r2.md) | Setting up media storage in production |
+| [docs/safety/abuse-material-scanning.md](docs/safety/abuse-material-scanning.md) | Scanning uploads for abuse material: plan, runbook, legal questions |
 | [ADR 0001](docs/adr/0001-phase-0-spike.md) | The AT Protocol spike (historical) |
 
 ---
@@ -45,8 +49,8 @@ appeals and a decision log; rate limits; light, dark and system themes.
 | Frontend | **Next.js 16** (App Router, Cache Components), server-rendered, works without JavaScript for core reading and posting | Fast on low-end Android and slow networks |
 | Backend | **NestJS + Fastify** | A separate API with its own tests and deploys |
 | Media storage | **S3-compatible**: MinIO locally, **Cloudflare R2** in production | No download fees on R2; same code everywhere |
-| Queue/cache | **Redis with BullMQ** for background jobs: post-image processing and an hourly media sweep, run inside the API process. Next: notifications, shared rate limits | Add only when measured or needed |
-| Deploy | Docker on one or two VPSs behind Cloudflare, to be decided | See §7 |
+| Queue/cache | **Redis with BullMQ** for background jobs: post-image processing and an hourly media sweep, run inside the API process. Next: shared rate limits, email or push notifications | Add only when measured or needed |
+| Deploy | **Docker Compose on one VPS** (netcup recommended, or Contabo) behind Cloudflare; staging at `staging.heynaija.ng`; email through **Resend** | See §7 |
 | Governance | Open charter, provisional steering group, legal review before any ownership claim | Publishing code does not make a project community-owned |
 | Federation | **None in Phase 1.** Portability through data export and open source instead | See ADR 0002 |
 
@@ -135,7 +139,7 @@ Browser ──> Next.js web app
 - [x] Search over members, communities and posts (PostgreSQL full text)
 - [x] Mute and block, respected in every feed, thread and search
 - [x] Post images: up to 4, with optional descriptions (alt text), processed in a background job
-- [ ] Notifications (replies, likes, follows, moderation outcomes)
+- [x] Notifications (replies, likes, follows, moderation outcomes), in-app only
 - [ ] Reposts
 
 ### Communities
@@ -150,22 +154,24 @@ Browser ──> Next.js web app
 - [x] Site-wide and per-community moderator roles (assigned from the command line)
 - [x] Appeals from suspended members; append-only decision log; restore a removed post
 - [x] Rate limits on posting, actions, reports, search, invite checks and uploads
-- [ ] Moderators can remove a profile photo without suspending the account
-- [ ] Scanning uploads for known child sexual abuse material (required before uploads open beyond the pilot)
-- [ ] Assigning moderators in the app
-- [ ] Notifying people about moderation decisions that affect them
+- [x] Moderators can remove a profile photo, or clear a name and bio, without suspending the account
+- [ ] Scanning uploads for known child sexual abuse material (required before uploads open beyond the pilot). Plan written and the hook built: [docs/safety/abuse-material-scanning.md](docs/safety/abuse-material-scanning.md)
+- [x] Assigning community moderators in the app (site-wide roles stay on the command line)
+- [x] Images taken down by moderators are moved out of public view and kept privately as evidence
+- [x] Notifying people about moderation decisions that affect them (post removed or restored, report outcome, reinstatement; a rejected appeal shows on the suspended account)
 
 ### Open governance
+- [x] Governance information page and Public Treasury preview, clearly marked coming soon
 - [ ] Licence (consider AGPL-3.0-or-later, with legal review), charter, policies, roadmap, published source
 - [ ] Disclosure of the provisional custodians and the plan for community ownership
-- [ ] Community votes (the UI says "on the way"; nothing is built)
+- [ ] Community voting and treasury records (information pages are built; voting and transactions are not live)
 
 ### Operations
 - [x] CI: build, typecheck, tests, dependency audit (never run: no GitHub remote yet)
-- [ ] Staging and production environments; TLS; real domains
-- [ ] Production Kratos config and an email provider
-- [ ] Backups and a rehearsed restore (Postgres, Kratos database, media bucket)
-- [ ] Logging, metrics, uptime alerts
+- [ ] Staging and production environments; TLS; real domains (everything built and tested locally: [staging guide](docs/deployment/staging.md); not provisioned)
+- [x] Production Kratos config and an email provider (Resend)
+- [ ] Backups and a rehearsed restore (Postgres, Kratos database, media bucket): scripts built, backup and restore rehearsed locally; media not copied outside R2
+- [ ] Logging, metrics, uptime alerts (logs capped per service; uptime check and backup ping described in the guide; no error alerts yet)
 - [ ] Browser end-to-end tests; load test
 - [ ] Privacy-respecting product metrics (signup → first follow → first post → week-1 return)
 
@@ -184,6 +190,7 @@ All tables are in `packages/db/src/schema.ts`; migrations in `packages/db/drizzl
 | `blocks`, `mutes` | Safety relationships |
 | `invites`, `invite_redemptions` | Hashed invite codes and who each one let in |
 | `reports`, `moderation_actions` | Reports and appeals; the append-only decision log |
+| `notifications` | One row per event for a member: kind, actor, post, read time. What still shows is decided on read |
 | `media` | Uploaded files: owner, kind, status, type, size, dimensions; for post images also the post, position and description |
 
 Counts (likes, replies, followers) are computed on read. Fine at pilot scale;
@@ -213,27 +220,26 @@ brand owner has set:
 
 ---
 
-## 7. Production infrastructure (to decide and build)
+## 7. Production infrastructure
 
-Proposed shape for the pilot; nothing is provisioned.
+Built and tested on a laptop; **nothing is provisioned yet.** Step-by-step guides:
+[staging](docs/deployment/staging.md) and [production](docs/deployment/production.md);
+the files are in `infra/deploy/` and `.github/workflows/`.
 
-| Piece | Proposal | Notes |
+| Piece | Decision | Notes |
 |---|---|---|
-| Edge | Cloudflare in front of everything | TLS, caching, CSAM scanning tool for media |
-| App server | One VPS: web, API, Kratos, Postgres, Redis via Docker Compose | Split Postgres out when measurements say so |
-| Media | Cloudflare R2, two buckets | Follow [the R2 guide](docs/deployment/cloudflare-r2.md) |
-| Email | A transactional email provider for Kratos | SPF, DKIM, DMARC on the sending domain |
-| Backups | Nightly encrypted Postgres dumps (app and Kratos databases) off the server | Rehearse a restore before launch |
+| Domain | `heynaija.ng`; staging at `staging.heynaija.ng` | DNS on Cloudflare |
+| Edge | Cloudflare in front of everything | TLS (Full strict, origin certificate), caching, Authenticated Origin Pulls, CSAM scanning tool for media |
+| Servers | **Staging:** the owner's existing Contabo server, shared with Koinovera staging. **Production:** its own netcup server (4 vCPU / 8 GB / 120 GB). Ubuntu 24.04 | Docker Compose: web, API, Kratos, Postgres, Redis. Only the web app publishes a port, on 127.0.0.1, so nothing clashes with Koinovera |
+| Front door | The host's **nginx** (already serving Koinovera on staging), one site per environment rendered from a template | Origin certificate, Authenticated Origin Pulls, security headers, real visitor IPs |
+| Media | Cloudflare R2: two buckets per environment, served at `/media` by nginx | [R2 guide](docs/deployment/cloudflare-r2.md) |
+| Email | Resend over SMTP, from `no-reply@mail.heynaija.ng` | SPF, DKIM, DMARC on the sending domain |
+| Backups | Nightly `pg_dump` of both databases, encrypted with age, copied to an R2 backups bucket, 30 days kept | Restore rehearsed on a laptop; rehearse again on staging |
+| Deploys | **GitHub Actions:** a push to `staging` or `main` runs CI, builds the images on GitHub's machines into GitHub's registry, then HeyNaija's own self-hosted runner on that server runs `deploy.sh` | Servers never build; rollback reruns the workflow on an earlier commit, or `deploy.sh <commit>` |
 
-Decisions needed from the owner: **hosting provider, domain name, email provider.**
-
-Production changes the code will need (none done yet):
-- A production Kratos config: real domain, `https`, no `--dev`, log level `warning`
-  (Kratos logs the webhook secret at `info`), SMTP settings.
-- Kratos webhook URLs pointing at the API's internal address instead of
-  `host.docker.internal`.
-- `Secure` cookies, `WEB_PUBLIC_URL` and the Kratos URLs set to the real domain.
-- Rate limits moved from memory to Redis if the API runs more than one process.
+Still to do: the owner's accounts and server (the guide), media copies outside R2,
+error alerting from logs, rate limits in Redis before running more than one API
+process.
 
 **Budget:** get live quotes. The v2.0 allowance of roughly €40–€150 a month for
 servers and small services is still a reasonable planning figure; it excludes
@@ -249,10 +255,15 @@ In order; each step is a vertical slice with tests and a browser check.
    processed by BullMQ on the existing Redis.
 2. ~~**Display name and bio**~~ Done 14 October 2026, along with a full-screen
    image viewer.
-3. **Notifications**: replies, likes, follows; then moderation outcomes.
-4. **Safety gaps:** moderator removal of photos; abuse-material scanning plan;
-   moderator assignment in the app.
-5. **Staging deployment** (§7), including R2, email and backups.
+3. ~~**Notifications**~~ Done 14 October 2026: in-app, for replies, likes, follows
+   and moderation outcomes. No email or push yet.
+4. ~~**Safety gaps**~~ Done 14 October 2026: moderators can remove photos and
+   clear names and bios, assign community moderators in the app, and taken-down
+   images are quarantined. The scanning plan is written; carrying it out
+   (PhotoDNA, Cloudflare's tool, legal advice) is part of the launch checklist.
+5. **Staging deployment** (§7), including R2, email and backups. The deployment
+   is built and tested locally (14 October 2026); provisioning the server and
+   accounts follows [docs/deployment/staging.md](docs/deployment/staging.md).
 6. **Browser end-to-end tests** of signup, posting, moderation; a basic load test.
 7. **Governance pages:** licence, charter, rules, privacy policy, data export.
 8. **Pilot launch:** onboard 20–30 seed members, then invite in batches.

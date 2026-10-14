@@ -3,8 +3,10 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { resolveReport, restorePost } from '@/app/actions'
+import { Avatar } from '@/app/ui/avatar'
 import { EmptyState } from '@/app/ui/empty-state'
 import { ShieldIcon } from '@/app/ui/icons'
+import { ModeratorRoster } from '@/app/ui/moderator-roster'
 import { PostImages } from '@/app/ui/post-images'
 import { card, PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
@@ -29,6 +31,10 @@ const ACTIONS: Record<string, string> = {
   suspend_member: 'suspended',
   reinstate_member: 'reinstated',
   dismiss_report: 'dismissed a report',
+  remove_avatar: 'removed the profile photo of',
+  clear_profile: 'cleared the name and bio of',
+  grant_community_moderator: 'made a moderator:',
+  revoke_community_moderator: 'removed as moderator:',
 }
 
 export default function ModerationPage() {
@@ -59,9 +65,18 @@ async function Moderation() {
             New reports and appeals will show up here.
           </EmptyState>
         ) : (
-          data.queue.map((item) => <Report key={item.id} item={item} now={now} />)
+          data.queue.map((item) => <Report key={item.id} item={item} now={now} siteWide={data.roster !== null} />)
         )}
       </section>
+
+      {data.roster ? (
+        <section aria-label="Community moderators" className={`${card} p-4`}>
+          <h2 className="section-title">Community moderators</h2>
+          <div className="mt-3">
+            <ModeratorRoster roster={data.roster} />
+          </div>
+        </section>
+      ) : null}
 
       <section aria-label="Recent decisions" className={`${card} p-4`}>
         <h2 className="section-title">Recent decisions</h2>
@@ -82,7 +97,7 @@ async function Moderation() {
 const button = 'btn btn-secondary btn-sm'
 const danger = 'btn btn-danger btn-sm'
 
-function Report({ item, now }: { item: QueueItem; now: number }) {
+function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWide: boolean }) {
   const isAppeal = item.reason === 'appeal'
   // Every button submits the same form; its value is the decision.
   return (
@@ -113,13 +128,20 @@ function Report({ item, now }: { item: QueueItem; now: number }) {
           ) : null}
         </blockquote>
       ) : item.member ? (
-        <p className="text-sm">
-          Account:{' '}
-          <Link href={`/u/${item.member.handle}`} className="font-semibold hover:underline">
-            @{item.member.handle}
-          </Link>
-          {item.member.active ? '' : ' (suspended)'}
-        </p>
+        // The account as others see it: photo, name and bio are what get reported.
+        <div className="flex gap-3 rounded-lg bg-panel p-4 text-sm">
+          <Avatar handle={item.member.handle} src={item.member.avatar} size={48} />
+          <div className="min-w-0">
+            <p>
+              {item.member.displayName ? <span className="font-semibold">{item.member.displayName} </span> : null}
+              <Link href={`/u/${item.member.handle}`} className="text-muted hover:underline">
+                @{item.member.handle}
+              </Link>
+              {item.member.active ? '' : ' (suspended)'}
+            </p>
+            {item.member.bio ? <p className="mt-1 whitespace-pre-wrap break-words">{item.member.bio}</p> : null}
+          </div>
+        </div>
       ) : null}
 
       {item.details ? (
@@ -146,6 +168,16 @@ function Report({ item, now }: { item: QueueItem; now: number }) {
             {item.post ? (
               <SubmitButton name="resolution" value="remove_post" className={danger}>
                 Remove post
+              </SubmitButton>
+            ) : null}
+            {item.member && !item.post && siteWide && item.member.avatar ? (
+              <SubmitButton name="resolution" value="remove_avatar" className={button}>
+                Remove photo
+              </SubmitButton>
+            ) : null}
+            {item.member && !item.post && siteWide && (item.member.displayName || item.member.bio) ? (
+              <SubmitButton name="resolution" value="clear_profile" className={button}>
+                Clear name and bio
               </SubmitButton>
             ) : null}
             <SubmitButton
@@ -177,6 +209,7 @@ function Decision({ entry, now }: { entry: LogEntry; now: number }) {
             <span className="font-medium">@{entry.memberHandle}</span>
           </>
         ) : null}
+        {entry.communityName ? ` in ${entry.communityName}` : null}
       </span>
       <span className="text-muted">{timeAgo(entry.createdAt, now)}</span>
       {entry.note ? <span className="w-full text-muted">“{entry.note}”</span> : null}

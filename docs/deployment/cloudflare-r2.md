@@ -65,9 +65,14 @@ its own pair of buckets).
 
 ## 5. Clean up abandoned uploads automatically
 
-`heynaija-uploads` → **Settings** → **Object lifecycle rules** → add a rule that
-deletes objects **1 day** after upload. The API already deletes uploads it has
-processed and clears abandoned ones hourly; this catches the rest.
+`heynaija-uploads` → **Settings** → **Object lifecycle rules** → add rules that
+delete objects **1 day** after upload, **for the prefixes `avatars/` and `posts/`
+only**. The API already deletes uploads it has processed and clears abandoned ones
+hourly; these catch the rest.
+
+**Do not** add a rule for the whole bucket. The `quarantine/` prefix holds images
+moderators took down and uploads the abuse-material scanner blocked. They are
+kept as evidence and must survive (see `docs/safety/abuse-material-scanning.md`).
 
 ## 6. Create an API token for the app
 
@@ -134,13 +139,12 @@ and refuses to run against any other address.
 
 ## Before opening uploads beyond invited testers
 
-- **Scan for known child sexual abuse material.** Cloudflare offers a CSAM
-  scanning tool for content served through its network; enable it on the zone
-  that serves `/media`, and check its current terms. This is a legal and safety
-  obligation, not an optional extra.
-- **Let moderators remove a photo** without suspending the account (not built).
-- **Moderator-removed posts keep their image files** in the public bucket (hidden
-  in the app, so a restore works). Decide whether removal should delete or move
-  them, and what to preserve as evidence for abuse-material reports.
+- **Scan for known child sexual abuse material.** Follow
+  `docs/safety/abuse-material-scanning.md`: a hash-matching scanner in the API, and
+  Cloudflare's CSAM Scanning Tool on the hostname that serves `/media`. This is a
+  legal and safety obligation, not an optional extra.
+- **Purge Cloudflare's cache when a moderator takes an image down.** Removal moves
+  the files out of the public bucket at once, but a cached copy can be served for
+  up to a year. Not automated yet.
 - Decide how long deleted media is kept (today: deleted immediately on replace,
   remove, or when an author deletes a post) and write it into the privacy policy.

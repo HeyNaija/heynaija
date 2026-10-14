@@ -1,0 +1,72 @@
+# HeyNaija at ${SITE_ADDRESS}. Rendered by infra/deploy/render-nginx.sh from
+# infra/deploy/nginx/heynaija.conf.template: edit the template, not this file.
+#
+# On the staging server this sits beside Koinovera's sites in the same nginx; it
+# only answers for ${SITE_ADDRESS} and only proxies to HeyNaija's loopback port.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${SITE_ADDRESS};
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name ${SITE_ADDRESS};
+
+    # Cloudflare origin certificate (SSL mode "Full (strict)").
+    ssl_certificate ${NGINX_CERT};
+    ssl_certificate_key ${NGINX_CERT_KEY};
+
+    # Authenticated Origin Pulls: only connections presenting Cloudflare's client
+    # certificate get in, so nobody can reach the site around Cloudflare. Docker's
+    # published ports bypass ufw, so the firewall alone would not ensure that.
+    ssl_client_certificate ${NGINX_CLIENT_CA};
+    ssl_verify_client on;
+
+    # The visitor's address, from Cloudflare's header, trusted only from Cloudflare.
+    # Ranges fetched from https://www.cloudflare.com/ips/ when this was rendered.
+${CLOUDFLARE_REAL_IP}
+    real_ip_header CF-Connecting-IP;
+
+    # Images go straight to storage; requests here are small.
+    client_max_body_size 2m;
+
+    # Every header lives here: a location with its own add_header would drop these.
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+${ROBOTS_HEADER}
+    server_tokens off;
+
+    # Processed images, from the public media bucket. Cloudflare caches them (they
+    # are immutable), which is also where its CSAM Scanning Tool sees them.
+    location /media/ {
+        limit_except GET {
+            deny all;
+        }
+        proxy_pass ${MEDIA_ORIGIN}/;
+        proxy_ssl_server_name on;
+        proxy_set_header Host ${MEDIA_HOST};
+        # The site's cookies are none of storage's business.
+        proxy_set_header Cookie "";
+        proxy_hide_header Set-Cookie;
+    }
+
+    # Everything else: the web app, which also proxies /api/v1 and /kratos.
+    location / {
+        proxy_pass http://${WEB_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 60s;
+    }
+}

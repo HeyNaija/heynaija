@@ -18,6 +18,10 @@
   --accent-soft: #eaf4ee;
   --accent-ink: #ffffff;
   --brand-deep: #123b30; /* headings on sage panels */
+  --treasury-bg: #123b30;
+  --treasury-ink: #f4faf6;
+  --treasury-muted: #c3d9cd;
+  --treasury-line: #41675a;
   --danger: #b3261e;
   --danger-soft: #fbedec;
   --warm: #e8590c;
@@ -593,35 +597,142 @@ summary.menu::-webkit-details-marker {
 .community-row {
   min-height: 44px;
 }
-.governance-card {
+.treasury-preview {
+  border: 1px solid var(--treasury-line);
   border-radius: var(--r-panel);
-  background: var(--accent-soft);
-  padding: 16px;
+  background: var(--treasury-bg);
+  padding: 20px;
+  color: var(--treasury-ink);
+  margin-bottom: 8px;
 }
-.governance-icon {
-  padding-top: 2px;
-  color: var(--accent);
+.treasury-symbol {
+  display: inline-flex;
+  padding: 8px;
+  border: 1px solid var(--treasury-line);
+  border-radius: var(--r-control);
 }
-.governance-card h2 {
-  color: var(--brand-deep);
+.treasury-status {
+  border: 1px solid var(--treasury-line);
+  border-radius: var(--r-chip);
+  padding: 3px 8px;
+  color: var(--treasury-muted);
+  font-size: 12px;
+  font-weight: 600;
 }
-.governance-details {
-  margin-top: 14px;
-  border-top: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+.treasury-copy { color: var(--treasury-muted); }
+.treasury-link {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 18px;
+  border-top: 1px solid var(--treasury-line);
   padding-top: 12px;
+  font-size: 13px;
+  font-weight: 600;
 }
-.governance-details summary {
-  color: var(--brand-deep);
+.treasury-link:hover { text-decoration: underline; }
+.treasury-link:focus-visible { outline-color: var(--treasury-ink); }
+.rail-text-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 600;
 }
-.governance-details[open] summary > svg:last-child {
-  transform: rotate(180deg);
+.rail-text-link:hover { text-decoration: underline; }
+.governance-header { padding: 4px 0 0; }
+.governance-header .page-title { font-size: 30px; }
+.governance-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
+.governance-jump-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.governance-jump-links a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+.governance-jump-links a:hover { text-decoration: underline; }
+.governance-intro {
+  margin-top: 20px;
+  border-left: 2px solid var(--accent);
+  padding-left: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.governance-section {
+  scroll-margin-top: 88px;
+  border-bottom: 1px solid var(--line);
+  padding-block: 26px;
+}
+.governance-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.governance-section-heading .chip { margin-left: auto; }
+.governance-section-icon { display: inline-flex; color: var(--accent-strong); }
+.governance-empty {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  padding: 16px;
+  background: var(--panel);
+}
+.governance-disclosure { margin-top: 8px; }
+.governance-disclosure summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+.governance-disclosure[open] summary > svg { transform: rotate(180deg); }
+.treasury-plan {
+  margin-top: 16px;
+  border-left: 2px solid var(--line-strong);
+  padding-left: 14px;
+}
+.treasury-plan > div + div { margin-top: 14px; }
+.treasury-plan dt { font-size: 13px; font-weight: 600; }
+.treasury-plan dd { margin-top: 2px; color: var(--muted); font-size: 13px; }
+.governance-footer { padding-top: 22px; }
 
 .feed-tabs {
+  /* Stays pinned under the top bar, so switching feeds is always one tap away. */
+  position: sticky;
+  top: 68px;
+  z-index: 10;
   min-height: 52px;
   /* Its rule spans the column, like the post dividers below it. */
   margin: -18px -20px 0;
+  background: var(--topbar);
   padding-inline: 20px;
+  backdrop-filter: blur(12px);
 }
 .feed-tab {
   position: relative;
@@ -683,7 +794,7 @@ summary.menu::-webkit-details-marker {
 }
 .post-card {
   border-bottom: 1px solid var(--line);
-  padding: 16px 20px 10px;
+  padding: 20px 20px 14px;
 }
 /* The conversation above a post in a thread is indented under its own rule. */
 ol.post-list {
@@ -703,7 +814,74 @@ ol.post-list .post-card {
 }
 .post-body {
   font-size: 15px;
-  line-height: 1.55;
+  line-height: 1.65;
+}
+.post-actions .icon-btn { min-height: 40px; min-width: 40px; }
+
+/* A notification is a row like a post: kind icon, then who and what. New ones
+   sit on the accent tint until the member moves on. */
+.notification-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 16px 20px;
+  transition: background-color 0.15s;
+}
+a.notification-row:hover {
+  background: var(--panel);
+}
+.notification-row.is-unread {
+  background: var(--accent-soft);
+}
+.post-list > li:last-child > .notification-row {
+  border-bottom: 0;
+}
+.notification-icon {
+  display: inline-flex;
+  width: 32px;
+  flex-shrink: 0;
+  justify-content: center;
+  padding-top: 4px;
+  color: var(--muted);
+}
+.notification-icon.is-like,
+.notification-icon.is-reply,
+.notification-icon.is-follow {
+  color: var(--accent-strong);
+}
+.notification-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  margin-top: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.unread-badge {
+  display: inline-flex;
+  min-width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  border-radius: var(--r-chip);
+  background: var(--accent);
+  padding: 0 6px;
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.unread-dot {
+  position: absolute;
+  top: -1px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 /* Images on a post: one keeps its shape, two to four tile a 16:9 frame. The
@@ -940,6 +1118,10 @@ html:has(.image-viewer[open]) {
   font-weight: 700;
 }
 
+@media (max-width: 359px) {
+  .bottom-tab { font-size: 10px; white-space: nowrap; }
+}
+
 @media (min-width: 1024px) and (max-width: 1328px) {
   .town-square {
     margin: 16px 20px;
@@ -997,6 +1179,7 @@ html:has(.image-viewer[open]) {
     padding: 12px 14px 104px;
   }
   .feed-tabs {
+    top: 64px;
     margin: -12px -14px 0;
     padding-inline: 14px;
   }
@@ -1008,7 +1191,10 @@ html:has(.image-viewer[open]) {
     margin-inline: -14px;
   }
   .post-list .post-card {
-    padding: 16px 14px 10px;
+    padding: 18px 14px 12px;
+  }
+  .notification-row {
+    padding: 14px;
   }
   ol.post-list {
     margin-inline: 0;
@@ -1027,6 +1213,4 @@ html:has(.image-viewer[open]) {
     scroll-behavior: auto !important;
   }
 }
-
-
 

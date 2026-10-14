@@ -1,0 +1,14 @@
+# Keep the build context small and secrets out of images.
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+.git
+.env
+.env.*
+!.env.example
+infra/compose/.data
+infra/deploy/.env
+infra/deploy/certs
+docs/design
+*.log

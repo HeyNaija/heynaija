@@ -6,6 +6,7 @@ import {
   pgTable,
   primaryKey,
   text,
+  uniqueIndex,
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core'
@@ -50,7 +51,9 @@ export const media = pgTable(
     // pending: an upload URL was issued. processing: uploaded, waiting for the
     // background job. ready: processed and public. failed: it was not a usable
     // image. deleted: replaced or removed by its owner, or abandoned.
-    status: text('status', { enum: ['pending', 'processing', 'ready', 'failed', 'deleted'] })
+    // quarantined: taken down by a moderator; the files are kept privately.
+    // blocked: matched known abuse material; the original is kept privately.
+    status: text('status', { enum: ['pending', 'processing', 'ready', 'failed', 'deleted', 'quarantined', 'blocked'] })
       .notNull()
       .default('pending'),
     // What the browser said it would send; the upload URL only accepts exactly this.
@@ -237,6 +240,10 @@ export const MODERATION_ACTIONS = [
   'suspend_member',
   'reinstate_member',
   'dismiss_report',
+  'remove_avatar',
+  'clear_profile',
+  'grant_community_moderator',
+  'revoke_community_moderator',
 ] as const
 
 // Append-only record of every moderator decision: who did what, to what, and why.
@@ -251,10 +258,63 @@ export const moderationActions = pgTable(
     postId: uuid('post_id').references(() => posts.id),
     memberId: uuid('member_id').references(() => members.id),
     reportId: uuid('report_id').references(() => reports.id),
+    // Role changes: the community concerned.
+    communityId: uuid('community_id').references(() => communities.id),
     note: text('note').notNull().default(''),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [index('moderation_actions_created_idx').on(t.createdAt)],
+)
+
+export const NOTIFICATION_KINDS = [
+  'reply',
+  'like',
+  'follow',
+  'post_removed',
+  'post_restored',
+  'report_resolved',
+  'account_reinstated',
+  'avatar_removed',
+  'profile_cleared',
+  'moderator_granted',
+  'moderator_revoked',
+] as const
+
+// Something that happened to a member: a reply, like or follow by someone else,
+// or a moderation decision about their post, account or report. Rows are written
+// when it happens; whether one is still shown (the actor blocked, the post
+// deleted, the like taken back) is decided when it is read.
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    recipientId: uuid('recipient_id')
+      .notNull()
+      .references(() => members.id),
+    kind: text('kind', { enum: NOTIFICATION_KINDS }).notNull(),
+    // Who did it. Null for moderation decisions, which come from "the moderators".
+    actorId: uuid('actor_id').references(() => members.id),
+    // reply: the reply. like: the liked post. Moderation: the post decided on.
+    postId: uuid('post_id').references(() => posts.id),
+    // report_resolved about an account: that account.
+    subjectId: uuid('subject_id').references(() => members.id),
+    // moderator_granted / moderator_revoked: the community.
+    communityId: uuid('community_id').references(() => communities.id),
+    // report_resolved: 'actioned' or 'dismissed'. post_removed: the report reason.
+    detail: text('detail'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    readAt: ts('read_at'),
+  },
+  (t) => [
+    index('notifications_recipient_created_idx').on(t.recipientId, t.createdAt),
+    // Liking, unliking and liking again (or following again) notifies once.
+    uniqueIndex('notifications_like_once_idx')
+      .on(t.recipientId, t.actorId, t.postId)
+      .where(sql`kind = 'like'`),
+    uniqueIndex('notifications_follow_once_idx')
+      .on(t.recipientId, t.actorId)
+      .where(sql`kind = 'follow'`),
+  ],
 )
 
 // Signup is invite-only. Only the SHA-256 of a code is stored.

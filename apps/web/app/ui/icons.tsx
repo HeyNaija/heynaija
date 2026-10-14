@@ -1,13 +1,18 @@
 import {
+  ArrowUpRight,
+  Bell,
   Bookmark,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Ellipsis,
+  Flag,
   Flame,
   Heart,
+  History,
   House,
   ImagePlus,
+  Landmark,
   type LucideIcon,
   MessageCircle,
   Plus,
@@ -15,8 +20,10 @@ import {
   Settings,
   Shield,
   User,
+  UserPlus,
   Users,
   Vote,
+  Wallet,
   X,
 } from 'lucide-react'
 
@@ -55,3 +62,10 @@ export const ImageIcon = icon(ImagePlus)
 export const CloseIcon = icon(X)
 export const PreviousIcon = icon(ChevronLeft)
 export const NextIcon = icon(ChevronRight)
+export const ArrowUpRightIcon = icon(ArrowUpRight)
+export const GovernanceIcon = icon(Landmark)
+export const TreasuryIcon = icon(Wallet)
+export const HistoryIcon = icon(History)
+export const BellIcon = icon(Bell)
+export const FollowIcon = icon(UserPlus)
+export const FlagIcon = icon(Flag)

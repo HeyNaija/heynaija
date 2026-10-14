@@ -5,6 +5,8 @@
 # Browsers reach Kratos through the web app's /kratos proxy, so every URL here is
 # on the web app's origin and the session cookie is first-party.
 
+version: v26.2.0
+
 serve:
   public:
     base_url: http://127.0.0.1:3000/kratos/
@@ -41,9 +43,9 @@ selfservice:
     registration:
       ui_url: http://127.0.0.1:3000/signup
       lifespan: 15m
-      # One form (email, handle, password, invite code) instead of two steps, so
-      # the invite code is submitted together with the password.
-      enable_legacy_one_step: true
+      # One form (email, handle, password) instead of two steps, so the invite
+      # cookie is sent together with the password.
+      style: unified
       # after.password.hooks lives in docker-compose.dev.yml (it holds a secret):
       # invite check via webhook to our API, then session, then show_verification_ui.
 

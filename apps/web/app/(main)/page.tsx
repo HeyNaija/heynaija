@@ -3,7 +3,7 @@ import { Suspense } from 'react'
 import { AppealForm } from '@/app/ui/appeal-form'
 import { Composer } from '@/app/ui/composer'
 import { card, PostList, PostsSkeleton } from '@/app/ui/post-item'
-import { getCommunities, getFeed, getFollowingFeed, getViewer } from '@/lib/api'
+import { getCommunities, getFeed, getFollowingFeed, getLatestAppeal, getViewer } from '@/lib/api'
 
 export default function HomePage({ searchParams }: PageProps<'/'>) {
   // Everything that depends on the visitor streams in; the shell renders at once.
@@ -53,7 +53,7 @@ async function Home({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
               A moderator suspended this account, so you cannot post or interact for now. If you
               think that was a mistake, tell us why and a moderator will look again.
             </p>
-            <AppealForm />
+            <AppealStatus />
           </div>
         ) : (
           <p className="notice">
@@ -107,5 +107,31 @@ function Tab({ href, active, children }: { href: string; active: boolean; childr
     <Link href={href} aria-current={active ? 'page' : undefined} className="feed-tab">
       {children}
     </Link>
+  )
+}
+
+/** Where a suspended member's appeal stands, and the form when they can send one. */
+async function AppealStatus() {
+  const appeal = await getLatestAppeal()
+  if (appeal?.status === 'open') {
+    return (
+      <p role="status" className="notice mt-4">
+        Your appeal is waiting for a moderator. You will be able to use your account again if it is accepted.
+      </p>
+    )
+  }
+  return (
+    <>
+      {appeal?.status === 'dismissed' ? (
+        <p className="notice mt-4">
+          A moderator reviewed your appeal
+          {appeal.resolvedAt
+            ? ` on ${new Date(appeal.resolvedAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'long' })}`
+            : ''}{' '}
+          and kept the suspension. You can appeal again if there is something they should know.
+        </p>
+      ) : null}
+      <AppealForm />
+    </>
   )
 }

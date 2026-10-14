@@ -1,0 +1,52 @@
+# Every push to `staging` that passes CI is built and deployed to staging.
+# Roll back by running this workflow on an earlier commit (Run workflow, then pick
+# a branch or tag), or on the server: infra/deploy/deploy.sh <commit>.
+name: Deploy staging
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time; a newer push waits rather than cancelling one mid-way.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+    with:
+      build_images: false
+
+  images:
+    needs: check
+    uses: ./.github/workflows/build-images.yml
+    permissions:
+      contents: read
+      packages: write
+
+  deploy:
+    name: Deploy to staging
+    needs: images
+    # HeyNaija's own runner on the staging server (docs/deployment/staging.md).
+    runs-on: [self-hosted, heynaija-staging]
+    environment: staging
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy ${{ github.sha }}
+        env:
+          IMAGE_PREFIX: ${{ needs.images.outputs.image_prefix }}
+        run: /srv/heynaija/infra/deploy/deploy.sh "${{ github.sha }}"

@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common'
 import { z } from 'zod'
-import { InvalidCursorError } from './posts/posts.service.js'
+import { InvalidCursorError } from './cursor.js'
 
 export const pageQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),

@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { media, members, posts } from '@heynaija/db'
-import { eq, ne } from 'drizzle-orm'
+import { media, members, notifications, posts, reports } from '@heynaija/db'
+import { eq, ne, sql } from 'drizzle-orm'
 import sharp from 'sharp'
 import { slugParam } from '../http.js'
 import { MembersService } from '../members/members.service.js'
+import { ModerationService, NotAModeratorError } from '../moderation/moderation.service.js'
 import { ImagesNotReadyError, newPost, PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
-import { AVATAR_MAX_BYTES, MediaError, type MediaJobs, MediaService, POST_IMAGE_MAX_BYTES } from './media.service.js'
+import { AVATAR_MAX_BYTES, type ContentScanner, MediaError, type MediaJobs, MediaService, POST_IMAGE_MAX_BYTES } from './media.service.js'
 import type { Bucket, ObjectStore } from './object-store.js'
 
 // Storage is faked in memory; the image handling under test is real.
@@ -388,4 +389,143 @@ test('an image abandoned while the job was running does not stay public', async 
   await service.processPostImage(mediaId)
   assert.equal(await statusOf(mediaId), 'deleted')
   assert.deepEqual(store.keys('media'), [])
+})
+
+// --- Taking images down, and scanning ---
+
+const sam = randomUUID() // site moderator
+
+const withModerator = async () => {
+  await db.insert(members).values({ id: sam, handle: 'sam' })
+  const moderation = new ModerationService(db, service)
+  await moderation.setSiteModerator('sam', true)
+  return moderation
+}
+
+const reportOf = async (where: ReturnType<typeof eq>) => (await db.select().from(reports).where(where))[0]!
+
+test("a moderator's removal moves a post's images out of public view, and a restore brings them back", async () => {
+  const moderation = await withModerator()
+  const postsService = new PostsService(db)
+  const image = await readyPostImage(bayo)
+  const { id: post } = await postsService.create(bayo, 'look', { images: [{ id: image, alt: '' }] })
+  await moderation.report(ada, { postId: post }, 'illegal')
+  await moderation.resolve(sam, (await reportOf(eq(reports.postId, post))).id, 'remove_post')
+
+  assert.equal(await statusOf(image), 'quarantined')
+  assert.deepEqual(store.keys('media'), [])
+  // Kept privately, as evidence and so the decision can be undone.
+  assert.deepEqual(store.keys('uploads'), [
+    `uploads/quarantine/posts/${image}/1600.webp`,
+    `uploads/quarantine/posts/${image}/640.webp`,
+  ])
+
+  await moderation.restorePost(sam, post)
+  assert.equal(await statusOf(image), 'ready')
+  assert.deepEqual(store.keys('uploads'), [])
+  assert.deepEqual((await postsService.thread(null, post))!.post.images.map((i) => i.src), [`/media/posts/${image}`])
+})
+
+test('the hourly sweep takes down images of removed posts that are still public', async () => {
+  const postsService = new PostsService(db)
+  const image = await readyPostImage(bayo)
+  const { id: post } = await postsService.create(bayo, 'look', { images: [{ id: image, alt: '' }] })
+  // Removed, but the files were never moved (storage failed at the time).
+  await db.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, post))
+
+  await service.sweepAbandoned()
+  assert.equal(await statusOf(image), 'quarantined')
+  assert.deepEqual(store.keys('media'), [])
+})
+
+test('a site moderator can remove a profile photo, or clear a name and bio, without suspending', async () => {
+  const moderation = await withModerator()
+  const original = await photo()
+  const { mediaId } = await service.startAvatarUpload(bayo, 'image/jpeg', original.length)
+  store.upload(mediaId, original)
+  await service.finishAvatarUpload(bayo, mediaId)
+  await db.update(members).set({ displayName: 'Real Bank Support', bio: 'DM me your PIN' }).where(eq(members.id, bayo))
+
+  await moderation.report(ada, { handle: 'bayo' }, 'scam')
+  const [item] = await moderation.queue(sam)
+  assert.deepEqual(item!.member, {
+    handle: 'bayo',
+    active: true,
+    displayName: 'Real Bank Support',
+    bio: 'DM me your PIN',
+    avatar: `/media/avatars/${mediaId}`,
+  })
+
+  await moderation.resolve(sam, item!.id, 'remove_avatar')
+  assert.equal(await avatarOf(bayo), null)
+  assert.equal(await statusOf(mediaId), 'quarantined')
+  assert.deepEqual(store.keys('media'), [])
+
+  const chi = randomUUID()
+  await db.insert(members).values({ id: chi, handle: 'chi' })
+  await moderation.report(chi, { handle: 'bayo' }, 'scam')
+  const [second] = await moderation.queue(sam)
+  await moderation.resolve(sam, second!.id, 'clear_profile')
+  const [row] = await db.select().from(members).where(eq(members.id, bayo))
+  assert.deepEqual([row!.displayName, row!.bio, row!.active], [null, '', true])
+
+  const told = await db.select().from(notifications).where(eq(notifications.recipientId, bayo))
+  assert.deepEqual(told.map((n) => n.kind).sort(), ['avatar_removed', 'profile_cleared'])
+})
+
+test('community moderators cannot change profiles, and a missing photo cannot be removed', async () => {
+  const moderation = await withModerator()
+  const lola = randomUUID()
+  await db.insert(members).values({ id: lola, handle: 'lola' })
+  await db.execute(sql`insert into communities (slug, name, description) values ('lagos', 'Lagos', '')`)
+  await moderation.setCommunityModerator('lola', 'lagos', true)
+  await moderation.report(ada, { handle: 'bayo' }, 'scam')
+  const report = await reportOf(eq(reports.reporterId, ada))
+
+  await assert.rejects(moderation.resolve(lola, report.id, 'clear_profile'), NotAModeratorError)
+  await assert.rejects(moderation.resolve(sam, report.id, 'remove_avatar'), /no profile photo/)
+})
+
+// A scanner that flags everything, standing in for a real hash match.
+class MatchEverything implements ContentScanner {
+  async scan() {
+    return 'match' as const
+  }
+}
+
+test('an upload the scanner matches is never published, and the original is kept privately', async () => {
+  service = new MediaService(db, store, jobs, new MatchEverything())
+  const mediaId = await uploadPostImage(ada, await picture(800, 600))
+  await service.processPostImage(mediaId)
+
+  assert.equal(await statusOf(mediaId), 'blocked')
+  assert.deepEqual(store.keys('media'), [])
+  assert.deepEqual(store.keys('uploads'), [`uploads/quarantine/originals/posts/${mediaId}`])
+  // The uploader sees an ordinary failure, and cannot use it on a post.
+  assert.equal(await service.postImageStatus(ada, mediaId), 'failed')
+  await assert.rejects(
+    new PostsService(db).create(ada, 'x', { images: [{ id: mediaId, alt: '' }] }),
+    /missing, still processing/,
+  )
+
+  const original = await photo()
+  const { mediaId: avatar } = await service.startAvatarUpload(ada, 'image/jpeg', original.length)
+  store.upload(avatar, original)
+  await assert.rejects(service.finishAvatarUpload(ada, avatar), (e: MediaError) => e.code === 'blocked')
+  assert.equal(await avatarOf(ada), null)
+  assert.equal(await statusOf(avatar), 'blocked')
+})
+
+test('deleting a reported post keeps its images privately for the moderator', async () => {
+  const moderation = await withModerator()
+  const postsService = new PostsService(db)
+  const image = await readyPostImage(bayo)
+  const { id: post } = await postsService.create(bayo, 'evidence', { images: [{ id: image, alt: '' }] })
+  await moderation.report(ada, { postId: post }, 'illegal')
+
+  await postsService.remove(bayo, post)
+  await service.discardPostImages(post)
+  assert.equal(await statusOf(image), 'quarantined')
+  assert.deepEqual(store.keys('media'), [])
+  assert.equal(store.keys('uploads').length, 2)
 })

@@ -10,5 +10,5 @@ const app = await NestFactory.create<NestFastifyApplication>(AppModule, new Fast
 await app.register(fastifyCookie)
 
 const env = app.get<Env>(ENV)
-// Bind to loopback in dev; a deployed API sits behind the reverse proxy.
-await app.listen(env.API_PORT, '127.0.0.1')
+// Loopback in dev; inside the deployment's private Docker network otherwise.
+await app.listen(env.API_PORT, env.API_HOST)
