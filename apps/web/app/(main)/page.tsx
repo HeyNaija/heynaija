@@ -27,7 +27,6 @@ async function Home({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
   const following = me && one(params.feed) === 'following' ? await getFollowingFeed(cursor) : null
   const [feed, communities] = await Promise.all([following ?? getFeed(cursor), me ? getCommunities() : []])
   const joined = communities.filter((c) => c.viewerIsMember)
-  const base = following ? '/?feed=following&' : '/?'
 
   return (
     <div className="home-feed">
@@ -104,7 +103,7 @@ async function Home({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
                   }
                 : { title: 'No posts yet', detail: 'Be the first to say something.' }
           }
-          olderHref={feed.cursor ? `${base}cursor=${encodeURIComponent(feed.cursor)}` : null}
+          more={{ source: { kind: following ? 'following' : 'latest' }, cursor: feed.cursor }}
         />
       </section>
     </div>

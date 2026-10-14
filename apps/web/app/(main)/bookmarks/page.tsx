@@ -39,7 +39,7 @@ async function Bookmarks({ searchParams }: Pick<PageProps<'/bookmarks'>, 'search
           ? { title: 'No older bookmarks' }
           : { title: 'Nothing saved yet', detail: 'Tap the bookmark on any post to keep it here.' }
       }
-      olderHref={feed.cursor ? `/bookmarks?cursor=${encodeURIComponent(feed.cursor)}` : null}
+      more={{ source: { kind: 'bookmarks' }, cursor: feed.cursor }}
     />
   )
 }

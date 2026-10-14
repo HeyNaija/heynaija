@@ -109,7 +109,7 @@ async function CommunityView({ params, searchParams }: Props) {
             title: 'The conversation starts here',
             detail: community.viewerIsMember ? 'Share something with the community.' : 'Join this community to start a conversation.',
           }}
-          olderHref={feed.cursor ? `/c/${community.slug}?cursor=${encodeURIComponent(feed.cursor)}` : null}
+          more={{ source: { kind: 'community', slug: community.slug }, cursor: feed.cursor }}
         />
       </section>
     </div>

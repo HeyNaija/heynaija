@@ -130,7 +130,7 @@ async function Results({ searchParams }: Pick<PageProps<'/search'>, 'searchParam
                 <h2 id="post-results" className="section-title">Posts</h2>
                 <span className="text-xs text-muted">{results.posts.length} shown</span>
               </div>
-              <PostList posts={results.posts} viewerId={viewerId} now={Date.now()} empty={{ title: 'No posts' }} olderHref={null} />
+              <PostList posts={results.posts} viewerId={viewerId} now={Date.now()} empty={{ title: 'No posts' }} />
             </section>
           ) : null}
         </>

@@ -24,11 +24,12 @@ export function NewPostLink({ expanded = false }: { expanded?: boolean }) {
 }
 
 /** Focus inside the tap so mobile keyboards also open for replies on the current thread. */
-export function ComposeLink({ href, label, className, children }: { href: string; label: string; className: string; children: ReactNode }) {
+export function ComposeLink({ href, label, className, children, prefetch }: { href: string; label: string; className: string; children: ReactNode; prefetch?: boolean }) {
   const pathname = usePathname()
   return (
     <Link
       href={href}
+      prefetch={prefetch}
       aria-label={label}
       onClick={(e) => {
         if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return

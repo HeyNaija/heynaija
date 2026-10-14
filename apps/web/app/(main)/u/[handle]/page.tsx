@@ -135,7 +135,7 @@ async function ProfileView({ params, searchParams }: Props) {
                 ? { title: 'No older posts' }
                 : { title: `@${profile.handle} has not posted yet` }
           }
-          olderHref={feed.cursor ? `/u/${profile.handle}?cursor=${encodeURIComponent(feed.cursor)}` : null}
+          more={{ source: { kind: 'member', handle: profile.handle }, cursor: feed.cursor }}
         />
       </section>
     </div>

@@ -1,11 +1,14 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { deletePost, setBlock, setBookmark, setLike, setMute } from '@/app/actions'
+import { deletePost, setBlock, setBookmark, setMute } from '@/app/actions'
 import type { Post } from '@/lib/api'
 import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
+import type { FeedSource } from './feed-source'
 import { BookmarkIcon, BubbleIcon, DotsIcon, HeartIcon } from './icons'
+import { LikeButton } from './like-button'
 import { Menu } from './menu'
+import { MorePosts } from './more-posts'
 import { ComposeLink } from './new-post-link'
 import { PostImages } from './post-images'
 import { SubmitButton } from './submit-button'
@@ -44,7 +47,7 @@ export function PostItem({
   const likes = post.likeCount === 1 ? '1 like' : `${post.likeCount} likes`
   const replies = post.replyCount === 1 ? '1 reply' : `${post.replyCount} replies`
   const community = post.community ? (
-    <Link href={`/c/${post.community.slug}`} className="font-semibold text-accent-strong hover:underline">
+    <Link prefetch={false} href={`/c/${post.community.slug}`} className="font-semibold text-accent-strong hover:underline">
       {post.community.name}
     </Link>
   ) : null
@@ -64,7 +67,7 @@ export function PostItem({
       {why ? <p className="post-context">{why}</p> : null}
 
       <div className="post-header flex gap-3">
-        <Link href={`/u/${post.authorHandle}`} tabIndex={-1} aria-hidden="true" className="h-fit rounded-full">
+        <Link prefetch={false} href={`/u/${post.authorHandle}`} tabIndex={-1} aria-hidden="true" className="h-fit rounded-full">
           <Avatar handle={post.authorHandle} src={post.authorAvatar} size={42} />
         </Link>
 
@@ -72,20 +75,20 @@ export function PostItem({
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p className="post-author text-[14px] leading-5">
-                <Link href={`/u/${post.authorHandle}`} className="block max-w-full truncate hover:underline">
+                <Link prefetch={false} href={`/u/${post.authorHandle}`} className="block max-w-full truncate hover:underline">
                   <span className="truncate font-semibold">{post.authorName ?? `@${post.authorHandle}`}</span>
                 </Link>
               </p>
               <p className="post-meta">
                 {post.authorName ? <><span className="truncate">@{post.authorHandle}</span><span aria-hidden="true">·</span></> : null}
-                <Link href={href} className="shrink-0 hover:underline">
+                <Link prefetch={false} href={href} className="shrink-0 hover:underline">
                   <time dateTime={post.createdAt} title={new Date(post.createdAt).toUTCString()}>
                     {timeAgo(post.createdAt, now)}
                   </time>
                 </Link>
               </p>
               {showChip ? (
-                <Link href={`/c/${post.community!.slug}`} className="chip mt-1.5">
+                <Link prefetch={false} href={`/c/${post.community!.slug}`} className="chip mt-1.5">
                   {post.community!.name}
                 </Link>
               ) : null}
@@ -105,7 +108,7 @@ export function PostItem({
                   </form>
                 ) : (
                   <>
-                    <Link href={`/report?post=${post.id}`} className="menu-item">
+                    <Link prefetch={false} href={`/report?post=${post.id}`} className="menu-item">
                       Report post
                     </Link>
                     <form action={setMute}>
@@ -132,14 +135,14 @@ export function PostItem({
       </div>
 
       {post.replyParentId && !inThread && !focused ? (
-        <Link href={`/p/${post.replyParentId}`} className="mt-1 block text-xs text-muted hover:underline">
+        <Link prefetch={false} href={`/p/${post.replyParentId}`} className="mt-1 block text-xs text-muted hover:underline">
           Replying to a post
         </Link>
       ) : null}
 
       {post.text ? (
         <p className={`mt-3 whitespace-pre-wrap break-words ${focused ? 'text-base leading-relaxed' : 'post-body'}`}>
-          {focused ? post.text : <Link href={href} className="block">{post.text}</Link>}
+          {focused ? post.text : <Link prefetch={false} href={href} className="block">{post.text}</Link>}
         </p>
       ) : null}
       {post.images.length ? (
@@ -149,24 +152,13 @@ export function PostItem({
       ) : null}
 
       <div className="post-actions">
-        <ComposeLink href={`${href}#compose`} className="icon-btn" label={`Reply (${replies})`}>
+        <ComposeLink href={`${href}#compose`} prefetch={false} className="icon-btn" label={`Reply (${replies})`}>
           <BubbleIcon size={18} />
           <span className="tabular-nums">{post.replyCount}</span>
         </ComposeLink>
 
         {viewerId ? (
-          <form action={setLike}>
-            <input type="hidden" name="id" value={post.id} />
-            <input type="hidden" name="on" value={post.viewerLiked ? '0' : '1'} />
-            <SubmitButton
-              className="icon-btn"
-              label={post.viewerLiked ? `Unlike (${likes})` : `Like (${likes})`}
-              pressed={post.viewerLiked}
-            >
-              <HeartIcon size={18} filled={post.viewerLiked} />
-              <span className="tabular-nums">{post.likeCount}</span>
-            </SubmitButton>
-          </form>
+          <LikeButton id={post.id} liked={post.viewerLiked} count={post.likeCount} />
         ) : (
           <span className="icon-btn pointer-events-none">
             <HeartIcon size={18} />
@@ -198,7 +190,7 @@ export function PostList({
   viewerId,
   now,
   empty,
-  olderHref,
+  more,
   hideCommunity,
   explain,
 }: {
@@ -207,8 +199,8 @@ export function PostList({
   now: number
   /** Shown when there are no posts: a short title, optionally with more detail and a next step. */
   empty: { title: string; detail?: ReactNode; action?: ReactNode }
-  /** Link to the next page, when there is one. */
-  olderHref: string | null
+  /** The feed these posts come from and where they end, so older posts can load onto the list. */
+  more?: { source: FeedSource; cursor: string | null }
   hideCommunity?: boolean
   explain?: boolean
 }) {
@@ -228,11 +220,7 @@ export function PostList({
           </li>
         ))}
       </ul>
-      {olderHref ? (
-        <Link href={olderHref} className="btn btn-secondary btn-block mt-4">
-          Older posts
-        </Link>
-      ) : null}
+      {more ? <MorePosts source={more.source} cursor={more.cursor} version={now} /> : null}
     </>
   )
 }

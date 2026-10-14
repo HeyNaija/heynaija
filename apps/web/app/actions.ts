@@ -72,6 +72,18 @@ export async function setLike(formData: FormData): Promise<void> {
   refresh()
 }
 
+/**
+ * The same as setLike, for the like button when JavaScript runs: it already shows
+ * the change, so the page is not re-rendered. On a long feed that re-render would
+ * resend every post the reader has loaded.
+ */
+export async function toggleLike(id: string, on: boolean): Promise<{ ok: boolean }> {
+  if (typeof id !== 'string' || id.length > 64) return { ok: false }
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/like`, { method: on ? 'PUT' : 'DELETE' })
+  if (res.status === 401) redirect('/login')
+  return { ok: res.ok }
+}
+
 export async function setBookmark(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '')
   const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'

@@ -830,6 +830,17 @@ summary.menu::-webkit-details-marker {
   transition: border-color 0.15s;
 }
 .post-list .post-card:hover { border-color: var(--line-strong); }
+/* Older posts loaded onto a feed continue the same list. */
+.more-posts { margin-top: 14px; }
+/* Long feeds: the browser skips laying out and painting cards that are off screen,
+   while they stay in the page for find-in-page, screen readers and scrolling. The
+   size is a first guess; `auto` remembers each card's real height once seen. A card
+   with its menu open is exempt, since containment would clip the menu. */
+.post-list > li > .post-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
+}
+.post-list > li > .post-card:has(details[open]) { content-visibility: visible; }
 .post-context { margin-bottom: 14px; color: var(--muted); font-size: 10px; font-weight: 500; }
 .post-author { letter-spacing: -0.02em; }
 .post-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 18px; }
