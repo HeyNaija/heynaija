@@ -43,7 +43,7 @@ async function Home({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
               Latest first
             </span>
           </nav>
-          <Composer handle={me.handle} choices={joined} />
+          <Composer handle={me.handle} avatar={me.avatar} choices={joined} />
         </>
       ) : viewer.state === 'blocked' ? (
         viewer.suspended ? (

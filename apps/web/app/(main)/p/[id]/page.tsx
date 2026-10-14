@@ -48,6 +48,7 @@ async function ThreadView({ params }: Props) {
       {viewer.state === 'member' ? (
         <Composer
           handle={viewer.me.handle}
+          avatar={viewer.me.avatar}
           replyTo={thread.post.id}
           placeholder={`Reply to @${thread.post.authorHandle}`}
         />

@@ -51,7 +51,7 @@ export function PostItem({
 
       <div className="flex gap-3">
         <Link href={`/u/${post.authorHandle}`} tabIndex={-1} aria-hidden="true" className="h-fit rounded-full">
-          <Avatar handle={post.authorHandle} />
+          <Avatar handle={post.authorHandle} src={post.authorAvatar} />
         </Link>
 
         <div className="min-w-0 flex-1">

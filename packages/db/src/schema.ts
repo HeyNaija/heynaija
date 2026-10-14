@@ -26,10 +26,36 @@ export const members = pgTable(
     status: text('status'),
     // 'moderator' here means site-wide. Community moderators are on the membership.
     role: text('role', { enum: ['member', 'moderator'] }).notNull().default('member'),
+    // The member's current profile photo, if they have set one (see `media`).
+    avatarMediaId: uuid('avatar_media_id'),
     createdAt: ts('created_at').notNull().defaultNow(),
     lastSeenAt: ts('last_seen_at'),
   },
   (t) => [index('members_handle_idx').on(t.handle)],
+)
+
+// An uploaded file. The bytes live in object storage; this row tracks who owns it
+// and whether it has been checked and processed. Only 'ready' media is ever shown.
+export const media = pgTable(
+  'media',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => members.id),
+    kind: text('kind', { enum: ['avatar'] }).notNull(),
+    // pending: an upload URL was issued. ready: processed and public.
+    // failed: it was not a usable image. deleted: replaced or removed by its owner.
+    status: text('status', { enum: ['pending', 'ready', 'failed', 'deleted'] })
+      .notNull()
+      .default('pending'),
+    // What the browser said it would send; the upload URL only accepts exactly this.
+    contentType: text('content_type').notNull(),
+    bytes: integer('bytes').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    readyAt: ts('ready_at'),
+  },
+  (t) => [index('media_owner_status_idx').on(t.ownerId, t.status)],
 )
 
 // A public interest group. Anyone can read it; members can post into it.

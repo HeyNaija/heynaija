@@ -5,6 +5,9 @@ import type { NextConfig } from 'next'
 // first-party and no CORS is involved. The API's /internal routes are not proxied.
 const apiInternalUrl = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000'
 const kratosInternalUrl = process.env.KRATOS_INTERNAL_URL ?? 'http://127.0.0.1:4533'
+// Public media bucket (MinIO locally). In production, route /media at the CDN
+// straight to the R2 bucket so image bytes never pass through this server.
+const mediaInternalUrl = process.env.MEDIA_INTERNAL_URL ?? 'http://127.0.0.1:9100/heynaija-media'
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
@@ -26,6 +29,7 @@ const nextConfig: NextConfig = {
     return [
       { source: '/api/v1/:path*', destination: `${apiInternalUrl}/v1/:path*` },
       { source: '/kratos/:path*', destination: `${kratosInternalUrl}/:path*` },
+      { source: '/media/:path*', destination: `${mediaInternalUrl}/:path*` },
     ]
   },
 }

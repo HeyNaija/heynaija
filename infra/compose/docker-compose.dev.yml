@@ -1,4 +1,4 @@
-# Local development stack: Postgres, Redis, Ory Kratos (identity) and Mailpit.
+# Local development stack: Postgres, Redis, Ory Kratos (identity), Mailpit and MinIO.
 # Host ports are offset so they do not clash with other local projects.
 name: heynaija-dev
 
@@ -60,6 +60,23 @@ services:
       kratos-migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+
+  # S3-compatible object storage for uploaded media (stands in for Cloudflare R2).
+  # MinIO no longer publishes its own images; this is Chainguard's maintained build
+  # of the same software, pinned by digest. Console: http://127.0.0.1:9101
+  minio:
+    image: cgr.dev/chainguard/minio@sha256:2136d593beacf4461187035eca949fe49abd589d5079735025c711ca58fee0c8
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:?run pnpm infra:env}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:?run pnpm infra:env}
+      # Browsers upload straight to the bucket, so it must accept the web app's origin.
+      MINIO_API_CORS_ALLOW_ORIGIN: http://127.0.0.1:3000
+    ports:
+      - "127.0.0.1:9100:9000" # S3 API
+      - "127.0.0.1:9101:9001" # web console
+    volumes:
+      - ./.data/minio:/data
 
   # Catches every email Kratos sends in development. Inbox: http://127.0.0.1:8026
   mailpit:

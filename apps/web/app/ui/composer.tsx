@@ -12,6 +12,7 @@ const graphemes = (text: string) => [...segmenter.segment(text)].length
 type Props = {
   /** The member writing; shown as their avatar. */
   handle: string
+  avatar?: string | null
   replyTo?: string
   placeholder?: string
   /** Post straight into this community (used on a community's own page). */
@@ -20,7 +21,7 @@ type Props = {
   choices?: { slug: string; name: string }[]
 }
 
-export function Composer({ handle, replyTo, placeholder = "What's on your mind?", community, choices }: Props) {
+export function Composer({ handle, avatar, replyTo, placeholder = "What's on your mind?", community, choices }: Props) {
   const [state, action, pending] = useActionState<ComposeState, FormData>(createPost, {})
   const [text, setText] = useState('')
   const [expanded, setExpanded] = useState(false)
@@ -38,7 +39,7 @@ export function Composer({ handle, replyTo, placeholder = "What's on your mind?"
       {community ? <input type="hidden" name="community" value={community} /> : null}
 
       <div className="flex gap-3">
-        <Avatar handle={handle} />
+        <Avatar handle={handle} src={avatar} />
         <div className="min-w-0 flex-1">
           <label htmlFor="post-text" className="sr-only">
             {replyTo ? 'Your reply' : 'New post'}

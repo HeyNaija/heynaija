@@ -77,6 +77,7 @@ async function CommunityView({ params, searchParams }: Props) {
       {viewer.state === 'member' && community.viewerIsMember ? (
         <Composer
           handle={viewer.me.handle}
+          avatar={viewer.me.avatar}
           community={community.slug}
           placeholder={`Say something to ${community.name}`}
         />

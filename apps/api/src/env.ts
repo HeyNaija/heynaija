@@ -12,6 +12,13 @@ const schema = z.object({
     .default('http://127.0.0.1:3000')
     .transform((u) => u.replace(/\/$/, '')),
   API_PORT: z.coerce.number().default(4000),
+  // Object storage for media: MinIO locally, Cloudflare R2 in production.
+  S3_ENDPOINT: z.url().transform((u) => u.replace(/\/$/, '')),
+  S3_REGION: z.string().min(1),
+  S3_ACCESS_KEY_ID: z.string().min(1),
+  S3_SECRET_ACCESS_KEY: z.string().min(1),
+  S3_UPLOADS_BUCKET: z.string().min(1),
+  S3_MEDIA_BUCKET: z.string().min(1),
 })
 
 export type Env = z.infer<typeof schema>

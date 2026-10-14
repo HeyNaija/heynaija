@@ -76,8 +76,8 @@ handling, verification and recovery are security-critical and already solved.
 - **Password change after recovery** was exercised up to the settings form but
   not submitted. Changing email or handle in settings is untested.
 - **Tests** cover invites, posts, threads, likes, bookmarks, search, trending,
-  follows, blocks, mutes, profiles, communities, moderation, rate limits and the
-  session guard (75 cases, real Postgres, Kratos stubbed). The Kratos flows and
+  follows, blocks, mutes, profiles, communities, moderation, rate limits, media and
+  the session guard (85 cases, real Postgres, Kratos stubbed). The Kratos flows and
   web pages were verified by hand.
 - **Counts are computed on read** (likes, replies, followers) with subqueries.
   Fine at pilot size; revisit with measurements before growth.
@@ -95,11 +95,21 @@ handling, verification and recovery are security-critical and already solved.
 - **Reported members are not notified**, and neither is anyone whose post is
   removed. There are no notifications of any kind yet.
 - **Not built from the design mockup:** photos, polls, reposts, notifications,
-  community votes, display names and profile pictures (avatars are a tinted
-  initial).
+  community votes, display names. Members without a photo get a tinted initial.
 - **Themes** are light, dark and system. The choice is stored in the browser
   (`localStorage`), not on the account, so it does not follow a member to another
   device. A small inline script applies it before first paint.
+- **Media is avatars only.** The pipeline (signed direct upload, private uploads
+  bucket, server-side check and re-encode, public media bucket, immutable URLs) is
+  built to be reused for post images, but those are not built. Processing runs
+  inside the API request, which is fine for a 512px avatar; post images should
+  move it to a background job.
+- **No scanning of uploads for known abuse material**, and a moderator cannot yet
+  remove someone's photo (suspending the account hides it). Both are needed
+  before uploads are open beyond the invited pilot.
+- **Verified against MinIO only.** Cloudflare R2 has not been tried; the README
+  lists what it needs. MinIO no longer publishes images, so the dev stack uses
+  Chainguard's build, pinned by digest.
 - **Search** matches whole words in posts (no stemming or typo tolerance), handle
   prefixes, and community names or descriptions.
 - Redis is in the dev stack but nothing uses it yet.

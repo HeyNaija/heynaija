@@ -155,6 +155,7 @@ async function UserMenu() {
 
   const logoutUrl = await getLogoutUrl()
   const handle = viewer.state === 'member' ? viewer.me.handle : null
+  const avatar = viewer.state === 'member' ? viewer.me.avatar : null
 
   return (
     <Menu
@@ -162,7 +163,7 @@ async function UserMenu() {
       triggerClassName="flex items-center gap-2 rounded-lg p-1 pr-2 transition-colors hover:bg-panel"
       trigger={
         <>
-          {handle ? <Avatar handle={handle} size={34} /> : <UserIcon />}
+          {handle ? <Avatar handle={handle} src={avatar} size={34} /> : <UserIcon />}
           <span className="hidden max-w-32 truncate text-sm font-semibold sm:block">{handle ?? 'Account'}</span>
           <span className="text-muted">
             <ChevronIcon size={16} />

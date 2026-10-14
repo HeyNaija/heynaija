@@ -1,11 +1,14 @@
 import { blocks, type Db, follows, members, mutes } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
 import { and, asc, eq, like, or, sql } from 'drizzle-orm'
+import { avatarPath } from '../media/media.service.js'
 import { DB } from '../tokens.js'
 
 export type Profile = {
   id: string
   handle: string
+  /** Path of the profile photo without the size suffix, or null. */
+  avatar: string | null
   joinedAt: Date
   postCount: number
   followerCount: number
@@ -49,6 +52,7 @@ export class MembersService {
       .select({
         id: members.id,
         handle: members.handle,
+        avatarMediaId: members.avatarMediaId,
         joinedAt: members.createdAt,
         postCount: sql<number>`(select count(*)::int from posts p where p.author_id = ${outerId} and p.deleted_at is null)`,
         followerCount: sql<number>`(select count(*)::int from follows f join members m on m.id = f.follower_id and m.active where f.followee_id = ${outerId})`,
@@ -70,8 +74,8 @@ export class MembersService {
       .where(eq(members.id, id))
     // To someone they have blocked, a member simply does not exist.
     if (!row || row.blockedByThem) return null
-    const { blockedByThem: _hidden, ...profile } = row
-    return { ...profile, isSelf: row.id === viewerId }
+    const { blockedByThem: _hidden, avatarMediaId, ...profile } = row
+    return { ...profile, avatar: avatarPath(avatarMediaId), isSelf: row.id === viewerId }
   }
 
   /** Idempotent. False if there is no such member. */
@@ -150,15 +154,16 @@ export class MembersService {
   }
 
   /** Active members whose handle starts with `prefix`. */
-  async search(prefix: string, limit: number): Promise<{ handle: string }[]> {
+  async search(prefix: string, limit: number): Promise<{ handle: string; avatar: string | null }[]> {
     // Handles are [a-z0-9_]; anything else cannot match, and "_" must not act as a wildcard.
     const cleaned = prefix.toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_]/g, '')
     if (!cleaned) return []
-    return this.db
-      .select({ handle: members.handle })
+    const rows = await this.db
+      .select({ handle: members.handle, avatarMediaId: members.avatarMediaId })
       .from(members)
       .where(and(like(members.handle, `${cleaned.replaceAll('_', '\\_')}%`), eq(members.active, true)))
       .orderBy(asc(members.handle))
       .limit(limit)
+    return rows.map((r) => ({ handle: r.handle, avatar: avatarPath(r.avatarMediaId) }))
   }
 }

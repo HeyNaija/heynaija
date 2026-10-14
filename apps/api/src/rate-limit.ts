@@ -16,6 +16,7 @@ export const LIMITS = {
   report: [{ max: 10, windowMs: HOUR }],
   search: [{ max: 60, windowMs: MINUTE }],
   inviteCheck: [{ max: 20, windowMs: MINUTE }],
+  upload: [{ max: 10, windowMs: HOUR }],
 } satisfies Record<string, { max: number; windowMs: number }[]>
 
 /**

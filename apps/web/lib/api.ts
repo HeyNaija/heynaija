@@ -9,12 +9,14 @@ const API_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000'
 /** The Kratos session cookie (named in infra/kratos/kratos.yml). */
 export const SESSION_COOKIE = 'hn_session'
 
-export type Me = { id: string; handle: string; moderates: boolean }
+/** `avatar` fields are a path without the size suffix (see app/ui/avatar.tsx), or null. */
+export type Me = { id: string; handle: string; avatar: string | null; moderates: boolean }
 
 export type Post = {
   id: string
   authorId: string
   authorHandle: string
+  authorAvatar: string | null
   text: string
   createdAt: string
   replyParentId: string | null
@@ -46,6 +48,7 @@ export type CommunityDetail = Community & { rules: string; moderators: string[] 
 export type Profile = {
   id: string
   handle: string
+  avatar: string | null
   joinedAt: string
   postCount: number
   followerCount: number
@@ -142,7 +145,7 @@ export async function getTrending(): Promise<Post[]> {
   return res.json()
 }
 
-export type SearchResults = { members: { handle: string }[]; communities: Community[]; posts: Post[] }
+export type SearchResults = { members: { handle: string; avatar: string | null }[]; communities: Community[]; posts: Post[] }
 
 /** Null when the query is too short or too long to search for. */
 export async function search(q: string): Promise<SearchResults | null> {

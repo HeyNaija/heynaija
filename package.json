@@ -20,7 +20,8 @@
     "invite:create": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api invite:create",
     "db:seed": "pnpm --filter @heynaija/db seed",
     "mod:grant": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api moderator grant",
-    "mod:revoke": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api moderator revoke"
+    "mod:revoke": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api moderator revoke",
+    "media:init": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api media:init"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

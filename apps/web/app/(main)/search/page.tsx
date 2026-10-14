@@ -65,7 +65,7 @@ async function Results({ searchParams }: Pick<PageProps<'/search'>, 'searchParam
                 {results.members.map((m) => (
                   <li key={m.handle}>
                     <Link href={`/u/${m.handle}`} className="flex items-center gap-3 font-semibold hover:underline">
-                      <Avatar handle={m.handle} size={36} />@{m.handle}
+                      <Avatar handle={m.handle} src={m.avatar} size={36} />@{m.handle}
                     </Link>
                   </li>
                 ))}

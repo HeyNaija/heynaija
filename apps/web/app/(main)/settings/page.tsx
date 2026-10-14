@@ -1,8 +1,11 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { AuthPage, linkClass } from '@/app/ui/auth-page'
+import { AvatarUploader } from '@/app/ui/avatar-uploader'
 import { FlowForm } from '@/app/ui/flow-form'
 import { ThemeSwitch } from '@/app/ui/theme-switch'
+import { getViewer } from '@/lib/api'
 import { getFlow } from '@/lib/kratos'
 
 export const metadata: Metadata = { title: 'Settings' }
@@ -21,6 +24,12 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
       }
     >
       <section className="mb-6 flex flex-col gap-3 border-b border-line pb-6">
+        <h2 className="section-title">Profile photo</h2>
+        <Suspense fallback={<div className="skeleton h-[72px] w-64" />}>
+          <ProfilePhoto />
+        </Suspense>
+      </section>
+      <section className="mb-6 flex flex-col gap-3 border-b border-line pb-6">
         <h2 className="section-title">Appearance</h2>
         <ThemeSwitch />
         <p className="field-hint">System follows your device. This choice is saved on this device only.</p>
@@ -28,6 +37,12 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
       <SettingsForm searchParams={searchParams} />
     </AuthPage>
   )
+}
+
+async function ProfilePhoto() {
+  const viewer = await getViewer()
+  if (viewer.state !== 'member') return null
+  return <AvatarUploader handle={viewer.me.handle} avatar={viewer.me.avatar} />
 }
 
 async function SettingsForm({ searchParams }: Pick<PageProps<'/settings'>, 'searchParams'>) {

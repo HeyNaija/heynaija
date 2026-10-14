@@ -28,4 +28,12 @@ ensure DATABASE_URL "postgres://heynaija:$(get POSTGRES_PASSWORD)@localhost:5433
 ensure REDIS_URL "redis://:$(get REDIS_PASSWORD)@localhost:6380"
 ensure KRATOS_PUBLIC_URL "http://127.0.0.1:4533"
 
+# Object storage (MinIO locally; Cloudflare R2 in production uses the same variables).
+ensure S3_ENDPOINT "http://127.0.0.1:9100"
+ensure S3_REGION "us-east-1"
+ensure S3_ACCESS_KEY_ID "heynaija-dev"
+ensure S3_SECRET_ACCESS_KEY "$(hex 20)"
+ensure S3_UPLOADS_BUCKET "heynaija-uploads"
+ensure S3_MEDIA_BUCKET "heynaija-media"
+
 echo "$env_file is up to date"

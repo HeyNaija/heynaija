@@ -42,7 +42,7 @@ async function ProfileView({ params, searchParams }: Props) {
   return (
     <div className="flex flex-col gap-2">
       <header className="page-header flex items-start gap-4">
-        <Avatar handle={profile.handle} size={64} />
+        <Avatar handle={profile.handle} src={profile.avatar} size={64} />
         <div className="min-w-0 flex-1">
           <h1 className="page-title truncate">@{profile.handle}</h1>
           <p className="mt-1 flex flex-wrap gap-x-4 text-sm text-muted">

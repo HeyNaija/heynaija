@@ -11,6 +11,7 @@ import {
 import { Inject, Injectable } from '@nestjs/common'
 import { and, asc, desc, eq, gt, inArray, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
+import { avatarPath } from '../media/media.service.js'
 import { DB } from '../tokens.js'
 
 export const POST_MAX_GRAPHEMES = 300
@@ -32,6 +33,8 @@ export type PostView = {
   id: string
   authorId: string
   authorHandle: string
+  /** Path of the author's profile photo without the size suffix, or null. */
+  authorAvatar: string | null
   /** Empty when `deleted`. */
   text: string
   createdAt: Date
@@ -124,6 +127,7 @@ export class PostsService {
         id: posts.id,
         authorId: posts.authorId,
         authorHandle: members.handle,
+        authorAvatarId: members.avatarMediaId,
         text: sql<string>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${posts.text} else '' end`,
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
@@ -158,8 +162,9 @@ export class PostsService {
       .orderBy(...(opts.order ?? []))
       .limit(opts.limit ?? 1000)
 
-    return rows.map(({ communitySlug, communityName, ...row }) => ({
+    return rows.map(({ communitySlug, communityName, authorAvatarId, ...row }) => ({
       ...row,
+      authorAvatar: avatarPath(authorAvatarId),
       community: communitySlug && communityName ? { slug: communitySlug, name: communityName } : null,
     }))
   }

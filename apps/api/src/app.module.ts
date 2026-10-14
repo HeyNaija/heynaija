@@ -7,6 +7,10 @@ import { CommunitiesController } from './communities/communities.controller.js'
 import { CommunitiesService } from './communities/communities.service.js'
 import { type Env, loadEnv } from './env.js'
 import { InvitesService } from './invites/invites.service.js'
+import { MediaController } from './media/media.controller.js'
+import { MediaService, OBJECT_STORE } from './media/media.service.js'
+import { S3ObjectStore } from './media/object-store.js'
+import { s3Config } from './media/s3-config.js'
 import { MembersController } from './members/members.controller.js'
 import { MembersService } from './members/members.service.js'
 import { ModerationController } from './moderation/moderation.controller.js'
@@ -26,7 +30,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, CommunitiesController, SearchController, ModerationController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, CommunitiesController, SearchController, ModerationController, MediaController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -36,6 +40,8 @@ class HealthController {
     SuspendedAllowedGuard,
     RateLimiter,
     ModerationService,
+    { provide: OBJECT_STORE, useFactory: (env: Env) => new S3ObjectStore(s3Config(env)), inject: [ENV] },
+    MediaService,
     MembersService,
     CommunitiesService,
     InvitesService,

@@ -699,6 +699,10 @@ ol.post-list .post-card {
 .avatar-initial {
   color: var(--brand-deep);
 }
+/* A photo sits on its tint, so there is colour, not a hole, while it loads. */
+.avatar-photo {
+  display: block;
+}
 .avatar-tone-0 { background: var(--tone-0); }
 .avatar-tone-1 { background: var(--tone-1); }
 .avatar-tone-2 { background: var(--tone-2); }

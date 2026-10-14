@@ -88,6 +88,48 @@ export async function setMute(formData: FormData): Promise<void> {
 
 export type FormState = { error?: string; done?: boolean }
 
+// --- Profile photo: the browser uploads straight to storage between these two calls. ---
+
+export type UploadTicket = { mediaId: string; uploadUrl: string } | { error: string }
+
+export async function startAvatarUpload(contentType: string, bytes: number): Promise<UploadTicket> {
+  const res = await api('/v1/me/avatar/upload', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ contentType, bytes }),
+  })
+  if (res.status === 401) redirect('/login')
+  if (res.status === 429) return { error: 'You have changed your photo a lot. Try again in an hour.' }
+  if (res.status === 400) return { error: 'Choose a JPEG, PNG or WebP image under 5 MB.' }
+  if (!res.ok) return { error: 'Could not start the upload. Try again in a moment.' }
+  return res.json()
+}
+
+export async function finishAvatarUpload(mediaId: string): Promise<{ error?: string }> {
+  const res = await api(`/v1/me/avatar/${encodeURIComponent(mediaId)}/complete`, { method: 'POST' })
+  if (res.status === 401) redirect('/login')
+  if (res.status === 400) {
+    const body = (await res.json().catch(() => ({}))) as { code?: string }
+    return {
+      error:
+        body.code === 'not_an_image'
+          ? 'That file is not a JPEG, PNG or WebP image.'
+          : body.code === 'too_large'
+            ? 'That image is too large. The limit is 5 MB.'
+            : 'The upload did not finish. Try again.',
+    }
+  }
+  if (!res.ok) return { error: 'Could not save your photo. Try again in a moment.' }
+  refresh()
+  return {}
+}
+
+export async function removeAvatar(): Promise<void> {
+  const res = await api('/v1/me/avatar', { method: 'DELETE' })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
 export async function submitReport(_prev: FormState, formData: FormData): Promise<FormState> {
   const postId = String(formData.get('postId') ?? '') || undefined
   const handle = String(formData.get('handle') ?? '') || undefined
