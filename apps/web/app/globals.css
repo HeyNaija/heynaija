@@ -25,7 +25,7 @@
   --focus-ring: var(--accent); /* solid, 4.8:1 on white, so the focused control is never lost */
   --field-ring: rgb(37 129 83 / 16%);
   --topbar: rgb(241 244 242 / 90%); /* the ground, so sticky bars belong to it, not to the cards */
-  --shadow-card: 0 1px 2px rgb(16 33 43 / 5%), 0 1px 1px rgb(16 33 43 / 3%);
+  --shadow-card: none; /* cards sit flush; the border alone outlines them */
   --shadow-pop: 0 12px 32px rgb(16 33 43 / 12%), 0 2px 6px rgb(16 33 43 / 6%);
   /* The image viewer is dark in both themes, so photos are seen against the same ground. */
   --scrim: rgb(7 13 11 / 98%);
@@ -74,7 +74,7 @@
   --focus-ring: var(--accent-strong);
   --field-ring: rgb(125 217 170 / 20%);
   --topbar: rgb(11 18 16 / 90%);
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 35%);
+  --shadow-card: none;
   --shadow-pop: 0 12px 32px rgb(0 0 0 / 45%), 0 2px 6px rgb(0 0 0 / 30%);
 
   --tone-0: #1d3327;
@@ -496,6 +496,7 @@ summary.menu::-webkit-details-marker {
   color: var(--ink);
 }
 .sidebar-nav-item[aria-current="page"] {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
   background: var(--accent-soft);
   color: var(--accent-strong);
   font-weight: 700;

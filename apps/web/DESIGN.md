@@ -115,14 +115,14 @@ components:
 
 HeyNaija is a calm sage wall with clean white notices pinned to it. Every post, notification, form, profile header and side-rail section is its own card. You read it, act on it and move to the next one. The ground stays quiet and the cards stay crisp. One decisive forest green marks everything you can do. The result should feel fresh, tidy and confident: organised and modern, never cold.
 
-The one loud element is the approved bubbly green wordmark. Everything around it is disciplined: one typeface, one accent, one card. Density comes from rhythm (feed cards 14px apart, a 12px gutter on small phones) rather than from cramming. The system is built to stay fast on low-end Android, so depth is a border and a hairline shadow, not blur or heavy imagery.
+The one loud element is the approved bubbly green wordmark. Everything around it is disciplined: one typeface, one accent, one card. Density comes from rhythm (feed cards 14px apart, a 12px gutter on small phones) rather than from cramming. The system is built to stay fast on low-end Android, so depth is a border alone, not shadows, blur or heavy imagery.
 
 The look was redesigned on 14 October 2026 from ruled rows inside a white framed sheet to cards on a tinted ground, using the owner's other project, Koinovera, as the polish reference. The palette, the wordmark and the no-gradients rule were kept from before.
 
 A subsequent UI overhaul on the same date refined the shell proportions, type hierarchy, composer, discovery and account pages. It adds more breathing room and clearer actions while retaining those brand commitments. `app/globals.css` is the source of truth for implemented tokens, shared components and responsive values; this document describes that system.
 
 **Key Characteristics:**
-- White cards (12px corners, 1px hairline, faint shadow) on a sage-grey ground, with no framing sheet.
+- Flat white cards (12px corners, 1px hairline border, no shadow) on a sage-grey ground, with no framing sheet.
 - A single forest-green accent for actions, the current place and links.
 - Plus Jakarta Sans throughout, with weight rather than size doing most of the hierarchy work.
 - Light, dark and system themes; dark keeps the same structure with deeper greens.
@@ -195,14 +195,14 @@ Same roles, set on `:root[data-theme="dark"]`: ground-dark for the ground, card-
 
 ## Elevation & Depth
 
-Lifted just enough. A card sits a hairline above the ground: its 1px border does the structural work, and the shadow only hints that it can be picked up. Only menus and popovers really float.
+Flush. Cards sit flat on the ground with no shadow; the 1px border alone outlines them (changed 15 October 2026 from a hairline shadow). Only menus and popovers float.
 
 ### Shadow Vocabulary
 
-- **Card** (`0 1px 2px rgb(16 33 43 / 5%), 0 1px 1px rgb(16 33 43 / 3%)`; dark: `0 1px 2px rgb(0 0 0 / 35%)`): shared content cards. The active sidebar item uses a flat sage fill.
+- **Card** (`none`): the `--shadow-card` token is kept so cards share one switch, but it is set to none in both themes.
 - **Pop** (`0 12px 32px rgb(16 33 43 / 12%), 0 2px 6px rgb(16 33 43 / 6%)`): menus and dropdown panels only.
 
-**The Border First Rule.** Never add depth with a bigger shadow. If a card needs more presence, its border goes to Hairline Strong (as on hover); the shadow stays the same.
+**The Border First Rule.** Never add depth with a bigger shadow. If a card needs more presence, its border goes to Hairline Strong (as on hover).
 
 ## Shapes
 
@@ -233,7 +233,7 @@ Image drafts use the control radius; published post galleries use the 12px card 
 - **Corner Style:** 12px.
 - **Background:** Card White (card-dark in dark).
 - **Border:** 1px Hairline. Feed cards go to Hairline Strong on hover.
-- **Shadow Strategy:** the Card shadow only (see Elevation & Depth).
+- **Shadow Strategy:** none; cards are flush (see Elevation & Depth).
 - **Internal Padding:** posts use 20px 20px 10px; below 1024px they use 18px 16px 8px, and below 420px, 16px 14px 6px. Rail sections use 20px, shared content panels 22px and profile/community headers 24px. Shared page cards reduce to 20px on mobile and 18px on small phones. Focused thread posts use 24px 24px 12px on desktop.
 - **Applies to:** posts, notifications (unread ones take Sage Wash with a green-tinted border), both composers, profile and community headers, forms and moderation cases, and each right-rail section, Public Treasury included.
 - **Content alignment:** avatars stay in the header row. Post text, images and actions, and notification excerpts and destination links, use the full card width beneath the header without an empty avatar column.
@@ -245,7 +245,7 @@ Image drafts use the control radius; published post galleries use the 12px card 
 
 ### Navigation
 
-- **Sidebar:** 46px items with an icon and a 13px/500 label. Hover lifts onto a white fill. The current page uses a Sage Wash fill with Deep Forest 700 text.
+- **Sidebar:** 46px items with an icon and a 13px/500 label. Hover lifts onto a white fill. The current page uses a Sage Wash fill with a subtle green-tinted border (accent mixed 22% into Hairline) and Deep Forest 700 text.
 - **Feed tabs:** 13px labels; the active tab is bold Deep Forest with a 2px Forest Green underline.
 - **Bottom bar (phones):** 62px tabs at 11px. The active tab is Deep Forest and bold. The centre "+" is a 44px Forest Green tile; on the home feed it focuses the composer in the same tap.
 
@@ -270,7 +270,7 @@ Account entry pages use a separate layout: the approved wordmark and an Explore 
 
 ### Do:
 
-- **Do** put every actionable object in a card: white, 12px corners, 1px Hairline border, the Card shadow.
+- **Do** put every actionable object in a card: white, 12px corners, 1px Hairline border, no shadow.
 - **Do** keep the ground Sage Ground and let sticky bars use that same quiet ground.
 - **Do** use Forest Green only for actions, the current location and links.
 - **Do** keep 14px between feed cards, with 20px mobile gutters and 12px gutters below 420px.
@@ -284,4 +284,4 @@ Account entry pages use a separate layout: the approved wordmark and an Explore 
 - **Don't** compete with the wordmark: no other display type, illustration-heavy panels or dark slabs in the rail.
 - **Don't** nest cards inside cards; inside a card, use Inset Sage fills or hairline dividers.
 - **Don't** round anything but avatars fully, or use radii outside 6, 8 and 12px.
-- **Don't** add depth with bigger shadows; strengthen the border instead.
+- **Don't** add shadows to cards; strengthen the border instead.
