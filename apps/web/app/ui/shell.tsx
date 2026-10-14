@@ -173,6 +173,7 @@ async function UserMenu() {
   return (
     <Menu
       label="Account menu"
+      panelClassName="account-menu-panel"
       triggerClassName="flex items-center gap-2 rounded-lg p-1 pr-2 transition-colors hover:bg-panel"
       trigger={
         <>
@@ -208,8 +209,8 @@ async function UserMenu() {
               Moderation
             </Link>
           ) : null}
-          <div className="flex items-center justify-between gap-3 px-3 py-2">
-            <span className="text-sm font-medium">Theme</span>
+          <div className="account-theme">
+            <span className="text-xs font-semibold text-muted">Theme</span>
             <ThemeSwitch compact />
           </div>
           <hr className="my-1 border-line" />

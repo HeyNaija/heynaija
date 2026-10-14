@@ -13,6 +13,7 @@ export function Menu({
   triggerClassName = 'icon-btn',
   children,
   className = '',
+  panelClassName = '',
 }: {
   /** Read out by screen readers; the trigger itself is usually just an icon. */
   label: string
@@ -20,6 +21,7 @@ export function Menu({
   triggerClassName?: string
   children: ReactNode
   className?: string
+  panelClassName?: string
 }) {
   const ref = useRef<HTMLDetailsElement>(null)
 
@@ -49,7 +51,7 @@ export function Menu({
       </summary>
       {/* Following a link inside closes the menu; form buttons re-render the page anyway. */}
       <div
-        className="menu-panel"
+        className={`menu-panel ${panelClassName}`}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('a')) ref.current?.removeAttribute('open')
         }}

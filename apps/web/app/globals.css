@@ -322,6 +322,7 @@ summary.menu::-webkit-details-marker {
     z-index: 30;
     margin-top: 6px;
     min-width: 200px;
+    max-width: calc(100vw - 32px);
     border: 1px solid var(--line);
     border-radius: var(--r-panel);
     background: var(--surface);
@@ -329,13 +330,23 @@ summary.menu::-webkit-details-marker {
     box-shadow: var(--shadow-pop);
     animation: menu-in 0.12s ease-out;
   }
+  .account-menu-panel { width: 256px; }
+  .account-theme {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-top: 1px solid var(--line);
+    margin-top: 4px;
+    padding: 12px 10px 8px;
+  }
   .menu-item {
     display: flex;
     width: 100%;
     align-items: center;
     gap: 10px;
     border-radius: 6px;
-    padding: 9px 12px;
+    min-height: 36px;
+    padding: 7px 10px;
     text-align: left;
     font-size: 14px;
     font-weight: 500;
@@ -528,13 +539,13 @@ summary.menu::-webkit-details-marker {
   top: 0;
   z-index: 20;
   display: flex;
-  height: 68px;
+  height: 60px;
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid var(--line);
   border-radius: 0 var(--r-frame) 0 0;
   background: var(--topbar);
-  padding: 12px 22px;
+  padding: 8px 20px;
   backdrop-filter: blur(12px);
 }
 .square-search {
@@ -567,13 +578,13 @@ summary.menu::-webkit-details-marker {
 }
 .square-rail {
   position: sticky;
-  top: 68px; /* directly under the top bar */
+  top: 60px; /* directly under the top bar */
   display: flex;
-  width: 340px;
+  width: 310px;
   flex-shrink: 0;
   flex-direction: column;
   align-self: flex-start;
-  padding: 18px 20px 24px;
+  padding: 16px 18px 24px;
 }
 
 /* A bordered panel, for things that really are separate objects: the composer,
@@ -586,7 +597,7 @@ summary.menu::-webkit-details-marker {
 
 /* Right rail: plain sections under a heading, separated by a rule. */
 .rail-section {
-  padding: 18px 2px;
+  padding: 14px 2px;
 }
 .rail-section + .rail-section {
   border-top: 1px solid var(--line);
@@ -601,7 +612,7 @@ summary.menu::-webkit-details-marker {
   border: 1px solid var(--treasury-line);
   border-radius: var(--r-panel);
   background: var(--treasury-bg);
-  padding: 20px;
+  padding: 16px;
   color: var(--treasury-ink);
   margin-bottom: 8px;
 }
@@ -626,7 +637,7 @@ summary.menu::-webkit-details-marker {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 12px;
   border-top: 1px solid var(--treasury-line);
   padding-top: 12px;
   font-size: 13px;
@@ -725,9 +736,9 @@ summary.menu::-webkit-details-marker {
 .feed-tabs {
   /* Stays pinned under the top bar, so switching feeds is always one tap away. */
   position: sticky;
-  top: 68px;
+  top: 60px;
   z-index: 10;
-  min-height: 52px;
+  min-height: 46px;
   /* Its rule spans the column, like the post dividers below it. */
   margin: -18px -20px 0;
   background: var(--topbar);
@@ -736,7 +747,7 @@ summary.menu::-webkit-details-marker {
 }
 .feed-tab {
   position: relative;
-  padding: 14px 4px;
+  padding: 11px 4px;
   color: var(--muted);
   font-size: 15px;
   font-weight: 500;
@@ -758,18 +769,40 @@ summary.menu::-webkit-details-marker {
 }
 
 .square-composer {
-  background: var(--panel);
-  padding: 14px;
+  background: var(--surface);
+  padding: 12px;
+}
+.composer-writing-row { display: flex; align-items: center; gap: 10px; }
+.composer-inline-submit { align-self: flex-end; margin-bottom: 3px; }
+.composer-toolbar { margin-top: 6px; }
+.square-composer.is-reply {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+.square-composer.is-reply .composer-input {
+  border-color: transparent;
+  background: transparent;
+  padding-inline: 4px;
+}
+.square-composer.is-reply .composer-input:focus {
+  box-shadow: none;
+}
+.square-composer.is-reply .composer-input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 .composer-input {
   display: block;
   width: 100%;
-  min-height: 48px;
+  min-height: 40px;
+  min-width: 0;
+  flex: 1;
   resize: none;
   border: 1px solid var(--line);
   border-radius: var(--r-control);
   background: var(--surface);
-  padding: 11px 14px;
+  padding: 7px 10px;
   font-size: 16px;
   line-height: 24px;
   transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
@@ -793,8 +826,9 @@ summary.menu::-webkit-details-marker {
   margin-inline: -20px;
 }
 .post-card {
+  scroll-margin-top: 76px;
   border-bottom: 1px solid var(--line);
-  padding: 20px 20px 14px;
+  padding: 14px 20px 10px;
 }
 /* The conversation above a post in a thread is indented under its own rule. */
 ol.post-list {
@@ -806,26 +840,39 @@ ol.post-list .post-card {
 .post-list > li:last-child > .post-card {
   border-bottom: 0;
 }
-/* The post a thread is about is the one thing on that page that gets a frame. */
+/* The selected post leads the thread; earlier context stays behind a disclosure. */
 .post-card.is-focused {
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-panel);
-  padding: 18px 16px 12px;
+  border: 0;
+  padding: 16px 0 12px;
 }
+.thread-view > a:first-child { margin-bottom: 12px; }
+.thread-context { border-bottom: 1px solid var(--line); }
+.thread-context summary {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.thread-context[open] summary > svg { transform: rotate(180deg); }
+.thread-context .post-list { margin-block: 8px 12px; }
+.thread-replies-heading { padding: 14px 0 6px; font-size: 13px; font-weight: 600; }
 .post-body {
   font-size: 15px;
-  line-height: 1.65;
+  line-height: 1.5;
 }
-.post-actions .icon-btn { min-height: 40px; min-width: 40px; }
+.post-actions .icon-btn { min-height: 32px; min-width: 32px; }
 
 /* A notification is a row like a post: kind icon, then who and what. New ones
    sit on the accent tint until the member moves on. */
 .notification-row {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px;
   border-bottom: 1px solid var(--line);
-  padding: 16px 20px;
+  padding: 12px 20px;
   transition: background-color 0.15s;
 }
 a.notification-row:hover {
@@ -839,11 +886,18 @@ a.notification-row:hover {
 }
 .notification-icon {
   display: inline-flex;
-  width: 32px;
+  width: 20px;
   flex-shrink: 0;
   justify-content: center;
   padding-top: 4px;
   color: var(--muted);
+}
+.notification-destination {
+  display: inline-block;
+  margin-top: 3px;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 600;
 }
 .notification-icon.is-like,
 .notification-icon.is-reply,
@@ -898,6 +952,9 @@ a.notification-row:hover {
 }
 .post-images.is-compact {
   max-width: 360px;
+}
+.post-list .post-images {
+  max-height: 360px;
 }
 .post-images[data-count="2"] {
   grid-template-columns: 1fr 1fr;
@@ -1097,6 +1154,17 @@ html:has(.image-viewer[open]) {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
   color: var(--accent-strong);
 }
+.segmented.is-compact { display: flex; width: 100%; }
+.segmented.is-compact button {
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px;
+  font-size: 11px;
+  white-space: nowrap;
+}
 
 .square-bottom-nav {
   background: var(--surface);
@@ -1191,10 +1259,11 @@ html:has(.image-viewer[open]) {
     margin-inline: -14px;
   }
   .post-list .post-card {
-    padding: 18px 14px 12px;
+    padding: 12px 14px 8px;
   }
+  .post-actions .icon-btn { min-height: 40px; min-width: 40px; }
   .notification-row {
-    padding: 14px;
+    padding: 12px 14px;
   }
   ol.post-list {
     margin-inline: 0;
@@ -1213,4 +1282,3 @@ html:has(.image-viewer[open]) {
     scroll-behavior: auto !important;
   }
 }
-

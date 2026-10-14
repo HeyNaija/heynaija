@@ -47,12 +47,12 @@ export function PostItem({
         : null
 
   return (
-    <article className={`post-card ${focused ? 'is-focused' : ''}`}>
+    <article id={`post-${post.id}`} className={`post-card ${focused ? 'is-focused' : ''}`}>
       {why ? <p className="mb-2 text-xs font-medium text-muted">{why}</p> : null}
 
       <div className="flex gap-3">
         <Link href={`/u/${post.authorHandle}`} tabIndex={-1} aria-hidden="true" className="h-fit rounded-full">
-          <Avatar handle={post.authorHandle} src={post.authorAvatar} />
+          <Avatar handle={post.authorHandle} src={post.authorAvatar} size={36} />
         </Link>
 
         <div className="min-w-0 flex-1">
@@ -121,8 +121,8 @@ export function PostItem({
           ) : null}
 
           {post.text ? (
-            <p className={`mt-2 whitespace-pre-wrap break-words ${focused ? 'text-[17px] leading-relaxed' : 'post-body'}`}>
-              {post.text}
+            <p className={`mt-1.5 whitespace-pre-wrap break-words ${focused ? 'text-base leading-relaxed' : 'post-body'}`}>
+              {focused ? post.text : <Link href={href} className="block">{post.text}</Link>}
             </p>
           ) : null}
           {post.images.length ? (
@@ -131,8 +131,8 @@ export function PostItem({
             </div>
           ) : null}
 
-          <div className="post-actions -ml-2 mt-3 flex items-center gap-3">
-            <Link href={href} className="icon-btn" aria-label={replies}>
+          <div className="post-actions -ml-2 mt-1.5 flex items-center gap-3">
+            <Link href={`${href}#compose`} className="icon-btn" aria-label={replies}>
               <BubbleIcon size={18} />
               <span className="tabular-nums">{post.replyCount}</span>
             </Link>

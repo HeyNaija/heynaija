@@ -5,6 +5,7 @@ import { Suspense } from 'react'
 import { Composer } from '@/app/ui/composer'
 import { PostItem, PostsSkeleton } from '@/app/ui/post-item'
 import { getThread, getViewer } from '@/lib/api'
+import { ChevronIcon } from '@/app/ui/icons'
 
 type Props = PageProps<'/p/[id]'>
 
@@ -27,20 +28,26 @@ async function ThreadView({ params }: Props) {
   const now = Date.now()
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="thread-view flex flex-col">
       <Link href="/" className="self-start text-sm font-medium text-muted hover:text-ink hover:underline">
         Back to the feed
       </Link>
 
       {/* The conversation so far, each post leading down to the one in focus. */}
       {thread.ancestors.length ? (
-        <ol aria-label="Earlier in this conversation" className="post-list border-l-2 border-line-strong pl-3">
-          {thread.ancestors.map((post) => (
-            <li key={post.id}>
-              <PostItem post={post} viewerId={viewerId} now={now} inThread />
-            </li>
-          ))}
-        </ol>
+        <details className="thread-context">
+          <summary className="menu">
+            <span>Replying to <strong>@{thread.ancestors.at(-1)!.authorHandle}</strong> · Earlier conversation</span>
+            <ChevronIcon size={16} />
+          </summary>
+          <ol aria-label="Earlier in this conversation" className="post-list border-l-2 border-line-strong pl-3">
+            {thread.ancestors.map((post) => (
+              <li key={post.id}>
+                <PostItem post={post} viewerId={viewerId} now={now} inThread />
+              </li>
+            ))}
+          </ol>
+        </details>
       ) : null}
 
       <PostItem post={thread.post} viewerId={viewerId} now={now} focused />
@@ -62,6 +69,7 @@ async function ThreadView({ params }: Props) {
       )}
 
       <section aria-label="Replies">
+        <h2 className="thread-replies-heading">Replies</h2>
         {thread.replies.length ? (
           <ul className="post-list">
             {thread.replies.map((post) => (
@@ -71,7 +79,7 @@ async function ThreadView({ params }: Props) {
             ))}
           </ul>
         ) : (
-          <p className="py-6 text-center text-sm text-muted">No replies yet.</p>
+          <p className="py-4 text-center text-sm text-muted">No replies yet.</p>
         )}
       </section>
     </div>

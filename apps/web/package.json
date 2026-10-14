@@ -6,7 +6,8 @@
     "dev": "next dev -H 127.0.0.1 -p 3000",
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p 3000",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "node --experimental-strip-types --test 'tests/*.test.mjs'"
   },
   "dependencies": {
     "lucide-react": "^1.56.0",

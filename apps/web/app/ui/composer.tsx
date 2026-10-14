@@ -31,6 +31,12 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
   const { clear } = images
   const picker = useRef<HTMLInputElement>(null)
   const form = useRef<HTMLFormElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
+  const active = expanded || text.length > 0 || images.drafts.length > 0
+
+  useEffect(() => {
+    if (replyTo && window.location.hash === '#compose') input.current?.focus()
+  }, [replyTo])
 
   // A press anywhere outside the form shrinks the box back. On press rather than
   // on blur: Safari does not focus buttons, so a blur would shrink the form under
@@ -49,6 +55,7 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
     if (state.postedAt) {
       setText('')
       clear()
+      setExpanded(false)
     }
   }, [state.postedAt, clear])
 
@@ -57,32 +64,41 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
   const empty = left === LIMIT && images.drafts.length === 0
 
   return (
-    <form ref={form} id="compose" action={action} className="square-card square-composer scroll-mt-24">
+    <form ref={form} id="compose" action={action} className={`square-composer ${replyTo ? 'is-reply' : 'square-card'} ${active ? 'is-expanded' : ''} scroll-mt-24`}>
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
       {community ? <input type="hidden" name="community" value={community} /> : null}
 
       <div className="flex gap-3">
-        <Avatar handle={handle} src={avatar} />
+        <Avatar handle={handle} src={avatar} size={replyTo ? 32 : 36} />
         <div className="min-w-0 flex-1">
           <label htmlFor="post-text" className="sr-only">
             {replyTo ? 'Your reply' : 'New post'}
           </label>
-          <textarea
-            id="post-text"
-            name="text"
-            rows={replyTo ? 2 : expanded || text || images.drafts.length ? 3 : 1}
-            onFocus={() => setExpanded(true)}
-            onBlur={(e) => {
-              // Tabbing away from the form shrinks it; clicks are handled above.
-              const next = e.relatedTarget as Node | null
-              if (next && !form.current?.contains(next)) setExpanded(false)
-            }}
-            required={images.drafts.length === 0}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={placeholder}
-            className="composer-input"
-          />
+          <div className="composer-writing-row">
+            <textarea
+              ref={input}
+              id="post-text"
+              name="text"
+              rows={active ? (replyTo ? 2 : 3) : 1}
+              onFocus={() => setExpanded(true)}
+              onBlur={(e) => {
+                // Tabbing away from the form shrinks it; clicks are handled above.
+                const next = e.relatedTarget as Node | null
+                if (next && !form.current?.contains(next)) setExpanded(false)
+              }}
+              required={images.drafts.length === 0}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={placeholder}
+              className="composer-input"
+              aria-describedby={active ? 'compose-privacy' : undefined}
+            />
+            {(!active || replyTo) ? (
+              <button type="submit" disabled={pending || left < 0 || empty || waiting} className="btn btn-primary btn-sm composer-inline-submit">
+                {pending ? 'Posting…' : replyTo ? 'Reply' : 'Post'}
+              </button>
+            ) : null}
+          </div>
 
           {images.drafts.length ? (
             <ul className="composer-images" aria-label="Images">
@@ -101,66 +117,68 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
             </ul>
           ) : null}
 
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-            <button
-              type="button"
-              className="icon-btn -ml-2"
-              aria-label={`Add images (up to ${MAX_IMAGES})`}
-              title="Add images"
-              disabled={images.drafts.length >= MAX_IMAGES}
-              onClick={() => picker.current?.click()}
-            >
-              <ImageIcon size={20} />
-            </button>
-            <input
-              ref={picker}
-              type="file"
-              multiple
-              accept={IMAGE_TYPES.join(',')}
-              className="sr-only"
-              tabIndex={-1}
-              aria-hidden="true"
-              onChange={(e) => {
-                const files = [...(e.target.files ?? [])]
-                e.target.value = '' // so choosing the same file again still fires
-                setExpanded(true)
-                setTooMany(images.add(files) > 0)
-              }}
-            />
-            {choices?.length ? (
-              <label className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
-                <PeopleIcon size={18} />
-                <span className="sr-only">Post to</span>
-                <select
-                  name="community"
-                  defaultValue=""
-                  className="min-w-0 max-w-44 rounded-lg bg-transparent py-1 text-[13px] font-semibold text-ink"
-                >
-                  <option value="">Everyone</option>
-                  {choices.map((c) => (
-                    <option key={c.slug} value={c.slug}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : replyTo ? null : (
-              <span className="flex items-center gap-1.5 text-[13px] font-medium text-muted">
-                <PeopleIcon size={18} />
-                {community ? 'Posting to this community' : 'Everyone'}
-              </span>
-            )}
-            <span className={`ml-auto text-xs tabular-nums ${left < 0 ? 'text-danger' : 'text-muted'}`}>{left}</span>
-            <button
-              type="submit"
-              disabled={pending || left < 0 || empty || waiting}
-              className="btn btn-primary"
-            >
-              {pending ? 'Posting…' : replyTo ? 'Reply' : 'Post'}
-            </button>
-          </div>
+          {(!replyTo || active) ? (
+            <div className="composer-toolbar flex flex-wrap items-center gap-x-3 gap-y-2">
+              <button
+                type="button"
+                className="icon-btn -ml-2"
+                aria-label={`Add images (up to ${MAX_IMAGES})`}
+                title="Add images"
+                disabled={images.drafts.length >= MAX_IMAGES}
+                onClick={() => picker.current?.click()}
+              >
+                <ImageIcon size={20} />
+              </button>
+              <input
+                ref={picker}
+                type="file"
+                multiple
+                accept={IMAGE_TYPES.join(',')}
+                className="sr-only"
+                tabIndex={-1}
+                aria-hidden="true"
+                onChange={(e) => {
+                  const files = [...(e.target.files ?? [])]
+                  e.target.value = '' // so choosing the same file again still fires
+                  setExpanded(true)
+                  setTooMany(images.add(files) > 0)
+                }}
+              />
+              {choices?.length ? (
+                <label className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
+                  <PeopleIcon size={18} />
+                  <span className="sr-only">Post to</span>
+                  <select
+                    name="community"
+                    defaultValue=""
+                    className="min-w-0 max-w-44 rounded-lg bg-transparent py-1 text-[13px] font-semibold text-ink"
+                  >
+                    <option value="">Everyone</option>
+                    {choices.map((c) => (
+                      <option key={c.slug} value={c.slug}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : replyTo ? null : (
+                <span className="flex items-center gap-1.5 text-[13px] font-medium text-muted">
+                  <PeopleIcon size={18} />
+                  {community ? 'Posting to this community' : 'Everyone'}
+                </span>
+              )}
+              {active ? <span className={`ml-auto text-xs tabular-nums ${left < 0 ? 'text-danger' : 'text-muted'}`}>{left}</span> : null}
+              {active && !replyTo ? <button
+                type="submit"
+                disabled={pending || left < 0 || empty || waiting}
+                className="btn btn-primary btn-sm"
+              >
+                {pending ? 'Posting…' : replyTo ? 'Reply' : 'Post'}
+              </button> : null}
+            </div>
+          ) : null}
 
-          <p className="mt-2 text-xs text-muted">Posts are public. Anyone can see and copy them.</p>
+          {active ? <p id="compose-privacy" className="mt-1 text-xs text-muted">{replyTo ? 'Replies' : 'Posts'} are public. Anyone can see and copy them.</p> : null}
           <p role="alert" className="mt-1 text-sm text-danger empty:hidden">
             {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : state.error}
           </p>
