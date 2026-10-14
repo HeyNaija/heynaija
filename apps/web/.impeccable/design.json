@@ -1,0 +1,539 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-14T21:23:31+00:00",
+  "title": "Design System: HeyNaija",
+  "extensions": {
+    "colorMeta": {
+      "forest-green": {
+        "role": "primary",
+        "displayName": "Forest Green",
+        "canonical": "oklch(53.8% 0.112 157)",
+        "tonalRamp": [
+          "oklch(15% 0.112 157)",
+          "oklch(26% 0.112 157)",
+          "oklch(37% 0.112 157)",
+          "oklch(48% 0.112 157)",
+          "oklch(59% 0.112 157)",
+          "oklch(70% 0.112 157)",
+          "oklch(82% 0.112 157)",
+          "oklch(95% 0.112 157)"
+        ]
+      },
+      "forest-green-deep": {
+        "role": "primary",
+        "displayName": "Deep Forest",
+        "canonical": "oklch(45.1% 0.095 158)",
+        "tonalRamp": [
+          "oklch(15% 0.095 158)",
+          "oklch(26% 0.095 158)",
+          "oklch(37% 0.095 158)",
+          "oklch(48% 0.095 158)",
+          "oklch(59% 0.095 158)",
+          "oklch(70% 0.095 158)",
+          "oklch(82% 0.095 158)",
+          "oklch(95% 0.095 158)"
+        ]
+      },
+      "sage-wash": {
+        "role": "primary",
+        "displayName": "Sage Wash",
+        "canonical": "oklch(95.8% 0.013 160)",
+        "tonalRamp": [
+          "oklch(15% 0.013 160)",
+          "oklch(26% 0.013 160)",
+          "oklch(37% 0.013 160)",
+          "oklch(48% 0.013 160)",
+          "oklch(59% 0.013 160)",
+          "oklch(70% 0.013 160)",
+          "oklch(82% 0.013 160)",
+          "oklch(95% 0.013 160)"
+        ]
+      },
+      "pine-ink": {
+        "role": "primary",
+        "displayName": "Pine Ink",
+        "canonical": "oklch(32.0% 0.050 172)",
+        "tonalRamp": [
+          "oklch(15% 0.050 172)",
+          "oklch(26% 0.050 172)",
+          "oklch(37% 0.050 172)",
+          "oklch(48% 0.050 172)",
+          "oklch(59% 0.050 172)",
+          "oklch(70% 0.050 172)",
+          "oklch(82% 0.050 172)",
+          "oklch(95% 0.050 172)"
+        ]
+      },
+      "sage-ground": {
+        "role": "neutral",
+        "displayName": "Sage Ground",
+        "canonical": "oklch(96.4% 0.004 157)",
+        "tonalRamp": [
+          "oklch(15% 0.004 157)",
+          "oklch(26% 0.004 157)",
+          "oklch(37% 0.004 157)",
+          "oklch(48% 0.004 157)",
+          "oklch(59% 0.004 157)",
+          "oklch(70% 0.004 157)",
+          "oklch(82% 0.004 157)",
+          "oklch(95% 0.004 157)"
+        ]
+      },
+      "card-white": {
+        "role": "neutral",
+        "displayName": "Card White",
+        "canonical": "oklch(100.0% 0.000 90)",
+        "tonalRamp": [
+          "oklch(15% 0.000 90)",
+          "oklch(26% 0.000 90)",
+          "oklch(37% 0.000 90)",
+          "oklch(48% 0.000 90)",
+          "oklch(59% 0.000 90)",
+          "oklch(70% 0.000 90)",
+          "oklch(82% 0.000 90)",
+          "oklch(95% 0.000 90)"
+        ]
+      },
+      "inset-sage": {
+        "role": "neutral",
+        "displayName": "Inset Sage",
+        "canonical": "oklch(97.0% 0.004 157)",
+        "tonalRamp": [
+          "oklch(15% 0.004 157)",
+          "oklch(26% 0.004 157)",
+          "oklch(37% 0.004 157)",
+          "oklch(48% 0.004 157)",
+          "oklch(59% 0.004 157)",
+          "oklch(70% 0.004 157)",
+          "oklch(82% 0.004 157)",
+          "oklch(95% 0.004 157)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(23.8% 0.030 236)",
+        "tonalRamp": [
+          "oklch(15% 0.030 236)",
+          "oklch(26% 0.030 236)",
+          "oklch(37% 0.030 236)",
+          "oklch(48% 0.030 236)",
+          "oklch(59% 0.030 236)",
+          "oklch(70% 0.030 236)",
+          "oklch(82% 0.030 236)",
+          "oklch(95% 0.030 236)"
+        ]
+      },
+      "slate-muted": {
+        "role": "neutral",
+        "displayName": "Slate Muted",
+        "canonical": "oklch(51.9% 0.025 240)",
+        "tonalRamp": [
+          "oklch(15% 0.025 240)",
+          "oklch(26% 0.025 240)",
+          "oklch(37% 0.025 240)",
+          "oklch(48% 0.025 240)",
+          "oklch(59% 0.025 240)",
+          "oklch(70% 0.025 240)",
+          "oklch(82% 0.025 240)",
+          "oklch(95% 0.025 240)"
+        ]
+      },
+      "slate-faint": {
+        "role": "neutral",
+        "displayName": "Slate Faint",
+        "canonical": "oklch(66.7% 0.020 243)",
+        "tonalRamp": [
+          "oklch(15% 0.020 243)",
+          "oklch(26% 0.020 243)",
+          "oklch(37% 0.020 243)",
+          "oklch(48% 0.020 243)",
+          "oklch(59% 0.020 243)",
+          "oklch(70% 0.020 243)",
+          "oklch(82% 0.020 243)",
+          "oklch(95% 0.020 243)"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(92.8% 0.008 157)",
+        "tonalRamp": [
+          "oklch(15% 0.008 157)",
+          "oklch(26% 0.008 157)",
+          "oklch(37% 0.008 157)",
+          "oklch(48% 0.008 157)",
+          "oklch(59% 0.008 157)",
+          "oklch(70% 0.008 157)",
+          "oklch(82% 0.008 157)",
+          "oklch(95% 0.008 157)"
+        ]
+      },
+      "hairline-strong": {
+        "role": "neutral",
+        "displayName": "Hairline Strong",
+        "canonical": "oklch(88.6% 0.012 162)",
+        "tonalRamp": [
+          "oklch(15% 0.012 162)",
+          "oklch(26% 0.012 162)",
+          "oklch(37% 0.012 162)",
+          "oklch(48% 0.012 162)",
+          "oklch(59% 0.012 162)",
+          "oklch(70% 0.012 162)",
+          "oklch(82% 0.012 162)",
+          "oklch(95% 0.012 162)"
+        ]
+      },
+      "alarm-red": {
+        "role": "error",
+        "displayName": "Alarm Red",
+        "canonical": "oklch(50.1% 0.178 29)",
+        "tonalRamp": [
+          "oklch(15% 0.178 29)",
+          "oklch(26% 0.178 29)",
+          "oklch(37% 0.178 29)",
+          "oklch(48% 0.178 29)",
+          "oklch(59% 0.178 29)",
+          "oklch(70% 0.178 29)",
+          "oklch(82% 0.178 29)",
+          "oklch(95% 0.178 29)"
+        ]
+      },
+      "alarm-wash": {
+        "role": "error",
+        "displayName": "Alarm Wash",
+        "canonical": "oklch(95.7% 0.015 22)",
+        "tonalRamp": [
+          "oklch(15% 0.015 22)",
+          "oklch(26% 0.015 22)",
+          "oklch(37% 0.015 22)",
+          "oklch(48% 0.015 22)",
+          "oklch(59% 0.015 22)",
+          "oklch(70% 0.015 22)",
+          "oklch(82% 0.015 22)",
+          "oklch(95% 0.015 22)"
+        ]
+      },
+      "ember": {
+        "role": "tertiary",
+        "displayName": "Ember",
+        "canonical": "oklch(64.4% 0.192 42)",
+        "tonalRamp": [
+          "oklch(15% 0.192 42)",
+          "oklch(26% 0.192 42)",
+          "oklch(37% 0.192 42)",
+          "oklch(48% 0.192 42)",
+          "oklch(59% 0.192 42)",
+          "oklch(70% 0.192 42)",
+          "oklch(82% 0.192 42)",
+          "oklch(95% 0.192 42)"
+        ]
+      },
+      "ground-dark": {
+        "role": "neutral",
+        "displayName": "Night Ground",
+        "canonical": "oklch(17.4% 0.012 175)",
+        "tonalRamp": [
+          "oklch(15% 0.012 175)",
+          "oklch(26% 0.012 175)",
+          "oklch(37% 0.012 175)",
+          "oklch(48% 0.012 175)",
+          "oklch(59% 0.012 175)",
+          "oklch(70% 0.012 175)",
+          "oklch(82% 0.012 175)",
+          "oklch(95% 0.012 175)"
+        ]
+      },
+      "card-dark": {
+        "role": "neutral",
+        "displayName": "Night Card",
+        "canonical": "oklch(20.8% 0.015 172)",
+        "tonalRamp": [
+          "oklch(15% 0.015 172)",
+          "oklch(26% 0.015 172)",
+          "oklch(37% 0.015 172)",
+          "oklch(48% 0.015 172)",
+          "oklch(59% 0.015 172)",
+          "oklch(70% 0.015 172)",
+          "oklch(82% 0.015 172)",
+          "oklch(95% 0.015 172)"
+        ]
+      },
+      "inset-dark": {
+        "role": "neutral",
+        "displayName": "Night Inset",
+        "canonical": "oklch(24.4% 0.017 171)",
+        "tonalRamp": [
+          "oklch(15% 0.017 171)",
+          "oklch(26% 0.017 171)",
+          "oklch(37% 0.017 171)",
+          "oklch(48% 0.017 171)",
+          "oklch(59% 0.017 171)",
+          "oklch(70% 0.017 171)",
+          "oklch(82% 0.017 171)",
+          "oklch(95% 0.017 171)"
+        ]
+      },
+      "ink-dark": {
+        "role": "neutral",
+        "displayName": "Night Ink",
+        "canonical": "oklch(94.4% 0.012 157)",
+        "tonalRamp": [
+          "oklch(15% 0.012 157)",
+          "oklch(26% 0.012 157)",
+          "oklch(37% 0.012 157)",
+          "oklch(48% 0.012 157)",
+          "oklch(59% 0.012 157)",
+          "oklch(70% 0.012 157)",
+          "oklch(82% 0.012 157)",
+          "oklch(95% 0.012 157)"
+        ]
+      },
+      "muted-dark": {
+        "role": "neutral",
+        "displayName": "Night Muted",
+        "canonical": "oklch(73.7% 0.025 162)",
+        "tonalRamp": [
+          "oklch(15% 0.025 162)",
+          "oklch(26% 0.025 162)",
+          "oklch(37% 0.025 162)",
+          "oklch(48% 0.025 162)",
+          "oklch(59% 0.025 162)",
+          "oklch(70% 0.025 162)",
+          "oklch(82% 0.025 162)",
+          "oklch(95% 0.025 162)"
+        ]
+      },
+      "hairline-dark": {
+        "role": "neutral",
+        "displayName": "Night Hairline",
+        "canonical": "oklch(28.4% 0.019 168)",
+        "tonalRamp": [
+          "oklch(15% 0.019 168)",
+          "oklch(26% 0.019 168)",
+          "oklch(37% 0.019 168)",
+          "oklch(48% 0.019 168)",
+          "oklch(59% 0.019 168)",
+          "oklch(70% 0.019 168)",
+          "oklch(82% 0.019 168)",
+          "oklch(95% 0.019 168)"
+        ]
+      },
+      "green-dark": {
+        "role": "primary",
+        "displayName": "Night Green",
+        "canonical": "oklch(67.4% 0.129 159)",
+        "tonalRamp": [
+          "oklch(15% 0.129 159)",
+          "oklch(26% 0.129 159)",
+          "oklch(37% 0.129 159)",
+          "oklch(48% 0.129 159)",
+          "oklch(59% 0.129 159)",
+          "oklch(70% 0.129 159)",
+          "oklch(82% 0.129 159)",
+          "oklch(95% 0.129 159)"
+        ]
+      },
+      "green-bright-dark": {
+        "role": "primary",
+        "displayName": "Night Bright Green",
+        "canonical": "oklch(81.5% 0.112 160)",
+        "tonalRamp": [
+          "oklch(15% 0.112 160)",
+          "oklch(26% 0.112 160)",
+          "oklch(37% 0.112 160)",
+          "oklch(48% 0.112 160)",
+          "oklch(59% 0.112 160)",
+          "oklch(70% 0.112 160)",
+          "oklch(82% 0.112 160)",
+          "oklch(95% 0.112 160)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page titles, profile and community names."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Rail section and card headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Post text and bios; 16px inside fields."
+      },
+      "body-small": {
+        "displayName": "Body small",
+        "purpose": "Metadata, rail copy, helper text."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Chips, reason lines, counters."
+      }
+    },
+    "shadows": [
+      {
+        "name": "card",
+        "value": "0 1px 2px rgb(16 33 43 / 5%), 0 1px 1px rgb(16 33 43 / 3%)",
+        "purpose": "Every card and the active nav pill. Dark: 0 1px 2px rgb(0 0 0 / 35%)."
+      },
+      {
+        "name": "pop",
+        "value": "0 12px 32px rgb(16 33 43 / 12%), 0 2px 6px rgb(16 33 43 / 6%)",
+        "purpose": "Menus and dropdown panels only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state",
+        "value": "0.15s ease",
+        "purpose": "Colour, border and background changes on hover and focus."
+      },
+      {
+        "name": "press",
+        "value": "transform 0.1s, scale(0.97)",
+        "purpose": "Buttons pressing in."
+      },
+      {
+        "name": "menu-in",
+        "value": "0.12s ease-out, translateY(-4px) to 0",
+        "purpose": "Menus appearing."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone-narrow",
+        "value": "359px"
+      },
+      {
+        "name": "desktop",
+        "value": "1024px"
+      },
+      {
+        "name": "rail",
+        "value": "1180px"
+      },
+      {
+        "name": "wide",
+        "value": "1329px"
+      }
+    ],
+    "focus": {
+      "value": "2px solid var(--accent) (dark: var(--accent-strong)), offset 2px",
+      "purpose": "Keyboard focus on every control; fields use a green border plus 3px soft halo."
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one decisive action on a card: Post, Join, Save.",
+      "html": "<button class=\"ds-btn-primary\">Post</button>",
+      "css": ".ds-btn-primary { font-family: var(--font-jakarta), 'Plus Jakarta Sans', system-ui, sans-serif; display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:8px 16px; border:1px solid transparent; border-radius:8px; background:var(--accent,#258153); color:var(--accent-ink,#fff); font-size:14px; font-weight:600; line-height:20px; cursor:pointer; transition:background-color .15s, transform .1s; } .ds-btn-primary:hover { background:var(--accent-strong,#176541); } .ds-btn-primary:active { transform:scale(.97); } .ds-btn-primary:focus-visible { outline:2px solid var(--focus-ring,#258153); outline-offset:2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Quiet alternative actions: Sign in, Joined, Older posts.",
+      "html": "<button class=\"ds-btn-secondary\">Browse communities</button>",
+      "css": ".ds-btn-secondary { font-family: var(--font-jakarta), 'Plus Jakarta Sans', system-ui, sans-serif; display:inline-flex; align-items:center; min-height:40px; padding:8px 16px; border:1px solid var(--line-strong,#d3dcd7); border-radius:8px; background:var(--surface,#fff); color:var(--ink,#10212b); font-size:14px; font-weight:600; cursor:pointer; transition:background-color .15s, border-color .15s, color .15s; } .ds-btn-secondary:hover { border-color:var(--accent,#258153); background:var(--accent-soft,#eaf4ee); color:var(--accent-strong,#176541); } .ds-btn-secondary:focus-visible { outline:2px solid var(--focus-ring,#258153); outline-offset:2px; }"
+    },
+    {
+      "name": "Post Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The signature object: one post, a white card on the sage ground.",
+      "html": "<article class=\"ds-post\"><p class=\"ds-post-why\">Posted in <a href=\"#\">Lagos</a></p><div class=\"ds-post-row\"><span class=\"ds-avatar\">N</span><div><p class=\"ds-post-head\"><b>Ngozi Nwosu</b> <span>@ngozi · 35m</span></p><p class=\"ds-post-body\">Who else is stuck on Third Mainland this morning?</p><div class=\"ds-post-actions\"><span><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7.9 20A9 9 0 1 0 4 16.1L2 22Z\"/></svg>2</span><span><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z\"/></svg>5</span></div></div></div></article>",
+      "css": ".ds-post { font-family: var(--font-jakarta), 'Plus Jakarta Sans', system-ui, sans-serif; max-width:520px; border:1px solid var(--line,#e3e9e5); border-radius:12px; background:var(--surface,#fff); box-shadow:var(--shadow-card,0 1px 2px rgb(16 33 43/5%),0 1px 1px rgb(16 33 43/3%)); padding:14px 16px 8px; color:var(--ink,#10212b); transition:border-color .15s; } .ds-post:hover { border-color:var(--line-strong,#d3dcd7); } .ds-post-why { margin:0 0 8px; font-size:12px; font-weight:500; color:var(--muted,#5c6b76); } .ds-post-why a { color:var(--accent-strong,#176541); font-weight:600; text-decoration:none; } .ds-post-row { display:flex; gap:12px; } .ds-avatar { display:inline-flex; width:36px; height:36px; flex-shrink:0; align-items:center; justify-content:center; border-radius:9999px; background:#efe7d5; font-size:14px; font-weight:600; } .ds-post-head { margin:0; font-size:15px; } .ds-post-head b { font-weight:600; } .ds-post-head span { font-size:13px; color:var(--muted,#5c6b76); } .ds-post-body { margin:6px 0 0; font-size:15px; line-height:1.5; } .ds-post-actions { display:flex; gap:12px; margin:6px 0 0 -8px; } .ds-post-actions span { display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:6px 8px; border-radius:8px; color:var(--muted,#5c6b76); font-size:13px; } .ds-post-actions span:hover { background:var(--accent-soft,#eaf4ee); color:var(--accent-strong,#176541); }"
+    },
+    {
+      "name": "Rail Section",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "A side-rail card: heading, short copy, one link.",
+      "html": "<section class=\"ds-rail\"><div class=\"ds-rail-head\"><h2>Public Treasury</h2><span class=\"ds-chip\">Coming soon</span></div><p>Community funds. Open books.</p><a href=\"#\">Learn about the treasury ↗</a></section>",
+      "css": ".ds-rail { font-family: var(--font-jakarta), 'Plus Jakarta Sans', system-ui, sans-serif; max-width:300px; border:1px solid var(--line,#e3e9e5); border-radius:12px; background:var(--surface,#fff); box-shadow:var(--shadow-card,0 1px 2px rgb(16 33 43/5%)); padding:16px; color:var(--ink,#10212b); } .ds-rail-head { display:flex; align-items:center; gap:12px; } .ds-rail h2 { margin:0; font-size:15px; font-weight:700; letter-spacing:-.01em; } .ds-chip { margin-left:auto; border-radius:6px; background:var(--accent-soft,#eaf4ee); padding:2px 8px; color:var(--accent-strong,#176541); font-size:12px; font-weight:600; line-height:18px; } .ds-rail p { margin:12px 0 0; font-size:13px; line-height:1.6; color:var(--muted,#5c6b76); } .ds-rail a { display:flex; min-height:44px; align-items:center; margin-top:12px; border-top:1px solid var(--line,#e3e9e5); color:var(--accent-strong,#176541); font-size:13px; font-weight:600; text-decoration:none; } .ds-rail a:hover { text-decoration:underline; }"
+    },
+    {
+      "name": "Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Status and community labels.",
+      "html": "<span class=\"ds-chip-solo\">Coming soon</span>",
+      "css": ".ds-chip-solo { font-family: var(--font-jakarta), 'Plus Jakarta Sans', system-ui, sans-serif; display:inline-flex; border-radius:6px; background:var(--accent-soft,#eaf4ee); padding:2px 8px; color:var(--accent-strong,#176541); font-size:12px; font-weight:600; line-height:18px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Every form field: white, hairline-strong border, green on focus.",
+      "html": "<input class=\"ds-field\" placeholder=\"Search people, posts, communities…\">",
+      "css": ".ds-field { font-family: var(--font-jakarta), 'Plus Jakarta Sans', system-ui, sans-serif; display:block; width:100%; max-width:360px; min-height:46px; padding:10px 14px; border:1px solid var(--line-strong,#d3dcd7); border-radius:8px; background:var(--surface,#fff); color:var(--ink,#10212b); font-size:16px; line-height:24px; transition:border-color .15s, box-shadow .15s; } .ds-field::placeholder { color:var(--muted,#5c6b76); } .ds-field:hover { border-color:var(--faint,#8a96a0); } .ds-field:focus { outline:none; border-color:var(--accent,#258153); box-shadow:0 0 0 3px var(--field-ring,rgb(37 129 83/16%)); }"
+    },
+    {
+      "name": "Sidebar Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Sidebar items on the ground; the current page is a white lifted pill.",
+      "html": "<nav class=\"ds-nav\"><a aria-current=\"page\" href=\"#\">Home</a><a href=\"#\">Communities</a><a href=\"#\">Governance</a></nav>",
+      "css": ".ds-nav { font-family: var(--font-jakarta), 'Plus Jakarta Sans', system-ui, sans-serif; display:flex; flex-direction:column; gap:4px; width:220px; padding:12px; background:var(--bg,#f1f4f2); } .ds-nav a { display:flex; min-height:44px; align-items:center; padding:10px 12px; border:1px solid transparent; border-radius:8px; color:var(--ink,#10212b); font-size:14.5px; font-weight:500; text-decoration:none; transition:background-color .15s; } .ds-nav a:hover { background:var(--surface,#fff); } .ds-nav a[aria-current=page] { border-color:var(--line,#e3e9e5); background:var(--surface,#fff); color:var(--accent-strong,#176541); font-weight:600; box-shadow:var(--shadow-card,0 1px 2px rgb(16 33 43/5%)); } .ds-nav a:focus-visible { outline:2px solid var(--focus-ring,#258153); outline-offset:2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Town Square Noticeboard",
+    "overview": "HeyNaija is a calm sage wall with clean white notices pinned to it. Every post, notification, form, profile header and side-rail section is its own card. You read it, act on it and move to the next one. The ground stays quiet and the cards stay crisp. One decisive forest green marks everything you can do. The result should feel fresh, tidy and confident: organised and modern, never cold.\n\nThe one loud element is the bubbly green wordmark. Everything around it is disciplined: one typeface, one accent, one card. Density comes from rhythm (cards 10px apart, a 12px gutter on phones) rather than from cramming. The system is built to stay fast on low-end Android, so depth is a border and a hairline shadow, not blur or imagery.\n\nThe look was redesigned on 14 October 2026 from ruled rows inside a white framed sheet to cards on a tinted ground, using the owner's other project, Koinovera, as the polish reference. The palette, the wordmark and the no-gradients rule were kept from before.",
+    "keyCharacteristics": [
+      "White cards (12px corners, 1px hairline, faint shadow) on a sage-grey ground, with no framing sheet.",
+      "A single forest-green accent for actions, the current place and links.",
+      "Plus Jakarta Sans throughout, with weight rather than size doing most of the hierarchy work.",
+      "Light, dark and system themes; dark keeps the same structure with deeper greens.",
+      "Phones get the same cards with 12px gutters and a fixed bottom bar."
+    ],
+    "rules": [
+      {
+        "name": "The One Green Rule",
+        "body": "Forest green is the only accent. It means \"you can act here\" or \"you are here\". No second brand colour, no gradients, and no colours borrowed from AI-tool branding.",
+        "section": "colors"
+      },
+      {
+        "name": "The No Grey Text on Colour Rule",
+        "body": "Text on sage wash uses Deep Forest or Pine Ink, never slate.",
+        "section": "colors"
+      },
+      {
+        "name": "The Weight Not Size Rule",
+        "body": "Hierarchy steps through 400, 500, 600 and 700 before it reaches for a bigger size. Author names are 600 at 15px, not larger.",
+        "section": "typography"
+      },
+      {
+        "name": "The No Sheet Rule",
+        "body": "Nothing frames the columns. Structure comes from the cards; there are no rules between columns.",
+        "section": "layout"
+      },
+      {
+        "name": "The Border First Rule",
+        "body": "Never add depth with a bigger shadow. If a card needs more presence, its border goes to Hairline Strong (as on hover); the shadow stays the same.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do put every actionable object in a card: white, 12px corners, 1px Hairline border, the Card shadow.",
+      "Do keep the ground Sage Ground and let sticky bars use it at 90% opacity.",
+      "Do use Forest Green only for actions, the current location and links.",
+      "Do keep 10px between feed cards and a 12px gutter on phones.",
+      "Do step hierarchy through weight (400–700) before size.",
+      "Do keep text at 4.5:1 or better: Slate Muted for metadata, never Slate Faint."
+    ],
+    "donts": [
+      "Don't reintroduce a framing white sheet or rules between columns.",
+      "Don't add gradients, a second accent colour, or colours borrowed from AI-tool branding.",
+      "Don't compete with the wordmark: no other display type, illustration-heavy panels or dark slabs in the rail.",
+      "Don't nest cards inside cards; inside a card, use Inset Sage fills or hairline dividers.",
+      "Don't round anything but avatars fully, or use radii outside 6, 8 and 12px.",
+      "Don't add depth with bigger shadows; strengthen the border instead."
+    ]
+  }
+}

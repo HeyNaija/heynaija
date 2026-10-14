@@ -5,8 +5,8 @@ import type { Flow, UiMessage, UiNode } from '@/lib/kratos'
 
 // Friendlier wording than Kratos's defaults, keyed by field name.
 const LABELS: Record<string, string> = {
-  identifier: 'Email',
-  'traits.email': 'Email',
+  identifier: 'Email address',
+  'traits.email': 'Email address',
   'traits.handle': 'Handle',
   code: 'Code from the email',
 }
@@ -40,7 +40,7 @@ function Messages({ messages, field }: { messages?: UiMessage[]; field?: string 
   return (
     <>
       {messages.map((m) => (
-        <p key={`${m.id}-${m.text}`} role={m.type === 'error' ? 'alert' : 'status'} className={`text-sm ${tone[m.type]}`}>
+        <p key={`${m.id}-${m.text}`} role={m.type === 'error' ? 'alert' : 'status'} className={`text-sm leading-relaxed ${tone[m.type]}`}>
           {(field && FIELD_ERRORS[field]?.[m.id]) ?? TEXT[m.id] ?? m.text}
         </p>
       ))}
@@ -75,7 +75,7 @@ function Field({ node, flowId }: { node: UiNode; flowId: string }) {
         value={value}
         disabled={a.disabled}
         formNoValidate={!primary}
-        className={primary ? 'btn btn-primary btn-lg btn-block' : 'self-start text-sm font-medium text-accent-strong hover:underline'}
+        className={primary ? 'btn btn-primary btn-lg btn-block' : 'btn btn-ghost min-h-11 self-center text-accent-strong underline-offset-4 hover:underline'}
       >
         {label}
       </button>
@@ -83,8 +83,11 @@ function Field({ node, flowId }: { node: UiNode; flowId: string }) {
   }
 
   const id = `${flowId}-${node.group}-${name}`
+  const hasMessages = Boolean(node.messages?.length)
+  const invalid = node.messages?.some((message) => message.type === 'error')
+  const description = [HINTS[name] ? `${id}-hint` : '', hasMessages ? `${id}-messages` : ''].filter(Boolean).join(' ')
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
       <label htmlFor={id} className="field-label">
         {LABELS[name] ?? node.meta.label?.text ?? name}
       </label>
@@ -96,21 +99,23 @@ function Field({ node, flowId }: { node: UiNode; flowId: string }) {
         required={a.required}
         disabled={a.disabled}
         autoComplete={a.autocomplete}
+        inputMode={name === 'code' ? 'numeric' : undefined}
         pattern={a.pattern}
         title={HINTS[name]}
         maxLength={a.maxlength}
         autoCapitalize="none"
         autoCorrect="off"
         spellCheck={false}
-        aria-describedby={HINTS[name] ? `${id}-hint` : undefined}
-        className="field"
+        aria-invalid={invalid || undefined}
+        aria-describedby={description || undefined}
+        className={`field min-h-12 ${invalid ? 'border-danger' : ''} ${name === 'code' ? 'font-mono tracking-[0.18em]' : ''}`}
       />
       {HINTS[name] ? (
         <p id={`${id}-hint`} className="field-hint">
           {HINTS[name]}
         </p>
       ) : null}
-      <Messages messages={node.messages} field={name} />
+      {hasMessages ? <div id={`${id}-messages`} className="flex flex-col gap-1"><Messages messages={node.messages} field={name} /></div> : null}
     </div>
   )
 }
@@ -137,7 +142,7 @@ const rank = (node: UiNode) => {
 function Form({ flow, nodes: unordered }: { flow: Flow; nodes: UiNode[] }) {
   const nodes = [...unordered].sort((a, b) => rank(a) - rank(b))
   return (
-    <form action={flow.ui.action} method={flow.ui.method} className="flex flex-col gap-4">
+    <form action={flow.ui.action} method={flow.ui.method} className="flex flex-col gap-5">
       {nodes.map((node, i) => {
         if (node.type === 'input') return <Field key={`${node.attributes.name}-${i}`} node={node} flowId={flow.id} />
         if (node.type === 'text') {
@@ -177,7 +182,7 @@ export function FlowForm({ flow, sections }: { flow: Flow; sections?: Record<str
   return (
     <div className="flex flex-col gap-6">
       {flow.ui.messages?.length ? (
-        <div className={`notice ${flow.ui.messages.some((m) => m.type === 'error') ? 'notice-danger' : ''}`}>
+        <div className={`notice flex flex-col gap-2 ${flow.ui.messages.some((m) => m.type === 'error') ? 'notice-danger' : ''}`}>
           <Messages messages={flow.ui.messages} />
         </div>
       ) : null}
@@ -197,7 +202,7 @@ export function FlowForm({ flow, sections }: { flow: Flow; sections?: Record<str
           {google.length && hasEmailForm ? (
             <div className="flex items-center gap-3 text-xs text-muted" role="separator">
               <span className="h-px flex-1 bg-line" />
-              or
+              or use email
               <span className="h-px flex-1 bg-line" />
             </div>
           ) : null}

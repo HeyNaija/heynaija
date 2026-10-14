@@ -12,8 +12,9 @@ export const metadata: Metadata = { title: 'Create your account' }
 export default function SignupPage({ searchParams }: PageProps<'/signup'>) {
   return (
     <AuthPage
+      eyebrow="Make yourself at home"
       title="Create your account"
-      intro="Your handle is your public name on HeyNaija. Your email stays private, and we send a code to it instead of asking for a password."
+      intro="Choose your public handle. Your email stays private, and a sign-in code takes the place of a password."
       footer={
         <p>
           Already a member?{' '}

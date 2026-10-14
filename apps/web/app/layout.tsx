@@ -15,6 +15,10 @@ const jakarta = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: { default: 'HeyNaija', template: '%s · HeyNaija' },
   description: 'Real people. Real conversations. A social network for Nigerians at home and abroad.',
+  icons: {
+    icon: [{ url: '/brand/heynaija-mark.svg', type: 'image/svg+xml', sizes: 'any' }],
+    apple: [{ url: '/apple-icon.png', type: 'image/png', sizes: '180x180' }],
+  },
 }
 
 export const viewport: Viewport = {

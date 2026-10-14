@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Suspense } from 'react'
-import { AuthPage, linkClass } from '@/app/ui/auth-page'
 import { AvatarUploader } from '@/app/ui/avatar-uploader'
 import { FlowForm } from '@/app/ui/flow-form'
 import { ProfileForm } from '@/app/ui/profile-form'
@@ -13,36 +12,45 @@ export const metadata: Metadata = { title: 'Settings' }
 
 export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
   return (
-    <AuthPage
-      framed
-      title="Settings"
-      footer={
-        <p>
-          <Link href="/" className={linkClass}>
-            Back to the feed
-          </Link>
-        </p>
-      }
-    >
-      <section className="mb-6 flex flex-col gap-3 border-b border-line pb-6">
-        <h2 className="section-title">Profile photo</h2>
+    <div className="page-stack">
+      <header className="page-intro">
+        <p className="page-eyebrow">Make yourself at home</p>
+        <h1 className="page-title">Settings</h1>
+        <p className="page-description">Your public profile, your preferences and the ways you sign in.</p>
+      </header>
+      <section className="content-panel settings-section" aria-labelledby="photo-heading">
+        <div>
+          <h2 id="photo-heading" className="section-title">Profile photo</h2>
+          <p className="field-hint mt-1">Help people recognise you in the conversation.</p>
+        </div>
         <Suspense fallback={<div className="skeleton h-[72px] w-64" />}>
           <ProfilePhoto />
         </Suspense>
       </section>
-      <section className="mb-6 flex flex-col gap-3 border-b border-line pb-6">
-        <h2 className="section-title">Name and bio</h2>
+      <section className="content-panel settings-section" aria-labelledby="profile-heading">
+        <div>
+          <h2 id="profile-heading" className="section-title">Name and bio</h2>
+          <p className="field-hint mt-1">A little about you. These details are public.</p>
+        </div>
         <Suspense fallback={<div className="skeleton h-48" />}>
           <NameAndBio />
         </Suspense>
       </section>
-      <section className="mb-6 flex flex-col gap-3 border-b border-line pb-6">
-        <h2 className="section-title">Appearance</h2>
+      <section className="content-panel settings-section" aria-labelledby="appearance-heading">
+        <h2 id="appearance-heading" className="section-title">Appearance</h2>
         <ThemeSwitch />
         <p className="field-hint">System follows your device. This choice is saved on this device only.</p>
       </section>
-      <SettingsForm searchParams={searchParams} />
-    </AuthPage>
+      <div className="content-panel settings-section">
+        <p className="page-eyebrow">Account access</p>
+        <Suspense fallback={<div aria-busy="true" className="skeleton h-48" />}>
+          <SettingsForm searchParams={searchParams} />
+        </Suspense>
+      </div>
+      <Link href="/" className="inline-flex min-h-11 items-center self-start text-sm font-semibold text-accent-strong hover:underline">
+        Back to the feed
+      </Link>
+    </div>
   )
 }
 

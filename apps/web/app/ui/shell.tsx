@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import { getCommunities, getTrending, getViewer } from '@/lib/api'
 import { getLogoutUrl } from '@/lib/kratos'
 import { Avatar } from './avatar'
+import { CommunityMark } from './community-mark'
 import {
   ArrowUpRightIcon,
   BellIcon,
@@ -14,16 +15,15 @@ import {
   GearIcon,
   HomeIcon,
   PeopleIcon,
-  PlusIcon,
   SearchIcon,
   ShieldIcon,
   UserIcon,
-  VoteIcon,
 } from './icons'
 import { JoinButton } from './join-button'
 import { Logo } from './logo'
 import { Menu } from './menu'
 import { NavLink } from './nav-link'
+import { NewPostLink } from './new-post-link'
 import { ThemeSwitch } from './theme-switch'
 import { TreasuryPreview } from './treasury-preview'
 import { UnreadBadge } from './unread-badge'
@@ -46,6 +46,7 @@ export function Sidebar() {
       {/* usePathname makes the active highlight request-specific, hence the boundary. */}
       <Suspense>
         <nav aria-label="Main" className="flex flex-col gap-1">
+          <p className="sidebar-label">Your space</p>
           {NAV.slice(0, 2).map(({ href, label, icon: Icon, exact }) => (
             <NavLink key={href} href={href} exact={exact} className="sidebar-nav-item">
               <Icon />
@@ -61,6 +62,7 @@ export function Sidebar() {
           ))}
           <ModerationLink />
         </nav>
+        <SidebarCompose />
       </Suspense>
 
       <div className="ownership-card">
@@ -73,21 +75,23 @@ export function Sidebar() {
           className="ownership-illustration"
         />
         <div className="ownership-copy">
-          <p>A community-owned social network for all Nigerians.</p>
-          <div className="my-3 h-0.5 w-6 rounded bg-accent" />
-          <p>
-            Different places.
-            <br />
-            Same people.
-            <br />A brighter Nigeria together.
-          </p>
+          <p>Different places.<br />A shared sense of home.</p>
+          <p className="mt-2">Made for Nigerians, at home and everywhere. Built toward a community-owned future.</p>
+          <Link href="/governance" className="ownership-link">Get to know HeyNaija <ArrowUpRightIcon size={14} /></Link>
         </div>
       </div>
+      <p className="sidebar-footer">Real people. Real conversations.</p>
     </aside>
   )
 }
 
-/** Only moderators see this; the API checks the role again on every request. */
+async function SidebarCompose() {
+  const viewer = await getViewer()
+  return viewer.state === 'member' ? <NewPostLink expanded /> : (
+    <Link href="/join" className="btn btn-primary btn-block sidebar-compose">Find your community <ArrowUpRightIcon size={17} /></Link>
+  )
+}
+
 /** Members only, with the unread count. */
 async function NotificationsLink() {
   const viewer = await getViewer()
@@ -101,6 +105,7 @@ async function NotificationsLink() {
   )
 }
 
+/** Only moderators see this; the API checks the role again on every request. */
 async function ModerationLink() {
   const viewer = await getViewer()
   if (viewer.state !== 'member' || !viewer.me.moderates) return null
@@ -129,7 +134,7 @@ export function TopBar() {
             required
             minLength={2}
             maxLength={80}
-            placeholder="Search people, posts, communities…"
+            placeholder="Search HeyNaija"
             className="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-muted focus:outline-none"
           />
         </label>
@@ -160,7 +165,7 @@ async function UserMenu() {
           Sign in
         </Link>
         <Link href="/join" className="btn btn-primary btn-sm">
-          Join
+          Join HeyNaija
         </Link>
       </>
     )
@@ -233,24 +238,15 @@ async function UserMenu() {
 export function RightRail() {
   return (
     <aside className="square-rail">
-      <TreasuryPreview />
+      <div className="rail-heading"><span className="page-eyebrow">A little more connected</span><h2>Discover your people</h2></div>
       <Suspense fallback={<div className="skeleton h-72" />}>
         <PopularCommunities />
       </Suspense>
-
-      <section className="rail-section">
-        <h2 className="section-title flex items-center gap-2"><VoteIcon size={18} /> Community votes</h2>
-        <p className="mt-2 text-[13px] leading-relaxed text-muted">
-          A say in our shared future. See what we’re building toward.
-        </p>
-        <Link href="/governance#votes" className="rail-text-link">
-          Explore governance <ArrowUpRightIcon size={16} />
-        </Link>
-      </section>
-
       <Suspense fallback={null}>
         <Trending />
       </Suspense>
+      <TreasuryPreview />
+      <p className="rail-footer">A space for us. A future we build together.<br /><Link href="/governance">About HeyNaija</Link><span aria-hidden="true"> · </span><Link href="/c">Our communities</Link></p>
     </aside>
   )
 }
@@ -263,15 +259,15 @@ async function PopularCommunities() {
   return (
     <section className="rail-section">
       <div className="flex items-baseline justify-between">
-        <h2 className="section-title">Popular communities</h2>
+        <h2 className="section-title">Find your community</h2>
         <Link href="/c" className="text-[13px] font-semibold text-accent-strong hover:underline">
           View all
         </Link>
       </div>
-      <ul className="mt-3 flex flex-col gap-2.5">
+      <ul className="community-rail-list">
         {popular.map((c) => (
           <li key={c.slug} className="community-row flex items-center gap-3">
-            <Avatar handle={c.name} size={38} />
+            <Link href={`/c/${c.slug}`} tabIndex={-1} aria-hidden="true"><CommunityMark slug={c.slug} /></Link>
             <div className="min-w-0 flex-1">
               <Link href={`/c/${c.slug}`} className="block truncate text-sm font-semibold hover:underline">
                 {c.name}
@@ -303,11 +299,11 @@ async function Trending() {
       <ol className="mt-3 flex flex-col gap-3.5">
         {trending.map((post, i) => (
           <li key={post.id} className="flex gap-3">
-            <span className="w-4 shrink-0 pt-px text-sm font-bold tabular-nums text-faint">
+            <span className="w-4 shrink-0 pt-px text-sm font-bold tabular-nums text-muted">
               {i + 1}
             </span>
             <Link href={`/p/${post.id}`} className="group min-w-0">
-              <span className="line-clamp-2 text-sm font-semibold leading-snug group-hover:underline">{post.text}</span>
+              <span className="line-clamp-2 text-[13px] font-semibold leading-relaxed group-hover:underline">{post.text || 'A conversation in pictures'}</span>
               <span className="mt-1 block text-xs text-muted">
                 {post.replyCount} {post.replyCount === 1 ? 'reply' : 'replies'}, {post.likeCount}{' '}
                 {post.likeCount === 1 ? 'like' : 'likes'}
@@ -333,20 +329,20 @@ export function BottomNav() {
         </NavLink>
         <NavLink href="/c" className="bottom-tab">
           <PeopleIcon size={22} />
-          Communities
+          Explore
         </NavLink>
-        <Link
-          href="/#compose"
-          aria-label="New post"
-          className="mx-2 flex size-11 shrink-0 items-center justify-center rounded-[10px] bg-accent text-accent-ink transition-transform active:scale-95"
-        >
-          <PlusIcon size={24} />
-        </Link>
+        <NewPostTab />
         <NotificationsTab />
         <ProfileTab />
       </Suspense>
     </nav>
   )
+}
+
+/** Only members can post, so visitors get no "New post" button to a box that is not there. */
+async function NewPostTab() {
+  const viewer = await getViewer()
+  return viewer.state === 'member' ? <NewPostLink /> : null
 }
 
 /** Bookmarks for visitors; members get Notifications here (Bookmarks moves to the account menu). */

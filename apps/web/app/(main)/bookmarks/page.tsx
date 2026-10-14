@@ -8,11 +8,12 @@ export const metadata: Metadata = { title: 'Bookmarks' }
 
 export default function BookmarksPage({ searchParams }: PageProps<'/bookmarks'>) {
   return (
-    <div className="flex flex-col gap-3">
-      <div>
+    <div className="page-stack">
+      <header className="page-intro">
+        <p className="page-eyebrow">Your personal collection</p>
         <h1 className="page-title">Bookmarks</h1>
-        <p className="mt-1 text-sm text-muted">Posts you saved. Only you can see this list.</p>
-      </div>
+        <p className="page-description">Good conversations, kept close. Only you can see the posts you save here.</p>
+      </header>
       <Suspense fallback={<PostsSkeleton />}>
         <Bookmarks searchParams={searchParams} />
       </Suspense>

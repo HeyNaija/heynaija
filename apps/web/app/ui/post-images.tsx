@@ -31,7 +31,7 @@ export function PostImages({ images, compact = false }: { images: PostImage[]; c
             target="_blank"
             rel="noopener"
             className="post-image"
-            aria-label={images.length > 1 ? `View image ${i + 1} of ${images.length}` : 'View image'}
+            aria-label={`View image ${i + 1} of ${images.length}${image.alt.trim() ? `: ${image.alt.trim()}` : ''}`}
             onClick={(e) => {
               if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
               e.preventDefault()

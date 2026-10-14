@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import { card, PostsSkeleton } from '@/app/ui/post-item'
+import { PostsSkeleton } from '@/app/ui/post-item'
 import { getProfile, getThread, getViewer } from '@/lib/api'
 import { ReportForm } from './report-form'
 
@@ -29,8 +29,12 @@ async function Report({ searchParams }: Pick<PageProps<'/report'>, 'searchParams
   if (!thread && !profile) notFound()
 
   return (
-    <div className={`${card} p-5`}>
-      <h1 className="page-title">{thread ? 'Report a post' : `Report @${profile!.handle}`}</h1>
+    <div className="content-panel">
+      <header className="page-intro">
+        <p className="page-eyebrow">Looking out for each other</p>
+        <h1 className="page-title">{thread ? 'Report a post' : `Report @${profile!.handle}`}</h1>
+        <p className="page-description">Tell our moderators what’s wrong. Your report helps keep this community safe.</p>
+      </header>
       {thread ? (
         <blockquote className="mt-4 rounded-lg bg-panel p-4 text-sm">
           <span className="font-semibold">@{thread.post.authorHandle}</span>

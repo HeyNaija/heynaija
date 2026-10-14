@@ -5,30 +5,27 @@
    here; components never hard-code a hex value.
    --------------------------------------------------------------------------- */
 :root {
-  --bg: #f6f8f7;
+  --bg: #f1f4f2; /* the ground cards sit on; a step under white so a card reads without a heavy edge */
   --surface: #ffffff;
   --panel: #f3f6f4; /* quiet fill for inputs and inset blocks */
   --ink: #10212b;
   --muted: #5c6b76; /* 5.5:1 on white, so it is safe for small text */
   --faint: #8a96a0; /* decorative only: icons, dividers, large numerals */
-  --line: #e6ebe8;
+  --line: #e3e9e5;
   --line-strong: #d3dcd7;
   --accent: #258153;
   --accent-strong: #176541;
   --accent-soft: #eaf4ee;
   --accent-ink: #ffffff;
   --brand-deep: #123b30; /* headings on sage panels */
-  --treasury-bg: #123b30;
-  --treasury-ink: #f4faf6;
-  --treasury-muted: #c3d9cd;
-  --treasury-line: #41675a;
   --danger: #b3261e;
   --danger-soft: #fbedec;
   --warm: #e8590c;
   --selection: #cfe8da;
-  --focus-ring: rgb(37 129 83 / 32%);
+  --focus-ring: var(--accent); /* solid, 4.8:1 on white, so the focused control is never lost */
   --field-ring: rgb(37 129 83 / 16%);
-  --topbar: rgb(255 255 255 / 92%);
+  --topbar: rgb(241 244 242 / 90%); /* the ground, so sticky bars belong to it, not to the cards */
+  --shadow-card: 0 1px 2px rgb(16 33 43 / 5%), 0 1px 1px rgb(16 33 43 / 3%);
   --shadow-pop: 0 12px 32px rgb(16 33 43 / 12%), 0 2px 6px rgb(16 33 43 / 6%);
   /* The image viewer is dark in both themes, so photos are seen against the same ground. */
   --scrim: rgb(7 13 11 / 98%);
@@ -40,7 +37,7 @@
      little more for the surfaces that hold them. Only avatars are round. */
   --r-control: 8px;
   --r-chip: 6px;
-  --r-panel: 10px;
+  --r-panel: 12px;
   --r-frame: 14px;
 
   /* Avatar backgrounds, one per hash bucket. */
@@ -74,9 +71,10 @@
   --danger-soft: #3a1c1a;
   --warm: #ff9b5c;
   --selection: #1f4d38;
-  --focus-ring: rgb(125 217 170 / 40%);
+  --focus-ring: var(--accent-strong);
   --field-ring: rgb(125 217 170 / 20%);
-  --topbar: rgb(17 26 23 / 92%);
+  --topbar: rgb(11 18 16 / 90%);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 35%);
   --shadow-pop: 0 12px 32px rgb(0 0 0 / 45%), 0 2px 6px rgb(0 0 0 / 30%);
 
   --tone-0: #1d3327;
@@ -107,6 +105,7 @@
   --color-danger-soft: var(--danger-soft);
   --color-warm: var(--warm);
   --shadow-pop: var(--shadow-pop);
+  --shadow-card: var(--shadow-card);
   /* Plus Jakarta Sans is self-hosted by next/font (one small file, cached). */
   --font-sans: var(--font-jakarta), system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
 }
@@ -139,7 +138,7 @@ body {
 }
 
 :focus-visible {
-  outline: 3px solid var(--focus-ring);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -216,6 +215,12 @@ summary.menu::-webkit-details-marker {
   .btn-primary:hover:not(:disabled) {
     background: var(--accent-strong);
   }
+  .btn-primary:disabled {
+    border-color: var(--line);
+    background: var(--panel);
+    color: var(--muted);
+    opacity: 1;
+  }
   .btn-secondary {
     border-color: var(--line-strong);
     background: var(--surface);
@@ -263,6 +268,7 @@ summary.menu::-webkit-details-marker {
   .icon-btn[aria-pressed="true"] {
     color: var(--accent-strong);
   }
+  .icon-btn:disabled { opacity: 0.45; }
 
   .field {
     display: block;
@@ -376,9 +382,9 @@ summary.menu::-webkit-details-marker {
   }
 
   .page-title {
-    font-size: 22px;
+    font-size: 28px;
     font-weight: 700;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.045em;
     line-height: 1.25;
   }
   .section-title {
@@ -407,8 +413,7 @@ summary.menu::-webkit-details-marker {
 }
 
 /* ---------------------------------------------------------------------------
-   App frame ("digital town square"): one white sheet holding the sidebar, the
-   feed and the discovery rail. These rules own layout only.
+   The town square: open columns, a quiet ground and distinct content surfaces.
    --------------------------------------------------------------------------- */
 .skip-link {
   position: absolute;
@@ -418,7 +423,7 @@ summary.menu::-webkit-details-marker {
   border-radius: 10px;
   background: var(--ink);
   padding: 10px 14px;
-  color: #fff;
+  color: var(--surface);
   font-size: 14px;
   font-weight: 600;
 }
@@ -439,198 +444,205 @@ summary.menu::-webkit-details-marker {
 
 .town-square {
   display: flex;
-  max-width: 1280px;
-  min-height: calc(100dvh - 48px);
-  margin: 24px auto;
-  border: 1px solid var(--line);
-  border-radius: var(--r-frame);
-  background: var(--surface);
+  max-width: 1320px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding-inline: 32px;
 }
-
 .square-sidebar {
   position: sticky;
   top: 0;
   display: flex;
-  width: 232px;
-  /* Never taller than the window, so the bottom card is always reachable. */
+  width: 210px;
   max-height: 100dvh;
   flex-shrink: 0;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
   align-self: flex-start;
   overflow-y: auto;
-  padding: 20px 14px;
+  margin-right: 28px;
+  padding: 22px 0;
   scrollbar-width: none;
 }
 .sidebar-brand {
   display: flex;
-  height: 46px;
+  min-height: 42px;
   align-items: center;
-  padding-left: 10px;
+  padding-left: 12px;
+}
+.sidebar-label {
+  margin: 5px 12px 12px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 .sidebar-nav-item {
   display: flex;
-  min-height: 44px;
+  min-height: 46px;
   align-items: center;
-  gap: 12px;
+  gap: 13px;
+  border: 1px solid transparent;
   border-radius: var(--r-control);
-  padding: 10px 12px;
-  color: var(--ink);
-  font-size: 14.5px;
+  padding: 11px 13px;
+  color: var(--muted);
+  font-size: 13px;
   font-weight: 500;
   transition: background-color 0.15s, color 0.15s;
 }
 .sidebar-nav-item:hover {
-  background: var(--panel);
+  background: var(--surface);
+  color: var(--ink);
 }
 .sidebar-nav-item[aria-current="page"] {
   background: var(--accent-soft);
   color: var(--accent-strong);
-  font-weight: 600;
+  font-weight: 700;
 }
-.sidebar-nav-item > svg {
-  color: var(--muted);
-}
-.sidebar-nav-item[aria-current="page"] > svg {
-  color: var(--accent);
-}
-
+.sidebar-nav-item[aria-current="page"] > svg { color: var(--accent); }
+.sidebar-compose { min-height: 44px; font-size: 13px; }
 .ownership-card {
-  margin: auto 4px 0;
+  margin-top: auto;
   flex-shrink: 0;
   overflow: hidden;
+  border: 1px solid var(--line);
   border-radius: var(--r-panel);
-  background: var(--accent-soft);
+  background: var(--surface);
 }
 .ownership-illustration {
   display: block;
   width: 100%;
-  height: 122px;
+  height: 108px;
   object-fit: cover;
 }
-.ownership-copy {
-  padding: 16px 16px 18px;
-}
+.ownership-copy { padding: 17px; }
 .ownership-copy > p:first-child {
   color: var(--brand-deep);
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.3;
-}
-.ownership-copy > p:last-child {
-  color: var(--muted);
-  font-size: 13px;
+  letter-spacing: -0.035em;
   line-height: 1.5;
 }
-
-/* The vertical rules belong to the columns that run the full height of the sheet
-   (the content column and the feed), never to the sticky sidebar or rail, which
-   are only as tall as the window. */
+.ownership-copy > p:nth-child(2) {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.8;
+}
+.ownership-link {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 600;
+}
+.ownership-link:hover { text-decoration: underline; }
+.sidebar-footer { padding-left: 8px; font-size: 10px; color: var(--muted); }
 .square-content {
   display: flex;
   min-width: 0;
   flex: 1;
   flex-direction: column;
-  border-left: 1px solid var(--line);
 }
 .square-topbar {
   position: sticky;
   top: 0;
   z-index: 20;
   display: flex;
-  height: 60px;
+  min-height: 80px;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   border-bottom: 1px solid var(--line);
-  border-radius: 0 var(--r-frame) 0 0;
-  background: var(--topbar);
-  padding: 8px 20px;
-  backdrop-filter: blur(12px);
+  background: var(--bg);
+  padding-block: 16px;
 }
 .square-search {
   display: flex;
-  max-width: 440px;
+  max-width: 480px;
+  min-width: 0;
+  min-height: 42px;
   align-items: center;
   gap: 10px;
-  border: 1px solid transparent;
+  border: 1px solid var(--line);
   border-radius: var(--r-control);
-  background: var(--panel);
+  background: var(--surface);
   padding: 9px 14px;
   color: var(--muted);
-  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 .square-search:focus-within {
   border-color: var(--accent);
-  background: var(--surface);
   box-shadow: 0 0 0 3px var(--field-ring);
 }
 .square-columns {
   display: flex;
   flex: 1;
   align-items: stretch;
+  gap: 24px;
 }
 .square-feed {
   min-width: 0;
   flex: 1;
-  border-right: 1px solid var(--line);
-  padding: 18px 20px 24px;
+  padding-block: 28px 48px;
 }
 .square-rail {
   position: sticky;
-  top: 60px; /* directly under the top bar */
+  top: 80px;
   display: flex;
-  width: 310px;
+  width: 282px;
+  max-height: calc(100dvh - 80px);
   flex-shrink: 0;
   flex-direction: column;
+  gap: 16px;
   align-self: flex-start;
-  padding: 16px 18px 24px;
+  overflow-y: auto;
+  padding-block: 28px;
+  scrollbar-width: none;
 }
+.rail-heading { padding: 2px 2px 3px; }
+.rail-heading h2 { margin-top: 7px; font-size: 18px; font-weight: 700; letter-spacing: -0.035em; }
+.rail-heading .page-eyebrow { font-size: 9px; }
+.rail-footer { padding-inline: 3px; color: var(--muted); font-size: 10px; line-height: 2; }
+.rail-footer a:hover { color: var(--accent-strong); text-decoration: underline; }
 
-/* A bordered panel, for things that really are separate objects: the composer,
-   a form, a moderation case. Posts and rail sections are not; they are rows. */
-.square-card {
+/* The card: one white object on the ground. Posts, the composer, forms, page
+   headers and rail sections all use it, so the page reads as things you can act on. */
+.square-card,
+.rail-section,
+.post-card,
+.page-header {
   border: 1px solid var(--line);
   border-radius: var(--r-panel);
   background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
-/* Right rail: plain sections under a heading, separated by a rule. */
+/* Right rail: a stack of cards. */
 .rail-section {
-  padding: 14px 2px;
+  padding: 20px;
 }
-.rail-section + .rail-section {
-  border-top: 1px solid var(--line);
-}
-.rail-section:first-child {
-  padding-top: 4px;
-}
+.rail-section .section-title { font-size: 13px; }
+.rail-section > div > a { font-size: 11px; }
+.community-rail-list { display: flex; flex-direction: column; margin-top: 10px; }
+.community-rail-list li { padding-block: 11px; }
+.community-rail-list li + li { border-top: 1px solid var(--line); }
+.community-rail-list li:last-child { padding-bottom: 0; }
+.community-rail-list li a { font-size: 12px; }
+.community-rail-list li p { margin-top: 3px; font-size: 10px; }
+.community-rail-list .btn-sm { min-height: 30px; padding: 4px 9px; font-size: 10px; }
 .community-row {
   min-height: 44px;
 }
-.treasury-preview {
-  border: 1px solid var(--treasury-line);
-  border-radius: var(--r-panel);
-  background: var(--treasury-bg);
-  padding: 16px;
-  color: var(--treasury-ink);
-  margin-bottom: 8px;
-}
 .treasury-symbol {
   display: inline-flex;
-  padding: 8px;
-  border: 1px solid var(--treasury-line);
+  padding: 7px;
   border-radius: var(--r-control);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
-.treasury-status {
-  border: 1px solid var(--treasury-line);
-  border-radius: var(--r-chip);
-  padding: 3px 8px;
-  color: var(--treasury-muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-.treasury-copy { color: var(--treasury-muted); }
 .treasury-link {
   display: flex;
   min-height: 44px;
@@ -638,13 +650,13 @@ summary.menu::-webkit-details-marker {
   justify-content: space-between;
   gap: 8px;
   margin-top: 12px;
-  border-top: 1px solid var(--treasury-line);
+  border-top: 1px solid var(--line);
   padding-top: 12px;
+  color: var(--accent-strong);
   font-size: 13px;
   font-weight: 600;
 }
 .treasury-link:hover { text-decoration: underline; }
-.treasury-link:focus-visible { outline-color: var(--treasury-ink); }
 .rail-text-link {
   display: inline-flex;
   min-height: 44px;
@@ -657,7 +669,7 @@ summary.menu::-webkit-details-marker {
 }
 .rail-text-link:hover { text-decoration: underline; }
 .governance-header { padding: 4px 0 0; }
-.governance-header .page-title { font-size: 30px; }
+.governance-header .page-title { font-size: 30px; letter-spacing: -0.045em; }
 .governance-eyebrow {
   display: flex;
   align-items: center;
@@ -684,7 +696,7 @@ summary.menu::-webkit-details-marker {
 }
 .governance-jump-links a:hover { text-decoration: underline; }
 .governance-intro {
-  margin-top: 20px;
+  margin-top: 0;
   border-left: 2px solid var(--accent);
   padding-left: 14px;
   color: var(--muted);
@@ -692,9 +704,12 @@ summary.menu::-webkit-details-marker {
   line-height: 1.7;
 }
 .governance-section {
-  scroll-margin-top: 88px;
-  border-bottom: 1px solid var(--line);
-  padding-block: 26px;
+  scroll-margin-top: 96px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  padding: 24px;
+  box-shadow: var(--shadow-card);
 }
 .governance-section-heading {
   display: flex;
@@ -706,8 +721,7 @@ summary.menu::-webkit-details-marker {
 .governance-section-icon { display: inline-flex; color: var(--accent-strong); }
 .governance-empty {
   margin-top: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-panel);
+  border-radius: var(--r-control);
   padding: 16px;
   background: var(--panel);
 }
@@ -731,35 +745,40 @@ summary.menu::-webkit-details-marker {
 .treasury-plan > div + div { margin-top: 14px; }
 .treasury-plan dt { font-size: 13px; font-weight: 600; }
 .treasury-plan dd { margin-top: 2px; color: var(--muted); font-size: 13px; }
-.governance-footer { padding-top: 22px; }
+.governance-footer { padding-top: 8px; }
 
+.home-feed { display: flex; flex-direction: column; gap: 16px; }
+.home-intro { padding: 2px 0 5px; }
+.home-intro .page-title { margin-top: 8px; }
+.home-intro .page-description { margin-top: 8px; }
+.welcome-intro { padding-block: 10px 24px; }
+.welcome-intro h1 { margin-top: 12px; font-size: clamp(28px, 3vw, 38px); font-weight: 700; letter-spacing: -0.055em; line-height: 1.25; }
+.welcome-intro .page-description { max-width: 420px; line-height: 1.8; }
+.feed-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 6px; }
 .feed-tabs {
-  /* Stays pinned under the top bar, so switching feeds is always one tap away. */
   position: sticky;
-  top: 60px;
+  top: 80px;
   z-index: 10;
-  min-height: 46px;
-  /* Its rule spans the column, like the post dividers below it. */
-  margin: -18px -20px 0;
-  background: var(--topbar);
-  padding-inline: 20px;
-  backdrop-filter: blur(12px);
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 26px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
 }
 .feed-tab {
   position: relative;
-  padding: 11px 4px;
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  padding: 12px 2px;
   color: var(--muted);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 500;
   transition: color 0.15s;
 }
-.feed-tab:hover {
-  color: var(--ink);
-}
-.feed-tab[aria-current="page"] {
-  color: var(--ink);
-  font-weight: 700;
-}
+.feed-tab:hover { color: var(--ink); }
+.feed-tab[aria-current="page"] { color: var(--accent-strong); font-weight: 700; }
 .feed-tab[aria-current="page"]::after {
   content: "";
   position: absolute;
@@ -767,122 +786,94 @@ summary.menu::-webkit-details-marker {
   height: 2px;
   background: var(--accent);
 }
-
-.square-composer {
-  background: var(--surface);
-  padding: 12px;
-}
-.composer-writing-row { display: flex; align-items: center; gap: 10px; }
-.composer-inline-submit { align-self: flex-end; margin-bottom: 3px; }
-.composer-toolbar { margin-top: 6px; }
-.square-composer.is-reply {
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 12px 0;
-}
-.square-composer.is-reply .composer-input {
-  border-color: transparent;
-  background: transparent;
-  padding-inline: 4px;
-}
-.square-composer.is-reply .composer-input:focus {
-  box-shadow: none;
-}
-.square-composer.is-reply .composer-input:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
+.feed-order { display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; margin-left: auto; color: var(--muted); font-size: 10px; }
+.feed-order > span { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.square-composer { padding: 20px; transition: border-color 0.15s; }
+.square-composer:focus-within { border-color: var(--accent); }
+.composer-reply-writing { display: flex; flex-direction: column; gap: 8px; }
+.composer-reply-heading { display: flex; min-width: 0; align-items: center; gap: 10px; font-size: 13px; }
+.composer-writing-row { display: flex; min-height: 44px; align-items: center; }
+.composer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.composer-toolbar .icon-btn { min-height: 36px; font-size: 11px; }
+.composer-audience { display: inline-flex; min-width: 0; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
+.composer-count { margin-left: auto; }
+.composer-submit { margin-left: auto; min-width: 62px; }
+.composer-count + .composer-submit { margin-left: 4px; }
+.composer-privacy { margin-top: 8px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.square-composer.is-reply { padding: 16px 20px; }
 .composer-input {
   display: block;
   width: 100%;
-  min-height: 40px;
+  min-height: 36px;
   min-width: 0;
   flex: 1;
   resize: none;
-  border: 1px solid var(--line);
-  border-radius: var(--r-control);
-  background: var(--surface);
-  padding: 7px 10px;
-  font-size: 16px;
-  line-height: 24px;
-  transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
-}
-.composer-input::placeholder {
-  color: var(--muted);
-}
-.composer-input:focus {
-  border-color: var(--accent);
-  background: var(--surface);
-  outline: none;
-  box-shadow: 0 0 0 3px var(--field-ring);
-}
-
-/* A post is a row in a ruled list: its structure comes from the type and the
-   hairline under it, not from a box around it. */
-.post-list {
-  display: flex;
-  flex-direction: column;
-  /* Rows run edge to edge, so each hairline meets the vertical rules. */
-  margin-inline: -20px;
-}
-.post-card {
-  scroll-margin-top: 76px;
-  border-bottom: 1px solid var(--line);
-  padding: 14px 20px 10px;
-}
-/* The conversation above a post in a thread is indented under its own rule. */
-ol.post-list {
-  margin-inline: 0;
-}
-ol.post-list .post-card {
-  padding-inline: 12px;
-}
-.post-list > li:last-child > .post-card {
-  border-bottom: 0;
-}
-/* The selected post leads the thread; earlier context stays behind a disclosure. */
-.post-card.is-focused {
   border: 0;
-  padding: 16px 0 12px;
+  border-radius: var(--r-control);
+  background: transparent;
+  padding: 7px 2px;
+  font-size: 16px;
+  line-height: 26px;
 }
-.thread-view > a:first-child { margin-bottom: 12px; }
+.composer-input::placeholder { color: var(--muted); }
+.composer-input:focus { outline: none; }
+.community-discovery { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--accent-soft); padding: 14px 16px; color: var(--brand-deep); transition: border-color 0.15s; }
+.community-discovery:hover { border-color: var(--accent); }
+.community-discovery > span:nth-child(2) { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.community-discovery strong { font-size: 12px; font-weight: 600; }
+.community-discovery > span > span { font-size: 11px; }
+.community-discovery .community-mark { background: var(--surface); }
+.post-list { display: flex; flex-direction: column; gap: 14px; }
+.post-card {
+  scroll-margin-top: 150px;
+  padding: 20px 20px 10px;
+  transition: border-color 0.15s;
+}
+.post-list .post-card:hover { border-color: var(--line-strong); }
+.post-context { margin-bottom: 14px; color: var(--muted); font-size: 10px; font-weight: 500; }
+.post-author { letter-spacing: -0.02em; }
+.post-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 18px; }
+.post-actions { display: flex; align-items: center; gap: 24px; margin-top: 14px; border-top: 1px solid var(--line); padding-top: 5px; }
+.post-actions .icon-btn { min-height: 36px; min-width: 36px; font-size: 11px; }
+.post-actions > .icon-btn:first-child { margin-left: -8px; }
+.post-actions form:last-child { margin-left: auto; margin-right: -8px; }
+.post-body { font-size: 14px; line-height: 1.8; }
+ol.post-list { margin-inline: 0; }
+ol.post-list .post-card { padding-inline: 18px; }
+.post-card.is-focused { padding: 24px 24px 12px; }
+.thread-view { gap: 14px; }
 .thread-context { border-bottom: 1px solid var(--line); }
-.thread-context summary {
-  display: flex;
-  min-height: 40px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 12px;
-}
+.thread-context summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
 .thread-context[open] summary > svg { transform: rotate(180deg); }
-.thread-context .post-list { margin-block: 8px 12px; }
-.thread-replies-heading { padding: 14px 0 6px; font-size: 13px; font-weight: 600; }
-.post-body {
-  font-size: 15px;
-  line-height: 1.5;
-}
-.post-actions .icon-btn { min-height: 32px; min-width: 32px; }
+.thread-context .post-list { margin-block: 10px 16px; }
+.thread-replies-heading { padding: 4px 0 10px; font-size: 13px; font-weight: 600; }
 
-/* A notification is a row like a post: kind icon, then who and what. New ones
-   sit on the accent tint until the member moves on. */
+/* Avatars and identity share a header; the content below uses the full card. */
 .notification-row {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
   gap: 10px;
-  border-bottom: 1px solid var(--line);
-  padding: 12px 20px;
-  transition: background-color 0.15s;
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  padding: 12px 16px;
+  box-shadow: var(--shadow-card);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.notification-header {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 10px;
 }
 a.notification-row:hover {
   background: var(--panel);
 }
+.notification-row.is-unread .text-muted { color: var(--brand-deep); }
 .notification-row.is-unread {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
   background: var(--accent-soft);
-}
-.post-list > li:last-child > .notification-row {
-  border-bottom: 0;
 }
 .notification-icon {
   display: inline-flex;
@@ -956,6 +947,9 @@ a.notification-row:hover {
 .post-list .post-images {
   max-height: 360px;
 }
+.post-card .post-images {
+  border-radius: var(--r-control);
+}
 .post-images[data-count="2"] {
   grid-template-columns: 1fr 1fr;
 }
@@ -982,7 +976,7 @@ a.notification-row:hover {
   object-fit: cover;
 }
 .post-image:focus-visible {
-  outline: 3px solid var(--focus-ring);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -3px;
 }
 
@@ -1120,11 +1114,9 @@ html:has(.image-viewer[open]) {
 .avatar-tone-6 { background: var(--tone-6); }
 .avatar-tone-7 { background: var(--tone-7); }
 
-/* Page header for a profile or community: a title block closed by a rule. */
+/* Page header for a profile or community: the card the page's posts hang under. */
 .page-header {
-  margin-inline: -20px;
-  border-bottom: 1px solid var(--line);
-  padding: 4px 20px 18px;
+  padding: 24px;
 }
 
 /* Theme picker: three options, one pressed. */
@@ -1166,111 +1158,91 @@ html:has(.image-viewer[open]) {
   white-space: nowrap;
 }
 
-.square-bottom-nav {
-  background: var(--surface);
-}
-.bottom-tab {
-  display: flex;
-  min-height: 56px;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 500;
-}
-.bottom-tab[aria-current="page"] {
-  color: var(--accent-strong);
-  font-weight: 700;
-}
-
-@media (max-width: 359px) {
-  .bottom-tab { font-size: 10px; white-space: nowrap; }
-}
-
-@media (min-width: 1024px) and (max-width: 1328px) {
-  .town-square {
-    margin: 16px 20px;
-    min-height: calc(100dvh - 32px);
-  }
-  .square-sidebar {
-    width: 216px;
-  }
-}
-@media (min-width: 1024px) and (max-width: 1179px) {
-  .square-rail {
-    display: none;
-  }
-  .square-feed {
-    border-right: 0;
-  }
-}
-@media (min-width: 1024px) {
-  .square-bottom-nav {
-    display: none;
-  }
-}
-
-/* Phones and small tablets: the sheet fills the screen, side columns go, and
-   every list of posts becomes flat rows instead of separate cards. */
+/* Shared page rhythm keeps discovery, profiles and settings in one visual system. */
+.page-stack { display: flex; flex-direction: column; gap: 20px; }
+.page-intro { padding-block: 2px 4px; }
+.page-eyebrow { color: var(--accent-strong); font-size: 10px; font-weight: 600; letter-spacing: 0.12em; line-height: 1.5; text-transform: uppercase; }
+.page-intro .page-title { margin-top: 8px; }
+.page-description { max-width: 520px; margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.8; }
+.content-panel, .community-card { border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); padding: 22px; box-shadow: var(--shadow-card); }
+.directory-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+.community-card { display: flex; flex-direction: column; gap: 18px; transition: border-color 0.15s; }
+.community-card:hover { border-color: var(--line-strong); }
+.community-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; border-top: 1px solid var(--line); padding-top: 14px; }
+.community-mark { display: inline-flex; width: 38px; height: 38px; flex-shrink: 0; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--r-control); background: var(--accent-soft); color: var(--accent-strong); }
+.community-mark.is-large { width: 52px; height: 52px; border-radius: var(--r-panel); }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.section-label { color: var(--muted); font-size: 11px; font-weight: 600; }
+.settings-section { display: flex; flex-direction: column; gap: 18px; }
+.search-form { display: flex; align-items: center; gap: 8px; }
+.search-form .square-search { flex: 1; max-width: none; }
+.result-list { margin-top: 12px; }
+.result-row { display: flex; align-items: center; gap: 12px; padding-block: 14px; }
+.result-row + .result-row { border-top: 1px solid var(--line); }
+.result-list > li + li { border-top: 1px solid var(--line); }
+a.result-row:hover { color: var(--accent-strong); }
+.profile-stats { font-variant-numeric: tabular-nums; }
+.community-rules { border-radius: var(--r-control); }
+.empty-state { display: flex; flex-direction: column; align-items: center; border: 1px dashed var(--line-strong); border-radius: var(--r-panel); padding: 48px 24px; text-align: center; }
+.empty-state-icon { display: inline-flex; width: 48px; height: 48px; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); color: var(--accent-strong); }
+.content-panel .empty-state { border: 0; padding: 32px 12px; }
+.state-page { max-width: 480px; margin-inline: auto; padding: 64px 24px; text-align: center; }
+.governance-page { display: flex; flex-direction: column; gap: 16px; }
+.square-bottom-nav { background: var(--surface); }
+.bottom-tab { display: flex; min-width: 0; min-height: 62px; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.bottom-tab[aria-current="page"] { color: var(--accent-strong); font-weight: 700; }
+.mobile-compose { display: flex; width: 44px; height: 44px; flex-shrink: 0; align-items: center; justify-content: center; margin-inline: 8px; border-radius: var(--r-control); background: var(--accent); color: var(--accent-ink); transition: transform 0.1s; }
+.mobile-compose:active { transform: scale(0.95); }
+@media (min-width: 1024px) { .square-bottom-nav { display: none; } }
+@media (min-width: 1024px) and (max-width: 1199px) { .square-rail { display: none; } }
 @media (max-width: 1023px) {
-  body {
-    background: var(--surface);
-  }
-  .town-square {
-    max-width: 700px;
-    min-height: 100dvh;
-    margin: 0 auto;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-  }
-  .square-sidebar,
-  .square-rail {
-    display: none;
-  }
-  .square-topbar {
-    height: 64px;
-    border-radius: 0;
-    padding: 10px 16px;
-  }
-  .square-content {
-    border-left: 0;
-  }
-  .square-columns {
-    display: block;
-  }
-  .square-feed {
-    border-right: 0;
-    padding: 12px 14px 104px;
-  }
-  .feed-tabs {
-    top: 64px;
-    margin: -12px -14px 0;
-    padding-inline: 14px;
-  }
-  .page-header {
-    margin-inline: -14px;
-    padding-inline: 14px;
-  }
-  .post-list {
-    margin-inline: -14px;
-  }
-  .post-list .post-card {
-    padding: 12px 14px 8px;
-  }
+  .town-square { max-width: 720px; padding-inline: 0; }
+  .square-sidebar, .square-rail { display: none; }
+  .square-topbar { min-height: 64px; height: 64px; padding: 10px 20px; }
+  .square-topbar .ml-auto { gap: 2px; }
+  .square-columns { display: block; }
+  .square-feed { padding: 24px 20px calc(100px + env(safe-area-inset-bottom)); }
+  .feed-tabs { top: 64px; }
+  .page-title { font-size: 26px; }
+  .square-composer { padding: 16px; }
+  .post-card, .post-list .post-card { padding: 18px 16px 8px; }
   .post-actions .icon-btn { min-height: 40px; min-width: 40px; }
-  .notification-row {
-    padding: 12px 14px;
-  }
-  ol.post-list {
-    margin-inline: 0;
-  }
-  .post-body {
-    font-size: 15px;
-  }
+  .post-card.is-focused { padding: 20px 18px 10px; }
+  .notification-row { padding: 16px; }
+  .page-header, .content-panel, .community-card, .governance-section { padding: 20px; }
+}
+@media (min-width: 640px) and (max-width: 1023px) { .directory-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 419px) {
+  .square-topbar { padding-inline: 14px; }
+  .square-topbar .btn-sm { padding-inline: 10px; font-size: 11px; }
+  .square-feed { padding: 22px 12px calc(96px + env(safe-area-inset-bottom)); }
+  .home-intro { padding-inline: 4px; }
+  .page-title { font-size: 25px; }
+  .page-description { font-size: 12px; }
+  .feed-tabs { gap: 22px; }
+  .square-composer { padding: 14px; }
+  .square-composer > .flex { gap: 10px; }
+  .composer-photo span { display: none; }
+  .composer-toolbar { gap: 6px; }
+  .composer-toolbar .icon-btn { padding-inline: 4px; }
+  .composer-audience select { max-width: 104px; font-size: 11px; }
+  .composer-audience svg { display: none; }
+  .composer-count { font-size: 10px; }
+  .composer-submit { min-width: 54px; padding-inline: 12px; font-size: 12px; }
+  .post-card, .post-list .post-card { padding: 16px 14px 6px; }
+  .post-card > .flex { gap: 10px; }
+  .post-body { font-size: 13px; line-height: 1.8; }
+  .post-actions { gap: 16px; }
+  .page-header, .content-panel, .community-card, .governance-section { padding: 18px; }
+  .bottom-tab { font-size: 11px; letter-spacing: -0.025em; }
+}
+@media (max-width: 359px) {
+  .square-topbar .brand-wordmark { max-width: 104px; height: auto !important; }
+  .square-topbar .icon-btn { min-width: 30px; padding-inline: 5px; }
+  .feed-tabs { gap: 18px; }
+  .feed-order { font-size: 9px; }
+  .composer-audience select { max-width: 92px; }
+  .composer-submit { min-width: 48px; padding-inline: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

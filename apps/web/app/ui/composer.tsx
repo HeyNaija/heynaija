@@ -1,6 +1,7 @@
 'use client'
 
-import { useActionState, useEffect, useRef, useState } from 'react'
+import { useActionState, useEffect, useId, useRef, useState } from 'react'
+import { Globe } from 'lucide-react'
 import { type ComposeState, createPost } from '@/app/actions'
 import { Avatar } from './avatar'
 import { CloseIcon, ImageIcon, PeopleIcon } from './icons'
@@ -23,9 +24,14 @@ type Props = {
   choices?: { slug: string; name: string }[]
 }
 
-export function Composer({ handle, avatar, replyTo, placeholder = "What's on your mind?", community, choices }: Props) {
+export function Composer({ handle, avatar, replyTo, placeholder, community, choices }: Props) {
+  const inputId = useId()
+  const privacyId = `${inputId}-privacy`
   const [state, action, pending] = useActionState<ComposeState, FormData>(createPost, {})
   const [text, setText] = useState('')
+  // The prompt follows the audience picker; the toolbar keeps visibility and posting explicit.
+  const [audience, setAudience] = useState('')
+  const prompt = placeholder ?? (audience ? `Start a conversation in ${choices?.find((c) => c.slug === audience)?.name ?? 'your community'}…` : 'Start a conversation…')
   const [expanded, setExpanded] = useState(false)
   const images = useImageDrafts()
   const { clear } = images
@@ -34,9 +40,10 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
   const input = useRef<HTMLTextAreaElement>(null)
   const active = expanded || text.length > 0 || images.drafts.length > 0
 
+  // Arriving through a "Reply" or "New post" link (…#compose) puts the cursor in the box.
   useEffect(() => {
-    if (replyTo && window.location.hash === '#compose') input.current?.focus()
-  }, [replyTo])
+    if (window.location.hash === '#compose') input.current?.focus()
+  }, [])
 
   // A press anywhere outside the form shrinks the box back. On press rather than
   // on blur: Safari does not focus buttons, so a blur would shrink the form under
@@ -54,6 +61,7 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
   useEffect(() => {
     if (state.postedAt) {
       setText('')
+      setAudience('')
       clear()
       setExpanded(false)
     }
@@ -64,20 +72,27 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
   const empty = left === LIMIT && images.drafts.length === 0
 
   return (
-    <form ref={form} id="compose" action={action} className={`square-composer ${replyTo ? 'is-reply' : 'square-card'} ${active ? 'is-expanded' : ''} scroll-mt-24`}>
+    <form ref={form} id="compose" action={action} className={`square-composer square-card ${replyTo ? 'is-reply' : ''} ${active ? 'is-expanded' : ''} scroll-mt-32`}>
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
       {community ? <input type="hidden" name="community" value={community} /> : null}
 
-      <div className="flex gap-3">
-        <Avatar handle={handle} src={avatar} size={replyTo ? 32 : 36} />
+      <div className={replyTo ? 'composer-reply-writing' : 'flex gap-3'}>
+        {replyTo ? (
+          <div className="composer-reply-heading">
+            <Avatar handle={handle} src={avatar} size={36} />
+            <span className="truncate font-semibold">@{handle}</span>
+          </div>
+        ) : (
+          <Avatar handle={handle} src={avatar} size={42} />
+        )}
         <div className="min-w-0 flex-1">
-          <label htmlFor="post-text" className="sr-only">
+          <label htmlFor={inputId} className="sr-only">
             {replyTo ? 'Your reply' : 'New post'}
           </label>
           <div className="composer-writing-row">
             <textarea
               ref={input}
-              id="post-text"
+              id={inputId}
               name="text"
               rows={active ? (replyTo ? 2 : 3) : 1}
               onFocus={() => setExpanded(true)}
@@ -89,15 +104,11 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
               required={images.drafts.length === 0}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={placeholder}
+              placeholder={prompt}
               className="composer-input"
-              aria-describedby={active ? 'compose-privacy' : undefined}
+              aria-describedby={privacyId}
+              aria-invalid={left < 0 || undefined}
             />
-            {(!active || replyTo) ? (
-              <button type="submit" disabled={pending || left < 0 || empty || waiting} className="btn btn-primary btn-sm composer-inline-submit">
-                {pending ? 'Posting…' : replyTo ? 'Reply' : 'Post'}
-              </button>
-            ) : null}
           </div>
 
           {images.drafts.length ? (
@@ -116,74 +127,81 @@ export function Composer({ handle, avatar, replyTo, placeholder = "What's on you
               ))}
             </ul>
           ) : null}
-
-          {(!replyTo || active) ? (
-            <div className="composer-toolbar flex flex-wrap items-center gap-x-3 gap-y-2">
-              <button
-                type="button"
-                className="icon-btn -ml-2"
-                aria-label={`Add images (up to ${MAX_IMAGES})`}
-                title="Add images"
-                disabled={images.drafts.length >= MAX_IMAGES}
-                onClick={() => picker.current?.click()}
-              >
-                <ImageIcon size={20} />
-              </button>
-              <input
-                ref={picker}
-                type="file"
-                multiple
-                accept={IMAGE_TYPES.join(',')}
-                className="sr-only"
-                tabIndex={-1}
-                aria-hidden="true"
-                onChange={(e) => {
-                  const files = [...(e.target.files ?? [])]
-                  e.target.value = '' // so choosing the same file again still fires
-                  setExpanded(true)
-                  setTooMany(images.add(files) > 0)
-                }}
-              />
-              {choices?.length ? (
-                <label className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
-                  <PeopleIcon size={18} />
-                  <span className="sr-only">Post to</span>
-                  <select
-                    name="community"
-                    defaultValue=""
-                    className="min-w-0 max-w-44 rounded-lg bg-transparent py-1 text-[13px] font-semibold text-ink"
-                  >
-                    <option value="">Everyone</option>
-                    {choices.map((c) => (
-                      <option key={c.slug} value={c.slug}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : replyTo ? null : (
-                <span className="flex items-center gap-1.5 text-[13px] font-medium text-muted">
-                  <PeopleIcon size={18} />
-                  {community ? 'Posting to this community' : 'Everyone'}
-                </span>
-              )}
-              {active ? <span className={`ml-auto text-xs tabular-nums ${left < 0 ? 'text-danger' : 'text-muted'}`}>{left}</span> : null}
-              {active && !replyTo ? <button
-                type="submit"
-                disabled={pending || left < 0 || empty || waiting}
-                className="btn btn-primary btn-sm"
-              >
-                {pending ? 'Posting…' : replyTo ? 'Reply' : 'Post'}
-              </button> : null}
-            </div>
-          ) : null}
-
-          {active ? <p id="compose-privacy" className="mt-1 text-xs text-muted">{replyTo ? 'Replies' : 'Posts'} are public. Anyone can see and copy them.</p> : null}
-          <p role="alert" className="mt-1 text-sm text-danger empty:hidden">
-            {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : state.error}
-          </p>
         </div>
       </div>
+      <div className="composer-toolbar">
+        <button
+          type="button"
+          className="icon-btn composer-photo"
+          aria-label={`Add images (up to ${MAX_IMAGES})`}
+          title="Add images"
+          disabled={images.drafts.length >= MAX_IMAGES}
+          onClick={() => picker.current?.click()}
+        >
+          <ImageIcon size={20} />
+          <span>Photo</span>
+        </button>
+        <input
+          ref={picker}
+          type="file"
+          multiple
+          accept={IMAGE_TYPES.join(',')}
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(e) => {
+            const files = [...(e.target.files ?? [])]
+            e.target.value = '' // so choosing the same file again still fires
+            setExpanded(true)
+            setTooMany(images.add(files) > 0)
+          }}
+        />
+        {choices?.length ? (
+          <label className="composer-audience">
+            <PeopleIcon size={18} />
+            <span className="sr-only">Post to</span>
+            <select
+              name="community"
+              value={audience}
+              onChange={(e) => setAudience(e.target.value)}
+              className="min-w-0 max-w-36 rounded-lg bg-transparent py-1 text-xs font-medium text-muted"
+            >
+              <option value="">Public · Everyone</option>
+              {choices.map((c) => (
+                <option key={c.slug} value={c.slug}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span className="composer-audience">
+            <Globe size={16} aria-hidden="true" />
+            {community ? 'This community' : 'Public'}
+          </span>
+        )}
+        {active ? (
+          <span className={`composer-count text-xs tabular-nums ${left < 0 ? 'text-danger' : 'text-muted'}`}>
+            <span aria-hidden="true">{left < 0 ? `${-left} over` : `${left} left`}</span>
+            {/* Spoken only near the limit, so screen readers are not read a number per keystroke. */}
+            <span role="status" className="sr-only">
+              {left <= 20 ? (left < 0 ? `${-left} characters over the limit` : `${left} characters left`) : ''}
+            </span>
+          </span>
+        ) : null}
+        <button
+          type="submit"
+          disabled={pending || left < 0 || empty || waiting}
+          className="btn btn-primary btn-sm composer-submit"
+        >
+          {pending ? 'Posting…' : replyTo ? 'Reply' : 'Post'}
+        </button>
+      </div>
+
+      <p id={privacyId} className="composer-privacy">{replyTo ? 'Replies' : 'Posts'} are public. Anyone can see and copy them.</p>
+      <p role="alert" className="mt-1 text-sm text-danger empty:hidden">
+        {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : state.error}
+      </p>
     </form>
   )
 }

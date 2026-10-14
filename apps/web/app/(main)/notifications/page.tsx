@@ -15,8 +15,12 @@ export const metadata: Metadata = { title: 'Notifications' }
 
 export default function NotificationsPage({ searchParams }: PageProps<'/notifications'>) {
   return (
-    <div className="flex flex-col gap-3">
-      <h1 className="page-title">Notifications</h1>
+    <div className="page-stack">
+      <header className="page-intro">
+        <p className="page-eyebrow">Stay in the conversation</p>
+        <h1 className="page-title">Notifications</h1>
+        <p className="page-description">Replies, follows and updates from your corner of HeyNaija.</p>
+      </header>
       <Suspense fallback={<PostsSkeleton />}>
         <Notifications searchParams={searchParams} />
       </Suspense>
@@ -37,9 +41,11 @@ async function Notifications({ searchParams }: Pick<PageProps<'/notifications'>,
 
   if (data.notifications.length === 0) {
     return (
-      <EmptyState icon={<BellIcon size={22} />} title={page ? 'No older notifications' : 'Nothing yet'}>
-        {page ? null : 'When people reply to you, like your posts or follow you, it shows up here.'}
-      </EmptyState>
+      <div className="content-panel">
+        <EmptyState icon={<BellIcon size={24} />} title={page ? 'No older notifications' : 'You’re all caught up'}>
+          {page ? null : 'When people reply to you, like your posts or follow you, you’ll hear about it here.'}
+        </EmptyState>
+      </div>
     )
   }
 
@@ -74,7 +80,7 @@ const REASONS: Record<string, string> = {
 }
 
 function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
-  const who = n.actor ? <strong className="font-semibold">{n.actor.displayName ?? `@${n.actor.handle}`}</strong> : null
+  const who = <strong className="font-semibold">{n.actor ? n.actor.displayName ?? `@${n.actor.handle}` : 'A member'}</strong>
   switch (n.kind) {
     case 'reply':
       return { icon: <BubbleIcon size={18} />, text: <>{who} replied to your post</> }
@@ -129,23 +135,23 @@ function NotificationRow({ notification: n, now }: { notification: Notification;
   const href = notificationTarget(n)
   const body = (
     <>
-      <span className={`notification-icon is-${n.kind}`}>{icon}</span>
-      {n.actor ? <Avatar handle={n.actor.handle} src={n.actor.avatar} size={28} /> : null}
-      <div className="min-w-0 flex-1">
-        <p className="text-sm leading-5">
-          {text}{' '}
-          <time dateTime={n.createdAt} className="text-[13px] text-muted">
-            · {timeAgo(n.createdAt, now)}
+      <div className="notification-header">
+        <span className={`notification-icon is-${n.kind}`}>{icon}</span>
+        {n.actor ? <Avatar handle={n.actor.handle} src={n.actor.avatar} size={36} /> : null}
+        <div className="min-w-0 flex-1">
+          <p className="break-words text-sm leading-6">{text}</p>
+          <time dateTime={n.createdAt} className="mt-0.5 block text-xs text-muted">
+            {timeAgo(n.createdAt, now)}
           </time>
-        </p>
-        {n.post?.excerpt ? <p className="mt-1 line-clamp-2 break-words text-[13px] leading-5 text-muted">{n.post.excerpt}</p> : null}
-        {href ? <span className="notification-destination">{n.kind === 'reply' ? 'View reply' : n.kind === 'follow' ? 'View profile' : n.post ? 'View post' : 'View details'} →</span> : null}
+        </div>
+        {n.read ? null : (
+          <span className="notification-dot">
+            <span className="sr-only">Unread</span>
+          </span>
+        )}
       </div>
-      {n.read ? null : (
-        <span className="notification-dot">
-          <span className="sr-only">Unread</span>
-        </span>
-      )}
+      {n.post?.excerpt ? <p className="line-clamp-2 break-words text-[13px] leading-5 text-muted">{n.post.excerpt}</p> : null}
+      {href ? <span className="notification-destination">{n.kind === 'reply' ? 'View reply' : n.kind === 'follow' ? 'View profile' : n.post ? 'View post' : 'View details'} →</span> : null}
     </>
   )
   const className = `notification-row ${n.read ? '' : 'is-unread'}`

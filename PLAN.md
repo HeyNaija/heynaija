@@ -200,16 +200,20 @@ revisit with measurements.
 
 ## 6. Design system
 
-Everything visual comes from tokens in `apps/web/app/globals.css`. Rules that the
-brand owner has set:
+Everything visual comes from tokens in `apps/web/app/globals.css`; the full system
+(tokens, cards, type, layout, do's and don'ts) is recorded in
+[apps/web/DESIGN.md](apps/web/DESIGN.md). Rules that the brand owner has set:
 
 - **Keep the current palette.** Forest green accent on white and sage. No gradients,
   and no colours borrowed from AI-tool branding.
-- **Radius follows role:** 8px for controls, 6px for chips, 10px for panels, 14px for
-  the app frame. Only avatars are round.
-- **Rows, not cards.** Posts and side-rail sections are ruled lists. A bordered
-  panel is only for a real object: the composer, a form, a moderation case, the
-  post a thread is about.
+- **Radius follows role:** 8px for controls, 6px for chips, 12px for cards. Only
+  avatars are round.
+- **Cards on a tinted ground** (changed 14 October 2026, replacing "rows, not
+  cards"). The page is a pale sage-grey ground with no framing sheet; posts,
+  notifications, the composer, profile and community headers, forms and each
+  right-rail section are white cards (1px border, hairline shadow) with 10–12px
+  gaps. The sidebar sits on the ground; the current page is a white pill. Same on
+  phones, with 12px side gutters.
 - **One bold element:** the bubbly wordmark. Everything around it stays quiet.
 - **Shared primitives** for every control: `.btn` (primary, secondary, ghost,
   danger), `.field`, `.chip`, `.menu-panel`/`.menu-item`, `.notice`, `EmptyState`,

@@ -8,7 +8,7 @@ import { EmptyState } from '@/app/ui/empty-state'
 import { ShieldIcon } from '@/app/ui/icons'
 import { ModeratorRoster } from '@/app/ui/moderator-roster'
 import { PostImages } from '@/app/ui/post-images'
-import { card, PostsSkeleton } from '@/app/ui/post-item'
+import { PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
 import { timeAgo } from '@/app/ui/time'
 import { getModeration, type LogEntry, type QueueItem } from '@/lib/api'
@@ -39,8 +39,12 @@ const ACTIONS: Record<string, string> = {
 
 export default function ModerationPage() {
   return (
-    <div className="flex flex-col gap-3">
-      <h1 className="page-title">Moderation</h1>
+    <div className="page-stack">
+      <header className="page-intro">
+        <p className="page-eyebrow">Care for the community</p>
+        <h1 className="page-title">Moderation</h1>
+        <p className="page-description">Review reports, hear appeals, and keep a clear record of every decision.</p>
+      </header>
       <Suspense fallback={<PostsSkeleton />}>
         <Moderation />
       </Suspense>
@@ -70,7 +74,7 @@ async function Moderation() {
       </section>
 
       {data.roster ? (
-        <section aria-label="Community moderators" className={`${card} p-4`}>
+        <section aria-label="Community moderators" className="content-panel">
           <h2 className="section-title">Community moderators</h2>
           <div className="mt-3">
             <ModeratorRoster roster={data.roster} />
@@ -78,7 +82,7 @@ async function Moderation() {
         </section>
       ) : null}
 
-      <section aria-label="Recent decisions" className={`${card} p-4`}>
+      <section aria-label="Recent decisions" className="content-panel">
         <h2 className="section-title">Recent decisions</h2>
         {data.log.length === 0 ? (
           <p className="mt-2 text-sm text-muted">No decisions yet.</p>
@@ -101,7 +105,7 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
   const isAppeal = item.reason === 'appeal'
   // Every button submits the same form; its value is the decision.
   return (
-    <form action={resolveReport} className={`${card} flex flex-col gap-3 p-4`}>
+    <form action={resolveReport} className="content-panel flex flex-col gap-4">
       <input type="hidden" name="id" value={item.id} />
 
       <p className="flex flex-wrap items-center gap-x-2 text-sm">

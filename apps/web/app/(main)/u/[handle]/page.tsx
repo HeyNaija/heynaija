@@ -25,7 +25,7 @@ export default function ProfilePage(props: Props) {
 
 const count = (n: number, one: string, many: string) => (
   <span>
-    <span className="font-semibold text-ink">{n}</span> {n === 1 ? one : many}
+    <span className="font-semibold text-ink">{n.toLocaleString('en-NG')}</span> {n === 1 ? one : many}
   </span>
 )
 
@@ -40,50 +40,44 @@ async function ProfileView({ params, searchParams }: Props) {
   const viewerId = viewer.state === 'member' ? viewer.me.id : null
 
   return (
-    <div className="flex flex-col gap-2">
-      <header className="page-header flex items-start gap-4">
-        <Avatar handle={profile.handle} src={profile.avatar} size={64} />
-        <div className="min-w-0 flex-1">
-          <h1 className="page-title break-words">{profile.displayName ?? `@${profile.handle}`}</h1>
-          {profile.displayName ? <p className="truncate text-sm text-muted">@{profile.handle}</p> : null}
-          {profile.bio ? <p className="mt-2 whitespace-pre-wrap break-words text-[15px] leading-6">{profile.bio}</p> : null}
-          <p className="mt-2 flex flex-wrap gap-x-4 text-sm text-muted">
-            {count(profile.postCount, 'post', 'posts')}
-            {count(profile.followerCount, 'follower', 'followers')}
-            {count(profile.followingCount, 'following', 'following')}
-          </p>
-          <p className="mt-1 text-sm text-muted">
-            Joined{' '}
-            {new Date(profile.joinedAt).toLocaleDateString('en-NG', { month: 'long', year: 'numeric' })}
-          </p>
-        </div>
+    <div className="page-stack">
+      <header className="page-header profile-header">
+        <p className="page-eyebrow">{profile.isSelf ? 'Your profile' : 'Member profile'}</p>
+        <div className="profile-topline mt-4 flex flex-wrap items-start gap-4">
+          <div className="flex min-w-0 grow basis-52 items-center gap-4">
+            <Avatar handle={profile.handle} src={profile.avatar} size={64} />
+            <div className="min-w-0 flex-1">
+              <h1 className="page-title break-words">{profile.displayName ?? `@${profile.handle}`}</h1>
+              {profile.displayName ? <p className="mt-1 break-words text-sm text-muted">@{profile.handle}</p> : null}
+            </div>
+          </div>
 
-        {profile.isSelf ? (
-          <Link href="/settings" className="btn btn-secondary">
-            Settings
-          </Link>
-        ) : viewerId ? (
-          <div className="flex shrink-0 items-center gap-1">
-            {profile.viewerBlocks ? (
-              <form action={setBlock}>
-                <input type="hidden" name="handle" value={profile.handle} />
-                <input type="hidden" name="on" value="0" />
-                <SubmitButton className="btn btn-secondary">Unblock</SubmitButton>
-              </form>
-            ) : (
-              <form action={setFollow}>
-                <input type="hidden" name="handle" value={profile.handle} />
-                <input type="hidden" name="on" value={profile.viewerFollows ? '0' : '1'} />
-                <SubmitButton
-                  pressed={profile.viewerFollows}
-                  className={`btn ${profile.viewerFollows ? 'btn-secondary' : 'btn-primary'}`}
-                >
-                  {profile.viewerFollows ? 'Following' : 'Follow'}
-                </SubmitButton>
-              </form>
-            )}
+          {profile.isSelf ? (
+            <Link href="/settings" className="btn btn-secondary">
+              Edit profile
+            </Link>
+          ) : viewerId ? (
+            <div className="flex shrink-0 items-center gap-1">
+              {profile.viewerBlocks ? (
+                <form action={setBlock}>
+                  <input type="hidden" name="handle" value={profile.handle} />
+                  <input type="hidden" name="on" value="0" />
+                  <SubmitButton className="btn btn-secondary">Unblock</SubmitButton>
+                </form>
+              ) : (
+                <form action={setFollow}>
+                  <input type="hidden" name="handle" value={profile.handle} />
+                  <input type="hidden" name="on" value={profile.viewerFollows ? '0' : '1'} />
+                  <SubmitButton
+                    pressed={profile.viewerFollows}
+                    className={`btn ${profile.viewerFollows ? 'btn-secondary' : 'btn-primary'}`}
+                  >
+                    {profile.viewerFollows ? 'Following' : 'Follow'}
+                  </SubmitButton>
+                </form>
+              )}
 
-            <Menu label="More options" trigger={<DotsIcon />}>
+              <Menu label="More options" trigger={<DotsIcon />}>
                 <form action={setMute}>
                   <input type="hidden" name="handle" value={profile.handle} />
                   <input type="hidden" name="on" value={profile.viewerMutes ? '0' : '1'} />
@@ -105,15 +99,31 @@ async function ProfileView({ params, searchParams }: Props) {
                   Report account
                 </Link>
               </Menu>
-          </div>
-        ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        {profile.bio ? <p className="mt-5 whitespace-pre-wrap break-words text-[15px] leading-6">{profile.bio}</p> : null}
+        <p className="mt-4 text-xs text-muted">
+          Joined{' '}
+          {new Date(profile.joinedAt).toLocaleDateString('en-NG', { month: 'long', year: 'numeric' })}
+        </p>
+        <p className="profile-stats mt-5 flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-4 text-sm text-muted">
+          {count(profile.postCount, 'post', 'posts')}
+          {count(profile.followerCount, 'follower', 'followers')}
+          {count(profile.followingCount, 'following', 'following')}
+        </p>
       </header>
 
       {profile.viewerMutes && !profile.viewerBlocks ? (
         <p className="notice">You muted @{profile.handle}. Their posts only show here.</p>
       ) : null}
 
-      <section aria-label={`Posts by @${profile.handle}`}>
+      <section aria-label={`Posts by @${profile.handle}`} className="flex flex-col gap-3">
+        <div className="section-heading">
+          <h2 className="section-title">Posts</h2>
+          <span className="text-xs text-muted">Latest first</span>
+        </div>
         <PostList
           posts={feed.posts}
           viewerId={viewerId}

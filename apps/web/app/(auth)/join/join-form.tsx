@@ -13,8 +13,8 @@ export function JoinForm({ initialCode }: { initialCode: string }) {
   const busy = pending || Boolean(state.next)
 
   return (
-    <form action={action} className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
+    <form action={action} aria-busy={busy} className="flex flex-col gap-5">
+      <div className="flex flex-col gap-2">
         <label htmlFor="invite-code" className="field-label">
           Invite code
         </label>
@@ -29,11 +29,15 @@ export function JoinForm({ initialCode }: { initialCode: string }) {
           spellCheck={false}
           autoComplete="off"
           placeholder="HN-XXXX-XXXX-XXXX"
-          className="field font-mono uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal"
+          aria-invalid={Boolean(state.error) || undefined}
+          aria-describedby={state.error ? 'invite-code-error' : 'invite-code-hint'}
+          className={`field min-h-12 font-mono uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal ${state.error ? 'border-danger' : ''}`}
         />
-        <p role="alert" className="text-sm text-danger empty:hidden">
-          {state.error}
-        </p>
+        {state.error ? (
+          <p id="invite-code-error" role="alert" className="text-sm leading-relaxed text-danger">{state.error}</p>
+        ) : (
+          <p id="invite-code-hint" className="field-hint">You'll find this in the invite shared with you.</p>
+        )}
       </div>
       <button
         type="submit"

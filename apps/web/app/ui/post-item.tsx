@@ -6,11 +6,12 @@ import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
 import { BookmarkIcon, BubbleIcon, DotsIcon, HeartIcon } from './icons'
 import { Menu } from './menu'
+import { ComposeLink } from './new-post-link'
 import { PostImages } from './post-images'
 import { SubmitButton } from './submit-button'
 import { timeAgo } from './time'
 
-/** A bordered panel, for things that are separate objects (forms, cases). Not for posts. */
+/** The shared surface for forms, cases and other distinct objects. */
 export const card = 'square-card'
 
 export function PostItem({
@@ -20,6 +21,7 @@ export function PostItem({
   focused = false,
   inThread = false,
   hideCommunity = false,
+  explain = false,
 }: {
   post: Post
   /** Null for visitors who are not signed-in members. */
@@ -31,6 +33,8 @@ export function PostItem({
   inThread?: boolean
   /** On a community's own page, every post is from it; the label would be noise. */
   hideCommunity?: boolean
+  /** Home feeds say why every post is there, not only the ones the Following feed picked. */
+  explain?: boolean
 }) {
   if (post.deleted) {
     return <p className="post-card text-sm italic text-muted">This post is no longer available.</p>
@@ -39,39 +43,50 @@ export function PostItem({
   const href = `/p/${post.id}`
   const likes = post.likeCount === 1 ? '1 like' : `${post.likeCount} likes`
   const replies = post.replyCount === 1 ? '1 reply' : `${post.replyCount} replies`
+  const community = post.community ? (
+    <Link href={`/c/${post.community.slug}`} className="font-semibold text-accent-strong hover:underline">
+      {post.community.name}
+    </Link>
+  ) : null
   const why =
-    post.reason === 'following'
-      ? `You follow @${post.authorHandle}`
-      : post.reason === 'community' && post.community
-        ? `From ${post.community.name}, which you joined`
-        : null
+    post.reason === 'following' ? (
+      <>You follow @{post.authorHandle}</>
+    ) : post.reason === 'community' && community ? (
+      <>From {community}, which you joined</>
+    ) : explain && community ? (
+      <>Posted in {community}</>
+    ) : null
+  // The reason line already links the community when it names it; a chip would say it twice.
+  const showChip = post.community && !hideCommunity && !(why && post.reason !== 'following')
 
   return (
     <article id={`post-${post.id}`} className={`post-card ${focused ? 'is-focused' : ''}`}>
-      {why ? <p className="mb-2 text-xs font-medium text-muted">{why}</p> : null}
+      {why ? <p className="post-context">{why}</p> : null}
 
-      <div className="flex gap-3">
+      <div className="post-header flex gap-3">
         <Link href={`/u/${post.authorHandle}`} tabIndex={-1} aria-hidden="true" className="h-fit rounded-full">
-          <Avatar handle={post.authorHandle} src={post.authorAvatar} size={36} />
+          <Avatar handle={post.authorHandle} src={post.authorAvatar} size={42} />
         </Link>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[15px] leading-5">
-                <Link href={`/u/${post.authorHandle}`} className="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1.5 hover:underline">
+              <p className="post-author text-[14px] leading-5">
+                <Link href={`/u/${post.authorHandle}`} className="block max-w-full truncate hover:underline">
                   <span className="truncate font-semibold">{post.authorName ?? `@${post.authorHandle}`}</span>
-                  {post.authorName ? <span className="shrink-0 text-[13px] text-muted">@{post.authorHandle}</span> : null}
                 </Link>
-                <Link href={href} className="shrink-0 text-[13px] text-muted hover:underline">
+              </p>
+              <p className="post-meta">
+                {post.authorName ? <><span className="truncate">@{post.authorHandle}</span><span aria-hidden="true">·</span></> : null}
+                <Link href={href} className="shrink-0 hover:underline">
                   <time dateTime={post.createdAt} title={new Date(post.createdAt).toUTCString()}>
                     {timeAgo(post.createdAt, now)}
                   </time>
                 </Link>
               </p>
-              {post.community && !hideCommunity ? (
-                <Link href={`/c/${post.community.slug}`} className="chip mt-1.5">
-                  {post.community.name}
+              {showChip ? (
+                <Link href={`/c/${post.community!.slug}`} className="chip mt-1.5">
+                  {post.community!.name}
                 </Link>
               ) : null}
             </div>
@@ -113,65 +128,66 @@ export function PostItem({
               </Menu>
             ) : null}
           </div>
-
-          {post.replyParentId && !inThread && !focused ? (
-            <Link href={`/p/${post.replyParentId}`} className="mt-1 block text-xs text-muted hover:underline">
-              Replying to a post
-            </Link>
-          ) : null}
-
-          {post.text ? (
-            <p className={`mt-1.5 whitespace-pre-wrap break-words ${focused ? 'text-base leading-relaxed' : 'post-body'}`}>
-              {focused ? post.text : <Link href={href} className="block">{post.text}</Link>}
-            </p>
-          ) : null}
-          {post.images.length ? (
-            <div className="mt-3">
-              <PostImages images={post.images} />
-            </div>
-          ) : null}
-
-          <div className="post-actions -ml-2 mt-1.5 flex items-center gap-3">
-            <Link href={`${href}#compose`} className="icon-btn" aria-label={replies}>
-              <BubbleIcon size={18} />
-              <span className="tabular-nums">{post.replyCount}</span>
-            </Link>
-
-            {viewerId ? (
-              <form action={setLike}>
-                <input type="hidden" name="id" value={post.id} />
-                <input type="hidden" name="on" value={post.viewerLiked ? '0' : '1'} />
-                <SubmitButton
-                  className="icon-btn"
-                  label={post.viewerLiked ? `Unlike (${likes})` : `Like (${likes})`}
-                  pressed={post.viewerLiked}
-                >
-                  <HeartIcon size={18} filled={post.viewerLiked} />
-                  <span className="tabular-nums">{post.likeCount}</span>
-                </SubmitButton>
-              </form>
-            ) : (
-              <span className="icon-btn pointer-events-none" aria-label={likes}>
-                <HeartIcon size={18} />
-                <span className="tabular-nums">{post.likeCount}</span>
-              </span>
-            )}
-
-            {viewerId ? (
-              <form action={setBookmark} className="ml-auto">
-                <input type="hidden" name="id" value={post.id} />
-                <input type="hidden" name="on" value={post.viewerBookmarked ? '0' : '1'} />
-                <SubmitButton
-                  className="icon-btn"
-                  label={post.viewerBookmarked ? 'Remove bookmark' : 'Bookmark'}
-                  pressed={post.viewerBookmarked}
-                >
-                  <BookmarkIcon size={18} filled={post.viewerBookmarked} />
-                </SubmitButton>
-              </form>
-            ) : null}
-          </div>
         </div>
+      </div>
+
+      {post.replyParentId && !inThread && !focused ? (
+        <Link href={`/p/${post.replyParentId}`} className="mt-1 block text-xs text-muted hover:underline">
+          Replying to a post
+        </Link>
+      ) : null}
+
+      {post.text ? (
+        <p className={`mt-3 whitespace-pre-wrap break-words ${focused ? 'text-base leading-relaxed' : 'post-body'}`}>
+          {focused ? post.text : <Link href={href} className="block">{post.text}</Link>}
+        </p>
+      ) : null}
+      {post.images.length ? (
+        <div className="mt-3">
+          <PostImages images={post.images} />
+        </div>
+      ) : null}
+
+      <div className="post-actions">
+        <ComposeLink href={`${href}#compose`} className="icon-btn" label={`Reply (${replies})`}>
+          <BubbleIcon size={18} />
+          <span className="tabular-nums">{post.replyCount}</span>
+        </ComposeLink>
+
+        {viewerId ? (
+          <form action={setLike}>
+            <input type="hidden" name="id" value={post.id} />
+            <input type="hidden" name="on" value={post.viewerLiked ? '0' : '1'} />
+            <SubmitButton
+              className="icon-btn"
+              label={post.viewerLiked ? `Unlike (${likes})` : `Like (${likes})`}
+              pressed={post.viewerLiked}
+            >
+              <HeartIcon size={18} filled={post.viewerLiked} />
+              <span className="tabular-nums">{post.likeCount}</span>
+            </SubmitButton>
+          </form>
+        ) : (
+          <span className="icon-btn pointer-events-none">
+            <HeartIcon size={18} />
+            <span aria-hidden="true" className="tabular-nums">{post.likeCount}</span>
+            <span className="sr-only">{likes}</span>
+          </span>
+        )}
+
+        {viewerId ? (
+          <form action={setBookmark} className="ml-auto">
+            <input type="hidden" name="id" value={post.id} />
+            <input type="hidden" name="on" value={post.viewerBookmarked ? '0' : '1'} />
+            <SubmitButton
+              className="icon-btn"
+              label={post.viewerBookmarked ? 'Remove bookmark' : 'Bookmark'}
+              pressed={post.viewerBookmarked}
+            >
+              <BookmarkIcon size={18} filled={post.viewerBookmarked} />
+            </SubmitButton>
+          </form>
+        ) : null}
       </div>
     </article>
   )
@@ -184,19 +200,21 @@ export function PostList({
   empty,
   olderHref,
   hideCommunity,
+  explain,
 }: {
   posts: Post[]
   viewerId: string | null
   now: number
-  /** Shown when there are no posts: a short title, optionally with more detail. */
-  empty: { title: string; detail?: ReactNode }
+  /** Shown when there are no posts: a short title, optionally with more detail and a next step. */
+  empty: { title: string; detail?: ReactNode; action?: ReactNode }
   /** Link to the next page, when there is one. */
   olderHref: string | null
   hideCommunity?: boolean
+  explain?: boolean
 }) {
   if (posts.length === 0) {
     return (
-      <EmptyState icon={<BubbleIcon size={22} />} title={empty.title}>
+      <EmptyState icon={<BubbleIcon size={22} />} title={empty.title} action={empty.action}>
         {empty.detail}
       </EmptyState>
     )
@@ -206,7 +224,7 @@ export function PostList({
       <ul className="post-list">
         {posts.map((post) => (
           <li key={post.id}>
-            <PostItem post={post} viewerId={viewerId} now={now} hideCommunity={hideCommunity} />
+            <PostItem post={post} viewerId={viewerId} now={now} hideCommunity={hideCommunity} explain={explain} />
           </li>
         ))}
       </ul>

@@ -8,8 +8,9 @@ export const metadata: Metadata = { title: 'Join' }
 export default function JoinPage({ searchParams }: PageProps<'/join'>) {
   return (
     <AuthPage
-      title="Join HeyNaija"
-      intro="HeyNaija is invite-only during the beta. Enter the code you were given."
+      eyebrow="You're invited"
+      title="Your conversation starts here"
+      intro="HeyNaija is invite-only during the beta. Enter your invite code to create an account."
       footer={
         <p>
           Already a member?{' '}

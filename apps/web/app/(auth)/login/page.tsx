@@ -9,8 +9,9 @@ export const metadata: Metadata = { title: 'Sign in' }
 export default function LoginPage({ searchParams }: PageProps<'/login'>) {
   return (
     <AuthPage
+      eyebrow="Welcome back"
       title="Sign in"
-      intro="No password needed: we email you a code, or you can use Google."
+      intro="Pick up the conversation. Sign in with an emailed code or your Google account. No password to remember."
       footer={
         <p>
           New here? HeyNaija is invite-only during the beta.{' '}
