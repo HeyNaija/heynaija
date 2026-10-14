@@ -1,0 +1,106 @@
+import { REPORT_REASONS } from '@heynaija/db'
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common'
+import { z } from 'zod'
+import { type AuthedRequest, SessionGuard, SuspendedAllowedGuard } from '../auth/session.guard.js'
+import { handleParam, parse } from '../http.js'
+import { RateLimiter } from '../rate-limit.js'
+import { ModerationService, ModerationTargetError, NotAModeratorError } from './moderation.service.js'
+
+const reasons = REPORT_REASONS.filter((r) => r !== 'appeal')
+const details = z.string().trim().max(500).default('')
+const note = z.object({ note: z.string().trim().max(500).default('') })
+
+const reportBody = z.union([
+  z.object({ postId: z.uuid(), reason: z.enum(reasons), details }),
+  z.object({ handle: handleParam, reason: z.enum(reasons), details }),
+])
+const appealBody = z.object({ message: z.string().trim().min(10).max(1000) })
+const resolveBody = note.extend({
+  resolution: z.enum(['dismiss', 'remove_post', 'suspend_member', 'reinstate_member']),
+})
+
+/** Maps the service's refusals onto HTTP: not allowed is 403, cannot be done is 400. */
+async function guarded<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run()
+  } catch (err) {
+    if (err instanceof NotAModeratorError) throw new ForbiddenException()
+    if (err instanceof ModerationTargetError) throw new BadRequestException(err.message)
+    throw err
+  }
+}
+
+@Controller('v1')
+export class ModerationController {
+  constructor(
+    @Inject(ModerationService) private readonly moderation: ModerationService,
+    @Inject(RateLimiter) private readonly limits: RateLimiter,
+  ) {}
+
+  @Post('reports')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async report(@Req() req: AuthedRequest, @Body() body: unknown) {
+    const input = parse(reportBody, body)
+    this.limits.hit('report', req.member.id)
+    await guarded(() => this.moderation.report(req.member.id, input, input.reason, input.details))
+  }
+
+  @Post('appeals')
+  @HttpCode(204)
+  @UseGuards(SuspendedAllowedGuard)
+  async appeal(@Req() req: AuthedRequest, @Body() body: unknown) {
+    const { message } = parse(appealBody, body)
+    this.limits.hit('report', req.member.id)
+    await guarded(() => this.moderation.appeal(req.member.id, message))
+  }
+
+  @Get('moderation/reports')
+  @UseGuards(SessionGuard)
+  queue(@Req() req: AuthedRequest) {
+    return guarded(() => this.moderation.queue(req.member.id))
+  }
+
+  @Get('moderation/log')
+  @UseGuards(SessionGuard)
+  log(@Req() req: AuthedRequest) {
+    return guarded(() => this.moderation.log(req.member.id))
+  }
+
+  @Post('moderation/reports/:id/resolve')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async resolve(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+    const { resolution, note: why } = parse(resolveBody, body)
+    const reportId = parse(z.uuid(), id)
+    await guarded(() => this.moderation.resolve(req.member.id, reportId, resolution, why))
+  }
+
+  @Post('moderation/posts/:id/restore')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async restore(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+    const postId = parse(z.uuid(), id)
+    await guarded(() => this.moderation.restorePost(req.member.id, postId, parse(note, body ?? {}).note))
+  }
+
+  @Post('moderation/members/:handle/reinstate')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async reinstate(@Req() req: AuthedRequest, @Param('handle') handle: string, @Body() body: unknown) {
+    const who = parse(handleParam, handle)
+    await guarded(() => this.moderation.setSuspended(req.member.id, who, false, parse(note, body ?? {}).note))
+  }
+}

@@ -6,18 +6,21 @@ export function AuthPage({
   intro,
   children,
   footer,
+  framed = false,
 }: {
   title: string
   intro?: ReactNode
   children: ReactNode
   footer?: ReactNode
+  /** Draw its own card (for pages inside the main shell, which has none). */
+  framed?: boolean
 }) {
   return (
-    <div className="mx-auto mt-6 max-w-sm">
-      <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-      {intro ? <p className="mt-2 text-sm text-muted">{intro}</p> : null}
+    <div className={framed ? "square-card mx-auto max-w-md p-5 sm:p-7" : ""}>
+      <h1 className="page-title">{title}</h1>
+      {intro ? <p className="mt-2 text-sm leading-relaxed text-muted">{intro}</p> : null}
       <div className="mt-6">
-        <Suspense fallback={<div aria-busy="true" className="h-48 animate-pulse rounded-2xl bg-line/60" />}>
+        <Suspense fallback={<div aria-busy="true" className="skeleton h-48" />}>
           {children}
         </Suspense>
       </div>
@@ -26,4 +29,4 @@ export function AuthPage({
   )
 }
 
-export const linkClass = 'text-ink underline underline-offset-2'
+export const linkClass = 'font-semibold text-accent-strong hover:underline'

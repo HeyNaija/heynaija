@@ -16,6 +16,8 @@ import {
 import { z } from 'zod'
 import type { Env } from '../env.js'
 import { InvitesService } from '../invites/invites.service.js'
+import { ModerationService } from '../moderation/moderation.service.js'
+import { RateLimiter } from '../rate-limit.js'
 import { ENV } from '../tokens.js'
 import { type AuthedRequest, SessionGuard } from './session.guard.js'
 
@@ -37,19 +39,26 @@ export class AuthController {
 
   constructor(
     @Inject(InvitesService) private readonly invites: InvitesService,
+    @Inject(ModerationService) private readonly moderation: ModerationService,
+    @Inject(RateLimiter) private readonly limits: RateLimiter,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
   @Get('v1/me')
   @UseGuards(SessionGuard)
-  me(@Req() req: AuthedRequest) {
-    return req.member
+  async me(@Req() req: AuthedRequest) {
+    const scope = await this.moderation.scope(req.member.id)
+    // `moderates` only decides whether the web app shows the moderation link; every
+    // moderation endpoint checks the role again.
+    return { ...req.member, moderates: scope.siteWide || scope.communityIds.length > 0 }
   }
 
   /** Lets /join tell someone their code is wrong before they fill in a signup form. */
   @Post('v1/invites/check')
   @HttpCode(200)
   async checkInvite(@Body() body: unknown) {
+    // Signed-out callers all arrive via the web app, so this is one shared budget.
+    this.limits.hit('inviteCheck', 'anonymous')
     const parsed = inviteCheckBody.safeParse(body)
     return { usable: parsed.success && (await this.invites.isUsable(parsed.data.code)) }
   }

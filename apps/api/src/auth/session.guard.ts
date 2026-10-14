@@ -3,6 +3,7 @@ import {
   type CanActivate,
   type ExecutionContext,
   ForbiddenException,
+  HttpException,
   Inject,
   Injectable,
   UnauthorizedException,
@@ -16,11 +17,15 @@ import { DB, ENV } from '../tokens.js'
 import { type Identity, KratosService, SESSION_COOKIE } from './kratos.service.js'
 
 export type AuthedRequest = FastifyRequest & { member: Identity }
+export type MaybeAuthedRequest = FastifyRequest & { member?: Identity }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 @Injectable()
 export class SessionGuard implements CanActivate {
+  /** Suspended members are turned away, except where a subclass says otherwise. */
+  protected readonly requireActive: boolean = true
+
   constructor(
     @Inject(KratosService) private readonly kratos: Pick<KratosService, 'identityForSession'>,
     @Inject(ENV) private readonly env: Pick<Env, 'WEB_PUBLIC_URL'>,
@@ -59,9 +64,36 @@ export class SessionGuard implements CanActivate {
         .onConflictDoUpdate({ target: members.id, set: { lastSeenAt: new Date() } })
         .returning({ active: members.active })
     }
-    if (!member?.active) throw new ForbiddenException('account_inactive')
+    if (!member) throw new ForbiddenException('account_inactive')
+    if (!member.active && this.requireActive) throw new ForbiddenException('account_inactive')
 
     req.member = identity
     return true
   }
+}
+
+/**
+ * For public reads that are personalised when someone is signed in (has the
+ * viewer liked this, do they follow that member). Anyone the full guard would
+ * turn away is simply treated as anonymous. Never use this on a write.
+ */
+@Injectable()
+export class OptionalSessionGuard extends SessionGuard {
+  override async canActivate(context: ExecutionContext): Promise<boolean> {
+    try {
+      return await super.canActivate(context)
+    } catch (err) {
+      if (err instanceof HttpException) return true
+      throw err
+    }
+  }
+}
+
+/**
+ * Lets a suspended member through. Only for the one thing they are still allowed
+ * to do: appeal.
+ */
+@Injectable()
+export class SuspendedAllowedGuard extends SessionGuard {
+  protected override readonly requireActive = false
 }

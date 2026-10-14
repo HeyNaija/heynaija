@@ -2,13 +2,16 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'heynaija',
-    short_name: 'heynaija',
-    description: 'A Nigeria-first, community-owned social network.',
+    name: 'HeyNaija',
+    short_name: 'HeyNaija',
+    description: 'A social network for Nigerians at home and abroad.',
     start_url: '/',
     display: 'standalone',
-    background_color: '#faf9f6',
-    theme_color: '#0b7a4b',
-    icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml' }],
+    background_color: '#ffffff',
+    theme_color: '#008751',
+    icons: [
+      { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
   }
 }

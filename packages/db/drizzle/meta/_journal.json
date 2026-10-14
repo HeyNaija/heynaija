@@ -8,6 +8,34 @@
       "when": 1791929135365,
       "tag": "0000_smooth_millenium_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791931008895,
+      "tag": "0001_slow_mole_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791932847244,
+      "tag": "0002_lyrical_warstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791933387660,
+      "tag": "0003_aromatic_santa_claus",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791933844492,
+      "tag": "0004_misty_frog_thor",
+      "breakpoints": true
     }
   ]
 }

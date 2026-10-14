@@ -1,35 +1,44 @@
 import type { Metadata, Viewport } from 'next'
-import Link from 'next/link'
+import { Plus_Jakarta_Sans } from 'next/font/google'
+import { themeScript } from '@/lib/theme'
 import './globals.css'
 
+// Downloaded at build time and served from our own origin: no request to Google
+// from a member's browser, and the text shows in a system font until it arrives.
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-jakarta',
+  display: 'swap',
+})
+
 export const metadata: Metadata = {
-  title: { default: 'heynaija', template: '%s · heynaija' },
-  description: 'A Nigeria-first, community-owned social network on the AT Protocol.',
+  title: { default: 'HeyNaija', template: '%s · HeyNaija' },
+  description: 'Real people. Real conversations. A social network for Nigerians at home and abroad.',
 }
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#faf9f6' },
-    { media: '(prefers-color-scheme: dark)', color: '#0e1411' },
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#111a17' },
   ],
 }
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en-NG" className="h-full antialiased">
-      <body className="min-h-full font-sans">
-        <div className="mx-auto flex min-h-dvh w-full max-w-xl flex-col px-4">
-          <header className="flex items-center justify-between py-4">
-            <Link href="/" className="text-xl font-bold tracking-tight">
-              hey<span className="text-accent">naija</span>
-            </Link>
-            <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
-              private beta
-            </span>
-          </header>
-          <main className="flex-1 pb-16">{children}</main>
-        </div>
-      </body>
+    // The script below sets data-theme on this element before React attaches, which
+    // is exactly the mismatch suppressHydrationWarning is for.
+    <html lang="en-NG" className={`${jakarta.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        {/* Runs once, as the browser parses the page. The type switch keeps React
+            from warning about a script it will never execute on the client. */}
+        <script
+          type={typeof window === 'undefined' ? 'text/javascript' : 'text/plain'}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: themeScript }}
+        />
+      </head>
+      <body className="min-h-full font-sans">{children}</body>
     </html>
   )
 }

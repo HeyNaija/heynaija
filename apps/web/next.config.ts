@@ -8,6 +8,8 @@ const kratosInternalUrl = process.env.KRATOS_INTERNAL_URL ?? 'http://127.0.0.1:4
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
+  // Keep the development badge from covering the mobile Home tab.
+  devIndicators: false,
   partialPrefetching: true,
   // Dev is served on 127.0.0.1, the origin Kratos is configured to issue cookies
   // and redirects for (infra/kratos/kratos.yml).

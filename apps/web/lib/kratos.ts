@@ -1,5 +1,6 @@
 import 'server-only'
 import { headers } from 'next/headers'
+import { cache } from 'react'
 import { redirect } from 'next/navigation'
 
 // Server-to-server address of Ory Kratos. Browsers reach it through /kratos.
@@ -57,7 +58,7 @@ export async function getFlow(kind: FlowKind, id: string | string[] | undefined)
 }
 
 /** The URL that ends the current session, or null if there is none. */
-export async function getLogoutUrl(): Promise<string | null> {
+export const getLogoutUrl = cache(async (): Promise<string | null> => {
   const res = await fetch(`${KRATOS_URL}/self-service/logout/browser`, {
     headers: { cookie: await cookieHeader(), accept: 'application/json' },
     cache: 'no-store',
@@ -66,7 +67,7 @@ export async function getLogoutUrl(): Promise<string | null> {
   const { logout_url } = (await res.json()) as { logout_url: string }
   // Kratos builds this from its public base URL, i.e. our own /kratos proxy.
   return new URL(logout_url).pathname + new URL(logout_url).search
-}
+})
 
 export async function getFlowError(id: string): Promise<string | null> {
   const res = await fetch(`${KRATOS_URL}/self-service/errors?id=${encodeURIComponent(id)}`, {

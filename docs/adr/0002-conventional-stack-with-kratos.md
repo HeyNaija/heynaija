@@ -62,9 +62,12 @@ handling, verification and recovery are security-critical and already solved.
   API refuses. It needs a new invite; there is no in-app way to attach one yet.
 - **Handles can be changed** in settings. `members.handle` is a copy refreshed on
   the member's next request, so it can lag briefly.
-- **No rate limiting of our own** on `/v1/invites/check`, posting or sign-in
-  attempts. Codes carry 60 bits of entropy, so guessing is impractical, but this
-  is required before any public exposure.
+- **Rate limits are in memory.** Posting, likes/follows/joins, reports, search and
+  invite checks are limited per member (see `apps/api/src/rate-limit.ts`). The
+  counters reset when the API restarts and are not shared between instances, so
+  they must move to Redis before the API is scaled out. Signed-out callers share
+  one budget because the API cannot see their IP behind the web app's proxy.
+  Sign-in attempts are not limited by us; that is left to Kratos's defaults.
 - **Kratos logs webhook request headers, including the shared secret, at `info`
   level.** Production must run at `warning` or otherwise keep those logs private.
 - **Development-only settings:** Kratos runs with `--dev`, plain http, and its
@@ -72,6 +75,31 @@ handling, verification and recovery are security-critical and already solved.
   configuration, SMTP provider or TLS yet.
 - **Password change after recovery** was exercised up to the settings form but
   not submitted. Changing email or handle in settings is untested.
-- **Tests** cover invites, posts and the session guard (25 cases, real Postgres,
-  Kratos stubbed). The Kratos flows and web pages were verified by hand.
+- **Tests** cover invites, posts, threads, likes, bookmarks, search, trending,
+  follows, blocks, mutes, profiles, communities, moderation, rate limits and the
+  session guard (75 cases, real Postgres, Kratos stubbed). The Kratos flows and
+  web pages were verified by hand.
+- **Counts are computed on read** (likes, replies, followers) with subqueries.
+  Fine at pilot size; revisit with measurements before growth.
+- **Threads show at most 200 direct replies** and have no pagination yet.
+- **Communities are public** groupings: anyone can read them and any member can
+  join. Private communities are now possible but not built. Moderator roles exist
+  in the schema and are displayed, but there is no way to assign one except by
+  hand in the database, and no pinned welcome post.
+- **Moderation model.** Site moderators see every report and can remove posts and
+  suspend or reinstate accounts. Community moderators see only reports about posts
+  in their community and can only remove those posts. Every decision is written to
+  an append-only log. Roles are assigned with `pnpm mod:grant`, not in the app.
+- **A suspended account is blocked by our API, not by Kratos**: the person can
+  still sign in, but can do nothing except file one appeal at a time.
+- **Reported members are not notified**, and neither is anyone whose post is
+  removed. There are no notifications of any kind yet.
+- **Not built from the design mockup:** photos, polls, reposts, notifications,
+  community votes, display names and profile pictures (avatars are a tinted
+  initial).
+- **Themes** are light, dark and system. The choice is stored in the browser
+  (`localStorage`), not on the account, so it does not follow a member to another
+  device. A small inline script applies it before first paint.
+- **Search** matches whole words in posts (no stemming or typo tolerance), handle
+  prefixes, and community names or descriptions.
 - Redis is in the dev stack but nothing uses it yet.

@@ -4,9 +4,17 @@ A Nigeria-first, community-owned social network. See [PLAN.md](PLAN.md) for the
 product plan; note that its AT Protocol architecture has been replaced (see
 [ADR 0002](docs/adr/0002-conventional-stack-with-kratos.md)).
 
-**Status:** early local build. You can join with an invite code, create an
-account, confirm your email, sign in and out, recover your account, post, read a
-chronological feed and delete your own posts. Nothing is deployed yet.
+**Status:** early local build, nothing deployed yet. What works:
+
+- **Accounts:** join with an invite code, sign up, confirm email, sign in and out,
+  recover an account (all handled by Ory Kratos).
+- **Posting:** posts, threaded replies, likes, private bookmarks.
+- **People:** profiles, follow, mute and block.
+- **Communities:** five launch communities to join and post in.
+- **Feeds:** Latest, Following (people and communities, each post says why it is
+  there), per-community, trending, and search over members, communities and posts.
+- **Safety:** report a post or account, a moderation queue (remove post, suspend
+  account, dismiss), appeals from suspended members, a decision log, rate limits.
 
 ## How it fits together
 
@@ -26,9 +34,9 @@ Browser ──> Next.js web app (127.0.0.1:3000)
 
 | Path | What |
 |---|---|
-| `apps/web` | Next.js web app: feed, composer, and the account pages rendered from Kratos flows |
-| `apps/api` | NestJS + Fastify API: session guard, invites, posts, feed |
-| `packages/db` | Drizzle schema and migrations for the app database |
+| `apps/web` | Next.js web app: feeds, threads, profiles, communities, moderation, and the account pages rendered from Kratos flows |
+| `apps/api` | NestJS + Fastify API: session guard, invites, posts, communities, feeds, search, moderation, rate limits |
+| `packages/db` | Drizzle schema, migrations and community seed data for the app database |
 | `infra/kratos` | Kratos configuration and identity schema |
 | `infra/compose` | Local stack: Postgres, Redis, Kratos, Mailpit |
 
@@ -42,6 +50,7 @@ pnpm infra:env          # writes or tops up .env with random local secrets
 pnpm infra:up           # Postgres :5433, Redis :6380, Kratos :4533/:4534, Mailpit :8026
 pnpm build
 pnpm db:migrate
+pnpm db:seed            # creates the five launch communities (safe to re-run)
 ```
 
 Then, in two terminals:
@@ -64,7 +73,23 @@ Go to `http://127.0.0.1:3000/join?code=<the code>` (use `127.0.0.1`, not
 `localhost`: Kratos issues its cookies for that host). Emails that Kratos sends
 (verification and recovery codes) land in Mailpit at <http://127.0.0.1:8026>.
 
-`dev:api` builds once and runs; restart it after changing API code.
+`dev:api` recompiles and restarts itself when API code changes.
+
+## Moderators
+
+There is no screen for assigning moderators; it is done from the command line. The
+member must have signed in at least once.
+
+```bash
+pnpm mod:grant ada                      # site-wide: every report, can suspend accounts
+```
+
+```bash
+pnpm mod:grant ada --community lagos    # only reports about posts in that community
+```
+
+`pnpm mod:revoke` takes the same arguments. Moderators get a Moderation link in the
+app.
 
 `pnpm infra:down` stops the stack. Local state lives in `infra/compose/.data/`.
 
@@ -75,7 +100,7 @@ pnpm typecheck
 ```
 
 ```bash
-pnpm test        # API tests, against a scratch Postgres database
+pnpm test        # API tests, against a scratch Postgres database (needs `pnpm infra:up`)
 ```
 
 CI (`.github/workflows/ci.yml`) runs build, typecheck, tests and a dependency audit.

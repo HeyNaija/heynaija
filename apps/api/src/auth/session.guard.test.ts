@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm'
 import { InvitesService } from '../invites/invites.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import type { Identity } from './kratos.service.js'
-import { type AuthedRequest, SessionGuard } from './session.guard.js'
+import { type AuthedRequest, SessionGuard, SuspendedAllowedGuard } from './session.guard.js'
 
 const WEB = 'http://127.0.0.1:3000'
 const invites = new InvitesService(db)
@@ -87,4 +87,22 @@ test('cross-origin writes are refused even with a valid session; reads and same-
   assert.equal(await guard.canActivate(request({ cookie: 'good', origin: WEB, method: 'POST' }).context), true)
   // Server-side callers (the web app's server actions) send no Origin header.
   assert.equal(await guard.canActivate(request({ cookie: 'good', method: 'POST' }).context), true)
+})
+
+test('the appeal guard lets a suspended member through, but still not a stranger', async () => {
+  const identity = await invited('ada')
+  await guardFor(identity).canActivate(request({ cookie: 'good' }).context)
+  await db.update(members).set({ active: false }).where(eq(members.id, identity.id))
+
+  const kratos = { identityForSession: async (cookie: string) => (cookie === 'good' ? identity : null) }
+  const appealGuard = new SuspendedAllowedGuard(kratos, { WEB_PUBLIC_URL: WEB }, db, invites)
+  const { req, context } = request({ cookie: 'good', method: 'POST' })
+  assert.equal(await appealGuard.canActivate(context), true)
+  assert.equal(req.member.id, identity.id)
+
+  await assert.rejects(appealGuard.canActivate(request({ method: 'POST' }).context), UnauthorizedException)
+  await assert.rejects(
+    appealGuard.canActivate(request({ cookie: 'good', method: 'POST', origin: 'https://evil.example' }).context),
+    ForbiddenException,
+  )
 })

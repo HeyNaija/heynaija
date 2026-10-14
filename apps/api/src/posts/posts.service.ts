@@ -1,6 +1,15 @@
-import { type Db, members, posts } from '@heynaija/db'
+import {
+  bookmarks,
+  communities,
+  communityMemberships,
+  type Db,
+  follows,
+  likes,
+  members,
+  posts,
+} from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
-import { and, desc, eq, isNull, lt, or } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { DB } from '../tokens.js'
 
@@ -19,17 +28,45 @@ export const postText = z
     message: `post is longer than ${POST_MAX_GRAPHEMES} characters`,
   })
 
-export type FeedPost = {
+export type PostView = {
   id: string
   authorId: string
   authorHandle: string
+  /** Empty when `deleted`. */
   text: string
   createdAt: Date
+  replyParentId: string | null
+  likeCount: number
+  replyCount: number
+  /** Always false for anonymous viewers. */
+  viewerLiked: boolean
+  /** Always false for anonymous viewers. Bookmarks are private to their owner. */
+  viewerBookmarked: boolean
+  /**
+   * Deleted by its author or taken down by a moderator. Only ever true for
+   * ancestors shown in a thread, as a placeholder.
+   */
+  deleted: boolean
+  /** The community it was posted in, if any (and if that community is still active). */
+  community: { slug: string; name: string } | null
+  /** Why it is in the viewer's Following feed; null everywhere else. */
+  reason: FeedReason | null
 }
 
-export type FeedPage = { posts: FeedPost[]; cursor: string | null }
+export type FeedReason = 'own' | 'following' | 'community'
+
+export type PostPage = { posts: PostView[]; cursor: string | null }
+
+export type Thread = { ancestors: PostView[]; post: PostView; replies: PostView[] }
 
 export class InvalidCursorError extends Error {}
+export class ParentNotFoundError extends Error {}
+export class CommunityNotFoundError extends Error {}
+export class NotACommunityMemberError extends Error {}
+
+const MAX_THREAD_DEPTH = 50
+const MAX_REPLIES_SHOWN = 200
+const TRENDING_WINDOW_DAYS = 7
 
 const encodeCursor = (createdAt: Date, id: string) =>
   Buffer.from(JSON.stringify([createdAt.toISOString(), id])).toString('base64url')
@@ -45,12 +82,268 @@ const decodeCursor = (cursor: string): [Date, string] => {
   }
 }
 
+const topLevel = isNull(posts.replyParentId)
+
+// Neither deleted by the author nor taken down by a moderator.
+const live = and(isNull(posts.deletedAt), isNull(posts.removedAt))
+
+/** True when either member has blocked the other. */
+export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
+  sql<boolean>`exists(select 1 from blocks bl where (bl.blocker_id = ${a} and bl.blocked_id = ${b}) or (bl.blocker_id = ${b} and bl.blocked_id = ${a}))`
+
+// Written out so the outer post is unambiguous inside the count subqueries.
+const outerId = sql`"posts"."id"`
+
+// Only active members' likes and replies count, matching what a reader would see.
+const likeCount = sql<number>`(select count(*)::int from likes l join members lm on lm.id = l.member_id and lm.active where l.post_id = ${outerId})`
+const replyCount = sql<number>`(select count(*)::int from posts r join members rm on rm.id = r.author_id and rm.active where r.reply_parent_id = ${outerId} and r.deleted_at is null and r.removed_at is null)`
+
 @Injectable()
 export class PostsService {
   constructor(@Inject(DB) private readonly db: Db) {}
 
-  async create(authorId: string, text: string): Promise<{ id: string }> {
-    const [row] = await this.db.insert(posts).values({ authorId, text }).returning({ id: posts.id })
+  /**
+   * The one place posts are read for display. Posts by inactive members never
+   * appear; deleted posts appear only when `includeDeleted`, with their text
+   * withheld.
+   */
+  private async select(
+    viewerId: string | null,
+    where: SQL | undefined,
+    opts: {
+      includeDeleted?: boolean
+      /** Show a muted author's posts anyway (when the viewer opens their profile). */
+      ignoreMutes?: boolean
+      reason?: SQL<FeedReason>
+      order?: SQL[]
+      limit?: number
+    } = {},
+  ): Promise<PostView[]> {
+    const rows = await this.db
+      .select({
+        id: posts.id,
+        authorId: posts.authorId,
+        authorHandle: members.handle,
+        text: sql<string>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${posts.text} else '' end`,
+        createdAt: posts.createdAt,
+        replyParentId: posts.replyParentId,
+        likeCount,
+        replyCount,
+        viewerLiked: viewerId
+          ? sql<boolean>`exists(select 1 from likes l where l.post_id = ${outerId} and l.member_id = ${viewerId})`
+          : sql<boolean>`false`,
+        viewerBookmarked: viewerId
+          ? sql<boolean>`exists(select 1 from bookmarks b where b.post_id = ${outerId} and b.member_id = ${viewerId})`
+          : sql<boolean>`false`,
+        deleted: sql<boolean>`${posts.deletedAt} is not null or ${posts.removedAt} is not null`,
+        communitySlug: communities.slug,
+        communityName: communities.name,
+        reason: opts.reason ?? sql<null>`null`,
+      })
+      .from(posts)
+      .innerJoin(members, eq(members.id, posts.authorId))
+      .leftJoin(communities, and(eq(communities.id, posts.communityId), eq(communities.active, true)))
+      .where(
+        and(
+          eq(members.active, true),
+          opts.includeDeleted ? undefined : live,
+          // A viewer never sees posts by anyone they blocked or muted, or who blocked them.
+          viewerId ? sql`not ${blockedEitherWay(viewerId, sql`"posts"."author_id"`)}` : undefined,
+          viewerId && !opts.ignoreMutes
+            ? sql`not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = "posts"."author_id")`
+            : undefined,
+          where,
+        ),
+      )
+      .orderBy(...(opts.order ?? []))
+      .limit(opts.limit ?? 1000)
+
+    return rows.map(({ communitySlug, communityName, ...row }) => ({
+      ...row,
+      community: communitySlug && communityName ? { slug: communitySlug, name: communityName } : null,
+    }))
+  }
+
+  /** Newest first, cursor-paginated. */
+  private async page(
+    viewerId: string | null,
+    where: SQL | undefined,
+    limit: number,
+    cursor?: string,
+    extra: { reason?: SQL<FeedReason>; ignoreMutes?: boolean } = {},
+  ): Promise<PostPage> {
+    let before: SQL | undefined
+    if (cursor) {
+      const [createdAt, id] = decodeCursor(cursor)
+      before = or(lt(posts.createdAt, createdAt), and(eq(posts.createdAt, createdAt), lt(posts.id, id)))
+    }
+    const rows = await this.select(viewerId, and(where, before), {
+      ...extra,
+      order: [desc(posts.createdAt), desc(posts.id)],
+      limit: limit + 1,
+    })
+
+    const page = rows.slice(0, limit)
+    const last = page.at(-1)
+    return {
+      posts: page,
+      cursor: rows.length > limit && last ? encodeCursor(last.createdAt, last.id) : null,
+    }
+  }
+
+  /** Everyone's top-level posts. */
+  feed(viewerId: string | null, limit: number, cursor?: string): Promise<PostPage> {
+    return this.page(viewerId, topLevel, limit, cursor)
+  }
+
+  /**
+   * Top-level posts from the people `viewerId` follows and the communities they
+   * have joined, plus their own. Each post says which of those brought it in.
+   */
+  followingFeed(viewerId: string, limit: number, cursor?: string): Promise<PostPage> {
+    const followed = this.db
+      .select({ id: follows.followeeId })
+      .from(follows)
+      .where(eq(follows.followerId, viewerId))
+    const joined = this.db
+      .select({ id: communityMemberships.communityId })
+      .from(communityMemberships)
+      .innerJoin(communities, eq(communities.id, communityMemberships.communityId))
+      .where(and(eq(communityMemberships.memberId, viewerId), eq(communities.active, true)))
+
+    const isOwn = eq(posts.authorId, viewerId)
+    const isFollowed = inArray(posts.authorId, followed)
+    return this.page(
+      viewerId,
+      and(topLevel, or(isOwn, isFollowed, inArray(posts.communityId, joined))),
+      limit,
+      cursor,
+      { reason: sql<FeedReason>`case when ${isOwn} then 'own' when ${isFollowed} then 'following' else 'community' end` },
+    )
+  }
+
+  /** Top-level posts in one community. */
+  inCommunity(viewerId: string | null, communityId: string, limit: number, cursor?: string): Promise<PostPage> {
+    return this.page(viewerId, and(topLevel, eq(posts.communityId, communityId)), limit, cursor)
+  }
+
+  /** Everything one member has posted, replies included. */
+  byAuthor(viewerId: string | null, authorId: string, limit: number, cursor?: string): Promise<PostPage> {
+    return this.page(viewerId, eq(posts.authorId, authorId), limit, cursor, { ignoreMutes: true })
+  }
+
+  /** The posts a member has saved. Only ever shown to that member. */
+  bookmarked(viewerId: string, limit: number, cursor?: string): Promise<PostPage> {
+    const saved = this.db
+      .select({ id: bookmarks.postId })
+      .from(bookmarks)
+      .where(eq(bookmarks.memberId, viewerId))
+    return this.page(viewerId, inArray(posts.id, saved), limit, cursor)
+  }
+
+  /**
+   * The conversations people are engaging with this week: top-level posts ranked
+   * by replies (weighted double) and likes. Posts with neither are left out.
+   */
+  trending(viewerId: string | null, limit: number): Promise<PostView[]> {
+    const score = sql<number>`(${replyCount} * 2 + ${likeCount})`
+    const since = new Date(Date.now() - TRENDING_WINDOW_DAYS * 86_400_000)
+    return this.select(viewerId, and(topLevel, gt(posts.createdAt, since), sql`${score} > 0`), {
+      order: [sql`${score} desc`, desc(posts.createdAt)],
+      limit,
+    })
+  }
+
+  /** Full-text search over post text, newest first. Replies are included. */
+  search(viewerId: string | null, query: string, limit: number): Promise<PostView[]> {
+    return this.select(
+      viewerId,
+      sql`to_tsvector('simple', ${posts.text}) @@ websearch_to_tsquery('simple', ${query})`,
+      { order: [desc(posts.createdAt), desc(posts.id)], limit },
+    )
+  }
+
+  /** A post with the conversation above it and the direct replies below it. */
+  async thread(viewerId: string | null, id: string): Promise<Thread | null> {
+    const [post] = await this.select(viewerId, eq(posts.id, id), { limit: 1 })
+    if (!post) return null
+
+    const chain = await this.db.execute<{ id: string }>(sql`
+      with recursive up as (
+        select p.id, p.reply_parent_id, 1 as depth from posts p where p.id = ${post.replyParentId}
+        union all
+        select p.id, p.reply_parent_id, up.depth + 1
+        from posts p join up on p.id = up.reply_parent_id
+        where up.depth < ${MAX_THREAD_DEPTH}
+      )
+      select id from up order by depth desc`)
+    const ancestorIds = chain.rows.map((r) => r.id)
+
+    const [ancestors, replies] = await Promise.all([
+      ancestorIds.length
+        ? this.select(viewerId, inArray(posts.id, ancestorIds), { includeDeleted: true })
+        : Promise.resolve([]),
+      this.select(viewerId, eq(posts.replyParentId, id), {
+        order: [asc(posts.createdAt), asc(posts.id)],
+        limit: MAX_REPLIES_SHOWN,
+      }),
+    ])
+    // Root first. An ancestor by a now-inactive member is simply absent.
+    ancestors.sort((a, b) => ancestorIds.indexOf(a.id) - ancestorIds.indexOf(b.id))
+    return { ancestors, post, replies }
+  }
+
+  /**
+   * `communitySlug` posts into a community the author has joined. A reply always
+   * lands in its parent's community (or none), whatever is asked for.
+   */
+  async create(
+    authorId: string,
+    text: string,
+    { replyTo, communitySlug }: { replyTo?: string; communitySlug?: string } = {},
+  ): Promise<{ id: string }> {
+    let parent: { id: string; rootId: string | null; communityId: string | null } | undefined
+    let communityId: string | null = null
+
+    if (replyTo) {
+      // You can only reply to something a reader could currently see.
+      ;[parent] = await this.db
+        .select({ id: posts.id, rootId: posts.rootId, communityId: posts.communityId })
+        .from(posts)
+        .innerJoin(members, eq(members.id, posts.authorId))
+        .where(
+          and(
+            eq(posts.id, replyTo),
+            live,
+            eq(members.active, true),
+            sql`not ${blockedEitherWay(authorId, sql`"posts"."author_id"`)}`,
+          ),
+        )
+      if (!parent) throw new ParentNotFoundError('the post you are replying to no longer exists')
+      communityId = parent.communityId
+    } else if (communitySlug) {
+      const [community] = await this.db
+        .select({
+          id: communities.id,
+          joined: sql<boolean>`exists(select 1 from community_memberships cm where cm.community_id = "communities"."id" and cm.member_id = ${authorId})`,
+        })
+        .from(communities)
+        .where(and(eq(communities.slug, communitySlug), eq(communities.active, true)))
+      if (!community) throw new CommunityNotFoundError('no such community')
+      if (!community.joined) throw new NotACommunityMemberError('join the community to post in it')
+      communityId = community.id
+    }
+
+    const [row] = await this.db
+      .insert(posts)
+      .values({
+        authorId,
+        text,
+        communityId,
+        replyParentId: parent?.id ?? null,
+        rootId: parent ? (parent.rootId ?? parent.id) : null,
+      })
+      .returning({ id: posts.id })
     return row!
   }
 
@@ -64,35 +357,29 @@ export class PostsService {
     return rows.length > 0
   }
 
-  /** Newest first. Deleted posts and posts by inactive members are excluded. */
-  async feed(limit: number, cursor?: string): Promise<FeedPage> {
-    const conditions = [isNull(posts.deletedAt), eq(members.active, true)]
-    if (cursor) {
-      const [createdAt, id] = decodeCursor(cursor)
-      conditions.push(
-        or(lt(posts.createdAt, createdAt), and(eq(posts.createdAt, createdAt), lt(posts.id, id)))!,
-      )
-    }
+  /** Idempotent. False if the post is not there to be liked. */
+  async like(memberId: string, postId: string): Promise<boolean> {
+    const [visible] = await this.select(memberId, eq(posts.id, postId), { limit: 1 })
+    if (!visible) return false
+    await this.db.insert(likes).values({ memberId, postId }).onConflictDoNothing()
+    return true
+  }
 
-    const rows = await this.db
-      .select({
-        id: posts.id,
-        authorId: posts.authorId,
-        authorHandle: members.handle,
-        text: posts.text,
-        createdAt: posts.createdAt,
-      })
-      .from(posts)
-      .innerJoin(members, eq(members.id, posts.authorId))
-      .where(and(...conditions))
-      .orderBy(desc(posts.createdAt), desc(posts.id))
-      .limit(limit + 1)
+  /** Idempotent. */
+  async unlike(memberId: string, postId: string): Promise<void> {
+    await this.db.delete(likes).where(and(eq(likes.memberId, memberId), eq(likes.postId, postId)))
+  }
 
-    const page = rows.slice(0, limit)
-    const last = page.at(-1)
-    return {
-      posts: page,
-      cursor: rows.length > limit && last ? encodeCursor(last.createdAt, last.id) : null,
-    }
+  /** Idempotent. False if the post is not there to be saved. */
+  async bookmark(memberId: string, postId: string): Promise<boolean> {
+    const [visible] = await this.select(memberId, eq(posts.id, postId), { limit: 1 })
+    if (!visible) return false
+    await this.db.insert(bookmarks).values({ memberId, postId }).onConflictDoNothing()
+    return true
+  }
+
+  /** Idempotent. */
+  async unbookmark(memberId: string, postId: string): Promise<void> {
+    await this.db.delete(bookmarks).where(and(eq(bookmarks.memberId, memberId), eq(bookmarks.postId, postId)))
   }
 }

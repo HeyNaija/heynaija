@@ -31,7 +31,7 @@ const FIELD_ERRORS: Record<string, Record<number, string>> = {
   },
 }
 
-const tone = { error: 'text-danger', success: 'text-accent', info: 'text-muted' } as const
+const tone = { error: 'text-danger', success: 'text-accent-strong', info: '' } as const
 
 function Messages({ messages, field }: { messages?: UiMessage[]; field?: string }) {
   if (!messages?.length) return null
@@ -63,11 +63,7 @@ function Field({ node, flowId }: { node: UiNode; flowId: string }) {
         value={value}
         disabled={a.disabled}
         formNoValidate={!primary}
-        className={
-          primary
-            ? 'rounded-full bg-accent px-4 py-3 font-semibold text-accent-ink disabled:opacity-50'
-            : 'self-start text-sm text-muted underline underline-offset-2'
-        }
+        className={primary ? 'btn btn-primary btn-lg btn-block' : 'self-start text-sm font-medium text-accent-strong hover:underline'}
       >
         {(node.meta.label && TEXT[node.meta.label.id]) ?? node.meta.label?.text ?? 'Continue'}
       </button>
@@ -77,7 +73,7 @@ function Field({ node, flowId }: { node: UiNode; flowId: string }) {
   const id = `${flowId}-${node.group}-${name}`
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-medium">
+      <label htmlFor={id} className="field-label">
         {LABELS[name] ?? node.meta.label?.text ?? name}
       </label>
       <input
@@ -95,10 +91,10 @@ function Field({ node, flowId }: { node: UiNode; flowId: string }) {
         autoCorrect="off"
         spellCheck={false}
         aria-describedby={HINTS[name] ? `${id}-hint` : undefined}
-        className="rounded-xl border border-line bg-surface px-3 py-3 text-base placeholder:text-muted"
+        className="field"
       />
       {HINTS[name] ? (
-        <p id={`${id}-hint`} className="text-xs text-muted">
+        <p id={`${id}-hint`} className="field-hint">
           {HINTS[name]}
         </p>
       ) : null}
@@ -152,7 +148,7 @@ export function FlowForm({ flow, sections }: { flow: Flow; sections?: Record<str
   return (
     <div className="flex flex-col gap-6">
       {flow.ui.messages?.length ? (
-        <div className="rounded-xl border border-line bg-surface p-3">
+        <div className={`notice ${flow.ui.messages.some((m) => m.type === 'error') ? 'notice-danger' : ''}`}>
           <Messages messages={flow.ui.messages} />
         </div>
       ) : null}
@@ -160,7 +156,7 @@ export function FlowForm({ flow, sections }: { flow: Flow; sections?: Record<str
       {sections ? (
         groups.map((group) => (
           <section key={group} className="flex flex-col gap-3">
-            <h2 className="font-semibold">{sections[group]}</h2>
+            <h2 className="section-title">{sections[group]}</h2>
             <Form flow={flow} nodes={[...shared, ...flow.ui.nodes.filter((n) => n.group === group)]} />
           </section>
         ))
