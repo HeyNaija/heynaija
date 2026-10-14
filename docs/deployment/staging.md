@@ -133,12 +133,14 @@ sudo install -m 600 heynaija-origin-key.pem /etc/ssl/cloudflare/
    ./config.sh --url https://github.com/<you>/heynaija --token <token from GitHub> --labels heynaija-staging --name heynaija-staging --unattended
    ```
 
-   Then install it as a service running as `heynaija` (from that folder, as your
-   admin user):
+   Then `exit` back to your admin user (`heynaija` has no password and no sudo) and
+   install it as a service that runs as `heynaija`:
 
    ```bash
-   sudo ./svc.sh install heynaija && sudo ./svc.sh start
+   sudo bash -c 'cd /home/heynaija/actions-runner && ./svc.sh install heynaija && ./svc.sh start'
    ```
+
+   It should show as **Idle** under **Settings → Actions → Runners**.
 
    It sits beside Koinovera's runner without affecting it.
 
