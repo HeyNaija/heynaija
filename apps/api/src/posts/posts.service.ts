@@ -121,12 +121,8 @@ const live = and(isNull(posts.deletedAt), isNull(posts.removedAt))
 export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
   sql<boolean>`exists(select 1 from blocks bl where (bl.blocker_id = ${a} and bl.blocked_id = ${b}) or (bl.blocker_id = ${b} and bl.blocked_id = ${a}))`
 
-// Written out so the outer post is unambiguous inside the count subqueries.
+// Written out so the outer post is unambiguous inside subqueries.
 const outerId = sql`"posts"."id"`
-
-// Only active members' likes and replies count, matching what a reader would see.
-const likeCount = sql<number>`(select count(*)::int from likes l join members lm on lm.id = l.member_id and lm.active where l.post_id = ${outerId})`
-const replyCount = sql<number>`(select count(*)::int from posts r join members rm on rm.id = r.author_id and rm.active where r.reply_parent_id = ${outerId} and r.deleted_at is null and r.removed_at is null)`
 
 /** A post's ready images in order, as JSON, for any query with `posts` in scope. */
 export const imagesOf = (postId: SQL) =>
@@ -169,8 +165,10 @@ export class PostsService {
         >`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${imagesOf(outerId)} else '[]'::json end`,
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
-        likeCount,
-        replyCount,
+        // Kept on the row by triggers (see the posts schema): only active
+        // members' likes and live replies count, as a reader would see them.
+        likeCount: posts.likeCount,
+        replyCount: posts.replyCount,
         viewerLiked: viewerId
           ? sql<boolean>`exists(select 1 from likes l where l.post_id = ${outerId} and l.member_id = ${viewerId})`
           : sql<boolean>`false`,
@@ -331,38 +329,17 @@ export class PostsService {
   }
 
   /**
-   * Scores this week's live top-level posts by active authors in one pass:
-   * likes by active members, plus twice the live replies by active members.
+   * Scores this week's live top-level posts by active authors from the counters
+   * on each post: likes, plus twice the replies.
    */
   private async rankTrending(): Promise<string[]> {
     const since = new Date(Date.now() - TRENDING_WINDOW_DAYS * 86_400_000).toISOString()
     const { rows } = await this.db.execute<{ id: string }>(sql`
-      with recent as (
-        select p.id, p.created_at from posts p
-        join members m on m.id = p.author_id and m.active
-        where p.reply_parent_id is null and p.deleted_at is null and p.removed_at is null and p.created_at > ${since}
-      ),
-      like_counts as (
-        select l.post_id, count(*)::int as n from likes l
-        join recent on recent.id = l.post_id
-        join members lm on lm.id = l.member_id and lm.active
-        group by l.post_id
-      ),
-      reply_counts as (
-        select r.reply_parent_id as post_id, count(*)::int as n from posts r
-        join recent on recent.id = r.reply_parent_id
-        join members rm on rm.id = r.author_id and rm.active
-        where r.deleted_at is null and r.removed_at is null
-        group by r.reply_parent_id
-      ),
-      scored as (
-        select recent.id, recent.created_at, coalesce(rc.n, 0) * 2 + coalesce(lc.n, 0) as score
-        from recent
-        left join like_counts lc on lc.post_id = recent.id
-        left join reply_counts rc on rc.post_id = recent.id
-      )
-      select id from scored where score > 0
-      order by score desc, created_at desc, id desc
+      select p.id from posts p
+      join members m on m.id = p.author_id and m.active
+      where p.reply_parent_id is null and p.deleted_at is null and p.removed_at is null and p.created_at > ${since}
+        and p.like_count + p.reply_count > 0
+      order by p.reply_count * 2 + p.like_count desc, p.created_at desc, p.id desc
       limit ${TRENDING_CANDIDATES}`)
     return rows.map((r) => r.id)
   }

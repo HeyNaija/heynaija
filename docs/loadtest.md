@@ -388,6 +388,11 @@ Next.js and the API each stayed near 10%.
    `members` to drop inactive accounts. A popular post with 100k likes costs 100k
    rows every time someone scrolls past it. Fix: counter columns updated on
    like, unlike and reply, or a periodically refreshed count.
+   **Done** (migration `0011_post_counters`): `posts.like_count` and
+   `posts.reply_count`, kept by triggers. On the 10k seed, a 10→30 req/s ramp
+   went from about 33 s to 27 s of Postgres CPU in the app database. The 30
+   most-liked posts now read in 0.08 ms instead of 63 ms, and the trending
+   ranking takes 2 ms instead of 24 ms.
 3. **Kratos `whoami` and a `members` UPDATE on every API call.** *Done
    (14 October 2026).* The session guard used to ask Kratos about the cookie on
    every request (Kratos queries its own tables in the same Postgres) and then

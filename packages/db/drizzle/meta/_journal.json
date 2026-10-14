@@ -78,6 +78,13 @@
       "when": 1792006916431,
       "tag": "0010_notifications_actor_post_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792007243412,
+      "tag": "0011_post_counters",
+      "breakpoints": true
     }
   ]
 }

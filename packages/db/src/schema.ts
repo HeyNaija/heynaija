@@ -123,6 +123,11 @@ export const posts = pgTable(
     deletedAt: ts('deleted_at'),
     // Taken down by a moderator (as opposed to deleted by its author). Reversible.
     removedAt: ts('removed_at'),
+    // Likes by active members, and direct replies that are live and by active
+    // members: what readers see. Kept by triggers (migration 0011), in the same
+    // transaction as the like, reply, deletion or suspension that changes them.
+    likeCount: integer('like_count').notNull().default(0),
+    replyCount: integer('reply_count').notNull().default(0),
   },
   (t) => [
     index('posts_created_idx').on(t.createdAt, t.id),

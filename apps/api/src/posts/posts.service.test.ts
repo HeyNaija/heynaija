@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, mock, test } from 'node:test'
-import { blocks, follows, members, mutes, posts } from '@heynaija/db'
-import { eq } from 'drizzle-orm'
+import { blocks, follows, likes, members, mutes, notifications, posts } from '@heynaija/db'
+import { eq, sql } from 'drizzle-orm'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { InvalidCursorError, ParentNotFoundError, PostsService, postText, TRENDING_TTL_MS } from './posts.service.js'
 
@@ -185,6 +185,136 @@ test('likes and replies from a suspended member stop counting', async () => {
   const [post] = (await service.feed(null, 10)).posts
   assert.equal(post!.likeCount, 0)
   assert.equal(post!.replyCount, 0)
+})
+
+/** Posts whose stored counters differ from counting likes and replies afresh. */
+const counterDrift = async () =>
+  (
+    await db.execute<{ id: string }>(sql`
+      select p.id from posts p
+      where p.like_count <> (select count(*) from likes l join members m on m.id = l.member_id and m.active where l.post_id = p.id)
+         or p.reply_count <> (select count(*) from posts r join members m on m.id = r.author_id and m.active
+                              where r.reply_parent_id = p.id and r.deleted_at is null and r.removed_at is null)`)
+  ).rows
+
+const countsOf = async (id: string) => {
+  const [row] = await db.select({ likes: posts.likeCount, replies: posts.replyCount }).from(posts).where(eq(posts.id, id))
+  return row!
+}
+
+test('a reinstated member\'s likes and live replies count again, without counting twice', async () => {
+  const { id } = await service.create(ada, 'post')
+  await service.like(chi, id)
+  await service.like(bayo, id)
+  const kept = await service.create(chi, 'kept', { replyTo: id })
+  const deletedWhileSuspended = await service.create(chi, 'gone', { replyTo: id })
+  await db.update(members).set({ active: false }).where(eq(members.id, chi))
+  assert.deepEqual(await countsOf(id), { likes: 1, replies: 0 })
+
+  // Changes made while suspended must not move the counts a second time.
+  await service.unlike(chi, id)
+  await service.remove(chi, deletedWhileSuspended.id)
+  assert.deepEqual(await countsOf(id), { likes: 1, replies: 0 })
+
+  await db.update(members).set({ active: true }).where(eq(members.id, chi))
+  assert.deepEqual(await countsOf(id), { likes: 1, replies: 1 })
+  assert.equal((await service.thread(null, kept.id))!.ancestors[0]!.replyCount, 1)
+  assert.deepEqual(await counterDrift(), [])
+})
+
+test('deleting, taking down and restoring a reply move its parent\'s reply count', async () => {
+  const { id } = await service.create(ada, 'post')
+  const one = await service.create(bayo, 'one', { replyTo: id })
+  const two = await service.create(chi, 'two', { replyTo: id })
+  // Replies to a reply count on that reply, not on the top post.
+  await service.create(ada, 'nested', { replyTo: one.id })
+  assert.deepEqual(await countsOf(id), { likes: 0, replies: 2 })
+  assert.deepEqual(await countsOf(one.id), { likes: 0, replies: 1 })
+
+  await service.remove(bayo, one.id)
+  assert.equal((await countsOf(id)).replies, 1)
+  await db.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, two.id))
+  assert.equal((await countsOf(id)).replies, 0)
+  // Taking down an already deleted reply changes nothing.
+  await db.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, one.id))
+  assert.equal((await countsOf(id)).replies, 0)
+  await db.update(posts).set({ removedAt: null }).where(eq(posts.id, two.id))
+  assert.equal((await countsOf(id)).replies, 1)
+
+  // A reply removed outright (as the load-test cleanup does) stops counting too.
+  await db.delete(notifications).where(eq(notifications.postId, two.id))
+  await db.delete(posts).where(eq(posts.id, two.id))
+  assert.equal((await countsOf(id)).replies, 0)
+  assert.deepEqual(await counterDrift(), [])
+})
+
+test('deleting a post keeps its counts and leaves other posts\' counts alone', async () => {
+  const { id } = await service.create(ada, 'post')
+  const other = await service.create(bayo, 'other')
+  await service.like(bayo, id)
+  await service.like(chi, other.id)
+  await service.create(chi, 'reply', { replyTo: id })
+  await service.remove(ada, id)
+  assert.deepEqual(await countsOf(id), { likes: 1, replies: 1 })
+  assert.deepEqual(await countsOf(other.id), { likes: 1, replies: 0 })
+  assert.deepEqual(await counterDrift(), [])
+})
+
+test('bulk inserts and deletes of likes and replies keep every counter right', async () => {
+  const [a, b] = await Promise.all([service.create(ada, 'a'), service.create(bayo, 'b')])
+  await db.insert(likes).values([
+    { memberId: ada, postId: a.id },
+    { memberId: bayo, postId: a.id },
+    { memberId: chi, postId: a.id },
+    { memberId: ada, postId: b.id },
+  ])
+  await db.insert(posts).values([
+    { authorId: bayo, text: 'r1', replyParentId: a.id, rootId: a.id },
+    { authorId: chi, text: 'r2', replyParentId: a.id, rootId: a.id },
+    { authorId: chi, text: 'r3', replyParentId: b.id, rootId: b.id, deletedAt: new Date() },
+  ])
+  assert.deepEqual(await countsOf(a.id), { likes: 3, replies: 2 })
+  assert.deepEqual(await countsOf(b.id), { likes: 1, replies: 0 })
+  await db.delete(likes).where(eq(likes.postId, a.id))
+  assert.deepEqual(await countsOf(a.id), { likes: 0, replies: 2 })
+  assert.deepEqual(await counterDrift(), [])
+})
+
+test('concurrent likes and unlikes on one post are all counted', async () => {
+  const crowd = Array.from({ length: 40 }, (_, i) => ({ id: randomUUID(), handle: `fan${i}` }))
+  await db.insert(members).values(crowd)
+  const { id } = await service.create(ada, 'popular')
+
+  // Everyone likes at once, some twice.
+  await Promise.all(crowd.flatMap((m, i) => (i % 4 === 0 ? [service.like(m.id, id), service.like(m.id, id)] : [service.like(m.id, id)])))
+  assert.equal((await countsOf(id)).likes, 40)
+
+  // Half unlike while the others like again (a no-op) and new likes arrive.
+  await Promise.all([
+    ...crowd.map((m, i) => (i % 2 === 0 ? service.unlike(m.id, id) : service.like(m.id, id))),
+    service.like(bayo, id),
+    service.like(chi, id),
+  ])
+  assert.equal((await countsOf(id)).likes, 22)
+  assert.equal((await service.feed(null, 1)).posts[0]!.likeCount, 22)
+  assert.deepEqual(await counterDrift(), [])
+})
+
+test('likes and replies racing their author\'s suspension end up counted correctly', async () => {
+  const crowd = Array.from({ length: 20 }, (_, i) => ({ id: randomUUID(), handle: `racer${i}` }))
+  await db.insert(members).values(crowd)
+  const { id } = await service.create(ada, 'post')
+
+  await Promise.all(
+    crowd.flatMap((m, i) => [
+      db.insert(likes).values({ memberId: m.id, postId: id }),
+      db.insert(posts).values({ authorId: m.id, text: 'reply', replyParentId: id, rootId: id }),
+      ...(i % 3 === 0 ? [db.update(members).set({ active: false }).where(eq(members.id, m.id))] : []),
+    ]),
+  )
+  const suspended = crowd.filter((_, i) => i % 3 === 0).length
+  assert.deepEqual(await countsOf(id), { likes: 20 - suspended, replies: 20 - suspended })
+  assert.deepEqual(await counterDrift(), [])
 })
 
 test('the following feed has only your own and followed members\' top-level posts', async () => {
