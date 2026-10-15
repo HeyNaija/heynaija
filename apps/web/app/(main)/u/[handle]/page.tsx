@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { setBlock, setFollow, setMute } from '@/app/actions'
 import { Avatar } from '@/app/ui/avatar'
@@ -7,7 +7,7 @@ import { DotsIcon } from '@/app/ui/icons'
 import { Menu } from '@/app/ui/menu'
 import { PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
-import { getMemberPosts, getProfile, getViewer } from '@/lib/api'
+import { findProfile, getMemberPosts, getViewer } from '@/lib/api'
 
 type Props = PageProps<'/u/[handle]'>
 
@@ -33,8 +33,10 @@ async function ProfileView({ params, searchParams }: Props) {
   const [{ handle }, { cursor }] = await Promise.all([params, searchParams])
   const page = typeof cursor === 'string' ? cursor : undefined
 
-  const [profile, viewer] = await Promise.all([getProfile(handle), getViewer()])
+  const [profile, viewer] = await Promise.all([findProfile(handle), getViewer()])
   if (!profile) notFound()
+  // A handle its owner gave up recently leads to the one they use now.
+  if ('movedTo' in profile) redirect(`/u/${profile.movedTo}`)
   // Behind a block there is nothing to load: the API would return no posts anyway.
   const feed = profile.viewerBlocks ? { posts: [], cursor: null } : await getMemberPosts(profile.handle, page)
   const viewerId = viewer.state === 'member' ? viewer.me.id : null

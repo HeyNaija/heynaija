@@ -32,6 +32,15 @@ else
     || { echo "No images for $RELEASE in $prefix. Did the build job finish? (BUILD=1 builds here instead.)"; exit 1; }
 fi
 
+# Compose recreates a container only when its service definition changes. Kratos
+# also reads its inline config (configs.kratos, with values from .env) and files
+# mounted one by one from ../kratos; a change to those alone would leave it running
+# the old ones (git checkout replaces the files, and a single-file mount keeps
+# showing the replaced copy). So the kratos service is labelled with a hash of all
+# of them, worked out with the label itself empty.
+KRATOS_INPUTS=$( { KRATOS_INPUTS='' docker compose config kratos; cat ../kratos/*; } | sha256sum | cut -c1-16 )
+export KRATOS_INPUTS
+
 # Migrations run first (the api waits for them); --wait returns once every
 # service is healthy, or fails.
 docker compose up -d --remove-orphans --wait

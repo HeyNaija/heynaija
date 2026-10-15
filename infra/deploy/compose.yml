@@ -94,6 +94,7 @@ services:
     volumes: &kratos-volumes
       - ../kratos/identity.schema.json:/etc/config/kratos/identity.schema.json:ro
       - ../kratos/invite-check.jsonnet:/etc/config/kratos/invite-check.jsonnet:ro
+      - ../kratos/handle-change.jsonnet:/etc/config/kratos/handle-change.jsonnet:ro
       - ../kratos/google.jsonnet:/etc/config/kratos/google.jsonnet:ro
     configs: &kratos-configs
       - source: kratos
@@ -113,6 +114,10 @@ services:
     volumes: *kratos-volumes
     configs: *kratos-configs
     command: serve -c /etc/config/kratos/kratos.yml --watch-courier
+    # deploy.sh sets this to a hash of Kratos's rendered config and its files, so
+    # that a change to any of them recreates Kratos (Compose alone would not).
+    labels:
+      heynaija.kratos-inputs: ${KRATOS_INPUTS:-}
     depends_on:
       kratos-migrate:
         condition: service_completed_successfully
@@ -230,7 +235,7 @@ configs:
                       url: http://api:4000/internal/kratos/registration
                       method: POST
                       body: file:///etc/config/kratos/invite-check.jsonnet
-                      auth:
+                      auth: &webhook-auth
                         type: api_key
                         config:
                           name: x-webhook-secret
@@ -264,6 +269,18 @@ configs:
           settings:
             ui_url: ${SITE_URL}/settings
             privileged_session_max_age: 15m
+            # Handles given up by renaming: see docker-compose.dev.yml.
+            after:
+              profile:
+                hooks:
+                  - hook: web_hook
+                    config:
+                      url: http://api:4000/internal/kratos/settings
+                      method: POST
+                      body: file:///etc/config/kratos/handle-change.jsonnet
+                      auth: *webhook-auth
+                      response:
+                        parse: true
           logout:
             after:
               default_browser_return_url: ${SITE_URL}/

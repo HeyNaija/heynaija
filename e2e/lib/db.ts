@@ -56,6 +56,7 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['posts', `delete from posts where id in (select id from e2e_p)`],
         ['invite redemptions', `delete from invite_redemptions where identity_id in (select id from e2e_m)
            or code_hash in (select code_hash from invites where note = $1)`],
+        ['released handles', `delete from released_handles where member_id in (select id from e2e_m)`],
         ['members', `delete from members where id in (select id from e2e_m)`],
         ['invites', `delete from invites where note = $1`],
       ]

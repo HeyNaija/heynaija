@@ -18,7 +18,10 @@ Browser ── Cloudflare (TLS, cache, CSAM scanning) ──> Contabo server :44
 GitHub's machines build the two images and push them to GitHub's container
 registry, tagged with the commit; then HeyNaija's runner on the server pulls them
 and restarts HeyNaija with `infra/deploy/deploy.sh`. The server never builds
-anything, so Koinovera never competes with a build for memory.
+anything, so Koinovera never competes with a build for memory. Kratos restarts
+only when its configuration or the files in `infra/kratos/` changed: `deploy.sh`
+labels it with a hash of them, because Compose alone would leave the old ones
+running.
 
 **Tested** on a laptop (14 October 2026): the images, the stack, the nginx site on
 nginx 1.24 (Ubuntu 24.04's version) with client certificates, an invite signup
@@ -36,6 +39,21 @@ code or Google, never a password ([ADR 0003](../adr/0003-passwordless-sign-in.md
 Accounts made before that need the one-off step in
 [google-sign-in.md](google-sign-in.md#existing-accounts) once that change is
 deployed.
+
+**Handles are unique again:** with that change Kratos stopped checking that a
+handle is free, at sign-up or when renaming. Once the fix is deployed, accounts
+made or renamed in between need a one-off re-save. First look for handles two
+accounts already share (it changes nothing, and lists any it finds):
+
+```bash
+cd /srv/heynaija/infra/deploy && docker compose exec -e KRATOS_ADMIN_URL=http://kratos:4434 api node dist/cli/unique-handles.js --check
+```
+
+If it lists any, give all but one account of each a new handle, then run it
+without `--check`. Running it again is harmless.
+
+The same release holds a handle given up by renaming for 30 days
+([ADR 0004](../adr/0004-handles-held-after-rename.md)).
 
 **Not yet confirmed:** a complete invite signup on staging since the fix below is
 deployed, the verification email through Resend, images through R2, backups and a

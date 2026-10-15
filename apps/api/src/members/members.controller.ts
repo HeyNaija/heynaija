@@ -41,9 +41,13 @@ export class MembersController {
   @Get(':handle')
   @UseGuards(OptionalSessionGuard)
   async profile(@Req() req: MaybeAuthedRequest, @Param('handle') handle: string) {
-    const profile = await this.members.profile(req.member?.id ?? null, handleOf(handle))
-    if (!profile) throw new NotFoundException()
-    return profile
+    const viewerId = req.member?.id ?? null
+    const profile = await this.members.profile(viewerId, handleOf(handle))
+    if (profile) return profile
+    // A handle given up recently: say which one its owner uses now, so the web
+    // app can send old links there.
+    const movedTo = await this.members.movedTo(viewerId, handleOf(handle))
+    throw new NotFoundException(movedTo ? { movedTo } : undefined)
   }
 
   @Get(':handle/posts')

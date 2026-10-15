@@ -246,7 +246,7 @@ export function RightRail() {
         <Trending />
       </Suspense>
       <TreasuryPreview />
-      <p className="rail-footer">A space for us. A future we build together.<br /><Link href="/governance">About HeyNaija</Link><span aria-hidden="true"> · </span><Link href="/c">Our communities</Link></p>
+      <p className="rail-footer">A space for us. A future we build together.<br /><Link href="/governance">About HeyNaija</Link><span aria-hidden="true"> · </span><Link href="/c">Our communities</Link><br /><Link href="/rules">Rules</Link><span aria-hidden="true"> · </span><Link href="/privacy">Privacy</Link><span aria-hidden="true"> · </span><Link href="/charter">Charter</Link><span aria-hidden="true"> · </span><Link href="/licence">Licence</Link></p>
     </aside>
   )
 }

@@ -16,12 +16,19 @@ export default function SignupPage({ searchParams }: PageProps<'/signup'>) {
       title="Create your account"
       intro="Choose your public handle. Your email stays private, and a sign-in code takes the place of a password."
       footer={
-        <p>
-          Already a member?{' '}
-          <Link href="/login" className={linkClass}>
-            Sign in
-          </Link>
-        </p>
+        <>
+          <p>
+            Before you join, read the{' '}
+            <Link href="/rules" className={linkClass}>rules</Link> and the{' '}
+            <Link href="/privacy" className={linkClass}>privacy policy</Link>.
+          </p>
+          <p className="mt-2">
+            Already a member?{' '}
+            <Link href="/login" className={linkClass}>
+              Sign in
+            </Link>
+          </p>
+        </>
       }
     >
       <SignupForm searchParams={searchParams} />

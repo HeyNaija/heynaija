@@ -20,7 +20,9 @@ export const members = pgTable(
   {
     id: uuid('id').primaryKey(),
     // Copy of the Kratos `handle` trait, refreshed whenever the member is seen.
-    // Not unique here: Kratos enforces uniqueness, and this copy can briefly lag it.
+    // Not unique here: Kratos keeps handles unique (the handle is a credential
+    // identifier in infra/kratos/identity.schema.json), and this copy can briefly
+    // lag a rename, so for a moment two rows can hold the same handle.
     handle: text('handle').notNull(),
     // Inactive members (suspended, deactivated) are filtered out of feeds on read.
     active: boolean('active').notNull().default(true),
@@ -37,6 +39,19 @@ export const members = pgTable(
   },
   (t) => [index('members_handle_idx').on(t.handle)],
 )
+
+// A handle a member gave up by renaming. For a while afterwards only they can take
+// it back, and /u/<handle> leads to their new one, so old links and mentions do
+// not reach someone new (see MembersService.handleHeld). Written by the Kratos
+// settings webhook just before the rename is saved; one row per handle, for the
+// member who gave it up last.
+export const releasedHandles = pgTable('released_handles', {
+  handle: text('handle').primaryKey(),
+  memberId: uuid('member_id')
+    .notNull()
+    .references(() => members.id),
+  releasedAt: ts('released_at').notNull().defaultNow(),
+})
 
 // An uploaded file. The bytes live in object storage; this row tracks who owns it
 // and whether it has been checked and processed. Only 'ready' media is ever shown.

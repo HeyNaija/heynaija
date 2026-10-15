@@ -47,6 +47,23 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
           <SettingsForm searchParams={searchParams} />
         </Suspense>
       </div>
+      <section className="content-panel settings-section" aria-labelledby="data-heading">
+        <div>
+          <h2 id="data-heading" className="section-title">Your data</h2>
+          <p className="field-hint mt-1">
+            Download everything HeyNaija holds about you: your profile, posts, likes, bookmarks, who you
+            follow, mutes and blocks, and reports you made. It comes as one JSON file.{' '}
+            <Link href="/privacy" className="font-semibold text-accent-strong hover:underline">How we use your data</Link>
+          </p>
+        </div>
+        <Suspense fallback={null}>
+          <ExportNotice searchParams={searchParams} />
+        </Suspense>
+        {/* A plain link: the browser saves the file, with or without JavaScript. */}
+        <a href="/settings/export" className="btn btn-secondary self-start" download>
+          Download your data
+        </a>
+      </section>
       <Link href="/" className="inline-flex min-h-11 items-center self-start text-sm font-semibold text-accent-strong hover:underline">
         Back to the feed
       </Link>
@@ -64,6 +81,18 @@ async function NameAndBio() {
   const viewer = await getViewer()
   if (viewer.state !== 'member') return null
   return <ProfileForm displayName={viewer.me.displayName} bio={viewer.me.bio} />
+}
+
+/** Why the last download did not happen, when it did not. */
+async function ExportNotice({ searchParams }: Pick<PageProps<'/settings'>, 'searchParams'>) {
+  const state = (await searchParams).export
+  if (state === 'busy') {
+    return <p role="alert" className="notice">You have downloaded your data several times this hour. Try again in an hour.</p>
+  }
+  if (state === 'failed') {
+    return <p role="alert" className="notice notice-danger">Your data could not be prepared just now. Try again in a few minutes.</p>
+  }
+  return null
 }
 
 async function SettingsForm({ searchParams }: Pick<PageProps<'/settings'>, 'searchParams'>) {

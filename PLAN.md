@@ -130,7 +130,7 @@ Browser ──> Next.js web app
 - [x] Profile photo (upload, replace, remove)
 - [x] Display name (50 characters) and short bio (160), searchable by name
 - [ ] Onboarding: pick interests and communities, suggested people
-- [ ] Data export ("download my data")
+- [x] Data export ("download my data"): Settings → Your data, one JSON file (15 October 2026)
 
 ### Social
 - [x] Text posts (300 characters), threaded replies, likes, private bookmarks
@@ -162,8 +162,8 @@ Browser ──> Next.js web app
 
 ### Open governance
 - [x] Governance information page and Public Treasury preview, clearly marked coming soon
-- [ ] Licence (consider AGPL-3.0-or-later, with legal review), charter, policies, roadmap, published source
-- [ ] Disclosure of the provisional custodians and the plan for community ownership
+- [ ] Licence, charter, policies, roadmap, published source. Draft pages live at /rules, /privacy, /charter and /licence (15 October 2026), marked as drafts with placeholders for the operator's details; licence chosen: AGPL-3.0-or-later. Still to do: legal review, the `LICENSE` file, filling in the placeholders, publishing the source
+- [ ] Disclosure of the provisional custodians and the plan for community ownership (the charter sets out the plan; the custodians' names are a placeholder)
 - [ ] Community voting and treasury records (information pages are built; voting and transactions are not live)
 
 ### Operations
@@ -272,6 +272,9 @@ In order; each step is a vertical slice with tests and a browser check.
    [docs/e2e.md](docs/e2e.md)). It found that pages do not work without
    JavaScript (see §0).
 7. **Governance pages:** licence, charter, rules, privacy policy, data export.
+   Built 15 October 2026 as drafts, linked from the governance page, the side rail
+   and sign-up; data export is in Settings. Waiting on the operator's details and
+   legal review.
 8. **Pilot launch:** onboard 20–30 seed members, then invite in batches.
 
 ---

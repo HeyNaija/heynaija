@@ -23,6 +23,9 @@
           "pattern": "^[a-z0-9_]{3,20}$",
           "not": {
             "enum": ["admin", "administrator", "heynaija", "moderator", "mod", "support", "help", "staff", "official", "system", "root", "security"]
+          },
+          "ory.sh/kratos": {
+            "credentials": { "password": { "identifier": true } }
           }
         }
       },

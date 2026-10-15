@@ -12,7 +12,7 @@ const whoami = z.object({
   identity: z.object({
     id: z.uuid(),
     state: z.string().optional(),
-    traits: z.object({ handle: z.string() }),
+    traits: z.object({ handle: z.string(), email: z.string().optional() }),
   }),
 })
 
@@ -76,7 +76,22 @@ export class KratosService {
     await this.cache.delete(sessionCookie)
   }
 
+  /**
+   * The email address a session's member signs in with, asked of Kratos directly
+   * (never cached, unlike the identity above). Null if the session has ended.
+   * Only the member's own data export needs it.
+   */
+  async emailForSession(sessionCookie: string): Promise<string | null> {
+    const session = await this.session(sessionCookie)
+    return session?.identity.traits.email ?? null
+  }
+
   private async whoami(sessionCookie: string): Promise<Identity | null> {
+    const session = await this.session(sessionCookie)
+    return session ? { id: session.identity.id, handle: session.identity.traits.handle } : null
+  }
+
+  private async session(sessionCookie: string): Promise<z.infer<typeof whoami> | null> {
     let res: Response
     try {
       res = await fetch(`${this.env.KRATOS_PUBLIC_URL}/sessions/whoami`, {
@@ -91,6 +106,6 @@ export class KratosService {
 
     const session = whoami.parse(await res.json())
     if (!session.active || (session.identity.state ?? 'active') !== 'active') return null
-    return { id: session.identity.id, handle: session.identity.traits.handle }
+    return session
   }
 }

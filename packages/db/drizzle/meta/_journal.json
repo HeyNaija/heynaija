@@ -85,6 +85,13 @@
       "when": 1792007243412,
       "tag": "0011_post_counters",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792074132899,
+      "tag": "0012_released_handles",
+      "breakpoints": true
     }
   ]
 }

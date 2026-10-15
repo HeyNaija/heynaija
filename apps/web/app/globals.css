@@ -1200,6 +1200,36 @@ a.result-row:hover { color: var(--accent-strong); }
 .content-panel .empty-state { border: 0; padding: 32px 12px; }
 .state-page { max-width: 480px; margin-inline: auto; padding: 64px 24px; text-align: center; }
 .governance-page { display: flex; flex-direction: column; gap: 16px; }
+
+/* Governance documents (rules, privacy, charter, licence): long reading, so a
+   comfortable measure and line height, one card per section. */
+.policy-page { display: flex; flex-direction: column; gap: 16px; }
+.policy-summary { max-width: 62ch; margin-top: 10px; color: var(--muted); font-size: 15px; line-height: 1.7; }
+.policy-updated { margin-top: 10px; color: var(--muted); font-size: 12px; }
+.policy-draft { font-size: 14px; }
+.policy-placeholder { border-radius: 4px; background: color-mix(in srgb, var(--warm) 16%, transparent); padding: 0 3px; color: var(--ink); font-weight: 600; }
+.policy-contents { border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); padding: 16px 20px; }
+.policy-contents-title { color: var(--muted); font-size: 12px; font-weight: 600; }
+.policy-contents ol { margin-top: 8px; list-style: decimal; padding-left: 20px; font-size: 14px; line-height: 2; }
+.policy-contents a { color: var(--accent-strong); font-weight: 600; }
+.policy-contents a:hover { text-decoration: underline; }
+.policy-section { scroll-margin-top: 88px; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); padding: 22px 24px; }
+.policy-body { max-width: 68ch; margin-top: 10px; font-size: 15px; line-height: 1.7; }
+.policy-body > * + * { margin-top: 12px; }
+.policy-body ul, .policy-body ol { padding-left: 22px; }
+.policy-body ul { list-style: disc; }
+.policy-body ol { list-style: decimal; }
+.policy-body li + li { margin-top: 6px; }
+.policy-body a { color: var(--accent-strong); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.policy-body h3 { margin-top: 18px; font-size: 15px; font-weight: 700; }
+.policy-body dt { font-weight: 600; }
+.policy-body dd { margin-top: 2px; color: var(--muted); }
+.policy-body dd + dt { margin-top: 12px; }
+.policy-footer { padding: 4px 4px 0; color: var(--muted); font-size: 13px; }
+.policy-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; }
+.policy-links a { display: inline-flex; min-height: 32px; align-items: center; color: var(--accent-strong); font-weight: 600; }
+.policy-links a:hover { text-decoration: underline; }
+@media (max-width: 1023px) { .policy-section { padding: 20px; } }
 .square-bottom-nav { background: var(--surface); }
 .bottom-tab { display: flex; min-width: 0; min-height: 62px; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 500; }
 .bottom-tab[aria-current="page"] { color: var(--accent-strong); font-weight: 700; }
@@ -1266,3 +1296,9 @@ a.result-row:hover { color: var(--accent-strong); }
     scroll-behavior: auto !important;
   }
 }
+.governance-documents { margin-top: 12px; }
+.governance-documents li { display: flex; flex-direction: column; gap: 2px; padding-block: 10px; }
+.governance-documents li + li { border-top: 1px solid var(--line); }
+.governance-documents a { color: var(--accent-strong); font-size: 14px; font-weight: 600; }
+.governance-documents a:hover { text-decoration: underline; }
+.governance-documents span { color: var(--muted); font-size: 13px; line-height: 1.5; }

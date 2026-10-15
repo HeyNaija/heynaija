@@ -21,7 +21,17 @@ export function handleFor(role: string) {
 
 /** Signs a new member up through the UI in `page`. */
 export async function signUp(page: Page, handle: string) {
-  const email = `${handle}@${MARK.emailDomain}`
+  const email = await submitSignUp(page, handle)
+  await page.waitForURL((url) => url.pathname === '/')
+  await expect(page.getByLabel('Account menu')).toBeVisible()
+  return email
+}
+
+/**
+ * Goes through the whole sign-up form with a fresh invite, up to and including
+ * the emailed code, without checking that it worked.
+ */
+export async function submitSignUp(page: Page, handle: string, email = `${handle}@${MARK.emailDomain}`) {
   await page.goto(`/join?code=${createInvite()}`)
   await page.getByRole('button', { name: 'Check invite code' }).click()
   await page.waitForURL(/\/signup/)
@@ -33,9 +43,6 @@ export async function signUp(page: Page, handle: string) {
   await page.getByRole('button', { name: 'Send sign up code' }).click()
   await page.getByLabel('Code from the email').fill(await codeFor(email, asked))
   await page.getByRole('button', { name: 'Continue' }).click()
-
-  await page.waitForURL((url) => url.pathname === '/')
-  await expect(page.getByLabel('Account menu')).toBeVisible()
   return email
 }
 

@@ -137,8 +137,25 @@ async function getOrNull<T>(path: string): Promise<T | null> {
   return res.json()
 }
 
-export const getProfile = (handle: string) =>
-  getOrNull<Profile>(`/v1/members/${encodeURIComponent(handle)}`)
+/**
+ * A member's profile; or, for a handle its owner gave up recently, the handle they
+ * use now (the API answers 404 with `movedTo`).
+ */
+export async function findProfile(handle: string): Promise<Profile | { movedTo: string } | null> {
+  const path = `/v1/members/${encodeURIComponent(handle)}`
+  const res = await api(path)
+  if (res.status === 404) {
+    const body: { movedTo?: unknown } | null = await res.json().catch(() => null)
+    return typeof body?.movedTo === 'string' ? { movedTo: body.movedTo } : null
+  }
+  if (!res.ok) throw new Error(`API ${path} responded ${res.status}`)
+  return res.json()
+}
+
+export const getProfile = async (handle: string): Promise<Profile | null> => {
+  const found = await findProfile(handle)
+  return found && 'movedTo' in found ? null : found
+}
 
 export const getThread = (id: string) => getOrNull<Thread>(`/v1/posts/${encodeURIComponent(id)}`)
 

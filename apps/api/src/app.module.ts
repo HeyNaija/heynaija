@@ -7,6 +7,8 @@ import { OptionalSessionGuard, SessionGuard, SuspendedAllowedGuard } from './aut
 import { CommunitiesController } from './communities/communities.controller.js'
 import { CommunitiesService } from './communities/communities.service.js'
 import { type Env, loadEnv } from './env.js'
+import { ExportController } from './export/export.controller.js'
+import { ExportService } from './export/export.service.js'
 import { InvitesService } from './invites/invites.service.js'
 import { MediaController, PostImagesController } from './media/media.controller.js'
 import { BullMediaJobs, MediaWorker } from './media/media-queue.js'
@@ -34,7 +36,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, ExportController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -56,6 +58,7 @@ class HealthController {
     InvitesService,
     PostsService,
     NotificationsService,
+    ExportService,
   ],
 })
 export class AppModule {}

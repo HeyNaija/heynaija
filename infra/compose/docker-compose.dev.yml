@@ -124,7 +124,7 @@ configs:
                       url: http://host.docker.internal:4000/internal/kratos/registration
                       method: POST
                       body: file:///etc/config/kratos/invite-check.jsonnet
-                      auth:
+                      auth: &webhook-auth
                         type: api_key
                         config:
                           name: x-webhook-secret
@@ -147,3 +147,17 @@ configs:
                   - hook: session
               oidc:
                 hooks: *signup-hooks
+          # Before a change in Settings is saved, our API refuses a handle someone
+          # else gave up in the last 30 days, and holds the one the member gives up.
+          settings:
+            after:
+              profile:
+                hooks:
+                  - hook: web_hook
+                    config:
+                      url: http://host.docker.internal:4000/internal/kratos/settings
+                      method: POST
+                      body: file:///etc/config/kratos/handle-change.jsonnet
+                      auth: *webhook-auth
+                      response:
+                        parse: true

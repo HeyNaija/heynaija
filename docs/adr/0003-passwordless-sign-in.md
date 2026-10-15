@@ -31,3 +31,9 @@ invite-only for both methods, through the same registration webhooks.
   codes (same document, "Existing accounts").
 - Removed: `/recovery`, "Forgot your password?", and the password section of
   Settings. Added: **Connected accounts** in Settings.
+- The handle stays a password-credential identifier in the identity schema even
+  though passwords are off: Kratos only keeps credential identifiers unique, so
+  that is what stops two accounts sharing a handle. The first version of this
+  change removed it, which let accounts copy each other's handles;
+  `dist/cli/unique-handles.js` gives accounts made or renamed since then their
+  identifier.

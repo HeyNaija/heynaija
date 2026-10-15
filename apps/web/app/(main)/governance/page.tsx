@@ -15,6 +15,7 @@ export default function GovernancePage() {
           toward shared decisions and open books for HeyNaija.
         </p>
         <nav aria-label="On this page" className="governance-jump-links">
+          <a href="#documents">Charter and policies</a>
           <a href="#votes">Community votes</a>
           <a href="#treasury">Public Treasury</a>
           <a href="#decisions">Decision history</a>
@@ -23,9 +24,23 @@ export default function GovernancePage() {
 
       <p className="governance-intro">
         <span className="font-semibold text-ink">We’re at the beginning.</span> Community voting
-        and the public treasury are not live yet. The charter, voting rules, and path to community
-        ownership still need to be published.
+        and the public treasury are not live yet. The charter and policies below are drafts, published
+        for the pilot before legal review; voting rules come later.
       </p>
+
+      <section id="documents" className="governance-section" aria-labelledby="documents-heading">
+        <div className="governance-section-heading">
+          <span className="governance-section-icon"><GovernanceIcon size={22} /></span>
+          <h2 id="documents-heading" className="section-title">Charter and policies</h2>
+          <span className="chip">Drafts</span>
+        </div>
+        <ul className="governance-documents">
+          <li><Link href="/charter">Charter</Link><span>What HeyNaija is for, who runs it today, and the path to community ownership.</span></li>
+          <li><Link href="/rules">Rules</Link><span>How we treat each other, and what moderators do.</span></li>
+          <li><Link href="/privacy">Privacy policy</Link><span>What we collect, what is public, and your rights.</span></li>
+          <li><Link href="/licence">Licence</Link><span>The code is open source under the AGPL.</span></li>
+        </ul>
+      </section>
 
       <section id="votes" className="governance-section" aria-labelledby="votes-heading">
         <div className="governance-section-heading">
