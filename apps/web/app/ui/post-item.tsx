@@ -11,6 +11,7 @@ import { Menu } from './menu'
 import { MorePosts } from './more-posts'
 import { ComposeLink } from './new-post-link'
 import { PostImages } from './post-images'
+import { PostPermalink } from './post-permalink'
 import { SubmitButton } from './submit-button'
 import { timeAgo } from './time'
 
@@ -25,6 +26,7 @@ export function PostItem({
   inThread = false,
   hideCommunity = false,
   explain = false,
+  replyAction,
 }: {
   post: Post
   /** Null for visitors who are not signed-in members. */
@@ -38,6 +40,8 @@ export function PostItem({
   hideCommunity?: boolean
   /** Home feeds say why every post is there, not only the ones the Following feed picked. */
   explain?: boolean
+  /** A thread supplies an in-place target picker; ordinary feeds retain navigation. */
+  replyAction?: ReactNode
 }) {
   if (post.deleted) {
     return <p className="post-card text-sm italic text-muted">This post is no longer available.</p>
@@ -63,7 +67,7 @@ export function PostItem({
   const showChip = post.community && !hideCommunity && !(why && post.reason !== 'following')
 
   return (
-    <article id={`post-${post.id}`} className={`post-card ${focused ? 'is-focused' : ''}`}>
+    <article id={`post-${post.id}`} className={`post-card ${focused ? 'is-focused' : 'is-clickable'}`}>
       {why ? <p className="post-context">{why}</p> : null}
 
       <div className="post-header flex gap-3">
@@ -142,9 +146,9 @@ export function PostItem({
 
       {post.text ? (
         <p className={`mt-3 whitespace-pre-wrap break-words ${focused ? 'text-base leading-relaxed' : 'post-body'}`}>
-          {focused ? post.text : <Link prefetch={false} href={href} className="block">{post.text}</Link>}
+          {focused ? post.text : <PostPermalink href={href}>{post.text}</PostPermalink>}
         </p>
-      ) : null}
+      ) : !focused ? <PostPermalink href={href} label={`Open ${post.replyParentId ? 'reply' : 'post'} by @${post.authorHandle}`}><span className="sr-only">Open conversation</span></PostPermalink> : null}
       {post.images.length ? (
         <div className="mt-3">
           <PostImages images={post.images} />
@@ -152,10 +156,10 @@ export function PostItem({
       ) : null}
 
       <div className="post-actions">
-        <ComposeLink href={`${href}#compose`} prefetch={false} className="icon-btn" label={`Reply (${replies})`}>
+        {replyAction ?? <ComposeLink href={`${href}#compose`} prefetch={false} className="icon-btn" label={`Reply (${replies})`}>
           <BubbleIcon size={18} />
           <span className="tabular-nums">{post.replyCount}</span>
-        </ComposeLink>
+        </ComposeLink>}
 
         {viewerId ? (
           <LikeButton id={post.id} liked={post.viewerLiked} count={post.likeCount} />

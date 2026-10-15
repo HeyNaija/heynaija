@@ -6,13 +6,19 @@ import { redirect } from 'next/navigation'
 import { api } from '@/lib/api'
 import { INVITE_COOKIE } from '@/lib/invite'
 import { startFlowUrl } from '@/lib/kratos'
+import type { ThreadRow } from '@/lib/thread-state'
 
 // The API is the authority on who is signed in and what they may do; these
 // functions only relay the visitor's own session cookie to it.
 
-export type ComposeState = { error?: string; postedAt?: number }
+export type ComposeState = {
+  error?: string
+  postedAt?: number
+  postId?: string
+  reply?: { parentId: string; row: ThreadRow }
+}
 
-export async function createPost(_prev: ComposeState, formData: FormData): Promise<ComposeState> {
+export async function createPost(_prev: ComposeState, formData: FormData, refreshPage = true): Promise<ComposeState> {
   const text = String(formData.get('text') ?? '')
   const replyTo = String(formData.get('replyTo') ?? '') || undefined
   const community = String(formData.get('community') ?? '') || undefined
@@ -26,7 +32,9 @@ export async function createPost(_prev: ComposeState, formData: FormData): Promi
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ text, replyTo, community, images }),
-  })
+  }).catch(() => null)
+
+  if (!res) return { error: 'Could not post. Check your connection and try again.' }
 
   if (res.status === 401) redirect('/login')
   if (res.status === 429) return { error: 'You are posting very fast. Wait a minute and try again.' }
@@ -43,8 +51,9 @@ export async function createPost(_prev: ComposeState, formData: FormData): Promi
   }
   if (!res.ok) return { error: 'Could not post. Check your connection and try again.' }
 
-  refresh()
-  return { postedAt: Date.now() }
+  const result = await res.json() as { id: string }
+  if (refreshPage) refresh()
+  return { postedAt: Date.now(), postId: result.id }
 }
 
 /** `upTo` is the newest notification the member has seen. */

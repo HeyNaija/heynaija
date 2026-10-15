@@ -10,7 +10,8 @@ step-by-step guides in [docs/deployment/](docs/deployment/staging.md). What work
 
 - **Accounts:** join with an invite code, sign up, confirm email, sign in and out,
   recover an account (all handled by Ory Kratos).
-- **Posting:** posts and threaded replies with up to four images each (with
+- **Posting:** posts and expandable threaded replies with cursor pagination and
+  up to four images each (with
   descriptions for screen readers, and a full-screen viewer), likes, private bookmarks.
 - **People:** profiles with a photo, display name and bio; follow, mute and block.
 - **Notifications:** replies, likes, follows and moderation outcomes, with an
@@ -63,7 +64,11 @@ pnpm build
 pnpm db:migrate
 pnpm db:seed            # creates the five launch communities (safe to re-run)
 pnpm media:init         # creates the two storage buckets on the local MinIO
+pnpm demo:seed          # optional: 14 demo members, threads, images, likes and follows (re-run to refresh)
 ```
+
+The demo members can sign in as `<handle>@demo.heynaija.test` with the code
+Mailpit catches; `pnpm demo:clean` removes them and everything they did.
 
 Then, in two terminals:
 

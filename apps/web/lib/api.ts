@@ -25,6 +25,7 @@ export type Me = {
 export type PostImage = { src: string; alt: string; width: number; height: number }
 
 export type Post = {
+  unavailable?: false
   id: string
   authorId: string
   authorHandle: string
@@ -37,6 +38,8 @@ export type Post = {
   replyParentId: string | null
   likeCount: number
   replyCount: number
+  /** Thread pages also expose structural continuation through deleted intermediate rows. */
+  hasReplies?: boolean
   viewerLiked: boolean
   viewerBookmarked: boolean
   deleted: boolean
@@ -47,7 +50,23 @@ export type Post = {
 
 export type Feed = { posts: Post[]; cursor: string | null }
 
-export type Thread = { ancestors: Post[]; post: Post; replies: Post[] }
+export type UnavailableReply = {
+  unavailable: true
+  id: string
+  replyParentId: string | null
+  createdAt: string
+  hasReplies: true
+}
+export type ThreadReply = Post | UnavailableReply
+export type ReplyPage = { replies: ThreadReply[]; cursor: string | null }
+export type Thread = {
+  ancestors: Post[]
+  post: Post
+  replies: ThreadReply[]
+  replyCursor: string | null
+  ancestorsTruncated: boolean
+  earlierAncestorId?: string | null
+}
 
 export type Community = {
   id: string
@@ -158,6 +177,15 @@ export const getProfile = async (handle: string): Promise<Profile | null> => {
 }
 
 export const getThread = (id: string) => getOrNull<Thread>(`/v1/posts/${encodeURIComponent(id)}`)
+
+/** Hydrate one confirmed post without fetching its ancestors or replies. */
+export const getPost = (id: string) => getOrNull<Post>(`/v1/posts/${encodeURIComponent(id)}/post`)
+
+/** A branch is always an explicit, bounded page; it never fetches descendants. */
+export async function getReplies(id: string, cursor?: string): Promise<ReplyPage | null> {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
+  return getOrNull<ReplyPage>(`/v1/posts/${encodeURIComponent(id)}/replies${query}`)
+}
 
 export const getCommunities = cache(async (): Promise<Community[]> => {
   const res = await api('/v1/communities')

@@ -10,13 +10,14 @@ import {
   posts,
 } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
-import { and, asc, desc, eq, inArray, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/media.service.js'
 import { decodeCursor, encodeCursor, InvalidCursorError } from '../cursor.js'
 import { notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { DB } from '../tokens.js'
+import { decodeReplyCursor, encodeReplyCursor } from './reply-cursor.js'
 
 export const POST_MAX_GRAPHEMES = 300
 
@@ -60,6 +61,9 @@ export type PostImage = {
 }
 
 export type PostView = {
+  unavailable?: false
+  /** Thread-only structural expansion hint; direct counts exclude deleted children. */
+  hasReplies?: boolean
   id: string
   authorId: string
   authorHandle: string
@@ -94,7 +98,23 @@ export type FeedReason = 'own' | 'following' | 'community'
 
 export type PostPage = { posts: PostView[]; cursor: string | null }
 
-export type Thread = { ancestors: PostView[]; post: PostView; replies: PostView[] }
+export type UnavailableReply = {
+  unavailable: true
+  id: string
+  replyParentId: string | null
+  createdAt: Date
+  hasReplies: true
+}
+export type ThreadReply = PostView | UnavailableReply
+export type ReplyPage = { replies: ThreadReply[]; cursor: string | null }
+export type Thread = {
+  ancestors: PostView[]
+  post: PostView
+  replies: ThreadReply[]
+  replyCursor: string | null
+  ancestorsTruncated: boolean
+  earlierAncestorId: string | null
+}
 
 export class ParentNotFoundError extends Error {}
 export class CommunityNotFoundError extends Error {}
@@ -103,7 +123,7 @@ export class NotACommunityMemberError extends Error {}
 export class ImagesNotReadyError extends Error {}
 
 const MAX_THREAD_DEPTH = 50
-const MAX_REPLIES_SHOWN = 200
+const REPLY_PAGE_SIZE = 20
 const TRENDING_WINDOW_DAYS = 7
 // The ranking is the same for every viewer, so it is computed at most once per
 // TTL and each viewer's blocks and mutes are applied to it afterwards. Enough
@@ -116,6 +136,16 @@ const topLevel = isNull(posts.replyParentId)
 
 // Neither deleted by the author nor taken down by a moderator.
 const live = and(isNull(posts.deletedAt), isNull(posts.removedAt))
+
+/** Shared eligibility for ordinary posts, reply nodes and branch parents. */
+const visibleAuthor = (viewerId: string | null, authorId: SQL, active: SQL, ignoreMutes = false) =>
+  and(
+    active,
+    viewerId ? sql`not ${blockedEitherWay(viewerId, authorId)}` : undefined,
+    viewerId && !ignoreMutes
+      ? sql`not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = ${authorId})`
+      : undefined,
+  )
 
 /** True when either member has blocked the other. */
 export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
@@ -185,13 +215,8 @@ export class PostsService {
       .leftJoin(communities, and(eq(communities.id, posts.communityId), eq(communities.active, true)))
       .where(
         and(
-          eq(members.active, true),
+          visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`, opts.ignoreMutes),
           opts.includeDeleted ? undefined : live,
-          // A viewer never sees posts by anyone they blocked or muted, or who blocked them.
-          viewerId ? sql`not ${blockedEitherWay(viewerId, sql`"posts"."author_id"`)}` : undefined,
-          viewerId && !opts.ignoreMutes
-            ? sql`not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = "posts"."author_id")`
-            : undefined,
           where,
         ),
       )
@@ -355,32 +380,134 @@ export class PostsService {
 
   /** A post with the conversation above it and the direct replies below it. */
   async thread(viewerId: string | null, id: string): Promise<Thread | null> {
-    const [post] = await this.select(viewerId, eq(posts.id, id), { limit: 1 })
+    const post = await this.post(viewerId, id)
     if (!post) return null
 
-    const chain = await this.db.execute<{ id: string }>(sql`
+    // Roots need no ancestor query. One extra ID makes truncation explicit;
+    // only the nearest 50 ancestors are hydrated. The path also stops cycles.
+    const chain = post.replyParentId
+      ? await this.db.execute<{ id: string; depth: number }>(sql`
       with recursive up as (
-        select p.id, p.reply_parent_id, 1 as depth from posts p where p.id = ${post.replyParentId}
+        select p.id, p.reply_parent_id, 1 as depth, array[${post.id}::uuid, p.id] as path
+        from posts p where p.id = ${post.replyParentId} and p.id <> ${post.id}
         union all
-        select p.id, p.reply_parent_id, up.depth + 1
+        select p.id, p.reply_parent_id, up.depth + 1, up.path || p.id
         from posts p join up on p.id = up.reply_parent_id
-        where up.depth < ${MAX_THREAD_DEPTH}
+        where up.depth < ${MAX_THREAD_DEPTH + 1} and not p.id = any(up.path)
       )
-      select id from up order by depth desc`)
-    const ancestorIds = chain.rows.map((r) => r.id)
+      select id, depth from up order by depth asc`)
+      : { rows: [] }
+    const ancestorIds = chain.rows.slice(0, MAX_THREAD_DEPTH).map((r) => r.id).reverse()
 
     const [ancestors, replies] = await Promise.all([
       ancestorIds.length
         ? this.select(viewerId, inArray(posts.id, ancestorIds), { includeDeleted: true })
         : Promise.resolve([]),
-      this.select(viewerId, eq(posts.replyParentId, id), {
-        order: [asc(posts.createdAt), asc(posts.id)],
-        limit: MAX_REPLIES_SHOWN,
-      }),
+      this.replyPage(viewerId, id, REPLY_PAGE_SIZE),
     ])
     // Root first. An ancestor by a now-inactive member is simply absent.
     ancestors.sort((a, b) => ancestorIds.indexOf(a.id) - ancestorIds.indexOf(b.id))
-    return { ancestors, post, replies }
+    return {
+      ancestors,
+      post,
+      replies: replies.replies,
+      replyCursor: replies.cursor,
+      ancestorsTruncated: chain.rows.length > MAX_THREAD_DEPTH,
+      // Continue through a known eligible live focus. The raw next ancestor may
+      // be deleted or blocked and would make a broken continuation permalink.
+      earlierAncestorId: chain.rows.length > MAX_THREAD_DEPTH ? ancestors.find((ancestor) => !ancestor.deleted)?.id ?? null : null,
+    }
+  }
+
+  /** A lightweight read for confirmed inline replies; no ancestors or children. */
+  async post(viewerId: string | null, id: string): Promise<PostView | null> {
+    const [post] = await this.select(viewerId, eq(posts.id, id), { limit: 1 })
+    return post ?? null
+  }
+
+  /** A parent is checked afresh, including when its structural stub was loaded earlier. */
+  async replies(viewerId: string | null, parentId: string, limit = REPLY_PAGE_SIZE, cursor?: string): Promise<ReplyPage | null> {
+    // Validate even when the parent is unavailable. A cursor grants no access.
+    if (cursor) decodeReplyCursor(cursor, parentId)
+    const [parent] = await this.db
+      .select({ id: posts.id })
+      .from(posts)
+      .innerJoin(members, eq(members.id, posts.authorId))
+      .where(
+        and(
+          eq(posts.id, parentId),
+          visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`),
+          or(live, sql`exists(select 1 from posts child where child.reply_parent_id = ${posts.id})`),
+        ),
+      )
+      .limit(1)
+    if (!parent) return null
+    return this.replyPage(viewerId, parentId, Math.min(REPLY_PAGE_SIZE, Math.max(1, limit)), cursor)
+  }
+
+  /** One bounded sibling query, followed by live-row hydration inside that statement. */
+  private async replyPage(viewerId: string | null, parentId: string, limit: number, cursor?: string): Promise<ReplyPage> {
+    const after = cursor ? decodeReplyCursor(cursor, parentId) : null
+    type ReplyRow = {
+      id: string
+      reply_parent_id: string | null
+      created_at: Date
+      cursor_timestamp: string
+      view: (Omit<PostView, 'images' | 'createdAt' | 'authorAvatar'> & {
+        images: { id: string; alt: string; width: number; height: number }[]
+        createdAt: string
+        authorAvatarId: string | null
+      }) | null
+    }
+    const { rows } = await this.db.execute<ReplyRow>(sql`
+      with page as materialized (
+        select p.id, p.reply_parent_id, p.created_at,
+          p.deleted_at is not null or p.removed_at is not null as unavailable
+        from posts p join members a on a.id = p.author_id
+        where p.reply_parent_id = ${parentId}
+          and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)}
+          and ((p.deleted_at is null and p.removed_at is null)
+            or exists(select 1 from posts child where child.reply_parent_id = p.id))
+          ${after ? sql`and (p.created_at, p.id) > (${after[0]}::timestamptz, ${after[1]}::uuid)` : sql``}
+        order by p.created_at asc, p.id asc
+        limit ${limit + 1}
+      )
+      select page.id, page.reply_parent_id, page.created_at,
+        to_char(page.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp,
+        case when page.unavailable then null else json_build_object(
+          'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
+          'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id,
+          'text', p.text, 'images', ${imagesOf(sql`p.id`)},
+          'createdAt', p.created_at, 'replyParentId', p.reply_parent_id,
+          'likeCount', p.like_count, 'replyCount', p.reply_count,
+          'hasReplies', p.reply_count > 0 or exists(select 1 from posts child where child.reply_parent_id = p.id),
+          'viewerLiked', ${viewerId ? sql`exists(select 1 from likes l where l.post_id = p.id and l.member_id = ${viewerId})` : sql`false`},
+          'viewerBookmarked', ${viewerId ? sql`exists(select 1 from bookmarks b where b.post_id = p.id and b.member_id = ${viewerId})` : sql`false`},
+          'deleted', false, 'reason', null,
+          'community', case when c.id is null then null else json_build_object('slug', c.slug, 'name', c.name) end
+        ) end as view
+      from page join posts p on p.id = page.id
+      join members a on a.id = p.author_id
+      left join communities c on c.id = p.community_id and c.active
+      order by page.created_at asc, page.id asc`)
+    const page = rows.slice(0, limit)
+    const last = page.at(-1)
+    return {
+      replies: page.map((row): ThreadReply => {
+        if (!row.view) {
+          return {
+            unavailable: true,
+            id: row.id,
+            replyParentId: row.reply_parent_id,
+            createdAt: row.created_at,
+            hasReplies: true,
+          }
+        }
+        const { images, createdAt, authorAvatarId, ...post } = row.view
+        return { ...post, images: toPostImages(images), createdAt: new Date(createdAt), authorAvatar: avatarPath(authorAvatarId) }
+      }),
+      cursor: rows.length > limit && last ? encodeReplyCursor(parentId, last.cursor_timestamp, last.id) : null,
+    }
   }
 
   /**

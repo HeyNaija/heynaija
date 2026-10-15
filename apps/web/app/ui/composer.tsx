@@ -1,6 +1,8 @@
 'use client'
 
 import { useActionState, useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import Link from 'next/link'
 import { Globe } from 'lucide-react'
 import { type ComposeState, createPost } from '@/app/actions'
 import { Avatar } from './avatar'
@@ -17,17 +19,26 @@ type Props = {
   handle: string
   avatar?: string | null
   replyTo?: string
+  replyHandle?: string
+  replyDepth?: number
   placeholder?: string
   /** Post straight into this community (used on a community's own page). */
   community?: string
   /** Or let the member choose among the communities they have joined. */
   choices?: { slug: string; name: string }[]
+  submitAction?: (previous: ComposeState, data: FormData) => Promise<ComposeState>
+  onPosted?: (state: ComposeState) => void
+  onPendingChange?: (pending: boolean) => void
+  /** The Composer stays mounted when its form moves to another reply row. */
+  portalTarget?: HTMLElement | null
+  focusRequest?: number
 }
 
-export function Composer({ handle, avatar, replyTo, placeholder, community, choices }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, placeholder, community, choices, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0 }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
-  const [state, action, pending] = useActionState<ComposeState, FormData>(createPost, {})
+  const recipientId = `${inputId}-recipient`
+  const [state, action, pending] = useActionState<ComposeState, FormData>(submitAction ?? createPost, {})
   const [text, setText] = useState('')
   // The prompt follows the audience picker; the toolbar keeps visibility and posting explicit.
   const [audience, setAudience] = useState('')
@@ -42,8 +53,10 @@ export function Composer({ handle, avatar, replyTo, placeholder, community, choi
 
   // Arriving through a "Reply" or "New post" link (…#compose) puts the cursor in the box.
   useEffect(() => {
-    if (window.location.hash === '#compose') input.current?.focus()
-  }, [])
+    if (window.location.hash === '#compose' || focusRequest > 0) input.current?.focus({ preventScroll: true })
+  }, [portalTarget, focusRequest])
+
+  useEffect(() => { onPendingChange?.(pending) }, [pending, onPendingChange])
 
   // A press anywhere outside the form shrinks the box back. On press rather than
   // on blur: Safari does not focus buttons, so a blur would shrink the form under
@@ -58,29 +71,37 @@ export function Composer({ handle, avatar, replyTo, placeholder, community, choi
   const [tooMany, setTooMany] = useState(false)
 
   // Clear the box once the server confirms the post.
+  const lastPosted = useRef<number | undefined>(undefined)
   useEffect(() => {
-    if (state.postedAt) {
+    if (state.postedAt && lastPosted.current !== state.postedAt) {
+      lastPosted.current = state.postedAt
       setText('')
       setAudience('')
       clear()
       setExpanded(false)
+      onPosted?.(state)
     }
-  }, [state.postedAt, clear])
+  }, [state, clear, onPosted])
 
   const left = LIMIT - graphemes(text.trim())
   const waiting = images.drafts.some((d) => d.status !== 'ready')
   const empty = left === LIMIT && images.drafts.length === 0
 
-  return (
-    <form ref={form} id="compose" action={action} className={`square-composer square-card ${replyTo ? 'is-reply' : ''} ${active ? 'is-expanded' : ''} scroll-mt-32`}>
+  const content = (
+    <form ref={form} id="compose" action={action} className={`${replyTo ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''} scroll-mt-32`}>
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
+      {replyDepth ? <input type="hidden" name="threadDepth" value={replyDepth} /> : null}
+      {replyHandle ? <input type="hidden" name="replyHandle" value={replyHandle} /> : null}
       {community ? <input type="hidden" name="community" value={community} /> : null}
 
+      {replyTo && replyHandle ? (
+        <p id={recipientId} className="composer-recipient">Replying to <strong>@{replyHandle}</strong></p>
+      ) : null}
       <div className={replyTo ? 'composer-reply-writing' : 'flex gap-3'}>
         {replyTo ? (
-          <div className="composer-reply-heading">
-            <Avatar handle={handle} src={avatar} size={36} />
-            <span className="truncate font-semibold">@{handle}</span>
+          <div className="composer-reply-avatar" title={`Replying as @${handle}`}>
+            <Avatar handle={handle} src={avatar} size={32} />
+            <span className="sr-only">Replying as @{handle}</span>
           </div>
         ) : (
           <Avatar handle={handle} src={avatar} size={42} />
@@ -102,11 +123,12 @@ export function Composer({ handle, avatar, replyTo, placeholder, community, choi
                 if (next && !form.current?.contains(next)) setExpanded(false)
               }}
               required={images.drafts.length === 0}
+              disabled={pending}
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder={prompt}
               className="composer-input"
-              aria-describedby={privacyId}
+              aria-describedby={replyTo && replyHandle ? `${recipientId} ${privacyId}` : privacyId}
               aria-invalid={left < 0 || undefined}
             />
           </div>
@@ -202,8 +224,14 @@ export function Composer({ handle, avatar, replyTo, placeholder, community, choi
       <p role="alert" className="mt-1 text-sm text-danger empty:hidden">
         {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : state.error}
       </p>
+      {submitAction && state.postId ? (
+        <p role="status" className="composer-posted">
+          Reply posted. <Link prefetch={false} href={`/p/${state.postId}#post-${state.postId}`}>View reply</Link>
+        </p>
+      ) : null}
     </form>
   )
+  return portalTarget ? createPortal(content, portalTarget) : content
 }
 
 const STATUS: Record<ImageDraft['status'], string> = {

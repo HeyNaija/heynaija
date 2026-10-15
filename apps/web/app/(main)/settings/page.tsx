@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Suspense } from 'react'
 import { AvatarUploader } from '@/app/ui/avatar-uploader'
 import { FlowForm } from '@/app/ui/flow-form'
+import { ForgetFlowParam } from '@/app/ui/forget-flow'
 import { ProfileForm } from '@/app/ui/profile-form'
 import { ThemeSwitch } from '@/app/ui/theme-switch'
 import { getViewer } from '@/lib/api'
@@ -97,5 +98,15 @@ async function ExportNotice({ searchParams }: Pick<PageProps<'/settings'>, 'sear
 
 async function SettingsForm({ searchParams }: Pick<PageProps<'/settings'>, 'searchParams'>) {
   const flow = await getFlow('settings', (await searchParams).flow)
-  return <FlowForm flow={flow} sections={{ profile: 'Email and handle', oidc: 'Connected accounts' }} />
+  const shown = Boolean(flow.ui.messages?.length) || flow.ui.nodes.some((node) => node.messages?.length)
+  return (
+    <>
+      {shown ? <ForgetFlowParam /> : null}
+      <FlowForm
+        flow={flow}
+        sections={{ profile: 'Email and handle', oidc: 'Connected accounts' }}
+        fallback="Your change was not saved. Make it again and press Save."
+      />
+    </>
+  )
 }

@@ -94,7 +94,10 @@ handling, verification and recovery are security-critical and already solved.
   web pages were verified by hand.
 - **Counts are computed on read** (likes, replies, followers) with subqueries.
   Fine at pilot size; revisit with measurements before growth.
-- **Threads show at most 200 direct replies** and have no pagination yet.
+- **Threads** now load 20 direct replies at a time with cursor pagination and
+  inline branch expansion (15 October 2026). Ancestor context is capped at 50;
+  deeper conversations continue through individual-post links. See
+  [threaded conversations](../design/threaded-conversations.md).
 - **Communities are public** groupings: anyone can read them and any member can
   join. Private communities are now possible but not built. There is no pinned
   welcome post.

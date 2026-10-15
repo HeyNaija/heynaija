@@ -49,8 +49,27 @@ accounts already share (it changes nothing, and lists any it finds):
 cd /srv/heynaija/infra/deploy && docker compose exec -e KRATOS_ADMIN_URL=http://kratos:4434 api node dist/cli/unique-handles.js --check
 ```
 
-If it lists any, give all but one account of each a new handle, then run it
-without `--check`. Running it again is harmless.
+If it lists any, give all but one account of each a new handle; usually the
+oldest (listed first) keeps it. Look an account up by the ID it printed:
+
+```bash
+docker compose exec api node -e "fetch('http://kratos:4434/admin/identities/<id>').then((r) => r.json()).then((i) => console.log(i.error?.message ?? [i.traits, i.created_at]))"
+```
+
+Rename it (3–20 lowercase letters, numbers or underscores, not taken), then
+correct the API's copy at once, so profiles and moderator commands stop finding
+it under the old handle:
+
+```bash
+docker compose exec api node -e "fetch('http://kratos:4434/admin/identities/<id>', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify([{ op: 'replace', path: '/traits/handle', value: '<new handle>' }]) }).then(async (r) => console.log(r.status, (await r.json()).traits?.handle))"
+```
+
+```bash
+docker compose exec postgres psql -U heynaija -d heynaija -c "update members set handle = '<new handle>' where id = '<id>'"
+```
+
+Then run the check again, and without `--check` once it finds none. Running it
+again is harmless.
 
 The same release holds a handle given up by renaming for 30 days
 ([ADR 0004](../adr/0004-handles-held-after-rename.md)).

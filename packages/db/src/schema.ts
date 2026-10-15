@@ -148,6 +148,7 @@ export const posts = pgTable(
     index('posts_created_idx').on(t.createdAt, t.id),
     index('posts_author_created_idx').on(t.authorId, t.createdAt),
     index('posts_reply_parent_idx').on(t.replyParentId),
+    index('posts_reply_parent_created_idx').on(t.replyParentId, t.createdAt, t.id),
     index('posts_community_created_idx').on(t.communityId, t.createdAt),
     // Full-text search. 'simple' (no stemming) suits mixed English, Pidgin and names.
     index('posts_text_search_idx').using('gin', sql`to_tsvector('simple', ${t.text})`),

@@ -11,6 +11,7 @@ it gets slow, and shows which part gives out first. Everything is in
 | [`k6/journeys.js`](../loadtest/k6/journeys.js) | Simulates signed-in members using the site: home feed, opening posts, profiles, notifications, likes and new posts. Profiles: `smoke` and `ramp`. |
 | [`clean.mjs`](../loadtest/clean.mjs) | Removes everything the seed script and k6 created, including the Kratos identities. Use it on a dev database. |
 | [`compose.loadtest.yml`](../loadtest/compose.loadtest.yml) | Overlay on `infra/deploy/compose.yml` that turns a rented server into a throwaway test copy of the stack. |
+| [`thread-fixtures.mjs`](../loadtest/thread-fixtures.mjs), [`k6/threads.js`](../loadtest/k6/threads.js) | Optional wide, deep, filtered and deleted thread fixtures, focused reading journeys and hot-parent writes. See [thread benchmarks](loadtest-threads.md). |
 
 **Tested** on a laptop (14 October 2026) against the dev stack: the seed script
 with 10,000 members (27 s), cleanup back to the exact row counts from before,

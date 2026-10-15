@@ -106,3 +106,83 @@ export async function seedPosts(handle: string, count: number): Promise<string[]
     await db.end()
   }
 }
+
+/** A wide conversation plus a branch through two deleted intermediate replies. */
+export async function seedThread(handle: string) {
+  const db = pool()
+  const client = await db.connect()
+  try {
+    await client.query('begin')
+    const { rows: authors } = await client.query<{ id: string }>('select id from members where handle = $1', [handle])
+    const author = authors[0]?.id
+    if (!author) throw new Error(`no member @${handle} to seed a conversation for`)
+    const { rows: roots } = await client.query<{ id: string }>(
+      "insert into posts (author_id, text, created_at) values ($1, $2, now() - interval '1 day') returning id",
+      [author, `Thread fixture from ${handle}`],
+    )
+    const root = roots[0]!.id
+    const { rows: replies } = await client.query<{ id: string; text: string }>(
+      `insert into posts (author_id, text, reply_parent_id, root_id, created_at)
+       select $1, 'Thread reply ' || lpad(n::text, 2, '0') || ' from ' || $3, $2, $2,
+         now() - interval '1 day' + make_interval(secs => n)
+       from generate_series(1, 25) as n returning id, text`,
+      [author, root, handle],
+    )
+    const first = replies.find((r) => r.text.startsWith('Thread reply 01 '))!.id
+    const bridgeParent = replies.find((r) => r.text.startsWith('Thread reply 02 '))!.id
+    const { rows: nested } = await client.query<{ id: string; text: string }>(
+      `insert into posts (author_id, text, reply_parent_id, root_id, created_at)
+       select $1, 'Nested reply ' || n || ' from ' || $4, $2, $3,
+         now() - interval '1 day' + make_interval(secs => 30 + n)
+       from generate_series(1, 2) as n returning id, text`,
+      [author, first, root, handle],
+    )
+    const { rows: bridges } = await client.query<{ id: string }>(
+      `insert into posts (author_id, text, reply_parent_id, root_id, deleted_at)
+       values ($1, 'Deleted bridge content must not appear', $2, $3, now()) returning id`,
+      [author, bridgeParent, root],
+    )
+    const bridge = bridges[0]!.id
+    const { rows: nextBridges } = await client.query<{ id: string }>(
+      `insert into posts (author_id, text, reply_parent_id, root_id, removed_at)
+       values ($1, 'Moderated bridge content must not appear', $2, $3, now()) returning id`,
+      [author, bridge, root],
+    )
+    const nextBridge = nextBridges[0]!.id
+    const survivorText = `Surviving reply from ${handle}`
+    const { rows: survivors } = await client.query<{ id: string }>(
+      `insert into posts (author_id, text, reply_parent_id, root_id)
+       values ($1, $2, $3, $4) returning id`,
+      [author, survivorText, nextBridge, root],
+    )
+    await client.query('commit')
+    return { root, first, replies: replies.map((r) => r.id), nested: nested.map((r) => r.id), bridgeParent, bridge, nextBridge, survivor: survivors[0]!.id, survivorText }
+  } catch (error) {
+    await client.query('rollback')
+    throw error
+  } finally {
+    client.release()
+    await db.end()
+  }
+}
+
+/**
+ * Makes a member's sign-in look `minutes` old, so Kratos asks them to verify it is
+ * them again before a change in Settings (privileged_session_max_age is 15m).
+ */
+export async function ageSignIn(handle: string, minutes: number) {
+  assertLocal()
+  // Kratos keeps its tables in its own database on the same server.
+  const kratos = new pg.Client({ connectionString: env.databaseUrl!.replace(/\/[^/?]+(\?|$)/, '/kratos$1') })
+  await kratos.connect()
+  try {
+    const { rowCount } = await kratos.query(
+      `update sessions set authenticated_at = now() - make_interval(mins => $2)
+       where identity_id = (select id from identities where traits->>'handle' = $1) and active`,
+      [handle, minutes],
+    )
+    if (!rowCount) throw new Error(`no active Kratos session for @${handle}`)
+  } finally {
+    await kratos.end()
+  }
+}

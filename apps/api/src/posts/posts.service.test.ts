@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, mock, test } from 'node:test'
-import { blocks, follows, likes, members, mutes, notifications, posts } from '@heynaija/db'
+import { blocks, communities, communityMemberships, follows, likes, media, members, mutes, notifications, posts } from '@heynaija/db'
 import { eq, sql } from 'drizzle-orm'
 import { db, migrate, pool, reset } from '../test-db.js'
-import { InvalidCursorError, ParentNotFoundError, PostsService, postText, TRENDING_TTL_MS } from './posts.service.js'
+import { InvalidCursorError, ParentNotFoundError, PostsService, postText, type ReplyPage, TRENDING_TTL_MS } from './posts.service.js'
+import { decodeReplyCursor, encodeReplyCursor, replyPageQuery } from './reply-cursor.js'
 
 const service = new PostsService(db)
 const ada = randomUUID()
@@ -134,7 +135,8 @@ test('a thread shows the conversation above and the direct replies below, oldest
   assert.equal(thread.post.text, 'mid')
   assert.deepEqual(thread.replies.map((p) => p.id), [first.id, second.id])
   assert.equal(thread.post.replyCount, 2)
-  assert.equal(thread.replies[0]!.replyCount, 1)
+  assert.equal(thread.replies[0]!.unavailable, undefined)
+  if (!thread.replies[0]!.unavailable) assert.equal(thread.replies[0]!.replyCount, 1)
 
   const deep = (await service.thread(null, first.id))!
   assert.deepEqual(deep.ancestors.map((p) => p.text), ['root', 'mid'])
@@ -150,6 +152,209 @@ test('a deleted post in the middle of a thread is a placeholder with no text', a
   assert.equal(thread.ancestors.length, 1)
   assert.equal(thread.ancestors[0]!.deleted, true)
   assert.equal(thread.ancestors[0]!.text, '')
+})
+
+test('reply pages keep microseconds and exact timestamp ties without repeating or skipping rows', async () => {
+  const root = await service.create(ada, 'root')
+  await db.execute(sql`
+    insert into posts(author_id, text, reply_parent_id, root_id, created_at)
+    select ${bayo}::uuid, 'reply-' || g, ${root.id}::uuid, ${root.id}::uuid,
+      '2026-01-01T00:00:00.123456Z'::timestamptz + (g / 3) * interval '1 microsecond'
+    from generate_series(0, 46) g`)
+  const expected = (await db.execute<{ id: string }>(sql`
+    select id from posts where reply_parent_id = ${root.id} order by created_at, id`)).rows.map((p) => p.id)
+  const thread = (await service.thread(null, root.id))!
+  assert.equal(thread.replies.length, 20)
+  assert.ok(thread.replyCursor)
+  const [timestamp] = decodeReplyCursor(thread.replyCursor, root.id)
+  assert.match(timestamp, /\.123\d{3}Z$/)
+  const seen = thread.replies.map((p) => p.id)
+  let cursor: string | null = thread.replyCursor
+  while (cursor) {
+    const page: ReplyPage = (await service.replies(null, root.id, 20, cursor))!
+    seen.push(...page.replies.map((p) => p.id))
+    cursor = page.cursor
+  }
+  assert.deepEqual(seen, expected)
+  assert.equal(new Set(seen).size, 47)
+  assert.equal((await service.replies(null, root.id, 100))!.replies.length, 20)
+})
+
+test('reply cursors reject malformed data, another parent, unknown versions and descending order', async () => {
+  const one = await service.create(ada, 'one')
+  const two = await service.create(ada, 'two')
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
+  const timestamp = '2026-01-01T00:00:00.123456Z'
+  const otherParent = encodeReplyCursor(two.id, timestamp, randomUUID())
+  for (const cursor of [
+    'garbage', 'x'.repeat(201), otherParent,
+    encode([2, one.id, 'asc', timestamp, randomUUID()]),
+    encode([1, one.id, 'desc', timestamp, randomUUID()]),
+    encode([1, one.id, 'asc', 'invalid', randomUUID()]),
+    encode([1, one.id, 'asc', timestamp, "x' or 1=1 --"]),
+  ]) await assert.rejects(service.replies(null, one.id, 20, cursor), InvalidCursorError)
+  for (const query of [{ limit: 21 }, { limit: 0 }, { limit: 1.5 }, { cursor: '' }]) {
+    assert.equal(replyPageQuery.safeParse(query).success, false)
+  }
+})
+
+test('deleted and moderated intermediates stay traversable without serializing unavailable content', async () => {
+  const root = await service.create(ada, 'root')
+  const middle = await service.create(bayo, 'private deleted text', { replyTo: root.id })
+  const next = await service.create(chi, 'private removed text', { replyTo: middle.id })
+  const leaf = await service.create(ada, 'surviving reply', { replyTo: next.id })
+  const goneLeaf = await service.create(bayo, 'deleted leaf', { replyTo: root.id })
+  await service.like(chi, middle.id)
+  await service.remove(bayo, middle.id)
+  await service.remove(bayo, goneLeaf.id)
+  await db.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, next.id))
+
+  const replies = (await service.thread(null, root.id))!.replies
+  assert.equal(replies.length, 1)
+  assert.deepEqual(Object.keys(replies[0]!).sort(), ['createdAt', 'hasReplies', 'id', 'replyParentId', 'unavailable'])
+  assert.equal(replies[0]!.id, middle.id)
+  assert.equal(replies[0]!.unavailable, true)
+  const nested = (await service.replies(null, middle.id))!.replies
+  assert.equal(nested[0]!.id, next.id)
+  assert.equal(nested[0]!.unavailable, true)
+  assert.deepEqual((await service.replies(null, next.id))!.replies.map((p) => p.id), [leaf.id])
+  assert.equal(await service.post(null, middle.id), null)
+  assert.equal(await service.thread(null, middle.id), null)
+  assert.equal(await service.replies(null, goneLeaf.id), null)
+  await assert.rejects(service.create(ada, 'cannot reply', { replyTo: middle.id }), ParentNotFoundError)
+})
+
+test('a live reply with only deleted intermediate children still advertises its surviving branch', async () => {
+  const root = await service.create(ada, 'root')
+  const parent = await service.create(bayo, 'live parent', { replyTo: root.id })
+  const deleted = await service.create(chi, 'deleted bridge', { replyTo: parent.id })
+  const removed = await service.create(ada, 'removed bridge', { replyTo: deleted.id })
+  const survivor = await service.create(bayo, 'surviving descendant', { replyTo: removed.id })
+  await service.remove(chi, deleted.id)
+  await db.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, removed.id))
+  const [liveParent] = (await service.thread(null, root.id))!.replies
+  assert.ok(liveParent && !liveParent.unavailable)
+  assert.equal(liveParent.replyCount, 0)
+  assert.equal(liveParent.hasReplies, true)
+  assert.equal((await service.replies(null, parent.id))!.replies[0]!.id, deleted.id)
+  assert.equal((await service.replies(null, deleted.id))!.replies[0]!.id, removed.id)
+  assert.equal((await service.replies(null, removed.id))!.replies[0]!.id, survivor.id)
+})
+
+test('branch parents and placeholders preserve active-author, block and mute visibility', async () => {
+  const root = await service.create(ada, 'root')
+  const middle = await service.create(bayo, 'middle', { replyTo: root.id })
+  const leaf = await service.create(chi, 'leaf', { replyTo: middle.id })
+  await service.remove(bayo, middle.id)
+  await db.insert(mutes).values({ muterId: ada, mutedId: bayo })
+  assert.deepEqual((await service.thread(ada, root.id))!.replies, [])
+  assert.equal(await service.replies(ada, middle.id), null)
+  assert.ok(await service.post(ada, leaf.id))
+  await db.delete(mutes)
+  await db.insert(blocks).values({ blockerId: bayo, blockedId: ada })
+  assert.deepEqual((await service.thread(ada, root.id))!.replies, [])
+  assert.equal(await service.replies(ada, middle.id), null)
+  await db.delete(blocks)
+  await db.update(members).set({ active: false }).where(eq(members.id, bayo))
+  assert.deepEqual((await service.thread(null, root.id))!.replies, [])
+  assert.equal(await service.replies(null, middle.id), null)
+})
+
+test('reply pagination tolerates insertion and leaves global counts separate from personal visibility', async () => {
+  const root = await service.create(ada, 'root')
+  const initial = []
+  for (let i = 0; i < 3; i++) initial.push(await service.create(bayo, `r${i}`, { replyTo: root.id }))
+  const page = (await service.replies(chi, root.id, 2))!
+  assert.equal(page.replies.length, 2)
+  const later = await service.create(chi, 'later', { replyTo: root.id })
+  const rest = (await service.replies(chi, root.id, 2, page.cursor!))!
+  assert.deepEqual(rest.replies.map((p) => p.id), [initial[2]!.id, later.id])
+  assert.equal(rest.cursor, null)
+  await db.insert(mutes).values({ muterId: ada, mutedId: bayo })
+  await db.insert(mutes).values({ muterId: ada, mutedId: chi })
+  const hidden = (await service.thread(ada, root.id))!
+  assert.equal(hidden.post.replyCount, 4)
+  assert.deepEqual(hidden.replies, [])
+  assert.equal(hidden.replyCursor, null)
+})
+
+test('reply-page hydration preserves live post images, community, profile and viewer state', async () => {
+  const [community] = await db.insert(communities).values({ slug: 'lagos', name: 'Lagos', description: 'City' }).returning()
+  await db.insert(communityMemberships).values({ communityId: community!.id, memberId: ada })
+  await db.update(members).set({ displayName: 'Bayo Name', avatarMediaId: randomUUID() }).where(eq(members.id, bayo))
+  const [image] = await db.insert(media).values({
+    ownerId: bayo, kind: 'post_image', status: 'ready', contentType: 'image/webp', bytes: 100, width: 300, height: 200,
+  }).returning()
+  const root = await service.create(ada, 'root', { communitySlug: 'lagos' })
+  const reply = await service.create(bayo, 'image reply', { replyTo: root.id, images: [{ id: image!.id, alt: 'Lagos at night' }] })
+  await service.like(chi, reply.id)
+  await service.bookmark(chi, reply.id)
+  const [threadReply] = (await service.replies(chi, root.id))!.replies
+  assert.ok(threadReply && !threadReply.unavailable)
+  const { hasReplies, ...hydrated } = threadReply
+  assert.equal(hasReplies, false)
+  assert.deepEqual(hydrated, await service.post(chi, reply.id))
+})
+
+test('remaining reply pages apply fresh deletion, restoration and suspension visibility', async () => {
+  const root = await service.create(ada, 'root')
+  const siblings = []
+  for (let i = 0; i < 6; i++) siblings.push(await service.create(i === 4 ? chi : bayo, `r${i}`, { replyTo: root.id }))
+  const first = (await service.replies(null, root.id, 2))!
+  await service.remove(bayo, siblings[2]!.id)
+  await db.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, siblings[3]!.id))
+  await db.update(members).set({ active: false }).where(eq(members.id, chi))
+  const hidden = (await service.replies(null, root.id, 2, first.cursor!))!
+  assert.deepEqual(hidden.replies.map((p) => p.id), [siblings[5]!.id])
+  assert.equal(hidden.cursor, null)
+  await db.update(posts).set({ removedAt: null }).where(eq(posts.id, siblings[3]!.id))
+  await db.update(members).set({ active: true }).where(eq(members.id, chi))
+  const restored = (await service.replies(null, root.id, 2, first.cursor!))!
+  assert.deepEqual(restored.replies.map((p) => p.id), [siblings[3]!.id, siblings[4]!.id])
+  assert.ok(restored.cursor)
+})
+
+test('ancestor context is capped, explicitly truncated and cycle-safe', async () => {
+  const chain = [await service.create(ada, 'root')]
+  for (let i = 1; i <= 52; i++) chain.push(await service.create(ada, `depth${i}`, { replyTo: chain.at(-1)!.id }))
+  const thread = (await service.thread(null, chain.at(-1)!.id))!
+  assert.equal(thread.ancestors.length, 50)
+  assert.equal(thread.ancestors[0]!.id, chain[2]!.id)
+  assert.equal(thread.ancestors.at(-1)!.id, chain[51]!.id)
+  assert.equal(thread.ancestorsTruncated, true)
+  assert.equal(thread.earlierAncestorId, chain[2]!.id)
+  await service.remove(ada, chain[1]!.id)
+  await service.remove(ada, chain[2]!.id)
+  assert.equal((await service.thread(null, chain.at(-1)!.id))!.earlierAncestorId, chain[3]!.id)
+  await db.update(posts).set({ deletedAt: new Date() }).where(sql`${posts.id} <> ${chain.at(-1)!.id}`)
+  const unavailableContext = (await service.thread(null, chain.at(-1)!.id))!
+  assert.equal(unavailableContext.ancestorsTruncated, true)
+  assert.equal(unavailableContext.earlierAncestorId, null)
+  await db.update(posts).set({ replyParentId: chain.at(-1)!.id }).where(eq(posts.id, chain[51]!.id))
+  const cycle = (await service.thread(null, chain.at(-1)!.id))!
+  assert.deepEqual(cycle.ancestors.map((p) => p.id), [chain[51]!.id])
+  assert.equal(cycle.ancestorsTruncated, false)
+})
+
+test('root detail and branch expansion use two statements; nested detail uses four', async () => {
+  const root = await service.create(ada, 'root')
+  const reply = await service.create(bayo, 'reply', { replyTo: root.id })
+  const query = mock.method(pool, 'query')
+  try {
+    await service.thread(null, root.id)
+    assert.equal(query.mock.callCount(), 2)
+    query.mock.resetCalls()
+    await service.replies(null, root.id)
+    assert.equal(query.mock.callCount(), 2)
+    query.mock.resetCalls()
+    await service.thread(null, reply.id)
+    assert.equal(query.mock.callCount(), 4)
+    query.mock.resetCalls()
+    await service.post(null, reply.id)
+    assert.equal(query.mock.callCount(), 1)
+  } finally {
+    query.mock.restore()
+  }
 })
 
 test('likes are idempotent, counted, and personal to the viewer', async () => {

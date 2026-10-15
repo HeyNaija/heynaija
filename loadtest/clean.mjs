@@ -52,6 +52,7 @@ const steps = [
   ['media', `delete from media where owner_id in (select id from lt_m) or post_id in (select id from lt_p)`],
   ['posts', `delete from posts where id in (select id from lt_p)`],
   ['members', `delete from members where id in (select id from lt_m)`],
+  ['thread bookkeeping', `drop table if exists loadtest_thread_fixtures`],
   ['bookkeeping', `drop table loadtest_posts, loadtest_members`],
 ]
 for (const [label, sql] of steps) {
@@ -62,4 +63,5 @@ await db.query('commit')
 db.release()
 await pool.end()
 await rm(new URL('.sessions.json', import.meta.url), { force: true })
+await rm(new URL('.threads.json', import.meta.url), { force: true })
 console.log('clean')

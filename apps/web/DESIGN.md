@@ -233,9 +233,10 @@ Image drafts use the control radius; published post galleries use the 12px card 
 - **Corner Style:** 12px.
 - **Background:** Card White (card-dark in dark).
 - **Border:** 1px Hairline. Feed cards go to Hairline Strong on hover.
+- **Behavior:** a post card opens its conversation from anywhere on the card (a reply opens its own conversation). Avatars, names, timestamps, community links, images, menus and actions keep their own targets, and post text stays selectable by dragging. The focused post on its own page is not a link.
 - **Shadow Strategy:** none; cards are flush (see Elevation & Depth).
 - **Internal Padding:** posts use 20px 20px 10px; below 1024px they use 18px 16px 8px, and below 420px, 16px 14px 6px. Rail sections use 20px, shared content panels 22px and profile/community headers 24px. Shared page cards reduce to 20px on mobile and 18px on small phones. Focused thread posts use 24px 24px 12px on desktop.
-- **Applies to:** posts, notifications (unread ones take Sage Wash with a green-tinted border), both composers, profile and community headers, forms and moderation cases, and each right-rail section, Public Treasury included.
+- **Applies to:** posts, notifications (unread ones take Sage Wash with a green-tinted border), the new-post composer, profile and community headers, forms and moderation cases, and each right-rail section, Public Treasury included. Reply composers use an inline field instead of a card.
 - **Content alignment:** avatars stay in the header row. Post text, images and actions, and notification excerpts and destination links, use the full card width beneath the header without an empty avatar column.
 
 ### Inputs / Fields
@@ -252,7 +253,7 @@ Image drafts use the control radius; published post galleries use the 12px card 
 ### Composer
 The first card beneath the feed tabs. An avatar sits beside a quiet one-line field, "Start a conversation…"; choosing a community changes the prompt to name it. Focusing expands the writing area to three lines (two for replies). Photo, audience and Post actions remain visible in a full-width toolbar below a hairline, and the public-post note stays visible. The remaining character count appears while writing and says "left" or "over" explicitly. Compact labels below 420px keep the controls together down to 320px.
 
-On a comment page, the reply composer has a compact avatar and handle header, with its writing area and image drafts spanning the full card below it. The focused post, composer and replies are separated by 14px.
+In a thread, the reply composer is a borderless inline editor. A 32px avatar sits beside an 8px-radius field on Inset Sage, with a small “Replying to @handle” label above it. The attachment, audience, count and Reply actions align under the field, as do the public-reply note and feedback. The field itself gains a green border and focus halo; the editor has no post-card frame. Image drafts stay below the field, and text remains 16px on phones.
 
 ### App icons
 
@@ -270,7 +271,7 @@ Account entry pages use a separate layout: the approved wordmark and an Explore 
 
 ### Do:
 
-- **Do** put every actionable object in a card: white, 12px corners, 1px Hairline border, no shadow.
+- **Do** put standalone content and forms in cards: white, 12px corners, 1px Hairline border, no shadow. Replies use the compact inline field treatment.
 - **Do** keep the ground Sage Ground and let sticky bars use that same quiet ground.
 - **Do** use Forest Green only for actions, the current location and links.
 - **Do** keep 14px between feed cards, with 20px mobile gutters and 12px gutters below 420px.

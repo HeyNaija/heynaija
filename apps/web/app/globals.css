@@ -294,6 +294,12 @@ summary.menu::-webkit-details-marker {
     outline: none;
     box-shadow: 0 0 0 3px var(--field-ring);
   }
+  /* Shown for reference, not for editing: a quiet fill, no hover cue. */
+  .field[readonly] {
+    border-color: var(--line);
+    background: var(--panel);
+    color: var(--muted);
+  }
   .field-sm {
     min-height: 40px;
     padding: 7px 12px;
@@ -609,7 +615,7 @@ summary.menu::-webkit-details-marker {
 .rail-footer { padding-inline: 3px; color: var(--muted); font-size: 10px; line-height: 2; }
 .rail-footer a:hover { color: var(--accent-strong); text-decoration: underline; }
 
-/* The card: one white object on the ground. Posts, the composer, forms, page
+/* The card: one white object on the ground. Posts, the new-post composer, forms, page
    headers and rail sections all use it, so the page reads as things you can act on. */
 .square-card,
 .rail-section,
@@ -791,8 +797,6 @@ summary.menu::-webkit-details-marker {
 .feed-order > span { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
 .square-composer { padding: 20px; transition: border-color 0.15s; }
 .square-composer:focus-within { border-color: var(--accent); }
-.composer-reply-writing { display: flex; flex-direction: column; gap: 8px; }
-.composer-reply-heading { display: flex; min-width: 0; align-items: center; gap: 10px; font-size: 13px; }
 .composer-writing-row { display: flex; min-height: 44px; align-items: center; }
 .composer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
 .composer-toolbar .icon-btn { min-height: 36px; font-size: 11px; }
@@ -801,7 +805,6 @@ summary.menu::-webkit-details-marker {
 .composer-submit { margin-left: auto; min-width: 62px; }
 .composer-count + .composer-submit { margin-left: 4px; }
 .composer-privacy { margin-top: 8px; color: var(--muted); font-size: 11px; line-height: 1.6; }
-.square-composer.is-reply { padding: 16px 20px; }
 .composer-input {
   display: block;
   width: 100%;
@@ -818,6 +821,19 @@ summary.menu::-webkit-details-marker {
 }
 .composer-input::placeholder { color: var(--muted); }
 .composer-input:focus { outline: none; }
+/* Replies are an inline writing field connected to the conversation, rather
+   than another published-post surface. Only the editable field is framed. */
+.reply-composer { padding: 10px 0 4px; }
+.composer-reply-writing { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: start; gap: 12px; }
+.composer-reply-avatar { padding-top: 6px; }
+.reply-composer .composer-recipient { margin: 0 0 6px 44px; color: var(--muted); font-size: 12px; line-height: 18px; }
+.reply-composer .composer-recipient strong { color: var(--ink); font-weight: 600; }
+.reply-composer .composer-input { min-height: 44px; border: 1px solid var(--line-strong); background: var(--panel); padding: 9px 12px; transition: border-color 0.15s, box-shadow 0.15s; }
+.reply-composer .composer-input:focus { border-color: var(--focus-ring); box-shadow: 0 0 0 3px var(--field-ring); }
+.reply-composer .composer-toolbar { margin: 6px 0 0 44px; border-top: 0; padding-top: 0; }
+.reply-composer .composer-toolbar .icon-btn, .reply-composer .composer-submit { min-height: 40px; }
+.reply-composer .composer-privacy, .reply-composer > [role="alert"], .reply-composer .composer-posted { margin-left: 44px; }
+.reply-composer .composer-privacy { margin-top: 2px; }
 .community-discovery { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--accent-soft); padding: 14px 16px; color: var(--brand-deep); transition: border-color 0.15s; }
 .community-discovery:hover { border-color: var(--accent); }
 .community-discovery > span:nth-child(2) { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
@@ -826,10 +842,19 @@ summary.menu::-webkit-details-marker {
 .community-discovery .community-mark { background: var(--surface); }
 .post-list { display: flex; flex-direction: column; gap: 14px; }
 .post-card {
+  position: relative;
   scroll-margin-top: 150px;
   padding: 20px 20px 10px;
   transition: border-color 0.15s;
 }
+.post-card.is-clickable:hover { border-color: var(--line-strong); }
+/* One native permalink covers the card; each independent control stays above it. */
+.post-primary-link { display: block; user-select: text; -webkit-user-drag: none; }
+.post-primary-link::after { position: absolute; z-index: 1; inset: 0; border-radius: var(--r-panel); content: ''; }
+.post-primary-text { position: relative; z-index: 2; }
+.post-primary-link:focus-visible { outline: none; }
+.post-primary-link:focus-visible::after { outline: 2px solid var(--focus-ring); outline-offset: -3px; }
+.post-card.is-clickable :is(a:not(.post-primary-link), button, summary, input, select, textarea, form, .post-images) { position: relative; z-index: 2; }
 .post-list .post-card:hover { border-color: var(--line-strong); }
 /* Older posts loaded onto a feed continue the same list. */
 .more-posts { margin-top: 14px; }
@@ -859,6 +884,29 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-context[open] summary > svg { transform: rotate(180deg); }
 .thread-context .post-list { margin-block: 10px 16px; }
 .thread-replies-heading { padding: 4px 0 10px; font-size: 13px; font-weight: 600; }
+.thread-list { display: flex; flex-direction: column; gap: 14px; }
+.thread-children { margin-top: 12px; margin-left: 16px; border-left: 2px solid var(--line-strong); padding-left: 16px; }
+.thread-children[hidden] { display: none; }
+/* Two visual steps are enough to show relationships; deeper replies keep their width. */
+.thread-branch .thread-branch .thread-branch > .thread-children { margin-left: 0; border-left: 0; padding-left: 0; }
+.thread-controls { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 4px 12px 0; }
+.thread-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+.thread-toggle { display: inline-flex; min-height: 40px; align-items: center; color: var(--accent-strong); font-size: 12px; font-weight: 600; }
+.thread-toggle:hover { text-decoration: underline; }
+.thread-toggle[aria-busy="true"], .thread-more[aria-disabled="true"] { cursor: wait; opacity: 0.65; }
+.thread-more { margin-top: 14px; }
+.thread-recipient { margin-bottom: 6px; color: var(--muted); font-size: 12px; }
+.thread-recipient a:hover { text-decoration: underline; }
+.thread-empty { padding: 12px 0; color: var(--muted); font-size: 13px; }
+.thread-gap, .thread-context-note { margin-block: 12px; color: var(--muted); font-size: 12px; }
+.thread-context-note a, .composer-posted a { color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
+.thread-error { margin-top: 10px; color: var(--danger); font-size: 13px; }
+.thread-recent { margin-top: 14px; border-top: 1px dashed var(--line-strong); }
+.thread-editor-host:not(:empty) { margin-top: 14px; }
+.thread-editor-host:empty, .thread-composer-home:empty { display: none; }
+.composer-posted { margin-top: 6px; color: var(--muted); font-size: 12px; }
+.thread-list > li > .thread-branch > .thread-row > .post-card { content-visibility: auto; contain-intrinsic-size: auto 180px; }
+.thread-list > li > .thread-branch > .thread-row > .post-card:has(details[open]) { content-visibility: visible; }
 
 /* Avatars and identity share a header; the content below uses the full card. */
 .notification-row {
@@ -1250,6 +1298,8 @@ a.result-row:hover { color: var(--accent-strong); }
   .post-card, .post-list .post-card { padding: 18px 16px 8px; }
   .post-actions .icon-btn { min-height: 40px; min-width: 40px; }
   .post-card.is-focused { padding: 20px 18px 10px; }
+  .thread-children { margin-left: 6px; padding-left: 10px; }
+  .thread-branch .thread-branch > .thread-children { margin-left: 0; border-left: 0; padding-left: 0; }
   .notification-row { padding: 16px; }
   .page-header, .content-panel, .community-card, .governance-section { padding: 20px; }
 }

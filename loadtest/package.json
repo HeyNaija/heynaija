@@ -6,10 +6,12 @@
   "description": "Seed data, session minting and k6 journeys for load-testing a throwaway HeyNaija stack. See docs/loadtest.md.",
   "scripts": {
     "seed": "node --env-file-if-exists=../.env seed.mjs",
+    "thread-fixtures": "node --env-file-if-exists=../.env thread-fixtures.mjs",
     "sessions": "node --env-file-if-exists=../.env sessions.mjs",
     "clean": "node --env-file-if-exists=../.env clean.mjs",
     "smoke": "k6 run -e PROFILE=smoke k6/journeys.js",
-    "ramp": "k6 run -e PROFILE=ramp k6/journeys.js"
+    "ramp": "k6 run -e PROFILE=ramp k6/journeys.js",
+    "threads": "k6 run k6/threads.js"
   },
   "dependencies": {
     "pg": "^8.23.1"

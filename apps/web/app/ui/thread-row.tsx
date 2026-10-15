@@ -1,0 +1,54 @@
+import type { Post, ThreadReply } from '@/lib/api'
+import type { ThreadRow } from '@/lib/thread-state'
+import { PostItem } from './post-item'
+import { ThreadBranch, ThreadReplyAction } from './thread-conversation'
+
+export function renderThreadRow(
+  post: ThreadReply,
+  viewerId: string | null,
+  now: number,
+  depth: number,
+  parentHandle: string | null,
+  root = false,
+): ThreadRow {
+  const unavailable = post.unavailable === true
+  return {
+    id: post.id,
+    node: (
+      <ThreadBranch
+        key={post.id}
+        id={post.id}
+        parentId={post.replyParentId}
+        handle={unavailable ? null : post.authorHandle}
+        parentHandle={parentHandle}
+        replyCount={unavailable ? null : post.replyCount}
+        hasReplies={unavailable || post.hasReplies === true || post.replyCount > 0}
+        depth={depth}
+        root={root}
+      >
+        {unavailable ? (
+          <article id={`post-${post.id}`} className="post-card thread-unavailable">
+            <p className="text-sm italic text-muted">This post is no longer available.</p>
+          </article>
+        ) : (
+          <PostItem
+            post={post as Post}
+            viewerId={viewerId}
+            now={now}
+            focused={root}
+            inThread
+            replyAction={(
+              <ThreadReplyAction
+                id={post.id}
+                parentId={post.replyParentId}
+                handle={post.authorHandle}
+                depth={depth}
+                count={post.replyCount}
+              />
+            )}
+          />
+        )}
+      </ThreadBranch>
+    ),
+  }
+}

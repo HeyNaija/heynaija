@@ -23,7 +23,9 @@
     "db:seed": "pnpm --filter @heynaija/db seed",
     "mod:grant": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api moderator grant",
     "mod:revoke": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api moderator revoke",
-    "media:init": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api media:init"
+    "media:init": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api media:init",
+    "demo:seed": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api demo:seed",
+    "demo:clean": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api demo:clean"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

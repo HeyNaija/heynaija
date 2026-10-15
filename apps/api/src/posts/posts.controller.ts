@@ -32,6 +32,7 @@ import {
   newPost,
   PostsService,
 } from './posts.service.js'
+import { replyPageQuery } from './reply-cursor.js'
 
 const createPostBody = newPost(slugParam)
 
@@ -82,6 +83,23 @@ export class PostsController {
     const thread = await this.posts.thread(req.member?.id ?? null, postId(id))
     if (!thread) throw new NotFoundException()
     return thread
+  }
+
+  @Get('posts/:id/replies')
+  @UseGuards(OptionalSessionGuard)
+  async replies(@Req() req: MaybeAuthedRequest, @Param('id') id: string, @Query() query: unknown) {
+    const { limit, cursor } = parse(replyPageQuery, query)
+    const page = await paged(() => this.posts.replies(req.member?.id ?? null, postId(id), limit, cursor))
+    if (!page) throw new NotFoundException()
+    return page
+  }
+
+  @Get('posts/:id/post')
+  @UseGuards(OptionalSessionGuard)
+  async post(@Req() req: MaybeAuthedRequest, @Param('id') id: string) {
+    const post = await this.posts.post(req.member?.id ?? null, postId(id))
+    if (!post) throw new NotFoundException()
+    return post
   }
 
   @Post('posts')

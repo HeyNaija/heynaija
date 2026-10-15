@@ -12,7 +12,9 @@
     "test": "pnpm build && ../../infra/scripts/with-test-db.sh node --test --test-concurrency=1 'dist/**/*.test.js'",
     "invite:create": "node --env-file=../../.env dist/cli/create-invite.js",
     "moderator": "node --env-file=../../.env dist/cli/moderator.js",
-    "media:init": "node --env-file=../../.env dist/cli/media-init.js"
+    "media:init": "node --env-file=../../.env dist/cli/media-init.js",
+    "demo:seed": "node --env-file=../../.env dist/cli/seed-demo.js",
+    "demo:clean": "node --env-file=../../.env dist/cli/seed-demo.js --clean"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1151.0",

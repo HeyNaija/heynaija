@@ -14,6 +14,7 @@ const LABELS: Record<string, string> = {
 // Shorter wording for a few of Kratos's stock messages and buttons, by message ID.
 const TEXT: Record<number, string> = {
   1010002: 'Continue with Google', // "Sign in with google"
+  1010003: 'For your security, confirm it is you before saving changes to your account.',
   1010015: 'Email me a code', // "Send sign in code"
   1040002: 'Continue with Google', // "Sign up with google"
   1050002: 'Connect Google', // "Link google"
@@ -35,23 +36,40 @@ const FIELD_ERRORS: Record<string, Record<number, string>> = {
 
 const tone = { error: 'text-danger', success: 'text-accent-strong', info: '' } as const
 
-function Messages({ messages, field }: { messages?: UiMessage[]; field?: string }) {
+// Above a form, 4000001 carries Kratos's internal reason ("Unable to decode body
+// because…", "The HTTP Request Header included the Cookie key…") and 5xxxxxx are
+// server faults. Neither is written for people, so they get `fallback` instead.
+const technical = (m: UiMessage) => m.type === 'error' && (m.id === 4000001 || m.id >= 5000000)
+
+function Messages({ messages, field, fallback }: { messages?: UiMessage[]; field?: string; fallback?: string }) {
   if (!messages?.length) return null
+  const specific = messages.some((m) => m.type === 'error' && !technical(m))
+  const lines = messages
+    // A specific error already says what went wrong; the generic one adds nothing.
+    .filter((m) => !(fallback && technical(m) && specific))
+    .map((m) => ({
+      type: m.type,
+      text: fallback && technical(m) ? fallback : (field && FIELD_ERRORS[field]?.[m.id]) ?? TEXT[m.id] ?? m.text,
+    }))
+    .filter((line, i, all) => all.findIndex((other) => other.text === line.text) === i)
   return (
     <>
-      {messages.map((m) => (
-        <p key={`${m.id}-${m.text}`} role={m.type === 'error' ? 'alert' : 'status'} className={`text-sm leading-relaxed ${tone[m.type]}`}>
-          {(field && FIELD_ERRORS[field]?.[m.id]) ?? TEXT[m.id] ?? m.text}
+      {lines.map((line) => (
+        <p key={line.text} role={line.type === 'error' ? 'alert' : 'status'} className={`text-sm leading-relaxed ${tone[line.type]}`}>
+          {line.text}
         </p>
       ))}
     </>
   )
 }
 
-function Field({ node, flowId }: { node: UiNode; flowId: string }) {
+function Field({ node, flowId, identifier }: { node: UiNode; flowId: string; identifier?: string }) {
   const a = node.attributes
   const name = a.name ?? ''
-  const value = a.value === undefined || a.value === null ? undefined : String(a.value)
+  // Confirming it is you: only the signed-in address will do, so it is shown, not asked for.
+  const locked = name === 'identifier' && a.type !== 'hidden' && identifier !== undefined
+  const value = locked ? identifier : a.value === undefined || a.value === null ? undefined : String(a.value)
+  const hint = locked ? 'The address you are signed in with.' : HINTS[name]
 
   if (a.type === 'hidden') return <input type="hidden" name={name} value={value ?? ''} />
 
@@ -85,7 +103,7 @@ function Field({ node, flowId }: { node: UiNode; flowId: string }) {
   const id = `${flowId}-${node.group}-${name}`
   const hasMessages = Boolean(node.messages?.length)
   const invalid = node.messages?.some((message) => message.type === 'error')
-  const description = [HINTS[name] ? `${id}-hint` : '', hasMessages ? `${id}-messages` : ''].filter(Boolean).join(' ')
+  const description = [hint ? `${id}-hint` : '', hasMessages ? `${id}-messages` : ''].filter(Boolean).join(' ')
   return (
     <div className="flex flex-col gap-2">
       <label htmlFor={id} className="field-label">
@@ -98,10 +116,11 @@ function Field({ node, flowId }: { node: UiNode; flowId: string }) {
         defaultValue={a.type === 'password' ? undefined : value}
         required={a.required}
         disabled={a.disabled}
+        readOnly={locked || undefined}
         autoComplete={a.autocomplete}
         inputMode={name === 'code' ? 'numeric' : undefined}
         pattern={a.pattern}
-        title={HINTS[name]}
+        title={locked ? undefined : HINTS[name]}
         maxLength={a.maxlength}
         autoCapitalize="none"
         autoCorrect="off"
@@ -110,9 +129,9 @@ function Field({ node, flowId }: { node: UiNode; flowId: string }) {
         aria-describedby={description || undefined}
         className={`field min-h-12 ${invalid ? 'border-danger' : ''} ${name === 'code' ? 'font-mono tracking-[0.18em]' : ''}`}
       />
-      {HINTS[name] ? (
+      {hint ? (
         <p id={`${id}-hint`} className="field-hint">
-          {HINTS[name]}
+          {hint}
         </p>
       ) : null}
       {hasMessages ? <div id={`${id}-messages`} className="flex flex-col gap-1"><Messages messages={node.messages} field={name} /></div> : null}
@@ -139,12 +158,12 @@ const rank = (node: UiNode) => {
   return type === 'submit' || type === 'button' ? 2 : 1
 }
 
-function Form({ flow, nodes: unordered }: { flow: Flow; nodes: UiNode[] }) {
+function Form({ flow, nodes: unordered, identifier }: { flow: Flow; nodes: UiNode[]; identifier?: string }) {
   const nodes = [...unordered].sort((a, b) => rank(a) - rank(b))
   return (
     <form action={flow.ui.action} method={flow.ui.method} className="flex flex-col gap-5">
       {nodes.map((node, i) => {
-        if (node.type === 'input') return <Field key={`${node.attributes.name}-${i}`} node={node} flowId={flow.id} />
+        if (node.type === 'input') return <Field key={`${node.attributes.name}-${i}`} node={node} flowId={flow.id} identifier={identifier} />
         if (node.type === 'text') {
           return (
             <p key={i} className="text-sm text-muted">
@@ -170,7 +189,19 @@ function Form({ flow, nodes: unordered }: { flow: Flow; nodes: UiNode[] }) {
  * (the settings flow: the profile and connected accounts are saved separately).
  * Without sections, Google gets its own form above the email one.
  */
-export function FlowForm({ flow, sections }: { flow: Flow; sections?: Record<string, string> }) {
+export function FlowForm({
+  flow,
+  sections,
+  fallback = 'That did not go through. Please try again.',
+  identifier,
+}: {
+  flow: Flow
+  sections?: Record<string, string>
+  /** Shown in place of Kratos's internal error text. */
+  fallback?: string
+  /** The signed-in member's email, when the flow asks them to confirm it is them. */
+  identifier?: string
+}) {
   const shared = flow.ui.nodes.filter((n) => n.group === 'default')
   const groups = sections ? Object.keys(sections).filter((g) => flow.ui.nodes.some((n) => n.group === g)) : []
   const google = flow.ui.nodes.filter((n) => n.group === 'oidc')
@@ -183,7 +214,7 @@ export function FlowForm({ flow, sections }: { flow: Flow; sections?: Record<str
     <div className="flex flex-col gap-6">
       {flow.ui.messages?.length ? (
         <div className={`notice flex flex-col gap-2 ${flow.ui.messages.some((m) => m.type === 'error') ? 'notice-danger' : ''}`}>
-          <Messages messages={flow.ui.messages} />
+          <Messages messages={flow.ui.messages} fallback={fallback} />
         </div>
       ) : null}
 
@@ -206,7 +237,7 @@ export function FlowForm({ flow, sections }: { flow: Flow; sections?: Record<str
               <span className="h-px flex-1 bg-line" />
             </div>
           ) : null}
-          {hasEmailForm ? <Form flow={flow} nodes={rest} /> : null}
+          {hasEmailForm ? <Form flow={flow} nodes={rest} identifier={identifier} /> : null}
         </>
       )}
     </div>

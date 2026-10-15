@@ -31,6 +31,8 @@ export type UiNode = {
 
 export type Flow = {
   id: string
+  /** A login flow asking someone who is signed in to confirm it is them. */
+  refresh?: boolean
   ui: { action: string; method: string; nodes: UiNode[]; messages?: UiMessage[] }
 }
 
@@ -56,6 +58,21 @@ export async function getFlow(kind: FlowKind, id: string | string[] | undefined)
   if (!res.ok) throw new Error(`Kratos ${kind} flow responded ${res.status}`)
   return res.json()
 }
+
+/**
+ * The signed-in member's email, or null. Kratos leaves the address empty when it
+ * asks someone to confirm it is them, although only that address will do.
+ */
+export const getSessionEmail = cache(async (): Promise<string | null> => {
+  const res = await fetch(`${KRATOS_URL}/sessions/whoami`, {
+    headers: { cookie: await cookieHeader(), accept: 'application/json' },
+    cache: 'no-store',
+  })
+  if (!res.ok) return null
+  const session = (await res.json()) as { identity?: { traits?: { email?: unknown } } }
+  const email = session.identity?.traits?.email
+  return typeof email === 'string' ? email : null
+})
 
 /** The URL that ends the current session, or null if there is none. */
 export const getLogoutUrl = cache(async (): Promise<string | null> => {

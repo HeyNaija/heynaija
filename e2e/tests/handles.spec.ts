@@ -1,5 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
+import { ageSignIn } from '../lib/db.ts'
 import { MARK } from '../lib/env.ts'
+import { codeFor } from '../lib/mailpit.ts'
 import { handleFor, newMember, signUp, submitSignUp } from '../lib/members.ts'
 
 // A handle names one member: profiles, reports and moderation all look people up
@@ -37,6 +39,11 @@ test('renaming to a handle someone already has is refused; a free one works', as
 
   await rename(page, owner.handle)
   await expect(page.getByText(taken)).toBeVisible()
+  // The message is shown once; a reload starts over instead of repeating it.
+  await expect(page).toHaveURL((url) => url.pathname === '/settings' && !url.searchParams.has('flow'))
+  await page.reload()
+  await expect(page.getByLabel('Handle', { exact: true })).toBeVisible()
+  await expect(page.getByText(taken)).toHaveCount(0)
 
   const renamed = handleFor('renamed')
   await rename(page, renamed)
@@ -77,4 +84,34 @@ test('a handle given up by renaming stays its owner’s, and its old link leads 
 
   await mover.context.close()
   await other.context.close()
+})
+
+test('a change Kratos cannot replay after verifying again says so in plain words', async ({ browser }) => {
+  const member = await newMember(browser, 'replay')
+  const { page, context } = member
+  await ageSignIn(member.handle, 20)
+
+  // Saving now needs a fresh sign-in first. Kratos remembers the change in a
+  // cookie and replays it afterwards; when that cookie is lost on the way (as can
+  // happen through a Google sign-in), the replay fails with an internal error.
+  await rename(page, handleFor('later'))
+  await page.waitForURL((url) => url.pathname === '/login')
+  await context.clearCookies({ name: /continuity/ })
+  // Only their own address will do, so it is already there and cannot be changed.
+  const email = page.getByLabel('Email address')
+  await expect(email).toHaveValue(member.email)
+  await expect(email).toHaveAttribute('readonly', '')
+  await expect(page.getByRole('link', { name: 'Sign out' })).toBeVisible()
+  const asked = new Date()
+  await page.getByRole('button', { name: 'Email me a code' }).click()
+  await page.getByLabel('Code from the email').fill(await codeFor(member.email, asked))
+  await page.getByRole('button', { name: 'Continue' }).click()
+
+  await page.waitForURL((url) => url.pathname === '/settings')
+  await expect(page.getByText('Your change was not saved. Make it again and press Save.')).toBeVisible()
+  await expect(page.getByText(/decode body|HTTP Request/)).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByLabel('Handle', { exact: true })).toBeVisible()
+  await expect(page.getByText('Your change was not saved.', { exact: false })).toHaveCount(0)
+  await context.close()
 })
