@@ -39,6 +39,27 @@ export function JoinForm({ initialCode }: { initialCode: string }) {
           <p id="invite-code-hint" className="field-hint">You'll find this in the invite shared with you.</p>
         )}
       </div>
+      <div className="flex flex-col gap-2">
+        <label className="join-age">
+          <input
+            type="checkbox"
+            name="adult"
+            value="yes"
+            required
+            defaultChecked={state.adult}
+            aria-invalid={Boolean(state.ageError) || undefined}
+            aria-describedby={state.ageError ? 'join-age-error' : 'join-age-hint'}
+          />
+          <span>I am 18 or older</span>
+        </label>
+        {state.ageError ? (
+          <p id="join-age-error" role="alert" className="text-sm leading-relaxed text-danger">{state.ageError}</p>
+        ) : (
+          <p id="join-age-hint" className="field-hint">
+            During the beta, accounts are 18+. We don’t ask for your date of birth or any ID.
+          </p>
+        )}
+      </div>
       <button
         type="submit"
         disabled={busy}

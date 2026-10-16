@@ -1,17 +1,24 @@
 import {
   ArrowUpRight,
+  BadgeCheck,
   Bell,
   Bookmark,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleCheck,
+  CircleDashed,
+  CircleDot,
   Ellipsis,
+  FileText,
   Flag,
   Flame,
   Heart,
   History,
   House,
+  IdCard,
   ImagePlus,
+  KeyRound,
   Landmark,
   type LucideIcon,
   MessageCircle,
@@ -69,3 +76,10 @@ export const HistoryIcon = icon(History)
 export const BellIcon = icon(Bell)
 export const FollowIcon = icon(UserPlus)
 export const FlagIcon = icon(Flag)
+export const VerifiedIcon = icon(BadgeCheck)
+export const IdentityIcon = icon(IdCard)
+export const DocumentIcon = icon(FileText)
+export const DoneIcon = icon(CircleCheck)
+export const InProgressIcon = icon(CircleDot)
+export const NotStartedIcon = icon(CircleDashed)
+export const OwnershipIcon = icon(KeyRound)

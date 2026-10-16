@@ -86,6 +86,11 @@ async function clean() {
       ['mutes', 'delete from mutes where muter_id in (select id from d_m) or muted_id in (select id from d_m)'],
       ['community memberships', 'delete from community_memberships where member_id in (select id from d_m)'],
       ['released handles', 'delete from released_handles where member_id in (select id from d_m)'],
+      ['profile badges', 'delete from profile_badges where member_id in (select id from d_m)'],
+      ['verifications', `delete from restricted.identity_verifications where member_id in (select id from d_m)
+        or reviewed_by in (select id from d_m)`],
+      ['voting memberships', 'delete from restricted.governance_memberships where member_id in (select id from d_m)'],
+      ['age records', 'delete from restricted.age_assurances where member_id in (select id from d_m)'],
       ['media', 'delete from media where owner_id in (select id from d_m) or post_id in (select id from d_p)'],
       // The counter triggers lower reply counts on the real posts demo members answered.
       ['posts', 'delete from posts where id in (select id from d_p)'],

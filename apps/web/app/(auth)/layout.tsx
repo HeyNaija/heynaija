@@ -16,7 +16,7 @@ const highlights = [
   {
     Icon: ShieldIcon,
     title: 'See how decisions are made',
-    detail: 'Clear community rules and a public moderation decision log.',
+    detail: 'Clear community rules, and a permanent record of every moderation decision.',
   },
 ]
 

@@ -1,10 +1,13 @@
 import {
+  ageAssurances,
   blocks,
   bookmarks,
   communities,
   communityMemberships,
   type Db,
   follows,
+  governanceMemberships,
+  identityVerifications,
   likes,
   media,
   members,
@@ -20,7 +23,7 @@ import { avatarPath, postImagePath } from '../media/media.service.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/1'
+export const EXPORT_FORMAT = 'heynaija-export/2'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -53,6 +56,9 @@ export class ExportService {
       reported,
       decisions,
       received,
+      ageRecords,
+      verifications,
+      [membership],
     ] = await Promise.all([
       db
         .select({
@@ -126,6 +132,45 @@ export class ExportService {
         .from(notifications)
         .where(eq(notifications.recipientId, memberId))
         .orderBy(asc(notifications.createdAt)),
+      db
+        .select({
+          band: ageAssurances.band,
+          method: ageAssurances.method,
+          at: ageAssurances.assuredAt,
+          reviewAfter: ageAssurances.reviewAfter,
+          withdrawnAt: ageAssurances.withdrawnAt,
+        })
+        .from(ageAssurances)
+        .where(eq(ageAssurances.memberId, memberId))
+        .orderBy(asc(ageAssurances.assuredAt)),
+      // The private person key is left out: it is derived with HeyNaija's secret,
+      // means nothing outside HeyNaija, and would help anyone holding it link accounts.
+      db
+        .select({
+          provider: identityVerifications.provider,
+          status: identityVerifications.status,
+          verifiedAt: identityVerifications.verifiedAt,
+          expiresAt: identityVerifications.expiresAt,
+          consentVersion: identityVerifications.consentVersion,
+          consentedAt: identityVerifications.consentedAt,
+          reviewedAt: identityVerifications.reviewedAt,
+          revokedAt: identityVerifications.revokedAt,
+          outcome: identityVerifications.outcome,
+          at: identityVerifications.createdAt,
+        })
+        .from(identityVerifications)
+        .where(eq(identityVerifications.memberId, memberId))
+        .orderBy(asc(identityVerifications.createdAt)),
+      db
+        .select({
+          status: governanceMemberships.status,
+          optedInAt: governanceMemberships.optedInAt,
+          documentsVersion: governanceMemberships.documentsVersion,
+          suspendedUntil: governanceMemberships.suspendedUntil,
+          suspensionReason: governanceMemberships.suspensionReason,
+        })
+        .from(governanceMemberships)
+        .where(eq(governanceMemberships.memberId, memberId)),
     ])
 
     const imagesByPost = new Map<string, { url: string; description: string }[]>()
@@ -155,6 +200,11 @@ export class ExportService {
         role: me.role,
         active: me.active,
       },
+      // Every statement about your age band and how it was made: empty for
+      // accounts made before HeyNaija asked, which HeyNaija treats as unknown.
+      age: ageRecords,
+      identityVerifications: verifications,
+      votingMembership: membership ?? null,
       posts: ownPosts.map((p) => ({ ...p, images: imagesByPost.get(p.id) ?? [] })),
       likes: liked,
       bookmarks: saved,

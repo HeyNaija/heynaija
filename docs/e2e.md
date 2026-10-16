@@ -12,14 +12,14 @@ already in the database.
 
 | File | Flows |
 | --- | --- |
-| `auth.spec.ts` | Join with an invite code, sign up, confirm with the emailed code, land signed in. A wrong invite code is refused. Sign out, sign back in with an emailed code. |
+| `auth.spec.ts` | Join with an invite code, sign up, confirm with the emailed code, land signed in. A wrong invite code is refused. Joining needs the "I am 18 or older" box, and a signup that loses the confirmation is refused by the API (no Kratos identity is created). Sign out, sign back in with an emailed code. |
 | `handles.spec.ts` | Signing up with a handle someone already has is refused; so is renaming to one in Settings, while renaming to a free one works. A handle given up by renaming cannot be taken by anyone else, its old profile link leads to the new handle, and its owner can take it back. |
 | `posting.spec.ts` | Post to everyone and into a community; reply in a thread; like (changes at once and survives a reload); bookmark and find it under Bookmarks; delete your own post. |
 | `images.spec.ts` | Attach an image with a description, wait for processing, see it on the post with its description as alt text, open and close the full-screen viewer. |
 | `social.spec.ts` | Follow someone and see their post in Following with "You follow @…"; mute hides their posts from Latest; block hides them both ways. |
 | `moderation.spec.ts` | A member reports a post; a moderator sees it in the queue and removes it; the author is notified and the post is gone. A suspended member sees the appeal form, appeals, and the moderator sees the appeal. |
 | `feed.spec.ts` | Infinite scroll on a feed with more than 150 posts: batches load as you near the end, stop at 150, the button loads more, no post appears twice, and Back from a post restores the list and the scroll position. A failed load shows "Try again". |
-| `governance.spec.ts` | The rules, privacy policy, charter and licence pages load and say they are drafts; the governance page lists them; a member downloads their data and the file holds their account and posts. |
+| `governance.spec.ts` | The rules, privacy policy, charter and licence pages load, say they are drafts and link the draft constitution. `/governance` states the founding-stage notice, tells the three kinds of participation apart, and shows empty states rather than records; no ownership milestone claims completion; no sideways scroll on a phone. The constitution has all 14 articles, both annexes and working anchors. The verification explainer has no form fields and no verify button, its FAQ opens, and the tick's note shows on focus and closes with Escape. Membership says registration has not opened and that the 18+ account rule is temporary while voting needs a checked age; the rules and privacy policy say the same. A member's Settings shows their real status, including a stated (not verified) age, and their profile has no tick. The data export (format 2) holds their age record. |
 | `no-js.spec.ts` | With JavaScript off: read a feed, follow "Older posts" to the next page, post from the composer, like a post. **Currently marked as expected failures**; see below. |
 
 Tests tagged `@mobile` also run on a phone-sized screen (Pixel 7): signing up, and

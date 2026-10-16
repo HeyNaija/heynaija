@@ -10,7 +10,7 @@ export default function CharterPage() {
       eyebrow="Our shared future"
       title="HeyNaija charter"
       summary="What HeyNaija is for, the promises it makes to members now, who is responsible for it today, and the steps toward members having a real say in how it is run. It is honest about what has not happened yet."
-      updated="15 October 2026"
+      updated="16 October 2026"
       sections={[
         {
           id: 'purpose',
@@ -21,6 +21,26 @@ export default function CharterPage() {
               abroad: fast on any phone, fairly moderated, and built so that the people who use it can
               eventually help decide how it is run.
             </p>
+          ),
+        },
+        {
+          id: 'constitution',
+          title: 'This charter and the draft constitution',
+          body: (
+            <>
+              <p>
+                This charter sets out the promises that apply today. The{' '}
+                <Link href="/governance/constitution">draft constitution</Link> proposes how HeyNaija would be governed
+                once members can vote: voting membership, a five-member Community Council, ballots and the transfer of
+                ownership. It is open for consultation and does not apply until it is lawfully adopted with a published
+                effective date. Until then, where the two differ, this charter applies.
+              </p>
+              <p>
+                Proposals in the draft, such as an 18+ rule for voting membership or optional NIN verification, are not
+                in force unless this charter, the <Link href="/rules">rules</Link> or the{' '}
+                <Link href="/privacy">privacy policy</Link> say so.
+              </p>
+            </>
           ),
         },
         {
@@ -51,6 +71,10 @@ export default function CharterPage() {
                 It is funded by <Placeholder>how HeyNaija is funded today</Placeholder>. No money is being
                 collected from members.
               </p>
+              <p>
+                The draft constitution asks for the custodians’ names and roles, and the legal operator, to be published
+                before a broad public launch (Article 13). They are not published yet.
+              </p>
             </>
           ),
         },
@@ -59,14 +83,21 @@ export default function CharterPage() {
           title: 'The path to community ownership',
           body: (
             <>
-              <p>These are the steps, in order. None of them has happened yet; each will be announced on the <Link href="/governance">governance page</Link> when it does.</p>
+              <p>
+                These are the steps the draft constitution proposes, in order (Article 13). Where each one stands is
+                shown on the <Link href="/governance#ownership">governance page</Link>, and each will be announced there
+                when it is done. Ownership has not transferred, and no poll or vote will be called binding until it has.
+              </p>
               <ol>
-                <li>Publish this charter, reviewed by a lawyer.</li>
-                <li>Form a steering group that includes members, with published terms for who serves and for how long.</li>
-                <li>Publish voting rules: who can vote, on what, and what a vote decides.</li>
-                <li>Open a public treasury: what comes in, what goes out, and why.</li>
-                <li>Choose a legal structure through which members can hold ownership, with legal advice.</li>
+                <li>Publish the drafts, and who runs HeyNaija.</li>
+                <li>Hold a public consultation, with a temporary advisory group that includes members.</li>
+                <li>Have the drafts reviewed by Nigerian cooperative, corporate and data-protection lawyers.</li>
+                <li>Choose and register a member-controlled Nigerian legal entity.</li>
+                <li>Adopt its membership bylaws and hold the first election of the Community Council.</li>
+                <li>Transfer the domain, name, core assets and governance control to it, by signed documents.</li>
+                <li>Publish independent confirmation that the transfer happened.</li>
               </ol>
+              <p>A public treasury opens once money flows, with reports at least every quarter.</p>
             </>
           ),
         },
@@ -75,9 +106,10 @@ export default function CharterPage() {
           title: 'Changing this charter',
           body: (
             <p>
-              Until the steering group exists, the custodians may change this charter, but only by
+              Until members can lawfully govern HeyNaija, the custodians may change this charter, but only by
               announcing the change on the governance page at least <Placeholder>notice period</Placeholder>{' '}
-              before it takes effect, saying what changed and why.
+              before it takes effect, saying what changed and why. The draft constitution proposes 14 days
+              (Article 14), except for urgent legal or security corrections; that is not yet adopted.
             </p>
           ),
         },

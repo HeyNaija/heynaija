@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import { members } from '@heynaija/db'
+import { GovernanceService } from '../governance/governance.service.js'
 import { MembersService } from '../members/members.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
 import { PostsService } from '../posts/posts.service.js'
@@ -79,4 +80,33 @@ test('another member’s posts and reports about the member stay out', async () 
 
 test('an unknown member has no export', async () => {
   assert.equal(await service.export(randomUUID(), null), null)
+})
+
+test('an export includes the age confirmation and verification history, but never the person key', async () => {
+  const locked = { NIN_VERIFICATION_ENABLED: false, BINDING_GOVERNANCE_VOTING_ENABLED: false, UNDER_18_ACCOUNTS_ENABLED: false }
+  const approved = new GovernanceService(db, { ...locked, NIN_VERIFICATION_ENABLED: true, IDENTITY_KEY_SECRET: 'k'.repeat(32) })
+
+  const before = (await service.export(ada, null))!
+  assert.deepEqual(before.age, [])
+  assert.deepEqual(before.identityVerifications, [])
+  assert.equal(before.votingMembership, null)
+
+  await approved.recordAgeDeclaration(ada)
+  await approved.recordVerification(
+    ada,
+    { provider: 'ninauth', subject: 'person-ada', over18: true, verifiedAt: new Date(), expiresAt: null },
+    { version: 'consent-1', at: new Date() },
+  )
+  const data = (await service.export(ada, null))!
+  assert.deepEqual(
+    data.age.map((a) => [a.band, a.method]),
+    [
+      ['18_plus', 'self_declared'],
+      ['18_plus', 'identity_provider'],
+    ],
+  )
+  assert.deepEqual(data.identityVerifications.map((v) => v.status), ['verified'])
+  const text = JSON.stringify(data)
+  assert.equal(text.includes('personKey'), false)
+  assert.equal(text.includes('person-ada'), false)
 })

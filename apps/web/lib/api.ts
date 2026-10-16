@@ -93,6 +93,11 @@ export type Profile = {
   viewerFollows: boolean
   viewerBlocks: boolean
   viewerMutes: boolean
+  /**
+   * Show the green "NIN identity verified" tick. Decided by the API from a
+   * reviewed, current verification the member chose to show; never inferred here.
+   */
+  identityBadge: boolean
 }
 
 /** Calls the API as the signed-in member by forwarding only the session cookie. */
@@ -304,4 +309,33 @@ export async function getLatestAppeal(): Promise<Appeal | null> {
   const res = await api('/v1/appeals/latest')
   if (!res.ok) return null
   return ((await res.json()) as { appeal: Appeal | null }).appeal
+}
+
+/** The signed-in member's own identity and voting-membership status (Settings). */
+export type GovernanceStatus = {
+  /** The member's own age band and how it is known. Never shown to anyone else. */
+  age: {
+    band: 'unknown' | 'under_18' | '18_plus'
+    assurance: 'none' | 'declared' | 'reviewed' | 'verified'
+    reviewDue: boolean
+  }
+  verification: {
+    status: 'none' | 'pending' | 'verified' | 'rejected' | 'expired' | 'revoked'
+    open: boolean
+    verifiedAt: string | null
+    expiresAt: string | null
+  }
+  badge: { shown: boolean }
+  membership: {
+    status: 'none' | 'pending' | 'active' | 'suspended' | 'resigned'
+    registrationOpen: boolean
+    eligible: boolean
+    unmet: string[]
+  }
+}
+
+export async function getGovernanceStatus(): Promise<GovernanceStatus | null> {
+  const res = await api('/v1/me/governance')
+  if (!res.ok) return null
+  return res.json()
 }

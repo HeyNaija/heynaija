@@ -8,8 +8,9 @@ explains the architecture and lists every known limitation.
 deployed yet. Everything needed to deploy is in `infra/deploy/` and `.github/workflows/`, with
 step-by-step guides in [docs/deployment/](docs/deployment/staging.md). What works:
 
-- **Accounts:** join with an invite code, sign up, confirm email, sign in and out,
-  recover an account (all handled by Ory Kratos).
+- **Accounts:** join with an invite code (18 and over during the beta, a
+  temporary rule; the API refuses a signup without the age confirmation), sign
+  up, confirm email, sign in and out, recover an account (all handled by Ory Kratos).
 - **Posting:** posts and expandable threaded replies with cursor pagination and
   up to four images each (with
   descriptions for screen readers, and a full-screen viewer), likes, private bookmarks.
@@ -22,9 +23,16 @@ step-by-step guides in [docs/deployment/](docs/deployment/staging.md). What work
 - **Safety:** report a post or account, a moderation queue (remove post, suspend
   account, dismiss), appeals from suspended members, a decision log, rate limits.
 - **Look:** light, dark and system themes; works down to phone width.
-- **Governance preview:** a public information page for upcoming community votes,
-  treasury transparency and decision history, with a Public Treasury spotlight.
-  Voting and treasury transactions are not live.
+- **Governance information:** `/governance` (founding-stage status, how members
+  would govern, the path to community ownership, empty states for votes, the
+  treasury and decisions), the draft constitution at `/governance/constitution`,
+  and explainers for voting membership and optional NIN verification. Settings
+  shows each member's own status. Identity verification, voting membership,
+  binding votes and the treasury are not live, and the API refuses to start with
+  them switched on ([ADR 0005](docs/adr/0005-governance-and-identity-groundwork.md),
+  [open items](docs/governance/open-items.md)). Age is its own status, separate
+  from accounts, identity and voting ([ADR 0006](docs/adr/0006-age-status-model.md));
+  what opening to under-18s requires is in [under-18-rollout.md](docs/governance/under-18-rollout.md).
 
 ## How it fits together
 

@@ -33,6 +33,7 @@ export async function signUp(page: Page, handle: string) {
  */
 export async function submitSignUp(page: Page, handle: string, email = `${handle}@${MARK.emailDomain}`) {
   await page.goto(`/join?code=${createInvite()}`)
+  await page.getByLabel('I am 18 or older').check()
   await page.getByRole('button', { name: 'Check invite code' }).click()
   await page.waitForURL(/\/signup/)
 

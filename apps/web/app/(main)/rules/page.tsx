@@ -10,7 +10,7 @@ export default function RulesPage() {
       eyebrow="How we treat each other"
       title="HeyNaija rules"
       summary="HeyNaija is for real conversations between Nigerians, at home and abroad. These rules apply everywhere on the site. Every post is public, so write as you would in a town square."
-      updated="15 October 2026"
+      updated="16 October 2026"
       sections={[
         {
           id: 'rules',
@@ -45,6 +45,29 @@ export default function RulesPage() {
                 checked against lists of known abuse material.
               </li>
             </ol>
+          ),
+        },
+        {
+          id: 'age',
+          title: 'Who can join',
+          body: (
+            <>
+              <p>
+                During the beta, HeyNaija is open to people aged <strong>18 or older</strong>, and you confirm your age
+                when you join. Nobody needs a NIN or any other identity check to have an account.
+              </p>
+              <p>
+                <strong>The 18+ rule is temporary, for the beta.</strong> HeyNaija intends to open accounts to younger
+                people later, but only once age checks, parental or guardian consent where the law requires it, and
+                child-safety protections have been approved and built. Even then, anything marked for adults would stay
+                hidden from under-18s, and voting in HeyNaija’s governance would stay 18+.
+              </p>
+              <p>
+                While the beta is 18+, if moderators have good reason to believe an account belongs to someone under 18,
+                they may suspend it. You can appeal that like any other suspension. Nobody will be asked to post identity
+                documents publicly to prove their age.
+              </p>
+            </>
           ),
         },
         {
@@ -102,6 +125,18 @@ export default function RulesPage() {
               should be looked at again, and a moderator will review it. Removed posts can be restored
               when a removal was a mistake. If you think a decision is unfair and an appeal did not help,
               write to <Placeholder>safety contact email</Placeholder>.
+            </p>
+          ),
+        },
+        {
+          id: 'governance',
+          title: 'Rules and community votes',
+          body: (
+            <p>
+              These rules apply today. The <Link href="/governance/constitution">draft constitution</Link>, which is not
+              in force, proposes that members could one day vote on how HeyNaija is run, but never on whether a
+              particular post is removed or a particular person is suspended. Those decisions stay with moderators,
+              under these rules, with appeals.
             </p>
           ),
         },

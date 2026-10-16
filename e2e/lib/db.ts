@@ -57,6 +57,12 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['invite redemptions', `delete from invite_redemptions where identity_id in (select id from e2e_m)
            or code_hash in (select code_hash from invites where note = $1)`],
         ['released handles', `delete from released_handles where member_id in (select id from e2e_m)`],
+        ['profile badges', `delete from profile_badges where member_id in (select id from e2e_m)`],
+        ['verifications', `delete from restricted.identity_verifications where member_id in (select id from e2e_m)
+           or reviewed_by in (select id from e2e_m)`],
+        ['voting memberships', `delete from restricted.governance_memberships where member_id in (select id from e2e_m)`],
+        ['age records', `delete from restricted.age_assurances where member_id in (select id from e2e_m)`],
+        ['governance audit', `delete from restricted.governance_audit_log where subject_id in (select id from e2e_m)`],
         ['members', `delete from members where id in (select id from e2e_m)`],
         ['invites', `delete from invites where note = $1`],
       ]

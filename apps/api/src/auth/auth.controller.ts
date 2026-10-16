@@ -21,6 +21,8 @@ import { z } from 'zod'
 import type { Env } from '../env.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
+import { signupAgeDecision } from '../governance/age.js'
+import { GovernanceService } from '../governance/governance.service.js'
 import { avatarPath } from '../media/media.service.js'
 import { MembersService } from '../members/members.service.js'
 import { NotificationsService } from '../notifications/notifications.service.js'
@@ -30,10 +32,13 @@ import { KratosService, SESSION_COOKIE } from './kratos.service.js'
 import { type AuthedRequest, SessionGuard } from './session.guard.js'
 
 // identity_id is all zeros in the first hook (the account is not saved yet).
+// adult_declared: the person ticked "I am 18 or older" on /join (the hn_age
+// cookie, read by infra/kratos/invite-check.jsonnet).
 const registrationHook = z.object({
   identity_id: z.guid(),
   invite_code: z.string().max(100),
   handle: z.string().max(100),
+  adult_declared: z.boolean().default(false),
 })
 // previous_handle is the member's handle until this save; the same as `handle`
 // when they changed something else.
@@ -80,6 +85,7 @@ export class AuthController {
     @Inject(DB) private readonly db: Db,
     @Inject(KratosService) private readonly kratos: KratosService,
     @Inject(MembersService) private readonly members: MembersService,
+    @Inject(GovernanceService) private readonly governance: GovernanceService,
   ) {}
 
   @Get('v1/me')
@@ -152,6 +158,11 @@ export class AuthController {
     if (await this.members.handleHeld(parsed.data.handle, null)) {
       throw rejectSignup('That handle is not available. Go back and choose another.')
     }
+    // During the beta, accounts are 18+ (a temporary rule; see signupAgeDecision).
+    // Checked here, not only on /join, so a signup that skips that page is refused too.
+    if (!signupAgeDecision(parsed.data.adult_declared ? 'adult' : null).allowed) {
+      throw rejectSignup('During the beta, HeyNaija is open to people aged 18 or older. Go back to your invite link and confirm your age to join.')
+    }
     return {}
   }
 
@@ -184,6 +195,7 @@ export class AuthController {
     // Losing a race for the last use leaves an account without membership; the
     // session guard refuses it. Kratos cannot undo the signup at this point.
     if (!redeemed) this.logger.warn(`signup without a redeemable invite: ${parsed.data?.identity_id}`)
+    if (redeemed && parsed.data.adult_declared) await this.governance.recordAgeDeclaration(parsed.data.identity_id)
     return { redeemed }
   }
 }

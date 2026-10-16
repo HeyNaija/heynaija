@@ -10,7 +10,7 @@ export default function PrivacyPage() {
       eyebrow="Your data"
       title="Privacy policy"
       summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, and how you get your data or have it deleted. No ads, no selling data, no trackers."
-      updated="15 October 2026"
+      updated="16 October 2026"
       sections={[
         {
           id: 'who',
@@ -35,9 +35,9 @@ export default function PrivacyPage() {
                 you have. Anyone can see and copy what is public.
               </p>
               <p>
-                <strong>Private:</strong> your email address, your bookmarks, who you mute and block, your
-                notifications, and the reports you make. Moderators see who made a report; the person
-                reported does not.
+                <strong>Private:</strong> your email address, your age confirmation, your bookmarks, who you mute
+                and block, your notifications, and the reports you make. Moderators see who made a report; the
+                person reported does not.
               </p>
             </>
           ),
@@ -49,6 +49,11 @@ export default function PrivacyPage() {
             <dl>
               <dt>Your account</dt>
               <dd>Your email address, handle, and the invite you joined with. If you sign in with Google, Google tells us your email address.</dd>
+              <dt>Your age confirmation</dt>
+              <dd>
+                That you confirmed you are 18 or older when you joined, and when, kept as an age band apart from your
+                account. We do not ask for your date of birth or any identity document.
+              </dd>
               <dt>Your profile</dt>
               <dd>Display name, bio and profile photo, when you add them.</dd>
               <dt>What you post</dt>
@@ -106,6 +111,7 @@ export default function PrivacyPage() {
             <ul>
               <li><code>hn_session</code>: keeps you signed in, for up to 14 days.</li>
               <li><code>hn_invite</code>: holds your invite code while you sign up, for up to an hour.</li>
+              <li><code>hn_age</code>: records that you confirmed you are 18 or older while you sign up, for up to an hour.</li>
               <li>A security cookie from our sign-in service, which stops other sites submitting forms as you.</li>
               <li>Your light or dark theme is saved in your browser, not sent to us.</li>
             </ul>
@@ -116,7 +122,7 @@ export default function PrivacyPage() {
           title: 'How long we keep it',
           body: (
             <ul>
-              <li>Your account and profile: for as long as you have an account.</li>
+              <li>Your account, profile and age confirmation: for as long as you have an account.</li>
               <li>
                 Posts you delete leave every page at once, but the record is kept for{' '}
                 <Placeholder>period</Placeholder> so moderation decisions can be checked.
@@ -154,12 +160,61 @@ export default function PrivacyPage() {
           ),
         },
         {
+          id: 'identity',
+          title: 'Identity verification (not active)',
+          body: (
+            <>
+              <p>
+                <strong>HeyNaija does not collect NINs, NIN slips, photos of identity documents or dates of birth, and
+                identity verification is switched off.</strong> Nothing on the site asks for them.
+              </p>
+              <p>
+                The <Link href="/governance/constitution#article-4">draft constitution</Link> proposes optional NIN
+                verification through an authorised NINAuth provider, for people who want a green identity tick or to
+                become voting members. It would be opt-in, and HeyNaija would keep only the result: the status, its
+                dates, an over-18 result where the provider may share one, and a private key that stops one person
+                holding two voting memberships. Never the NIN itself. <Link href="/governance/verification">How it would
+                work</Link>.
+              </p>
+              <p>Before it could start, all of these must be done, and this section rewritten to match:</p>
+              <ul>
+                <li>
+                  <strong>A privacy impact review:</strong> a data protection impact assessment of identity processing,
+                  reviewed by Nigerian privacy counsel.
+                </li>
+                <li>The provider authorised, with its data-sharing terms and any transfers outside Nigeria confirmed.</li>
+                <li>
+                  The lawful basis, exactly what is collected, and how long it is kept:{' '}
+                  <Placeholder>retention period for verification results, set after the privacy impact review</Placeholder>.
+                </li>
+                <li>A security review of the integration.</li>
+              </ul>
+            </>
+          ),
+        },
+        {
           id: 'age',
           title: 'Age',
           body: (
-            <p>
-              You must be at least <Placeholder>minimum age</Placeholder> to use HeyNaija.
-            </p>
+            <>
+              <p>
+                During the invite-only beta, accounts are for people aged <strong>18 or older</strong>. When you join,
+                you confirm that you are; accounts for anyone younger are not allowed yet. See the{' '}
+                <Link href="/rules#age">rules</Link> for what happens if an account seems to belong to someone under 18.
+              </p>
+              <p>
+                This is a temporary restriction for the beta, not a permanent one. If accounts open to younger people
+                later, this policy will first say how ages are checked, what parental or guardian consent the law
+                requires and how it is given, what is collected from a parent or guardian, and how children’s data is
+                protected.
+              </p>
+              <p>
+                We keep your age apart from your account, from identity verification and from voting membership: an age
+                band (under 18, or 18 or older), how it was established (you said so, or a check confirmed it), and when.
+                Never your date of birth. Accounts made before 16 October 2026 have no age on record and are not treated
+                as confirmed adults. Your age is never shown on your profile.
+              </p>
+            </>
           ),
         },
         {

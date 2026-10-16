@@ -13,7 +13,11 @@ export function PolicyPage({
   title,
   summary,
   updated,
+  version,
   draft = true,
+  notice,
+  header,
+  numbered = true,
   sections,
 }: {
   eyebrow: string
@@ -21,7 +25,15 @@ export function PolicyPage({
   summary: ReactNode
   /** Shown as "Last updated", e.g. "15 October 2026". */
   updated: string
+  /** Shown before the date, e.g. "Draft v0.2". */
+  version?: string
   draft?: boolean
+  /** Replaces the standard draft notice, for documents with a status of their own. */
+  notice?: ReactNode
+  /** Extra content at the end of the header, such as section navigation. */
+  header?: ReactNode
+  /** Number the contents list; off when the section titles carry their own numbers. */
+  numbered?: boolean
   sections: PolicySection[]
 }) {
   return (
@@ -30,21 +42,24 @@ export function PolicyPage({
         <p className="page-eyebrow">{eyebrow}</p>
         <h1 className="page-title">{title}</h1>
         <p className="policy-summary">{summary}</p>
-        <p className="policy-updated">Last updated {updated}</p>
+        <p className="policy-updated">
+          {version ? <>{version} · </> : null}Last updated {updated}
+        </p>
+        {header}
       </header>
 
-      {draft ? (
+      {notice ?? (draft ? (
         <p className="notice policy-draft" role="note">
           <strong>Draft.</strong> Published for the invite-only pilot so you can see how HeyNaija works. It
           has not been reviewed by a lawyer yet and may change; changes will be announced on the{' '}
           <Link href="/governance" className="font-semibold underline">governance page</Link>. Text in{' '}
           <Placeholder>brackets</Placeholder> is still to be filled in.
         </p>
-      ) : null}
+      ) : null)}
 
       <nav aria-label="On this page" className="policy-contents">
         <p className="policy-contents-title">On this page</p>
-        <ol>
+        <ol className={numbered ? undefined : 'is-plain'}>
           {sections.map((s) => (
             <li key={s.id}>
               <a href={`#${s.id}`}>{s.title}</a>
@@ -75,14 +90,16 @@ export function Placeholder({ children }: { children: ReactNode }) {
   return <mark className="policy-placeholder">[{children}]</mark>
 }
 
-/** The four documents, for footers and the governance page. */
+/** The governance documents, for footers. */
 export function PolicyLinks({ className = 'policy-links' }: { className?: string }) {
   return (
     <ul className={className}>
       <li><Link href="/rules">Rules</Link></li>
       <li><Link href="/privacy">Privacy</Link></li>
       <li><Link href="/charter">Charter</Link></li>
+      <li><Link href="/governance/constitution">Draft constitution</Link></li>
       <li><Link href="/licence">Licence</Link></li>
+      <li><Link href="/governance">Governance</Link></li>
     </ul>
   )
 }

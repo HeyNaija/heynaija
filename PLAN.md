@@ -125,12 +125,14 @@ Browser ──> Next.js web app
 
 ### Accounts and onboarding
 - [x] Invite-only signup with shareable invite links (`/join?code=…`)
+- [x] 18+ during the beta (temporary): "I am 18 or older" on `/join`, refused by the API's registration webhook without it; stored as a stated age band only (16 October 2026, ADRs 0005 and 0006)
+- [ ] Accounts for people under 18, with age assurance, parental or guardian consent where required, adult-content restriction and contact limits: [docs/governance/under-18-rollout.md](docs/governance/under-18-rollout.md)
 - [x] No passwords: sign up and sign in with a code emailed to you, or with Google
       (ADR 0003); sign out; change email or handle; connect or disconnect Google
 - [x] Profile photo (upload, replace, remove)
 - [x] Display name (50 characters) and short bio (160), searchable by name
 - [ ] Onboarding: pick interests and communities, suggested people
-- [x] Data export ("download my data"): Settings → Your data, one JSON file (15 October 2026)
+- [x] Data export ("download my data"): Settings → Your data, one JSON file (15 October 2026; format 2 adds age confirmation and verification status, 16 October)
 
 ### Social
 - [x] Text posts (300 characters), threaded replies, likes, private bookmarks
@@ -162,6 +164,9 @@ Browser ──> Next.js web app
 
 ### Open governance
 - [x] Governance information page and Public Treasury preview, clearly marked coming soon
+- [x] Governance overview rebuilt from draft constitution v0.2 (16 October 2026): founding-stage notice, participation types, proposed structure and thresholds, ownership milestones with truthful statuses, empty states. `/governance/constitution`, `/governance/membership`, `/governance/verification`; Settings shows each member's status
+- [ ] Optional NIN verification (NINAuth) and voting membership: data model, rules and tests built behind switches the API refuses to turn on; verification, opt-in and ballots wait for the approvals in [docs/governance/open-items.md](docs/governance/open-items.md)
+- [ ] A working feedback channel for the governance drafts
 - [ ] Licence, charter, policies, roadmap, published source. Draft pages live at /rules, /privacy, /charter and /licence (15 October 2026), marked as drafts with placeholders for the operator's details; licence chosen: AGPL-3.0-or-later. Still to do: legal review, the `LICENSE` file, filling in the placeholders, publishing the source
 - [ ] Disclosure of the provisional custodians and the plan for community ownership (the charter sets out the plan; the custodians' names are a placeholder)
 - [ ] Community voting and treasury records (information pages are built; voting and transactions are not live)
@@ -192,6 +197,8 @@ All tables are in `packages/db/src/schema.ts`; migrations in `packages/db/drizzl
 | `reports`, `moderation_actions` | Reports and appeals; the append-only decision log |
 | `notifications` | One row per event for a member: kind, actor, post, read time. What still shows is decided on read |
 | `media` | Uploaded files: owner, kind, status, type, size, dimensions; for post images also the post, position and description |
+| `profile_badges` | Public badges (the green identity tick); a row only while it may be shown and its owner chose to show it |
+| `restricted.*` | Kept apart from ordinary reads (ADR 0005): `age_assurances` (age-band statements and how each was made; ADR 0006), `identity_verifications`, `governance_memberships`, `governance_audit_log` |
 
 Counts (likes, replies, followers) are computed on read. Fine at pilot scale;
 revisit with measurements.

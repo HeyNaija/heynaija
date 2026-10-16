@@ -4,7 +4,7 @@ import { refresh } from 'next/cache'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { api } from '@/lib/api'
-import { INVITE_COOKIE } from '@/lib/invite'
+import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
 import { startFlowUrl } from '@/lib/kratos'
 import type { ThreadRow } from '@/lib/thread-state'
 
@@ -307,30 +307,39 @@ export async function setFollow(formData: FormData): Promise<void> {
   refresh()
 }
 
-export type JoinState = { error?: string; code?: string; next?: string }
+export type JoinState = { error?: string; ageError?: string; code?: string; adult?: boolean; next?: string }
 
 export async function acceptInvite(_prev: JoinState, formData: FormData): Promise<JoinState> {
   const typed = String(formData.get('code') ?? '').slice(0, 40)
   // Letters and digits only: this value goes into a cookie that Kratos reads raw.
   const code = typed.toUpperCase().replace(/[^0-9A-Z]/g, '')
+  // Accounts are 18+ during the beta (a temporary rule). The API's registration
+  // webhook checks this again.
+  const adult = formData.get('adult') === 'yes'
+  if (!adult) {
+    return { code: typed, adult, ageError: 'During the beta, HeyNaija is open to people aged 18 or older. Confirm your age to continue.' }
+  }
 
   const res = await api('/v1/invites/check', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ code }),
   })
-  if (!res.ok) return { code: typed, error: 'Could not check that code. Try again in a moment.' }
+  if (!res.ok) return { code: typed, adult, error: 'Could not check that code. Try again in a moment.' }
   if (!((await res.json()) as { usable: boolean }).usable) {
-    return { code: typed, error: 'That code is not valid. Check it, or ask whoever invited you for a new one.' }
+    return { code: typed, adult, error: 'That code is not valid. Check it, or ask whoever invited you for a new one.' }
   }
 
-  ;(await cookies()).set(INVITE_COOKIE, code, {
+  const jar = await cookies()
+  const options = {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
     maxAge: 60 * 60,
-  })
+  } as const
+  jar.set(INVITE_COOKIE, code, options)
+  jar.set(AGE_COOKIE, AGE_COOKIE_VALUE, options)
   // Not redirect(): for a server action Next renders the redirect target on the
   // server, so Kratos's anti-CSRF cookie never reaches the browser and /signup is
   // rendered without the invite cookie, which sends the visitor back to /join.

@@ -9,6 +9,8 @@ import { CommunitiesService } from './communities/communities.service.js'
 import { type Env, loadEnv } from './env.js'
 import { ExportController } from './export/export.controller.js'
 import { ExportService } from './export/export.service.js'
+import { GovernanceController } from './governance/governance.controller.js'
+import { GovernanceService } from './governance/governance.service.js'
 import { InvitesService } from './invites/invites.service.js'
 import { MediaController, PostImagesController } from './media/media.controller.js'
 import { BullMediaJobs, MediaWorker } from './media/media-queue.js'
@@ -36,7 +38,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, ExportController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, ExportController, GovernanceController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -59,6 +61,7 @@ class HealthController {
     PostsService,
     NotificationsService,
     ExportService,
+    GovernanceService,
   ],
 })
 export class AppModule {}

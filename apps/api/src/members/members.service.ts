@@ -2,10 +2,11 @@ import { blocks, type Db, follows, members, mutes, releasedHandles } from '@heyn
 import { Inject, Injectable } from '@nestjs/common'
 import { and, asc, eq, ilike, like, ne, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
+import type { Env } from '../env.js'
 import { avatarPath } from '../media/media.service.js'
 import { notify } from '../notifications/notifications.service.js'
 import { cleanLine, cleanLines, graphemes } from '../text.js'
-import { DB } from '../tokens.js'
+import { DB, ENV } from '../tokens.js'
 
 export const DISPLAY_NAME_MAX = 50
 export const BIO_MAX = 160
@@ -44,6 +45,8 @@ export type Profile = {
   viewerFollows: boolean
   viewerBlocks: boolean
   viewerMutes: boolean
+  /** Whether to show the green "NIN identity verified" tick. */
+  identityBadge: boolean
 }
 
 export class CannotFollowSelfError extends Error {}
@@ -54,7 +57,11 @@ const outerId = sql`"members"."id"`
 
 @Injectable()
 export class MembersService {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    // Tests that never touch badges may leave this out: badges then stay hidden.
+    @Inject(ENV) private readonly env: Pick<Env, 'NIN_VERIFICATION_ENABLED'> = { NIN_VERIFICATION_ENABLED: false },
+  ) {}
 
   /** Active members only: a suspended member's profile is not found. */
   private async idForHandle(handle: string): Promise<string | null> {
@@ -97,6 +104,12 @@ export class MembersService {
           : sql<boolean>`false`,
         blockedByThem: viewerId
           ? sql<boolean>`exists(select 1 from blocks b where b.blocker_id = ${outerId} and b.blocked_id = ${viewerId})`
+          : sql<boolean>`false`,
+        // The green identity tick: only from a profile_badges row, which
+        // GovernanceService writes for a reviewed, current verification the
+        // member chose to show, and never while verification is switched off.
+        identityBadge: this.env.NIN_VERIFICATION_ENABLED
+          ? sql<boolean>`exists(select 1 from profile_badges pb where pb.member_id = ${outerId} and pb.kind = 'nin_identity_verified' and (pb.expires_at is null or pb.expires_at > now()))`
           : sql<boolean>`false`,
       })
       .from(members)
