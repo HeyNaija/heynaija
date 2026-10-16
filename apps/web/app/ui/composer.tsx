@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useId, useRef, useState } from 'react'
+import { type ReactNode, useActionState, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { Globe } from 'lucide-react'
@@ -26,6 +26,8 @@ type Props = {
   community?: string
   /** Or let the member choose among the communities they have joined. */
   choices?: { slug: string; name: string }[]
+  /** Makes this a quote post of that post, shown under the box as `preview`. */
+  quote?: { id: string; preview: ReactNode }
   submitAction?: (previous: ComposeState, data: FormData) => Promise<ComposeState>
   onPosted?: (state: ComposeState) => void
   onPendingChange?: (pending: boolean) => void
@@ -34,7 +36,7 @@ type Props = {
   focusRequest?: number
 }
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, placeholder, community, choices, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0 }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, placeholder, community, choices, quote, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0 }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -49,7 +51,8 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
   const picker = useRef<HTMLInputElement>(null)
   const form = useRef<HTMLFormElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
-  const active = expanded || text.length > 0 || images.drafts.length > 0
+  // A quote keeps the box open: the post being quoted is shown under it.
+  const active = expanded || text.length > 0 || images.drafts.length > 0 || !!quote
 
   // Arriving through a "Reply" or "New post" link (…#compose) puts the cursor in the box.
   useEffect(() => {
@@ -93,6 +96,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
       {replyDepth ? <input type="hidden" name="threadDepth" value={replyDepth} /> : null}
       {replyHandle ? <input type="hidden" name="replyHandle" value={replyHandle} /> : null}
       {community ? <input type="hidden" name="community" value={community} /> : null}
+      {quote ? <input type="hidden" name="quote" value={quote.id} /> : null}
 
       {replyTo && replyHandle ? (
         <p id={recipientId} className="composer-recipient">Replying to <strong>@{replyHandle}</strong></p>
@@ -149,6 +153,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
               ))}
             </ul>
           ) : null}
+          {quote ? <div className="composer-quote">{quote.preview}</div> : null}
         </div>
       </div>
       <div className="composer-toolbar">

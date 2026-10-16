@@ -6,13 +6,15 @@ import { excerpt } from '@/lib/previews'
 import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
 import type { FeedSource } from './feed-source'
-import { BookmarkIcon, BubbleIcon, DotsIcon, HeartIcon } from './icons'
+import { BookmarkIcon, BubbleIcon, DotsIcon, HeartIcon, RepostIcon } from './icons'
 import { LikeButton } from './like-button'
 import { Menu } from './menu'
 import { MorePosts } from './more-posts'
 import { ComposeLink } from './new-post-link'
 import { PostImages } from './post-images'
 import { PostPermalink } from './post-permalink'
+import { QuotedPostCard } from './quoted-post'
+import { RepostButton } from './repost-button'
 import { ShareButton } from './share-button'
 import { SubmitButton } from './submit-button'
 import { timeAgo } from './time'
@@ -52,13 +54,29 @@ export function PostItem({
   const href = `/p/${post.id}`
   const likes = post.likeCount === 1 ? '1 like' : `${post.likeCount} likes`
   const replies = post.replyCount === 1 ? '1 reply' : `${post.replyCount} replies`
+  const reposts = post.repostCount === 1 ? '1 repost' : `${post.repostCount} reposts`
   const community = post.community ? (
     <Link prefetch={false} href={`/c/${post.community.slug}`} className="font-semibold text-accent-strong hover:underline">
       {post.community.name}
     </Link>
   ) : null
+  const reposter = post.reason === 'repost' ? post.repostedBy : null
   const why =
-    post.reason === 'following' ? (
+    reposter ? (
+      <span className="inline-flex items-center gap-1.5">
+        <RepostIcon size={13} />
+        {reposter.id === viewerId ? (
+          'You reposted'
+        ) : (
+          <span>
+            <Link prefetch={false} href={`/u/${reposter.handle}`} className="font-semibold text-accent-strong hover:underline">
+              @{reposter.handle}
+            </Link>{' '}
+            reposted
+          </span>
+        )}
+      </span>
+    ) : post.reason === 'following' ? (
       <>You follow @{post.authorHandle}</>
     ) : post.reason === 'community' && community ? (
       <>From {community}, which you joined</>
@@ -66,7 +84,7 @@ export function PostItem({
       <>Posted in {community}</>
     ) : null
   // The reason line already links the community when it names it; a chip would say it twice.
-  const showChip = post.community && !hideCommunity && !(why && post.reason !== 'following')
+  const showChip = post.community && !hideCommunity && !(why && post.reason !== 'following' && !reposter)
 
   return (
     <article id={`post-${post.id}`} className={`post-card ${focused ? 'is-focused' : 'is-clickable'}`}>
@@ -156,12 +174,27 @@ export function PostItem({
           <PostImages images={post.images} />
         </div>
       ) : null}
+      {post.quote ? (
+        <div className="mt-3">
+          <QuotedPostCard quote={post.quote} now={now} />
+        </div>
+      ) : null}
 
       <div className="post-actions">
         {replyAction ?? <ComposeLink href={`${href}#compose`} prefetch={false} className="icon-btn" label={`Reply (${replies})`}>
           <BubbleIcon size={18} />
           <span className="tabular-nums">{post.replyCount}</span>
         </ComposeLink>}
+
+        {viewerId ? (
+          <RepostButton id={post.id} reposted={post.viewerReposted} count={post.repostCount} />
+        ) : (
+          <span className="icon-btn pointer-events-none">
+            <RepostIcon size={18} />
+            <span aria-hidden="true" className="tabular-nums">{post.repostCount}</span>
+            <span className="sr-only">{reposts}</span>
+          </span>
+        )}
 
         {viewerId ? (
           <LikeButton id={post.id} liked={post.viewerLiked} count={post.likeCount} />

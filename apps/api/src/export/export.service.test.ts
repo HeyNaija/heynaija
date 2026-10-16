@@ -34,6 +34,8 @@ test('an export holds what the member made and chose, by handle', async () => {
   await postsService.remove(ada, gone.id)
   const theirs = await postsService.create(bayo, 'by bayo')
   await postsService.like(ada, theirs.id)
+  await postsService.repost(ada, theirs.id)
+  const quote = await postsService.create(ada, 'quoting bayo', { quote: theirs.id })
   await postsService.bookmark(ada, theirs.id)
   await membersService.follow(ada, 'bayo')
   await membersService.follow(chi, 'ada')
@@ -48,13 +50,15 @@ test('an export holds what the member made and chose, by handle', async () => {
   )
   // Deleted posts are still held, so they are in the export, marked as deleted.
   assert.deepEqual(
-    data.posts.map((p) => [p.id, p.text, p.deletedAt !== null]),
+    data.posts.map((p) => [p.id, p.text, p.deletedAt !== null, p.quoteOf]),
     [
-      [kept.id, 'kept', false],
-      [gone.id, 'deleted later', true],
+      [kept.id, 'kept', false, null],
+      [gone.id, 'deleted later', true, null],
+      [quote.id, 'quoting bayo', false, theirs.id],
     ],
   )
   assert.deepEqual(data.likes.map((l) => l.postId), [theirs.id])
+  assert.deepEqual(data.reposts.map((r) => r.postId), [theirs.id])
   assert.deepEqual(data.bookmarks.map((b) => b.postId), [theirs.id])
   assert.deepEqual(data.following.map((f) => f.handle), ['bayo'])
   assert.deepEqual(data.followers.map((f) => f.handle), ['chi'])

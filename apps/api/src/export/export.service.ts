@@ -16,6 +16,7 @@ import {
   notifications,
   posts,
   reports,
+  reposts,
 } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
 import { aliasedTable, and, asc, eq, isNotNull, or } from 'drizzle-orm'
@@ -23,7 +24,7 @@ import { avatarPath, postImagePath } from '../media/media.service.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/2'
+export const EXPORT_FORMAT = 'heynaija-export/3'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -47,6 +48,7 @@ export class ExportService {
       ownPosts,
       images,
       liked,
+      reposted,
       saved,
       following,
       followers,
@@ -66,6 +68,7 @@ export class ExportService {
           text: posts.text,
           createdAt: posts.createdAt,
           replyTo: posts.replyParentId,
+          quoteOf: posts.quotePostId,
           community: communities.slug,
           deletedAt: posts.deletedAt,
           removedByModeratorAt: posts.removedAt,
@@ -80,6 +83,7 @@ export class ExportService {
         .where(and(eq(media.ownerId, memberId), eq(media.kind, 'post_image'), isNotNull(media.postId)))
         .orderBy(asc(media.position)),
       db.select({ postId: likes.postId, at: likes.createdAt }).from(likes).where(eq(likes.memberId, memberId)).orderBy(asc(likes.createdAt)),
+      db.select({ postId: reposts.postId, at: reposts.createdAt }).from(reposts).where(eq(reposts.memberId, memberId)).orderBy(asc(reposts.createdAt)),
       db.select({ postId: bookmarks.postId, at: bookmarks.createdAt }).from(bookmarks).where(eq(bookmarks.memberId, memberId)).orderBy(asc(bookmarks.createdAt)),
       db
         .select({ handle: other.handle, since: follows.createdAt })
@@ -207,6 +211,7 @@ export class ExportService {
       votingMembership: membership ?? null,
       posts: ownPosts.map((p) => ({ ...p, images: imagesByPost.get(p.id) ?? [] })),
       likes: liked,
+      reposts: reposted,
       bookmarks: saved,
       following,
       followers,

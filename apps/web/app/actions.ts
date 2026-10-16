@@ -22,6 +22,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   const text = String(formData.get('text') ?? '')
   const replyTo = String(formData.get('replyTo') ?? '') || undefined
   const community = String(formData.get('community') ?? '') || undefined
+  const quote = String(formData.get('quote') ?? '') || undefined
   // Each attached image is an `image` field naming the upload, with its description in `alt-<id>`.
   const images = formData
     .getAll('image')
@@ -31,7 +32,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   const res = await api('/v1/posts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, replyTo, community, images }),
+    body: JSON.stringify({ text, replyTo, community, images, quote }),
   }).catch(() => null)
 
   if (!res) return { error: 'Could not post. Check your connection and try again.' }
@@ -41,6 +42,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   if (res.status === 400) {
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     if (body.code === 'parent_gone') return { error: 'The post you are replying to has been deleted.' }
+    if (body.code === 'quote_gone') return { error: 'The post you are quoting is no longer available.' }
     if (body.code === 'not_a_member') return { error: 'Join that community to post in it.' }
     if (body.code === 'community_gone') return { error: 'That community is no longer available.' }
     if (body.code === 'images_not_ready') {
@@ -54,6 +56,13 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   const result = await res.json() as { id: string }
   if (refreshPage) refresh()
   return { postedAt: Date.now(), postId: result.id }
+}
+
+/** Posts a quote post, then opens it, so the member sees it with the post it quotes. */
+export async function createQuote(prev: ComposeState, formData: FormData): Promise<ComposeState> {
+  const state = await createPost(prev, formData, false)
+  if (state.postId) redirect(`/p/${encodeURIComponent(state.postId)}`)
+  return state
 }
 
 /** `upTo` is the newest notification the member has seen. */
@@ -89,6 +98,23 @@ export async function setLike(formData: FormData): Promise<void> {
 export async function toggleLike(id: string, on: boolean): Promise<{ ok: boolean }> {
   if (typeof id !== 'string' || id.length > 64) return { ok: false }
   const res = await api(`/v1/posts/${encodeURIComponent(id)}/like`, { method: on ? 'PUT' : 'DELETE' })
+  if (res.status === 401) redirect('/login')
+  return { ok: res.ok }
+}
+
+/** The no-JavaScript repost form. `on` is the state the member wants, as for likes. */
+export async function setRepost(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '')
+  const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/repost`, { method })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+/** The repost control when JavaScript runs: it already shows the change, as toggleLike does. */
+export async function toggleRepost(id: string, on: boolean): Promise<{ ok: boolean }> {
+  if (typeof id !== 'string' || id.length > 64) return { ok: false }
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/repost`, { method: on ? 'PUT' : 'DELETE' })
   if (res.status === 401) redirect('/login')
   return { ok: res.ok }
 }

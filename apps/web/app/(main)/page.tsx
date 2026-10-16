@@ -94,7 +94,7 @@ async function Home({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
               : following
                 ? {
                     title: 'Your Following feed is empty',
-                    detail: 'Follow a few people or join a community, and their posts will show up here.',
+                    detail: 'Follow a few people or join a community, and their posts and reposts will show up here.',
                     action: (
                       <Link href="/c" className="btn btn-secondary">
                         Browse communities

@@ -31,6 +31,7 @@ import {
   ParentNotFoundError,
   newPost,
   PostsService,
+  QuotedPostNotFoundError,
 } from './posts.service.js'
 import { replyPageQuery } from './reply-cursor.js'
 
@@ -105,15 +106,17 @@ export class PostsController {
   @Post('posts')
   @UseGuards(SessionGuard)
   async create(@Req() req: AuthedRequest, @Body() body: unknown) {
-    const { text, replyTo, community, images } = parse(createPostBody, body)
+    const { text, replyTo, community, images, quote } = parse(createPostBody, body)
     this.limits.hit('post', req.member.id)
     try {
-      return await this.posts.create(req.member.id, text, { replyTo, communitySlug: community, images })
+      return await this.posts.create(req.member.id, text, { replyTo, communitySlug: community, images, quote })
     } catch (err) {
       const code =
         err instanceof ParentNotFoundError
           ? 'parent_gone'
-          : err instanceof CommunityNotFoundError
+          : err instanceof QuotedPostNotFoundError
+            ? 'quote_gone'
+            : err instanceof CommunityNotFoundError
             ? 'community_gone'
             : err instanceof NotACommunityMemberError
               ? 'not_a_member'
@@ -147,6 +150,21 @@ export class PostsController {
   @UseGuards(SessionGuard)
   async unlike(@Req() req: AuthedRequest, @Param('id') id: string) {
     await this.posts.unlike(req.member.id, postId(id))
+  }
+
+  @Put('posts/:id/repost')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async repost(@Req() req: AuthedRequest, @Param('id') id: string) {
+    this.limits.hit('action', req.member.id)
+    if (!(await this.posts.repost(req.member.id, postId(id)))) throw new NotFoundException()
+  }
+
+  @Delete('posts/:id/repost')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async unrepost(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await this.posts.unrepost(req.member.id, postId(id))
   }
 
   @Put('posts/:id/bookmark')

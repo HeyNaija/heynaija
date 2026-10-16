@@ -24,6 +24,8 @@ import {
   type LucideIcon,
   MessageCircle,
   Plus,
+  Quote,
+  Repeat2,
   Search,
   Settings,
   Share2,
@@ -61,6 +63,8 @@ export const SearchIcon = icon(Search)
 export const HeartIcon = icon(Heart)
 export const BubbleIcon = icon(MessageCircle)
 export const ShareIcon = icon(Share2)
+export const RepostIcon = icon(Repeat2)
+export const QuoteIcon = icon(Quote)
 export const CheckIcon = icon(Check)
 export const PlusIcon = icon(Plus)
 export const UserIcon = icon(User)

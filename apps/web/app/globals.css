@@ -1087,6 +1087,19 @@ summary.menu::-webkit-details-marker {
 .share { position: relative; z-index: 2; display: inline-flex; }
 .share-status { position: absolute; right: 0; bottom: calc(100% + 4px); border-radius: var(--r-chip); background: var(--ink); padding: 4px 8px; color: var(--surface); font-size: 11px; font-weight: 500; white-space: nowrap; pointer-events: none; }
 .share-status:empty { padding: 0; }
+/* Repost sits near the card's left edge, so its menu opens rightwards, inside the card. */
+.repost-menu .menu-panel { left: -8px; right: auto; }
+.icon-btn.is-reposted { color: var(--accent-strong); }
+/* The post a quote post quotes: one quiet link to it, inside the quoting post. */
+.quoted-post { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--line); border-radius: var(--r-panel); padding: 12px 14px; transition: border-color 0.15s, background-color 0.15s; }
+a.quoted-post:hover { border-color: var(--line-strong); background: var(--panel); }
+.quoted-post.is-unavailable { background: var(--panel); color: var(--muted); font-size: 13px; font-style: italic; }
+.quoted-post-meta { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 11px; line-height: 18px; }
+.quoted-post-note { color: var(--muted); font-size: 11px; }
+.quoted-post-text { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 6; font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.quoted-post-images { display: grid; height: 120px; grid-auto-columns: 1fr; grid-auto-flow: column; gap: 2px; overflow: hidden; border-radius: var(--r-control); background: var(--line); }
+.quoted-post-images img { width: 100%; height: 100%; object-fit: cover; }
+.composer-quote { margin-top: 12px; }
 .post-body { font-size: 14px; line-height: 1.8; }
 ol.post-list { margin-inline: 0; }
 ol.post-list .post-card { padding-inline: 18px; }
@@ -1165,6 +1178,8 @@ a.notification-row:hover {
 }
 .notification-icon.is-like,
 .notification-icon.is-reply,
+.notification-icon.is-repost,
+.notification-icon.is-quote,
 .notification-icon.is-follow {
   color: var(--accent-strong);
 }

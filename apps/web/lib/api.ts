@@ -24,6 +24,22 @@ export type Me = {
 /** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
 export type PostImage = { src: string; alt: string; width: number; height: number }
 
+/** The post a quote post quotes, or a placeholder when the reader cannot see it. */
+export type QuotedPost =
+  | {
+      unavailable?: false
+      id: string
+      authorId: string
+      authorHandle: string
+      authorName: string | null
+      authorAvatar: string | null
+      text: string
+      images: PostImage[]
+      createdAt: string
+      replyParentId: string | null
+    }
+  | { unavailable: true }
+
 export type Post = {
   unavailable?: false
   id: string
@@ -38,14 +54,20 @@ export type Post = {
   replyParentId: string | null
   likeCount: number
   replyCount: number
+  repostCount: number
   /** Thread pages also expose structural continuation through deleted intermediate rows. */
   hasReplies?: boolean
   viewerLiked: boolean
+  viewerReposted: boolean
   viewerBookmarked: boolean
   deleted: boolean
   community: { slug: string; name: string } | null
-  /** Why the post is in the Following feed; null elsewhere. */
-  reason: 'own' | 'following' | 'community' | null
+  /** A quote post's quoted post; null for other posts. */
+  quote: QuotedPost | null
+  /** Why the post is in the Following feed, or 'repost' on a profile; null elsewhere. */
+  reason: 'own' | 'following' | 'community' | 'repost' | null
+  /** Who reposted it, when `reason` is 'repost'. */
+  repostedBy: { id: string; handle: string; displayName: string | null } | null
 }
 
 export type Feed = { posts: Post[]; cursor: string | null }
@@ -271,6 +293,8 @@ export async function getModeration(): Promise<{ queue: QueueItem[]; log: LogEnt
 export type NotificationKind =
   | 'reply'
   | 'like'
+  | 'repost'
+  | 'quote'
   | 'follow'
   | 'post_removed'
   | 'post_restored'

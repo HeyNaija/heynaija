@@ -132,6 +132,10 @@ export const posts = pgTable(
     text: text('text').notNull(),
     replyParentId: uuid('reply_parent_id'),
     rootId: uuid('root_id'),
+    // A quote post: an ordinary post with its own text that embeds another post.
+    // No foreign key, like reply_parent_id: a quoted post that is gone, or that the
+    // reader may not see, is shown as a placeholder.
+    quotePostId: uuid('quote_post_id'),
     // At most one community per post. Replies inherit their parent's.
     communityId: uuid('community_id').references(() => communities.id),
     createdAt: ts('created_at').notNull().defaultNow(),
@@ -144,6 +148,9 @@ export const posts = pgTable(
     // transaction as the like, reply, deletion or suspension that changes them.
     likeCount: integer('like_count').notNull().default(0),
     replyCount: integer('reply_count').notNull().default(0),
+    // Reposts by active members, kept the same way (migration 0015). Quotes are
+    // posts of their own and are not counted here.
+    repostCount: integer('repost_count').notNull().default(0),
   },
   (t) => [
     index('posts_created_idx').on(t.createdAt, t.id),
@@ -151,6 +158,7 @@ export const posts = pgTable(
     index('posts_reply_parent_idx').on(t.replyParentId),
     index('posts_reply_parent_created_idx').on(t.replyParentId, t.createdAt, t.id),
     index('posts_community_created_idx').on(t.communityId, t.createdAt),
+    index('posts_quote_idx').on(t.quotePostId).where(sql`quote_post_id is not null`),
     // Full-text search. 'simple' (no stemming) suits mixed English, Pidgin and names.
     index('posts_text_search_idx').using('gin', sql`to_tsvector('simple', ${t.text})`),
   ],
@@ -168,6 +176,28 @@ export const likes = pgTable(
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.postId, t.memberId] }), index('likes_member_idx').on(t.memberId)],
+)
+
+// Sharing someone's post, as it is, with the people who follow you. It shows in
+// their Following feed and on your profile at the time you reposted it; whether
+// it still shows (the post deleted, either member blocked or muted) is decided
+// when it is read.
+export const reposts = pgTable(
+  'reposts',
+  {
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => posts.id),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.memberId, t.postId] }),
+    index('reposts_post_idx').on(t.postId),
+    index('reposts_member_created_idx').on(t.memberId, t.createdAt),
+  ],
 )
 
 // Private to the member: nobody else can see what you saved.
@@ -291,6 +321,8 @@ export const moderationActions = pgTable(
 export const NOTIFICATION_KINDS = [
   'reply',
   'like',
+  'repost',
+  'quote',
   'follow',
   'post_removed',
   'post_restored',
@@ -302,7 +334,7 @@ export const NOTIFICATION_KINDS = [
   'moderator_revoked',
 ] as const
 
-// Something that happened to a member: a reply, like or follow by someone else,
+// Something that happened to a member: a reply, like, repost, quote or follow by someone else,
 // or a moderation decision about their post, account or report. Rows are written
 // when it happens; whether one is still shown (the actor blocked, the post
 // deleted, the like taken back) is decided when it is read.
@@ -316,7 +348,8 @@ export const notifications = pgTable(
     kind: text('kind', { enum: NOTIFICATION_KINDS }).notNull(),
     // Who did it. Null for moderation decisions, which come from "the moderators".
     actorId: uuid('actor_id').references(() => members.id),
-    // reply: the reply. like: the liked post. Moderation: the post decided on.
+    // reply: the reply. like, repost: the post liked or reposted. quote: the quote
+    // post (not the post it quotes). Moderation: the post decided on.
     postId: uuid('post_id').references(() => posts.id),
     // report_resolved about an account: that account.
     subjectId: uuid('subject_id').references(() => members.id),
@@ -333,10 +366,16 @@ export const notifications = pgTable(
     // without these each delete scanned the whole table.
     index('notifications_actor_idx').on(t.actorId),
     index('notifications_post_idx').on(t.postId),
-    // Liking, unliking and liking again (or following again) notifies once.
+    // Liking, unliking and liking again (or reposting, or following again) notifies once.
     uniqueIndex('notifications_like_once_idx')
       .on(t.recipientId, t.actorId, t.postId)
       .where(sql`kind = 'like'`),
+    uniqueIndex('notifications_repost_once_idx')
+      .on(t.recipientId, t.actorId, t.postId)
+      .where(sql`kind = 'repost'`),
+    uniqueIndex('notifications_quote_once_idx')
+      .on(t.recipientId, t.actorId, t.postId)
+      .where(sql`kind = 'quote'`),
     uniqueIndex('notifications_follow_once_idx')
       .on(t.recipientId, t.actorId)
       .where(sql`kind = 'follow'`),

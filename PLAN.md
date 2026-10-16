@@ -16,12 +16,12 @@ history. The product hypothesis, safety, governance and metrics carried over.
 ## Where things stand (read this first)
 
 **Built and verified locally:** invite-only signup, sign-in, email verification and
-recovery (Ory Kratos); posts, threaded replies, likes, bookmarks; up to four
+recovery (Ory Kratos); posts, threaded replies, likes, reposts and quote posts, bookmarks; up to four
 images per post with descriptions, processed in a background job, opening in a
 full-screen viewer; profiles with photos, display names and bios; follow, mute, block; five communities to join and post in; Latest,
 Following, community and trending feeds; search; reporting, a moderation queue,
-appeals and a decision log; notifications (replies, likes, follows, moderation
-outcomes); rate limits; light, dark and system themes.
+appeals and a decision log; notifications (replies, likes, reposts, quotes, follows,
+moderation outcomes); rate limits; light, dark and system themes.
 
 **Not built:** production deployment. See [§8 Roadmap](#8-roadmap) for the order.
 
@@ -132,7 +132,7 @@ Browser ──> Next.js web app
 - [x] Profile photo (upload, replace, remove)
 - [x] Display name (50 characters) and short bio (160), searchable by name
 - [ ] Onboarding: pick interests and communities, suggested people
-- [x] Data export ("download my data"): Settings → Your data, one JSON file (15 October 2026; format 2 adds age confirmation and verification status, 16 October)
+- [x] Data export ("download my data"): Settings → Your data, one JSON file (15 October 2026; format 2 adds age confirmation and verification status, 16 October; format 3 adds reposts and quote posts, 16 October)
 
 ### Social
 - [x] Text posts (300 characters), threaded replies, likes, private bookmarks
@@ -142,8 +142,8 @@ Browser ──> Next.js web app
 - [x] Search over members, communities and posts (PostgreSQL full text)
 - [x] Mute and block, respected in every feed, thread and search
 - [x] Post images: up to 4, with optional descriptions (alt text), processed in a background job
-- [x] Notifications (replies, likes, follows, moderation outcomes), in-app only
-- [ ] Reposts
+- [x] Notifications (replies, likes, reposts, quotes, follows, moderation outcomes), in-app only
+- [x] Reposts and quote posts: repost to your followers and profile, or quote with your own words. Following and the profile Posts tab show each post once, at the latest time it was reposted by someone you see; blocks and mutes apply to reposter and author; a quote of a deleted post shows a placeholder (16 October 2026, [ADR 0007](docs/adr/0007-reposts-and-quotes.md))
 
 ### Communities
 - [x] Five seeded communities: Tech & Careers, Universities, Lagos, Abuja, Entertainment
@@ -190,8 +190,8 @@ All tables are in `packages/db/src/schema.ts`; migrations in `packages/db/drizzl
 | Table | Holds |
 |---|---|
 | `members` | Kratos identity ID, handle copy, active/suspended, site role, avatar |
-| `posts` | Text, author, reply parent and root, community, soft delete, moderator removal |
-| `likes`, `bookmarks`, `follows` | Relationships |
+| `posts` | Text, author, reply parent and root, quoted post, community, soft delete, moderator removal, like/reply/repost counts |
+| `likes`, `reposts`, `bookmarks`, `follows` | Relationships |
 | `communities`, `community_memberships` | Communities and who belongs (with moderator role) |
 | `blocks`, `mutes` | Safety relationships |
 | `invites`, `invite_redemptions` | Hashed invite codes and who each one let in |
@@ -201,8 +201,9 @@ All tables are in `packages/db/src/schema.ts`; migrations in `packages/db/drizzl
 | `profile_badges` | Public badges (the green identity tick); a row only while it may be shown and its owner chose to show it |
 | `restricted.*` | Kept apart from ordinary reads (ADR 0005): `age_assurances` (age-band statements and how each was made; ADR 0006), `identity_verifications`, `governance_memberships`, `governance_audit_log` |
 
-Counts (likes, replies, followers) are computed on read. Fine at pilot scale;
-revisit with measurements.
+Like, reply and repost counts are kept on each post by triggers (migrations 0011
+and 0015). Follower counts are computed on read. Fine at pilot scale; revisit
+with measurements.
 
 ---
 

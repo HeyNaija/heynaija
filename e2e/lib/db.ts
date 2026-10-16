@@ -46,6 +46,7 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['reports', `delete from reports where reporter_id in (select id from e2e_m) or member_id in (select id from e2e_m)
            or post_id in (select id from e2e_p) or resolved_by in (select id from e2e_m)`],
         ['likes', `delete from likes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
+        ['reposts', `delete from reposts where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['bookmarks', `delete from bookmarks where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['follows', `delete from follows where follower_id in (select id from e2e_m) or followee_id in (select id from e2e_m)`],
         ['blocks', `delete from blocks where blocker_id in (select id from e2e_m) or blocked_id in (select id from e2e_m)`],
