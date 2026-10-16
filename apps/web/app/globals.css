@@ -328,6 +328,7 @@ summary.menu::-webkit-details-marker {
     text-decoration: underline;
   }
 
+  .dropdown-menu[open] { z-index: 40; }
   .menu-panel {
     position: absolute;
     right: 0;
@@ -335,6 +336,9 @@ summary.menu::-webkit-details-marker {
     margin-top: 6px;
     min-width: 200px;
     max-width: calc(100vw - 32px);
+    max-height: min(480px, calc(100dvh - 160px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
     border: 1px solid var(--line);
     border-radius: var(--r-panel);
     background: var(--surface);
@@ -360,6 +364,7 @@ summary.menu::-webkit-details-marker {
     min-height: 36px;
     padding: 7px 10px;
     text-align: left;
+    overflow-wrap: anywhere;
     font-size: 14px;
     font-weight: 500;
     transition: background-color 0.12s;
@@ -591,6 +596,8 @@ summary.menu::-webkit-details-marker {
   gap: 24px;
 }
 .square-feed {
+  /* Page menus stay below the app's sticky and fixed navigation. */
+  isolation: isolate;
   min-width: 0;
   flex: 1;
   padding-block: 28px 48px;
@@ -1075,6 +1082,8 @@ summary.menu::-webkit-details-marker {
   content-visibility: auto;
   contain-intrinsic-size: auto 180px;
 }
+/* Lift an open menu above neighbouring cards, but below the sticky feed tabs. */
+.post-card:has(details[open]) { z-index: 5; }
 .post-list > li > .post-card:has(details[open]) { content-visibility: visible; }
 .post-context { margin-bottom: 14px; color: var(--muted); font-size: 10px; font-weight: 500; }
 .post-author { letter-spacing: -0.02em; }
@@ -1090,15 +1099,20 @@ summary.menu::-webkit-details-marker {
 /* Repost sits near the card's left edge, so its menu opens rightwards, inside the card. */
 .repost-menu .menu-panel { left: -8px; right: auto; }
 .icon-btn.is-reposted { color: var(--accent-strong); }
-/* The post a quote post quotes: one quiet link to it, inside the quoting post. */
-.quoted-post { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--line); border-radius: var(--r-panel); padding: 12px 14px; transition: border-color 0.15s, background-color 0.15s; }
-a.quoted-post:hover { border-color: var(--line-strong); background: var(--panel); }
+/* A distinct inset surface separates the original author and post from the new words. */
+.quoted-post { display: flex; min-width: 0; flex-direction: column; gap: 10px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--panel); padding: 12px; transition: border-color 0.15s; }
+a.quoted-post:hover { border-color: var(--accent-strong); }
+.quoted-post-label { color: var(--muted); font-size: 10px; font-weight: 600; line-height: 16px; }
 .quoted-post.is-unavailable { background: var(--panel); color: var(--muted); font-size: 13px; font-style: italic; }
-.quoted-post-meta { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 11px; line-height: 18px; }
+.quoted-post-meta { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 11px; line-height: 18px; }
+.quoted-post-identity { display: flex; min-width: 0; flex: 1; flex-direction: column; }
 .quoted-post-note { color: var(--muted); font-size: 11px; }
 .quoted-post-text { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 6; font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
-.quoted-post-images { display: grid; height: 120px; grid-auto-columns: 1fr; grid-auto-flow: column; gap: 2px; overflow: hidden; border-radius: var(--r-control); background: var(--line); }
-.quoted-post-images img { width: 100%; height: 100%; object-fit: cover; }
+.quoted-post-images { display: grid; height: 160px; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 2px; overflow: hidden; border-radius: var(--r-control); background: var(--line); }
+.quoted-post-images[data-count="1"] { grid-template-columns: minmax(0, 1fr); }
+.quoted-post-images[data-count="1"], .quoted-post-images[data-count="2"] { grid-template-rows: minmax(0, 1fr); }
+.quoted-post-images[data-count="3"] > img:first-child { grid-row: span 2; }
+.quoted-post-images img { min-width: 0; min-height: 0; width: 100%; height: 100%; object-fit: cover; }
 .composer-quote { margin-top: 12px; }
 .post-body { font-size: 14px; line-height: 1.8; }
 ol.post-list { margin-inline: 0; }
@@ -1221,6 +1235,8 @@ a.notification-row:hover {
    frame is sized before the images load, so nothing jumps. */
 .post-images {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
   gap: 2px;
   width: 100%;
@@ -1239,25 +1255,29 @@ a.notification-row:hover {
   border-radius: var(--r-control);
 }
 .post-images[data-count="2"] {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .post-images[data-count="3"] {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
 }
 .post-images[data-count="3"] > .post-image:first-child {
   grid-row: span 2;
 }
 .post-images[data-count="4"] {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
 }
 .post-image {
+  position: relative;
   display: block;
+  min-width: 0;
   min-height: 0;
   background: var(--panel);
 }
 .post-image img {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
@@ -1275,7 +1295,7 @@ html:has(.image-viewer[open]) {
 .image-viewer {
   position: fixed;
   inset: 0;
-  width: 100vw;
+  width: 100%;
   height: 100dvh;
   max-width: none;
   max-height: none;
@@ -1284,21 +1304,29 @@ html:has(.image-viewer[open]) {
   border: 0;
   background: var(--scrim);
   color: var(--on-scrim);
+  overflow: hidden;
   overscroll-behavior: contain;
   /* Sideways drags are swipes between images, not something for the browser to pan. */
   touch-action: pan-y pinch-zoom;
+}
+.image-viewer[open] {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 .image-viewer::backdrop {
   background: transparent;
 }
 .image-viewer-stage {
   display: flex;
-  height: 100%;
+  min-width: 0;
+  min-height: 0;
   align-items: center;
   justify-content: center;
-  padding: 56px 16px 88px;
+  padding: calc(64px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left));
 }
 .image-viewer-stage img {
+  min-width: 0;
+  min-height: 0;
   max-width: 100%;
   max-height: 100%;
   width: auto;
@@ -1307,22 +1335,22 @@ html:has(.image-viewer[open]) {
   user-select: none;
 }
 .image-viewer-bar {
-  position: absolute;
-  inset-inline: 0;
-  bottom: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 0 16px 20px;
+  min-width: 0;
+  padding: 12px max(16px, env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   font-size: 13px;
   text-align: center;
   pointer-events: none;
 }
 .image-viewer-caption {
+  width: 100%;
   max-width: 640px;
   max-height: 4.5em;
   overflow-y: auto;
+  overflow-wrap: anywhere;
   font-size: 14px;
   line-height: 1.5;
   pointer-events: auto;
@@ -1347,8 +1375,8 @@ html:has(.image-viewer[open]) {
   outline-offset: 2px;
 }
 .image-viewer-btn.is-close {
-  top: 12px;
-  right: 12px;
+  top: calc(12px + env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
 }
 .image-viewer-btn.is-prev,
 .image-viewer-btn.is-next {
@@ -1356,10 +1384,10 @@ html:has(.image-viewer[open]) {
   translate: 0 -50%;
 }
 .image-viewer-btn.is-prev {
-  left: 12px;
+  left: max(12px, env(safe-area-inset-left));
 }
 .image-viewer-btn.is-next {
-  right: 12px;
+  right: max(12px, env(safe-area-inset-right));
 }
 
 /* Images being attached in the composer: a row each, preview beside its description. */

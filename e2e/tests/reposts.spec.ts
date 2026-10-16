@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { newMember, post } from '../lib/members.ts'
+import { expectQuoteFrame } from '../lib/layout.ts'
 
-test('a repost reaches the reposter’s followers and profile; a quote embeds the post until it is deleted', async ({ browser }) => {
+test('a repost reaches the reposter’s followers and profile; a quote embeds the post until it is deleted @mobile', async ({ browser }) => {
   const author = await newMember(browser, 'orig')
   const sharer = await newMember(browser, 'sharer')
   const reader = await newMember(browser, 'reader')
@@ -39,6 +40,7 @@ test('a repost reaches the reposter’s followers and profile; a quote embeds th
   await sharer.page.locator('article', { hasText: text }).getByRole('link', { name: 'Quote' }).click()
   await sharer.page.waitForURL(/\/p\/[^/]+\/quote/)
   await expect(sharer.page.locator('#compose .quoted-post')).toContainText(text)
+  await expectQuoteFrame(sharer.page.locator('#compose .quoted-post'))
   const take = `Read this, from ${sharer.handle}`
   const box = sharer.page.getByRole('textbox', { name: 'New post' })
   await expect(box).toBeFocused()
@@ -49,6 +51,9 @@ test('a repost reaches the reposter’s followers and profile; a quote embeds th
   const quote = sharer.page.locator('article', { hasText: take })
   await expect(quote.locator('.quoted-post')).toContainText(text)
   await expect(quote.locator('.quoted-post')).toContainText(`@${author.handle}`)
+  await expectQuoteFrame(quote.locator('.quoted-post'))
+  await sharer.page.goto('/')
+  await expectQuoteFrame(sharer.page.locator('article', { hasText: take }).locator('.quoted-post'))
 
   // The author hears about both.
   await author.page.goto('/notifications')

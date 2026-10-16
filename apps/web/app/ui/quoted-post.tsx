@@ -13,12 +13,13 @@ export function QuotedPostCard({ quote, now }: { quote: QuotedPost; now: number 
   }
   return (
     <Link prefetch={false} href={`/p/${quote.id}`} className="quoted-post">
-      <span className="sr-only">Quoted post: </span>
+      <span className="quoted-post-label">Quoted post</span>
       <span className="quoted-post-meta">
-        <Avatar handle={quote.authorHandle} src={quote.authorAvatar} size={20} />
-        <span className="truncate font-semibold text-ink">{quote.authorName ?? `@${quote.authorHandle}`}</span>
-        {quote.authorName ? <span className="truncate">@{quote.authorHandle}</span> : null}
-        <span aria-hidden="true">·</span>
+        <Avatar handle={quote.authorHandle} src={quote.authorAvatar} size={28} />
+        <span className="quoted-post-identity">
+          <span className="truncate font-semibold text-ink">{quote.authorName ?? `@${quote.authorHandle}`}</span>
+          {quote.authorName ? <span className="truncate">@{quote.authorHandle}</span> : null}
+        </span>
         <time dateTime={quote.createdAt} className="shrink-0">
           {timeAgo(quote.createdAt, now)}
         </time>

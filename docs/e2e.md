@@ -15,7 +15,8 @@ already in the database.
 | `auth.spec.ts` | Join with an invite code, sign up, confirm with the emailed code, land signed in. A wrong invite code is refused. Joining needs the "I am 18 or older" box, and a signup that loses the confirmation is refused by the API (no Kratos identity is created). Sign out, sign back in with an emailed code. |
 | `handles.spec.ts` | Signing up with a handle someone already has is refused; so is renaming to one in Settings, while renaming to a free one works. A handle given up by renaming cannot be taken by anyone else, its old profile link leads to the new handle, and its owner can take it back. |
 | `posting.spec.ts` | Post to everyone and into a community; reply in a thread; like (changes at once and survives a reload); bookmark and find it under Bookmarks; delete your own post. |
-| `images.spec.ts` | Attach an image with a description, wait for processing, see it on the post with its description as alt text, open and close the full-screen viewer. |
+| `images.spec.ts` | Attach one to four images, including mixed portrait and landscape shapes, and check the composer and tiled previews fit. Open the viewer from a feed and a focused post; check controls stay on screen, long descriptions fit, and navigation, swipes and closing work. Quote a four-image post and check its previews before and after posting. |
+| `menus.spec.ts` | Profile, post, repost and account menus fit and remain tappable at 320, 390, 768 and 1280px. Escape returns focus to the trigger, and the adjusted profile menu still performs its action. Scrolling a post with its menu open keeps it below the top bar and sticky feed tabs. |
 | `sharing.spec.ts` | A signed-out visitor copies a post's link from its card: "Link copied" is announced, the clipboard holds the full post URL, and the page stays put. Where the browser has a share sheet (stubbed here) it gets the link, "@handle on HeyNaija" and the text, and closing it copies nothing. A post page fetched as WhatsApp has the author, text and an absolute picture in its Open Graph tags. |
 | `reposts.spec.ts` | Repost from Latest (the control changes at once and survives a reload); the reposter's follower sees it in Following with "@… reposted", and so does their profile ("You reposted" for themselves). Quote it: the composer shows the quoted post, posting opens the quote with the post inside. The author is notified of both. Deleting the original removes the repost and leaves "This post is no longer available." in the quote. |
 | `social.spec.ts` | Follow someone and see their post in Following with "You follow @…"; mute hides their posts from Latest; block hides them both ways. |
@@ -24,8 +25,9 @@ already in the database.
 | `governance.spec.ts` | The rules, privacy policy, charter and licence pages load, say they are drafts and link the draft constitution. `/governance` states the founding-stage notice, tells the three kinds of participation apart, and shows empty states rather than records; no ownership milestone claims completion; no sideways scroll on a phone. The constitution has all 14 articles, both annexes and working anchors. The verification explainer has no form fields and no verify button, its FAQ opens, and the tick's note shows on focus and closes with Escape. Membership says registration has not opened and that the 18+ account rule is temporary while voting needs a checked age; the rules and privacy policy say the same. A member's Settings shows their real status, including a stated (not verified) age, and their profile has no tick. The data export (format 2) holds their age record. |
 | `no-js.spec.ts` | With JavaScript off: read a feed, follow "Older posts" to the next page, post from the composer, like a post. **Currently marked as expected failures**; see below. |
 
-Tests tagged `@mobile` also run on a phone-sized screen (Pixel 7): signing up,
-the "+" new-post button in the bottom bar, and the share sheet.
+Tests tagged `@mobile` also run on a phone-sized screen (Pixel 7), including
+signing up, the "+" new-post button, sharing, quotes, image previews and viewers,
+post-card navigation, and menus.
 
 **Status (15 October 2026):** 25 tests, then 3 more for the governance pages and data export (passing). Two full runs on a laptop against
 `next dev`: 22 pass, 2 fail as expected (no JavaScript, below), 1 is phone-only and
