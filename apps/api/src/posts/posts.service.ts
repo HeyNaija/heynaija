@@ -10,7 +10,7 @@ import {
   posts,
 } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
-import { and, desc, eq, inArray, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/media.service.js'
 import { decodeCursor, encodeCursor, InvalidCursorError } from '../cursor.js'
@@ -96,6 +96,10 @@ export type PostView = {
 
 export type FeedReason = 'own' | 'following' | 'community'
 
+/** The lists on a member's profile: top-level posts, replies, and posts with images. */
+export const PROFILE_FILTERS = ['posts', 'replies', 'media'] as const
+export type ProfileFilter = (typeof PROFILE_FILTERS)[number]
+
 export type PostPage = { posts: PostView[]; cursor: string | null }
 
 export type UnavailableReply = {
@@ -153,6 +157,15 @@ export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
 
 // Written out so the outer post is unambiguous inside subqueries.
 const outerId = sql`"posts"."id"`
+
+// Has at least one image a reader can see.
+const withImages = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.status = 'ready')`
+
+const profileFilter: Record<ProfileFilter, SQL> = {
+  posts: topLevel,
+  replies: isNotNull(posts.replyParentId),
+  media: withImages,
+}
 
 /** A post's ready images in order, as JSON, for any query with `posts` in scope. */
 export const imagesOf = (postId: SQL) =>
@@ -294,9 +307,20 @@ export class PostsService {
     return this.page(viewerId, and(topLevel, eq(posts.communityId, communityId)), limit, cursor)
   }
 
-  /** Everything one member has posted, replies included. */
-  byAuthor(viewerId: string | null, authorId: string, limit: number, cursor?: string): Promise<PostPage> {
-    return this.page(viewerId, eq(posts.authorId, authorId), limit, cursor, { ignoreMutes: true })
+  /**
+   * One list from a member's profile: their top-level posts, their replies, or
+   * everything they posted with images (replies included).
+   */
+  byAuthor(
+    viewerId: string | null,
+    authorId: string,
+    limit: number,
+    cursor?: string,
+    filter: ProfileFilter = 'posts',
+  ): Promise<PostPage> {
+    return this.page(viewerId, and(eq(posts.authorId, authorId), profileFilter[filter]), limit, cursor, {
+      ignoreMutes: true,
+    })
   }
 
   /** The posts a member has saved. Only ever shown to that member. */

@@ -11,6 +11,7 @@ import {
   getFollowingFeed,
   getMemberPosts,
   getViewer,
+  PROFILE_FILTERS,
 } from '@/lib/api'
 
 /**
@@ -31,7 +32,7 @@ function fetchPage(source: FeedSource, cursor: string): Promise<Feed | null> {
     case 'community':
       return getCommunityPosts(source.slug, cursor)
     case 'member':
-      return getMemberPosts(source.handle, cursor)
+      return getMemberPosts(source.handle, source.filter, cursor)
     case 'bookmarks':
       return getBookmarks(cursor)
   }
@@ -39,9 +40,11 @@ function fetchPage(source: FeedSource, cursor: string): Promise<Feed | null> {
 
 const isSource = (s: unknown): s is FeedSource => {
   if (!s || typeof s !== 'object') return false
-  const { kind, slug, handle } = s as Record<string, unknown>
+  const { kind, slug, handle, filter } = s as Record<string, unknown>
   if (kind === 'community') return typeof slug === 'string' && slug.length <= 100
-  if (kind === 'member') return typeof handle === 'string' && handle.length <= 100
+  if (kind === 'member') {
+    return typeof handle === 'string' && handle.length <= 100 && PROFILE_FILTERS.includes(filter as never)
+  }
   return kind === 'latest' || kind === 'following' || kind === 'bookmarks'
 }
 

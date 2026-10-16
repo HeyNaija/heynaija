@@ -13,6 +13,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common'
+import { z } from 'zod'
 import {
   type AuthedRequest,
   type MaybeAuthedRequest,
@@ -20,9 +21,11 @@ import {
   SessionGuard,
 } from '../auth/session.guard.js'
 import { handleParam, paged, pageQuery, parse } from '../http.js'
-import { PostsService } from '../posts/posts.service.js'
+import { PostsService, PROFILE_FILTERS } from '../posts/posts.service.js'
 import { RateLimiter } from '../rate-limit.js'
 import { CannotFollowSelfError, MembersService, profileInput } from './members.service.js'
+
+const memberPostsQuery = pageQuery.extend({ filter: z.enum(PROFILE_FILTERS).default('posts') })
 
 const handleOf = (raw: string): string => {
   const parsed = handleParam.safeParse(raw)
@@ -53,11 +56,11 @@ export class MembersController {
   @Get(':handle/posts')
   @UseGuards(OptionalSessionGuard)
   async memberPosts(@Req() req: MaybeAuthedRequest, @Param('handle') handle: string, @Query() query: unknown) {
-    const { limit, cursor } = parse(pageQuery, query)
+    const { limit, cursor, filter } = parse(memberPostsQuery, query)
     const viewerId = req.member?.id ?? null
     const profile = await this.members.profile(viewerId, handleOf(handle))
     if (!profile) throw new NotFoundException()
-    return paged(() => this.posts.byAuthor(viewerId, profile.id, limit, cursor))
+    return paged(() => this.posts.byAuthor(viewerId, profile.id, limit, cursor, filter))
   }
 
   @Put(':handle/follow')

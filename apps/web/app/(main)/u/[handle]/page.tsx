@@ -8,7 +8,7 @@ import { DotsIcon } from '@/app/ui/icons'
 import { Menu } from '@/app/ui/menu'
 import { PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
-import { findProfile, getMemberPosts, getViewer } from '@/lib/api'
+import { findProfile, getMemberPosts, getViewer, PROFILE_FILTERS, type ProfileFilter } from '@/lib/api'
 
 type Props = PageProps<'/u/[handle]'>
 
@@ -30,16 +30,27 @@ const count = (n: number, one: string, many: string) => (
   </span>
 )
 
+const TABS: Record<ProfileFilter, { label: string; listLabel: string; none: string; older: string }> = {
+  posts: { label: 'Posts', listLabel: 'Posts', none: 'has not posted yet', older: 'No older posts' },
+  replies: { label: 'Replies', listLabel: 'Replies', none: 'has not replied to anyone yet', older: 'No older replies' },
+  media: { label: 'Media', listLabel: 'Posts with images', none: 'has not posted any images yet', older: 'No older posts' },
+}
+
+const tabHref = (handle: string, tab: ProfileFilter) =>
+  `/u/${encodeURIComponent(handle)}${tab === 'posts' ? '' : `?tab=${tab}`}`
+
 async function ProfileView({ params, searchParams }: Props) {
-  const [{ handle }, { cursor }] = await Promise.all([params, searchParams])
+  const [{ handle }, { cursor, tab: rawTab }] = await Promise.all([params, searchParams])
   const page = typeof cursor === 'string' ? cursor : undefined
+  // Anything else, including a mangled ?tab=, shows the posts.
+  const tab = PROFILE_FILTERS.find((t) => t === rawTab) ?? 'posts'
 
   const [profile, viewer] = await Promise.all([findProfile(handle), getViewer()])
   if (!profile) notFound()
   // A handle its owner gave up recently leads to the one they use now.
   if ('movedTo' in profile) redirect(`/u/${profile.movedTo}`)
   // Behind a block there is nothing to load: the API would return no posts anyway.
-  const feed = profile.viewerBlocks ? { posts: [], cursor: null } : await getMemberPosts(profile.handle, page)
+  const feed = profile.viewerBlocks ? { posts: [], cursor: null } : await getMemberPosts(profile.handle, tab, page)
   const viewerId = viewer.state === 'member' ? viewer.me.id : null
 
   return (
@@ -125,11 +136,19 @@ async function ProfileView({ params, searchParams }: Props) {
         <p className="notice">You muted @{profile.handle}. Their posts only show here.</p>
       ) : null}
 
-      <section aria-label={`Posts by @${profile.handle}`} className="flex flex-col gap-3">
-        <div className="section-heading">
-          <h2 className="section-title">Posts</h2>
-          <span className="text-xs text-muted">Latest first</span>
-        </div>
+      {profile.viewerBlocks ? null : (
+        <nav aria-label={`@${profile.handle}'s posts`} className="feed-tabs">
+          {PROFILE_FILTERS.map((t) => (
+            <Tab key={t} href={tabHref(profile.handle, t)} active={t === tab}>
+              {TABS[t].label}
+            </Tab>
+          ))}
+          <span className="feed-order"><span aria-hidden="true" /> Latest first</span>
+        </nav>
+      )}
+
+      {/* Keyed so switching tabs starts a fresh list instead of reloading the old one's batches. */}
+      <section key={tab} aria-label={`${TABS[tab].listLabel} by @${profile.handle}`} className="flex flex-col gap-3">
         <PostList
           posts={feed.posts}
           viewerId={viewerId}
@@ -138,12 +157,20 @@ async function ProfileView({ params, searchParams }: Props) {
             profile.viewerBlocks
               ? { title: `You blocked @${profile.handle}`, detail: 'Unblock to see their posts.' }
               : page
-                ? { title: 'No older posts' }
-                : { title: `@${profile.handle} has not posted yet` }
+                ? { title: TABS[tab].older }
+                : { title: `@${profile.handle} ${TABS[tab].none}` }
           }
-          more={{ source: { kind: 'member', handle: profile.handle }, cursor: feed.cursor }}
+          more={{ source: { kind: 'member', handle: profile.handle, filter: tab }, cursor: feed.cursor }}
         />
       </section>
     </div>
+  )
+}
+
+function Tab({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
+  return (
+    <Link href={href} aria-current={active ? 'page' : undefined} className="feed-tab">
+      {children}
+    </Link>
   )
 }

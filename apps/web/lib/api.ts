@@ -50,6 +50,10 @@ export type Post = {
 
 export type Feed = { posts: Post[]; cursor: string | null }
 
+/** The lists on a member's profile: top-level posts, replies, and posts with images. */
+export const PROFILE_FILTERS = ['posts', 'replies', 'media'] as const
+export type ProfileFilter = (typeof PROFILE_FILTERS)[number]
+
 export type UnavailableReply = {
   unavailable: true
   id: string
@@ -133,7 +137,7 @@ export const getViewer = cache(async (): Promise<Viewer> => {
 })
 
 async function getPage(path: string, cursor?: string): Promise<Feed> {
-  const res = await api(cursor ? `${path}?cursor=${encodeURIComponent(cursor)}` : path)
+  const res = await api(cursor ? `${path}${path.includes('?') ? '&' : '?'}cursor=${encodeURIComponent(cursor)}` : path)
   // A mangled cursor in the URL should fall back to the first page, not crash.
   if (res.status === 400 && cursor) return getPage(path)
   if (!res.ok) throw new Error(`API ${path} responded ${res.status}`)
@@ -151,8 +155,8 @@ export async function getFollowingFeed(cursor?: string): Promise<Feed | null> {
   }
 }
 
-export const getMemberPosts = (handle: string, cursor?: string) =>
-  getPage(`/v1/members/${encodeURIComponent(handle)}/posts`, cursor)
+export const getMemberPosts = (handle: string, filter: ProfileFilter, cursor?: string) =>
+  getPage(`/v1/members/${encodeURIComponent(handle)}/posts?filter=${filter}`, cursor)
 
 async function getOrNull<T>(path: string): Promise<T | null> {
   const res = await api(path)

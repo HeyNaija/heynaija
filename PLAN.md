@@ -137,6 +137,7 @@ Browser ──> Next.js web app
 ### Social
 - [x] Text posts (300 characters), threaded replies, likes, private bookmarks
 - [x] Follow and unfollow; Latest, Following, profile, community and trending feeds
+- [x] Profile tabs: Posts, Replies, and Media (posts and replies with images) (16 October 2026)
 - [x] Following feed says why each post is there
 - [x] Search over members, communities and posts (PostgreSQL full text)
 - [x] Mute and block, respected in every feed, thread and search

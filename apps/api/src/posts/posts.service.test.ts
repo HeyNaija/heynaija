@@ -4,7 +4,7 @@ import { after, before, beforeEach, mock, test } from 'node:test'
 import { blocks, communities, communityMemberships, follows, likes, media, members, mutes, notifications, posts } from '@heynaija/db'
 import { eq, sql } from 'drizzle-orm'
 import { db, migrate, pool, reset } from '../test-db.js'
-import { InvalidCursorError, ParentNotFoundError, PostsService, postText, type ReplyPage, TRENDING_TTL_MS } from './posts.service.js'
+import { InvalidCursorError, ParentNotFoundError, PostsService, postText, type ProfileFilter, type ReplyPage, TRENDING_TTL_MS } from './posts.service.js'
 import { decodeReplyCursor, encodeReplyCursor, replyPageQuery } from './reply-cursor.js'
 
 const service = new PostsService(db)
@@ -534,13 +534,32 @@ test('the following feed has only your own and followed members\' top-level post
   assert.deepEqual(await following(), ['bayo post', 'ada post'])
 })
 
-test('a member\'s own list includes their replies', async () => {
+test('a profile lists posts, replies and posts with images separately', async () => {
+  const readyImage = async () => {
+    const [image] = await db.insert(media).values({
+      ownerId: bayo, kind: 'post_image', status: 'ready', contentType: 'image/webp', bytes: 100, width: 300, height: 200,
+    }).returning()
+    return image!.id
+  }
   const root = await service.create(ada, 'root')
   await service.create(bayo, 'bayo reply', { replyTo: root.id })
   await service.create(bayo, 'bayo post')
-  const mine = (await service.byAuthor(null, bayo, 10)).posts
-  assert.deepEqual(mine.map((p) => p.text), ['bayo post', 'bayo reply'])
-  assert.equal(mine[1]!.replyParentId, root.id)
+  const photo = await readyImage()
+  await service.create(bayo, 'photo post', { images: [{ id: photo, alt: '' }] })
+  await service.create(bayo, 'photo reply', { replyTo: root.id, images: [{ id: await readyImage(), alt: '' }] })
+  const list = async (filter?: ProfileFilter) =>
+    (await service.byAuthor(null, bayo, 10, undefined, filter)).posts.map((p) => p.text)
+
+  assert.deepEqual(await list(), ['photo post', 'bayo post'])
+  assert.deepEqual(await list('posts'), ['photo post', 'bayo post'])
+  const replies = (await service.byAuthor(null, bayo, 10, undefined, 'replies')).posts
+  assert.deepEqual(replies.map((p) => p.text), ['photo reply', 'bayo reply'])
+  assert.deepEqual(replies.map((p) => p.replyParentId), [root.id, root.id])
+  assert.deepEqual(await list('media'), ['photo reply', 'photo post'])
+
+  // An image a moderator took down no longer puts its post under media.
+  await db.update(media).set({ status: 'quarantined' }).where(eq(media.id, photo))
+  assert.deepEqual(await list('media'), ['photo reply'])
 })
 
 test('bookmarks are idempotent and private to their owner', async () => {
