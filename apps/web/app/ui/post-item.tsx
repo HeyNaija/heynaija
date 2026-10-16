@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { deletePost, setBlock, setBookmark, setMute } from '@/app/actions'
 import type { Post } from '@/lib/api'
+import { excerpt } from '@/lib/previews'
 import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
 import type { FeedSource } from './feed-source'
@@ -12,6 +13,7 @@ import { MorePosts } from './more-posts'
 import { ComposeLink } from './new-post-link'
 import { PostImages } from './post-images'
 import { PostPermalink } from './post-permalink'
+import { ShareButton } from './share-button'
 import { SubmitButton } from './submit-button'
 import { timeAgo } from './time'
 
@@ -171,19 +173,22 @@ export function PostItem({
           </span>
         )}
 
-        {viewerId ? (
-          <form action={setBookmark} className="ml-auto">
-            <input type="hidden" name="id" value={post.id} />
-            <input type="hidden" name="on" value={post.viewerBookmarked ? '0' : '1'} />
-            <SubmitButton
-              className="icon-btn"
-              label={post.viewerBookmarked ? 'Remove bookmark' : 'Bookmark'}
-              pressed={post.viewerBookmarked}
-            >
-              <BookmarkIcon size={18} filled={post.viewerBookmarked} />
-            </SubmitButton>
-          </form>
-        ) : null}
+        <div className="post-actions-end">
+          {viewerId ? (
+            <form action={setBookmark}>
+              <input type="hidden" name="id" value={post.id} />
+              <input type="hidden" name="on" value={post.viewerBookmarked ? '0' : '1'} />
+              <SubmitButton
+                className="icon-btn"
+                label={post.viewerBookmarked ? 'Remove bookmark' : 'Bookmark'}
+                pressed={post.viewerBookmarked}
+              >
+                <BookmarkIcon size={18} filled={post.viewerBookmarked} />
+              </SubmitButton>
+            </form>
+          ) : null}
+          <ShareButton id={post.id} handle={post.authorHandle} text={excerpt(post.text)} />
+        </div>
       </div>
     </article>
   )

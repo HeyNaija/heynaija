@@ -3,6 +3,7 @@ import {
   BadgeCheck,
   Bell,
   Bookmark,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -25,6 +26,7 @@ import {
   Plus,
   Search,
   Settings,
+  Share2,
   Shield,
   User,
   UserPlus,
@@ -58,6 +60,8 @@ export const GearIcon = icon(Settings)
 export const SearchIcon = icon(Search)
 export const HeartIcon = icon(Heart)
 export const BubbleIcon = icon(MessageCircle)
+export const ShareIcon = icon(Share2)
+export const CheckIcon = icon(Check)
 export const PlusIcon = icon(Plus)
 export const UserIcon = icon(User)
 export const DotsIcon = icon(Ellipsis)

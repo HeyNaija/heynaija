@@ -1082,7 +1082,11 @@ summary.menu::-webkit-details-marker {
 .post-actions { display: flex; align-items: center; gap: 24px; margin-top: 14px; border-top: 1px solid var(--line); padding-top: 5px; }
 .post-actions .icon-btn { min-height: 36px; min-width: 36px; font-size: 11px; }
 .post-actions > .icon-btn:first-child { margin-left: -8px; }
-.post-actions form:last-child { margin-left: auto; margin-right: -8px; }
+.post-actions-end { display: flex; align-items: center; gap: 4px; margin-left: auto; margin-right: -8px; }
+/* Says "Link copied" above the share button; empty, it takes no space. */
+.share { position: relative; z-index: 2; display: inline-flex; }
+.share-status { position: absolute; right: 0; bottom: calc(100% + 4px); border-radius: var(--r-chip); background: var(--ink); padding: 4px 8px; color: var(--surface); font-size: 11px; font-weight: 500; white-space: nowrap; pointer-events: none; }
+.share-status:empty { padding: 0; }
 .post-body { font-size: 14px; line-height: 1.8; }
 ol.post-list { margin-inline: 0; }
 ol.post-list .post-card { padding-inline: 18px; }

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
@@ -9,11 +10,28 @@ import { Menu } from '@/app/ui/menu'
 import { PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
 import { findProfile, getMemberPosts, getViewer, PROFILE_FILTERS, type ProfileFilter } from '@/lib/api'
+import { defaultPreviewImage, excerpt, siteOpenGraph } from '@/lib/previews'
 
 type Props = PageProps<'/u/[handle]'>
 
-export async function generateMetadata({ params }: Props) {
-  return { title: `@${(await params).handle}` }
+/** The bio describes the member in link previews; their photo, if they have one, is the picture. */
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { handle } = await params
+  const profile = await findProfile(handle)
+  if (!profile || 'movedTo' in profile) return { title: `@${handle}` }
+  return {
+    title: `@${profile.handle}`,
+    description: profile.bio.trim() ? excerpt(profile.bio) : `@${profile.handle} is a member of HeyNaija.`,
+    openGraph: {
+      ...siteOpenGraph,
+      type: 'profile',
+      username: profile.handle,
+      url: `/u/${profile.handle}`,
+      images: [profile.avatar ? { url: `${profile.avatar}/256.webp`, width: 256, height: 256, alt: `Profile photo of @${profile.handle}` } : defaultPreviewImage],
+    },
+    // A square photo makes a small card; the wide default picture a large one.
+    twitter: { card: profile.avatar ? 'summary' : 'summary_large_image' },
+  }
 }
 
 export default function ProfilePage(props: Props) {

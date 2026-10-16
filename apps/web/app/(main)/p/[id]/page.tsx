@@ -6,11 +6,40 @@ import { PostItem, PostsSkeleton } from '@/app/ui/post-item'
 import { ThreadConversation } from '@/app/ui/thread-conversation'
 import { renderThreadRow } from '@/app/ui/thread-row'
 import { getReplies, getThread, getViewer } from '@/lib/api'
+import { defaultPreviewImage, excerpt, siteOpenGraph } from '@/lib/previews'
 import { ChevronIcon } from '@/app/ui/icons'
 
 type Props = PageProps<'/p/[id]'>
 
-export const metadata: Metadata = { title: 'Post' }
+/**
+ * What a link to the post shows when pasted into WhatsApp or X. It asks the API
+ * exactly as the page does (the fetch is shared), so a post the visitor cannot
+ * see (deleted, removed, by someone blocked) gets a generic title and no text.
+ * Preview fetchers are signed out, so they get what any visitor would.
+ */
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params
+  const post = (await getThread(id))?.post
+  if (!post || post.deleted) return { title: 'Post', openGraph: { ...siteOpenGraph, type: 'website', images: [defaultPreviewImage] } }
+
+  const title = `@${post.authorHandle} on HeyNaija`
+  // A post always has text, images or both.
+  const photos = post.images.length === 1 ? 'a photo' : `${post.images.length} photos`
+  const description = post.text ? excerpt(post.text) : `@${post.authorHandle} shared ${photos}.`
+  const first = post.images[0]
+  // The 640px copy: big enough for a preview card, small enough for WhatsApp to fetch.
+  const scale = first ? Math.min(1, 640 / Math.max(first.width, first.height)) : 1
+  const image = first
+    ? { url: `${first.src}/640.webp`, width: Math.round(first.width * scale), height: Math.round(first.height * scale), alt: first.alt }
+    : defaultPreviewImage
+
+  return {
+    title: { absolute: title },
+    description,
+    openGraph: { ...siteOpenGraph, type: 'article', url: `/p/${post.id}`, publishedTime: post.createdAt, images: [image] },
+    twitter: { card: 'summary_large_image' },
+  }
+}
 
 export default function ThreadPage(props: Props) {
   return (

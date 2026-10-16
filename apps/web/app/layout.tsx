@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Plus_Jakarta_Sans } from 'next/font/google'
+import { siteOpenGraph, siteOrigin } from '@/lib/previews'
 import { themeScript } from '@/lib/theme'
 import './globals.css'
 
@@ -13,8 +14,12 @@ const jakarta = Plus_Jakarta_Sans({
 })
 
 export const metadata: Metadata = {
+  metadataBase: siteOrigin,
   title: { default: 'HeyNaija', template: '%s · HeyNaija' },
   description: 'Real people. Real conversations. A social network for Nigerians at home and abroad.',
+  // Link previews take each page's own title and description. No picture here:
+  // this part is prerendered at build time, before the site's address is known.
+  openGraph: { ...siteOpenGraph, type: 'website' },
   icons: {
     icon: [{ url: '/brand/heynaija-mark.svg', type: 'image/svg+xml', sizes: 'any' }],
     apple: [{ url: '/apple-icon.png', type: 'image/png', sizes: '180x180' }],
