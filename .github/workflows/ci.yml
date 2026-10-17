@@ -53,6 +53,8 @@ jobs:
       REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
+      - name: Test deployment upgrades and rollbacks
+        run: bash infra/deploy/deploy.test.sh
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

@@ -23,6 +23,10 @@ version-pinned HeyNaija image that enforces the Google account policy. A new
 release updates that image; configuration changes also recreate Kratos through
 the hash set by `deploy.sh`, so mounted files cannot remain stale.
 
+The deploy job checks out the requested commit before starting its deploy script.
+Manual deployments also restart the script if checkout changes it, so upgrades
+and rollbacks use the instructions from the requested release.
+
 **Tested** on a laptop (14 October 2026): the images, the stack, the nginx site on
 nginx 1.24 (Ubuntu 24.04's version) with client certificates, an invite signup
 with a verification email, and a backup and restore.
@@ -86,6 +90,7 @@ restore rehearsal, and the uptime check. Work through step 7.
 | `zsh: command not found: age-keygen` on a Mac | `age` is not installed | Step 6: `brew install age` |
 | `.env: line 39: ACCOUNT_ID: No such file or directory` | A `<…>` placeholder left in `.env`; scripts load it as shell, where `<` reads a file | Step 5: replace every `<…>` |
 | Deploy: `repository name (HeyNaija/heynaija-web) must be lowercase` | `IMAGE_PREFIX` had capitals | Step 5: all lower case; `deploy.sh` now lowercases it too |
+| Deploy: `cat: ../kratos/policy: Is a directory` | The previous deploy script kept running after checking out a release with the new policy directory | Rerun the failed deploy job: checkout already installed the corrected script. Updated workflows now check out the release before starting it. |
 | Browser: `400 Bad Request — No required SSL certificate was sent` | Authenticated Origin Pulls was still off in Cloudflare | Step 1.4 |
 | Entering a valid invite code just reloads `/join` | A bug in the web app (fixed in `e88f28a`) | Deploy that commit or later |
 

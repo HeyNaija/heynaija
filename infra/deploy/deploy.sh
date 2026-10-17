@@ -16,10 +16,17 @@ IMAGE_PREFIX=${IMAGE_PREFIX:-}
 IMAGE_PREFIX=${IMAGE_PREFIX,,}
 
 ref=${1:-origin/${DEPLOY_BRANCH:-main}}
+deploy_script_hash=$(sha256sum ./deploy.sh)
 git fetch --quiet origin
 git -c advice.detachedHead=false checkout --quiet --detach "$ref"
 RELEASE=$(git rev-parse HEAD)
 export RELEASE
+
+# Bash keeps executing the script it started, even if checkout replaced it. Use
+# the requested release's instructions for manual upgrades and rollbacks too.
+if [[ $(sha256sum ./deploy.sh) != "$deploy_script_hash" ]]; then
+  exec bash ./deploy.sh "$RELEASE"
+fi
 
 prefix=${IMAGE_PREFIX:-heynaija}
 if docker image inspect "$prefix-api:$RELEASE" "$prefix-web:$RELEASE" "$prefix-kratos:$RELEASE" >/dev/null 2>&1; then
