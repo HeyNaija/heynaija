@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { pool, seedThread } from '../lib/db.ts'
-import { newMember } from '../lib/members.ts'
+import { newMember, replyBox } from '../lib/members.ts'
 
 test('expands, reuses and pages branches, and replies to the selected post @mobile', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'threads')
@@ -26,7 +26,7 @@ test('expands, reuses and pages branches, and replies to the selected post @mobi
     await expect(page.locator(`#post-${fixture.nested[0]}`)).toBeVisible()
     expect(actions).toBe(afterExpansion)
 
-    const draft = page.getByRole('textbox', { name: 'Your reply' })
+    const draft = await replyBox(page, fixture.root)
     await draft.fill('Draft retained while a branch collapses')
     await branch.getByRole('link', { name: /^Hide replies/i }).first().click()
     await expect(draft).toHaveValue('Draft retained while a branch collapses')
@@ -39,7 +39,7 @@ test('expands, reuses and pages branches, and replies to the selected post @mobi
     await page.locator(`#post-${fixture.first}`).getByRole('link', { name: /^Reply \(/ }).click()
     await expect(page.locator('form#compose input[name="replyTo"]')).toHaveValue(fixture.first)
     const answer = `Selected branch answer from ${handle}`
-    await page.getByRole('textbox', { name: 'Your reply' }).fill(answer)
+    await (await replyBox(page, fixture.first)).fill(answer)
     await page.getByRole('button', { name: 'Reply', exact: true }).click()
     await expect(branch.locator('article', { hasText: answer })).toBeVisible()
     await expect(page).toHaveURL(url)
@@ -47,7 +47,7 @@ test('expands, reuses and pages branches, and replies to the selected post @mobi
     // Existing expanded rows survive success; no route rebuild discards them.
     await expect(page.locator(`#post-${fixture.nested[0]}`)).toBeVisible()
     const secondAnswer = `Second selected answer from ${handle}`
-    await page.getByRole('textbox', { name: 'Your reply' }).fill(secondAnswer)
+    await (await replyBox(page, fixture.first)).fill(secondAnswer)
     await page.getByRole('button', { name: 'Reply', exact: true }).click()
     await expect(branch.locator('article', { hasText: secondAnswer })).toBeVisible()
     const db = pool()
@@ -92,7 +92,7 @@ test('a new reply preserves an incomplete oldest-first page and is deduplicated 
     const fixture = await seedThread(handle)
     await page.goto(`/p/${fixture.root}`)
     const text = `Newest reply from ${handle}`
-    await page.getByRole('textbox', { name: 'Your reply' }).fill(text)
+    await (await replyBox(page, fixture.root)).fill(text)
     await page.getByRole('button', { name: 'Reply', exact: true }).click()
     await expect(page.locator('article', { hasText: text })).toBeVisible()
     await expect(page.locator('article', { hasText: 'Thread reply ' })).toHaveCount(20)

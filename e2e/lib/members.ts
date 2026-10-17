@@ -94,3 +94,16 @@ export async function post(page: Page, text: string, community?: string) {
   await expect(article).toBeVisible()
   return article
 }
+
+/**
+ * A thread page's reply box, once it sits under the post it replies to (any
+ * post, unless `postId` is given). It is drawn under the post in focus; choosing
+ * another post to reply to moves it there, and the move replaces the textarea,
+ * so text typed into the old one would be lost and Reply would stay disabled.
+ */
+export async function replyBox(page: Page, postId?: string) {
+  const host = postId ? page.locator(`#thread-editor-${postId}`) : page.locator('[id^="thread-editor-"]')
+  const box = host.getByRole('textbox', { name: 'Your reply' })
+  await expect(box).toBeVisible()
+  return box
+}

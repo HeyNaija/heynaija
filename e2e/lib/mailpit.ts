@@ -1,6 +1,6 @@
 import { env } from './env.ts'
 
-type Message = { ID: string; Created: string; Snippet: string; Subject: string }
+type Message = { ID: string; Created: string; Snippet: string; Subject: string; To: { Address: string }[] }
 
 /**
  * The newest six-digit code mailed to `email` since `since`. Kratos sends
@@ -9,11 +9,7 @@ type Message = { ID: string; Created: string; Snippet: string; Subject: string }
 export async function codeFor(email: string, since: Date, timeoutMs = 30_000): Promise<string> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    const res = await fetch(`${env.mailpitUrl}/api/v1/search?query=${encodeURIComponent(`to:"${email}"`)}`)
-    if (!res.ok) throw new Error(`Mailpit search: ${res.status}`)
-    const { messages } = (await res.json()) as { messages: Message[] }
-    // Mailpit lists newest first; allow a second of clock skew between machines.
-    const message = messages.find((m) => new Date(m.Created).getTime() >= since.getTime() - 1000)
+    const message = (await messagesFor(email, since))[0]
     const code = message && (message.Snippet.match(/\b(\d{6})\b/)?.[1] ?? message.Subject.match(/\b(\d{6})\b/)?.[1])
     if (code) return code
     await new Promise((r) => setTimeout(r, 400))
@@ -21,12 +17,17 @@ export async function codeFor(email: string, since: Date, timeoutMs = 30_000): P
   throw new Error(`no code for ${email} in Mailpit after ${timeoutMs / 1000}s`)
 }
 
-/** Every email to `email` since `since`, newest first. */
+/** Every email to exactly `email` since `since`, newest first. */
 export async function messagesFor(email: string, since: Date): Promise<Message[]> {
   const res = await fetch(`${env.mailpitUrl}/api/v1/search?query=${encodeURIComponent(`to:"${email}"`)}`)
   if (!res.ok) throw new Error(`Mailpit search: ${res.status}`)
   const { messages } = (await res.json()) as { messages: Message[] }
-  return messages.filter((m) => new Date(m.Created).getTime() >= since.getTime() - 1000)
+  // Mailpit's to: matches part of an address, so a search for a@x.test also
+  // finds new_a@x.test. Mailpit lists newest first; allow a second of clock
+  // skew between machines.
+  return messages.filter((m) =>
+    m.To.some((to) => to.Address.toLowerCase() === email.toLowerCase()) &&
+    new Date(m.Created).getTime() >= since.getTime() - 1000)
 }
 
 /** Whether Mailpit answers; checked once before the run. */

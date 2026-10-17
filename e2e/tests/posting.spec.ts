@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { newMember, post } from '../lib/members.ts'
+import { newMember, post, replyBox } from '../lib/members.ts'
 
 test('posts to everyone and the post shows in Latest', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'poster')
@@ -36,7 +36,7 @@ test('replies in a thread', async ({ browser }) => {
   await expect(page).toHaveURL(/\/p\//)
 
   const reply = `Answer from ${handle}`
-  await page.getByRole('textbox', { name: 'Your reply' }).fill(reply)
+  await (await replyBox(page)).fill(reply)
   await page.getByRole('button', { name: 'Reply', exact: true }).click()
   await expect(page.locator('article', { hasText: reply })).toBeVisible()
   await page.reload()
