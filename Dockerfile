@@ -42,6 +42,8 @@ WORKDIR /app
 COPY --from=build --chown=node:node /repo/apps/web/.next/standalone ./
 COPY --from=build --chown=node:node /repo/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build --chown=node:node /repo/apps/web/public ./apps/web/public
+# Runs WEB_WORKERS copies of server.js on one port (apps/web/workers.mjs).
+COPY --from=build --chown=node:node /repo/apps/web/workers.mjs ./apps/web/workers.mjs
 USER node
 EXPOSE 3000
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "apps/web/workers.mjs"]
