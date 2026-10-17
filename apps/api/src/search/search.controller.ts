@@ -5,7 +5,7 @@ import { CommunitiesService } from '../communities/communities.service.js'
 import { parse } from '../http.js'
 import { MembersService } from '../members/members.service.js'
 import { PostsService } from '../posts/posts.service.js'
-import { RateLimiter } from '../rate-limit.js'
+import { RateLimiter, visitor } from '../rate-limit.js'
 
 const searchQuery = z.object({ q: z.string().trim().min(2).max(80) })
 
@@ -24,7 +24,7 @@ export class SearchController {
   async search(@Req() req: MaybeAuthedRequest, @Query() query: unknown) {
     const { q } = parse(searchQuery, query)
     const viewerId = req.member?.id ?? null
-    this.limits.hit('search', viewerId ?? 'anonymous')
+    await this.limits.hit('search', viewerId ?? visitor(req))
     const [members, communities, posts] = await Promise.all([
       this.members.search(q, 5),
       this.communities.search(viewerId, q, 5),

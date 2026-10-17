@@ -25,7 +25,7 @@ import { NotificationsController } from './notifications/notifications.controlle
 import { NotificationsService } from './notifications/notifications.service.js'
 import { PostsController } from './posts/posts.controller.js'
 import { PostsService } from './posts/posts.service.js'
-import { RateLimiter } from './rate-limit.js'
+import { RateLimiter, RedisRateLimiter } from './rate-limit.js'
 import { SearchController } from './search/search.controller.js'
 import { DB, ENV } from './tokens.js'
 
@@ -47,7 +47,7 @@ class HealthController {
     SessionGuard,
     OptionalSessionGuard,
     SuspendedAllowedGuard,
-    RateLimiter,
+    { provide: RateLimiter, useClass: RedisRateLimiter },
     ModerationService,
     { provide: OBJECT_STORE, useFactory: (env: Env) => new S3ObjectStore(s3Config(env)), inject: [ENV] },
     { provide: MEDIA_JOBS, useClass: BullMediaJobs },

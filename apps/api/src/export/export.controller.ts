@@ -18,7 +18,7 @@ export class ExportController {
   @UseGuards(SuspendedAllowedGuard)
   @Header('cache-control', 'no-store')
   async export(@Req() req: AuthedRequest) {
-    this.limits.hit('export', req.member.id)
+    await this.limits.hit('export', req.member.id)
     const email = await this.kratos.emailForSession(req.cookies[SESSION_COOKIE] ?? '')
     const data = await this.exports.export(req.member.id, email)
     if (!data) throw new NotFoundException()

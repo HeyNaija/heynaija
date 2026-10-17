@@ -107,7 +107,7 @@ export class PostsController {
   @UseGuards(SessionGuard)
   async create(@Req() req: AuthedRequest, @Body() body: unknown) {
     const { text, replyTo, community, images, quote } = parse(createPostBody, body)
-    this.limits.hit('post', req.member.id)
+    await this.limits.hit('post', req.member.id)
     try {
       return await this.posts.create(req.member.id, text, { replyTo, communitySlug: community, images, quote })
     } catch (err) {
@@ -141,7 +141,7 @@ export class PostsController {
   @HttpCode(204)
   @UseGuards(SessionGuard)
   async like(@Req() req: AuthedRequest, @Param('id') id: string) {
-    this.limits.hit('action', req.member.id)
+    await this.limits.hit('action', req.member.id)
     if (!(await this.posts.like(req.member.id, postId(id)))) throw new NotFoundException()
   }
 
@@ -156,7 +156,7 @@ export class PostsController {
   @HttpCode(204)
   @UseGuards(SessionGuard)
   async repost(@Req() req: AuthedRequest, @Param('id') id: string) {
-    this.limits.hit('action', req.member.id)
+    await this.limits.hit('action', req.member.id)
     if (!(await this.posts.repost(req.member.id, postId(id)))) throw new NotFoundException()
   }
 
@@ -171,7 +171,7 @@ export class PostsController {
   @HttpCode(204)
   @UseGuards(SessionGuard)
   async bookmark(@Req() req: AuthedRequest, @Param('id') id: string) {
-    this.limits.hit('action', req.member.id)
+    await this.limits.hit('action', req.member.id)
     if (!(await this.posts.bookmark(req.member.id, postId(id)))) throw new NotFoundException()
   }
 

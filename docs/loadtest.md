@@ -472,9 +472,8 @@ Next.js and the API each stayed near 10%.
    `docker stats`. Fixes: run two or more web replicas (or Node cluster) behind
    nginx, cache the parts of pages that are the same for everyone, and keep the
    number of API calls per render down.
-7. **One API process.** The same applies to NestJS. Also, the in-memory rate
-   limiter (`rate-limit.ts`) must move to Redis before running more than one API
-   process.
+7. **One API process.** The same applies to NestJS. The rate limits are counted
+   in Redis (17 October 2026), so more than one API process is now possible.
 
 ## Cleaning up
 
