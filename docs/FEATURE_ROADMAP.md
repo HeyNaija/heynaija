@@ -132,7 +132,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 - **ID:** `share-links`
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
-- **Description:** Share a post through a supported device share sheet or copy its link.
+- **Description:** Share a post from an in-app popup to WhatsApp, X, Telegram or Facebook, or copy its link.
 - **Inspected evidence:** `apps/web/app/ui/share-button.tsx`, `e2e/tests/sharing.spec.ts`
 
 #### External link previews

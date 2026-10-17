@@ -19,7 +19,7 @@ export const defaultPreviewImage = {
   alt: 'Three friends in conversation',
 }
 
-/** Text on one line, cut at a word before `max` characters. For descriptions and share sheets. */
+/** Text on one line, cut at a word before `max` characters. For descriptions and share previews. */
 export function excerpt(text: string, max = 200) {
   const line = text.replace(/\s+/g, ' ').trim()
   // By code point, so an emoji is never cut in half.

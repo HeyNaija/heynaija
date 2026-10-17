@@ -211,7 +211,7 @@
     {
       "id": "share-links",
       "name": "Sharing and copy link",
-      "description": "Share a post through a supported device share sheet or copy its link.",
+      "description": "Share a post from an in-app popup to WhatsApp, X, Telegram or Facebook, or copy its link.",
       "category": "conversations",
       "priority": "P0",
       "status": "implemented",

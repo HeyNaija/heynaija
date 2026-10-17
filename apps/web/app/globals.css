@@ -27,6 +27,7 @@
   --topbar: rgb(241 244 242 / 90%); /* the ground, so sticky bars belong to it, not to the cards */
   --shadow-card: none; /* cards sit flush; the border alone outlines them */
   --shadow-pop: 0 12px 32px rgb(16 33 43 / 12%), 0 2px 6px rgb(16 33 43 / 6%);
+  --modal-scrim: rgb(7 13 11 / 48%);
   /* The image viewer is dark in both themes, so photos are seen against the same ground. */
   --scrim: rgb(7 13 11 / 98%);
   --on-scrim: #eef4f0;
@@ -1092,10 +1093,38 @@ summary.menu::-webkit-details-marker {
 .post-actions .icon-btn { min-height: 36px; min-width: 36px; font-size: 11px; }
 .post-actions > .icon-btn:first-child { margin-left: -8px; }
 .post-actions-end { display: flex; align-items: center; gap: 4px; margin-left: auto; margin-right: -8px; }
-/* Says "Link copied" above the share button; empty, it takes no space. */
-.share { position: relative; z-index: 2; display: inline-flex; }
-.share-status { position: absolute; right: 0; bottom: calc(100% + 4px); border-radius: var(--r-chip); background: var(--ink); padding: 4px 8px; color: var(--surface); font-size: 11px; font-weight: 500; white-space: nowrap; pointer-events: none; }
-.share-status:empty { padding: 0; }
+/* Rendered outside the feed: card containment and permalink overlays cannot clip it. */
+html:has(.share-dialog[open]) { overflow: hidden; }
+.share-dialog { position: fixed; inset: 0; width: min(460px, calc(100% - 32px)); max-width: none; max-height: calc(100dvh - 48px); margin: auto; border: 1px solid var(--line); border-radius: var(--r-frame); background: var(--surface); padding: 0; color: var(--ink); box-shadow: var(--shadow-pop); overflow-y: auto; overscroll-behavior: contain; }
+.share-dialog::backdrop { background: var(--modal-scrim); }
+.share-dialog-content { padding: 24px 24px 12px; }
+.share-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.share-dialog-header h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.04em; line-height: 1.4; }
+.share-dialog-header p { margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.share-close { min-height: 40px; min-width: 40px; margin: -6px -8px 0 0; }
+.share-preview { margin-top: 22px; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--panel); padding: 16px; }
+.share-preview-author { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.share-preview-author > div { min-width: 0; }
+.share-preview-name { overflow: hidden; font-size: 13px; font-weight: 600; line-height: 1.6; text-overflow: ellipsis; white-space: nowrap; }
+.share-preview-handle { overflow-wrap: anywhere; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.share-preview-text { display: -webkit-box; margin-top: 12px; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow-wrap: anywhere; font-size: 13px; line-height: 1.8; }
+.share-destinations { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 22px -4px; }
+.share-destination { display: flex; min-width: 0; align-items: center; flex-direction: column; gap: 9px; border-radius: var(--r-control); padding: 6px 0; color: var(--muted); font-size: 11px; font-weight: 500; }
+.share-destination-icon { display: inline-flex; width: 52px; height: 52px; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--panel); color: var(--ink); transition: background-color 0.15s, border-color 0.15s, color 0.15s; }
+.share-destination:is(:hover, :focus-visible) { color: var(--accent-strong); }
+.share-destination:is(:hover, :focus-visible) .share-destination-icon { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.share-copy-section { border-top: 1px solid var(--line); padding-top: 18px; }
+.share-copy-section label { display: block; margin-bottom: 10px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.share-copy-field { display: flex; min-width: 0; align-items: center; gap: 10px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--panel); padding: 5px 5px 5px 12px; }
+.share-copy-field > svg { flex-shrink: 0; color: var(--muted); }
+.share-copy-field input { min-width: 0; width: 100%; border: 0; background: transparent; padding: 6px 0; color: var(--ink); font-size: 16px; text-overflow: ellipsis; }
+.share-copy-field .btn { min-width: 100px; padding-inline: 12px; font-size: 12px; }
+.share-copy-status { min-height: 30px; padding-top: 8px; color: var(--accent-strong); font-size: 12px; line-height: 1.6; }
+.share-copy-status.is-error { color: var(--danger); }
+@media (max-width: 639px) {
+  .share-dialog { width: 100%; max-height: calc(100dvh - 24px); margin: auto 0 0; border-bottom: 0; border-radius: 20px 20px 0 0; }
+  .share-dialog-content { padding: 24px max(20px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
+}
 /* Repost sits near the card's left edge, so its menu opens rightwards, inside the card. */
 .repost-menu .menu-panel { left: -8px; right: auto; }
 .icon-btn.is-reposted { color: var(--accent-strong); }

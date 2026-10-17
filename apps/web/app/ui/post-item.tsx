@@ -220,7 +220,7 @@ export function PostItem({
               </SubmitButton>
             </form>
           ) : null}
-          <ShareButton id={post.id} handle={post.authorHandle} text={excerpt(post.text)} />
+          <ShareButton id={post.id} handle={post.authorHandle} name={post.authorName} avatar={post.authorAvatar} text={excerpt(post.text)} />
         </div>
       </div>
     </article>
