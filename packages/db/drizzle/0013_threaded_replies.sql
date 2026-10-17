@@ -1,0 +1,1 @@
+CREATE INDEX "posts_reply_parent_created_idx" ON "posts" USING btree ("reply_parent_id","created_at","id");

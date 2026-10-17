@@ -31,7 +31,9 @@ import {
   ParentNotFoundError,
   newPost,
   PostsService,
+  QuotedPostNotFoundError,
 } from './posts.service.js'
+import { replyPageQuery } from './reply-cursor.js'
 
 const createPostBody = newPost(slugParam)
 
@@ -84,18 +86,37 @@ export class PostsController {
     return thread
   }
 
+  @Get('posts/:id/replies')
+  @UseGuards(OptionalSessionGuard)
+  async replies(@Req() req: MaybeAuthedRequest, @Param('id') id: string, @Query() query: unknown) {
+    const { limit, cursor } = parse(replyPageQuery, query)
+    const page = await paged(() => this.posts.replies(req.member?.id ?? null, postId(id), limit, cursor))
+    if (!page) throw new NotFoundException()
+    return page
+  }
+
+  @Get('posts/:id/post')
+  @UseGuards(OptionalSessionGuard)
+  async post(@Req() req: MaybeAuthedRequest, @Param('id') id: string) {
+    const post = await this.posts.post(req.member?.id ?? null, postId(id))
+    if (!post) throw new NotFoundException()
+    return post
+  }
+
   @Post('posts')
   @UseGuards(SessionGuard)
   async create(@Req() req: AuthedRequest, @Body() body: unknown) {
-    const { text, replyTo, community, images } = parse(createPostBody, body)
-    this.limits.hit('post', req.member.id)
+    const { text, replyTo, community, images, quote } = parse(createPostBody, body)
+    await this.limits.hit('post', req.member.id)
     try {
-      return await this.posts.create(req.member.id, text, { replyTo, communitySlug: community, images })
+      return await this.posts.create(req.member.id, text, { replyTo, communitySlug: community, images, quote })
     } catch (err) {
       const code =
         err instanceof ParentNotFoundError
           ? 'parent_gone'
-          : err instanceof CommunityNotFoundError
+          : err instanceof QuotedPostNotFoundError
+            ? 'quote_gone'
+            : err instanceof CommunityNotFoundError
             ? 'community_gone'
             : err instanceof NotACommunityMemberError
               ? 'not_a_member'
@@ -120,7 +141,7 @@ export class PostsController {
   @HttpCode(204)
   @UseGuards(SessionGuard)
   async like(@Req() req: AuthedRequest, @Param('id') id: string) {
-    this.limits.hit('action', req.member.id)
+    await this.limits.hit('action', req.member.id)
     if (!(await this.posts.like(req.member.id, postId(id)))) throw new NotFoundException()
   }
 
@@ -131,11 +152,26 @@ export class PostsController {
     await this.posts.unlike(req.member.id, postId(id))
   }
 
+  @Put('posts/:id/repost')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async repost(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await this.limits.hit('action', req.member.id)
+    if (!(await this.posts.repost(req.member.id, postId(id)))) throw new NotFoundException()
+  }
+
+  @Delete('posts/:id/repost')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async unrepost(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await this.posts.unrepost(req.member.id, postId(id))
+  }
+
   @Put('posts/:id/bookmark')
   @HttpCode(204)
   @UseGuards(SessionGuard)
   async bookmark(@Req() req: AuthedRequest, @Param('id') id: string) {
-    this.limits.hit('action', req.member.id)
+    await this.limits.hit('action', req.member.id)
     if (!(await this.posts.bookmark(req.member.id, postId(id)))) throw new NotFoundException()
   }
 

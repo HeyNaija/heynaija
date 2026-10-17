@@ -21,6 +21,9 @@ export type MaybeAuthedRequest = FastifyRequest & { member?: Identity }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
+/** `members.last_seen_at` is refreshed at most this often per member. */
+export const LAST_SEEN_EVERY_MS = 5 * 60_000
+
 @Injectable()
 export class SessionGuard implements CanActivate {
   /** Suspended members are turned away, except where a subclass says otherwise. */
@@ -46,11 +49,12 @@ export class SessionGuard implements CanActivate {
     const identity = cookie ? await this.kratos.identityForSession(cookie) : null
     if (!identity) throw new UnauthorizedException('sign in required')
 
+    // A plain primary-key read on every request: `active` is never cached, so a
+    // suspension takes effect on the member's very next request.
     let [member] = await this.db
-      .update(members)
-      .set({ handle: identity.handle, lastSeenAt: new Date() })
+      .select({ active: members.active, handle: members.handle, lastSeenAt: members.lastSeenAt })
+      .from(members)
       .where(eq(members.id, identity.id))
-      .returning({ active: members.active })
 
     if (!member) {
       // First sight of this identity. A Kratos account alone is not membership:
@@ -62,7 +66,18 @@ export class SessionGuard implements CanActivate {
         .insert(members)
         .values({ id: identity.id, handle: identity.handle, lastSeenAt: new Date() })
         .onConflictDoUpdate({ target: members.id, set: { lastSeenAt: new Date() } })
-        .returning({ active: members.active })
+        .returning({ active: members.active, handle: members.handle, lastSeenAt: members.lastSeenAt })
+    } else if (
+      member.handle !== identity.handle ||
+      !member.lastSeenAt ||
+      Date.now() - member.lastSeenAt.getTime() >= LAST_SEEN_EVERY_MS
+    ) {
+      // Writing last_seen_at on every call meant 3–5 row updates per page view;
+      // "last seen" only needs to be right to within a few minutes.
+      await this.db
+        .update(members)
+        .set({ handle: identity.handle, lastSeenAt: new Date() })
+        .where(eq(members.id, identity.id))
     }
     if (!member) throw new ForbiddenException('account_inactive')
     if (!member.active && this.requireActive) throw new ForbiddenException('account_inactive')

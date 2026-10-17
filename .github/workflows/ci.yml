@@ -12,6 +12,10 @@ on:
         description: Also check that the Docker images build (the deploy workflows build them anyway)
         type: boolean
         default: true
+      e2e:
+        description: Also run the browser end-to-end tests (docs/e2e.md)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -36,8 +40,44 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U heynaija"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      # For the tests of what the API keeps in Redis (session cache, rate limits).
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       TEST_DATABASE_URL: postgres://heynaija:ci-only@localhost:5432/heynaija_test
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test deployment upgrades and rollbacks
+        run: bash infra/deploy/deploy.test.sh
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm roadmap:check
+      - run: pnpm roadmap:test
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm audit --prod --audit-level high
+
+  # Browser end-to-end tests (docs/e2e.md): the dev stack from Docker Compose, a
+  # production build of the API and web app on this runner, Playwright in Chromium.
+  e2e:
+    if: inputs.e2e != false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Kratos runs in a container and calls the API's invite webhooks through
+      # host.docker.internal, which on Linux only reaches ports bound beyond loopback.
+      API_HOST: 0.0.0.0
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -46,10 +86,61 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+
+      - name: Start the stack (Postgres, Redis, Kratos, MinIO, Mailpit)
+        run: |
+          pnpm infra:env
+          # MinIO's image runs as user 65532. On Linux, Docker would create this
+          # bind-mounted folder owned by root and MinIO could not write to it.
+          mkdir -p infra/compose/.data/minio
+          sudo chown 65532:65532 infra/compose/.data/minio
+          pnpm infra:up
+          for i in $(seq 1 90); do
+            curl -fsS http://127.0.0.1:4533/health/ready >/dev/null \
+              && curl -fsS http://127.0.0.1:8026/api/v1/info >/dev/null \
+              && curl -fsS http://127.0.0.1:9100/minio/health/live >/dev/null && exit 0
+            sleep 2
+          done
+          docker compose --env-file .env -f infra/compose/docker-compose.dev.yml logs
+          exit 1
+
       - run: pnpm build
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm audit --prod --audit-level high
+      - run: pnpm db:migrate
+      - run: pnpm db:seed
+      - run: pnpm media:init
+
+      - name: Start the API and the web app
+        run: |
+          pnpm --filter @heynaija/api start > api.log 2>&1 &
+          pnpm --filter @heynaija/web start > web.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:4000/healthz >/dev/null && curl -fsS -o /dev/null http://127.0.0.1:3000/ && exit 0
+            sleep 2
+          done
+          cat api.log web.log
+          exit 1
+
+      - name: Install Chromium for Playwright
+        run: pnpm --filter @heynaija/e2e exec playwright install --with-deps chromium
+
+      - run: pnpm e2e
+        env:
+          CI: true
+
+      - name: Keep the report, traces and logs
+        if: failure()
+        run: docker compose --env-file .env -f infra/compose/docker-compose.dev.yml logs > compose.log 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+            api.log
+            web.log
+            compose.log
+          retention-days: 7
 
   # The deploy images, so a change that breaks the Docker build is caught here
   # rather than when deploying.
@@ -62,3 +153,4 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - run: docker buildx build --target api .
       - run: docker buildx build --target web .
+      - run: docker buildx build infra/kratos

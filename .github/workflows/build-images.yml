@@ -1,6 +1,7 @@
-# Builds the API and web images on GitHub's machines and pushes them to GitHub's
-# container registry, tagged with the commit. Called by the deploy workflows, so
-# the servers only ever pull images and never spend memory building them.
+# Builds the API, web and authentication images on GitHub's machines and pushes
+# them to GitHub's container registry: the API and web images tagged with the
+# commit, Kratos's with the contents of infra/kratos. Called by the deploy
+# workflows, so the servers only ever pull images and never spend memory building them.
 name: Build images
 
 on:
@@ -26,6 +27,12 @@ jobs:
       # The registry wants lower case; GitHub owner names may not be.
       - id: prefix
         run: echo "value=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/heynaija" >> "$GITHUB_OUTPUT"
+
+      # Kratos's image is tagged with the contents of infra/kratos rather than the
+      # commit, so a release that leaves those files alone does not restart it.
+      # deploy.sh works out the same tag.
+      - id: kratos
+        run: echo "tag=$(git rev-parse HEAD:infra/kratos)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -54,3 +61,12 @@ jobs:
           tags: ${{ steps.prefix.outputs.value }}-web:${{ github.sha }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
+
+      - name: Authentication image
+        uses: docker/build-push-action@v6
+        with:
+          context: infra/kratos
+          push: true
+          tags: ${{ steps.prefix.outputs.value }}-kratos:${{ steps.kratos.outputs.tag }}
+          cache-from: type=gha,scope=kratos
+          cache-to: type=gha,scope=kratos,mode=max

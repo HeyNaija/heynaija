@@ -1,14 +1,19 @@
-import { blocks, type Db, follows, members, mutes } from '@heynaija/db'
+import { blocks, type Db, follows, members, mutes, releasedHandles } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
-import { and, asc, eq, ilike, like, or, sql } from 'drizzle-orm'
+import { and, asc, eq, ilike, like, ne, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
+import type { Env } from '../env.js'
 import { avatarPath } from '../media/media.service.js'
 import { notify } from '../notifications/notifications.service.js'
 import { cleanLine, cleanLines, graphemes } from '../text.js'
-import { DB } from '../tokens.js'
+import { DB, ENV } from '../tokens.js'
 
 export const DISPLAY_NAME_MAX = 50
 export const BIO_MAX = 160
+/** How long a handle given up by renaming stays its previous owner's to take back. */
+export const HANDLE_HOLD_DAYS = 30
+
+const held = sql`${releasedHandles.releasedAt} > now() - make_interval(days => ${HANDLE_HOLD_DAYS})`
 
 const atMost = (max: number) => (t: string) => t.length <= max * 16 && graphemes(t) <= max
 
@@ -40,6 +45,8 @@ export type Profile = {
   viewerFollows: boolean
   viewerBlocks: boolean
   viewerMutes: boolean
+  /** Whether to show the green "NIN identity verified" tick. */
+  identityBadge: boolean
 }
 
 export class CannotFollowSelfError extends Error {}
@@ -50,7 +57,11 @@ const outerId = sql`"members"."id"`
 
 @Injectable()
 export class MembersService {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    // Tests that never touch badges may leave this out: badges then stay hidden.
+    @Inject(ENV) private readonly env: Pick<Env, 'NIN_VERIFICATION_ENABLED'> = { NIN_VERIFICATION_ENABLED: false },
+  ) {}
 
   /** Active members only: a suspended member's profile is not found. */
   private async idForHandle(handle: string): Promise<string | null> {
@@ -58,8 +69,9 @@ export class MembersService {
       .select({ id: members.id })
       .from(members)
       .where(and(eq(members.handle, handle), eq(members.active, true)))
-      // Handles are unique in Kratos; our copy can briefly lag a rename, in which
-      // case the member seen most recently is the current owner.
+      // Kratos keeps handles unique (they are credential identifiers in its
+      // identity schema); our copy can briefly lag a rename, in which case the
+      // member seen most recently is the current owner.
       .orderBy(sql`${members.lastSeenAt} desc nulls last`)
       .limit(1)
     return row?.id ?? null
@@ -93,6 +105,12 @@ export class MembersService {
         blockedByThem: viewerId
           ? sql<boolean>`exists(select 1 from blocks b where b.blocker_id = ${outerId} and b.blocked_id = ${viewerId})`
           : sql<boolean>`false`,
+        // The green identity tick: only from a profile_badges row, which
+        // GovernanceService writes for a reviewed, current verification the
+        // member chose to show, and never while verification is switched off.
+        identityBadge: this.env.NIN_VERIFICATION_ENABLED
+          ? sql<boolean>`exists(select 1 from profile_badges pb where pb.member_id = ${outerId} and pb.kind = 'nin_identity_verified' and (pb.expires_at is null or pb.expires_at > now()))`
+          : sql<boolean>`false`,
       })
       .from(members)
       .where(eq(members.id, id))
@@ -100,6 +118,57 @@ export class MembersService {
     if (!row || row.blockedByThem) return null
     const { blockedByThem: _hidden, avatarMediaId, ...profile } = row
     return { ...profile, avatar: avatarPath(avatarMediaId), isSelf: row.id === viewerId }
+  }
+
+  /**
+   * Whether `handle` was given up in the last HANDLE_HOLD_DAYS by someone other
+   * than `memberId` (null for someone signing up), so it is not theirs to take.
+   */
+  async handleHeld(handle: string, memberId: string | null): Promise<boolean> {
+    const [hold] = await this.db
+      .select({ memberId: releasedHandles.memberId })
+      .from(releasedHandles)
+      .where(and(eq(releasedHandles.handle, handle), held))
+    return Boolean(hold && hold.memberId !== memberId)
+  }
+
+  /**
+   * Holds `handle` for `memberId`, who is about to rename away from it. Called
+   * before Kratos saves the rename: if the save fails they keep the handle, and a
+   * hold on a handle its owner still has changes nothing.
+   */
+  async holdHandle(memberId: string, handle: string): Promise<void> {
+    // A member the API has never seen has no row to hold it for (and no links yet).
+    const [member] = await this.db.select({ id: members.id }).from(members).where(eq(members.id, memberId))
+    if (!member) return
+    await this.db
+      .insert(releasedHandles)
+      .values({ handle, memberId })
+      .onConflictDoUpdate({ target: releasedHandles.handle, set: { memberId, releasedAt: sql`now()` } })
+  }
+
+  /**
+   * For a handle nobody has now: the handle now used by the member who gave it up
+   * in the last HANDLE_HOLD_DAYS, so /u/<old handle> can lead there. Null if
+   * there is none, they are suspended, or they have blocked the viewer.
+   */
+  async movedTo(viewerId: string | null, handle: string): Promise<string | null> {
+    const [row] = await this.db
+      .select({ handle: members.handle })
+      .from(releasedHandles)
+      .innerJoin(members, eq(members.id, releasedHandles.memberId))
+      .where(
+        and(
+          eq(releasedHandles.handle, handle),
+          held,
+          eq(members.active, true),
+          ne(members.handle, handle),
+          viewerId
+            ? sql`not exists (select 1 from ${blocks} b where b.blocker_id = ${members.id} and b.blocked_id = ${viewerId})`
+            : undefined,
+        ),
+      )
+    return row?.handle ?? null
   }
 
   /** Replaces the member's name and bio with already-validated values. */

@@ -4,18 +4,25 @@ import { refresh } from 'next/cache'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { api } from '@/lib/api'
-import { INVITE_COOKIE } from '@/lib/invite'
+import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
 import { startFlowUrl } from '@/lib/kratos'
+import type { ThreadRow } from '@/lib/thread-state'
 
 // The API is the authority on who is signed in and what they may do; these
 // functions only relay the visitor's own session cookie to it.
 
-export type ComposeState = { error?: string; postedAt?: number }
+export type ComposeState = {
+  error?: string
+  postedAt?: number
+  postId?: string
+  reply?: { parentId: string; row: ThreadRow }
+}
 
-export async function createPost(_prev: ComposeState, formData: FormData): Promise<ComposeState> {
+export async function createPost(_prev: ComposeState, formData: FormData, refreshPage = true): Promise<ComposeState> {
   const text = String(formData.get('text') ?? '')
   const replyTo = String(formData.get('replyTo') ?? '') || undefined
   const community = String(formData.get('community') ?? '') || undefined
+  const quote = String(formData.get('quote') ?? '') || undefined
   // Each attached image is an `image` field naming the upload, with its description in `alt-<id>`.
   const images = formData
     .getAll('image')
@@ -25,14 +32,17 @@ export async function createPost(_prev: ComposeState, formData: FormData): Promi
   const res = await api('/v1/posts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, replyTo, community, images }),
-  })
+    body: JSON.stringify({ text, replyTo, community, images, quote }),
+  }).catch(() => null)
+
+  if (!res) return { error: 'Could not post. Check your connection and try again.' }
 
   if (res.status === 401) redirect('/login')
   if (res.status === 429) return { error: 'You are posting very fast. Wait a minute and try again.' }
   if (res.status === 400) {
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     if (body.code === 'parent_gone') return { error: 'The post you are replying to has been deleted.' }
+    if (body.code === 'quote_gone') return { error: 'The post you are quoting is no longer available.' }
     if (body.code === 'not_a_member') return { error: 'Join that community to post in it.' }
     if (body.code === 'community_gone') return { error: 'That community is no longer available.' }
     if (body.code === 'images_not_ready') {
@@ -43,8 +53,16 @@ export async function createPost(_prev: ComposeState, formData: FormData): Promi
   }
   if (!res.ok) return { error: 'Could not post. Check your connection and try again.' }
 
-  refresh()
-  return { postedAt: Date.now() }
+  const result = await res.json() as { id: string }
+  if (refreshPage) refresh()
+  return { postedAt: Date.now(), postId: result.id }
+}
+
+/** Posts a quote post, then opens it, so the member sees it with the post it quotes. */
+export async function createQuote(prev: ComposeState, formData: FormData): Promise<ComposeState> {
+  const state = await createPost(prev, formData, false)
+  if (state.postId) redirect(`/p/${encodeURIComponent(state.postId)}`)
+  return state
 }
 
 /** `upTo` is the newest notification the member has seen. */
@@ -70,6 +88,35 @@ export async function setLike(formData: FormData): Promise<void> {
   const res = await api(`/v1/posts/${encodeURIComponent(id)}/like`, { method })
   if (res.status === 401) redirect('/login')
   refresh()
+}
+
+/**
+ * The same as setLike, for the like button when JavaScript runs: it already shows
+ * the change, so the page is not re-rendered. On a long feed that re-render would
+ * resend every post the reader has loaded.
+ */
+export async function toggleLike(id: string, on: boolean): Promise<{ ok: boolean }> {
+  if (typeof id !== 'string' || id.length > 64) return { ok: false }
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/like`, { method: on ? 'PUT' : 'DELETE' })
+  if (res.status === 401) redirect('/login')
+  return { ok: res.ok }
+}
+
+/** The no-JavaScript repost form. `on` is the state the member wants, as for likes. */
+export async function setRepost(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '')
+  const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/repost`, { method })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+/** The repost control when JavaScript runs: it already shows the change, as toggleLike does. */
+export async function toggleRepost(id: string, on: boolean): Promise<{ ok: boolean }> {
+  if (typeof id !== 'string' || id.length > 64) return { ok: false }
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/repost`, { method: on ? 'PUT' : 'DELETE' })
+  if (res.status === 401) redirect('/login')
+  return { ok: res.ok }
 }
 
 export async function setBookmark(formData: FormData): Promise<void> {
@@ -286,29 +333,42 @@ export async function setFollow(formData: FormData): Promise<void> {
   refresh()
 }
 
-export type JoinState = { error?: string; code?: string }
+export type JoinState = { error?: string; ageError?: string; code?: string; adult?: boolean; next?: string }
 
 export async function acceptInvite(_prev: JoinState, formData: FormData): Promise<JoinState> {
   const typed = String(formData.get('code') ?? '').slice(0, 40)
   // Letters and digits only: this value goes into a cookie that Kratos reads raw.
   const code = typed.toUpperCase().replace(/[^0-9A-Z]/g, '')
+  // Accounts are 18+ during the beta (a temporary rule). The API's registration
+  // webhook checks this again.
+  const adult = formData.get('adult') === 'yes'
+  if (!adult) {
+    return { code: typed, adult, ageError: 'During the beta, HeyNaija is open to people aged 18 or older. Confirm your age to continue.' }
+  }
 
   const res = await api('/v1/invites/check', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ code }),
   })
-  if (!res.ok) return { code: typed, error: 'Could not check that code. Try again in a moment.' }
+  if (!res.ok) return { code: typed, adult, error: 'Could not check that code. Try again in a moment.' }
   if (!((await res.json()) as { usable: boolean }).usable) {
-    return { code: typed, error: 'That code is not valid. Check it, or ask whoever invited you for a new one.' }
+    return { code: typed, adult, error: 'That code is not valid. Check it, or ask whoever invited you for a new one.' }
   }
 
-  ;(await cookies()).set(INVITE_COOKIE, code, {
+  const jar = await cookies()
+  const options = {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
     maxAge: 60 * 60,
-  })
-  redirect(startFlowUrl('registration'))
+  } as const
+  jar.set(INVITE_COOKIE, code, options)
+  jar.set(AGE_COOKIE, AGE_COOKIE_VALUE, options)
+  // Not redirect(): for a server action Next renders the redirect target on the
+  // server, so Kratos's anti-CSRF cookie never reaches the browser and /signup is
+  // rendered without the invite cookie, which sends the visitor back to /join.
+  // The form navigates the browser itself instead.
+  return { next: startFlowUrl('registration') }
 }

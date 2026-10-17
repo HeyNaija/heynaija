@@ -13,6 +13,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common'
+import { z } from 'zod'
 import {
   type AuthedRequest,
   type MaybeAuthedRequest,
@@ -20,9 +21,11 @@ import {
   SessionGuard,
 } from '../auth/session.guard.js'
 import { handleParam, paged, pageQuery, parse } from '../http.js'
-import { PostsService } from '../posts/posts.service.js'
+import { PostsService, PROFILE_FILTERS } from '../posts/posts.service.js'
 import { RateLimiter } from '../rate-limit.js'
 import { CannotFollowSelfError, MembersService, profileInput } from './members.service.js'
+
+const memberPostsQuery = pageQuery.extend({ filter: z.enum(PROFILE_FILTERS).default('posts') })
 
 const handleOf = (raw: string): string => {
   const parsed = handleParam.safeParse(raw)
@@ -41,26 +44,30 @@ export class MembersController {
   @Get(':handle')
   @UseGuards(OptionalSessionGuard)
   async profile(@Req() req: MaybeAuthedRequest, @Param('handle') handle: string) {
-    const profile = await this.members.profile(req.member?.id ?? null, handleOf(handle))
-    if (!profile) throw new NotFoundException()
-    return profile
+    const viewerId = req.member?.id ?? null
+    const profile = await this.members.profile(viewerId, handleOf(handle))
+    if (profile) return profile
+    // A handle given up recently: say which one its owner uses now, so the web
+    // app can send old links there.
+    const movedTo = await this.members.movedTo(viewerId, handleOf(handle))
+    throw new NotFoundException(movedTo ? { movedTo } : undefined)
   }
 
   @Get(':handle/posts')
   @UseGuards(OptionalSessionGuard)
   async memberPosts(@Req() req: MaybeAuthedRequest, @Param('handle') handle: string, @Query() query: unknown) {
-    const { limit, cursor } = parse(pageQuery, query)
+    const { limit, cursor, filter } = parse(memberPostsQuery, query)
     const viewerId = req.member?.id ?? null
     const profile = await this.members.profile(viewerId, handleOf(handle))
     if (!profile) throw new NotFoundException()
-    return paged(() => this.posts.byAuthor(viewerId, profile.id, limit, cursor))
+    return paged(() => this.posts.byAuthor(viewerId, profile.id, limit, cursor, filter))
   }
 
   @Put(':handle/follow')
   @HttpCode(204)
   @UseGuards(SessionGuard)
   async follow(@Req() req: AuthedRequest, @Param('handle') handle: string) {
-    this.limits.hit('action', req.member.id)
+    await this.limits.hit('action', req.member.id)
     try {
       if (!(await this.members.follow(req.member.id, handleOf(handle)))) throw new NotFoundException()
     } catch (err) {
@@ -80,7 +87,7 @@ export class MembersController {
   @HttpCode(204)
   @UseGuards(SessionGuard)
   async block(@Req() req: AuthedRequest, @Param('handle') handle: string) {
-    this.limits.hit('action', req.member.id)
+    await this.limits.hit('action', req.member.id)
     if (!(await this.members.block(req.member.id, handleOf(handle)))) throw new NotFoundException()
   }
 
@@ -95,7 +102,7 @@ export class MembersController {
   @HttpCode(204)
   @UseGuards(SessionGuard)
   async mute(@Req() req: AuthedRequest, @Param('handle') handle: string) {
-    this.limits.hit('action', req.member.id)
+    await this.limits.hit('action', req.member.id)
     if (!(await this.members.mute(req.member.id, handleOf(handle)))) throw new NotFoundException()
   }
 
@@ -120,7 +127,7 @@ export class OwnProfileController {
   @UseGuards(SessionGuard)
   async update(@Req() req: AuthedRequest, @Body() body: unknown) {
     const profile = parse(profileInput, body)
-    this.limits.hit('profile', req.member.id)
+    await this.limits.hit('profile', req.member.id)
     await this.members.updateProfile(req.member.id, profile)
   }
 }

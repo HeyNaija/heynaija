@@ -1,0 +1,1237 @@
+{
+  "schemaVersion": 1,
+  "scope": "Audit scope: the local staging working tree and its inspected code, tests and operational documentation. Staging is documented as deployed, but this audit does not verify the live revision or individual feature availability there. Production is not recorded as launched. Unknown availability is intentional, even when implementation is tested.",
+  "features": [
+    {
+      "id": "invite-signup",
+      "name": "Invite-only signup",
+      "description": "Create an account using a valid invite, with server-side invite redemption.",
+      "category": "accounts",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/auth/auth.controller.ts",
+        "apps/api/src/invites/invites.service.ts",
+        "infra/kratos/kratos.yml",
+        "e2e/tests/auth.spec.ts"
+      ],
+      "notes": "Browser invite journeys and atomic-redemption tests exist; production availability is not inferred."
+    },
+    {
+      "id": "email-signin",
+      "name": "Email-code sign-in",
+      "description": "Sign in and out using an emailed code rather than a password.",
+      "category": "accounts",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/auth/auth.controller.ts",
+        "apps/api/src/invites/invites.service.ts",
+        "infra/kratos/kratos.yml",
+        "e2e/tests/auth.spec.ts",
+        "apps/web/app/(auth)/login/page.tsx"
+      ]
+    },
+    {
+      "id": "email-verification",
+      "name": "Email confirmation",
+      "description": "Confirm the email address used to create an account.",
+      "category": "accounts",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/auth/auth.controller.ts",
+        "apps/api/src/invites/invites.service.ts",
+        "infra/kratos/kratos.yml",
+        "e2e/tests/auth.spec.ts",
+        "apps/web/app/(auth)/verification/page.tsx"
+      ]
+    },
+    {
+      "id": "google-signin",
+      "name": "Google sign-in",
+      "description": "Use the configured Google identity provider to access an invited account.",
+      "category": "accounts",
+      "priority": "P0",
+      "status": "partial",
+      "availability": "unknown",
+      "evidence": [
+        "infra/kratos/google.jsonnet",
+        "infra/kratos/kratos.yml",
+        "apps/web/app/ui/flow-form.tsx",
+        "docs/deployment/google-sign-in.md"
+      ],
+      "caveat": "Provider configuration and UI exist; a real Google sign-in journey still needs verification.",
+      "notes": "docs/e2e.md explicitly excludes real Google sign-in coverage."
+    },
+    {
+      "id": "account-recovery",
+      "name": "Account recovery",
+      "description": "Regain account access while distinguishing email-code sign-in from a separate recovery process.",
+      "category": "accounts",
+      "priority": "P0",
+      "status": "partial",
+      "availability": "unknown",
+      "evidence": [
+        "infra/kratos/kratos.yml",
+        "apps/web/lib/kratos.ts",
+        "apps/web/app/ui/flow-form.tsx",
+        "docs/adr/0003-passwordless-sign-in.md",
+        "e2e/tests/auth.spec.ts"
+      ],
+      "caveat": "Email-code sign-in restores access if you can receive email; a separate process for losing that email account is not provided.",
+      "notes": "Kratos password recovery is explicitly disabled. ADR 0003 replaced it with passwordless sign-in; do not claim a configured recovery flow exists."
+    },
+    {
+      "id": "temporary-beta-age",
+      "name": "Temporary beta age declaration",
+      "description": "Require new beta members to state that they are 18 or older.",
+      "category": "accounts",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/auth/auth.controller.ts",
+        "apps/api/src/governance/age.ts",
+        "apps/web/app/(auth)/join/join-form.tsx",
+        "apps/api/src/governance/age.test.ts",
+        "e2e/tests/auth.spec.ts"
+      ],
+      "notes": "Temporary self-declaration, not verified age; under-18 access and voting eligibility remain separate."
+    },
+    {
+      "id": "text-posts",
+      "name": "Text posts",
+      "description": "Publish short public posts and delete your own posts.",
+      "category": "conversations",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/posts/posts.service.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/post-item.tsx",
+        "apps/api/src/posts/posts.service.test.ts"
+      ]
+    },
+    {
+      "id": "image-posts",
+      "name": "Images and descriptions",
+      "description": "Attach up to four processed images to a post, with descriptions for screen readers.",
+      "category": "conversations",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/media/media.service.ts",
+        "apps/web/app/ui/composer.tsx",
+        "apps/api/src/media/media.service.test.ts",
+        "e2e/tests/images.spec.ts"
+      ],
+      "notes": "Image processing works; abuse-material screening is tracked separately."
+    },
+    {
+      "id": "threaded-replies",
+      "name": "Navigable conversation threads",
+      "description": "Read and expand nested replies with paginated conversation context.",
+      "category": "conversations",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/web/app/ui/thread-conversation.tsx",
+        "apps/api/src/posts/posts.service.ts",
+        "packages/db/drizzle/0013_threaded_replies.sql",
+        "e2e/tests/threads.spec.ts"
+      ]
+    },
+    {
+      "id": "likes",
+      "name": "Likes",
+      "description": "Like a visible post and remove your like.",
+      "category": "conversations",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/posts/posts.service.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/post-item.tsx",
+        "apps/api/src/posts/posts.service.test.ts"
+      ]
+    },
+    {
+      "id": "follows",
+      "name": "Following people",
+      "description": "Follow and unfollow members to shape your Following feed.",
+      "category": "discovery",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/members/members.service.ts",
+        "apps/web/app/(main)/u/[handle]/page.tsx",
+        "apps/api/src/members/members.service.test.ts",
+        "e2e/tests/social.spec.ts"
+      ]
+    },
+    {
+      "id": "reposts",
+      "name": "Reposts",
+      "description": "Pass an existing post to your followers without duplicating it in their feed.",
+      "category": "conversations",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/posts/posts.service.ts",
+        "packages/db/drizzle/0015_reposts.sql",
+        "apps/api/src/posts/reposts.test.ts",
+        "e2e/tests/reposts.spec.ts"
+      ]
+    },
+    {
+      "id": "quote-posts",
+      "name": "Quote posts",
+      "description": "Add your own words to a shared post while keeping the original in context.",
+      "category": "conversations",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/posts/posts.service.ts",
+        "packages/db/drizzle/0015_reposts.sql",
+        "apps/api/src/posts/reposts.test.ts",
+        "e2e/tests/reposts.spec.ts"
+      ]
+    },
+    {
+      "id": "share-links",
+      "name": "Sharing and copy link",
+      "description": "Share a post from an in-app popup to WhatsApp, X, Telegram or Facebook, or copy its link.",
+      "category": "conversations",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/web/app/ui/share-button.tsx",
+        "e2e/tests/sharing.spec.ts"
+      ]
+    },
+    {
+      "id": "link-previews",
+      "name": "External link previews",
+      "description": "Give shared post links descriptive titles, text and available images.",
+      "category": "conversations",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/web/app/(main)/p/[id]/page.tsx",
+        "apps/web/lib/previews.ts",
+        "e2e/tests/sharing.spec.ts"
+      ]
+    },
+    {
+      "id": "chronological-feeds",
+      "name": "Chronological home feeds",
+      "description": "Read Latest and Following in time order, with explanations of Following entries.",
+      "category": "conversations",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/posts/posts.service.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/post-item.tsx",
+        "apps/api/src/posts/posts.service.test.ts",
+        "apps/api/src/communities/communities.service.test.ts",
+        "apps/web/app/(main)/page.tsx"
+      ],
+      "notes": "The local UI says Latest; any For you label is not evidence of personalisation. Reposts use their latest visible entry time (ADR 0007)."
+    },
+    {
+      "id": "profiles",
+      "name": "Member profiles",
+      "description": "Edit your photo, name and bio, and browse separate Posts, Replies and Media views.",
+      "category": "discovery",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/members/members.service.ts",
+        "apps/web/app/(main)/u/[handle]/page.tsx",
+        "apps/api/src/members/members.service.test.ts",
+        "e2e/tests/social.spec.ts",
+        "apps/api/src/posts/posts.service.test.ts",
+        "apps/web/app/ui/profile-form.tsx"
+      ]
+    },
+    {
+      "id": "search",
+      "name": "Member, community and post search",
+      "description": "Find members, public communities and matching words in posts and replies.",
+      "category": "discovery",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/search/search.controller.ts",
+        "apps/web/app/(main)/search/page.tsx",
+        "apps/api/src/members/members.service.test.ts",
+        "apps/api/src/communities/communities.service.test.ts",
+        "apps/api/src/posts/posts.service.test.ts"
+      ]
+    },
+    {
+      "id": "communities",
+      "name": "Public communities",
+      "description": "Browse, join and leave communities, and read or post in their public feeds.",
+      "category": "discovery",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/communities/communities.service.ts",
+        "apps/web/app/(main)/c/page.tsx",
+        "apps/web/app/(main)/c/[slug]/page.tsx",
+        "apps/api/src/communities/communities.service.test.ts",
+        "e2e/tests/posting.spec.ts"
+      ]
+    },
+    {
+      "id": "in-app-notifications",
+      "name": "In-app notifications",
+      "description": "See replies, likes, reposts, quotes, follows and moderation outcomes inside HeyNaija.",
+      "category": "discovery",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/notifications/notifications.service.ts",
+        "apps/web/app/(main)/notifications/page.tsx",
+        "apps/api/src/notifications/notifications.service.test.ts",
+        "e2e/tests/moderation.spec.ts"
+      ],
+      "notes": "No push, email delivery or realtime streaming is implied."
+    },
+    {
+      "id": "block-mute",
+      "name": "Block and mute",
+      "description": "Control which accounts and conversations you see using block and mute.",
+      "category": "safety",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/members/members.service.ts",
+        "apps/web/app/(main)/u/[handle]/page.tsx",
+        "apps/api/src/members/members.service.test.ts",
+        "e2e/tests/social.spec.ts"
+      ]
+    },
+    {
+      "id": "reports-moderation",
+      "name": "Reports and moderation",
+      "description": "Report posts or accounts for moderator review under published rules.",
+      "category": "safety",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/moderation/moderation.service.ts",
+        "apps/api/src/moderation/moderation.controller.ts",
+        "apps/api/src/moderation/moderation.service.test.ts",
+        "e2e/tests/moderation.spec.ts"
+      ],
+      "notes": "The permanent moderation log is role-restricted, not a public decision feed."
+    },
+    {
+      "id": "suspension-appeals",
+      "name": "Suspension appeals",
+      "description": "Ask moderators to review an account suspension and receive the outcome.",
+      "category": "safety",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/moderation/moderation.service.ts",
+        "apps/api/src/moderation/moderation.controller.ts",
+        "apps/api/src/moderation/moderation.service.test.ts",
+        "e2e/tests/moderation.spec.ts"
+      ]
+    },
+    {
+      "id": "rate-limits",
+      "name": "Action rate limits",
+      "description": "Limit repeated posting, social actions, uploads, reports and other requests.",
+      "category": "safety",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/rate-limit.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/api/src/rate-limit.test.ts"
+      ],
+      "notes": "Current in-memory counters reset on restart and are not shared across API instances."
+    },
+    {
+      "id": "upload-scanning",
+      "name": "Pre-publication abuse-material screening",
+      "description": "Screen image uploads before publication through an approved scanning service.",
+      "category": "safety",
+      "priority": "P0",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "apps/api/src/app.module.ts",
+        "apps/api/src/media/media.service.ts",
+        "apps/api/src/media/media.service.test.ts",
+        "docs/safety/abuse-material-scanning.md"
+      ],
+      "caveat": "Provider approval, a working integration and reviewed response procedures are still required.",
+      "notes": "NoScanner is the current binding. Matching/quarantine paths have tests; documented Cloudflare edge scanning is a separate second layer."
+    },
+    {
+      "id": "abuse-response",
+      "name": "Operational abuse response",
+      "description": "Make takedown, preservation, escalation and safety-contact procedures operational.",
+      "category": "safety",
+      "priority": "P0",
+      "status": "partial",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/moderation/moderation.service.ts",
+        "apps/api/src/moderation/moderation.controller.ts",
+        "apps/api/src/moderation/moderation.service.test.ts",
+        "e2e/tests/moderation.spec.ts",
+        "docs/safety/abuse-material-scanning.md"
+      ],
+      "caveat": "Reporting and takedown work; escalation contacts, retention decisions and a rehearsed response still need confirmation.",
+      "notes": "CDN purge and operational checklist items remain open."
+    },
+    {
+      "id": "deployment",
+      "name": "Deployment and rollback",
+      "description": "Deploy reviewed releases with health checks and a documented rollback path.",
+      "category": "operations",
+      "priority": "P0",
+      "status": "partial",
+      "availability": "staging",
+      "evidence": [
+        "docs/deployment/staging.md",
+        "docs/deployment/production.md",
+        "infra/deploy/deploy.sh",
+        ".github/workflows/ci.yml"
+      ],
+      "caveat": "Staging is documented as deployed; production launch and the current deployed revision are not verified.",
+      "notes": "Local HEAD matches the cached origin/staging ref at audit start; no claim that this is the live server revision."
+    },
+    {
+      "id": "backup-restore",
+      "name": "Backups and tested restoration",
+      "description": "Recover the service and its data from a usable off-site backup.",
+      "category": "operations",
+      "priority": "P0",
+      "status": "partial",
+      "availability": "unknown",
+      "evidence": [
+        "infra/deploy/backup.sh",
+        "infra/deploy/restore.sh",
+        "docs/deployment/staging.md"
+      ],
+      "caveat": "A local database restore rehearsal is documented; deployed backup checks, media recovery and a current restore rehearsal need confirmation.",
+      "notes": "Staging documentation records a laptop rehearsal but leaves its operational backup/restore checklist unchecked."
+    },
+    {
+      "id": "monitoring-alerts",
+      "name": "Monitoring and human alerts",
+      "description": "Detect service and backup failures and alert a responsible person.",
+      "category": "operations",
+      "priority": "P0",
+      "status": "partial",
+      "availability": "unknown",
+      "evidence": [
+        "infra/deploy/backup.sh",
+        "docs/deployment/staging.md",
+        "docs/safety/abuse-material-scanning.md"
+      ],
+      "caveat": "Health checks and a backup-monitoring hook exist; configured alert delivery and response ownership need verification."
+    },
+    {
+      "id": "constrained-mobile",
+      "name": "Constrained mobile performance",
+      "description": "Keep core journeys usable on low-cost phones and slower connections.",
+      "category": "operations",
+      "priority": "P0",
+      "status": "partial",
+      "availability": "unknown",
+      "evidence": [
+        "apps/web/app/globals.css",
+        "apps/web/app/ui/shrink-image.ts",
+        "loadtest/k6/journeys.js",
+        "loadtest/k6/threads.js",
+        "PLAN.md"
+      ],
+      "caveat": "Responsive layouts and image resizing exist; measured low-end-device and constrained-network acceptance is still outstanding."
+    },
+    {
+      "id": "no-js-core",
+      "name": "Core social journeys without JavaScript",
+      "description": "Read feeds, paginate, post and like with JavaScript disabled.",
+      "category": "operations",
+      "priority": "P0",
+      "status": "partial",
+      "availability": "unknown",
+      "evidence": [
+        "apps/web/app/(main)/page.tsx",
+        "e2e/tests/no-js.spec.ts",
+        "docs/e2e.md"
+      ],
+      "caveat": "Streamed social pages still depend on JavaScript; the existing no-JavaScript social tests are expected failures.",
+      "notes": "About and Progress are static reading pages and are checked separately from the streamed social feeds."
+    },
+    {
+      "id": "public-policies",
+      "name": "Public policies and charter",
+      "description": "Explain current rules, privacy commitments and the proposed governance framework.",
+      "category": "governance",
+      "priority": "P0",
+      "status": "partial",
+      "availability": "unknown",
+      "evidence": [
+        "apps/web/app/(main)/rules/page.tsx",
+        "apps/web/app/(main)/privacy/page.tsx",
+        "apps/web/app/(main)/charter/page.tsx",
+        "apps/web/app/(main)/governance/constitution/page.tsx",
+        "e2e/tests/governance.spec.ts"
+      ],
+      "caveat": "The charter, rules and privacy policy apply during the pilot but contain unresolved details; the constitution remains an unadopted proposal.",
+      "notes": "Do not equate publication of drafts with legal adoption or complete operator disclosure."
+    },
+    {
+      "id": "operator-disclosure",
+      "name": "Operator and ownership disclosure",
+      "description": "Publish who is responsible for HeyNaija, how it is funded and how to contact them.",
+      "category": "governance",
+      "priority": "P0",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/app/(main)/charter/page.tsx",
+        "apps/web/app/(main)/privacy/page.tsx",
+        "docs/governance/open-items.md"
+      ],
+      "caveat": "Founder-supplied names, operator details, funding information and contact addresses are still needed."
+    },
+    {
+      "id": "governance-feedback",
+      "name": "A working governance feedback channel",
+      "description": "Give readers a real way to comment on governance drafts and see responses.",
+      "category": "governance",
+      "priority": "P0",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/app/ui/governance.tsx",
+        "docs/governance/open-items.md"
+      ],
+      "dependency": [
+        "operator-disclosure"
+      ],
+      "notes": "Existing UI says the channel is being prepared; no functional contact is supplied."
+    },
+    {
+      "id": "source-publication",
+      "name": "Public source publication",
+      "description": "Make the source available under the existing AGPL licence after publication review.",
+      "category": "governance",
+      "priority": "P0",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "LICENSE",
+        "apps/web/app/(main)/licence/page.tsx",
+        "docs/governance/open-items.md"
+      ],
+      "caveat": "Publication and release review require the repository owner’s decision.",
+      "notes": "GitHub repository metadata confirmed private on 17 October 2026. The AGPL file does not make the repository publicly accessible."
+    },
+    {
+      "id": "data-export",
+      "name": "Download your data",
+      "description": "Download your own profile, posts, social choices and account-status records as JSON.",
+      "category": "safety",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/export/export.service.ts",
+        "apps/api/src/export/export.controller.ts",
+        "apps/web/app/(main)/settings/export/route.ts",
+        "apps/api/src/export/export.service.test.ts",
+        "e2e/tests/governance.spec.ts"
+      ],
+      "notes": "Format 3 includes reposts and quoteOf; restricted person keys and reports about someone stay excluded."
+    },
+    {
+      "id": "member-onboarding",
+      "name": "Guided new-member onboarding",
+      "description": "Help newcomers choose interests, communities and people to follow.",
+      "category": "accounts",
+      "priority": "P1",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/app/(auth)/join/page.tsx",
+        "apps/web/app/(main)/page.tsx",
+        "PRODUCT.md"
+      ]
+    },
+    {
+      "id": "basic-trending",
+      "name": "Basic trending conversations",
+      "description": "Discover recent active conversations using a simple engagement score.",
+      "category": "discovery",
+      "priority": "P1",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/posts/posts.service.ts",
+        "apps/web/app/ui/shell.tsx",
+        "apps/api/src/posts/posts.service.test.ts"
+      ],
+      "notes": "Current ranking uses this week’s posts with score 2 × replies + likes, followed by time and ID; it is not state-level analytics or ML personalisation."
+    },
+    {
+      "id": "topic-discovery",
+      "name": "Transparent topic discovery",
+      "description": "Improve Nigerian topic and category discovery with understandable selection rules.",
+      "category": "discovery",
+      "priority": "P1",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "apps/api/src/posts/posts.service.ts",
+        "apps/web/app/(main)/search/page.tsx"
+      ],
+      "dependency": [
+        "basic-trending"
+      ]
+    },
+    {
+      "id": "hashtags",
+      "name": "Clickable hashtags",
+      "description": "Open a topic feed by selecting a hashtag in a post.",
+      "category": "discovery",
+      "priority": "P1",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/composer.tsx"
+      ],
+      "notes": "Hashtags are ordinary post text; no parser, hashtag relation or topic endpoint was found."
+    },
+    {
+      "id": "mentions",
+      "name": "Mentions and mention notifications",
+      "description": "Mention a member by handle and notify the person mentioned.",
+      "category": "conversations",
+      "priority": "P1",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/composer.tsx",
+        "apps/api/src/notifications/notifications.service.ts"
+      ],
+      "notes": "Typing @handle is not a functional mention; notification kinds contain no mention event."
+    },
+    {
+      "id": "profile-pins",
+      "name": "Pinned profile posts",
+      "description": "Choose a post to keep at the top of your profile.",
+      "category": "discovery",
+      "priority": "P1",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/composer.tsx",
+        "apps/web/app/(main)/u/[handle]/page.tsx"
+      ]
+    },
+    {
+      "id": "community-welcome-pins",
+      "name": "Pinned community welcome posts",
+      "description": "Keep a welcome post and essential community guidance easy to find.",
+      "category": "discovery",
+      "priority": "P1",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/composer.tsx",
+        "apps/web/app/(main)/c/[slug]/page.tsx"
+      ]
+    },
+    {
+      "id": "community-photos",
+      "name": "Community photos",
+      "description": "Give communities their own uploaded visual identities.",
+      "category": "discovery",
+      "priority": "P1",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/web/app/ui/community-mark.tsx",
+        "apps/api/src/media/media.controller.ts"
+      ]
+    },
+    {
+      "id": "notification-preferences",
+      "name": "Notification preferences",
+      "description": "Choose which activity should create notifications.",
+      "category": "accounts",
+      "priority": "P1",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/app/(main)/settings/page.tsx",
+        "apps/api/src/notifications/notifications.service.ts"
+      ]
+    },
+    {
+      "id": "email-push",
+      "name": "Email and push activity notifications",
+      "description": "Optionally receive social activity outside the app.",
+      "category": "discovery",
+      "priority": "P1",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "apps/api/src/notifications/notifications.service.ts",
+        "apps/web/app/manifest.ts",
+        "docs/e2e.md"
+      ],
+      "dependency": [
+        "notification-preferences"
+      ],
+      "notes": "Account sign-in emails are distinct from social activity notifications."
+    },
+    {
+      "id": "accessible-interface",
+      "name": "Accessibility improvements",
+      "description": "Improve keyboard, screen-reader and small-screen access across the product.",
+      "category": "operations",
+      "priority": "P1",
+      "status": "partial",
+      "availability": "unknown",
+      "evidence": [
+        "apps/web/app/globals.css",
+        "apps/web/app/ui/menu.tsx",
+        "e2e/tests/menus.spec.ts",
+        "e2e/tests/images.spec.ts"
+      ],
+      "caveat": "Keyboard controls, image descriptions and responsive layouts exist; a full accessibility conformance audit is still needed."
+    },
+    {
+      "id": "low-data-controls",
+      "name": "Low-data and media controls",
+      "description": "Let members choose how much media loads on limited connections.",
+      "category": "operations",
+      "priority": "P1",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/app/ui/post-images.tsx",
+        "apps/web/app/ui/shrink-image.ts",
+        "apps/web/app/(main)/settings/page.tsx"
+      ],
+      "notes": "Upload resizing is implemented; member low-data settings and autoplay controls are not. Video is not supported."
+    },
+    {
+      "id": "social-polls",
+      "name": "Conversation polls",
+      "description": "Ask an informal question with selectable responses in a post.",
+      "category": "conversations",
+      "priority": "P1",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/composer.tsx"
+      ],
+      "notes": "Ordinary social polls are separate from formal governance ballots."
+    },
+    {
+      "id": "reply-controls",
+      "name": "More precise reply controls",
+      "description": "Let authors set clearer boundaries around replies to their posts.",
+      "category": "conversations",
+      "priority": "P1",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/composer.tsx"
+      ],
+      "notes": "Nested replies work; per-post reply audience controls are absent."
+    },
+    {
+      "id": "minor-safeguards",
+      "name": "Safeguards for under-18 access",
+      "description": "Prepare approved age assurance, consent, content and contact safeguards before opening younger accounts.",
+      "category": "safety",
+      "priority": "P2",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "docs/governance/under-18-rollout.md",
+        "apps/api/src/governance/age.ts",
+        "apps/api/src/env.ts"
+      ],
+      "caveat": "Child-safety decisions, approvals and implementation must precede any change to the temporary adult-only beta."
+    },
+    {
+      "id": "direct-messages",
+      "name": "Direct messages and message requests",
+      "description": "Support private conversations with blocking, reporting and appropriate contact safeguards.",
+      "category": "expansion",
+      "priority": "P2",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "PRODUCT.md",
+        "packages/db/src/schema.ts",
+        "docs/governance/under-18-rollout.md"
+      ],
+      "caveat": "Message requests, abuse handling, retention and age-appropriate contact safeguards need approval and implementation.",
+      "dependency": [
+        "minor-safeguards"
+      ],
+      "notes": "No message model or delivery endpoint exists."
+    },
+    {
+      "id": "member-lists",
+      "name": "Member lists",
+      "description": "Organise people into lists for easier reading and discovery.",
+      "category": "expansion",
+      "priority": "P2",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/api/src/members/members.controller.ts"
+      ]
+    },
+    {
+      "id": "saved-collections",
+      "name": "Saved collections",
+      "description": "Organise privately bookmarked posts into collections.",
+      "category": "expansion",
+      "priority": "P2",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/web/app/(main)/bookmarks/page.tsx"
+      ],
+      "notes": "Private bookmarks already work; collections are additional work."
+    },
+    {
+      "id": "topic-following",
+      "name": "Follow topics",
+      "description": "Follow a topic as well as people and communities.",
+      "category": "expansion",
+      "priority": "P2",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/composer.tsx"
+      ],
+      "dependency": [
+        "hashtags"
+      ]
+    },
+    {
+      "id": "local-discovery",
+      "name": "More local discovery",
+      "description": "Discover conversations across more Nigerian states, cities and local communities.",
+      "category": "discovery",
+      "priority": "P2",
+      "status": "partial",
+      "availability": "unknown",
+      "evidence": [
+        "packages/db/src/seed.ts",
+        "apps/web/app/(main)/c/page.tsx",
+        "apps/api/src/communities/communities.service.ts"
+      ],
+      "caveat": "Lagos and Abuja communities exist; wider geographic discovery and location-specific trends do not.",
+      "dependency": [
+        "communities"
+      ]
+    },
+    {
+      "id": "community-proposals",
+      "name": "Community proposals and consultation",
+      "description": "Collect proposals and publish considered responses without implying a binding ballot.",
+      "category": "governance",
+      "priority": "P2",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/app/(main)/governance/page.tsx",
+        "apps/web/app/ui/governance.tsx",
+        "docs/governance/open-items.md"
+      ],
+      "caveat": "A working consultation channel, responsible reviewers and an agreed process are needed.",
+      "dependency": [
+        "governance-feedback"
+      ]
+    },
+    {
+      "id": "decision-records",
+      "name": "Public governance decision records",
+      "description": "Publish real decisions with reasons and supporting records.",
+      "category": "governance",
+      "priority": "P2",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/app/(main)/governance/page.tsx",
+        "docs/governance/open-items.md"
+      ],
+      "notes": "Current governance history is an honest empty state; moderator-only logs are not public governance records."
+    },
+    {
+      "id": "nin-verification",
+      "name": "Optional identity verification",
+      "description": "Offer optional approved-provider identity verification separately from ordinary signup.",
+      "category": "governance",
+      "priority": "P2",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/lib/governance.ts",
+        "apps/api/src/governance/rules.ts",
+        "apps/api/src/env.ts",
+        "docs/governance/open-items.md",
+        "e2e/tests/governance.spec.ts"
+      ],
+      "caveat": "Provider approval, privacy and security review, consent and a working integration are prerequisites.",
+      "notes": "The current provider is disabled; startup refuses live verification. No NIN details are being collected."
+    },
+    {
+      "id": "verification-badge",
+      "name": "Optional verified identity badge",
+      "description": "Let eligible verified members choose whether to display an identity badge.",
+      "category": "governance",
+      "priority": "P2",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/lib/governance.ts",
+        "apps/api/src/governance/rules.ts",
+        "apps/api/src/env.ts",
+        "docs/governance/open-items.md",
+        "e2e/tests/governance.spec.ts",
+        "apps/web/app/ui/identity-badge.tsx"
+      ],
+      "caveat": "A live, approved verification process and explicit member choice are required.",
+      "dependency": [
+        "nin-verification"
+      ],
+      "notes": "Groundwork does not activate a green tick; an identity badge would not validate someone’s opinions or posts."
+    },
+    {
+      "id": "voting-membership",
+      "name": "Verified adult voting membership",
+      "description": "Let eligible adults explicitly join a separate governance electorate.",
+      "category": "governance",
+      "priority": "P2",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/lib/governance.ts",
+        "apps/api/src/governance/rules.ts",
+        "apps/api/src/env.ts",
+        "docs/governance/open-items.md",
+        "e2e/tests/governance.spec.ts"
+      ],
+      "caveat": "Verified adulthood, identity checks and approved membership terms are required.",
+      "dependency": [
+        "nin-verification",
+        "member-legal-entity"
+      ],
+      "notes": "The beta’s self-declared age never establishes verified voting eligibility."
+    },
+    {
+      "id": "member-legal-entity",
+      "name": "Member-controlled legal entity",
+      "description": "Establish and adopt the legal structure required for community control.",
+      "category": "governance",
+      "priority": "P2",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "docs/governance/open-items.md",
+        "apps/web/lib/governance.ts",
+        "apps/web/app/(main)/governance/constitution/page.tsx"
+      ],
+      "caveat": "Legal advice, an agreed entity, adopted rules and the required ownership steps remain outstanding."
+    },
+    {
+      "id": "ballot-audit",
+      "name": "Independent ballot assurance",
+      "description": "Review ballot secrecy, eligibility and auditability before formal votes.",
+      "category": "governance",
+      "priority": "P2",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "docs/governance/open-items.md",
+        "apps/api/src/governance/rules.ts",
+        "packages/db/src/schema.ts"
+      ],
+      "caveat": "A secure ballot design, implementation and independent review are required.",
+      "notes": "No ballot tables or vote endpoints exist; do not build them as part of this task."
+    },
+    {
+      "id": "binding-votes",
+      "name": "Binding community votes",
+      "description": "Hold legitimate member decisions and council elections under adopted rules.",
+      "category": "governance",
+      "priority": "P2",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/lib/governance.ts",
+        "apps/api/src/governance/rules.ts",
+        "apps/api/src/env.ts",
+        "docs/governance/open-items.md",
+        "e2e/tests/governance.spec.ts"
+      ],
+      "caveat": "Approved eligibility, a legal framework, an eligible electorate and independently reviewed ballots are prerequisites.",
+      "dependency": [
+        "voting-membership",
+        "ballot-audit"
+      ],
+      "notes": "Binding governance voting cannot be enabled by configuration."
+    },
+    {
+      "id": "public-treasury",
+      "name": "Operational public treasury",
+      "description": "Publish actual financial transactions and accountable treasury reports.",
+      "category": "governance",
+      "priority": "P2",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/app/ui/treasury-preview.tsx",
+        "apps/web/app/(main)/governance/page.tsx",
+        "docs/governance/open-items.md"
+      ],
+      "caveat": "An approved operating structure, financial responsibilities and real records are needed.",
+      "dependency": [
+        "member-legal-entity"
+      ],
+      "notes": "The current UI is a coming-soon preview, not a functioning treasury."
+    },
+    {
+      "id": "account-deletion",
+      "name": "Account deletion and privacy requests",
+      "description": "Provide a usable route to delete an account and handle privacy requests.",
+      "category": "safety",
+      "priority": "P0",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/app/(main)/privacy/page.tsx",
+        "apps/web/app/(main)/settings/page.tsx",
+        "docs/governance/open-items.md"
+      ],
+      "caveat": "The privacy contact is still a placeholder and self-service account deletion is absent.",
+      "dependency": [
+        "operator-disclosure"
+      ],
+      "notes": "Promoted from the initial P2 proposal: a working privacy-rights route is a public-beta prerequisite."
+    },
+    {
+      "id": "creator-analytics",
+      "name": "Creator analytics",
+      "description": "Offer understandable activity insights without inventing reach or audience metrics.",
+      "category": "expansion",
+      "priority": "P2",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/web/app/(main)/u/[handle]/page.tsx"
+      ]
+    },
+    {
+      "id": "scheduled-posts",
+      "name": "Scheduled posts",
+      "description": "Publish a prepared post at a chosen future time.",
+      "category": "expansion",
+      "priority": "P2",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/composer.tsx"
+      ]
+    },
+    {
+      "id": "long-form",
+      "name": "Long-form writing",
+      "description": "Support writing beyond the current short-post limit.",
+      "category": "expansion",
+      "priority": "P2",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/composer.tsx"
+      ]
+    },
+    {
+      "id": "video",
+      "name": "Richer media and video",
+      "description": "Support video with accessible playback and appropriate safety processing.",
+      "category": "expansion",
+      "priority": "P2",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "apps/api/src/media/media.service.ts",
+        "apps/web/app/ui/post-images.tsx"
+      ],
+      "dependency": [
+        "upload-scanning"
+      ]
+    },
+    {
+      "id": "live-audio",
+      "name": "Live audio and streaming",
+      "description": "Explore live conversations with moderation and reporting in place.",
+      "category": "expansion",
+      "priority": "P3",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "PRODUCT.md",
+        "packages/db/src/schema.ts"
+      ],
+      "dependency": [
+        "abuse-response"
+      ]
+    },
+    {
+      "id": "native-apps",
+      "name": "Native mobile apps",
+      "description": "Consider native apps if web and installable-app evidence justifies them.",
+      "category": "expansion",
+      "priority": "P3",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "apps/web/app/manifest.ts",
+        "PRODUCT.md"
+      ],
+      "notes": "A web manifest and icons do not establish a native app or push delivery."
+    },
+    {
+      "id": "creator-payments",
+      "name": "Creator subscriptions and tips",
+      "description": "Explore creator support with suitable payment and accountability arrangements.",
+      "category": "expansion",
+      "priority": "P3",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "PRODUCT.md",
+        "packages/db/src/schema.ts"
+      ],
+      "dependency": [
+        "public-treasury"
+      ]
+    },
+    {
+      "id": "context-notes",
+      "name": "Community context notes",
+      "description": "Explore crowdsourced context that complements professional moderation.",
+      "category": "expansion",
+      "priority": "P3",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "packages/db/src/schema.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/composer.tsx"
+      ]
+    },
+    {
+      "id": "recommendations",
+      "name": "Advanced recommendations",
+      "description": "Explore explainable recommendations only after evidence supports a need.",
+      "category": "expansion",
+      "priority": "P3",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "apps/api/src/posts/posts.service.ts",
+        "PRODUCT.md"
+      ],
+      "notes": "Chronological Latest/Following and basic trending are not a personalised recommendation engine."
+    },
+    {
+      "id": "interoperability",
+      "name": "Federation and interoperability",
+      "description": "Explore connections to other networks beyond the existing personal data export.",
+      "category": "expansion",
+      "priority": "P3",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "PRODUCT.md",
+        "docs/adr/0002-conventional-stack-with-kratos.md"
+      ],
+      "notes": "Data export exists; federation and protocol interoperability remain Phase 1 non-goals."
+    },
+    {
+      "id": "private-bookmarks",
+      "name": "Private bookmarks",
+      "description": "Save visible posts to a bookmark list that only you can read.",
+      "category": "conversations",
+      "priority": "P0",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/posts/posts.service.ts",
+        "apps/api/src/posts/posts.controller.ts",
+        "apps/web/app/ui/post-item.tsx",
+        "apps/api/src/posts/posts.service.test.ts",
+        "apps/web/app/(main)/bookmarks/page.tsx",
+        "e2e/tests/posting.spec.ts"
+      ]
+    }
+  ]
+}

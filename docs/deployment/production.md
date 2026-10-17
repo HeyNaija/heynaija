@@ -10,7 +10,12 @@ is done.
 
 ## 1. The server
 
-netcup, **Ubuntu 24.04**, at least **4 vCPU, 8 GB RAM, 120 GB SSD**. Then, from your
+netcup **RS 2000** (8 dedicated cores, 16 GB RAM, 256 GB NVMe) or larger, **Ubuntu
+24.04**. `compose.yml`'s defaults are sized for it (Postgres's memory settings, 20
+database connections), and step 5 sets 4 web server processes (`WEB_WORKERS`),
+each rendering pages on its own core while the other cores serve Postgres, the
+API and Kratos. Dedicated cores matter: page rendering and Postgres are both
+CPU-bound. Then, from your
 computer (use your own public key file):
 
 ```bash
@@ -58,7 +63,11 @@ Same as staging step 4, with:
   allows it for private repositories);
 - a runner on the netcup server, label and name **`heynaija-production`**, running
   as `heynaija`;
-- the netcup server's own deploy key.
+- the netcup server's own deploy key (deploy keys are already allowed for the
+  organization once staging is set up).
+
+Staging's [status table](staging.md#status-14-october-2026) lists what went wrong
+there; each fix is in the steps, so follow them exactly.
 
 ## 5. First deploy
 
@@ -74,7 +83,12 @@ As `heynaija`, clone to `/srv/heynaija`, run `./gen-env.sh`, and edit `.env`:
 | `MEDIA_ORIGIN` | `https://media.heynaija.ng` |
 | `S3_UPLOADS_BUCKET` / `S3_MEDIA_BUCKET` | `heynaija-uploads` / `heynaija-media` |
 | `BACKUP_DESTINATION` | `r2backup:heynaija-backups/production` |
-| `IMAGE_PREFIX`, `S3_*`, `SMTP_*`, `BACKUP_AGE_RECIPIENT` | as for staging, with production's tokens and keys |
+| `IMAGE_PREFIX` | `ghcr.io/heynaija/heynaija`, lower case, as for staging |
+| `S3_*`, `SMTP_*`, `BACKUP_AGE_RECIPIENT` | as for staging, with production's tokens and keys |
+| `POSTGRES_*`, `DATABASE_POOL_MAX` | delete these lines: `compose.yml`'s defaults are sized for this 16 GB server |
+| `WEB_WORKERS` | `4` |
+
+Then check no `<…>` placeholder is left: `grep -n '^[^#]*<' .env` prints nothing.
 
 `WEB_PORT=3100` is fine: nothing else runs on this server. Then:
 

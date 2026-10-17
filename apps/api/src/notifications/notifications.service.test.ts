@@ -75,6 +75,48 @@ test('liking again, or following again, notifies only once; taking it back hides
   assert.equal((await db.select().from(notifications)).length, 2)
 })
 
+test('reposting again notifies only once; taking the repost back hides it', async () => {
+  const { id: post } = await postsService.create(ada, 'repost me')
+  await postsService.repost(bayo, post)
+  await postsService.unrepost(bayo, post)
+  assert.deepEqual(await kinds(ada), [])
+  await postsService.repost(bayo, post)
+  await postsService.repost(bayo, post)
+  await postsService.unrepost(bayo, post)
+  await postsService.repost(bayo, post)
+  await postsService.repost(ada, post)
+
+  const [reposted] = (await service.list(ada, 50)).notifications
+  assert.deepEqual(await kinds(ada), ['repost:bayo'])
+  // Like a like: the excerpt is of your own post.
+  assert.deepEqual(reposted!.post, { id: post, excerpt: 'repost me' })
+  assert.equal((await db.select().from(notifications)).length, 1)
+
+  // Gone with the post.
+  await postsService.remove(ada, post)
+  assert.deepEqual(await kinds(ada), [])
+})
+
+test('a quote notifies the quoted author with the quote itself, once even when it is also a reply', async () => {
+  const { id: post } = await postsService.create(ada, 'quote me')
+  const { id: quote } = await postsService.create(bayo, 'what she said', { quote: post })
+  const [quoted] = (await service.list(ada, 50)).notifications
+  assert.equal(quoted!.kind, 'quote')
+  assert.deepEqual(quoted!.post, { id: quote, excerpt: 'what she said' })
+
+  // Quoting the post you are replying to is one reply, not a reply and a quote.
+  await postsService.create(chi, 'replying with it', { replyTo: post, quote: post })
+  // Quoting yourself notifies nobody.
+  await postsService.create(ada, 'me again', { quote: post })
+  assert.deepEqual(await kinds(ada), ['reply:chi', 'quote:bayo'])
+
+  // A deleted quote takes its notification with it; a muted quoter's is hidden.
+  await postsService.remove(bayo, quote)
+  assert.deepEqual(await kinds(ada), ['reply:chi'])
+  await membersService.mute(ada, 'chi')
+  assert.deepEqual(await kinds(ada), [])
+})
+
 test('notifications from someone blocked, muted or suspended disappear, and so do deleted replies', async () => {
   const { id: post } = await postsService.create(ada, 'hello')
   await postsService.like(bayo, post)

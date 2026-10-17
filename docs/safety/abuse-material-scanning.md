@@ -1,7 +1,9 @@
 # Scanning uploads for child sexual abuse material
 
-**Status (14 October 2026):** planned, not live. The code has a place for a scanner
-and handles a match, but the scanner in use passes every image. **Uploads must
+**Status (15 October 2026):** layer 2 is on: Cloudflare's CSAM Scanning Tool is
+enabled for heynaija.ng. Layer 1 is not live: the code has a place for a scanner
+and handles a match, but the scanner in use passes every image; PhotoDNA comes
+later. **Uploads must
 not open beyond the invited pilot until layers 1 and 2 below are live and the
 legal questions at the end are answered.**
 
@@ -134,7 +136,7 @@ Questions:
 ## Checklist before uploads open beyond the pilot
 
 - [ ] PhotoDNA (or an alternative) approved, scanner implemented and failing closed
-- [ ] Cloudflare CSAM Scanning Tool on, for the hostname that serves `/media`
+- [x] Cloudflare CSAM Scanning Tool on, for the hostname that serves `/media` (enabled 15 October 2026 for heynaija.ng; `/media` must stay on that proxied hostname)
 - [ ] Safety email address monitored daily
 - [ ] CDN purge on removal (automated, or a written manual step)
 - [ ] R2 lifecycle rule excludes `quarantine/`

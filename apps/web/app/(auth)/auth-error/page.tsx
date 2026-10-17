@@ -8,7 +8,8 @@ export const metadata: Metadata = { title: 'Something went wrong' }
 export default function AuthErrorPage({ searchParams }: PageProps<'/auth-error'>) {
   return (
     <AuthPage
-      title="Something went wrong"
+      eyebrow="Let's get you back in"
+      title="This sign-in couldn't be completed"
       footer={
         <p>
           <Link href="/login" className={linkClass}>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { PostImage } from '@/lib/api'
 import { CloseIcon, NextIcon, PreviousIcon } from './icons'
 
@@ -31,7 +32,7 @@ export function PostImages({ images, compact = false }: { images: PostImage[]; c
             target="_blank"
             rel="noopener"
             className="post-image"
-            aria-label={images.length > 1 ? `View image ${i + 1} of ${images.length}` : 'View image'}
+            aria-label={`View image ${i + 1} of ${images.length}${image.alt.trim() ? `: ${image.alt.trim()}` : ''}`}
             onClick={(e) => {
               if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
               e.preventDefault()
@@ -52,7 +53,8 @@ export function PostImages({ images, compact = false }: { images: PostImage[]; c
           </a>
         ))}
       </div>
-      {open !== null ? <ImageViewer images={images} start={open} onClose={() => setOpen(null)} /> : null}
+      {/* Keep the top-layer viewer outside feed cards and their layout/interaction styles. */}
+      {open !== null ? createPortal(<ImageViewer images={images} start={open} onClose={() => setOpen(null)} />, document.body) : null}
     </>
   )
 }
@@ -65,7 +67,8 @@ export function PostImages({ images, compact = false }: { images: PostImage[]; c
 function ImageViewer({ images, start, onClose }: { images: PostImage[]; start: number; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [index, setIndex] = useState(start)
-  const swipeFrom = useRef<number | null>(null)
+  const swipeFrom = useRef<{ x: number; y: number; id: number } | null>(null)
+  const swiped = useRef(false)
   const many = images.length > 1
   const image = images[index]!
   const go = (step: number) => setIndex((i) => (i + step + images.length) % images.length)
@@ -89,22 +92,38 @@ function ImageViewer({ images, start, onClose }: { images: PostImage[]; start: n
         if (e.key === 'ArrowRight') go(1)
       }}
       onClick={(e) => {
+        if (swiped.current) {
+          swiped.current = false
+          return
+        }
         // A tap on the dark area around the image closes it.
         if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('image-viewer-stage')) {
           dialog.current?.close()
         }
       }}
-      onPointerDown={(e) => {
-        swipeFrom.current = e.clientX
-      }}
-      onPointerUp={(e) => {
-        if (swipeFrom.current === null || !many) return
-        const dx = e.clientX - swipeFrom.current
-        swipeFrom.current = null
-        if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1)
-      }}
     >
-      <div className="image-viewer-stage">
+      <div
+        className="image-viewer-stage"
+        onPointerDown={(e) => {
+          if (!many || !e.isPrimary || e.button !== 0) return
+          swiped.current = false
+          swipeFrom.current = { x: e.clientX, y: e.clientY, id: e.pointerId }
+        }}
+        onPointerUp={(e) => {
+          const from = swipeFrom.current
+          swipeFrom.current = null
+          if (!from || from.id !== e.pointerId) return
+          const dx = e.clientX - from.x
+          const dy = e.clientY - from.y
+          if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+            // Prevent the click following a swipe from closing the backdrop.
+            swiped.current = true
+            e.preventDefault()
+            go(dx < 0 ? 1 : -1)
+          }
+        }}
+        onPointerCancel={() => { swipeFrom.current = null }}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element -- the stored large version */}
         <img
           key={image.src}

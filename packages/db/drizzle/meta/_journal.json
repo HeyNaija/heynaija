@@ -71,6 +71,55 @@
       "when": 1791985608092,
       "tag": "0009_dry_master_mold",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792006916431,
+      "tag": "0010_notifications_actor_post_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792007243412,
+      "tag": "0011_post_counters",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792074132899,
+      "tag": "0012_released_handles",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792079671821,
+      "tag": "0013_threaded_replies",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792139774661,
+      "tag": "0014_governance_groundwork",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792175942357,
+      "tag": "0015_reposts",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792235839518,
+      "tag": "0016_reposts_feed_indexes",
+      "breakpoints": true
     }
   ]
 }

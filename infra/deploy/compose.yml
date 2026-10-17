@@ -16,6 +16,9 @@ x-logging: &logging
 
 x-api-env: &api-env
   DATABASE_URL: postgres://heynaija:${POSTGRES_PASSWORD:?}@postgres:5432/heynaija
+  # Connections the API keeps open to Postgres (packages/db). 20 suits one API
+  # process on the production server, well under Postgres's 100.
+  DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
   REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
   KRATOS_PUBLIC_URL: http://kratos:4433
   KRATOS_WEBHOOK_SECRET: ${KRATOS_WEBHOOK_SECRET:?}
@@ -41,6 +44,13 @@ services:
     environment:
       API_INTERNAL_URL: http://api:4000
       KRATOS_INTERNAL_URL: http://kratos:4433
+      # Absolute links in link previews (apps/web/lib/previews.ts).
+      WEB_PUBLIC_URL: ${SITE_URL:?}
+      # Copies of the web server sharing its port, each rendering on its own core
+      # (apps/web/workers.mjs). Production's .env sets 4 for its 8 cores, leaving
+      # the rest to Postgres, the API and Kratos. The default stays 1 so a server
+      # whose cores are shared (staging) never gets more without being asked.
+      WEB_WORKERS: ${WEB_WORKERS:-1}
     depends_on:
       api:
         condition: service_healthy
@@ -91,6 +101,8 @@ services:
     volumes: &kratos-volumes
       - ../kratos/identity.schema.json:/etc/config/kratos/identity.schema.json:ro
       - ../kratos/invite-check.jsonnet:/etc/config/kratos/invite-check.jsonnet:ro
+      - ../kratos/handle-change.jsonnet:/etc/config/kratos/handle-change.jsonnet:ro
+      - ../kratos/google.jsonnet:/etc/config/kratos/google.jsonnet:ro
     configs: &kratos-configs
       - source: kratos
         target: /etc/config/kratos/kratos.yml
@@ -103,12 +115,20 @@ services:
 
   # No --dev here: secure cookies and https only. --watch-courier sends the
   # verification and recovery emails through Resend.
+  # Tagged with the contents of infra/kratos rather than the commit (deploy.sh
+  # sets KRATOS_RELEASE), so other releases leave Kratos running.
   kratos:
-    image: oryd/kratos:v26.2.0
+    image: ${IMAGE_PREFIX:-heynaija}-kratos:${KRATOS_RELEASE:-latest}
+    build:
+      context: ../kratos
     environment: *kratos-env
     volumes: *kratos-volumes
     configs: *kratos-configs
     command: serve -c /etc/config/kratos/kratos.yml --watch-courier
+    # deploy.sh sets this to a hash of Kratos's rendered config and its files, so
+    # that a change to any of them recreates Kratos (Compose alone would not).
+    labels:
+      heynaija.kratos-inputs: ${KRATOS_INPUTS:-}
     depends_on:
       kratos-migrate:
         condition: service_completed_successfully
@@ -117,6 +137,25 @@ services:
 
   postgres:
     image: postgres:17-alpine
+    # Memory settings, defaulting to production's 16 GB server (Postgres's stock
+    # shared_buffers is 128MB): about a quarter of RAM for shared buffers, and
+    # effective_cache_size telling the planner how much the OS will cache.
+    # work_mem is per sort or hash, per query, so keep it modest.
+    # Staging shares its server with Koinovera and sets smaller values in .env
+    # (docs/deployment/staging.md). loadtest/compose.loadtest.yml repeats these.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-4GB}
+      - -c
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-10GB}
+      - -c
+      - work_mem=${POSTGRES_WORK_MEM:-16MB}
+      - -c
+      - maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-512MB}
+    # Docker's default 64 MB /dev/shm is too small for parallel queries once
+    # shared_buffers is raised.
+    shm_size: 256mb
     environment:
       POSTGRES_USER: heynaija
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -153,7 +192,8 @@ volumes:
 
 configs:
   # Kratos for a real domain over https. Rendered here so the site address and
-  # the webhook secret can be filled in; the dev version is infra/kratos/kratos.yml.
+  # the webhook and Google secrets can be filled in; the dev version is
+  # infra/kratos/kratos.yml.
   kratos:
     content: |
       version: v26.2.0
@@ -168,16 +208,26 @@ configs:
         default_browser_return_url: ${SITE_URL}/
         allowed_return_urls:
           - ${SITE_URL}
+        # No passwords: an emailed one-time code, or Google.
         methods:
           password:
-            enabled: true
-            config:
-              min_password_length: 10
-              identifier_similarity_check_enabled: true
-              haveibeenpwned_enabled: true
-              ignore_network_errors: true
+            enabled: false
           code:
             enabled: true
+            passwordless_enabled: true
+            config:
+              lifespan: 15m
+          # docs/deployment/google-sign-in.md
+          oidc:
+            enabled: ${GOOGLE_SIGN_IN:-false}
+            config:
+              providers:
+                - id: google
+                  provider: google
+                  client_id: "${GOOGLE_CLIENT_ID:-}"
+                  client_secret: "${GOOGLE_CLIENT_SECRET:-}"
+                  mapper_url: file:///etc/config/kratos/google.jsonnet
+                  scope: [openid, email]
         flows:
           error:
             ui_url: ${SITE_URL}/auth-error
@@ -187,19 +237,16 @@ configs:
           registration:
             ui_url: ${SITE_URL}/signup
             lifespan: 15m
-            # One form (email, handle, password) so the invite cookie arrives with
-            # the password submission.
-            style: unified
             # Invite-only signup: see the comments in infra/compose/docker-compose.dev.yml.
             after:
-              password:
-                hooks:
+              code:
+                hooks: &signup-hooks
                   - hook: web_hook
                     config:
                       url: http://api:4000/internal/kratos/registration
                       method: POST
                       body: file:///etc/config/kratos/invite-check.jsonnet
-                      auth:
+                      auth: &webhook-auth
                         type: api_key
                         config:
                           name: x-webhook-secret
@@ -219,20 +266,32 @@ configs:
                           value: ${KRATOS_WEBHOOK_SECRET}
                           in: header
                   - hook: session
-                  - hook: show_verification_ui
+              oidc:
+                hooks: *signup-hooks
           verification:
             enabled: true
             ui_url: ${SITE_URL}/verification
             use: code
             after:
               default_browser_return_url: ${SITE_URL}/
+          # Signing in with an emailed code already gets a member back in.
           recovery:
-            enabled: true
-            ui_url: ${SITE_URL}/recovery
-            use: code
+            enabled: false
           settings:
             ui_url: ${SITE_URL}/settings
             privileged_session_max_age: 15m
+            # Handles given up by renaming: see docker-compose.dev.yml.
+            after:
+              profile:
+                hooks:
+                  - hook: web_hook
+                    config:
+                      url: http://api:4000/internal/kratos/settings
+                      method: POST
+                      body: file:///etc/config/kratos/handle-change.jsonnet
+                      auth: *webhook-auth
+                      response:
+                        parse: true
           logout:
             after:
               default_browser_return_url: ${SITE_URL}/

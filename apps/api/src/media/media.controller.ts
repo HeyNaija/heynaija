@@ -52,9 +52,9 @@ export class MediaController {
   /** Returns a short-lived URL the browser uploads the image to directly. */
   @Post('upload')
   @UseGuards(SessionGuard)
-  start(@Req() req: AuthedRequest, @Body() body: unknown) {
+  async start(@Req() req: AuthedRequest, @Body() body: unknown) {
     const { contentType, bytes } = parse(startBody(AVATAR_MAX_BYTES), body)
-    this.limits.hit('upload', req.member.id)
+    await this.limits.hit('upload', req.member.id)
     return this.media.startAvatarUpload(req.member.id, contentType, bytes)
   }
 
@@ -89,9 +89,9 @@ export class PostImagesController {
 
   @Post('upload')
   @UseGuards(SessionGuard)
-  start(@Req() req: AuthedRequest, @Body() body: unknown) {
+  async start(@Req() req: AuthedRequest, @Body() body: unknown) {
     const { contentType, bytes } = parse(startBody(POST_IMAGE_MAX_BYTES), body)
-    this.limits.hit('postImage', req.member.id)
+    await this.limits.hit('postImage', req.member.id)
     return this.media.startPostImageUpload(req.member.id, contentType, bytes)
   }
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { follows, members } from '@heynaija/db'
+import { follows, members, releasedHandles } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
@@ -80,6 +80,42 @@ test('after a rename, a handle resolves to whoever was seen with it most recentl
   const renamed = randomUUID()
   await db.insert(members).values({ id: renamed, handle: 'ada', lastSeenAt: new Date() })
   assert.equal((await service.profile(null, 'ada'))!.id, renamed)
+})
+
+test('a handle given up by renaming is its owner’s for 30 days, and leads to them', async () => {
+  // What the settings webhook and Kratos do when ada renames to ada2.
+  await service.holdHandle(ada, 'ada')
+  await db.update(members).set({ handle: 'ada2' }).where(eq(members.id, ada))
+
+  assert.equal(await service.handleHeld('ada', bayo), true)
+  assert.equal(await service.handleHeld('ada', null), true)
+  assert.equal(await service.handleHeld('ada', ada), false)
+  assert.equal(await service.handleHeld('free', null), false)
+  assert.equal(await service.movedTo(null, 'ada'), 'ada2')
+  assert.equal(await service.movedTo(null, 'free'), null)
+
+  // Someone ada has blocked is not told where ada went.
+  await service.block(ada, 'bayo')
+  assert.equal(await service.movedTo(bayo, 'ada'), null)
+  assert.equal(await service.movedTo(chi, 'ada'), 'ada2')
+
+  await db.update(releasedHandles).set({ releasedAt: new Date(Date.now() - 31 * 86_400_000) })
+  assert.equal(await service.handleHeld('ada', bayo), false)
+  assert.equal(await service.movedTo(null, 'ada'), null)
+})
+
+test('a held handle belongs to whoever gave it up last; suspended owners are not followed', async () => {
+  await service.holdHandle(ada, 'spare')
+  await service.holdHandle(bayo, 'spare')
+  assert.equal(await service.handleHeld('spare', bayo), false)
+  assert.equal(await service.handleHeld('spare', ada), true)
+
+  await db.update(members).set({ active: false }).where(eq(members.id, bayo))
+  assert.equal(await service.movedTo(null, 'spare'), null)
+
+  // An identity the API has never seen has nothing to hold.
+  await service.holdHandle(randomUUID(), 'ghost')
+  assert.equal(await service.handleHeld('ghost', null), false)
 })
 
 test('member search matches handle prefixes literally', async () => {

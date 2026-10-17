@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { markNotificationsRead } from '@/app/actions'
 
 /**
@@ -9,8 +10,10 @@ import { markNotificationsRead } from '@/app/actions'
  * page keeps showing which ones were new until the member moves on.
  */
 export function MarkRead({ upTo }: { upTo: string }) {
+  const router = useRouter()
   useEffect(() => {
-    void markNotificationsRead(upTo)
-  }, [upTo])
+    // Refresh the shared navigation too, so its badge doesn't reappear with an old count.
+    void markNotificationsRead(upTo).then(() => router.refresh())
+  }, [upTo, router])
   return null
 }

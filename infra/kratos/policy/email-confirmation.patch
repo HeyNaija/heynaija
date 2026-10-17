@@ -1,0 +1,110 @@
+--- a/selfservice/strategy/profile/strategy.go
++++ b/selfservice/strategy/profile/strategy.go
+@@ -120,7 +120,8 @@
+ 	var p updateSettingsFlowWithProfileMethod
+ 	ctxUpdate, err := settings.PrepareUpdate(s.d, w, r, f, ss, settings.ContinuityKey(s.SettingsStrategyID()), &p)
+ 	if errors.Is(err, settings.ErrContinuePreviousAction) {
+-		return ctxUpdate, s.continueFlow(ctx, r, ctxUpdate, p)
++		p.heynaijaResumed = true
++		return ctxUpdate, s.continueFlow(ctx, w, r, ctxUpdate, p)
+ 	} else if err != nil {
+ 		return ctxUpdate, s.handleSettingsError(ctx, w, r, ctxUpdate, nil, p, err)
+ 	}
+@@ -145,14 +145,14 @@
+ 	// Reset after decoding form
+ 	p.SetFlowID(ctxUpdate.Flow.ID)
+ 
+-	if err := s.continueFlow(ctx, r, ctxUpdate, p); err != nil {
++	if err := s.continueFlow(ctx, w, r, ctxUpdate, p); err != nil {
+ 		return ctxUpdate, s.handleSettingsError(ctx, w, r, ctxUpdate, nil, p, err)
+ 	}
+ 
+ 	return ctxUpdate, nil
+ }
+ 
+-func (s *Strategy) continueFlow(ctx context.Context, r *http.Request, ctxUpdate *settings.UpdateContext, p updateSettingsFlowWithProfileMethod) error {
++func (s *Strategy) continueFlow(ctx context.Context, w http.ResponseWriter, r *http.Request, ctxUpdate *settings.UpdateContext, p updateSettingsFlowWithProfileMethod) error {
+ 	if err := flow.MethodEnabledAndAllowed(ctx, flow.SettingsFlow, s.SettingsStrategyID(), p.Method, s.d); err != nil {
+ 		return err
+ 	}
+@@ -187,6 +187,7 @@
+ 		return err
+ 	}
+ 
++	if _, err := s.heynaijaConfirmEmail(ctx, w, r, ctxUpdate, current, update, p); err != nil { return err }
+ 	ctxUpdate.UpdateIdentity(update)
+ 	return nil
+ }
+@@ -226,6 +227,9 @@
+ 	//
+ 	// required: false
+ 	TransientPayload json.RawMessage `json:"transient_payload,omitempty" form:"transient_payload"`
++	EmailChangeCode string `json:"email_change_code" form:"email_change_code"`
++	EmailChangeAction string `json:"email_change_action" form:"email_change_action"`
++	heynaijaResumed bool
+ }
+ 
+ func (p *updateSettingsFlowWithProfileMethod) GetFlowID() uuid.UUID {
+--- a/selfservice/strategy/profile/.schema/settings.schema.json
++++ b/selfservice/strategy/profile/.schema/settings.schema.json
+@@ -19,6 +19,18 @@
+     "transient_payload": {
+       "type": "object",
+       "additionalProperties": true
++    },
++    "email_change_code": {
++      "type": "string",
++      "maxLength": 32
++    },
++    "email_change_action": {
++      "type": "string",
++      "enum": [
++        "confirm",
++        "resend",
++        "cancel"
++      ]
+     }
+   }
+ }
+--- a/courier/email_templates.go
++++ b/courier/email_templates.go
+@@ -102,6 +102,18 @@
+ 			return nil, err
+ 		}
+ 		return email.NewRegistrationCodeValid(d, &t), nil
++	case email.TypeHeyNaijaEmailChangeCode:
++		var t email.HeyNaijaEmailChangeCodeModel
++		if err := json.Unmarshal(msg.TemplateData, &t); err != nil {
++			return nil, err
++		}
++		return email.NewHeyNaijaEmailChangeCode(&t), nil
++	case email.TypeHeyNaijaEmailChanged:
++		var t email.HeyNaijaEmailChangedModel
++		if err := json.Unmarshal(msg.TemplateData, &t); err != nil {
++			return nil, err
++		}
++		return email.NewHeyNaijaEmailChanged(&t), nil
+ 	default:
+ 		return nil, errors.Errorf("received unexpected message template type: %s", msg.TemplateType)
+ 	}
+--- a/driver/registry_default_settings.go
++++ b/driver/registry_default_settings.go
+@@ -9,6 +9,7 @@
+ 
+ 	"github.com/ory/kratos/driver/config"
+ 	"github.com/ory/kratos/selfservice/flow/settings"
++	"github.com/ory/kratos/selfservice/strategy/profile"
+ )
+ 
+ func (m *RegistryDefault) PostSettingsPrePersistHooks(ctx context.Context, settingsType string) ([]settings.PostHookPrePersistExecutor, error) {
+@@ -36,6 +37,10 @@
+ 	if m.Config().SelfServiceFlowVerificationEnabled(ctx) {
+ 		hooks = slices.Insert(hooks, 0, settings.PostHookPostPersistExecutor(m.HookVerifier()))
+ 	}
++	if settingsType == settings.StrategyProfile {
++		// HeyNaija: tell the old address after an email change is saved.
++		hooks = slices.Insert(hooks, 0, settings.PostHookPostPersistExecutor(profile.NewHeyNaijaEmailNotice(m)))
++	}
+ 
+ 	return hooks, nil
+ }

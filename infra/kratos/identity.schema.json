@@ -13,9 +13,8 @@
           "title": "Email",
           "maxLength": 320,
           "ory.sh/kratos": {
-            "credentials": { "password": { "identifier": true } },
-            "verification": { "via": "email" },
-            "recovery": { "via": "email" }
+            "credentials": { "code": { "identifier": true, "via": "email" } },
+            "verification": { "via": "email" }
           }
         },
         "handle": {

@@ -53,7 +53,7 @@ export function ThemeSwitch({ compact = false }: { compact?: boolean }) {
   }
 
   return (
-    <div role="group" aria-label="Theme" className="segmented">
+    <div role="group" aria-label="Theme" className={`segmented ${compact ? 'is-compact' : ''}`}>
       {OPTIONS.map(({ value, label, icon: Icon }) => (
         <button
           key={value}
@@ -64,7 +64,7 @@ export function ThemeSwitch({ compact = false }: { compact?: boolean }) {
           onClick={() => choose(value)}
         >
           <Icon aria-hidden="true" size={16} strokeWidth={1.9} />
-          {compact ? null : label}
+          {label}
         </button>
       ))}
     </div>

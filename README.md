@@ -1,16 +1,26 @@
 # HeyNaija
 
-A Nigeria-first, community-owned social network. [PLAN.md](PLAN.md) has the product
+A Nigeria-first social network being built toward community ownership. [PLAN.md](PLAN.md) has the product
 plan, what is built, and what comes next; [ADR 0002](docs/adr/0002-conventional-stack-with-kratos.md)
 explains the architecture and lists every known limitation.
 
-**Status:** early local build, nothing deployed yet; everything needed to deploy
-staging and production is in `infra/deploy/` and `.github/workflows/`, with
+The public introductions are `/about` (purpose and direction) and `/progress`
+(product development, separate from governance). The canonical feature inventory
+is [docs/FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md), generated from
+`docs/feature-roadmap.json`; [the audit notes](docs/roadmap-audit.md) explain evidence,
+availability limits and outstanding confirmations.
+
+**Status:** staging is live at https://staging.heynaija.ng; production is not
+deployed yet. Everything needed to deploy is in `infra/deploy/` and `.github/workflows/`, with
 step-by-step guides in [docs/deployment/](docs/deployment/staging.md). What works:
 
-- **Accounts:** join with an invite code, sign up, confirm email, sign in and out,
-  recover an account (all handled by Ory Kratos).
-- **Posting:** posts and threaded replies with up to four images each (with
+- **Accounts:** join with an invite code (18 and over during the beta, a
+  temporary rule; the API refuses a signup without the age confirmation), sign
+  up, confirm email, sign in and out, and regain access with an emailed code
+  (handled by Ory Kratos). There is no password-recovery flow; losing access to
+  the account email is not covered by a separate recovery process.
+- **Posting:** posts and expandable threaded replies with cursor pagination and
+  up to four images each (with
   descriptions for screen readers, and a full-screen viewer), likes, private bookmarks.
 - **People:** profiles with a photo, display name and bio; follow, mute and block.
 - **Notifications:** replies, likes, follows and moderation outcomes, with an
@@ -21,9 +31,18 @@ step-by-step guides in [docs/deployment/](docs/deployment/staging.md). What work
 - **Safety:** report a post or account, a moderation queue (remove post, suspend
   account, dismiss), appeals from suspended members, a decision log, rate limits.
 - **Look:** light, dark and system themes; works down to phone width.
-- **Governance preview:** a public information page for upcoming community votes,
-  treasury transparency and decision history, with a Public Treasury spotlight.
-  Voting and treasury transactions are not live.
+- **Portability:** download your own data from Settings as JSON (format 3,
+  including reposts and quote references).
+- **Governance information:** `/governance` (founding-stage status, how members
+  would govern, the path to community ownership, empty states for votes, the
+  treasury and decisions), the draft constitution at `/governance/constitution`,
+  and explainers for voting membership and optional NIN verification. Settings
+  shows each member's own status. Identity verification, voting membership,
+  binding votes and the treasury are not live, and the API refuses to start with
+  them switched on ([ADR 0005](docs/adr/0005-governance-and-identity-groundwork.md),
+  [open items](docs/governance/open-items.md)). Age is its own status, separate
+  from accounts, identity and voting ([ADR 0006](docs/adr/0006-age-status-model.md));
+  what opening to under-18s requires is in [under-18-rollout.md](docs/governance/under-18-rollout.md).
 
 ## How it fits together
 
@@ -37,8 +56,8 @@ Browser ──> Next.js web app (127.0.0.1:3000)
                                      └── webhooks ──> API (invite check on signup)
 ```
 
-- **Ory Kratos** owns accounts: email, handle, password, sessions, email
-  verification and recovery. We write none of that ourselves.
+- **Ory Kratos** owns accounts: email, handle, sign-in by emailed code or Google,
+  and sessions. There are no passwords (ADR 0003). We write none of that ourselves.
 - **The API** owns everything else. It asks Kratos who a session cookie belongs
   to on every request, and only accepts identities that joined with an invite.
 - **The web app** is the only thing the browser talks to; it proxies the other two.
@@ -63,7 +82,11 @@ pnpm build
 pnpm db:migrate
 pnpm db:seed            # creates the five launch communities (safe to re-run)
 pnpm media:init         # creates the two storage buckets on the local MinIO
+pnpm demo:seed          # optional: 14 demo members, threads, images, likes and follows (re-run to refresh)
 ```
+
+The demo members can sign in as `<handle>@demo.heynaija.test` with the code
+Mailpit catches; `pnpm demo:clean` removes them and everything they did.
 
 Then, in two terminals:
 
@@ -83,7 +106,8 @@ pnpm invite:create --uses 5 --days 14 --note "first testers"
 
 Go to `http://127.0.0.1:3000/join?code=<the code>` (use `127.0.0.1`, not
 `localhost`: Kratos issues its cookies for that host). Emails that Kratos sends
-(verification and recovery codes) land in Mailpit at <http://127.0.0.1:8026>.
+(sign-up and sign-in codes) land in Mailpit at <http://127.0.0.1:8026>. Google
+sign-in is off locally unless you set it up: [google-sign-in.md](docs/deployment/google-sign-in.md).
 
 `dev:api` recompiles and restarts itself when API code changes.
 
@@ -140,6 +164,12 @@ stop it, delete `apps/web/.next`, and start it again.
 ## Checks
 
 ```bash
+pnpm roadmap:generate   # after editing the registry
+pnpm roadmap:check      # fail if the generated Markdown drifts (also in CI)
+pnpm roadmap:test       # registry schema, evidence paths and generation integrity
+```
+
+```bash
 pnpm typecheck
 ```
 
@@ -147,4 +177,9 @@ pnpm typecheck
 pnpm test        # API tests, against a scratch Postgres database (needs `pnpm infra:up`)
 ```
 
-CI (`.github/workflows/ci.yml`) runs build, typecheck, tests and a dependency audit.
+```bash
+pnpm e2e         # browser tests with Playwright against the local stack (docs/e2e.md)
+```
+
+CI (`.github/workflows/ci.yml`) runs build, typecheck, tests and a dependency audit,
+and the browser end-to-end tests against a production build ([docs/e2e.md](docs/e2e.md)).

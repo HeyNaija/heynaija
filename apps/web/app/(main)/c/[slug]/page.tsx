@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { Composer } from '@/app/ui/composer'
 import { JoinButton } from '@/app/ui/join-button'
-import { Avatar } from '@/app/ui/avatar'
+import { CommunityMark } from '@/app/ui/community-mark'
 import { PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { getCommunity, getCommunityPosts, getViewer } from '@/lib/api'
 
@@ -28,24 +28,27 @@ async function CommunityView({ params, searchParams }: Props) {
   const rules = community.rules.split('\n').filter((line) => line.trim())
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="page-stack">
       {/* Rendered here rather than via metadata: the name is only known after the fetch. */}
       <title>{`${community.name} · HeyNaija`}</title>
 
-      <header className="page-header">
-        <div className="flex items-start gap-4">
-          <Avatar handle={community.name} size={56} />
-          <div className="min-w-0 flex-1">
-            <Link href="/c" className="text-xs font-medium text-muted hover:text-ink hover:underline">
-              Communities
-            </Link>
-            <h1 className="page-title mt-1">{community.name}</h1>
+      <header className="page-header community-header">
+        <Link href="/c" className="page-eyebrow inline-flex min-h-8 items-center hover:underline">
+          Communities
+        </Link>
+        <div className="mt-3 flex flex-wrap items-start gap-4">
+          <div className="flex min-w-0 grow basis-52 items-center gap-4">
+            <CommunityMark slug={community.slug} large />
+            <div className="min-w-0 flex-1">
+              <h1 className="page-title break-words">{community.name}</h1>
+              <p className="mt-1 text-xs text-muted">Public community</p>
+            </div>
           </div>
           {viewerId ? <JoinButton slug={community.slug} joined={community.viewerIsMember} /> : null}
         </div>
-        <p className="mt-2 text-sm text-muted">{community.description}</p>
-        <p className="mt-2 text-sm text-muted">
-          <span className="font-semibold text-ink">{community.memberCount}</span>{' '}
+        <p className="mt-4 text-[15px] leading-relaxed text-muted">{community.description}</p>
+        <p className="mt-4 text-sm leading-6 text-muted">
+          <span className="font-semibold text-ink">{community.memberCount.toLocaleString('en-NG')}</span>{' '}
           {community.memberCount === 1 ? 'member' : 'members'}
           {community.moderators.length ? (
             <>
@@ -63,9 +66,9 @@ async function CommunityView({ params, searchParams }: Props) {
         </p>
 
         {rules.length ? (
-          <details className="mt-4 rounded-lg bg-panel px-4 py-3 text-sm">
-            <summary className="font-semibold">Community rules</summary>
-            <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted">
+          <details className="community-rules mt-4 rounded-lg bg-panel px-4 py-3 text-sm">
+            <summary className="min-h-6 cursor-pointer font-semibold">Community rules</summary>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-muted">
               {rules.map((rule) => (
                 <li key={rule}>{rule}</li>
               ))}
@@ -92,14 +95,21 @@ async function CommunityView({ params, searchParams }: Props) {
         </p>
       )}
 
-      <section aria-label={`Posts in ${community.name}`}>
+      <section aria-label={`Posts in ${community.name}`} className="flex flex-col gap-3">
+        <div className="section-heading">
+          <h2 className="section-title">Conversations</h2>
+          <span className="text-xs text-muted">Latest first</span>
+        </div>
         <PostList
           posts={feed.posts}
           viewerId={viewerId}
           now={Date.now()}
           hideCommunity
-          empty={page ? { title: 'No older posts' } : { title: 'No posts here yet', detail: 'Start the conversation.' }}
-          olderHref={feed.cursor ? `/c/${community.slug}?cursor=${encodeURIComponent(feed.cursor)}` : null}
+          empty={page ? { title: 'No older posts' } : {
+            title: 'The conversation starts here',
+            detail: community.viewerIsMember ? 'Share something with the community.' : 'Join this community to start a conversation.',
+          }}
+          more={{ source: { kind: 'community', slug: community.slug }, cursor: feed.cursor }}
         />
       </section>
     </div>

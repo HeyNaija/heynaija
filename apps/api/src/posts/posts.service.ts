@@ -1,22 +1,22 @@
 import {
   bookmarks,
   communities,
-  communityMemberships,
   type Db,
-  follows,
   likes,
   media,
   members,
   posts,
+  reposts,
 } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
-import { and, asc, desc, eq, gt, inArray, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/media.service.js'
-import { decodeCursor, encodeCursor, InvalidCursorError } from '../cursor.js'
+import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
 import { notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { DB } from '../tokens.js'
+import { decodeReplyCursor, encodeReplyCursor } from './reply-cursor.js'
 
 export const POST_MAX_GRAPHEMES = 300
 
@@ -46,6 +46,8 @@ export const newPost = (slug: z.ZodType<string>) =>
     .object({
       text: postTextOrEmpty.default(''),
       replyTo: z.uuid().optional(),
+      /** A quote post: the post it quotes. */
+      quote: z.uuid().optional(),
       community: slug.optional(),
       images: postImagesInput,
     })
@@ -59,7 +61,28 @@ export type PostImage = {
   height: number
 }
 
+/** The post a quote post quotes, as the reader sees it inside the quote. */
+export type QuotedPost =
+  | {
+      unavailable?: false
+      id: string
+      authorId: string
+      authorHandle: string
+      authorName: string | null
+      authorAvatar: string | null
+      text: string
+      images: PostImage[]
+      createdAt: Date
+      replyParentId: string | null
+    }
+  // Deleted, taken down, by an inactive member, or by someone the reader blocked,
+  // was blocked by or muted. One placeholder for all, so it gives nothing away.
+  | { unavailable: true }
+
 export type PostView = {
+  unavailable?: false
+  /** Thread-only structural expansion hint; direct counts exclude deleted children. */
+  hasReplies?: boolean
   id: string
   authorId: string
   authorHandle: string
@@ -75,8 +98,11 @@ export type PostView = {
   replyParentId: string | null
   likeCount: number
   replyCount: number
+  repostCount: number
   /** Always false for anonymous viewers. */
   viewerLiked: boolean
+  /** Always false for anonymous viewers. */
+  viewerReposted: boolean
   /** Always false for anonymous viewers. Bookmarks are private to their owner. */
   viewerBookmarked: boolean
   /**
@@ -86,41 +112,99 @@ export type PostView = {
   deleted: boolean
   /** The community it was posted in, if any (and if that community is still active). */
   community: { slug: string; name: string } | null
-  /** Why it is in the viewer's Following feed; null everywhere else. */
+  /** A quote post's quoted post. Null for other posts, and when `deleted`. */
+  quote: QuotedPost | null
+  /**
+   * Why it is in the viewer's Following feed. On a profile, 'repost' marks the
+   * member's reposts. Null everywhere else.
+   */
   reason: FeedReason | null
+  /** Who reposted it, when `reason` is 'repost'. */
+  repostedBy: { id: string; handle: string; displayName: string | null } | null
 }
 
-export type FeedReason = 'own' | 'following' | 'community'
+export type FeedReason = 'own' | 'following' | 'community' | 'repost'
+
+/** The lists on a member's profile: top-level posts, replies, and posts with images. */
+export const PROFILE_FILTERS = ['posts', 'replies', 'media'] as const
+export type ProfileFilter = (typeof PROFILE_FILTERS)[number]
 
 export type PostPage = { posts: PostView[]; cursor: string | null }
 
-export type Thread = { ancestors: PostView[]; post: PostView; replies: PostView[] }
+export type UnavailableReply = {
+  unavailable: true
+  id: string
+  replyParentId: string | null
+  createdAt: Date
+  hasReplies: true
+}
+export type ThreadReply = PostView | UnavailableReply
+export type ReplyPage = { replies: ThreadReply[]; cursor: string | null }
+export type Thread = {
+  ancestors: PostView[]
+  post: PostView
+  replies: ThreadReply[]
+  replyCursor: string | null
+  ancestorsTruncated: boolean
+  earlierAncestorId: string | null
+}
 
 export class ParentNotFoundError extends Error {}
 export class CommunityNotFoundError extends Error {}
 export { InvalidCursorError }
 export class NotACommunityMemberError extends Error {}
 export class ImagesNotReadyError extends Error {}
+export class QuotedPostNotFoundError extends Error {}
 
 const MAX_THREAD_DEPTH = 50
-const MAX_REPLIES_SHOWN = 200
+const REPLY_PAGE_SIZE = 20
 const TRENDING_WINDOW_DAYS = 7
+// The ranking is the same for every viewer, so it is computed at most once per
+// TTL and each viewer's blocks and mutes are applied to it afterwards. Enough
+// candidates are kept that a viewer who blocks or mutes a few of the authors
+// still sees a full list.
+export const TRENDING_TTL_MS = 60_000
+const TRENDING_CANDIDATES = 50
+// How many members a Following list has before its repost checks look members up
+// in a hash rather than one by one in the index (PostsService.entries). Measured
+// on 1.5M reposts: by index is quicker at 200, by hash at 1,000 and far quicker
+// at 5,000.
+const HASHED_MEMBERS_FROM = 500
 
 const topLevel = isNull(posts.replyParentId)
 
 // Neither deleted by the author nor taken down by a moderator.
 const live = and(isNull(posts.deletedAt), isNull(posts.removedAt))
 
+/**
+ * Shared eligibility for ordinary posts, reply nodes, branch parents, quoted posts
+ * and reposters. `unmuted` is a member shown even if the viewer muted them: the
+ * one whose profile they opened.
+ */
+const visibleAuthor = (viewerId: string | null, authorId: SQL, active: SQL, unmuted?: string) =>
+  and(
+    active,
+    viewerId ? sql`not ${blockedEitherWay(viewerId, authorId)}` : undefined,
+    viewerId
+      ? sql`(not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = ${authorId})${unmuted ? sql` or ${authorId} = ${unmuted}` : sql``})`
+      : undefined,
+  )
+
 /** True when either member has blocked the other. */
 export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
   sql<boolean>`exists(select 1 from blocks bl where (bl.blocker_id = ${a} and bl.blocked_id = ${b}) or (bl.blocker_id = ${b} and bl.blocked_id = ${a}))`
 
-// Written out so the outer post is unambiguous inside the count subqueries.
+// Written out so the outer post is unambiguous inside subqueries.
 const outerId = sql`"posts"."id"`
 
-// Only active members' likes and replies count, matching what a reader would see.
-const likeCount = sql<number>`(select count(*)::int from likes l join members lm on lm.id = l.member_id and lm.active where l.post_id = ${outerId})`
-const replyCount = sql<number>`(select count(*)::int from posts r join members rm on rm.id = r.author_id and rm.active where r.reply_parent_id = ${outerId} and r.deleted_at is null and r.removed_at is null)`
+// Has at least one image a reader can see.
+const withImages = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.status = 'ready')`
+
+const profileFilter: Record<ProfileFilter, SQL> = {
+  posts: topLevel,
+  replies: isNotNull(posts.replyParentId),
+  media: withImages,
+}
 
 /** A post's ready images in order, as JSON, for any query with `posts` in scope. */
 export const imagesOf = (postId: SQL) =>
@@ -128,6 +212,34 @@ export const imagesOf = (postId: SQL) =>
 
 export const toPostImages = (rows: { id: string; alt: string; width: number; height: number }[]): PostImage[] =>
   rows.map(({ id, alt, width, height }) => ({ src: postImagePath(id), alt, width, height }))
+
+type QuoteRow =
+  | (Omit<Extract<QuotedPost, { id: string }>, 'images' | 'createdAt' | 'authorAvatar'> & {
+      images: { id: string; alt: string; width: number; height: number }[]
+      createdAt: string
+      authorAvatarId: string | null
+    })
+  | { unavailable: true }
+
+/**
+ * A quote post's quoted post as JSON, for any query with the quoting post in
+ * scope: the post itself if `viewerId` may see it, a placeholder if not.
+ */
+const quoteOf = (viewerId: string | null, quotePostId: SQL) => sql<QuoteRow | null>`case when ${quotePostId} is null then null else coalesce((
+  select json_build_object('id', q.id, 'authorId', q.author_id, 'authorHandle', qa.handle, 'authorName', qa.display_name,
+    'authorAvatarId', qa.avatar_media_id, 'text', q.text, 'images', ${imagesOf(sql`q.id`)},
+    'createdAt', q.created_at, 'replyParentId', q.reply_parent_id)
+  from posts q join members qa on qa.id = q.author_id
+  where q.id = ${quotePostId} and q.deleted_at is null and q.removed_at is null
+    and ${visibleAuthor(viewerId, sql`q.author_id`, sql`qa.active`)}
+), json_build_object('unavailable', true)) end`
+
+const toQuote = (row: QuoteRow | null): QuotedPost | null => {
+  if (!row) return null
+  if ('unavailable' in row) return { unavailable: true }
+  const { images, createdAt, authorAvatarId, ...quote } = row
+  return { ...quote, images: toPostImages(images), createdAt: new Date(createdAt), authorAvatar: avatarPath(authorAvatarId) }
+}
 
 @Injectable()
 export class PostsService {
@@ -143,8 +255,8 @@ export class PostsService {
     where: SQL | undefined,
     opts: {
       includeDeleted?: boolean
-      /** Show a muted author's posts anyway (when the viewer opens their profile). */
-      ignoreMutes?: boolean
+      /** Show this author's posts even if the viewer muted them (on the author's profile). */
+      unmuted?: string
       reason?: SQL<FeedReason>
       order?: SQL[]
       limit?: number
@@ -163,10 +275,16 @@ export class PostsService {
         >`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${imagesOf(outerId)} else '[]'::json end`,
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
-        likeCount,
-        replyCount,
+        // Kept on the row by triggers (see the posts schema): only active
+        // members' likes and live replies count, as a reader would see them.
+        likeCount: posts.likeCount,
+        replyCount: posts.replyCount,
+        repostCount: posts.repostCount,
         viewerLiked: viewerId
           ? sql<boolean>`exists(select 1 from likes l where l.post_id = ${outerId} and l.member_id = ${viewerId})`
+          : sql<boolean>`false`,
+        viewerReposted: viewerId
+          ? sql<boolean>`exists(select 1 from reposts r where r.post_id = ${outerId} and r.member_id = ${viewerId})`
           : sql<boolean>`false`,
         viewerBookmarked: viewerId
           ? sql<boolean>`exists(select 1 from bookmarks b where b.post_id = ${outerId} and b.member_id = ${viewerId})`
@@ -174,6 +292,7 @@ export class PostsService {
         deleted: sql<boolean>`${posts.deletedAt} is not null or ${posts.removedAt} is not null`,
         communitySlug: communities.slug,
         communityName: communities.name,
+        quote: sql<QuoteRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${quoteOf(viewerId, sql`${posts.quotePostId}`)} end`,
         reason: opts.reason ?? sql<null>`null`,
       })
       .from(posts)
@@ -181,24 +300,21 @@ export class PostsService {
       .leftJoin(communities, and(eq(communities.id, posts.communityId), eq(communities.active, true)))
       .where(
         and(
-          eq(members.active, true),
+          visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`, opts.unmuted),
           opts.includeDeleted ? undefined : live,
-          // A viewer never sees posts by anyone they blocked or muted, or who blocked them.
-          viewerId ? sql`not ${blockedEitherWay(viewerId, sql`"posts"."author_id"`)}` : undefined,
-          viewerId && !opts.ignoreMutes
-            ? sql`not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = "posts"."author_id")`
-            : undefined,
           where,
         ),
       )
       .orderBy(...(opts.order ?? []))
       .limit(opts.limit ?? 1000)
 
-    return rows.map(({ communitySlug, communityName, authorAvatarId, images, ...row }) => ({
+    return rows.map(({ communitySlug, communityName, authorAvatarId, images, quote, ...row }) => ({
       ...row,
       images: toPostImages(images),
       authorAvatar: avatarPath(authorAvatarId),
       community: communitySlug && communityName ? { slug: communitySlug, name: communityName } : null,
+      quote: toQuote(quote),
+      repostedBy: null,
     }))
   }
 
@@ -208,7 +324,7 @@ export class PostsService {
     where: SQL | undefined,
     limit: number,
     cursor?: string,
-    extra: { reason?: SQL<FeedReason>; ignoreMutes?: boolean } = {},
+    extra: { reason?: SQL<FeedReason>; unmuted?: string } = {},
   ): Promise<PostPage> {
     let before: SQL | undefined
     if (cursor) {
@@ -236,28 +352,130 @@ export class PostsService {
 
   /**
    * Top-level posts from the people `viewerId` follows and the communities they
-   * have joined, plus their own. Each post says which of those brought it in.
+   * have joined, plus their own, and what they and the people they follow
+   * reposted. Each post says which of those brought it in.
    */
   followingFeed(viewerId: string, limit: number, cursor?: string): Promise<PostPage> {
-    const followed = this.db
-      .select({ id: follows.followeeId })
-      .from(follows)
-      .where(eq(follows.followerId, viewerId))
-    const joined = this.db
-      .select({ id: communityMemberships.communityId })
-      .from(communityMemberships)
-      .innerJoin(communities, eq(communities.id, communityMemberships.communityId))
-      .where(and(eq(communityMemberships.memberId, viewerId), eq(communities.active, true)))
-
-    const isOwn = eq(posts.authorId, viewerId)
-    const isFollowed = inArray(posts.authorId, followed)
-    return this.page(
+    return this.entries(
       viewerId,
-      and(topLevel, or(isOwn, isFollowed, inArray(posts.communityId, joined))),
+      {
+        members: sql`(select ${viewerId}::uuid union all select f.followee_id from follows f where f.follower_id = ${viewerId})`,
+        communities: sql`select cm.community_id from community_memberships cm
+          join communities c on c.id = cm.community_id and c.active where cm.member_id = ${viewerId}`,
+        reasons: true,
+      },
       limit,
       cursor,
-      { reason: sql<FeedReason>`case when ${isOwn} then 'own' when ${isFollowed} then 'following' else 'community' end` },
     )
+  }
+
+  /**
+   * A newest-first list with reposts in it. Each post appears once, at the latest
+   * moment it entered the list: when it was posted, if it is a top-level post by
+   * one of `members` or in one of `communities`, or when one of `members` reposted
+   * it. A repost by someone the viewer cannot see (inactive, blocked either way,
+   * muted) does not count, so the post falls back to the next way in, if any.
+   * `members` and `communities` are subqueries of IDs. With `reasons`, each post
+   * says why it is there, as the Following feed does.
+   */
+  private async entries(
+    viewerId: string | null,
+    { members: candidates, communities: joined, reasons, unmuted }: {
+      members: SQL
+      communities?: SQL
+      reasons?: boolean
+      unmuted?: string
+    },
+    limit: number,
+    cursor?: string,
+  ): Promise<PostPage> {
+    // Read first and passed in as arrays, so the planner sees how many members and
+    // communities this list has and how busy they are. It can then walk the newest
+    // posts for someone who follows many active accounts, and read each account's
+    // own posts and reposts for someone who follows a few. As subqueries they were
+    // estimated alike for every viewer, and every repost on the site was read.
+    const sources = await this.db.execute<{ members: string[]; communities: string[] }>(sql`
+      select array(select m.id from members m where m.id in ${candidates}
+          and ${visibleAuthor(viewerId, sql`m.id`, sql`m.active`, unmuted)}) as members,
+        ${joined ? sql`array(${joined})` : sql`'{}'::uuid[]`} as communities`)
+    const { members: memberIds, communities: communityIds } = sources.rows[0]!
+    if (!memberIds.length && !communityIds.length) return { posts: [], cursor: null }
+    const ids = (list: string[]) => sql`${sql.param(list)}::uuid[]`
+    // With one member, `=` keeps their posts and reposts in index order, so a page
+    // is read newest first and the read stops when it is full.
+    const byMember = (member: SQL) =>
+      memberIds.length === 1 ? sql`${member} = ${memberIds[0]}` : sql`${member} = any(${ids(memberIds)})`
+
+    const after = cursor ? decodeExactCursor(cursor) : null
+    const before = (at: SQL, id: SQL) =>
+      after ? sql`and (${at}, ${id}) < (${after[0]}::timestamptz, ${after[1]}::uuid)` : sql``
+    const postVisible = sql`p.deleted_at is null and p.removed_at is null and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`, unmuted)}`
+    // A repost of `post` by one of `members`, made after `since` (if given). A few
+    // members are each looked up in the index. For a long list it is cheaper to
+    // read the post's reposts and find the members in a hash: `is true` stops the
+    // list becoming an index condition, which re-sorts it for every post checked.
+    const memberRepost = (post: SQL, since?: SQL) => {
+      const reposter = byMember(sql`rx.member_id`)
+      return sql`exists(select 1 from reposts rx where rx.post_id = ${post}
+        and ${memberIds.length >= HASHED_MEMBERS_FROM ? sql`(${reposter}) is true` : reposter}
+        ${since ? sql`and (rx.created_at, rx.member_id) > ${since}` : sql``})`
+    }
+    // Each branch is cut to one page before they are merged, so neither reads more than it must.
+    const { rows } = await this.db.execute<{
+      post_id: string
+      reposter_id: string | null
+      reposter_handle: string | null
+      reposter_name: string | null
+      cursor_at: string
+    }>(sql`
+      with entries as (
+        (select p.id as post_id, p.created_at as at, null::uuid as reposter_id
+        from posts p join members a on a.id = p.author_id
+        where p.reply_parent_id is null
+          and (${byMember(sql`p.author_id`)}${communityIds.length ? sql` or p.community_id = any(${ids(communityIds)})` : sql``})
+          and ${postVisible} and not ${memberRepost(sql`p.id`)}
+          ${before(sql`p.created_at`, sql`p.id`)}
+        order by p.created_at desc, p.id desc
+        limit ${limit + 1})
+        union all
+        (select r.post_id, r.created_at, r.member_id
+        from reposts r join posts p on p.id = r.post_id join members a on a.id = p.author_id
+        where ${byMember(sql`r.member_id`)} and ${postVisible}
+          and not ${memberRepost(sql`r.post_id`, sql`(r.created_at, r.member_id)`)}
+          ${before(sql`r.created_at`, sql`r.post_id`)}
+        order by r.created_at desc, r.post_id desc
+        limit ${limit + 1})
+      )
+      select e.post_id, e.reposter_id, rm.handle as reposter_handle, rm.display_name as reposter_name,
+        to_char(e.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at
+      from entries e left join members rm on rm.id = e.reposter_id
+      order by e.at desc, e.post_id desc
+      limit ${limit + 1}`)
+
+    const page = rows.slice(0, limit)
+    const found = page.length
+      ? await this.select(viewerId, inArray(posts.id, page.map((e) => e.post_id)), { unmuted, limit: page.length })
+      : []
+    const byId = new Map(found.map((post) => [post.id, post]))
+    // Only posts by members the viewer can see are shown, so for them being in
+    // `members` means being the viewer or someone they follow.
+    const listed = new Set(memberIds)
+    const reasonFor = (authorId: string): FeedReason | null =>
+      !reasons ? null : authorId === viewerId ? 'own' : listed.has(authorId) ? 'following' : 'community'
+    const last = page.at(-1)
+    return {
+      // A post that went out of sight between the two reads is simply left out.
+      posts: page.flatMap((e): PostView[] => {
+        const post = byId.get(e.post_id)
+        if (!post) return []
+        if (e.reposter_id) {
+          const repostedBy = { id: e.reposter_id, handle: e.reposter_handle!, displayName: e.reposter_name }
+          return [{ ...post, reason: 'repost', repostedBy }]
+        }
+        return [{ ...post, reason: reasonFor(post.authorId), repostedBy: null }]
+      }),
+      cursor: rows.length > limit && last ? encodeExactCursor(last.cursor_at, last.post_id) : null,
+    }
   }
 
   /** Top-level posts in one community. */
@@ -265,9 +483,23 @@ export class PostsService {
     return this.page(viewerId, and(topLevel, eq(posts.communityId, communityId)), limit, cursor)
   }
 
-  /** Everything one member has posted, replies included. */
-  byAuthor(viewerId: string | null, authorId: string, limit: number, cursor?: string): Promise<PostPage> {
-    return this.page(viewerId, eq(posts.authorId, authorId), limit, cursor, { ignoreMutes: true })
+  /**
+   * One list from a member's profile: their top-level posts and reposts, their
+   * replies, or everything they posted with images (replies included).
+   */
+  byAuthor(
+    viewerId: string | null,
+    authorId: string,
+    limit: number,
+    cursor?: string,
+    filter: ProfileFilter = 'posts',
+  ): Promise<PostPage> {
+    if (filter === 'posts') {
+      return this.entries(viewerId, { members: sql`(select ${authorId}::uuid)`, unmuted: authorId }, limit, cursor)
+    }
+    return this.page(viewerId, and(eq(posts.authorId, authorId), profileFilter[filter]), limit, cursor, {
+      unmuted: authorId,
+    })
   }
 
   /** The posts a member has saved. Only ever shown to that member. */
@@ -279,17 +511,65 @@ export class PostsService {
     return this.page(viewerId, inArray(posts.id, saved), limit, cursor)
   }
 
+  private trendingRanking: { ids: string[]; expiresAt: number } | null = null
+  private trendingRefresh: Promise<void> | null = null
+
   /**
    * The conversations people are engaging with this week: top-level posts ranked
    * by replies (weighted double) and likes. Posts with neither are left out.
+   *
+   * The ranking may be up to a minute old; whether each post is still live, its
+   * author still active and not blocked or muted by the viewer, and its counts,
+   * are read fresh on every call. So per call this reads at most
+   * `TRENDING_CANDIDATES` posts, however many were posted this week.
    */
-  trending(viewerId: string | null, limit: number): Promise<PostView[]> {
-    const score = sql<number>`(${replyCount} * 2 + ${likeCount})`
-    const since = new Date(Date.now() - TRENDING_WINDOW_DAYS * 86_400_000)
-    return this.select(viewerId, and(topLevel, gt(posts.createdAt, since), sql`${score} > 0`), {
-      order: [sql`${score} desc`, desc(posts.createdAt)],
+  async trending(viewerId: string | null, limit: number): Promise<PostView[]> {
+    const ids = await this.trendingIds()
+    if (ids.length === 0) return []
+    return this.select(viewerId, inArray(posts.id, ids), {
+      order: [sql`array_position(array[${sql.join(ids.map((id) => sql`${id}`), sql`, `)}]::uuid[], "posts"."id")`],
       limit,
     })
+  }
+
+  /**
+   * The cached ranking. Once it is older than `TRENDING_TTL_MS`, one refresh runs
+   * in the background and callers keep getting the old ranking until it lands,
+   * so no page waits on the ranking query after the first.
+   */
+  private async trendingIds(): Promise<string[]> {
+    const cached = this.trendingRanking
+    if (cached && cached.expiresAt > Date.now()) return cached.ids
+    this.trendingRefresh ??= this.rankTrending()
+      .then((ids) => {
+        this.trendingRanking = { ids, expiresAt: Date.now() + TRENDING_TTL_MS }
+      })
+      .finally(() => {
+        this.trendingRefresh = null
+      })
+    if (!cached) {
+      await this.trendingRefresh
+      return this.trendingRanking!.ids
+    }
+    // A failed refresh leaves the old ranking in place; the next call retries.
+    this.trendingRefresh.catch(() => {})
+    return cached.ids
+  }
+
+  /**
+   * Scores this week's live top-level posts by active authors from the counters
+   * on each post: likes, plus twice the replies.
+   */
+  private async rankTrending(): Promise<string[]> {
+    const since = new Date(Date.now() - TRENDING_WINDOW_DAYS * 86_400_000).toISOString()
+    const { rows } = await this.db.execute<{ id: string }>(sql`
+      select p.id from posts p
+      join members m on m.id = p.author_id and m.active
+      where p.reply_parent_id is null and p.deleted_at is null and p.removed_at is null and p.created_at > ${since}
+        and p.like_count + p.reply_count > 0
+      order by p.reply_count * 2 + p.like_count desc, p.created_at desc, p.id desc
+      limit ${TRENDING_CANDIDATES}`)
+    return rows.map((r) => r.id)
   }
 
   /** Full-text search over post text, newest first. Replies are included. */
@@ -303,38 +583,150 @@ export class PostsService {
 
   /** A post with the conversation above it and the direct replies below it. */
   async thread(viewerId: string | null, id: string): Promise<Thread | null> {
-    const [post] = await this.select(viewerId, eq(posts.id, id), { limit: 1 })
+    const post = await this.post(viewerId, id)
     if (!post) return null
 
-    const chain = await this.db.execute<{ id: string }>(sql`
+    // Roots need no ancestor query. One extra ID makes truncation explicit;
+    // only the nearest 50 ancestors are hydrated. The path also stops cycles.
+    const chain = post.replyParentId
+      ? await this.db.execute<{ id: string; depth: number }>(sql`
       with recursive up as (
-        select p.id, p.reply_parent_id, 1 as depth from posts p where p.id = ${post.replyParentId}
+        select p.id, p.reply_parent_id, 1 as depth, array[${post.id}::uuid, p.id] as path
+        from posts p where p.id = ${post.replyParentId} and p.id <> ${post.id}
         union all
-        select p.id, p.reply_parent_id, up.depth + 1
+        select p.id, p.reply_parent_id, up.depth + 1, up.path || p.id
         from posts p join up on p.id = up.reply_parent_id
-        where up.depth < ${MAX_THREAD_DEPTH}
+        where up.depth < ${MAX_THREAD_DEPTH + 1} and not p.id = any(up.path)
       )
-      select id from up order by depth desc`)
-    const ancestorIds = chain.rows.map((r) => r.id)
+      select id, depth from up order by depth asc`)
+      : { rows: [] }
+    const ancestorIds = chain.rows.slice(0, MAX_THREAD_DEPTH).map((r) => r.id).reverse()
 
     const [ancestors, replies] = await Promise.all([
       ancestorIds.length
         ? this.select(viewerId, inArray(posts.id, ancestorIds), { includeDeleted: true })
         : Promise.resolve([]),
-      this.select(viewerId, eq(posts.replyParentId, id), {
-        order: [asc(posts.createdAt), asc(posts.id)],
-        limit: MAX_REPLIES_SHOWN,
-      }),
+      this.replyPage(viewerId, id, REPLY_PAGE_SIZE),
     ])
     // Root first. An ancestor by a now-inactive member is simply absent.
     ancestors.sort((a, b) => ancestorIds.indexOf(a.id) - ancestorIds.indexOf(b.id))
-    return { ancestors, post, replies }
+    return {
+      ancestors,
+      post,
+      replies: replies.replies,
+      replyCursor: replies.cursor,
+      ancestorsTruncated: chain.rows.length > MAX_THREAD_DEPTH,
+      // Continue through a known eligible live focus. The raw next ancestor may
+      // be deleted or blocked and would make a broken continuation permalink.
+      earlierAncestorId: chain.rows.length > MAX_THREAD_DEPTH ? ancestors.find((ancestor) => !ancestor.deleted)?.id ?? null : null,
+    }
+  }
+
+  /** A lightweight read for confirmed inline replies; no ancestors or children. */
+  async post(viewerId: string | null, id: string): Promise<PostView | null> {
+    const [post] = await this.select(viewerId, eq(posts.id, id), { limit: 1 })
+    return post ?? null
+  }
+
+  /** A parent is checked afresh, including when its structural stub was loaded earlier. */
+  async replies(viewerId: string | null, parentId: string, limit = REPLY_PAGE_SIZE, cursor?: string): Promise<ReplyPage | null> {
+    // Validate even when the parent is unavailable. A cursor grants no access.
+    if (cursor) decodeReplyCursor(cursor, parentId)
+    const [parent] = await this.db
+      .select({ id: posts.id })
+      .from(posts)
+      .innerJoin(members, eq(members.id, posts.authorId))
+      .where(
+        and(
+          eq(posts.id, parentId),
+          visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`),
+          or(live, sql`exists(select 1 from posts child where child.reply_parent_id = ${posts.id})`),
+        ),
+      )
+      .limit(1)
+    if (!parent) return null
+    return this.replyPage(viewerId, parentId, Math.min(REPLY_PAGE_SIZE, Math.max(1, limit)), cursor)
+  }
+
+  /** One bounded sibling query, followed by live-row hydration inside that statement. */
+  private async replyPage(viewerId: string | null, parentId: string, limit: number, cursor?: string): Promise<ReplyPage> {
+    const after = cursor ? decodeReplyCursor(cursor, parentId) : null
+    type ReplyRow = {
+      id: string
+      reply_parent_id: string | null
+      created_at: Date
+      cursor_timestamp: string
+      view: (Omit<PostView, 'images' | 'createdAt' | 'authorAvatar' | 'quote'> & {
+        images: { id: string; alt: string; width: number; height: number }[]
+        createdAt: string
+        authorAvatarId: string | null
+        quote: QuoteRow | null
+      }) | null
+    }
+    const { rows } = await this.db.execute<ReplyRow>(sql`
+      with page as materialized (
+        select p.id, p.reply_parent_id, p.created_at,
+          p.deleted_at is not null or p.removed_at is not null as unavailable
+        from posts p join members a on a.id = p.author_id
+        where p.reply_parent_id = ${parentId}
+          and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)}
+          and ((p.deleted_at is null and p.removed_at is null)
+            or exists(select 1 from posts child where child.reply_parent_id = p.id))
+          ${after ? sql`and (p.created_at, p.id) > (${after[0]}::timestamptz, ${after[1]}::uuid)` : sql``}
+        order by p.created_at asc, p.id asc
+        limit ${limit + 1}
+      )
+      select page.id, page.reply_parent_id, page.created_at,
+        to_char(page.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp,
+        case when page.unavailable then null else json_build_object(
+          'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
+          'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id,
+          'text', p.text, 'images', ${imagesOf(sql`p.id`)},
+          'createdAt', p.created_at, 'replyParentId', p.reply_parent_id,
+          'likeCount', p.like_count, 'replyCount', p.reply_count, 'repostCount', p.repost_count,
+          'hasReplies', p.reply_count > 0 or exists(select 1 from posts child where child.reply_parent_id = p.id),
+          'viewerLiked', ${viewerId ? sql`exists(select 1 from likes l where l.post_id = p.id and l.member_id = ${viewerId})` : sql`false`},
+          'viewerBookmarked', ${viewerId ? sql`exists(select 1 from bookmarks b where b.post_id = p.id and b.member_id = ${viewerId})` : sql`false`},
+          'viewerReposted', ${viewerId ? sql`exists(select 1 from reposts r where r.post_id = p.id and r.member_id = ${viewerId})` : sql`false`},
+          'quote', ${quoteOf(viewerId, sql`p.quote_post_id`)},
+          'deleted', false, 'reason', null, 'repostedBy', null,
+          'community', case when c.id is null then null else json_build_object('slug', c.slug, 'name', c.name) end
+        ) end as view
+      from page join posts p on p.id = page.id
+      join members a on a.id = p.author_id
+      left join communities c on c.id = p.community_id and c.active
+      order by page.created_at asc, page.id asc`)
+    const page = rows.slice(0, limit)
+    const last = page.at(-1)
+    return {
+      replies: page.map((row): ThreadReply => {
+        if (!row.view) {
+          return {
+            unavailable: true,
+            id: row.id,
+            replyParentId: row.reply_parent_id,
+            createdAt: row.created_at,
+            hasReplies: true,
+          }
+        }
+        const { images, createdAt, authorAvatarId, quote, ...post } = row.view
+        return {
+          ...post,
+          images: toPostImages(images),
+          createdAt: new Date(createdAt),
+          authorAvatar: avatarPath(authorAvatarId),
+          quote: toQuote(quote),
+        }
+      }),
+      cursor: rows.length > limit && last ? encodeReplyCursor(parentId, last.cursor_timestamp, last.id) : null,
+    }
   }
 
   /**
    * `communitySlug` posts into a community the author has joined. A reply always
    * lands in its parent's community (or none), whatever is asked for. `images`
-   * must be the author's own uploads, processed and not on another post.
+   * must be the author's own uploads, processed and not on another post. `quote`
+   * makes it a quote post of a post the author can currently see.
    */
   async create(
     authorId: string,
@@ -343,10 +735,29 @@ export class PostsService {
       replyTo,
       communitySlug,
       images = [],
-    }: { replyTo?: string; communitySlug?: string; images?: PostImageInput[] } = {},
+      quote,
+    }: { replyTo?: string; communitySlug?: string; images?: PostImageInput[]; quote?: string } = {},
   ): Promise<{ id: string }> {
     let parent: { id: string; authorId: string; rootId: string | null; communityId: string | null } | undefined
     let communityId: string | null = null
+    let quoted: { id: string; authorId: string } | undefined
+
+    if (quote) {
+      // The same test as for replying: live, by an active member, no block either way.
+      ;[quoted] = await this.db
+        .select({ id: posts.id, authorId: posts.authorId })
+        .from(posts)
+        .innerJoin(members, eq(members.id, posts.authorId))
+        .where(
+          and(
+            eq(posts.id, quote),
+            live,
+            eq(members.active, true),
+            sql`not ${blockedEitherWay(authorId, sql`"posts"."author_id"`)}`,
+          ),
+        )
+      if (!quoted) throw new QuotedPostNotFoundError('the post you are quoting is no longer available')
+    }
 
     if (replyTo) {
       // You can only reply to something a reader could currently see.
@@ -386,6 +797,7 @@ export class PostsService {
           communityId,
           replyParentId: parent?.id ?? null,
           rootId: parent ? (parent.rootId ?? parent.id) : null,
+          quotePostId: quoted?.id ?? null,
         })
         .returning({ id: posts.id })
       for (const [position, image] of images.entries()) {
@@ -404,7 +816,13 @@ export class PostsService {
           .returning({ id: media.id })
         if (attached.length === 0) throw new ImagesNotReadyError('an image is missing, still processing or already used')
       }
-      if (parent) await notify(tx, [{ recipientId: parent.authorId, kind: 'reply', actorId: authorId, postId: row!.id }])
+      await notify(tx, [
+        ...(parent ? [{ recipientId: parent.authorId, kind: 'reply' as const, actorId: authorId, postId: row!.id }] : []),
+        // A reply that quotes the post it answers notifies once, as a reply.
+        ...(quoted && quoted.authorId !== parent?.authorId
+          ? [{ recipientId: quoted.authorId, kind: 'quote' as const, actorId: authorId, postId: row!.id }]
+          : []),
+      ])
       return row!
     })
   }
@@ -431,6 +849,23 @@ export class PostsService {
   /** Idempotent. */
   async unlike(memberId: string, postId: string): Promise<void> {
     await this.db.delete(likes).where(and(eq(likes.memberId, memberId), eq(likes.postId, postId)))
+  }
+
+  /**
+   * Idempotent: reposting again keeps the first repost and its place in feeds.
+   * False if the post is not there to be reposted.
+   */
+  async repost(memberId: string, postId: string): Promise<boolean> {
+    const [visible] = await this.select(memberId, eq(posts.id, postId), { limit: 1 })
+    if (!visible) return false
+    await this.db.insert(reposts).values({ memberId, postId }).onConflictDoNothing()
+    await notify(this.db, [{ recipientId: visible.authorId, kind: 'repost', actorId: memberId, postId }])
+    return true
+  }
+
+  /** Idempotent. */
+  async unrepost(memberId: string, postId: string): Promise<void> {
+    await this.db.delete(reposts).where(and(eq(reposts.memberId, memberId), eq(reposts.postId, postId)))
   }
 
   /** Idempotent. False if the post is not there to be saved. */

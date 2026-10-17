@@ -1,6 +1,8 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "loadtest"
+  - "e2e"
 
 # @fastify/cookie augments Fastify's types but does not declare it as a peer, so
 # under pnpm's strict layout it would otherwise bind to a different Fastify copy.

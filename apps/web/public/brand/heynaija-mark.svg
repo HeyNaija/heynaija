@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="HeyNaija">
+  <rect width="512" height="512" rx="104" fill="#fff"/>
+  <!-- The wordmark's rounded, leaning H, with its two familiar leaf accents. -->
+  <path fill="#00482c" d="M164 179C118 179 84 214 79 304c-5 56 0 103 23 129 12 19 39 19 60 12 26-9 36-28 27-53l-12-38 44-15c0 27 4 54 20 71 14 16 40 16 58 7 23-11 27-28 14-50-28-48-15-66 1-122l17-51c16-44-19-61-48-49-41 10-56 44-58 87l-3 45-46 14c2-23 9-47 16-69 9-27 2-43-28-43Z"/>
+  <path fill="#4fb600" d="m311 139 18-77c3-13 16-20 28-16s19 16 13 30l-31 69c-8 18-32 15-28-6Z"/>
+  <path fill="#4fb600" d="m355 144 43-45c10-11 24-10 32-1s6 23-5 30l-57 35c-15 9-23-7-13-19Z"/>
+</svg>

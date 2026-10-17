@@ -9,8 +9,9 @@ export const metadata: Metadata = { title: 'Confirm your email' }
 export default function VerificationPage({ searchParams }: PageProps<'/verification'>) {
   return (
     <AuthPage
+      eyebrow="One more step"
       title="Confirm your email"
-      intro="We use your email only to help you get back into your account."
+      intro="Confirm your address with a code sent to your email. Your email address stays private."
       footer={
         <p>
           <Link href="/" className={linkClass}>

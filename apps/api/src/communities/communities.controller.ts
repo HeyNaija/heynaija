@@ -64,7 +64,7 @@ export class CommunitiesController {
   @HttpCode(204)
   @UseGuards(SessionGuard)
   async join(@Req() req: AuthedRequest, @Param('slug') slug: string) {
-    this.limits.hit('action', req.member.id)
+    await this.limits.hit('action', req.member.id)
     if (!(await this.communities.join(req.member.id, slugOf(slug)))) throw new NotFoundException()
   }
 

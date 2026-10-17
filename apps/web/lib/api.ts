@@ -1,5 +1,5 @@
 import 'server-only'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { cache } from 'react'
 
 // Server-to-server address of the NestJS API. Browsers never use this; they go
@@ -24,7 +24,24 @@ export type Me = {
 /** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
 export type PostImage = { src: string; alt: string; width: number; height: number }
 
+/** The post a quote post quotes, or a placeholder when the reader cannot see it. */
+export type QuotedPost =
+  | {
+      unavailable?: false
+      id: string
+      authorId: string
+      authorHandle: string
+      authorName: string | null
+      authorAvatar: string | null
+      text: string
+      images: PostImage[]
+      createdAt: string
+      replyParentId: string | null
+    }
+  | { unavailable: true }
+
 export type Post = {
+  unavailable?: false
   id: string
   authorId: string
   authorHandle: string
@@ -37,17 +54,45 @@ export type Post = {
   replyParentId: string | null
   likeCount: number
   replyCount: number
+  repostCount: number
+  /** Thread pages also expose structural continuation through deleted intermediate rows. */
+  hasReplies?: boolean
   viewerLiked: boolean
+  viewerReposted: boolean
   viewerBookmarked: boolean
   deleted: boolean
   community: { slug: string; name: string } | null
-  /** Why the post is in the Following feed; null elsewhere. */
-  reason: 'own' | 'following' | 'community' | null
+  /** A quote post's quoted post; null for other posts. */
+  quote: QuotedPost | null
+  /** Why the post is in the Following feed, or 'repost' on a profile; null elsewhere. */
+  reason: 'own' | 'following' | 'community' | 'repost' | null
+  /** Who reposted it, when `reason` is 'repost'. */
+  repostedBy: { id: string; handle: string; displayName: string | null } | null
 }
 
 export type Feed = { posts: Post[]; cursor: string | null }
 
-export type Thread = { ancestors: Post[]; post: Post; replies: Post[] }
+/** The lists on a member's profile: top-level posts, replies, and posts with images. */
+export const PROFILE_FILTERS = ['posts', 'replies', 'media'] as const
+export type ProfileFilter = (typeof PROFILE_FILTERS)[number]
+
+export type UnavailableReply = {
+  unavailable: true
+  id: string
+  replyParentId: string | null
+  createdAt: string
+  hasReplies: true
+}
+export type ThreadReply = Post | UnavailableReply
+export type ReplyPage = { replies: ThreadReply[]; cursor: string | null }
+export type Thread = {
+  ancestors: Post[]
+  post: Post
+  replies: ThreadReply[]
+  replyCursor: string | null
+  ancestorsTruncated: boolean
+  earlierAncestorId?: string | null
+}
 
 export type Community = {
   id: string
@@ -74,16 +119,28 @@ export type Profile = {
   viewerFollows: boolean
   viewerBlocks: boolean
   viewerMutes: boolean
+  /**
+   * Show the green "NIN identity verified" tick. Decided by the API from a
+   * reviewed, current verification the member chose to show; never inferred here.
+   */
+  identityBadge: boolean
 }
 
-/** Calls the API as the signed-in member by forwarding only the session cookie. */
+/**
+ * Calls the API as the signed-in member by forwarding only the session cookie,
+ * and the visitor's address, which nginx sets in X-Real-IP and the API counts
+ * signed-out callers' rate limits by. (Requests the browser makes to /api go
+ * through the rewrite in next.config.ts, which passes the header on itself.)
+ */
 export async function api(path: string, init: RequestInit = {}): Promise<Response> {
   const session = (await cookies()).get(SESSION_COOKIE)?.value
+  const address = (await headers()).get('x-real-ip')
   return fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       ...init.headers,
       ...(session ? { cookie: `${SESSION_COOKIE}=${session}` } : {}),
+      ...(address ? { 'x-real-ip': address } : {}),
     },
   })
 }
@@ -109,7 +166,7 @@ export const getViewer = cache(async (): Promise<Viewer> => {
 })
 
 async function getPage(path: string, cursor?: string): Promise<Feed> {
-  const res = await api(cursor ? `${path}?cursor=${encodeURIComponent(cursor)}` : path)
+  const res = await api(cursor ? `${path}${path.includes('?') ? '&' : '?'}cursor=${encodeURIComponent(cursor)}` : path)
   // A mangled cursor in the URL should fall back to the first page, not crash.
   if (res.status === 400 && cursor) return getPage(path)
   if (!res.ok) throw new Error(`API ${path} responded ${res.status}`)
@@ -127,8 +184,8 @@ export async function getFollowingFeed(cursor?: string): Promise<Feed | null> {
   }
 }
 
-export const getMemberPosts = (handle: string, cursor?: string) =>
-  getPage(`/v1/members/${encodeURIComponent(handle)}/posts`, cursor)
+export const getMemberPosts = (handle: string, filter: ProfileFilter, cursor?: string) =>
+  getPage(`/v1/members/${encodeURIComponent(handle)}/posts?filter=${filter}`, cursor)
 
 async function getOrNull<T>(path: string): Promise<T | null> {
   const res = await api(path)
@@ -137,10 +194,36 @@ async function getOrNull<T>(path: string): Promise<T | null> {
   return res.json()
 }
 
-export const getProfile = (handle: string) =>
-  getOrNull<Profile>(`/v1/members/${encodeURIComponent(handle)}`)
+/**
+ * A member's profile; or, for a handle its owner gave up recently, the handle they
+ * use now (the API answers 404 with `movedTo`).
+ */
+export async function findProfile(handle: string): Promise<Profile | { movedTo: string } | null> {
+  const path = `/v1/members/${encodeURIComponent(handle)}`
+  const res = await api(path)
+  if (res.status === 404) {
+    const body: { movedTo?: unknown } | null = await res.json().catch(() => null)
+    return typeof body?.movedTo === 'string' ? { movedTo: body.movedTo } : null
+  }
+  if (!res.ok) throw new Error(`API ${path} responded ${res.status}`)
+  return res.json()
+}
+
+export const getProfile = async (handle: string): Promise<Profile | null> => {
+  const found = await findProfile(handle)
+  return found && 'movedTo' in found ? null : found
+}
 
 export const getThread = (id: string) => getOrNull<Thread>(`/v1/posts/${encodeURIComponent(id)}`)
+
+/** Hydrate one confirmed post without fetching its ancestors or replies. */
+export const getPost = (id: string) => getOrNull<Post>(`/v1/posts/${encodeURIComponent(id)}/post`)
+
+/** A branch is always an explicit, bounded page; it never fetches descendants. */
+export async function getReplies(id: string, cursor?: string): Promise<ReplyPage | null> {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
+  return getOrNull<ReplyPage>(`/v1/posts/${encodeURIComponent(id)}/replies${query}`)
+}
 
 export const getCommunities = cache(async (): Promise<Community[]> => {
   const res = await api('/v1/communities')
@@ -217,6 +300,8 @@ export async function getModeration(): Promise<{ queue: QueueItem[]; log: LogEnt
 export type NotificationKind =
   | 'reply'
   | 'like'
+  | 'repost'
+  | 'quote'
   | 'follow'
   | 'post_removed'
   | 'post_restored'
@@ -259,4 +344,33 @@ export async function getLatestAppeal(): Promise<Appeal | null> {
   const res = await api('/v1/appeals/latest')
   if (!res.ok) return null
   return ((await res.json()) as { appeal: Appeal | null }).appeal
+}
+
+/** The signed-in member's own identity and voting-membership status (Settings). */
+export type GovernanceStatus = {
+  /** The member's own age band and how it is known. Never shown to anyone else. */
+  age: {
+    band: 'unknown' | 'under_18' | '18_plus'
+    assurance: 'none' | 'declared' | 'reviewed' | 'verified'
+    reviewDue: boolean
+  }
+  verification: {
+    status: 'none' | 'pending' | 'verified' | 'rejected' | 'expired' | 'revoked'
+    open: boolean
+    verifiedAt: string | null
+    expiresAt: string | null
+  }
+  badge: { shown: boolean }
+  membership: {
+    status: 'none' | 'pending' | 'active' | 'suspended' | 'resigned'
+    registrationOpen: boolean
+    eligible: boolean
+    unmet: string[]
+  }
+}
+
+export async function getGovernanceStatus(): Promise<GovernanceStatus | null> {
+  const res = await api('/v1/me/governance')
+  if (!res.ok) return null
+  return res.json()
 }

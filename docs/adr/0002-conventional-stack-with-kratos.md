@@ -1,7 +1,8 @@
 # ADR 0002 — Drop the AT Protocol; conventional stack with Ory Kratos
 
 **Date:** 13 October 2026 · **Status:** Accepted · **Supersedes:** ADR 0001 and the
-architecture sections of PLAN.md (§0, §2, §3, §5, §6 PDS parts, §8 Phase 0)
+architecture sections of PLAN.md (§0, §2, §3, §5, §6 PDS parts, §8 Phase 0) ·
+**Amended by:** ADR 0003 (no passwords)
 
 ## Decision
 
@@ -62,12 +63,15 @@ handling, verification and recovery are security-critical and already solved.
   API refuses. It needs a new invite; there is no in-app way to attach one yet.
 - **Handles can be changed** in settings. `members.handle` is a copy refreshed on
   the member's next request, so it can lag briefly.
-- **Rate limits are in memory.** Posting, likes/follows/joins, reports, search and
-  invite checks are limited per member (see `apps/api/src/rate-limit.ts`). The
-  counters reset when the API restarts and are not shared between instances, so
-  they must move to Redis before the API is scaled out. Signed-out callers share
-  one budget because the API cannot see their IP behind the web app's proxy.
-  Sign-in attempts are not limited by us; that is left to Kratos's defaults.
+- **Rate limits** (posting, likes/follows/joins, reports, search and invite
+  checks; `apps/api/src/rate-limit.ts`) are counted in Redis, shared by every API
+  process and kept across restarts. If Redis is unreachable each process counts in
+  its own memory until it is back. Members are counted by their ID; signed-out
+  callers by their address, which nginx sets in `X-Real-IP` from Cloudflare's
+  header and the web app passes on (IPv6 by its /64). Many people on Nigerian
+  mobile networks share one address (carrier-grade NAT), so the signed-out
+  budgets are per address, not per person. Sign-in attempts are not limited by
+  us; that is left to Kratos's defaults.
 - **Kratos logs webhook request headers, including the shared secret, at `info`
   level.** Production must run at `warning` or otherwise keep those logs private.
 - **Deployment** (`infra/deploy/`, guides in `docs/deployment/`): Docker Compose
@@ -93,7 +97,10 @@ handling, verification and recovery are security-critical and already solved.
   web pages were verified by hand.
 - **Counts are computed on read** (likes, replies, followers) with subqueries.
   Fine at pilot size; revisit with measurements before growth.
-- **Threads show at most 200 direct replies** and have no pagination yet.
+- **Threads** now load 20 direct replies at a time with cursor pagination and
+  inline branch expansion (15 October 2026). Ancestor context is capped at 50;
+  deeper conversations continue through individual-post links. See
+  [threaded conversations](../design/threaded-conversations.md).
 - **Communities are public** groupings: anyone can read them and any member can
   join. Private communities are now possible but not built. There is no pinned
   welcome post.

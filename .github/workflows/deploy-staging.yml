@@ -49,4 +49,11 @@ jobs:
       - name: Deploy ${{ github.sha }}
         env:
           IMAGE_PREFIX: ${{ needs.images.outputs.image_prefix }}
-        run: /srv/heynaija/infra/deploy/deploy.sh "${{ github.sha }}"
+          DEPLOY_REF: ${{ github.sha }}
+        # Load this release's script, including on the first deploy of a change
+        # to deploy.sh. A running Bash script cannot update its own instructions.
+        run: |
+          cd /srv/heynaija
+          git fetch --quiet origin
+          git -c advice.detachedHead=false checkout --quiet --detach "$DEPLOY_REF"
+          exec bash infra/deploy/deploy.sh "$DEPLOY_REF"
