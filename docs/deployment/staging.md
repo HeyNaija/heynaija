@@ -15,13 +15,13 @@ Browser ── Cloudflare (TLS, cache, CSAM scanning) ──> Contabo server :44
 ```
 
 **How a deploy happens:** a push to the `staging` branch runs CI; if it passes,
-GitHub's machines build the two images and push them to GitHub's container
+GitHub's machines build the API, web and authentication images and push them to GitHub's container
 registry, tagged with the commit; then HeyNaija's runner on the server pulls them
 and restarts HeyNaija with `infra/deploy/deploy.sh`. The server never builds
-anything, so Koinovera never competes with a build for memory. Kratos restarts
-only when its configuration or the files in `infra/kratos/` changed: `deploy.sh`
-labels it with a hash of them, because Compose alone would leave the old ones
-running.
+anything, so Koinovera never competes with a build for memory. Kratos uses the
+version-pinned HeyNaija image that enforces the Google account policy. A new
+release updates that image; configuration changes also recreate Kratos through
+the hash set by `deploy.sh`, so mounted files cannot remain stale.
 
 **Tested** on a laptop (14 October 2026): the images, the stack, the nginx site on
 nginx 1.24 (Ubuntu 24.04's version) with client certificates, an invite signup

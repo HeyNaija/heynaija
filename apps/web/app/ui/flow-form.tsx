@@ -9,6 +9,7 @@ const LABELS: Record<string, string> = {
   'traits.email': 'Email address',
   'traits.handle': 'Handle',
   code: 'Code from the email',
+  email_change_code: 'Code sent to your new email',
 }
 
 // Shorter wording for a few of Kratos's stock messages and buttons, by message ID.
@@ -63,13 +64,16 @@ function Messages({ messages, field, fallback }: { messages?: UiMessage[]; field
   )
 }
 
-function Field({ node, flowId, identifier }: { node: UiNode; flowId: string; identifier?: string }) {
+function Field({ node, flowId, identifier, googleConnected }: { node: UiNode; flowId: string; identifier?: string; googleConnected?: boolean }) {
   const a = node.attributes
   const name = a.name ?? ''
   // Confirming it is you: only the signed-in address will do, so it is shown, not asked for.
   const locked = name === 'identifier' && a.type !== 'hidden' && identifier !== undefined
+  const googleEmail = googleConnected && name === 'traits.email' && a.type !== 'hidden'
   const value = locked ? identifier : a.value === undefined || a.value === null ? undefined : String(a.value)
-  const hint = locked ? 'The address you are signed in with.' : HINTS[name]
+  const hint = googleEmail
+    ? 'Disconnect Google in Connected accounts below to change your email address.'
+    : locked ? 'The address you are signed in with.' : HINTS[name]
 
   if (a.type === 'hidden') return <input type="hidden" name={name} value={value ?? ''} />
 
@@ -85,7 +89,7 @@ function Field({ node, flowId, identifier }: { node: UiNode; flowId: string; ide
       )
     }
     // The main action of a form is "method"; anything else (resend code, etc.) is secondary.
-    const primary = name === 'method'
+    const primary = name === 'method' || (name === 'email_change_action' && value === 'confirm')
     return (
       <button
         type="submit"
@@ -109,16 +113,18 @@ function Field({ node, flowId, identifier }: { node: UiNode; flowId: string; ide
       <label htmlFor={id} className="field-label">
         {LABELS[name] ?? node.meta.label?.text ?? name}
       </label>
+      {/* Disabled controls are not submitted. Keep the email in handle updates. */}
+      {googleEmail ? <input type="hidden" name={name} value={value ?? ''} /> : null}
       <input
         id={id}
         name={name}
         type={a.type ?? 'text'}
         defaultValue={a.type === 'password' ? undefined : value}
         required={a.required}
-        disabled={a.disabled}
+        disabled={a.disabled || googleEmail}
         readOnly={locked || undefined}
         autoComplete={a.autocomplete}
-        inputMode={name === 'code' ? 'numeric' : undefined}
+        inputMode={name === 'code' || name === 'email_change_code' ? 'numeric' : undefined}
         pattern={a.pattern}
         title={locked ? undefined : HINTS[name]}
         maxLength={a.maxlength}
@@ -127,7 +133,7 @@ function Field({ node, flowId, identifier }: { node: UiNode; flowId: string; ide
         spellCheck={false}
         aria-invalid={invalid || undefined}
         aria-describedby={description || undefined}
-        className={`field min-h-12 ${invalid ? 'border-danger' : ''} ${name === 'code' ? 'font-mono tracking-[0.18em]' : ''}`}
+        className={`field min-h-12 ${invalid ? 'border-danger' : ''} ${name === 'code' || name === 'email_change_code' ? 'font-mono tracking-[0.18em]' : ''}`}
       />
       {hint ? (
         <p id={`${id}-hint`} className="field-hint">
@@ -158,12 +164,12 @@ const rank = (node: UiNode) => {
   return type === 'submit' || type === 'button' ? 2 : 1
 }
 
-function Form({ flow, nodes: unordered, identifier }: { flow: Flow; nodes: UiNode[]; identifier?: string }) {
+function Form({ flow, nodes: unordered, identifier, googleConnected }: { flow: Flow; nodes: UiNode[]; identifier?: string; googleConnected?: boolean }) {
   const nodes = [...unordered].sort((a, b) => rank(a) - rank(b))
   return (
     <form action={flow.ui.action} method={flow.ui.method} className="flex flex-col gap-5">
       {nodes.map((node, i) => {
-        if (node.type === 'input') return <Field key={`${node.attributes.name}-${i}`} node={node} flowId={flow.id} identifier={identifier} />
+        if (node.type === 'input') return <Field key={`${node.attributes.name}-${i}`} node={node} flowId={flow.id} identifier={identifier} googleConnected={googleConnected} />
         if (node.type === 'text') {
           return (
             <p key={i} className="text-sm text-muted">
@@ -205,9 +211,12 @@ export function FlowForm({
   const shared = flow.ui.nodes.filter((n) => n.group === 'default')
   const groups = sections ? Object.keys(sections).filter((g) => flow.ui.nodes.some((n) => n.group === g)) : []
   const google = flow.ui.nodes.filter((n) => n.group === 'oidc')
+  // Kratos offers unlink only for providers already connected to this identity.
+  const googleConnected = google.some((n) => n.attributes.name === 'unlink' && n.attributes.value === 'google')
   const rest = flow.ui.nodes.filter((n) => n.group !== 'oidc')
-  // The email form's fields are shown only once Kratos asks for them: after Google,
-  // when the handle is still missing, every field is in the Google form.
+  // Kratos puts missing signup traits in the default group after Google returns.
+  // Keep them with the provider button so a new member can finish choosing a handle.
+  const completingGoogleSignup = flow.active === 'oidc' && rest.some((n) => n.attributes.name?.startsWith('traits.'))
   const hasEmailForm = rest.some((n) => n.attributes.type === 'submit')
 
   return (
@@ -222,9 +231,11 @@ export function FlowForm({
         groups.map((group) => (
           <section key={group} className="flex flex-col gap-3">
             <h2 className="section-title">{sections[group]}</h2>
-            <Form flow={flow} nodes={[...shared, ...flow.ui.nodes.filter((n) => n.group === group)]} />
+            <Form flow={flow} nodes={[...shared, ...flow.ui.nodes.filter((n) => n.group === group)]} googleConnected={googleConnected} />
           </section>
         ))
+      ) : completingGoogleSignup ? (
+        <Form flow={flow} nodes={flow.ui.nodes} />
       ) : (
         <>
           {google.length ? (

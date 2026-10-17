@@ -1,0 +1,25 @@
+# Used only while google-auth.spec.ts runs. The test always restores the normal
+# local Google provider in afterAll, including when an assertion fails.
+services:
+  kratos:
+    configs:
+      - source: google-test-provider
+        target: /etc/config/google-test-provider.yml
+    command: serve -c /etc/config/kratos/kratos.yml -c /etc/config/kratos-hooks.yml -c /etc/config/google-test-provider.yml --dev --watch-courier
+configs:
+  google-test-provider:
+    content: |
+      selfservice:
+        methods:
+          oidc:
+            enabled: true
+            config:
+              providers:
+                - id: google
+                  label: Google
+                  provider: generic
+                  issuer_url: http://host.docker.internal:5099
+                  client_id: heynaija-google-test
+                  client_secret: local-test-only
+                  mapper_url: file:///etc/config/kratos/google.jsonnet
+                  scope: [openid, email]

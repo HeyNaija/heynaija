@@ -44,7 +44,9 @@ services:
     restart: on-failure
 
   kratos:
-    image: oryd/kratos:v26.2.0
+    image: heynaija-kratos:dev
+    build:
+      context: ../kratos
     environment: *kratos-env
     volumes:
       - ../kratos:/etc/config/kratos:ro

@@ -13,6 +13,8 @@ already in the database.
 | File | Flows |
 | --- | --- |
 | `auth.spec.ts` | Join with an invite code, sign up, confirm with the emailed code, land signed in. A wrong invite code is refused. Joining needs the "I am 18 or older" box, and a signup that loses the confirmation is refused by the API (no Kratos identity is created). Sign out, sign back in with an emailed code. |
+| `email-change.spec.ts` | The original email remains active until a code sent to the new address is confirmed. Wrong and expired codes, a different target address, too many attempts, cancellation and resends cannot bypass confirmation. Recent authentication is required; the new email signs in to the same account after confirmation. |
+| `google-auth.spec.ts` | Real OAuth callbacks against a temporary local issuer with signed test JWTs. A matching existing account confirms one email code, links automatically and keeps its ID after one Google authorization; later Google login is direct. Different or unverified emails, email changes after linking, colliding handles and tampered confirmation identifiers cannot create a mismatched connection. New accounts still need an invite and can complete Google signup. Teardown restores the real local Google provider. |
 | `handles.spec.ts` | Signing up with a handle someone already has is refused; so is renaming to one in Settings, while renaming to a free one works. A handle given up by renaming cannot be taken by anyone else, its old profile link leads to the new handle, and its owner can take it back. |
 | `posting.spec.ts` | Post to everyone and into a community; reply in a thread; like (changes at once and survives a reload); bookmark and find it under Bookmarks; delete your own post. |
 | `images.spec.ts` | Attach one to four images, including mixed portrait and landscape shapes, and check the composer and tiled previews fit. Open the viewer from a feed and a focused post; check controls stay on screen, long descriptions fit, and navigation, swipes and closing work. Quote a four-image post and check its previews before and after posting. |
@@ -55,7 +57,10 @@ pnpm e2e
 ```
 
 Playwright reuses `pnpm dev:web` and `pnpm dev:api` if they are already running
-and starts them otherwise. The first time, install the browser:
+and starts them otherwise. The suite now uses one worker because the Google
+callback tests temporarily reload the shared local Kratos provider. Keep one
+worker when including `google-auth.spec.ts`; teardown restores the normal Google
+configuration. The first time, install the browser:
 
 ```bash
 pnpm --filter @heynaija/e2e exec playwright install chromium
@@ -103,6 +108,6 @@ mentions staging, production or live. These tests never run against staging.
 
 ## Not covered yet
 
-- Google sign-in (needs a real Google account).
+- Live Google consent and Google Cloud client configuration (needs a real Google account). The callback and linking behavior is tested with a local signed OIDC issuer.
 - Email or push notifications (not built).
 - Mobile Safari and Firefox: only Chromium runs, on a desktop and a Pixel 7 screen.

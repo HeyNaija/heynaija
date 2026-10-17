@@ -22,13 +22,13 @@ RELEASE=$(git rev-parse HEAD)
 export RELEASE
 
 prefix=${IMAGE_PREFIX:-heynaija}
-if docker image inspect "$prefix-api:$RELEASE" "$prefix-web:$RELEASE" >/dev/null 2>&1; then
+if docker image inspect "$prefix-api:$RELEASE" "$prefix-web:$RELEASE" "$prefix-kratos:$RELEASE" >/dev/null 2>&1; then
   echo "Using the images already on this server for $RELEASE"
 elif [[ ${BUILD:-0} == 1 ]]; then
   echo "Building $RELEASE here"
   docker compose build
 else
-  docker compose pull --quiet api web \
+  docker compose pull --quiet api web kratos \
     || { echo "No images for $RELEASE in $prefix. Did the build job finish? (BUILD=1 builds here instead.)"; exit 1; }
 fi
 
@@ -38,7 +38,7 @@ fi
 # the old ones (git checkout replaces the files, and a single-file mount keeps
 # showing the replaced copy). So the kratos service is labelled with a hash of all
 # of them, worked out with the label itself empty.
-KRATOS_INPUTS=$( { KRATOS_INPUTS='' docker compose config kratos; cat ../kratos/*; } | sha256sum | cut -c1-16 )
+KRATOS_INPUTS=$( { KRATOS_INPUTS='' docker compose config kratos; cat ../kratos/*.json ../kratos/*.jsonnet; } | sha256sum | cut -c1-16 )
 export KRATOS_INPUTS
 
 # Migrations run first (the api waits for them); --wait returns once every
@@ -54,7 +54,7 @@ echo "$(date -u +%FT%TZ) $RELEASE" >> releases.log
 echo "Deployed $RELEASE. Earlier releases: tail releases.log"
 
 # Keep the five most recent releases' images for rollback; remove older ones.
-for app in api web; do
+for app in api web kratos; do
   docker image ls --format '{{.Tag}}' "$prefix-$app" | tail -n +6 \
     | grep -vx "$RELEASE" | xargs -r -I{} docker image rm "$prefix-$app:{}" >/dev/null || true
 done

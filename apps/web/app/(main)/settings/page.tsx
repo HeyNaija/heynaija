@@ -195,9 +195,10 @@ async function ExportNotice({ searchParams }: Pick<PageProps<'/settings'>, 'sear
 async function SettingsForm({ searchParams }: Pick<PageProps<'/settings'>, 'searchParams'>) {
   const flow = await getFlow('settings', (await searchParams).flow)
   const shown = Boolean(flow.ui.messages?.length) || flow.ui.nodes.some((node) => node.messages?.length)
+  const confirmingEmail = flow.ui.nodes.some((node) => node.attributes.name === 'email_change_code')
   return (
     <>
-      {shown ? <ForgetFlowParam /> : null}
+      {shown && !confirmingEmail ? <ForgetFlowParam /> : null}
       <FlowForm
         flow={flow}
         sections={{ profile: 'Email and handle', oidc: 'Connected accounts' }}

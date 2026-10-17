@@ -31,6 +31,7 @@ export type UiNode = {
 
 export type Flow = {
   id: string
+  active?: string
   /** A login flow asking someone who is signed in to confirm it is them. */
   refresh?: boolean
   ui: { action: string; method: string; nodes: UiNode[]; messages?: UiMessage[] }

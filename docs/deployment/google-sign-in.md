@@ -16,13 +16,32 @@ OAuth client and switch it on, as below.
   asks for the handle, since Google does not provide one.
 - Either way, Kratos calls the API's registration webhooks, which check and then
   spend the invite. Without one, signup is refused.
-- Someone without an account who picks Google on `/login` is sent to signup, and
-  from there to `/join` if they have no invite.
-- **Settings → Connected accounts** connects or disconnects Google for a member
-  who joined by email.
-- Google's address counts as verified only if Google has verified it
-  (`infra/kratos/google.jsonnet`). If a Google account's email already belongs to
-  a member, Kratos asks them to sign in with a code first, then links the two.
+- When an email-only member first chooses Google, Kratos verifies the Google
+  email and finds the existing account before starting registration. The member
+  confirms an email code within the same login flow. Kratos then links the
+  original Google credential and signs them in automatically: no second Google
+  authorization, Settings visit or additional invite.
+- Later Google sign-ins go directly to that same account. The current Google
+  email must still match the HeyNaija email.
+- **Settings → Connected accounts** also connects or disconnects Google. A new
+  connection requires a Google-verified email matching the signed-in account.
+  Different emails are refused before saving the connection. Matching ignores
+  case, but does not treat dots, plus-addresses or aliases as the same email.
+- A member must disconnect Google before changing their HeyNaija email address.
+  Settings disables the email field while Google is connected, with an explanation;
+  handle changes remain available. Disconnecting Google unlocks email editing.
+- For email-only accounts, saving a new email sends a confirmation code to that
+  address. The original email remains the login address until the code is accepted.
+  The member can resend or cancel in Settings; incorrect, expired or abandoned
+  challenges leave the original email active. A sign-in older than 15 minutes
+  requires reauthentication first. Successful confirmation updates the same
+  identity and marks the new address verified.
+- New Google members still need an invite and the age confirmation. If Google
+  does not supply the required public handle, the signup form asks for it.
+
+These rules are enforced by the version-pinned authentication image described
+in [the Google account policy](../../infra/kratos/policy/README.md). An unmodified
+upstream Kratos image does not enforce them. No database migration is required.
 
 ## Set up Google (once)
 
@@ -71,8 +90,10 @@ run, or on the server:
 **Locally:** the same three lines in the repository's `.env`, then:
 
 ```bash
-pnpm infra:up
+pnpm infra:up --build
 ```
+
+The build also picks up authentication policy changes after pulling new code.
 
 To switch it off, set `GOOGLE_SIGN_IN=false` and deploy again. Members who joined
 with Google can still sign in with a code sent to the same email.

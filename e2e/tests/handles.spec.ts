@@ -110,6 +110,9 @@ test('a change Kratos cannot replay after verifying again says so in plain words
   await page.waitForURL((url) => url.pathname === '/settings')
   await expect(page.getByText('Your change was not saved. Make it again and press Save.')).toBeVisible()
   await expect(page.getByText(/decode body|HTTP Request/)).toHaveCount(0)
+  // The notice is streamed before hydration clears the URL. Reload only once
+  // that cleanup has finished, otherwise this repeats the same old flow.
+  await expect(page).toHaveURL((url) => url.pathname === '/settings' && !url.searchParams.has('flow'))
   await page.reload()
   await expect(page.getByLabel('Handle', { exact: true })).toBeVisible()
   await expect(page.getByText('Your change was not saved.', { exact: false })).toHaveCount(0)

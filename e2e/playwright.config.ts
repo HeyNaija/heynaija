@@ -6,10 +6,10 @@ import { env, root } from './lib/env.ts'
 export default defineConfig({
   testDir: './tests',
   globalSetup: './global-setup.ts',
-  // Every test makes its own members, so tests can run side by side. Two workers:
-  // more than that overloads `next dev` and sign-ups start timing out.
+  // Google callback tests temporarily reload the shared local Kratos provider.
+  // One worker prevents that reload from interrupting another test's auth request.
   fullyParallel: true,
-  workers: process.env.CI ? 1 : 2,
+  workers: 1,
   timeout: 90_000,
   expect: { timeout: 15_000 },
   retries: process.env.CI ? 1 : 0,

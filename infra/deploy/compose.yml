@@ -116,7 +116,9 @@ services:
   # No --dev here: secure cookies and https only. --watch-courier sends the
   # verification and recovery emails through Resend.
   kratos:
-    image: oryd/kratos:v26.2.0
+    image: ${IMAGE_PREFIX:-heynaija}-kratos:${RELEASE:-latest}
+    build:
+      context: ../kratos
     environment: *kratos-env
     volumes: *kratos-volumes
     configs: *kratos-configs

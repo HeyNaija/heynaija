@@ -296,10 +296,14 @@ summary.menu::-webkit-details-marker {
     box-shadow: 0 0 0 3px var(--field-ring);
   }
   /* Shown for reference, not for editing: a quiet fill, no hover cue. */
-  .field[readonly] {
+  .field[readonly],
+  .field:disabled {
     border-color: var(--line);
     background: var(--panel);
     color: var(--muted);
+  }
+  .field:disabled {
+    cursor: not-allowed;
   }
   .field-sm {
     min-height: 40px;

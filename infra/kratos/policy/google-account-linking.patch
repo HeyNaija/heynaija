@@ -1,0 +1,107 @@
+--- a/selfservice/strategy/oidc/strategy_login.go
++++ b/selfservice/strategy/oidc/strategy_login.go
+@@ -162,9 +162,18 @@
+ 	ctx, span := s.d.Tracer(ctx).Tracer().Start(ctx, "selfservice.strategy.oidc.Strategy.processLogin")
+ 	defer otelx.End(span, &err)
+ 
++	if heynaijaGoogle(provider) {
++		if _, err := heynaijaEmail(claims); err != nil { return nil, err }
++	}
++
+ 	i, c, err := s.d.PrivilegedIdentityPool().FindByCredentialsIdentifier(ctx, s.ID(), identity.OIDCUniqueID(provider.Config().ID, claims.Subject))
+ 	if err != nil {
+ 		if errors.Is(err, sqlcon.ErrNoRows) {
++			existing, lookupErr := s.heynaijaExistingGoogle(ctx, claims, provider)
++			if lookupErr != nil { return nil, lookupErr }
++			if existing != nil {
++				return nil, s.heynaijaConfirmGoogle(ctx, w, r, loginFlow, existing, token, claims, provider)
++			}
+ 			var verdict ConflictingIdentityVerdict
+ 			verdict, i, c, err = s.handleConflictingIdentity(ctx, loginFlow, token, claims, provider, container)
+ 			switch verdict {
+@@ -236,6 +245,8 @@
+ 			return nil, s.HandleError(ctx, w, r, loginFlow, provider.Config().ID, nil, err)
+ 		}
+ 	}
++
++	if err := heynaijaCheckGoogle(i, claims, provider); err != nil { return nil, err }
+ 
+ 	var oidcCredentials identity.CredentialsOIDC
+ 	if err := json.NewDecoder(bytes.NewBuffer(c.Config)).Decode(&oidcCredentials); err != nil {
+--- a/selfservice/strategy/oidc/strategy_registration.go
++++ b/selfservice/strategy/oidc/strategy_registration.go
+@@ -349,6 +349,14 @@
+ 		return nil, nil
+ 	}
+ 
++	existing, lookupErr := s.heynaijaExistingGoogle(ctx, claims, provider)
++	if lookupErr != nil { return nil, s.HandleError(ctx, w, r, rf, provider.Config().ID, nil, lookupErr) }
++	if existing != nil {
++		lf, err := s.registrationToLogin(ctx, w, r, rf)
++		if err != nil { return nil, err }
++		return lf, s.heynaijaConfirmGoogle(ctx, w, r, lf, existing, token, claims, provider)
++	}
++
+ 	i, va, err := s.newIdentityFromClaims(ctx, claims, provider, container, rf.IdentitySchema)
+ 	if err != nil {
+ 		return nil, s.HandleError(ctx, w, r, rf, provider.Config().ID, nil, err)
+--- a/selfservice/strategy/oidc/strategy_settings.go
++++ b/selfservice/strategy/oidc/strategy_settings.go
+@@ -413,6 +413,9 @@
+ 		return s.handleSettingsError(ctx, w, r, ctxUpdate, p, err)
+ 	}
+ 
++	if err := heynaijaCheckGoogle(i, claims, provider); err != nil {
++		return s.handleSettingsError(ctx, w, r, ctxUpdate, p, err)
++	}
+ 	if err := s.linkCredentials(ctx, i, token, provider.Config().ID, claims.Subject, provider.Config().OrganizationID); err != nil {
+ 		return s.handleSettingsError(ctx, w, r, ctxUpdate, p, err)
+ 	}
+@@ -534,6 +537,7 @@
+ 	ctx, span := s.d.Tracer(ctx).Tracer().Start(ctx, "selfservice.strategy.oidc.Strategy.Link")
+ 	defer otelx.End(span, &err)
+ 
++	if err := heynaijaCheckPendingGoogle(i, credentialsConfig); err != nil { return err }
+ 	var credentialsOIDCConfig identity.CredentialsOIDC
+ 	if err := json.Unmarshal(credentialsConfig, &credentialsOIDCConfig); err != nil {
+ 		return err
+--- a/selfservice/strategy/profile/strategy.go
++++ b/selfservice/strategy/profile/strategy.go
+@@ -175,6 +175,10 @@
+ 		options = append(options, identity.ManagerAllowWriteProtectedTraits)
+ 	}
+ 
++	current, err := s.d.PrivilegedIdentityPool().GetIdentityConfidential(ctx, ctxUpdate.GetSessionIdentity().ID)
++	if err != nil { return err }
++	if err := heynaijaEmailChange(current, p.Traits); err != nil { return err }
++
+ 	update, err := s.d.IdentityManager().SetTraits(ctx, ctxUpdate.GetSessionIdentity().ID, identity.Traits(p.Traits), options...)
+ 	if err != nil {
+ 		if errors.Is(err, identity.ErrProtectedFieldModified) {
+--- a/selfservice/strategy/oidc/strategy.go
++++ b/selfservice/strategy/oidc/strategy.go
+@@ -20,6 +20,7 @@
+ 	"github.com/gofrs/uuid"
+ 	"github.com/pkg/errors"
+ 	"github.com/tidwall/gjson"
++	"github.com/tidwall/sjson"
+ 	"go.opentelemetry.io/otel/attribute"
+ 	"go.opentelemetry.io/otel/trace"
+ 	"golang.org/x/oauth2"
+@@ -682,6 +682,16 @@
+ 		// Reset all nodes to not confuse users.
+ 		// This is kinda hacky and will probably need to be updated at some point.
+ 
++		if dup := new(identity.ErrDuplicateCredentials); usedProviderID == "google" && errors.As(err, &dup) {
++			// Matching Google emails take the bound login path before registration.
++			// A colliding public handle must never offer to link a different account.
++			cleared, clearErr := sjson.DeleteBytes(rf.InternalContext, "registration_duplicate_credentials")
++			if clearErr != nil { return clearErr }
++			rf.InternalContext = cleared
++			message := "That handle is not available. Choose another handle, or sign in if you already have an account."
++			err = schema.NewHookValidationError("#/traits/handle", message, text.Messages{{ID: 4900104, Text: message, Type: "error"}})
++		}
++
+ 		if dup := new(identity.ErrDuplicateCredentials); errors.As(err, &dup) {
+ 			err = schema.NewDuplicateCredentialsError(dup)
+ 
