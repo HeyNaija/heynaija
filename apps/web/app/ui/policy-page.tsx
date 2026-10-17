@@ -90,10 +90,12 @@ export function Placeholder({ children }: { children: ReactNode }) {
   return <mark className="policy-placeholder">[{children}]</mark>
 }
 
-/** The governance documents, for footers. */
+/** Public information and governance documents, for footers. */
 export function PolicyLinks({ className = 'policy-links' }: { className?: string }) {
   return (
     <ul className={className}>
+      <li><Link href="/about">About</Link></li>
+      <li><Link href="/progress">Progress</Link></li>
       <li><Link href="/rules">Rules</Link></li>
       <li><Link href="/privacy">Privacy</Link></li>
       <li><Link href="/charter">Charter</Link></li>

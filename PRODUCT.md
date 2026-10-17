@@ -23,7 +23,7 @@ appeals and decision log; suspended members filing appeals.
 
 ## Product Purpose
 
-HeyNaija is a Nigeria-first, community-owned social network. It tests one
+HeyNaija is a Nigeria-first social network being built toward community ownership. It tests one
 hypothesis: Nigerians will keep coming back to a fast, locally relevant discussion
 network if it hosts useful communities, moderates fairly, and gives members a real
 stake in how it is governed.
@@ -38,9 +38,10 @@ the core flow works on a throttled mobile connection.
 
 A discussion network built around Nigerian topics and communities, with feeds that
 are chronological and say why each post is there, rather than opaque engagement
-ranking. The code is open, moderation decisions go into a public log, governance
-happens in the open, and members can take their data with them. Nobody gets locked
-in, including to HeyNaija itself.
+ranking. Source publication under the existing AGPL licence is planned; the
+repository is currently private. Moderation decisions go into a moderator-only
+log, governance proposals are published, and members can download their data from
+Settings. Public governance decision records are separate future work.
 
 "Community-owned" is a direction, not a current fact. Until a charter and legal
 review exist, the product must not claim ownership that members do not yet have.
@@ -51,8 +52,10 @@ review exist, the product must not claim ownership that members do not yet have.
   no passwords; sign-in uses an emailed code or Google.
 - Every post is public. Communities are public groupings, not private groups, and the
   composer says so.
-- Used mostly on phones, often on low-end Android with constrained bandwidth; core
-  reading and posting work without JavaScript and are server-rendered.
+- Designed primarily for phones, including constrained connections. Core social
+  pages are server-rendered but their streamed content currently needs JavaScript;
+  the no-JavaScript social journeys are known expected failures in `e2e/tests/no-js.spec.ts`.
+  The static About and Progress reading pages work without JavaScript.
 - Moderators work from a queue: remove posts, suspend accounts, dismiss reports,
   restore posts, clear names, bios and photos, review appeals. Every decision goes
   into an append-only log.
@@ -64,15 +67,20 @@ up to four images and alt text; threaded replies, likes, reposts and quote posts
 private bookmarks; profiles with photo, display name (50 characters) and bio (160);
 follow, mute, block; Latest, Following, community and trending feeds; search across
 members, communities and posts; in-app notifications; reporting, moderation queue,
-appeals, decision log, rate limits; light, dark and system themes; a governance
-information page and Public Treasury preview, both marked as coming soon.
+appeals, moderator-only decision log, rate limits; light, dark and system themes;
+data export (format 3); public governance information and draft constitution;
+About and Progress pages. Voting, verification and the Public Treasury are not live.
 
 Not built (do not design them as if they work): onboarding (interests, communities,
-suggested people), data export, pinned welcome posts, community photos,
+suggested people), pinned welcome posts, community photos,
 email or push notifications, community voting, treasury transactions.
 
 Phase 1 non-goals: native apps, DMs, video, payments or creator revenue, AI
 recommendations, algorithmic ranking, federation.
+
+The canonical, prioritised inventory is [docs/FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md),
+generated from `docs/feature-roadmap.json` and also rendered at `/progress`.
+See [docs/roadmap-audit.md](docs/roadmap-audit.md) for audit scope and unresolved confirmations.
 
 Terminology: "members" (not users), "communities", "invite", "moderator",
 "decision log", "appeal", "Following" and "Latest" feeds.
@@ -110,6 +118,6 @@ Terminology: "members" (not users), "communities", "invite", "moderator",
 
 ## Accessibility & Inclusion
 
-WCAG 2.2 AA. Images carry descriptions for screen readers. The core flow must be
-usable on a low-end Android phone on a throttled connection, and reading and posting
-work without JavaScript.
+WCAG 2.2 AA is the target. Images carry descriptions for screen readers. The core
+flow must become usable on a low-end Android phone on a throttled connection;
+measured acceptance and no-JavaScript social journeys remain gaps.

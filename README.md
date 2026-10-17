@@ -1,8 +1,14 @@
 # HeyNaija
 
-A Nigeria-first, community-owned social network. [PLAN.md](PLAN.md) has the product
+A Nigeria-first social network being built toward community ownership. [PLAN.md](PLAN.md) has the product
 plan, what is built, and what comes next; [ADR 0002](docs/adr/0002-conventional-stack-with-kratos.md)
 explains the architecture and lists every known limitation.
+
+The public introductions are `/about` (purpose and direction) and `/progress`
+(product development, separate from governance). The canonical feature inventory
+is [docs/FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md), generated from
+`docs/feature-roadmap.json`; [the audit notes](docs/roadmap-audit.md) explain evidence,
+availability limits and outstanding confirmations.
 
 **Status:** staging is live at https://staging.heynaija.ng; production is not
 deployed yet. Everything needed to deploy is in `infra/deploy/` and `.github/workflows/`, with
@@ -10,7 +16,9 @@ step-by-step guides in [docs/deployment/](docs/deployment/staging.md). What work
 
 - **Accounts:** join with an invite code (18 and over during the beta, a
   temporary rule; the API refuses a signup without the age confirmation), sign
-  up, confirm email, sign in and out, recover an account (all handled by Ory Kratos).
+  up, confirm email, sign in and out, and regain access with an emailed code
+  (handled by Ory Kratos). There is no password-recovery flow; losing access to
+  the account email is not covered by a separate recovery process.
 - **Posting:** posts and expandable threaded replies with cursor pagination and
   up to four images each (with
   descriptions for screen readers, and a full-screen viewer), likes, private bookmarks.
@@ -23,6 +31,8 @@ step-by-step guides in [docs/deployment/](docs/deployment/staging.md). What work
 - **Safety:** report a post or account, a moderation queue (remove post, suspend
   account, dismiss), appeals from suspended members, a decision log, rate limits.
 - **Look:** light, dark and system themes; works down to phone width.
+- **Portability:** download your own data from Settings as JSON (format 3,
+  including reposts and quote references).
 - **Governance information:** `/governance` (founding-stage status, how members
   would govern, the path to community ownership, empty states for votes, the
   treasury and decisions), the draft constitution at `/governance/constitution`,
@@ -152,6 +162,12 @@ the dev server has served a stale stylesheet more than once. If that is not enou
 stop it, delete `apps/web/.next`, and start it again.
 
 ## Checks
+
+```bash
+pnpm roadmap:generate   # after editing the registry
+pnpm roadmap:check      # fail if the generated Markdown drifts (also in CI)
+pnpm roadmap:test       # registry schema, evidence paths and generation integrity
+```
 
 ```bash
 pnpm typecheck

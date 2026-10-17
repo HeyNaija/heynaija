@@ -359,6 +359,10 @@ export default function GovernancePage() {
       </section>
 
       <footer className="governance-footer">
+        <nav aria-label="About and product progress" className="policy-links">
+          <Link href="/about">Why HeyNaija exists</Link>
+          <Link href="/progress">Product roadmap and progress</Link>
+        </nav>
         <p className="text-sm text-muted">The conversation starts with the community.</p>
         <Link href="/c" className="btn btn-secondary btn-sm mt-3">Explore communities</Link>
       </footer>

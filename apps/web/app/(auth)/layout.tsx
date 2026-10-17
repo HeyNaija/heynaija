@@ -56,7 +56,11 @@ export default function AuthLayout({ children }: LayoutProps<'/'>) {
       </main>
       <footer className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 pb-2 text-xs leading-relaxed text-muted lg:justify-between">
         <span>A Nigeria-first discussion network.</span>
-        <Link href="/governance" className="font-medium hover:text-accent-strong hover:underline">Our direction &amp; governance</Link>
+        <nav aria-label="About HeyNaija" className="flex flex-wrap justify-center gap-x-5 gap-y-2">
+          <Link href="/about" className="font-medium hover:text-accent-strong hover:underline">About HeyNaija</Link>
+          <Link href="/progress" className="font-medium hover:text-accent-strong hover:underline">Progress</Link>
+          <Link href="/governance" className="font-medium hover:text-accent-strong hover:underline">Our direction &amp; governance</Link>
+        </nav>
       </footer>
     </div>
   )

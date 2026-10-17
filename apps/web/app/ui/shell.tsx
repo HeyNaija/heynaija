@@ -14,6 +14,8 @@ import {
   GovernanceIcon,
   GearIcon,
   HomeIcon,
+  HistoryIcon,
+  InfoIcon,
   PeopleIcon,
   SearchIcon,
   ShieldIcon,
@@ -31,6 +33,8 @@ import { UnreadBadge } from './unread-badge'
 const NAV = [
   { href: '/', label: 'Home', icon: HomeIcon, exact: true },
   { href: '/c', label: 'Communities', icon: PeopleIcon },
+  { href: '/about', label: 'About HeyNaija', icon: InfoIcon },
+  { href: '/progress', label: 'Progress', icon: HistoryIcon },
   { href: '/governance', label: 'Governance', icon: GovernanceIcon },
   { href: '/bookmarks', label: 'Bookmarks', icon: BookmarkIcon },
   { href: '/settings', label: 'Settings', icon: GearIcon },
@@ -77,7 +81,7 @@ export function Sidebar() {
         <div className="ownership-copy">
           <p>Different places.<br />A shared sense of home.</p>
           <p className="mt-2">Made for Nigerians, at home and everywhere. Built toward a community-owned future.</p>
-          <Link href="/governance" className="ownership-link">Get to know HeyNaija <ArrowUpRightIcon size={14} /></Link>
+          <Link href="/about" className="ownership-link">Get to know HeyNaija <ArrowUpRightIcon size={14} /></Link>
         </div>
       </div>
       <p className="sidebar-footer">Real people. Real conversations.</p>
@@ -223,6 +227,14 @@ async function UserMenu() {
       ) : (
         <p className="px-3 py-2 text-sm text-muted">This account cannot post.</p>
       )}
+      <Link href="/about" className="menu-item">
+        <InfoIcon size={18} />
+        About HeyNaija
+      </Link>
+      <Link href="/progress" className="menu-item">
+        <HistoryIcon size={18} />
+        What we’re building
+      </Link>
       {/* A plain link, not a router navigation: Kratos ends the session on this
           request and must receive it exactly once, straight from the browser.
           /logout drops the API's cached session first, then redirects there. */}
@@ -246,7 +258,7 @@ export function RightRail() {
         <Trending />
       </Suspense>
       <TreasuryPreview />
-      <p className="rail-footer">A space for us. A future we build together.<br /><Link href="/governance">About HeyNaija</Link><span aria-hidden="true"> · </span><Link href="/c">Our communities</Link><br /><Link href="/rules">Rules</Link><span aria-hidden="true"> · </span><Link href="/privacy">Privacy</Link><span aria-hidden="true"> · </span><Link href="/charter">Charter</Link><span aria-hidden="true"> · </span><Link href="/licence">Licence</Link></p>
+      <p className="rail-footer">A space for us. A future we build together.<br /><Link href="/about">About HeyNaija</Link><span aria-hidden="true"> · </span><Link href="/c">Our communities</Link><br /><Link href="/rules">Rules</Link><span aria-hidden="true"> · </span><Link href="/privacy">Privacy</Link><span aria-hidden="true"> · </span><Link href="/charter">Charter</Link><span aria-hidden="true"> · </span><Link href="/licence">Licence</Link></p>
     </aside>
   )
 }

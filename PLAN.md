@@ -1,4 +1,4 @@
-# HeyNaija: Nigeria-first, community-owned social network
+# HeyNaija: a Nigeria-first social network, built toward community ownership
 ## Phase 1 plan — v3.0
 
 **Updated:** 14 October 2026
@@ -15,21 +15,23 @@ history. The product hypothesis, safety, governance and metrics carried over.
 
 ## Where things stand (read this first)
 
-**Built and verified locally:** invite-only signup, sign-in, email verification and
-recovery (Ory Kratos); posts, threaded replies, likes, reposts and quote posts, bookmarks; up to four
+**Built and verified locally:** invite-only signup, email-code sign-in and email
+confirmation (Ory Kratos; password recovery is disabled, ADR 0003); posts, threaded replies, likes, reposts and quote posts, bookmarks; up to four
 images per post with descriptions, processed in a background job, opening in a
 full-screen viewer; profiles with photos, display names and bios; follow, mute, block; five communities to join and post in; Latest,
 Following, community and trending feeds; search; reporting, a moderation queue,
 appeals and a decision log; notifications (replies, likes, reposts, quotes, follows,
 moderation outcomes); rate limits; light, dark and system themes.
 
-**Not built:** production deployment. See [§8 Roadmap](#8-roadmap) for the order.
+**Current feature inventory:** [docs/FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md) is the canonical prioritised roadmap, also readable at `/progress`. Production deployment and other P0 safety, operations, disclosure and access gaps remain incomplete. See [§8 Roadmap](#8-roadmap).
 
 **Key documents**
 
 | Document | For |
 |---|---|
 | [README.md](README.md) | Running it locally, commands, moderators, checks |
+| [Feature roadmap](docs/FEATURE_ROADMAP.md) | Generated feature status, priorities, availability and inspected evidence |
+| [Roadmap audit](docs/roadmap-audit.md) | Audit limits, documentation corrections and founder confirmations |
 | [ADR 0002](docs/adr/0002-conventional-stack-with-kratos.md) | Why the stack is what it is, and every known limitation |
 | [docs/deployment/staging.md](docs/deployment/staging.md) | Deploying staging on the shared Contabo server: Cloudflare, nginx, GitHub runner, backups |
 | [docs/deployment/production.md](docs/deployment/production.md) | Deploying production on netcup |
@@ -68,9 +70,8 @@ than attempting a national launch on day one.
 
 **Differentiators:**
 1. Nigeria-first topics, communities and discovery.
-2. Open-source code, community-influenced moderation, public governance updates.
-3. Members own their data: export it, and the code is open (no protocol lock-in, but
-   no lock-in to us either).
+2. Planned public source under the existing AGPL licence, accountable moderation, and public governance proposals. The repository is currently private.
+3. Members can download their data from Settings (export format 3). Public source publication and wider interoperability remain separate work.
 4. Low-bandwidth, accessible, Android-first web experience.
 5. Chronological feeds that say why a post is there, rather than opaque engagement ranking.
 
@@ -262,29 +263,23 @@ people, legal advice and unexpected bandwidth.
 
 ## 8. Roadmap
 
-In order; each step is a vertical slice with tests and a browser check.
+The current prioritised roadmap is [docs/FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md),
+generated from `docs/feature-roadmap.json`. The public `/progress` page reads the
+same registry; update the registry rather than keeping a second status list here.
+Run `pnpm roadmap:generate`, `pnpm roadmap:check` and `pnpm roadmap:test` after edits.
+CI checks synchronisation and schema integrity.
 
-1. ~~**Post images.**~~ Done 14 October 2026: up to 4 per post with alt text,
-   processed by BullMQ on the existing Redis.
-2. ~~**Display name and bio**~~ Done 14 October 2026, along with a full-screen
-   image viewer.
-3. ~~**Notifications**~~ Done 14 October 2026: in-app, for replies, likes, follows
-   and moderation outcomes. No email or push yet.
-4. ~~**Safety gaps**~~ Done 14 October 2026: moderators can remove photos and
-   clear names and bios, assign community moderators in the app, and taken-down
-   images are quarantined. The scanning plan is written; Cloudflare's tool is on
-   (15 October 2026); PhotoDNA and legal advice remain on the launch checklist.
-5. ~~**Staging deployment**~~ Live 15 October 2026 at https://staging.heynaija.ng
-   ([docs/deployment/staging.md](docs/deployment/staging.md)).
-6. **Browser end-to-end tests** of signup, posting, moderation; a basic load test.
-   The Playwright suite runs locally and is in CI (15 October 2026,
-   [docs/e2e.md](docs/e2e.md)). It found that pages do not work without
-   JavaScript (see §0).
-7. **Governance pages:** licence, charter, rules, privacy policy, data export.
-   Built 15 October 2026 as drafts, linked from the governance page, the side rail
-   and sign-up; data export is in Settings. Waiting on the operator's details and
-   legal review.
-8. **Pilot launch:** onboard 20–30 seed members, then invite in batches.
+P0 means safe and usable public-beta work, P1 core engagement, P2 growth and
+community, and P3 later experiments. Priority is independent of completion.
+Statuses distinguish implemented, partial, planned and externally blocked work;
+availability is recorded separately from local implementation and test evidence.
+
+[Audit notes](docs/roadmap-audit.md) explain known documentation conflicts and
+outstanding founder confirmations. The historic implementation dates elsewhere
+in this plan are context, not proof that a feature is currently deployed or that
+public-beta acceptance is complete. Ship vertical slices with meaningful tests
+and browser checks; do not open public registration until the launch conditions
+in §11 are met.
 
 ---
 

@@ -74,7 +74,10 @@ async function Home({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
               <Link href="/join" className="btn btn-primary">Join the conversation <ArrowUpRightIcon size={17} /></Link>
               <Link href="/login" className="btn btn-secondary">Sign in</Link>
             </div>
-            <p className="mt-3 text-xs text-muted">Growing together. Invite-only for now.</p>
+            <p className="mt-3 text-xs leading-relaxed text-muted">
+              Growing together. Invite-only for now.{' '}
+              <Link href="/about" className="font-semibold text-accent-strong hover:underline">About HeyNaija</Link>
+            </p>
           </header>
           <div className="feed-section-heading"><h2 className="section-title">From the town square</h2><span className="feed-order"><span aria-hidden="true" /> Newest first, not ranked</span></div>
         </>

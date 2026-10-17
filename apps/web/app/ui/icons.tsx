@@ -19,6 +19,7 @@ import {
   House,
   IdCard,
   ImagePlus,
+  Info,
   KeyRound,
   Landmark,
   type LucideIcon,
@@ -56,6 +57,7 @@ const icon = (Glyph: LucideIcon) =>
   }
 
 export const HomeIcon = icon(House)
+export const InfoIcon = icon(Info)
 export const PeopleIcon = icon(Users)
 export const BookmarkIcon = icon(Bookmark)
 export const GearIcon = icon(Settings)
