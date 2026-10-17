@@ -39,7 +39,14 @@ posts, appear wherever posts do.
   `reply_parent_id`).
 - `PostsService.entries` builds Following and the profile Posts tab: own,
   followed and community posts plus visible reposts, keeping for each post only
-  its latest way in. Each branch is cut to one page before they are merged.
+  its latest way in. Each branch is cut to one page before they are merged. It
+  first reads the members the reader can see (themselves and who they follow, or
+  the profile's owner) and their communities, and passes them to the main query
+  as arrays, so Postgres plans for that reader: reading each account's posts and
+  reposts for someone who follows a few, or walking the newest site-wide
+  (`reposts_created_idx`, migration 0016) for someone who follows many.
+  Subqueries in their place made every Following page read every repost on the
+  site ([load testing](../loadtest.md), item 5).
 - Visibility is decided on read, as for everything else:
   - Blocks (either way) and mutes apply to the reposter and to the original author.
   - A repost by someone the reader cannot see doesn't count, so the post falls

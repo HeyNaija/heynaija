@@ -165,6 +165,11 @@ const TRENDING_WINDOW_DAYS = 7
 // still sees a full list.
 export const TRENDING_TTL_MS = 60_000
 const TRENDING_CANDIDATES = 50
+// How many members a Following list has before its repost checks look members up
+// in a hash rather than one by one in the index (PostsService.entries). Measured
+// on 1.5M reposts: by index is quicker at 200, by hash at 1,000 and far quicker
+// at 5,000.
+const HASHED_MEMBERS_FROM = 500
 
 const topLevel = isNull(posts.replyParentId)
 
@@ -351,16 +356,13 @@ export class PostsService {
    * reposted. Each post says which of those brought it in.
    */
   followingFeed(viewerId: string, limit: number, cursor?: string): Promise<PostPage> {
-    const followed = (member: SQL) =>
-      sql`${member} in (select f.followee_id from follows f where f.follower_id = ${viewerId})`
-    const joined = sql`p.community_id in (select cm.community_id from community_memberships cm
-      join communities c on c.id = cm.community_id and c.active where cm.member_id = ${viewerId})`
     return this.entries(
       viewerId,
       {
-        original: sql`p.reply_parent_id is null and (p.author_id = ${viewerId} or ${followed(sql`p.author_id`)} or ${joined})`,
-        reason: sql`case when p.author_id = ${viewerId} then 'own' when ${followed(sql`p.author_id`)} then 'following' else 'community' end`,
-        reposters: (member) => sql`(${member} = ${viewerId} or ${followed(member)})`,
+        members: sql`(select ${viewerId}::uuid union all select f.followee_id from follows f where f.follower_id = ${viewerId})`,
+        communities: sql`select cm.community_id from community_memberships cm
+          join communities c on c.id = cm.community_id and c.active where cm.member_id = ${viewerId}`,
+        reasons: true,
       },
       limit,
       cursor,
@@ -369,62 +371,82 @@ export class PostsService {
 
   /**
    * A newest-first list with reposts in it. Each post appears once, at the latest
-   * moment it entered the list: when it was posted, if `original` lets it in, or
-   * when one of `reposters` reposted it. A repost by someone the viewer cannot see
-   * (inactive, blocked either way, muted) does not count, so the post falls back
-   * to the next way in, if any. `original` and `reason` are about `p`, a post.
+   * moment it entered the list: when it was posted, if it is a top-level post by
+   * one of `members` or in one of `communities`, or when one of `members` reposted
+   * it. A repost by someone the viewer cannot see (inactive, blocked either way,
+   * muted) does not count, so the post falls back to the next way in, if any.
+   * `members` and `communities` are subqueries of IDs. With `reasons`, each post
+   * says why it is there, as the Following feed does.
    */
   private async entries(
     viewerId: string | null,
-    { original, reason, reposters, unmuted }: {
-      original: SQL
-      reason?: SQL
-      reposters: (member: SQL) => SQL
+    { members: candidates, communities: joined, reasons, unmuted }: {
+      members: SQL
+      communities?: SQL
+      reasons?: boolean
       unmuted?: string
     },
     limit: number,
     cursor?: string,
   ): Promise<PostPage> {
+    // Read first and passed in as arrays, so the planner sees how many members and
+    // communities this list has and how busy they are. It can then walk the newest
+    // posts for someone who follows many active accounts, and read each account's
+    // own posts and reposts for someone who follows a few. As subqueries they were
+    // estimated alike for every viewer, and every repost on the site was read.
+    const sources = await this.db.execute<{ members: string[]; communities: string[] }>(sql`
+      select array(select m.id from members m where m.id in ${candidates}
+          and ${visibleAuthor(viewerId, sql`m.id`, sql`m.active`, unmuted)}) as members,
+        ${joined ? sql`array(${joined})` : sql`'{}'::uuid[]`} as communities`)
+    const { members: memberIds, communities: communityIds } = sources.rows[0]!
+    if (!memberIds.length && !communityIds.length) return { posts: [], cursor: null }
+    const ids = (list: string[]) => sql`${sql.param(list)}::uuid[]`
+    // With one member, `=` keeps their posts and reposts in index order, so a page
+    // is read newest first and the read stops when it is full.
+    const byMember = (member: SQL) =>
+      memberIds.length === 1 ? sql`${member} = ${memberIds[0]}` : sql`${member} = any(${ids(memberIds)})`
+
     const after = cursor ? decodeExactCursor(cursor) : null
     const before = (at: SQL, id: SQL) =>
       after ? sql`and (${at}, ${id}) < (${after[0]}::timestamptz, ${after[1]}::uuid)` : sql``
     const postVisible = sql`p.deleted_at is null and p.removed_at is null and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`, unmuted)}`
-    // A repost of `post` by one of `reposters` the viewer can see, made after `since` (if given).
-    const visibleRepost = (alias: string, post: SQL, since?: SQL) => {
-      const r = sql.raw(alias)
-      const m = sql.raw(`${alias}m`)
-      return sql`exists(select 1 from reposts ${r} join members ${m} on ${m}.id = ${r}.member_id
-        where ${r}.post_id = ${post} and ${reposters(sql`${r}.member_id`)}
-          and ${visibleAuthor(viewerId, sql`${r}.member_id`, sql`${m}.active`, unmuted)}
-          ${since ? sql`and (${r}.created_at, ${r}.member_id) > ${since}` : sql``})`
+    // A repost of `post` by one of `members`, made after `since` (if given). A few
+    // members are each looked up in the index. For a long list it is cheaper to
+    // read the post's reposts and find the members in a hash: `is true` stops the
+    // list becoming an index condition, which re-sorts it for every post checked.
+    const memberRepost = (post: SQL, since?: SQL) => {
+      const reposter = byMember(sql`rx.member_id`)
+      return sql`exists(select 1 from reposts rx where rx.post_id = ${post}
+        and ${memberIds.length >= HASHED_MEMBERS_FROM ? sql`(${reposter}) is true` : reposter}
+        ${since ? sql`and (rx.created_at, rx.member_id) > ${since}` : sql``})`
     }
     // Each branch is cut to one page before they are merged, so neither reads more than it must.
     const { rows } = await this.db.execute<{
       post_id: string
-      reason: FeedReason | null
       reposter_id: string | null
       reposter_handle: string | null
       reposter_name: string | null
       cursor_at: string
     }>(sql`
       with entries as (
-        (select p.id as post_id, p.created_at as at, null::uuid as reposter_id, (${reason ?? sql`null`})::text as reason
+        (select p.id as post_id, p.created_at as at, null::uuid as reposter_id
         from posts p join members a on a.id = p.author_id
-        where ${original} and ${postVisible} and not ${visibleRepost('rx', sql`p.id`)}
+        where p.reply_parent_id is null
+          and (${byMember(sql`p.author_id`)}${communityIds.length ? sql` or p.community_id = any(${ids(communityIds)})` : sql``})
+          and ${postVisible} and not ${memberRepost(sql`p.id`)}
           ${before(sql`p.created_at`, sql`p.id`)}
         order by p.created_at desc, p.id desc
         limit ${limit + 1})
         union all
-        (select r.post_id, r.created_at, r.member_id, 'repost'
-        from reposts r join members rm on rm.id = r.member_id
-        join posts p on p.id = r.post_id join members a on a.id = p.author_id
-        where ${reposters(sql`r.member_id`)} and ${visibleAuthor(viewerId, sql`r.member_id`, sql`rm.active`, unmuted)}
-          and ${postVisible} and not ${visibleRepost('rx', sql`r.post_id`, sql`(r.created_at, r.member_id)`)}
+        (select r.post_id, r.created_at, r.member_id
+        from reposts r join posts p on p.id = r.post_id join members a on a.id = p.author_id
+        where ${byMember(sql`r.member_id`)} and ${postVisible}
+          and not ${memberRepost(sql`r.post_id`, sql`(r.created_at, r.member_id)`)}
           ${before(sql`r.created_at`, sql`r.post_id`)}
         order by r.created_at desc, r.post_id desc
         limit ${limit + 1})
       )
-      select e.post_id, e.reason, e.reposter_id, rm.handle as reposter_handle, rm.display_name as reposter_name,
+      select e.post_id, e.reposter_id, rm.handle as reposter_handle, rm.display_name as reposter_name,
         to_char(e.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at
       from entries e left join members rm on rm.id = e.reposter_id
       order by e.at desc, e.post_id desc
@@ -435,15 +457,22 @@ export class PostsService {
       ? await this.select(viewerId, inArray(posts.id, page.map((e) => e.post_id)), { unmuted, limit: page.length })
       : []
     const byId = new Map(found.map((post) => [post.id, post]))
+    // Only posts by members the viewer can see are shown, so for them being in
+    // `members` means being the viewer or someone they follow.
+    const listed = new Set(memberIds)
+    const reasonFor = (authorId: string): FeedReason | null =>
+      !reasons ? null : authorId === viewerId ? 'own' : listed.has(authorId) ? 'following' : 'community'
     const last = page.at(-1)
     return {
       // A post that went out of sight between the two reads is simply left out.
-      posts: page.flatMap((e) => {
+      posts: page.flatMap((e): PostView[] => {
         const post = byId.get(e.post_id)
         if (!post) return []
-        const repostedBy =
-          e.reason === 'repost' ? { id: e.reposter_id!, handle: e.reposter_handle!, displayName: e.reposter_name } : null
-        return [{ ...post, reason: e.reason, repostedBy }]
+        if (e.reposter_id) {
+          const repostedBy = { id: e.reposter_id, handle: e.reposter_handle!, displayName: e.reposter_name }
+          return [{ ...post, reason: 'repost', repostedBy }]
+        }
+        return [{ ...post, reason: reasonFor(post.authorId), repostedBy: null }]
       }),
       cursor: rows.length > limit && last ? encodeExactCursor(last.cursor_at, last.post_id) : null,
     }
@@ -466,16 +495,7 @@ export class PostsService {
     filter: ProfileFilter = 'posts',
   ): Promise<PostPage> {
     if (filter === 'posts') {
-      return this.entries(
-        viewerId,
-        {
-          original: sql`p.author_id = ${authorId} and p.reply_parent_id is null`,
-          reposters: (member) => sql`${member} = ${authorId}`,
-          unmuted: authorId,
-        },
-        limit,
-        cursor,
-      )
+      return this.entries(viewerId, { members: sql`(select ${authorId}::uuid)`, unmuted: authorId }, limit, cursor)
     }
     return this.page(viewerId, and(eq(posts.authorId, authorId), profileFilter[filter]), limit, cursor, {
       unmuted: authorId,
