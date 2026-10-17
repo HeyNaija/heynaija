@@ -28,6 +28,8 @@ type ConversationContext = {
   select: (target: ReplyTarget) => void
   load: (position: Position, more?: boolean) => void
   collapse: (id: string) => void
+  /** The reply editor, drawn by the branch in focus. */
+  editor: ReactNode
 }
 const Conversation = createContext<ConversationContext | null>(null)
 const BranchAncestry = createContext<readonly string[]>([])
@@ -87,16 +89,18 @@ export function ThreadConversation({
     setIncrements({})
   }, [version, initial])
 
+  // The editor is drawn under the post in focus, by the server too, so loading
+  // the page never moves it. Replying to another post on screen moves it there;
+  // the move replaces its elements, and the Composer puts focus back.
   const lastFocus = useRef(0)
   useEffect(() => {
-    const selectedHost = document.getElementById(`thread-editor-${target.id}`)
-    const host = selectedHost && !selectedHost.closest('[hidden]')
-      ? selectedHost
-      : document.getElementById(`thread-editor-${focus.id}`)
+    const selectedHost = target.id === focus.id ? null : document.getElementById(`thread-editor-${target.id}`)
+    const host = selectedHost && !selectedHost.closest('[hidden]') ? selectedHost : null
     setPortalTarget((current) => current === host ? current : host)
-    if (focusRequest && focusRequest !== lastFocus.current && host) {
+    const shown = host ?? document.getElementById(`thread-editor-${focus.id}`)
+    if (focusRequest && focusRequest !== lastFocus.current && shown) {
       lastFocus.current = focusRequest
-      host.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+      shown.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
     }
   }, [target, branches, focus.id, focusRequest])
 
@@ -163,26 +167,25 @@ export function ThreadConversation({
     })
   }, [])
 
+  const editor = member ? (
+    <Composer
+      handle={member.handle}
+      avatar={member.avatar}
+      replyTo={target.id}
+      replyHandle={target.handle}
+      replyDepth={target.depth + 1}
+      placeholder={`Reply to @${target.handle}`}
+      submitAction={createThreadReply}
+      onPosted={onPosted}
+      onPendingChange={setPosting}
+      portalTarget={portalTarget}
+      focusRequest={focusRequest}
+    />
+  ) : null
+
   return (
-    <Conversation.Provider value={{ branches, increments, canReply: member !== null, posting, select, load, collapse }}>
+    <Conversation.Provider value={{ branches, increments, canReply: member !== null, posting, select, load, collapse, editor }}>
       {children}
-      {member ? (
-        <div className="thread-composer-home">
-          <Composer
-            handle={member.handle}
-            avatar={member.avatar}
-            replyTo={target.id}
-            replyHandle={target.handle}
-            replyDepth={target.depth + 1}
-            placeholder={`Reply to @${target.handle}`}
-            submitAction={createThreadReply}
-            onPosted={onPosted}
-            onPendingChange={setPosting}
-            portalTarget={portalTarget}
-            focusRequest={focusRequest}
-          />
-        </div>
-      ) : null}
     </Conversation.Provider>
   )
 }
@@ -260,7 +263,12 @@ export function ThreadBranch({
         </p>
       ) : null}
       <div className="thread-row">{children}</div>
-      {handle ? <div id={`thread-editor-${id}`} className="thread-editor-host" /> : null}
+      {/* The editor stays in the focused branch's tree, so it keeps its text
+          and uploads wherever it is shown. Nothing moves it to an unavailable
+          post, so that host has no id. */}
+      {handle || root ? (
+        <div id={handle ? `thread-editor-${id}` : undefined} className="thread-editor-host">{root ? context?.editor : null}</div>
+      ) : null}
 
       {!root && expandable ? (
         <div className="thread-controls">
