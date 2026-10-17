@@ -1,5 +1,5 @@
 import 'server-only'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { cache } from 'react'
 
 // Server-to-server address of the NestJS API. Browsers never use this; they go
@@ -126,14 +126,21 @@ export type Profile = {
   identityBadge: boolean
 }
 
-/** Calls the API as the signed-in member by forwarding only the session cookie. */
+/**
+ * Calls the API as the signed-in member by forwarding only the session cookie,
+ * and the visitor's address, which nginx sets in X-Real-IP and the API counts
+ * signed-out callers' rate limits by. (Requests the browser makes to /api go
+ * through the rewrite in next.config.ts, which passes the header on itself.)
+ */
 export async function api(path: string, init: RequestInit = {}): Promise<Response> {
   const session = (await cookies()).get(SESSION_COOKIE)?.value
+  const address = (await headers()).get('x-real-ip')
   return fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       ...init.headers,
       ...(session ? { cookie: `${SESSION_COOKIE}=${session}` } : {}),
+      ...(address ? { 'x-real-ip': address } : {}),
     },
   })
 }

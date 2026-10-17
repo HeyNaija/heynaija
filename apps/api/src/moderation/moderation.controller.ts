@@ -54,7 +54,7 @@ export class ModerationController {
   @UseGuards(SessionGuard)
   async report(@Req() req: AuthedRequest, @Body() body: unknown) {
     const input = parse(reportBody, body)
-    this.limits.hit('report', req.member.id)
+    await this.limits.hit('report', req.member.id)
     await guarded(() => this.moderation.report(req.member.id, input, input.reason, input.details))
   }
 
@@ -63,7 +63,7 @@ export class ModerationController {
   @UseGuards(SuspendedAllowedGuard)
   async appeal(@Req() req: AuthedRequest, @Body() body: unknown) {
     const { message } = parse(appealBody, body)
-    this.limits.hit('report', req.member.id)
+    await this.limits.hit('report', req.member.id)
     await guarded(() => this.moderation.appeal(req.member.id, message))
   }
 

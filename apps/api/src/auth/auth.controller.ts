@@ -26,7 +26,7 @@ import { GovernanceService } from '../governance/governance.service.js'
 import { avatarPath } from '../media/media.service.js'
 import { MembersService } from '../members/members.service.js'
 import { NotificationsService } from '../notifications/notifications.service.js'
-import { RateLimiter } from '../rate-limit.js'
+import { RateLimiter, visitor } from '../rate-limit.js'
 import { DB, ENV } from '../tokens.js'
 import { KratosService, SESSION_COOKIE } from './kratos.service.js'
 import { type AuthedRequest, SessionGuard } from './session.guard.js'
@@ -126,9 +126,8 @@ export class AuthController {
   /** Lets /join tell someone their code is wrong before they fill in a signup form. */
   @Post('v1/invites/check')
   @HttpCode(200)
-  async checkInvite(@Body() body: unknown) {
-    // Signed-out callers all arrive via the web app, so this is one shared budget.
-    this.limits.hit('inviteCheck', 'anonymous')
+  async checkInvite(@Req() req: FastifyRequest, @Body() body: unknown) {
+    await this.limits.hit('inviteCheck', visitor(req))
     const parsed = inviteCheckBody.safeParse(body)
     return { usable: parsed.success && (await this.invites.isUsable(parsed.data.code)) }
   }

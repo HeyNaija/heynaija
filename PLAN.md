@@ -252,8 +252,7 @@ the files are in `infra/deploy/` and `.github/workflows/`.
 | Deploys | **GitHub Actions:** a push to `staging` or `main` runs CI, builds the images on GitHub's machines into GitHub's registry, then HeyNaija's own self-hosted runner on that server runs `deploy.sh` | Servers never build; rollback reruns the workflow on an earlier commit, or `deploy.sh <commit>` |
 
 Still to do: the owner's accounts and server (the guide), media copies outside R2,
-error alerting from logs, rate limits in Redis before running more than one API
-process.
+error alerting from logs.
 
 **Budget:** get live quotes. The v2.0 allowance of roughly €40–€150 a month for
 servers and small services is still a reasonable planning figure; it excludes
@@ -310,7 +309,7 @@ as much as the numbers. Report results with denominators and caveats.
 | "Community-owned" claimed before it is true | Charter and legal review first; the UI says votes are "on the way" |
 | Single server is a single point of failure | Off-site backups, rehearsed restore, honest recovery targets |
 | Kratos misconfiguration in production | Dedicated production config, reviewed; log level and secrets checked |
-| In-memory rate limits reset on restart | Move to Redis before running more than one API process |
+| Rate limits bypassed by restarts or extra API processes | Counted in Redis, shared by every API process; per-process memory only while Redis is down |
 | Dependency on Cloudflare | Media and DNS are portable: S3-compatible storage, standard DNS |
 
 ---

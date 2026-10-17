@@ -488,9 +488,8 @@ Next.js and the API each stayed near 10%.
    At the limit, page rendering used about 45% of the machine's CPU, Postgres
    about 40%, Kratos 8% and the API 7%. Caching shared parts of pages and fewer
    API calls per render are still to do.
-7. **One API process.** The same applies to NestJS. Also, the in-memory rate
-   limiter (`rate-limit.ts`) must move to Redis before running more than one API
-   process.
+7. **One API process.** The same applies to NestJS. The rate limits are counted
+   in Redis (17 October 2026), so more than one API process is now possible.
 
 ## Cleaning up
 

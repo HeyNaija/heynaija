@@ -8,7 +8,7 @@ import type { Env } from '../env.js'
 import { GovernanceService } from '../governance/governance.service.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { MembersService } from '../members/members.service.js'
-import { RateLimiter } from '../rate-limit.js'
+import { MemoryRateLimiter } from '../rate-limit.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { AuthController } from './auth.controller.js'
 
@@ -27,7 +27,7 @@ const controller = new AuthController(
   invites,
   {} as never,
   {} as never,
-  new RateLimiter(),
+  new MemoryRateLimiter(),
   env,
   db,
   {} as never,

@@ -67,7 +67,7 @@ export class MembersController {
   @HttpCode(204)
   @UseGuards(SessionGuard)
   async follow(@Req() req: AuthedRequest, @Param('handle') handle: string) {
-    this.limits.hit('action', req.member.id)
+    await this.limits.hit('action', req.member.id)
     try {
       if (!(await this.members.follow(req.member.id, handleOf(handle)))) throw new NotFoundException()
     } catch (err) {
@@ -87,7 +87,7 @@ export class MembersController {
   @HttpCode(204)
   @UseGuards(SessionGuard)
   async block(@Req() req: AuthedRequest, @Param('handle') handle: string) {
-    this.limits.hit('action', req.member.id)
+    await this.limits.hit('action', req.member.id)
     if (!(await this.members.block(req.member.id, handleOf(handle)))) throw new NotFoundException()
   }
 
@@ -102,7 +102,7 @@ export class MembersController {
   @HttpCode(204)
   @UseGuards(SessionGuard)
   async mute(@Req() req: AuthedRequest, @Param('handle') handle: string) {
-    this.limits.hit('action', req.member.id)
+    await this.limits.hit('action', req.member.id)
     if (!(await this.members.mute(req.member.id, handleOf(handle)))) throw new NotFoundException()
   }
 
@@ -127,7 +127,7 @@ export class OwnProfileController {
   @UseGuards(SessionGuard)
   async update(@Req() req: AuthedRequest, @Body() body: unknown) {
     const profile = parse(profileInput, body)
-    this.limits.hit('profile', req.member.id)
+    await this.limits.hit('profile', req.member.id)
     await this.members.updateProfile(req.member.id, profile)
   }
 }
