@@ -98,7 +98,7 @@ Terminology: "members" (not users), "communities", "invite", "moderator",
 
 ## Evidence on Hand
 
-- Five seeded launch communities (`packages/db`).
+- Five seeded launch communities, plus Building HeyNaija for the people building the app (`packages/db`).
 - Approved wordmark and a community-conversation illustration in
   `docs/design/source/`; reference mockup `docs/design/heynaija-reference.png`.
 - No real members, testimonials, press, usage numbers, or governance outcomes yet.

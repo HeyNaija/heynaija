@@ -25,7 +25,7 @@ step-by-step guides in [docs/deployment/](docs/deployment/staging.md). What work
 - **People:** profiles with a photo, display name and bio; follow, mute and block.
 - **Notifications:** replies, likes, follows and moderation outcomes, with an
   unread count in the navigation.
-- **Communities:** five launch communities to join and post in.
+- **Communities:** five launch communities, and Building HeyNaija, where the app's builders work in the open.
 - **Feeds:** Latest, Following (people and communities, each post says why it is
   there), per-community, trending, and search over members, communities and posts.
 - **Safety:** report a post or account, a moderation queue (remove post, suspend
@@ -80,7 +80,7 @@ pnpm infra:env          # writes or tops up .env with random local secrets
 pnpm infra:up           # Postgres :5433, Redis :6380, Kratos :4533/:4534, Mailpit :8026, MinIO :9100/:9101
 pnpm build
 pnpm db:migrate
-pnpm db:seed            # creates the five launch communities (safe to re-run)
+pnpm db:seed            # creates the communities (safe to re-run)
 pnpm media:init         # creates the two storage buckets on the local MinIO
 pnpm demo:seed          # optional: 14 demo members, threads, images, likes and follows (re-run to refresh)
 ```

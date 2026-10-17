@@ -18,7 +18,7 @@ history. The product hypothesis, safety, governance and metrics carried over.
 **Built and verified locally:** invite-only signup, email-code sign-in and email
 confirmation (Ory Kratos; password recovery is disabled, ADR 0003); posts, threaded replies, likes, reposts and quote posts, bookmarks; up to four
 images per post with descriptions, processed in a background job, opening in a
-full-screen viewer; profiles with photos, display names and bios; follow, mute, block; five communities to join and post in; Latest,
+full-screen viewer; profiles with photos, display names and bios; follow, mute, block; five topic communities and Building HeyNaija to join and post in; Latest,
 Following, community and trending feeds; search; reporting, a moderation queue,
 appeals and a decision log; notifications (replies, likes, reposts, quotes, follows,
 moderation outcomes); rate limits; light, dark and system themes.
@@ -148,6 +148,7 @@ Browser ──> Next.js web app
 
 ### Communities
 - [x] Five seeded communities: Tech & Careers, Universities, Lagos, Abuja, Entertainment
+- [x] Building HeyNaija: the founding developers work in the open there; feedback and bug reports welcome (public like every community)
 - [x] Join, leave, post into; rules; moderators shown
 - [ ] Pinned welcome post
 - [ ] Community photos
