@@ -17,7 +17,7 @@ x-logging: &logging
 x-api-env: &api-env
   DATABASE_URL: postgres://heynaija:${POSTGRES_PASSWORD:?}@postgres:5432/heynaija
   # Connections the API keeps open to Postgres (packages/db). 20 suits one API
-  # process on the 4 vCPU production server, well under Postgres's 100.
+  # process on the production server, well under Postgres's 100.
   DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
   REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
   KRATOS_PUBLIC_URL: http://kratos:4433
@@ -46,6 +46,11 @@ services:
       KRATOS_INTERNAL_URL: http://kratos:4433
       # Absolute links in link previews (apps/web/lib/previews.ts).
       WEB_PUBLIC_URL: ${SITE_URL:?}
+      # Copies of the web server sharing its port, each rendering on its own core
+      # (apps/web/workers.mjs). Production's .env sets 4 for its 8 cores, leaving
+      # the rest to Postgres, the API and Kratos. The default stays 1 so a server
+      # whose cores are shared (staging) never gets more without being asked.
+      WEB_WORKERS: ${WEB_WORKERS:-1}
     depends_on:
       api:
         condition: service_healthy
@@ -128,7 +133,7 @@ services:
 
   postgres:
     image: postgres:17-alpine
-    # Memory settings, defaulting to production's 8 GB server (Postgres's stock
+    # Memory settings, defaulting to production's 16 GB server (Postgres's stock
     # shared_buffers is 128MB): about a quarter of RAM for shared buffers, and
     # effective_cache_size telling the planner how much the OS will cache.
     # work_mem is per sort or hash, per query, so keep it modest.
@@ -137,13 +142,13 @@ services:
     command:
       - postgres
       - -c
-      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-2GB}
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-4GB}
       - -c
-      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-5GB}
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-10GB}
       - -c
       - work_mem=${POSTGRES_WORK_MEM:-16MB}
       - -c
-      - maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-256MB}
+      - maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-512MB}
     # Docker's default 64 MB /dev/shm is too small for parallel queries once
     # shared_buffers is raised.
     shm_size: 256mb

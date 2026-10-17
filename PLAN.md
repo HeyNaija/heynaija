@@ -244,7 +244,7 @@ the files are in `infra/deploy/` and `.github/workflows/`.
 |---|---|---|
 | Domain | `heynaija.ng`; staging at `staging.heynaija.ng` | DNS on Cloudflare |
 | Edge | Cloudflare in front of everything | TLS (Full strict, origin certificate), caching, Authenticated Origin Pulls, CSAM scanning tool for media |
-| Servers | **Staging:** the owner's existing Contabo server, shared with Koinovera staging. **Production:** its own netcup server (4 vCPU / 8 GB / 120 GB). Ubuntu 24.04 | Docker Compose: web, API, Kratos, Postgres, Redis. Only the web app publishes a port, on 127.0.0.1, so nothing clashes with Koinovera |
+| Servers | **Staging:** the owner's existing Contabo server, shared with Koinovera staging. **Production:** its own netcup RS 2000 (8 dedicated cores / 16 GB / 256 GB NVMe). Ubuntu 24.04 | Docker Compose: web, API, Kratos, Postgres, Redis. Only the web app publishes a port, on 127.0.0.1, so nothing clashes with Koinovera |
 | Front door | The host's **nginx** (already serving Koinovera on staging), one site per environment rendered from a template | Origin certificate, Authenticated Origin Pulls, security headers, real visitor IPs |
 | Media | Cloudflare R2: two buckets per environment, served at `/media` by nginx | [R2 guide](docs/deployment/cloudflare-r2.md) |
 | Email | Resend over SMTP, from `no-reply@mail.heynaija.ng` | SPF, DKIM, DMARC on the sending domain |
