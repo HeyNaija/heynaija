@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import pg from 'pg'
 import { ageSignIn } from '../lib/db.ts'
 import { assertLocal, env, MARK } from '../lib/env.ts'
-import { codeFor } from '../lib/mailpit.ts'
+import { codeFor, messagesFor } from '../lib/mailpit.ts'
 import { newMember, signIn } from '../lib/members.ts'
 
 async function identity(id: string) {
@@ -45,23 +45,61 @@ test('the old email stays active until the new email code is confirmed @mobile',
   try {
     const original = await (await member.context.request.get('/api/v1/me')).json()
     const next = `new_${member.handle}@${MARK.emailDomain}`
+    const asked = new Date()
     const code = await begin(member.page, next)
     await expect(member.page.getByText('stays active until you confirm the change.', { exact: false })).toBeVisible()
     expect((await identity(original.id)).traits.email).toBe(member.email)
+    // The new address is asked to confirm an email change, not to "verify your account".
+    expect((await messagesFor(next, asked)).map((m) => m.Subject)).toContain(`Your HeyNaija email change code: ${code}`)
     await member.page.reload()
     await expect(member.page.getByLabel('Code sent to your new email', { exact: true })).toBeVisible()
     await confirm(member.page, code === '000000' ? '111111' : '000000')
     await expect(member.page.getByText('That code is not correct.', { exact: false })).toBeVisible()
     expect((await identity(original.id)).traits.email).toBe(member.email)
+    // Nothing is said to the old address until the change is saved.
+    expect((await messagesFor(member.email, asked)).map((m) => m.Subject)).not.toContain('Your HeyNaija email address was changed')
     await confirm(member.page, code)
     await expect(member.page.getByText('Your changes have been saved!')).toBeVisible()
     const updated = await identity(original.id)
     expect(updated.traits.email).toBe(next)
     expect(updated.verifiable_addresses.find((address) => address.value === next)?.verified).toBe(true)
+    await expect.poll(async () => (await messagesFor(member.email, asked)).map((m) => m.Subject), { timeout: 30_000 })
+      .toContain('Your HeyNaija email address was changed')
+    const notice = (await messagesFor(member.email, asked)).find((m) => m.Subject === 'Your HeyNaija email address was changed')!
+    expect(notice.Snippet).toContain(`@${member.handle} was changed from ${member.email} to ${next}`)
     await signOut(member.page)
     await signIn(member.page, next)
     expect((await (await member.context.request.get('/api/v1/me')).json()).id).toBe(original.id)
   } finally { await member.context.close() }
+})
+
+test('an address another account signs in with is refused before any code is sent', async ({ browser }) => {
+  const member = await newMember(browser, 'taken')
+  const owner = await newMember(browser, 'owner')
+  try {
+    const original = await (await member.context.request.get('/api/v1/me')).json()
+    await member.page.goto('/settings')
+    const form = member.page.locator('form').filter({ has: member.page.getByLabel('Email address', { exact: true }) })
+    await form.getByLabel('Email address', { exact: true }).fill(owner.email.toUpperCase())
+    const asked = new Date()
+    await form.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(member.page.getByText('That email address already belongs to another HeyNaija account.', { exact: false })).toBeVisible()
+    await expect(member.page.getByLabel('Code sent to your new email', { exact: true })).toHaveCount(0)
+    await expect(form.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
+    expect(await messagesFor(owner.email, asked)).toHaveLength(0)
+    expect((await identity(original.id)).traits.email).toBe(member.email)
+    // A free address still works from the same page.
+    const next = `new_${member.handle}@${MARK.emailDomain}`
+    await form.getByLabel('Email address', { exact: true }).fill(next)
+    const sent = new Date()
+    await form.getByRole('button', { name: 'Save', exact: true }).click()
+    await confirm(member.page, await codeFor(next, sent))
+    await expect(member.page.getByText('Your changes have been saved!')).toBeVisible()
+    expect((await identity(original.id)).traits.email).toBe(next)
+  } finally {
+    await member.context.close()
+    await owner.context.close()
+  }
 })
 
 test('cancelling a change preserves the original email and its sign-in', async ({ browser }) => {

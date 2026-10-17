@@ -22,6 +22,7 @@
     "test": "pnpm -r --workspace-concurrency=1 test",
     "dev:web": "pnpm --filter @heynaija/web dev",
     "e2e": "pnpm --filter @heynaija/e2e e2e",
+    "e2e:google": "pnpm --filter @heynaija/e2e e2e:google",
     "invite:create": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api invite:create",
     "db:seed": "pnpm --filter @heynaija/db seed",
     "mod:grant": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api moderator grant",

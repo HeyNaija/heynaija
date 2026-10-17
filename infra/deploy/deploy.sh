@@ -28,8 +28,13 @@ if [[ $(sha256sum ./deploy.sh) != "$deploy_script_hash" ]]; then
   exec bash ./deploy.sh "$RELEASE"
 fi
 
+# Kratos's image is tagged with the contents of infra/kratos, as the build job
+# tags it, so a release that leaves those files alone does not restart Kratos.
+KRATOS_RELEASE=$(git rev-parse HEAD:infra/kratos)
+export KRATOS_RELEASE
+
 prefix=${IMAGE_PREFIX:-heynaija}
-if docker image inspect "$prefix-api:$RELEASE" "$prefix-web:$RELEASE" "$prefix-kratos:$RELEASE" >/dev/null 2>&1; then
+if docker image inspect "$prefix-api:$RELEASE" "$prefix-web:$RELEASE" "$prefix-kratos:$KRATOS_RELEASE" >/dev/null 2>&1; then
   echo "Using the images already on this server for $RELEASE"
 elif [[ ${BUILD:-0} == 1 ]]; then
   echo "Building $RELEASE here"
@@ -60,9 +65,10 @@ curl -fsS -o /dev/null --max-time 20 "http://127.0.0.1:${WEB_PORT:-3100}/" \
 echo "$(date -u +%FT%TZ) $RELEASE" >> releases.log
 echo "Deployed $RELEASE. Earlier releases: tail releases.log"
 
-# Keep the five most recent releases' images for rollback; remove older ones.
-for app in api web kratos; do
+# Keep the five most recent images of each for rollback; remove older ones.
+for image in "api $RELEASE" "web $RELEASE" "kratos $KRATOS_RELEASE"; do
+  read -r app tag <<< "$image"
   docker image ls --format '{{.Tag}}' "$prefix-$app" | tail -n +6 \
-    | grep -vx "$RELEASE" | xargs -r -I{} docker image rm "$prefix-$app:{}" >/dev/null || true
+    | grep -vx "$tag" | xargs -r -I{} docker image rm "$prefix-$app:{}" >/dev/null || true
 done
 docker image prune -f >/dev/null

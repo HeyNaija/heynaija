@@ -27,7 +27,7 @@ case "$*" in
   'compose pull --quiet api web kratos') ;;
   'compose config kratos') printf 'kratos config\n' ;;
   'compose up -d --remove-orphans --wait')
-    [[ "$KRATOS_INPUTS" == "$DEPLOY_TEST_EXPECTED_HASH" ]] ;;
+    [[ "$KRATOS_INPUTS" == "$DEPLOY_TEST_EXPECTED_HASH" && "$KRATOS_RELEASE" == "$DEPLOY_TEST_KRATOS_TREE" ]] ;;
   'image ls '*|'image prune -f') ;;
   *) echo "Unexpected Docker call: $*" >&2; exit 1 ;;
 esac
@@ -75,6 +75,9 @@ run_case() {
   local case_dir="$test_dir/$name"
   mkdir -p "$case_dir"
   export DEPLOY_TEST_REPO="$case_dir/repo" DEPLOY_TEST_EVENTS="$case_dir/events"
+  # Kratos's image is tagged with the contents of infra/kratos, not the commit.
+  export DEPLOY_TEST_KRATOS_TREE
+  DEPLOY_TEST_KRATOS_TREE=$("$DEPLOY_TEST_GIT" -C "$seed" rev-parse "$target_ref:infra/kratos")
   : > "$DEPLOY_TEST_EVENTS"
   "$DEPLOY_TEST_GIT" clone --quiet "$test_dir/origin.git" "$DEPLOY_TEST_REPO"
   "$DEPLOY_TEST_GIT" -C "$DEPLOY_TEST_REPO" -c advice.detachedHead=false checkout --quiet --detach "$start_ref"
@@ -100,7 +103,7 @@ run_case() {
   grep -Fxq "$expected_version" "$DEPLOY_TEST_EVENTS"
   [[ $(grep -Ec '^(older|newer)$' "$DEPLOY_TEST_EVENTS") == 1 ]]
   grep -Fxq 'docker compose pull --quiet api web kratos' "$DEPLOY_TEST_EVENTS"
-  grep -Fxq "docker image inspect ghcr.io/heynaija/heynaija-api:$target_ref ghcr.io/heynaija/heynaija-web:$target_ref ghcr.io/heynaija/heynaija-kratos:$target_ref" "$DEPLOY_TEST_EVENTS"
+  grep -Fxq "docker image inspect ghcr.io/heynaija/heynaija-api:$target_ref ghcr.io/heynaija/heynaija-web:$target_ref ghcr.io/heynaija/heynaija-kratos:$DEPLOY_TEST_KRATOS_TREE" "$DEPLOY_TEST_EVENTS"
   grep -Fxq 'docker compose up -d --remove-orphans --wait' "$DEPLOY_TEST_EVENTS"
   grep -Fq "$target_ref" "$DEPLOY_TEST_REPO/infra/deploy/releases.log"
   echo "PASS: $name"

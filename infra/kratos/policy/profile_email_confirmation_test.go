@@ -39,3 +39,21 @@ func TestHeyNaijaEmailConfirmationBinding(t *testing.T) {
 		t.Fatal("code allowed another account")
 	}
 }
+
+func TestHeyNaijaEmailChangeRecords(t *testing.T) {
+	flowID := x.NewUUID()
+	heynaijaRememberEmailChange(flowID, "old@example.com", "new@example.com")
+	record, ok := heynaijaTakeEmailChange(flowID)
+	if !ok || record.from != "old@example.com" || record.to != "new@example.com" {
+		t.Fatal("a confirmed change must wait for its save", record, ok)
+	}
+	if _, ok := heynaijaTakeEmailChange(flowID); ok {
+		t.Fatal("one change would be announced twice")
+	}
+	stale := x.NewUUID()
+	heynaijaEmailChanges.byFlow[stale] = heynaijaEmailChangeRecord{at: time.Now().Add(-time.Hour)}
+	heynaijaRememberEmailChange(x.NewUUID(), "a@example.com", "b@example.com")
+	if _, ok := heynaijaTakeEmailChange(stale); ok {
+		t.Fatal("the record of a save that failed was kept")
+	}
+}

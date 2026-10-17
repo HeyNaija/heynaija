@@ -66,3 +66,45 @@
      }
    }
  }
+--- a/courier/email_templates.go
++++ b/courier/email_templates.go
+@@ -102,6 +102,18 @@
+ 			return nil, err
+ 		}
+ 		return email.NewRegistrationCodeValid(d, &t), nil
++	case email.TypeHeyNaijaEmailChangeCode:
++		var t email.HeyNaijaEmailChangeCodeModel
++		if err := json.Unmarshal(msg.TemplateData, &t); err != nil {
++			return nil, err
++		}
++		return email.NewHeyNaijaEmailChangeCode(&t), nil
++	case email.TypeHeyNaijaEmailChanged:
++		var t email.HeyNaijaEmailChangedModel
++		if err := json.Unmarshal(msg.TemplateData, &t); err != nil {
++			return nil, err
++		}
++		return email.NewHeyNaijaEmailChanged(&t), nil
+ 	default:
+ 		return nil, errors.Errorf("received unexpected message template type: %s", msg.TemplateType)
+ 	}
+--- a/driver/registry_default_settings.go
++++ b/driver/registry_default_settings.go
+@@ -9,6 +9,7 @@
+ 
+ 	"github.com/ory/kratos/driver/config"
+ 	"github.com/ory/kratos/selfservice/flow/settings"
++	"github.com/ory/kratos/selfservice/strategy/profile"
+ )
+ 
+ func (m *RegistryDefault) PostSettingsPrePersistHooks(ctx context.Context, settingsType string) ([]settings.PostHookPrePersistExecutor, error) {
+@@ -36,6 +37,10 @@
+ 	if m.Config().SelfServiceFlowVerificationEnabled(ctx) {
+ 		hooks = slices.Insert(hooks, 0, settings.PostHookPostPersistExecutor(m.HookVerifier()))
+ 	}
++	if settingsType == settings.StrategyProfile {
++		// HeyNaija: tell the old address after an email change is saved.
++		hooks = slices.Insert(hooks, 0, settings.PostHookPostPersistExecutor(profile.NewHeyNaijaEmailNotice(m)))
++	}
+ 
+ 	return hooks, nil
+ }

@@ -115,8 +115,10 @@ services:
 
   # No --dev here: secure cookies and https only. --watch-courier sends the
   # verification and recovery emails through Resend.
+  # Tagged with the contents of infra/kratos rather than the commit (deploy.sh
+  # sets KRATOS_RELEASE), so other releases leave Kratos running.
   kratos:
-    image: ${IMAGE_PREFIX:-heynaija}-kratos:${RELEASE:-latest}
+    image: ${IMAGE_PREFIX:-heynaija}-kratos:${KRATOS_RELEASE:-latest}
     build:
       context: ../kratos
     environment: *kratos-env

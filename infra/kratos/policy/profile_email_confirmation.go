@@ -7,19 +7,22 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofrs/uuid"
 	"github.com/ory/kratos/courier"
-	"github.com/ory/kratos/courier/template"
 	"github.com/ory/kratos/courier/template/email"
 	"github.com/ory/kratos/identity"
 	"github.com/ory/kratos/selfservice/flow"
 	"github.com/ory/kratos/selfservice/flow/settings"
 	"github.com/ory/kratos/selfservice/strategy/code"
+	"github.com/ory/kratos/session"
 	"github.com/ory/kratos/text"
 	"github.com/ory/kratos/ui/node"
 	"github.com/ory/kratos/x"
+	"github.com/ory/x/logrusx"
+	"github.com/ory/x/sqlcon"
 	"github.com/ory/x/sqlxx"
 	"github.com/pkg/errors"
 	"github.com/tidwall/gjson"
@@ -102,6 +105,16 @@ func (s *Strategy) heynaijaConfirmEmail(ctx context.Context, w http.ResponseWrit
 	if !ok {
 		return false, errors.New("email confirmation storage is unavailable")
 	}
+	// Kratos would refuse another account's address only when saving, after the
+	// code was used up. Looked up before the lock: loading an identity runs
+	// queries side by side, which a transaction's connection cannot.
+	taken := false
+	if target != oldEmail && p.EmailChangeAction != "cancel" {
+		var err error
+		if taken, err = s.heynaijaEmailTaken(ctx, current, target); err != nil {
+			return false, err
+		}
+	}
 	accepted := false
 	err := store.WithHeyNaijaEmailFlow(ctx, uc.Flow.ID, current.ID, func(ctx context.Context, f *settings.Flow, lastSent time.Time) error {
 		fresh := f.Identity
@@ -138,6 +151,8 @@ func (s *Strategy) heynaijaConfirmEmail(ctx context.Context, w http.ResponseWrit
 			switch {
 			case challenge.Attempts > limit:
 				heynaijaEmailMessage(f, "Too many code attempts. Cancel this change and start again. Your current email is still active.", true)
+			case taken:
+				heynaijaEmailMessage(f, heynaijaEmailTakenMessage, true)
 			case !challenge.validFor(fresh, target, time.Now().UTC()):
 				heynaijaEmailMessage(f, "This code has expired or does not match this email change. Request a new code. Your current email is still active.", true)
 			case !store.HeyNaijaEmailCodeMatches(ctx, challenge.payload(f.ID, strings.TrimSpace(p.EmailChangeCode)), challenge.MAC):
@@ -150,9 +165,14 @@ func (s *Strategy) heynaijaConfirmEmail(ctx context.Context, w http.ResponseWrit
 			if err != nil {
 				return err
 			}
+		} else if taken && challenge.MAC == "" {
+			// Nothing is pending yet: keep the ordinary form, with Save.
+			heynaijaEmailMessage(f, heynaijaEmailTakenMessage, true)
 		} else {
 			if oldEmail == target {
 				heynaijaEmailMessage(f, "Enter the new email address you want to confirm, or cancel this change.", true)
+			} else if taken {
+				heynaijaEmailMessage(f, heynaijaEmailTakenMessage, true)
 			} else if lastSent.Add(time.Minute).After(time.Now()) {
 				heynaijaEmailMessage(f, "Please wait a minute before requesting another email code. Your current email is still active.", true)
 			} else {
@@ -175,10 +195,7 @@ func (s *Strategy) heynaijaConfirmEmail(ctx context.Context, w http.ResponseWrit
 				if err != nil {
 					return err
 				}
-				delivery, ok := s.d.(interface {
-					courier.Provider
-					template.Dependencies
-				})
+				delivery, ok := s.d.(courier.Provider)
 				if !ok {
 					return errors.New("email delivery is unavailable")
 				}
@@ -186,7 +203,7 @@ func (s *Strategy) heynaijaConfirmEmail(ctx context.Context, w http.ResponseWrit
 				if err != nil {
 					return err
 				}
-				_, err = outbox.QueueEmail(ctx, email.NewVerificationCodeValid(delivery, &email.VerificationCodeValidModel{To: target, VerificationCode: raw, VerificationURL: f.AppendTo(s.d.Config().SelfServiceFlowSettingsUI(ctx)).String(), ExpiresInMinutes: int(s.d.Config().SelfServiceCodeMethodLifespan(ctx).Minutes()), Identity: map[string]interface{}{"id": fresh.ID.String()}}))
+				_, err = outbox.QueueEmail(ctx, email.NewHeyNaijaEmailChangeCode(&email.HeyNaijaEmailChangeCodeModel{To: target, Code: raw, ExpiresInMinutes: int(s.d.Config().SelfServiceCodeMethodLifespan(ctx).Minutes())}))
 				if err != nil {
 					return err
 				}
@@ -201,6 +218,7 @@ func (s *Strategy) heynaijaConfirmEmail(ctx context.Context, w http.ResponseWrit
 		return false, err
 	}
 	if accepted {
+		heynaijaRememberEmailChange(uc.Flow.ID, oldEmail, target)
 		// The address is only marked verified after its bound challenge succeeds.
 		for n := range updated.VerifiableAddresses {
 			address := &updated.VerifiableAddresses[n]
@@ -215,4 +233,85 @@ func (s *Strategy) heynaijaConfirmEmail(ctx context.Context, w http.ResponseWrit
 	}
 	x.SendFlowCompletedAsRedirectOrJSON(w, r, s.d.Writer(), uc.Flow, uc.Flow.AppendTo(s.d.Config().SelfServiceFlowSettingsUI(ctx)).String())
 	return false, errors.WithStack(flow.ErrCompletedByStrategy)
+}
+
+const heynaijaEmailTakenMessage = "That email address already belongs to another HeyNaija account. Choose a different one. Your current email is still active."
+
+// Signing in with a code already says whether an address has an account, so
+// refusing a taken one here tells the member nothing new.
+func (s *Strategy) heynaijaEmailTaken(ctx context.Context, i *identity.Identity, target string) (bool, error) {
+	other, _, err := s.d.PrivilegedIdentityPool().FindByCredentialsIdentifier(ctx, identity.CredentialsTypeCodeAuth, target)
+	if errors.Is(err, sqlcon.ErrNoRows) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return other.ID != i.ID, nil
+}
+
+// A confirmed change waits here, by settings flow, until Kratos has saved it;
+// HeyNaijaEmailNotice then tells the old address. Kratos saves it later in the
+// same request, so the process that accepted the code is the one that saves.
+type heynaijaEmailChangeRecord struct {
+	from, to string
+	at       time.Time
+}
+
+var heynaijaEmailChanges = struct {
+	sync.Mutex
+	byFlow map[uuid.UUID]heynaijaEmailChangeRecord
+}{byFlow: map[uuid.UUID]heynaijaEmailChangeRecord{}}
+
+func heynaijaRememberEmailChange(flowID uuid.UUID, from, to string) {
+	heynaijaEmailChanges.Lock()
+	defer heynaijaEmailChanges.Unlock()
+	now := time.Now().UTC()
+	// A save that failed leaves its record behind; drop those.
+	for id, record := range heynaijaEmailChanges.byFlow {
+		if now.Sub(record.at) > 10*time.Minute {
+			delete(heynaijaEmailChanges.byFlow, id)
+		}
+	}
+	heynaijaEmailChanges.byFlow[flowID] = heynaijaEmailChangeRecord{from: from, to: to, at: now}
+}
+
+func heynaijaTakeEmailChange(flowID uuid.UUID) (heynaijaEmailChangeRecord, bool) {
+	heynaijaEmailChanges.Lock()
+	defer heynaijaEmailChanges.Unlock()
+	record, ok := heynaijaEmailChanges.byFlow[flowID]
+	delete(heynaijaEmailChanges.byFlow, flowID)
+	return record, ok
+}
+
+type heynaijaEmailNoticeDependencies interface {
+	courier.Provider
+	logrusx.Provider
+}
+
+// Tells the old address that the email changed, once the new one is saved.
+// email-confirmation.patch registers it first among the profile settings
+// post-persist hooks, so a later hook's failure cannot skip it.
+type HeyNaijaEmailNotice struct{ d heynaijaEmailNoticeDependencies }
+
+func NewHeyNaijaEmailNotice(d heynaijaEmailNoticeDependencies) *HeyNaijaEmailNotice {
+	return &HeyNaijaEmailNotice{d: d}
+}
+
+func (h *HeyNaijaEmailNotice) ExecuteSettingsPostPersistHook(_ http.ResponseWriter, r *http.Request, f *settings.Flow, i *identity.Identity, _ *session.Session) error {
+	change, ok := heynaijaTakeEmailChange(f.ID)
+	if !ok || heynaijaNormalizeEmail(gjson.GetBytes(i.Traits, "email").String()) != change.to {
+		return nil
+	}
+	ctx := r.Context()
+	outbox, err := h.d.Courier(ctx)
+	if err == nil {
+		_, err = outbox.QueueEmail(ctx, email.NewHeyNaijaEmailChanged(&email.HeyNaijaEmailChangedModel{
+			To: change.from, Handle: gjson.GetBytes(i.Traits, "handle").String(), NewEmail: change.to, ChangedAt: change.at,
+		}))
+	}
+	if err != nil {
+		// The new email is already saved; failing here would report it as not saved.
+		h.d.Logger().WithError(err).WithField("identity_id", i.ID).Error("Could not queue the email-change notice for the old address.")
+	}
+	return nil
 }

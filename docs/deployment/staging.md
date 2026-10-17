@@ -19,9 +19,11 @@ GitHub's machines build the API, web and authentication images and push them to 
 registry, tagged with the commit; then HeyNaija's runner on the server pulls them
 and restarts HeyNaija with `infra/deploy/deploy.sh`. The server never builds
 anything, so Koinovera never competes with a build for memory. Kratos uses the
-version-pinned HeyNaija image that enforces the Google account policy. A new
-release updates that image; configuration changes also recreate Kratos through
-the hash set by `deploy.sh`, so mounted files cannot remain stale.
+version-pinned HeyNaija image that enforces the Google account policy. That image
+is tagged with the contents of `infra/kratos` rather than the commit, so Kratos
+restarts only when those files or its configuration change: `deploy.sh` also
+labels it with a hash of its rendered configuration, so mounted files cannot
+remain stale.
 
 The deploy job checks out the requested commit before starting its deploy script.
 Manual deployments also restart the script if checkout changes it, so upgrades

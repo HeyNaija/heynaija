@@ -33,13 +33,25 @@ This patch adds policy that the upstream open-source image does not enforce:
   Resending replaces the code. Cancelling or abandoning keeps the original email.
   Confirmation uses the existing CSRF checks, recent sign-in requirement, native
   code generator, secret HMAC primitive, mail queue and settings persistence hooks.
+- An address that another account signs in with is refused before a code is
+  sent, and again when the code is entered, so a code is never used up on a
+  change Kratos would then refuse. (Signing in with a code already says whether
+  an address has an account.)
+- The code email says it is for an email change (Kratos's verification email
+  says "verify your account" and offers a link that cannot finish the change).
+  It does not name the current address, in case the new one was mistyped.
+- Once the new address is saved, the old one is told: which account, both
+  addresses and when. The notice is a settings post-persist hook, so it is sent
+  only for a change that was actually saved.
 - An occupied public handle cannot trigger a cross-email account-linking prompt.
 - New Google accounts still use the ordinary invite, age and registration hooks.
   The identity schema and database migrations are unchanged.
 
 `heynaija*.go` is copied into the upstream `oidc` package. `profile_email*.go`
-is copied into the upstream `profile` package, and `persistence_email.go` into
-`persistence/sql`. This policy targets the PostgreSQL deployment used here.
+is copied into the upstream `profile` package, `persistence_email.go` into
+`persistence/sql`, and `courier_email_change*.go` (the two emails) into
+`courier/template/email`. `email-confirmation.patch` also lets the courier
+render those emails and registers the notice hook for profile settings. This policy targets the PostgreSQL deployment used here.
 The image build runs their Go
 policy tests and fails if the pinned patch no longer applies exactly.
 
@@ -47,8 +59,9 @@ Build and test with:
 
 ```sh
 docker build -t heynaija-kratos:dev infra/kratos
-pnpm e2e google-auth --workers=1
-pnpm e2e email-change --workers=1
+pnpm infra:up            # restarts Kratos on the rebuilt image
+pnpm e2e:google
+pnpm e2e email-change
 ```
 
 The browser tests use a temporary local OIDC issuer that signs real test JWTs.
