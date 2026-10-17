@@ -188,8 +188,8 @@ Install k6 with `brew install k6` (or see grafana.com/docs/k6).
 Use **two** machines in the same region and on the same private network, so the
 network between them is not the bottleneck:
 
-- **The server under test**: the same size as production, **4 vCPU / 8 GB**
-  (netcup or Contabo, hourly billing if possible). Delete it afterwards.
+- **The server under test**: the same size as production, **8 dedicated cores /
+  16 GB** (netcup RS 2000, hourly billing if possible). Delete it afterwards.
 - **The load generator**: 2–4 vCPU, running k6. Never run k6 on the server under
   test, because k6 would compete with the app for CPU. At 1,000 req/s the
   responses add up to roughly 300 Mbit/s, so use the private network.
@@ -217,6 +217,8 @@ S3_ACCESS_KEY_ID=unused
 S3_SECRET_ACCESS_KEY=unused
 S3_UPLOADS_BUCKET=unused
 S3_MEDIA_BUCKET=unused
+# As production: one web server process per core it can spare.
+WEB_WORKERS=4
 ```
 
 Build and start the stack with the load-test overlay (from the repository root):
@@ -407,9 +409,10 @@ Next.js and the API each stayed near 10%.
    `cache`).
 4. **Postgres connections and settings.** *Done (14 October 2026).* The API's
    `pg.Pool` now keeps **20 connections** (`DATABASE_POOL_MAX`; pg's default was
-   10), and `infra/deploy/compose.yml` runs Postgres with `shared_buffers=2GB`,
-   `effective_cache_size=5GB`, `work_mem=16MB` and `maintenance_work_mem=256MB`
-   for the 8 GB production server. Staging sets smaller values in its `.env`
+   10), and `infra/deploy/compose.yml` runs Postgres with `shared_buffers=4GB`,
+   `effective_cache_size=10GB`, `work_mem=16MB` and `maintenance_work_mem=512MB`
+   for the 16 GB production server (2GB / 5GB / 256MB when it was planned at
+   8 GB). Staging sets smaller values in its `.env`
    ([deployment/staging.md](deployment/staging.md)). Check the
    `pg_stat_activity` query above to see whether 20 is still the right number.
 
@@ -472,6 +475,19 @@ Next.js and the API each stayed near 10%.
    `docker stats`. Fixes: run two or more web replicas (or Node cluster) behind
    nginx, cache the parts of pages that are the same for everyone, and keep the
    number of API calls per render down.
+   **Workers: done (17 October 2026).** The web image runs `WEB_WORKERS` copies
+   of the server on one port with Node's cluster module (`apps/web/workers.mjs`;
+   4 in production, 1 on staging). On a 4-core machine running everything
+   (Postgres, Kratos, the API, the web app and k6; 20k-member seed, `journeys.js`):
+
+   | Web processes | Most req/s sustained | p95 at 30 req/s | What gave out |
+   | --- | --: | --: | --- |
+   | 1 | ~35 | 573 ms | the web process, at 100% of one core |
+   | 4 | ~53 | 226 ms | the whole machine, at 100% |
+
+   At the limit, page rendering used about 45% of the machine's CPU, Postgres
+   about 40%, Kratos 8% and the API 7%. Caching shared parts of pages and fewer
+   API calls per render are still to do.
 7. **One API process.** The same applies to NestJS. Also, the in-memory rate
    limiter (`rate-limit.ts`) must move to Redis before running more than one API
    process.

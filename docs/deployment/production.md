@@ -10,7 +10,12 @@ is done.
 
 ## 1. The server
 
-netcup, **Ubuntu 24.04**, at least **4 vCPU, 8 GB RAM, 120 GB SSD**. Then, from your
+netcup **RS 2000** (8 dedicated cores, 16 GB RAM, 256 GB NVMe) or larger, **Ubuntu
+24.04**. `compose.yml`'s defaults are sized for it (Postgres's memory settings, 20
+database connections), and step 5 sets 4 web server processes (`WEB_WORKERS`),
+each rendering pages on its own core while the other cores serve Postgres, the
+API and Kratos. Dedicated cores matter: page rendering and Postgres are both
+CPU-bound. Then, from your
 computer (use your own public key file):
 
 ```bash
@@ -80,7 +85,8 @@ As `heynaija`, clone to `/srv/heynaija`, run `./gen-env.sh`, and edit `.env`:
 | `BACKUP_DESTINATION` | `r2backup:heynaija-backups/production` |
 | `IMAGE_PREFIX` | `ghcr.io/heynaija/heynaija`, lower case, as for staging |
 | `S3_*`, `SMTP_*`, `BACKUP_AGE_RECIPIENT` | as for staging, with production's tokens and keys |
-| `POSTGRES_*`, `DATABASE_POOL_MAX` | delete these lines: `compose.yml`'s defaults are sized for this 8 GB server |
+| `POSTGRES_*`, `DATABASE_POOL_MAX` | delete these lines: `compose.yml`'s defaults are sized for this 16 GB server |
+| `WEB_WORKERS` | `4` |
 
 Then check no `<…>` placeholder is left: `grep -n '^[^#]*<' .env` prints nothing.
 
