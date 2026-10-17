@@ -195,8 +195,14 @@ export const reposts = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.memberId, t.postId] }),
-    index('reposts_post_idx').on(t.postId),
+    // A post's reposts in time order: "has anyone you follow reposted this since?"
+    // is answered from the index alone, even for a post with thousands of reposts.
+    index('reposts_post_created_idx').on(t.postId, t.createdAt, t.memberId),
+    // A few members' reposts are read from here (a profile, a light follower)...
     index('reposts_member_created_idx').on(t.memberId, t.createdAt),
+    // ...and the newest reposts site-wide from here, for someone who follows
+    // many accounts: a Following page is found near the top.
+    index('reposts_created_idx').on(t.createdAt, t.postId, t.memberId),
   ],
 )
 

@@ -435,6 +435,38 @@ Next.js and the API each stayed near 10%.
    on `actor_id` or `post_id`, so deleting a post or member scans the whole table
    (`clean.mjs` shows this). *Fixed:* migration `0010` adds
    `notifications_actor_idx` and `notifications_post_idx`.
+
+   **Following with reposts: done (17 October 2026).** With reposts (ADR 0007)
+   the Following query asked for "the viewer, or anyone in (their follows)". Postgres
+   estimated that the same for every viewer, so it read every repost on the site on
+   every Following page, and for someone following a dozen quiet accounts it still
+   walked `posts_created_idx` through most of the posts. `PostsService.entries`
+   now reads the visible members and joined communities first and passes them as
+   arrays, so the plan fits the viewer, and migration `0016` adds
+   `reposts_created_idx` (newest reposts site-wide) and
+   `reposts_post_created_idx` (a post's reposts in time order, replacing
+   `reposts_post_idx`). Pages are identical before and after: 3,029 pages for 504
+   viewers and 230 profiles, with mutes, blocks and suspended members, compared
+   entry by entry.
+
+   **Measured** on a 200k-member seed with 1.5M reposts, against Postgres limited
+   to 4 vCPU / 8 GB with the production settings, calling `PostsService` directly
+   (page 1, 30 posts, p50; the heavy viewers follow the 200, 1,000 or 5,000
+   most-followed accounts, or the 1,000 members who repost most):
+
+   | Following | Before | After |
+   | --- | --: | --: |
+   | follows 10–15 accounts | 128 ms | 16 ms |
+   | the same, page 5 | 299 ms | 14 ms |
+   | follows 200 / 1,000 / 5,000 popular accounts | 151 / 138 / 270 ms | 29 / 42 / 100 ms |
+   | follows the 1,000 busiest reposters | 153 ms | 40 ms |
+   | pages per second, 20 at once, light / 1,000-follow viewers | 18 / 15 | 214 / 106 |
+
+   The profile Posts tab is unchanged at about 10 ms. Through the web app (20k
+   members, 30k reposts, production build) a Following-heavy k6 mix at 30 req/s
+   took Postgres from 122% to 69% CPU. Before reposts existed, the 1,000-follow
+   viewer took 7 ms: most of what is left for very large follow lists is planning
+   the arrays (about 1 ms per 1,000 members each time one appears).
 6. **Next.js SSR CPU.** One `next start` process renders on one core. When the
    database is no longer the limit, expect `web` to sit at about 100% in
    `docker stats`. Fixes: run two or more web replicas (or Node cluster) behind
