@@ -138,9 +138,15 @@ body {
   color: var(--ink);
 }
 
-:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+/* The default focus ring, in the base layer so that anything that draws its own focus
+   treatment (a field's border and ring, a search box's frame) can remove this one with
+   an ordinary rule or `focus:outline-none`. Unlayered, it beat those, and the field
+   showed two rings. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
 }
 
 button,
@@ -1040,6 +1046,10 @@ summary.menu::-webkit-details-marker {
   font-size: 16px;
   line-height: 26px;
 }
+/* Grows with the text (see useAutoGrow), then scrolls instead of pushing the page down. */
+.composer-input { max-height: min(50vh, 20rem); overflow-y: auto; }
+/* "GIF" in a small frame: the composer's GIF button, which must not look like the photo one. */
+.gif-glyph { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; border: 1.9px solid currentColor; border-radius: 5px; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
 .composer-input::placeholder { color: var(--muted); }
 .composer-input:focus { outline: none; }
 /* Replies are an inline writing field connected to the conversation, rather
@@ -1075,6 +1085,18 @@ summary.menu::-webkit-details-marker {
 .post-primary-text { position: relative; z-index: 2; }
 .post-mention { color: var(--accent-strong); font-weight: 500; }
 .post-mention:hover { text-decoration: underline; }
+.post-link { color: var(--accent-strong); overflow-wrap: anywhere; }
+.post-link:hover { text-decoration: underline; }
+/* A page the post links to: its picture, its own host name (never only what the page
+   calls itself), and the title and start of its text. One link, so one tab stop. */
+.link-card { display: flex; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--panel); transition: border-color 0.15s; }
+.link-card:hover { border-color: var(--accent-strong); }
+.link-card-image { display: block; width: 100%; max-height: 240px; border-bottom: 1px solid var(--line); background: var(--line); object-fit: cover; }
+.link-card-body { display: flex; min-width: 0; flex-direction: column; gap: 3px; padding: 10px 12px; }
+.link-card-host { overflow: hidden; color: var(--muted); font-size: 11px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.link-card-title, .link-card-text { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+.link-card-title { font-size: 13px; font-weight: 600; line-height: 1.4; }
+.link-card-text { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .post-primary-link:focus-visible { outline: none; }
 .post-primary-link:focus-visible::after { outline: 2px solid var(--focus-ring); outline-offset: -3px; }
 .post-card.is-clickable :is(a:not(.post-primary-link), button, summary, input, select, textarea, form, .post-images) { position: relative; z-index: 2; }
@@ -1319,9 +1341,49 @@ a.notification-row:hover {
   height: 100%;
   object-fit: cover;
 }
-.post-image:focus-visible {
+.post-image:focus-visible,
+.post-image-link:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: -3px;
+}
+/* A GIF's tile holds its link and its pause button side by side. */
+.post-image-link {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+.gif-toggle {
+  position: absolute;
+  z-index: 1;
+  bottom: 8px;
+  left: 8px;
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 9px;
+  border-radius: var(--r-chip);
+  background: var(--scrim-control);
+  color: var(--on-scrim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  transition: background-color 0.15s;
+}
+.gif-toggle:hover {
+  background: var(--scrim-control-hover);
+}
+.gif-toggle.is-viewer {
+  position: static;
+  pointer-events: auto;
+}
+/* In a clickable post card every link and button is lifted above the card's own link with
+   position: relative; a GIF's tile needs these two to stay laid over the picture. */
+.post-card.is-clickable .post-image.is-animated > .post-image-link,
+.post-card.is-clickable .post-image.is-animated > .gif-toggle {
+  position: absolute;
 }
 
 /* Full-screen image viewer: a modal <dialog> filling the window. */
@@ -1688,7 +1750,7 @@ a.result-row:hover { color: var(--accent-strong); }
   .feed-tabs { gap: 22px; }
   .square-composer { padding: 14px; }
   .square-composer > .flex { gap: 10px; }
-  .composer-photo span { display: none; }
+  .composer-photo-label { display: none; }
   .composer-toolbar { gap: 6px; }
   .composer-toolbar .icon-btn { padding-inline: 4px; }
   .composer-audience select { max-width: 104px; font-size: 11px; }

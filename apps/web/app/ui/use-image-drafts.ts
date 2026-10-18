@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { finishPostImageUpload, postImageStatus, startPostImageUpload } from '@/app/actions'
-import { IMAGE_TYPES, shrinkImage } from './shrink-image'
+import { isGif, POST_IMAGE_TYPES, shrinkImage } from './shrink-image'
 
 export const MAX_IMAGES = 4
 const MAX_BYTES = 10 * 1024 * 1024
@@ -15,6 +15,8 @@ export type ImageDraft = {
   /** A local copy to show straight away, before anything is uploaded. */
   preview: string
   mediaId: string | null
+  /** A GIF: described and shown as one, and sent without being redrawn. */
+  gif: boolean
   status: 'uploading' | 'processing' | 'ready' | 'failed'
   error: string | null
   alt: string
@@ -46,7 +48,7 @@ export function useImageDrafts() {
       if (!live.current.has(key)) return
       const status = await postImageStatus(mediaId).catch(() => 'processing' as const)
       if (status === 'ready') return update(key, { status: 'ready' })
-      if (status === 'failed') return fail(key, 'That file is not a JPEG, PNG or WebP image.')
+      if (status === 'failed') return fail(key, 'That file is not a JPEG, PNG, WebP or GIF image.')
       if (status === null) return fail(key, 'That upload has expired. Remove it and add it again.')
       await wait(i < 5 ? 600 : 1500)
     }
@@ -54,9 +56,9 @@ export function useImageDrafts() {
   }
 
   const upload = async (key: string, file: File) => {
-    if (!IMAGE_TYPES.includes(file.type)) return fail(key, 'Choose a JPEG, PNG or WebP image.')
-    const image = await shrinkImage(file, { max: LONGEST_EDGE })
-    if (image.size > MAX_BYTES) return fail(key, 'That image is too large. The limit is 10 MB.')
+    if (!POST_IMAGE_TYPES.includes(file.type)) return fail(key, 'Choose a JPEG, PNG, WebP or GIF image.')
+    const image = isGif(file) ? file : await shrinkImage(file, { max: LONGEST_EDGE })
+    if (image.size > MAX_BYTES) return fail(key, `That ${isGif(file) ? 'GIF' : 'image'} is too large. The limit is 10 MB.`)
 
     const ticket = await startPostImageUpload(image.type, image.size)
     if ('error' in ticket) return fail(key, ticket.error)
@@ -83,7 +85,7 @@ export function useImageDrafts() {
       const preview = URL.createObjectURL(file)
       const key = preview
       live.current.set(key, preview)
-      return { file, draft: { key, preview, mediaId: null, status: 'uploading', error: null, alt: '' } satisfies ImageDraft }
+      return { file, draft: { key, preview, mediaId: null, gif: isGif(file), status: 'uploading', error: null, alt: '' } satisfies ImageDraft }
     })
     setDrafts((all) => [...all, ...added.map((a) => a.draft)])
     // One at a time: shrinking several large photos at once can exhaust a cheap phone's memory.

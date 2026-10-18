@@ -27,10 +27,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const photos = post.images.length === 1 ? 'a photo' : `${post.images.length} photos`
   const description = post.text ? excerpt(post.text) : `@${post.authorHandle} shared ${photos}.`
   const first = post.images[0]
-  // The 640px copy: big enough for a preview card, small enough for WhatsApp to fetch.
+  // The 640px copy (a GIF's first frame): big enough for a preview card, small enough for WhatsApp to fetch.
   const scale = first ? Math.min(1, 640 / Math.max(first.width, first.height)) : 1
   const image = first
-    ? { url: `${first.src}/640.webp`, width: Math.round(first.width * scale), height: Math.round(first.height * scale), alt: first.alt }
+    ? { url: `${first.src}/${first.animated ? 'still' : '640'}.webp`, width: Math.round(first.width * scale), height: Math.round(first.height * scale), alt: first.alt }
     : defaultPreviewImage
 
   return {

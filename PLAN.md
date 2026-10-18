@@ -21,7 +21,7 @@ images per post with descriptions, processed in a background job, opening in a
 full-screen viewer; profiles with photos, display names and bios; follow, mute, block; five topic communities and Building HeyNaija to join and post in; Latest,
 Following, community and trending feeds; search; reporting, a moderation queue,
 appeals and a decision log; notifications (replies, likes, reposts, quotes, follows,
-moderation outcomes); rate limits; light, dark and system themes.
+moderation outcomes), in the app and by email; rate limits; light, dark and system themes.
 
 **Current feature inventory:** [docs/FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md) is the canonical prioritised roadmap, also readable at `/progress`. Production is deployed, but public launch waits on the P0 safety, operations, disclosure and access gaps that remain incomplete. See [§8 Roadmap](#8-roadmap).
 
@@ -37,6 +37,7 @@ moderation outcomes); rate limits; light, dark and system themes.
 | [docs/deployment/production.md](docs/deployment/production.md) | Deploying production on netcup |
 | [docs/deployment/cloudflare-r2.md](docs/deployment/cloudflare-r2.md) | Setting up media storage in production |
 | [docs/safety/abuse-material-scanning.md](docs/safety/abuse-material-scanning.md) | Scanning uploads for abuse material: plan, runbook, legal questions |
+| [ADR 0009](docs/adr/0009-notification-emails.md) | Notification emails: grouping, who is emailed, what they say |
 | [ADR 0001](docs/adr/0001-phase-0-spike.md) | The AT Protocol spike (historical) |
 
 ---
@@ -51,7 +52,7 @@ moderation outcomes); rate limits; light, dark and system themes.
 | Frontend | **Next.js 16** (App Router, Cache Components), server-rendered, meant to work without JavaScript for core reading and posting. **Not true at present:** streamed pages stay on their loading skeleton without JavaScript (found by the e2e tests, 15 October 2026; [docs/e2e.md](docs/e2e.md)) | Fast on low-end Android and slow networks |
 | Backend | **NestJS + Fastify** | A separate API with its own tests and deploys |
 | Media storage | **S3-compatible**: MinIO locally, **Cloudflare R2** in production | No download fees on R2; same code everywhere |
-| Queue/cache | **Redis with BullMQ** for background jobs: post-image processing and an hourly media sweep, run inside the API process. Next: shared rate limits, email or push notifications | Add only when measured or needed |
+| Queue/cache | **Redis with BullMQ** for background jobs: post-image processing and an hourly media sweep, link previews, and notification emails (a sweep every minute, one job per member), run inside the API process. Next: push notifications | Add only when measured or needed |
 | Deploy | **Docker Compose on one VPS** (netcup recommended, or Contabo) behind Cloudflare; staging at `staging.heynaija.ng`; email through **Resend** | See §7 |
 | Governance | Open charter, provisional steering group, legal review before any ownership claim | Publishing code does not make a project community-owned |
 | Federation | **None in Phase 1.** Portability through data export and open source instead | See ADR 0002 |
@@ -143,7 +144,10 @@ Browser ──> Next.js web app
 - [x] Search over members, communities and posts (PostgreSQL full text)
 - [x] Mute and block, respected in every feed, thread and search
 - [x] Post images: up to 4, with optional descriptions (alt text), processed in a background job
-- [x] Notifications (replies, likes, reposts, quotes, follows, moderation outcomes), in-app only
+- [x] GIFs: attached like images (uploaded, not searched for), kept as animated WebP with a still of the first frame; they play unless the device asks for less motion and can be paused. At most 300 frames and 10 MB (18 October 2026)
+- [x] Links: web addresses in a post are links (opening in a new tab), and the first one gets a preview card read by a background job, with its picture kept on our own storage; the server refuses private and local addresses ([ADR 0008](docs/adr/0008-link-previews.md)) (18 October 2026)
+- [x] Notifications (replies, likes, reposts, quotes, follows, moderation outcomes) in the app
+- [x] Notification emails: the same notifications by email, grouped (a notification waits five minutes for company, and a member is emailed at most every 30 minutes) and sent by a background job through the SMTP account Kratos uses (Resend; Mailpit locally). A switch in Settings turns email off, on for new members and off for everyone who joined before; every email has a one-click unsubscribe link and `List-Unsubscribe` headers, says why it was sent, and says little ([ADR 0009](docs/adr/0009-notification-emails.md)) (18 October 2026)
 - [x] Reposts and quote posts: repost to your followers and profile, or quote with your own words. Following and the profile Posts tab show each post once, at the latest time it was reposted by someone you see; blocks and mutes apply to reposter and author; a quote of a deleted post shows a placeholder (16 October 2026, [ADR 0007](docs/adr/0007-reposts-and-quotes.md))
 
 ### Communities
@@ -198,8 +202,10 @@ All tables are in `packages/db/src/schema.ts`; migrations in `packages/db/drizzl
 | `blocks`, `mutes` | Safety relationships |
 | `invites`, `invite_redemptions` | Hashed invite codes and who each one let in |
 | `reports`, `moderation_actions` | Reports and appeals; the append-only decision log |
-| `notifications` | One row per event for a member: kind, actor, post, read time. What still shows is decided on read |
-| `media` | Uploaded files: owner, kind, status, type, size, dimensions; for post images also the post, position and description |
+| `notifications` | One row per event for a member: kind, actor, post, read time, and when the email job dealt with it. What still shows is decided on read |
+| `notification_opt_outs` | The kinds of other members' activity a member turned off; everything is on until then. Whether notifications are also emailed is `members.email_notifications` |
+| `media` | Uploaded files: owner, kind, status, type, size, dimensions; for post images also the post, position, description and whether it is an animated GIF |
+| `link_previews` | What a web address leads to, shared by every post that links there: status, title, description, thumbnail. `posts.link_url` names the one a post shows |
 | `profile_badges` | Public badges (the green identity tick); a row only while it may be shown and its owner chose to show it |
 | `restricted.*` | Kept apart from ordinary reads (ADR 0005): `age_assurances` (age-band statements and how each was made; ADR 0006), `identity_verifications`, `governance_memberships`, `governance_audit_log` |
 

@@ -63,18 +63,18 @@ review exist, the product must not claim ownership that members do not yet have.
 ## Capabilities and Constraints
 
 Built: invite-only signup and passwordless sign-in; text posts (300 characters) with
-up to four images and alt text; threaded replies, likes, reposts and quote posts,
+up to four images or GIFs with alt text, links with preview cards; threaded replies, likes, reposts and quote posts,
 private bookmarks; profiles with photo, display name (50 characters) and bio (160);
 follow, mute, block; Latest, Following, community and trending feeds; search across
-members, communities and posts; in-app notifications; reporting, moderation queue,
+members, communities and posts; notifications in the app and by email (grouped, with a one-click unsubscribe); reporting, moderation queue,
 appeals, moderator-only decision log, rate limits; light, dark and system themes;
-data export (format 6); a welcome flow for newcomers (choose communities, then
+data export (format 7); a welcome flow for newcomers (choose communities, then
 suggested people to follow); public governance information and draft constitution;
 About and Progress pages. Voting, verification and the Public Treasury are not live.
 
 Not built (do not design them as if they work): interests or topics to follow
 (communities stand in for them), pinned welcome posts, community photos,
-email or push notifications, community voting, treasury transactions.
+push notifications, community voting, treasury transactions.
 
 Phase 1 non-goals: native apps, DMs, video, payments or creator revenue, AI
 recommendations, algorithmic ranking, federation.

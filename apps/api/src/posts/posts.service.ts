@@ -11,6 +11,8 @@ import {
 import { Inject, Injectable } from '@nestjs/common'
 import { and, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
+import { findLinks, type FoundLink, previewUrlOf } from '../links/link-text.js'
+import { type LinkPreview, type LinkPreviewRow, linkPreviewOf, toLinkPreview } from '../links/links.service.js'
 import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/media.service.js'
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
 import { notify } from '../notifications/notifications.service.js'
@@ -54,13 +56,19 @@ export const newPost = (slug: z.ZodType<string>) =>
     })
     .refine((p) => p.text.length > 0 || p.images.length > 0, { message: 'post is empty', path: ['text'] })
 
+export type PostLink = FoundLink
+
 export type PostImage = {
   /** Path without the size suffix (see `postImagePath`). */
   src: string
   alt: string
   width: number
   height: number
+  /** A GIF: the sizes are animated, and `still.webp` beside them is its first frame. */
+  animated: boolean
 }
+
+type ImageRow = { id: string; alt: string; width: number; height: number; animated: boolean }
 
 /** The post a quote post quotes, as the reader sees it inside the quote. */
 export type QuotedPost =
@@ -100,6 +108,13 @@ export type PostView = {
    * each with the handle that member has now. Empty when `deleted`.
    */
   mentions: PostMention[]
+  /** The web addresses in `text`, in order, for the reader's app to link. Empty when `deleted`. */
+  links: PostLink[]
+  /**
+   * What the first address leads to, once it has been read: shown as a card under
+   * the post. Null when there is none yet, and when `deleted`.
+   */
+  linkPreview: LinkPreview | null
   createdAt: Date
   replyParentId: string | null
   likeCount: number
@@ -214,14 +229,14 @@ const profileFilter: Record<ProfileFilter, SQL> = {
 
 /** A post's ready images in order, as JSON, for any query with `posts` in scope. */
 export const imagesOf = (postId: SQL) =>
-  sql<{ id: string; alt: string; width: number; height: number }[]>`coalesce((select json_agg(json_build_object('id', m.id, 'alt', m.alt, 'width', m.width, 'height', m.height) order by m.position) from media m where m.post_id = ${postId} and m.status = 'ready'), '[]'::json)`
+  sql<ImageRow[]>`coalesce((select json_agg(json_build_object('id', m.id, 'alt', m.alt, 'width', m.width, 'height', m.height, 'animated', m.animated) order by m.position) from media m where m.post_id = ${postId} and m.status = 'ready'), '[]'::json)`
 
-export const toPostImages = (rows: { id: string; alt: string; width: number; height: number }[]): PostImage[] =>
-  rows.map(({ id, alt, width, height }) => ({ src: postImagePath(id), alt, width, height }))
+export const toPostImages = (rows: ImageRow[]): PostImage[] =>
+  rows.map(({ id, alt, width, height, animated }) => ({ src: postImagePath(id), alt, width, height, animated }))
 
 type QuoteRow =
   | (Omit<Extract<QuotedPost, { id: string }>, 'images' | 'createdAt' | 'authorAvatar'> & {
-      images: { id: string; alt: string; width: number; height: number }[]
+      images: ImageRow[]
       createdAt: string
       authorAvatarId: string | null
     })
@@ -277,9 +292,10 @@ export class PostsService {
         authorAvatarId: members.avatarMediaId,
         text: sql<string>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${posts.text} else '' end`,
         images: sql<
-          { id: string; alt: string; width: number; height: number }[]
+          ImageRow[]
         >`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${imagesOf(outerId)} else '[]'::json end`,
         mentions: sql<PostMention[]>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${mentionsOf(viewerId, outerId)} else '[]'::json end`,
+        linkPreview: sql<LinkPreviewRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${linkPreviewOf(sql`"posts"."link_url"`)} end`,
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
         // Kept on the row by triggers (see the posts schema): only active
@@ -315,9 +331,11 @@ export class PostsService {
       .orderBy(...(opts.order ?? []))
       .limit(opts.limit ?? 1000)
 
-    return rows.map(({ communitySlug, communityName, authorAvatarId, images, quote, ...row }) => ({
+    return rows.map(({ communitySlug, communityName, authorAvatarId, images, quote, linkPreview, ...row }) => ({
       ...row,
       images: toPostImages(images),
+      links: findLinks(row.text),
+      linkPreview: toLinkPreview(linkPreview),
       authorAvatar: avatarPath(authorAvatarId),
       community: communitySlug && communityName ? { slug: communitySlug, name: communityName } : null,
       quote: toQuote(quote),
@@ -663,11 +681,12 @@ export class PostsService {
       reply_parent_id: string | null
       created_at: Date
       cursor_timestamp: string
-      view: (Omit<PostView, 'images' | 'createdAt' | 'authorAvatar' | 'quote'> & {
-        images: { id: string; alt: string; width: number; height: number }[]
+      view: (Omit<PostView, 'images' | 'createdAt' | 'authorAvatar' | 'quote' | 'links' | 'linkPreview'> & {
+        images: ImageRow[]
         createdAt: string
         authorAvatarId: string | null
         quote: QuoteRow | null
+        linkPreview: LinkPreviewRow | null
       }) | null
     }
     const { rows } = await this.db.execute<ReplyRow>(sql`
@@ -689,6 +708,7 @@ export class PostsService {
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
           'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id,
           'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
+          'linkPreview', ${linkPreviewOf(sql`p.link_url`)},
           'createdAt', p.created_at, 'replyParentId', p.reply_parent_id,
           'likeCount', p.like_count, 'replyCount', p.reply_count, 'repostCount', p.repost_count,
           'hasReplies', p.reply_count > 0 or exists(select 1 from posts child where child.reply_parent_id = p.id),
@@ -716,10 +736,12 @@ export class PostsService {
             hasReplies: true,
           }
         }
-        const { images, createdAt, authorAvatarId, quote, ...post } = row.view
+        const { images, createdAt, authorAvatarId, quote, linkPreview, ...post } = row.view
         return {
           ...post,
           images: toPostImages(images),
+          links: findLinks(post.text),
+          linkPreview: toLinkPreview(linkPreview),
           createdAt: new Date(createdAt),
           authorAvatar: avatarPath(authorAvatarId),
           quote: toQuote(quote),
@@ -745,7 +767,7 @@ export class PostsService {
       images = [],
       quote,
     }: { replyTo?: string; communitySlug?: string; images?: PostImageInput[]; quote?: string } = {},
-  ): Promise<{ id: string }> {
+  ): Promise<{ id: string; linkUrl: string | null }> {
     let parent: { id: string; authorId: string; rootId: string | null; communityId: string | null } | undefined
     let communityId: string | null = null
     let quoted: { id: string; authorId: string } | undefined
@@ -796,12 +818,16 @@ export class PostsService {
       communityId = community.id
     }
 
+    // The first web address gets a preview card; asking for it is up to the caller,
+    // once the post exists (see `LinksService.request`).
+    const linkUrl = previewUrlOf(text)
     return this.db.transaction(async (tx) => {
       const [row] = await tx
         .insert(posts)
         .values({
           authorId,
           text,
+          linkUrl,
           communityId,
           replyParentId: parent?.id ?? null,
           rootId: parent ? (parent.rootId ?? parent.id) : null,
@@ -837,7 +863,7 @@ export class PostsService {
           : []),
         ...mentioned.map((recipientId) => ({ recipientId, kind: 'mention' as const, actorId: authorId, postId: row!.id })),
       ])
-      return row!
+      return { id: row!.id, linkUrl }
     })
   }
 

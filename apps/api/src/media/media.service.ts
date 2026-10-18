@@ -33,6 +33,9 @@ export class NoScanner implements ContentScanner {
 
 export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
 export type ImageType = (typeof IMAGE_TYPES)[number]
+/** A post may also carry a GIF, which is kept as an animated WebP. A profile photo may not. */
+export const POST_IMAGE_TYPES = [...IMAGE_TYPES, 'image/gif'] as const
+export type PostImageType = (typeof POST_IMAGE_TYPES)[number]
 
 export const AVATAR_MAX_BYTES = 5 * 1024 * 1024
 /** Square sizes we keep: one for lists and posts, one for the profile header. */
@@ -43,6 +46,13 @@ export const POST_IMAGE_MAX_BYTES = 10 * 1024 * 1024
 export const POST_IMAGE_SIZES = [640, 1600] as const
 export const POST_IMAGES_MAX = 4
 export const ALT_MAX = 1000
+/**
+ * A GIF is held decoded, frame by frame, while it is re-encoded, so what costs
+ * memory is frames × pixels. These keep a job within a few hundred megabytes and
+ * keep "short" honest: 300 frames is about half a minute at the usual 10 a second.
+ */
+export const ANIMATION_MAX_FRAMES = 300
+export const ANIMATION_MAX_PIXELS = 40_000_000
 
 // Refuse absurd dimensions before decoding: a tiny file can describe a huge image.
 const MAX_PIXELS = 40_000_000
@@ -64,6 +74,13 @@ const folder: Record<Kind, string> = { avatar: 'avatars', post_image: 'posts' }
 const sizes: Record<Kind, readonly number[]> = { avatar: AVATAR_SIZES, post_image: POST_IMAGE_SIZES }
 const uploadKey = (kind: Kind, mediaId: string) => `${folder[kind]}/${mediaId}`
 const variantKey = (kind: Kind, mediaId: string, size: number) => `${folder[kind]}/${mediaId}/${size}.webp`
+// A GIF's first frame, so readers can pause it and quoted posts need not play it.
+const stillKey = (kind: Kind, mediaId: string) => `${folder[kind]}/${mediaId}/still.webp`
+/** Every file a published image may have: its sizes, and a still if it is animated. */
+const publishedKeys = (kind: Kind, mediaId: string) => [
+  ...sizes[kind].map((px) => variantKey(kind, mediaId, px)),
+  ...(kind === 'post_image' ? [stillKey(kind, mediaId)] : []),
+]
 // Private copies of what moderators took down or the scanner blocked, kept as
 // evidence and so a removal can be undone. Never touched by the abandoned-upload
 // clean-up, here or in the bucket's lifecycle rule.
@@ -80,12 +97,74 @@ export const avatarPath = (mediaId: string | null): string | null =>
 /** Same idea for post images: the web app appends `/640.webp` or `/1600.webp`. */
 export const postImagePath = (mediaId: string): string => `/media/posts/${mediaId}`
 
-/** Decodes an upload, refusing anything that is not a JPEG, PNG or WebP. */
-async function decode(original: Buffer): Promise<ReturnType<typeof sharp>> {
+/** Decodes an upload, refusing anything that is not a JPEG, PNG or WebP (or, where allowed, a GIF's first frame). */
+async function decode(original: Buffer, formats: string[] = ['jpeg', 'png', 'webp']): Promise<ReturnType<typeof sharp>> {
   const image = sharp(original, { limitInputPixels: MAX_PIXELS })
   const meta = await image.metadata()
-  if (!meta.format || !['jpeg', 'png', 'webp'].includes(meta.format)) throw new Error('unsupported format')
+  if (!meta.format || !formats.includes(meta.format)) throw new Error('unsupported format')
   return image
+}
+
+type Encoded = {
+  animated: boolean
+  /** Names inside the image's folder, such as `640.webp`. */
+  files: { name: string; body: Buffer }[]
+  /** Of the largest version, one frame's worth for an animation. */
+  width: number
+  height: number
+}
+
+/** Fits the image within `px` on its longest edge, never enlarging it. */
+const fit = (image: ReturnType<typeof sharp>, px: number) => image.resize(px, px, { fit: 'inside', withoutEnlargement: true })
+
+/**
+ * A GIF with more than one frame as animated WebP at our sizes, plus a still of its
+ * first frame; null for anything that is not an animation. A GIF over the limits
+ * throws, as an unusable file does.
+ */
+async function encodeAnimation(original: Buffer): Promise<Encoded | null> {
+  const source = () => sharp(original, { limitInputPixels: MAX_PIXELS, animated: true })
+  const meta = await source().metadata()
+  const frames = meta.pages ?? 1
+  if (meta.format !== 'gif' || frames < 2) return null
+  const frameHeight = meta.pageHeight ?? meta.height!
+  if (frames > ANIMATION_MAX_FRAMES || meta.width! * frameHeight * frames > ANIMATION_MAX_PIXELS) {
+    throw new Error('animation too long or too large')
+  }
+  const large = await fit(source(), POST_IMAGE_SIZES[1]).webp({ quality: 75 }).toBuffer({ resolveWithObject: true })
+  const width = large.info.width
+  const height = large.info.pageHeight ?? large.info.height
+  // Encoding is the slow part: a GIF already within the small size is not encoded twice.
+  const small =
+    Math.max(width, height) > POST_IMAGE_SIZES[0]
+      ? (await fit(source(), POST_IMAGE_SIZES[0]).webp({ quality: 75 }).toBuffer()) as Buffer
+      : large.data
+  const still = await fit(sharp(original, { limitInputPixels: MAX_PIXELS }), POST_IMAGE_SIZES[0]).webp({ quality: 80 }).toBuffer()
+  return {
+    animated: true,
+    files: [
+      { name: `${POST_IMAGE_SIZES[0]}.webp`, body: small },
+      { name: `${POST_IMAGE_SIZES[1]}.webp`, body: large.data },
+      { name: 'still.webp', body: still },
+    ],
+    width,
+    height,
+  }
+}
+
+/** A post image, whatever it is, as the files we publish: re-encoded, with location data dropped. */
+async function encodePostImage(original: Buffer): Promise<Encoded> {
+  const animation = await encodeAnimation(original)
+  if (animation) return animation
+  const image = await decode(original, ['jpeg', 'png', 'webp', 'gif'])
+  const sized = await Promise.all(
+    POST_IMAGE_SIZES.map(async (px) => {
+      const { data, info } = await fit(image.clone().rotate(), px).webp({ quality: 80 }).toBuffer({ resolveWithObject: true })
+      return { name: `${px}.webp`, body: data, width: info.width, height: info.height }
+    }),
+  )
+  const largest = sized.at(-1)!
+  return { animated: false, files: sized.map(({ name, body }) => ({ name, body })), width: largest.width, height: largest.height }
 }
 
 export type PostImageStatus = 'pending' | 'processing' | 'ready' | 'failed'
@@ -123,7 +202,7 @@ export class MediaService {
   async startUpload(
     ownerId: string,
     kind: Kind,
-    contentType: ImageType,
+    contentType: PostImageType,
     bytes: number,
   ): Promise<{ mediaId: string; uploadUrl: string }> {
     await this.sweepAbandoned(ownerId)
@@ -139,7 +218,7 @@ export class MediaService {
     return this.startUpload(ownerId, 'avatar', contentType, bytes)
   }
 
-  startPostImageUpload(ownerId: string, contentType: ImageType, bytes: number) {
+  startPostImageUpload(ownerId: string, contentType: PostImageType, bytes: number) {
     return this.startUpload(ownerId, 'post_image', contentType, bytes)
   }
 
@@ -255,7 +334,7 @@ export class MediaService {
    * The background job. Keeps the original proportions, never enlarges, and
    * records the dimensions so pages can reserve the image's space before it loads.
    * A file that is not an image fails quietly; storage errors throw so the job
-   * is retried.
+   * is retried. A GIF becomes an animated WebP with a still of its first frame.
    */
   async processPostImage(mediaId: string): Promise<void> {
     const [row] = await this.db
@@ -266,20 +345,9 @@ export class MediaService {
 
     const key = uploadKey('post_image', row.id)
     const original = await this.store.read('uploads', key)
-    let variants: { size: number; body: Buffer; width: number; height: number }[]
+    let encoded: Encoded
     try {
-      const image = await decode(original)
-      variants = await Promise.all(
-        POST_IMAGE_SIZES.map(async (px) => {
-          const { data, info } = await image
-            .clone()
-            .rotate()
-            .resize(px, px, { fit: 'inside', withoutEnlargement: true })
-            .webp({ quality: 80 })
-            .toBuffer({ resolveWithObject: true })
-          return { size: px, body: data, width: info.width, height: info.height }
-        }),
-      )
+      encoded = await encodePostImage(original)
     } catch {
       await this.db.update(media).set({ status: 'failed' }).where(eq(media.id, row.id))
       await this.store.remove('uploads', key)
@@ -287,12 +355,13 @@ export class MediaService {
     }
     if (!(await this.screen('post_image', row.id, row.ownerId, original))) return
 
-    for (const v of variants) await this.store.write('media', variantKey('post_image', row.id, v.size), v.body, 'image/webp')
+    for (const file of encoded.files) {
+      await this.store.write('media', `${folder.post_image}/${row.id}/${file.name}`, file.body, 'image/webp')
+    }
     await this.store.remove('uploads', key)
-    const largest = variants.at(-1)!
     const done = await this.db
       .update(media)
-      .set({ status: 'ready', readyAt: new Date(), width: largest.width, height: largest.height })
+      .set({ status: 'ready', readyAt: new Date(), width: encoded.width, height: encoded.height, animated: encoded.animated })
       .where(and(eq(media.id, row.id), eq(media.status, 'processing')))
       .returning({ id: media.id })
     // Abandoned while we worked: do not leave its files public.
@@ -352,8 +421,7 @@ export class MediaService {
 
   /** Moves published files between the public bucket and the private quarantine. */
   private async moveVariants(kind: Kind, mediaId: string, direction: 'quarantine' | 'release'): Promise<void> {
-    for (const px of sizes[kind]) {
-      const key = variantKey(kind, mediaId, px)
+    for (const key of publishedKeys(kind, mediaId)) {
       const [from, fromKey, to, toKey] =
         direction === 'quarantine'
           ? (['media', key, 'uploads', quarantineKey(key)] as const)
@@ -388,7 +456,7 @@ export class MediaService {
   private async discard(kind: Kind, mediaIds: string[]): Promise<void> {
     if (mediaIds.length === 0) return
     await this.db.update(media).set({ status: 'deleted' }).where(inArray(media.id, mediaIds))
-    for (const id of mediaIds) for (const px of sizes[kind]) await this.store.remove('media', variantKey(kind, id, px))
+    for (const id of mediaIds) for (const key of publishedKeys(kind, id)) await this.store.remove('media', key)
   }
 
   /**

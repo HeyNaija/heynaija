@@ -16,11 +16,11 @@ import { z } from 'zod'
 import { type AuthedRequest, SessionGuard } from '../auth/session.guard.js'
 import { parse } from '../http.js'
 import { RateLimiter } from '../rate-limit.js'
-import { AVATAR_MAX_BYTES, IMAGE_TYPES, MediaError, MediaService, POST_IMAGE_MAX_BYTES } from './media.service.js'
+import { AVATAR_MAX_BYTES, IMAGE_TYPES, MediaError, MediaService, POST_IMAGE_MAX_BYTES, POST_IMAGE_TYPES } from './media.service.js'
 
-const startBody = (maxBytes: number) =>
+const startBody = <T extends readonly [string, ...string[]]>(types: T, maxBytes: number) =>
   z.object({
-    contentType: z.enum(IMAGE_TYPES),
+    contentType: z.enum(types),
     bytes: z.number().int().min(1).max(maxBytes),
   })
 
@@ -53,7 +53,7 @@ export class MediaController {
   @Post('upload')
   @UseGuards(SessionGuard)
   async start(@Req() req: AuthedRequest, @Body() body: unknown) {
-    const { contentType, bytes } = parse(startBody(AVATAR_MAX_BYTES), body)
+    const { contentType, bytes } = parse(startBody(IMAGE_TYPES, AVATAR_MAX_BYTES), body)
     await this.limits.hit('upload', req.member.id)
     return this.media.startAvatarUpload(req.member.id, contentType, bytes)
   }
@@ -90,7 +90,7 @@ export class PostImagesController {
   @Post('upload')
   @UseGuards(SessionGuard)
   async start(@Req() req: AuthedRequest, @Body() body: unknown) {
-    const { contentType, bytes } = parse(startBody(POST_IMAGE_MAX_BYTES), body)
+    const { contentType, bytes } = parse(startBody(POST_IMAGE_TYPES, POST_IMAGE_MAX_BYTES), body)
     await this.limits.hit('postImage', req.member.id)
     return this.media.startPostImageUpload(req.member.id, contentType, bytes)
   }

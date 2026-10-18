@@ -12,11 +12,21 @@ questions in the last section need a Nigerian lawyer.
 
 ## What we are protecting against
 
-Members can upload images (profile photos, and up to four images per post). Any
+Members can upload images (profile photos, and up to four images or GIFs per post). Any
 service that hosts user images will eventually receive known child sexual abuse
 material (CSAM). The aim is that a known image is never published, that anything
 that slips through is taken down quickly, and that we keep what the authorities
 need.
+
+## What the scanner is given
+
+`ContentScanner.scan` receives the **original file** of every upload before it is
+published: a profile photo, a post image, a GIF, and the thumbnail we copy for a
+link preview card. A real scanner must therefore handle **GIFs**, which can hold
+hundreds of frames: scan every frame (or a sample the provider accepts), not just
+the first. The first frame is also what `still.webp` shows, but the animation is
+published too. Link thumbnails are fetched from other sites by our server; they are
+scanned the same way and simply left off the card when blocked.
 
 ## Three layers
 

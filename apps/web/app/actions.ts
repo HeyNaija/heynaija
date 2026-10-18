@@ -234,7 +234,7 @@ export async function startPostImageUpload(contentType: string, bytes: number): 
   })
   if (res.status === 401) redirect('/login')
   if (res.status === 429) return { error: 'You have added a lot of images. Wait a few minutes and try again.' }
-  if (res.status === 400) return { error: 'Choose a JPEG, PNG or WebP image under 10 MB.' }
+  if (res.status === 400) return { error: 'Choose a JPEG, PNG, WebP or GIF under 10 MB.' }
   if (!res.ok) return { error: 'Could not start the upload. Try again in a moment.' }
   return res.json()
 }

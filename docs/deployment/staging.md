@@ -353,6 +353,11 @@ existing account.
       returns **400** (no client certificate).
 - [ ] Sign up with an invite; the code email arrives (check spam, and Resend's
       logs). Sign out and sign in again with a code.
+- [ ] Notification emails: turn on **Email me my notifications** in Settings, have
+      another member reply to one of your posts, and the email arrives within
+      about ten minutes (Resend's logs show it). Its link turns email off again.
+      They need the same `SMTP_*` settings as the sign-in codes; the API reaches
+      Kratos's admin API on the private network for the address.
 - [ ] If Google sign-in is on ([google-sign-in.md](google-sign-in.md)): sign in
       with Google, and connect Google to an existing account in Settings.
 - [ ] A profile photo and a post with images work: the checks in

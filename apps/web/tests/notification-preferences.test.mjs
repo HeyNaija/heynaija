@@ -10,6 +10,7 @@ const form = (...on) => {
 
 test('the Settings form saves every kind: ticked boxes on, the rest off', () => {
   assert.deepEqual(preferencesFromForm(form('reply', 'mention')), {
+    email: false,
     reply: true,
     mention: true,
     like: false,
@@ -21,9 +22,19 @@ test('the Settings form saves every kind: ticked boxes on, the rest off', () => 
   assert.ok(Object.values(preferencesFromForm(form())).every((on) => on === false))
 })
 
+test('the email box is saved on its own: ticking it does not turn any kind on', () => {
+  const data = form('like')
+  data.append('email', 'on')
+  const sent = preferencesFromForm(data)
+  assert.equal(sent.email, true)
+  assert.equal(sent.like, true)
+  assert.equal(sent.reply, false)
+  assert.equal(preferencesFromForm(form('like')).email, false)
+})
+
 test('a kind that cannot be turned off is never sent, even if a form names it', () => {
   const sent = preferencesFromForm(form('like', 'post_removed', 'report_resolved'))
-  assert.deepEqual(Object.keys(sent).sort(), NOTIFICATION_SETTINGS.map(({ kind }) => kind).sort())
+  assert.deepEqual(Object.keys(sent).sort(), ['email', ...NOTIFICATION_SETTINGS.map(({ kind }) => kind)].sort())
   assert.equal(sent.like, true)
 })
 

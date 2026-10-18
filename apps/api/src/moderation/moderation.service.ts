@@ -195,7 +195,7 @@ export class ModerationService {
       report_count: number
       post_id: string | null
       post_text: string | null
-      post_images: { id: string; alt: string; width: number; height: number }[]
+      post_images: { id: string; alt: string; width: number; height: number; animated: boolean }[]
       post_author: string | null
       community_name: string | null
       member_handle: string | null

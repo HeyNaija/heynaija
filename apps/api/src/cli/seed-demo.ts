@@ -205,7 +205,7 @@ async function seed() {
     const joined = at(now - m.joinedDaysAgo * 86_400_000)
     await pool.query(
       // onboarded_at: demo members are settled in, so never sent to /welcome.
-      `insert into members (id, handle, display_name, bio, created_at, last_seen_at, onboarded_at) values ($1, $2, $3, $4, $5, $6, $5)`,
+      `insert into members (id, handle, display_name, bio, created_at, last_seen_at, onboarded_at, email_notifications) values ($1, $2, $3, $4, $5, $6, $5, false)`,
       [id, m.handle, m.name, m.bio, joined, at(now - between(5, 600) * MINUTE)],
     )
     if (m.avatar) await publishAvatar(id, m.avatar, joined)
@@ -276,7 +276,8 @@ async function seed() {
     // Demo members have "seen" theirs; real members find theirs unread.
     const readAt = demo.includes(recipientId) ? createdAt : null
     await pool.query(
-      `insert into notifications (recipient_id, kind, actor_id, post_id, created_at, read_at) values ($1, $2, $3, $4, $5, $6) on conflict do nothing`,
+      // Settled for email: backdated activity is never emailed to anyone.
+      `insert into notifications (recipient_id, kind, actor_id, post_id, created_at, read_at, email_settled_at) values ($1, $2, $3, $4, $5, $6, now()) on conflict do nothing`,
       [recipientId, kind, actorId, postId, createdAt, readAt],
     )
   }

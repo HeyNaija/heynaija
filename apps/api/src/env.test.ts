@@ -39,3 +39,26 @@ test('the person-key secret must be long enough when given', () => {
   assert.throws(() => loadEnv({ ...base, IDENTITY_KEY_SECRET: 'short' }))
   assert.equal(loadEnv({ ...base, IDENTITY_KEY_SECRET: 'k'.repeat(32) }).IDENTITY_KEY_SECRET, 'k'.repeat(32))
 })
+
+test('notification emails are off without an SMTP account, and need a sender and Kratos’s admin address with one', () => {
+  const off = loadEnv(base)
+  assert.equal(off.SMTP_CONNECTION_URI, undefined)
+  assert.equal(off.SMTP_FROM_NAME, 'HeyNaija')
+  assert.equal(off.EMAIL_DIGEST_DELAY_S, 300)
+  assert.equal(off.EMAIL_DIGEST_GAP_S, 1800)
+  assert.equal(off.EMAIL_SWEEP_EVERY_S, 60)
+
+  const smtp = { ...base, SMTP_CONNECTION_URI: 'smtp://127.0.0.1:1026' }
+  assert.throws(() => loadEnv(smtp), /SMTP_FROM_ADDRESS is required/)
+  assert.throws(() => loadEnv({ ...smtp, SMTP_FROM_ADDRESS: 'no-reply@heynaija.test' }), /KRATOS_ADMIN_URL is required/)
+  const on = loadEnv({ ...smtp, SMTP_FROM_ADDRESS: 'no-reply@heynaija.test', KRATOS_ADMIN_URL: 'http://kratos:4434/' })
+  assert.equal(on.KRATOS_ADMIN_URL, 'http://kratos:4434')
+  assert.throws(() => loadEnv({ ...smtp, SMTP_FROM_ADDRESS: 'not an address', KRATOS_ADMIN_URL: 'http://kratos:4434' }))
+})
+
+test('the email timings are numbers of seconds within sensible limits', () => {
+  assert.equal(loadEnv({ ...base, EMAIL_DIGEST_DELAY_S: '10', EMAIL_DIGEST_GAP_S: '30', EMAIL_SWEEP_EVERY_S: '5' }).EMAIL_DIGEST_DELAY_S, 10)
+  assert.throws(() => loadEnv({ ...base, EMAIL_SWEEP_EVERY_S: '0' }))
+  assert.throws(() => loadEnv({ ...base, EMAIL_DIGEST_DELAY_S: '-1' }))
+  assert.throws(() => loadEnv({ ...base, EMAIL_DIGEST_GAP_S: 'soon' }))
+})

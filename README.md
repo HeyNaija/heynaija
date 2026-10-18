@@ -109,7 +109,12 @@ pnpm invite:create --uses 5 --days 14 --note "first testers"
 
 Go to `http://127.0.0.1:3000/join?code=<the code>` (use `127.0.0.1`, not
 `localhost`: Kratos issues its cookies for that host). Emails that Kratos sends
-(sign-up and sign-in codes) land in Mailpit at <http://127.0.0.1:8026>. Google
+(sign-up and sign-in codes) and the API's notification emails land in Mailpit at
+<http://127.0.0.1:8026>. A notification is emailed a few minutes after it happens
+(`EMAIL_DIGEST_DELAY_S`, see `.env.example`; set it to 10 to see one quickly), and only
+if the member has email on in Settings: members who joined before email existed start with it
+off. If your stack is older than this feature, run `pnpm infra:env` and `pnpm infra:up`
+again so the API can reach Mailpit's SMTP port. Google
 sign-in is off locally unless you set it up: [google-sign-in.md](docs/deployment/google-sign-in.md).
 
 `dev:api` recompiles and restarts itself when API code changes.

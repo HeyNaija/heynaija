@@ -1,9 +1,40 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import type { PostImage } from '@/lib/api'
-import { CloseIcon, NextIcon, PreviousIcon } from './icons'
+import { CloseIcon, NextIcon, PauseIcon, PlayIcon, PreviousIcon } from './icons'
+
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
+const watchMotion = (notify: () => void) => {
+  const query = window.matchMedia(REDUCED_MOTION)
+  query.addEventListener('change', notify)
+  return () => query.removeEventListener('change', notify)
+}
+/** Whether the reader's device asks for less motion. False while rendering on the server. */
+const useReducedMotion = () =>
+  useSyncExternalStore(watchMotion, () => window.matchMedia(REDUCED_MOTION).matches, () => false)
+
+/**
+ * Pause and play for a GIF. It plays on its own unless the reader's device asks
+ * for less motion; either way the reader can change it, and anything that moves
+ * for more than a few seconds must be pausable.
+ */
+function useGif(): [playing: boolean, toggle: () => void] {
+  const reduced = useReducedMotion()
+  const [chosen, setChosen] = useState<boolean | null>(null)
+  const playing = chosen ?? !reduced
+  return [playing, () => setChosen(!playing)]
+}
+
+function GifToggle({ playing, onToggle, className = '' }: { playing: boolean; onToggle: () => void; className?: string }) {
+  return (
+    <button type="button" className={`gif-toggle ${className}`} aria-label={playing ? 'Pause GIF' : 'Play GIF'} onClick={onToggle}>
+      {playing ? <PauseIcon size={14} filled /> : <PlayIcon size={14} filled />}
+      <span aria-hidden="true">GIF</span>
+    </button>
+  )
+}
 
 /**
  * A post's images. One image keeps its own shape (within limits); two to four
@@ -26,36 +57,51 @@ export function PostImages({ images, compact = false }: { images: PostImage[]; c
         style={{ aspectRatio: ratio }}
       >
         {images.map((image, i) => (
-          <a
-            key={image.src}
-            href={`${image.src}/1600.webp`}
-            target="_blank"
-            rel="noopener"
-            className="post-image"
-            aria-label={`View image ${i + 1} of ${images.length}${image.alt.trim() ? `: ${image.alt.trim()}` : ''}`}
-            onClick={(e) => {
-              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
-              e.preventDefault()
-              setOpen(i)
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element -- already resized to the sizes we need */}
-            <img
-              src={`${image.src}/640.webp`}
-              srcSet={`${image.src}/640.webp 640w, ${image.src}/1600.webp 1600w`}
-              sizes={single ? '(max-width: 640px) 100vw, 560px' : '(max-width: 640px) 50vw, 280px'}
-              alt={image.alt}
-              width={image.width}
-              height={image.height}
-              loading="lazy"
-              decoding="async"
-            />
-          </a>
+          <Tile key={image.src} image={image} label={`View ${image.animated ? 'GIF' : 'image'} ${i + 1} of ${images.length}${image.alt.trim() ? `: ${image.alt.trim()}` : ''}`} sizes={single ? '(max-width: 640px) 100vw, 560px' : '(max-width: 640px) 50vw, 280px'} onOpen={() => setOpen(i)} />
         ))}
       </div>
       {/* Keep the top-layer viewer outside feed cards and their layout/interaction styles. */}
       {open !== null ? createPortal(<ImageViewer images={images} start={open} onClose={() => setOpen(null)} />, document.body) : null}
     </>
+  )
+}
+
+/** One image in the grid; a GIF has a pause button beside its link, since a button cannot sit inside one. */
+function Tile({ image, label, sizes, onOpen }: { image: PostImage; label: string; sizes: string; onOpen: () => void }) {
+  const [playing, toggle] = useGif()
+  const still = image.animated && !playing
+  const link = (
+    <a
+      href={`${image.src}/1600.webp`}
+      target="_blank"
+      rel="noopener"
+      className={image.animated ? 'post-image-link' : 'post-image'}
+      aria-label={label}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+        e.preventDefault()
+        onOpen()
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- already resized to the sizes we need */}
+      <img
+        src={`${image.src}/${still ? 'still' : '640'}.webp`}
+        srcSet={still ? undefined : `${image.src}/640.webp 640w, ${image.src}/1600.webp 1600w`}
+        sizes={sizes}
+        alt={image.alt}
+        width={image.width}
+        height={image.height}
+        loading="lazy"
+        decoding="async"
+      />
+    </a>
+  )
+  if (!image.animated) return link
+  return (
+    <div className="post-image is-animated">
+      {link}
+      <GifToggle playing={playing} onToggle={toggle} />
+    </div>
   )
 }
 
@@ -71,6 +117,10 @@ function ImageViewer({ images, start, onClose }: { images: PostImage[]; start: n
   const swiped = useRef(false)
   const many = images.length > 1
   const image = images[index]!
+  const reduced = useReducedMotion()
+  // Chosen per GIF, so pausing one does not pause the next.
+  const [chosen, setChosen] = useState<Record<string, boolean>>({})
+  const playing = chosen[image.src] ?? !reduced
   const go = (step: number) => setIndex((i) => (i + step + images.length) % images.length)
 
   // No cleanup: removing the element closes the dialog, while calling close()
@@ -127,7 +177,7 @@ function ImageViewer({ images, start, onClose }: { images: PostImage[]; start: n
         {/* eslint-disable-next-line @next/next/no-img-element -- the stored large version */}
         <img
           key={image.src}
-          src={`${image.src}/1600.webp`}
+          src={image.animated && !playing ? `${image.src}/still.webp` : `${image.src}/1600.webp`}
           alt={image.alt}
           width={image.width}
           height={image.height}
@@ -140,6 +190,9 @@ function ImageViewer({ images, start, onClose }: { images: PostImage[]; start: n
           <span className="tabular-nums" aria-hidden="true">
             {index + 1} / {images.length}
           </span>
+        ) : null}
+        {image.animated ? (
+          <GifToggle playing={playing} onToggle={() => setChosen((all) => ({ ...all, [image.src]: !playing }))} className="is-viewer" />
         ) : null}
         {image.alt ? <p className="image-viewer-caption">{image.alt}</p> : null}
       </div>

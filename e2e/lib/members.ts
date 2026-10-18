@@ -90,8 +90,12 @@ export async function newMember(browser: Browser, role: string, options: Paramet
   return { handle, email, context, page }
 }
 
-/** Posts `text` from the composer at the top of the home feed and waits for it to appear. */
-export async function post(page: Page, text: string, community?: string) {
+/**
+ * Posts `text` from the composer at the top of the home feed and waits for it to appear.
+ * `find` is what to look for in the post once it is on screen, when the page shows the
+ * text differently from how it was typed (an address is shown without its https://).
+ */
+export async function post(page: Page, text: string, community?: string, find = text) {
   await page.goto('/')
   // The textbox, not the mobile "+" link, which shares the "New post" name.
   const box = page.getByRole('textbox', { name: 'New post' })
@@ -99,7 +103,7 @@ export async function post(page: Page, text: string, community?: string) {
   await box.fill(text)
   if (community) await page.getByLabel('Post to').selectOption({ label: community })
   await page.getByRole('button', { name: 'Post', exact: true }).click()
-  const article = page.locator('article', { hasText: text }).first()
+  const article = page.locator('article', { hasText: find }).first()
   await expect(article).toBeVisible()
   return article
 }

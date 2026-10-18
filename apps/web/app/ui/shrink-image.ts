@@ -4,6 +4,9 @@
 // original is returned and the server does the same work.
 
 export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+/** What a post may carry: a GIF too, sent as it is (redrawing it here would flatten it to one frame). */
+export const POST_IMAGE_TYPES = [...IMAGE_TYPES, 'image/gif']
+export const isGif = (file: { type: string }) => file.type === 'image/gif'
 
 /**
  * `square`: crop to a centred square `max` pixels wide (profile photos).

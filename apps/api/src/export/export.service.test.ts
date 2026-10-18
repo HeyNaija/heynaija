@@ -113,6 +113,13 @@ test('an export says which kinds of activity the member is notified about', asyn
   assert.deepEqual((await service.export(bayo, null))!.notificationPreferences, allOn)
 })
 
+test('an export says whether notifications are also emailed', async () => {
+  assert.equal((await service.export(ada, null))!.emailNotifications, true)
+  await notificationsService.setPreferences(ada, { email: false })
+  assert.equal((await service.export(ada, null))!.emailNotifications, false)
+  assert.equal((await service.export(bayo, null))!.emailNotifications, true)
+})
+
 test('an unknown member has no export', async () => {
   assert.equal(await service.export(randomUUID(), null), null)
 })

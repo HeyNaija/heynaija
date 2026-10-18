@@ -8,14 +8,15 @@ import { NotificationsService, NotOptionalError, type OptionalNotificationKind }
 
 const readBody = z.object({ upTo: z.uuid() })
 
-// Each kind a member may turn off, true for on. Any other key, including a
-// moderation or account notice, is refused.
-const preferencesBody = z.strictObject(
-  Object.fromEntries(OPTIONAL_NOTIFICATION_KINDS.map((kind) => [kind, z.boolean().optional()])) as Record<
+// Each kind a member may turn off, true for on, and whether to email them. Any
+// other key, including a moderation or account notice, is refused.
+const preferencesBody = z.strictObject({
+  ...(Object.fromEntries(OPTIONAL_NOTIFICATION_KINDS.map((kind) => [kind, z.boolean().optional()])) as Record<
     OptionalNotificationKind,
     z.ZodOptional<z.ZodBoolean>
-  >,
-)
+  >),
+  email: z.boolean().optional(),
+})
 
 @Controller('v1/notifications')
 export class NotificationsController {
@@ -40,14 +41,14 @@ export class NotificationsController {
     await this.notifications.markRead(req.member.id, upTo)
   }
 
-  /** Which kinds of activity the member is notified about. */
+  /** Which kinds of activity the member is notified about, and whether they are emailed. */
   @Get('preferences')
   @UseGuards(SessionGuard)
   preferences(@Req() req: AuthedRequest) {
     return this.notifications.preferences(req.member.id)
   }
 
-  /** Turns kinds on or off; kinds left out stay as they are. Answers with the result. */
+  /** Turns kinds and email on or off; anything left out stays as it is. Answers with the result. */
   @Put('preferences')
   @UseGuards(SessionGuard)
   async setPreferences(@Req() req: AuthedRequest, @Body() body: unknown) {

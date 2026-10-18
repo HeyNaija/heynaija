@@ -46,6 +46,7 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['reports', `delete from reports where reporter_id in (select id from e2e_m) or member_id in (select id from e2e_m)
            or post_id in (select id from e2e_p) or resolved_by in (select id from e2e_m)`],
         ['notification settings', `delete from notification_opt_outs where member_id in (select id from e2e_m)`],
+        ['link previews', `delete from link_previews where url like 'https://links.e2e.test/%'`],
         ['mentions', `delete from post_mentions where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['likes', `delete from likes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['reposts', `delete from reposts where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
@@ -193,5 +194,62 @@ export async function ageSignIn(handle: string, minutes: number) {
     if (!rowCount) throw new Error(`no active Kratos session for @${handle}`)
   } finally {
     await kratos.end()
+  }
+}
+
+/**
+ * Gives an address a ready preview card without the page being fetched: the API
+ * (rightly) refuses to read pages from this machine, and tests cannot reach the
+ * internet. Use an address under https://links.e2e.test/, which cleaning removes.
+ */
+export async function seedLinkPreview(url: string, { title, description }: { title: string; description: string }) {
+  if (!url.startsWith('https://links.e2e.test/')) throw new Error('seed previews only for https://links.e2e.test/')
+  const db = pool()
+  try {
+    await db.query(
+      `insert into link_previews (url, status, title, description, site_name, fetched_at) values ($1, 'ready', $2, $3, 'E2E News', now())
+       on conflict (url) do update set status = 'ready', title = $2, description = $3, fetched_at = now()`,
+      [url, title, description],
+    )
+  } finally {
+    await db.end()
+  }
+}
+
+/**
+ * Makes what has happened to `handle` so far look `minutes` old, so the email job
+ * treats it as ready to send instead of waiting out its real delay (five minutes).
+ */
+export async function ageNotifications(handle: string, minutes = 10) {
+  const db = pool()
+  try {
+    const { rowCount } = await db.query(
+      `update notifications set created_at = created_at - make_interval(mins => $2)
+       where recipient_id = (select id from members where handle = $1)`,
+      [handle, minutes],
+    )
+    if (!rowCount) throw new Error(`no notifications for @${handle} to age`)
+  } finally {
+    await db.end()
+  }
+}
+
+/** Waits until the email job has dealt with every notification `handle` has: sent, or passed over. */
+export async function waitForEmailJob(handle: string, timeoutMs = 90_000) {
+  const db = pool()
+  try {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const { rows } = await db.query<{ waiting: number; total: number }>(
+        `select count(*) filter (where n.email_settled_at is null)::int as waiting, count(*)::int as total
+         from notifications n join members m on m.id = n.recipient_id where m.handle = $1`,
+        [handle],
+      )
+      if (rows[0]!.total > 0 && rows[0]!.waiting === 0) return
+      await new Promise((r) => setTimeout(r, 500))
+    }
+    throw new Error(`the email job did not deal with @${handle}'s notifications within ${timeoutMs / 1000}s`)
+  } finally {
+    await db.end()
   }
 }

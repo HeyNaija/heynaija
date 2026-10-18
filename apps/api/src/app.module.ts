@@ -6,12 +6,21 @@ import { RedisSessionCache, SESSION_CACHE } from './auth/session-cache.js'
 import { OptionalSessionGuard, SessionGuard, SuspendedAllowedGuard } from './auth/session.guard.js'
 import { CommunitiesController } from './communities/communities.controller.js'
 import { CommunitiesService } from './communities/communities.service.js'
+import { EMAIL_ADDRESSES, KratosAddresses } from './email/addresses.js'
+import { EmailController } from './email/email.controller.js'
+import { BullEmailJobs, EmailWorker } from './email/email-queue.js'
+import { EMAIL_JOBS, EMAIL_SETTINGS, EmailNotificationsService } from './email/email-notifications.service.js'
+import { MAILER, smtpMailer } from './email/mailer.js'
+import { unsubscribeKey } from './email/unsubscribe-token.js'
 import { type Env, loadEnv } from './env.js'
 import { ExportController } from './export/export.controller.js'
 import { ExportService } from './export/export.service.js'
 import { GovernanceController } from './governance/governance.controller.js'
 import { GovernanceService } from './governance/governance.service.js'
 import { InvitesService } from './invites/invites.service.js'
+import { BullLinkJobs, LinkWorker } from './links/link-queue.js'
+import { LINK_JOBS, LinksService, PAGE_FETCHER } from './links/links.service.js'
+import { SafeFetcher } from './links/safe-fetch.js'
 import { MediaController, PostImagesController } from './media/media.controller.js'
 import { BullMediaJobs, MediaWorker } from './media/media-queue.js'
 import { CONTENT_SCANNER, MEDIA_JOBS, MediaService, NoScanner, OBJECT_STORE } from './media/media.service.js'
@@ -40,7 +49,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, ExportController, GovernanceController, OnboardingController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, ExportController, GovernanceController, OnboardingController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -57,11 +66,32 @@ class HealthController {
     { provide: CONTENT_SCANNER, useClass: NoScanner },
     MediaService,
     MediaWorker,
+    { provide: LINK_JOBS, useClass: BullLinkJobs },
+    // Reads linked pages for previews, and only ever from the public internet.
+    { provide: PAGE_FETCHER, useFactory: () => new SafeFetcher() },
+    LinksService,
+    LinkWorker,
     MembersService,
     CommunitiesService,
     InvitesService,
     PostsService,
     NotificationsService,
+    { provide: EMAIL_JOBS, useClass: BullEmailJobs },
+    // Without an SMTP account (SMTP_CONNECTION_URI) these are null and no email is sent.
+    { provide: MAILER, useFactory: smtpMailer, inject: [ENV] },
+    { provide: EMAIL_ADDRESSES, useFactory: (env: Env) => (env.KRATOS_ADMIN_URL ? new KratosAddresses(env.KRATOS_ADMIN_URL) : null), inject: [ENV] },
+    {
+      provide: EMAIL_SETTINGS,
+      useFactory: (env: Env) => ({
+        webUrl: env.WEB_PUBLIC_URL,
+        unsubscribeKey: unsubscribeKey(env.KRATOS_WEBHOOK_SECRET),
+        delayS: env.EMAIL_DIGEST_DELAY_S,
+        gapS: env.EMAIL_DIGEST_GAP_S,
+      }),
+      inject: [ENV],
+    },
+    EmailNotificationsService,
+    EmailWorker,
     ExportService,
     GovernanceService,
     OnboardingService,

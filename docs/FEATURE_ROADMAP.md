@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 29 | 10 | 24 | 14 | 77 |
+| 32 | 10 | 24 | 14 | 80 |
 
 ## Priority order
 
@@ -193,7 +193,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** See replies, likes, reposts, quotes, follows and moderation outcomes inside HeyNaija.
 - **Inspected evidence:** `apps/api/src/notifications/notifications.service.ts`, `apps/web/app/(main)/notifications/page.tsx`, `apps/api/src/notifications/notifications.service.test.ts`, `e2e/tests/moderation.spec.ts`
-- **Audit notes:** No push, email delivery or realtime streaming is implied.
+- **Audit notes:** No push or realtime streaming is implied. Email is a separate feature (email-notifications).
 
 ### Safety and privacy
 
@@ -355,7 +355,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Help newcomers choose interests, communities and people to follow.
 - **Inspected evidence:** `packages/db/drizzle/0019_onboarding.sql`, `apps/api/src/onboarding/onboarding.service.ts`, `apps/api/src/onboarding/onboarding.controller.ts`, `apps/web/app/(main)/welcome/page.tsx`, `apps/web/app/(main)/page.tsx`, `apps/web/lib/onboarding.ts`, `apps/api/src/onboarding/onboarding.service.test.ts`, `apps/web/tests/onboarding.test.mjs`, `e2e/tests/onboarding.spec.ts`, `e2e/tests/auth.spec.ts`
-- **Audit notes:** New members are sent from the home page to /welcome until they finish or skip it (members.onboarded_at; migration 0019 set it for everyone who joined before). Step 1 chooses communities, step 2 suggests up to 12 people (moderators and recent posters in the chosen communities, then recent posters site-wide; never yourself, suspended members, blocks either way, or people already followed or muted), and finishing joins and follows everything in one transaction through the usual join and follow code, so counts, follow notifications and the shared action rate limit apply; it lands on Following with a nudge to post. Every step, and the whole flow, can be skipped. Communities stand in for interests until topic-following exists; there is no interest or topic picker. No inviter is suggested: invites are admin-created codes. The forms are plain forms, but the page streams like other signed-in pages, so the known no-JavaScript limitation applies. The data export (format 6) includes onboardedAt.
+- **Audit notes:** New members are sent from the home page to /welcome until they finish or skip it (members.onboarded_at; migration 0019 set it for everyone who joined before). Step 1 chooses communities, step 2 suggests up to 12 people (moderators and recent posters in the chosen communities, then recent posters site-wide; never yourself, suspended members, blocks either way, or people already followed or muted), and finishing joins and follows everything in one transaction through the usual join and follow code, so counts, follow notifications and the shared action rate limit apply; it lands on Following with a nudge to post. Every step, and the whole flow, can be skipped. Communities stand in for interests until topic-following exists; there is no interest or topic picker. No inviter is suggested: invites are admin-created codes. The forms are plain forms, but the page streams like other signed-in pages, so the known no-JavaScript limitation applies. The data export (format 7) includes onboardedAt.
 
 #### Notification preferences
 
@@ -363,9 +363,26 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Choose which activity should create notifications.
 - **Inspected evidence:** `packages/db/drizzle/0018_notification_preferences.sql`, `apps/api/src/notifications/notifications.service.ts`, `apps/api/src/notifications/notifications.controller.ts`, `apps/api/src/export/export.service.ts`, `apps/web/app/(main)/settings/page.tsx`, `apps/web/app/ui/notification-preferences-form.tsx`, `apps/api/src/notifications/notifications.service.test.ts`, `apps/api/src/export/export.service.test.ts`, `apps/web/tests/notification-preferences.test.mjs`, `e2e/tests/notification-preferences.spec.ts`
-- **Audit notes:** Settings has one box each for replies, mentions, likes, reposts, quotes and follows; all are on until turned off, and only what is off is stored (notification_opt_outs). A database check keeps moderation and account notices out, so they are always sent. Turning a kind off stops new notifications of that kind and keeps those already received. In-app only; there is no channel dimension yet. The data export (format 5) includes the choices.
+- **Audit notes:** Settings has one box each for replies, mentions, likes, reposts, quotes and follows; all are on until turned off, and only what is off is stored (notification_opt_outs). A database check keeps moderation and account notices out, so they are always sent. Turning a kind off stops new notifications of that kind and keeps those already received. The kinds decide what notifies a member at all, so they decide what is emailed too; email itself is one switch beside them (email-notifications). The data export (format 7) includes the choices.
 
 ### Conversations and feeds
+
+#### Links and preview cards in posts
+
+- **ID:** `post-links`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Availability not verified
+- **Description:** Web addresses in a post are links, and the first one gets a card with the page's title, text and a picture.
+- **Inspected evidence:** `apps/api/src/links/link-text.ts`, `apps/api/src/links/links.service.ts`, `apps/api/src/links/safe-fetch.ts`, `apps/web/app/ui/post-text.tsx`, `apps/web/app/ui/link-card.tsx`, `apps/api/src/links/links.service.test.ts`, `apps/api/src/links/safe-fetch.test.ts`, `e2e/tests/links.spec.ts`
+- **Audit notes:** Pages are read by the server, which refuses private and local addresses (ADR 0008); readers' browsers never contact the linked site. Only addresses starting http(s):// or www. are linked. Link thumbnails pass the same scanner binding as other uploads.
+
+#### GIFs in posts
+
+- **ID:** `gif-posts`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Availability not verified
+- **Description:** Attach a GIF to a post: it plays in the feed, can be paused, and shows its first frame to readers who ask for less motion.
+- **Dependencies:** `image-posts`
+- **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`, `apps/web/app/ui/composer.tsx`, `apps/api/src/media/media.service.test.ts`, `e2e/tests/gifs.spec.ts`
+- **Audit notes:** Uploaded GIFs only (no search provider); at most 300 frames and 40 million pixels in all, 10 MB. Kept as animated WebP with a still of the first frame, which quoted posts and share previews use.
 
 #### Mentions and mention notifications
 
@@ -438,14 +455,23 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Give communities their own uploaded visual identities.
 - **Inspected evidence:** `packages/db/src/schema.ts`, `apps/web/app/ui/community-mark.tsx`, `apps/api/src/media/media.controller.ts`
 
-#### Email and push activity notifications
+#### Email notifications
 
-- **ID:** `email-push`
+- **ID:** `email-notifications`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
+- **Description:** Receive the same notifications by email, grouped into one message, with a one-click way to stop.
+- **Dependencies:** `in-app-notifications`, `notification-preferences`
+- **Inspected evidence:** `packages/db/drizzle/0021_notification_emails.sql`, `apps/api/src/email/email-notifications.service.ts`, `apps/api/src/email/email-queue.ts`, `apps/api/src/email/email.controller.ts`, `apps/api/src/email/digest.ts`, `apps/api/src/email/mailer.ts`, `apps/api/src/email/addresses.ts`, `apps/web/app/ui/notification-preferences-form.tsx`, `apps/web/app/(main)/email-off/page.tsx`, `apps/api/src/email/email-notifications.service.test.ts`, `apps/api/src/email/digest.test.ts`, `apps/api/src/email/unsubscribe-token.test.ts`, `e2e/tests/notification-emails.spec.ts`, `docs/adr/0009-notification-emails.md`
+- **Audit notes:** A background job (BullMQ) looks every minute for members whose oldest waiting notification is five minutes old and who were not emailed in the last 30 minutes, and sends each one email for everything waiting; likes of one post, reposts and follows are rolled into one line. What is emailed is decided when it is sent: nothing the member has read in the app, opted out of, blocked, muted, or that was taken down; nothing for suspended members or notifications over a day old; moderation notices are always emailed while email is on, in general words with no post text or reason. One switch in Settings (members.email_notifications), on for members who join from now on and off for everyone who joined before (migration 0021). Every email has a signed one-click unsubscribe link (body and List-Unsubscribe headers, RFC 8058) that turns email off and nothing else. The address is read from Kratos's admin API when sending and is not copied; mail goes through the SMTP account Kratos already uses (Resend, Mailpit locally). Delivery through Resend, and the inbox placement of these emails, have not been checked on staging. The data export (format 7) includes the switch.
+
+#### Push activity notifications
+
+- **ID:** `push-notifications`
 - **Priority:** P1 · **Status:** Planned · **Availability:** Not live
-- **Description:** Optionally receive social activity outside the app.
+- **Description:** Optionally receive social activity as push notifications outside the app.
 - **Dependencies:** `notification-preferences`
 - **Inspected evidence:** `apps/api/src/notifications/notifications.service.ts`, `apps/web/app/manifest.ts`, `docs/e2e.md`
-- **Audit notes:** Account sign-in emails are distinct from social activity notifications.
+- **Audit notes:** Email notifications are a separate feature (email-notifications); a manifest and icons do not establish push delivery.
 
 ### Reliability and access
 
@@ -463,7 +489,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P1 · **Status:** Planned · **Availability:** Not live
 - **Description:** Let members choose how much media loads on limited connections.
 - **Inspected evidence:** `apps/web/app/ui/post-images.tsx`, `apps/web/app/ui/shrink-image.ts`, `apps/web/app/(main)/settings/page.tsx`
-- **Audit notes:** Upload resizing is implemented; member low-data settings and autoplay controls are not. Video is not supported.
+- **Audit notes:** Upload resizing is implemented; member low-data settings are not. GIFs play unless the device asks for less motion and can be paused. Video is not supported.
 
 ## P2 — Growth and community
 
@@ -636,6 +662,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Support video with accessible playback and appropriate safety processing.
 - **Dependencies:** `upload-scanning`
 - **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`
+- **Audit notes:** Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built.
 
 ## P3 — Later experiments
 

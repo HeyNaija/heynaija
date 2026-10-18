@@ -30,7 +30,7 @@ export function QuotedPostCard({ quote, now }: { quote: QuotedPost; now: number 
         <span className="quoted-post-images" data-count={quote.images.length}>
           {quote.images.map((image) => (
             // eslint-disable-next-line @next/next/no-img-element -- already resized; next/image would resize again
-            <img key={image.src} src={`${image.src}/640.webp`} alt={image.alt} loading="lazy" decoding="async" />
+            <img key={image.src} src={`${image.src}/${image.animated ? 'still' : '640'}.webp`} alt={image.alt} loading="lazy" decoding="async" />
           ))}
         </span>
       ) : null}

@@ -26,6 +26,8 @@ import {
   Link,
   type LucideIcon,
   MessageCircle,
+  Pause,
+  Play,
   Plus,
   Quote,
   Repeat2,
@@ -81,6 +83,8 @@ export const ShieldIcon = icon(Shield)
 export const VoteIcon = icon(Vote)
 export const ImageIcon = icon(ImagePlus)
 export const CloseIcon = icon(X)
+export const PlayIcon = icon(Play)
+export const PauseIcon = icon(Pause)
 export const PreviousIcon = icon(ChevronLeft)
 export const NextIcon = icon(ChevronRight)
 export const ArrowUpRightIcon = icon(ArrowUpRight)
@@ -97,6 +101,15 @@ export const DoneIcon = icon(CircleCheck)
 export const InProgressIcon = icon(CircleDot)
 export const NotStartedIcon = icon(CircleDashed)
 export const OwnershipIcon = icon(KeyRound)
+
+/** "GIF" in a small frame, so it reads as something other than the photo icon next to it. */
+export function GifIcon({ size = 20 }: Props) {
+  return (
+    <span aria-hidden="true" className="gif-glyph" style={{ width: size, height: Math.round(size * 0.8), fontSize: Math.round(size * 0.4) }}>
+      GIF
+    </span>
+  )
+}
 
 // Service marks for share destinations, kept monochrome to follow the app theme.
 export function WhatsAppIcon({ size = 20 }: Props) {
