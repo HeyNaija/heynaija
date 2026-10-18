@@ -257,7 +257,7 @@ In a thread, the reply composer is a borderless inline editor. A 32px avatar sit
 
 ### App icons
 
-The favicon uses the approved wordmark’s rounded H and two leaf accents on white. `public/brand/heynaija-mark.svg` is the vector source. `node apps/web/scripts/generate-icons.cjs` regenerates the 16/32/48px browser ICO, 512px app icon, 180px Apple icon and 192/512px installable-app icons from it. The full HeyNaija wordmark remains unchanged.
+The favicon uses the approved white HN monogram on a rounded deep green (`#024822`) tile, with transparent outer corners. `public/brand/heynaija-mark.svg` is the vector source, traced from the approved preview. `node apps/web/scripts/generate-icons.cjs` regenerates the 16/32/48px browser ICO, 512px app icon, 180px Apple icon and 192/512px installable-app icons from it. The full HeyNaija wordmark remains unchanged.
 
 ### Discovery and account pages
 
