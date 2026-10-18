@@ -23,6 +23,8 @@ import { ModerationController } from './moderation/moderation.controller.js'
 import { ModerationService } from './moderation/moderation.service.js'
 import { NotificationsController } from './notifications/notifications.controller.js'
 import { NotificationsService } from './notifications/notifications.service.js'
+import { OnboardingController } from './onboarding/onboarding.controller.js'
+import { OnboardingService } from './onboarding/onboarding.service.js'
 import { PostsController } from './posts/posts.controller.js'
 import { PostsService } from './posts/posts.service.js'
 import { RateLimiter, RedisRateLimiter } from './rate-limit.js'
@@ -38,7 +40,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, ExportController, GovernanceController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, ExportController, GovernanceController, OnboardingController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -62,6 +64,7 @@ class HealthController {
     NotificationsService,
     ExportService,
     GovernanceService,
+    OnboardingService,
   ],
 })
 export class AppModule {}

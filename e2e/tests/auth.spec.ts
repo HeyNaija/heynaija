@@ -6,8 +6,12 @@ import { handleFor, signIn, signUp } from '../lib/members.ts'
 
 test('joins with an invite, signs up with an emailed code and lands signed in @mobile', async ({ page }) => {
   const handle = handleFor('joiner')
-  await signUp(page, handle)
-  // Signed in as the new member: the composer is there and the account menu names them.
+  await signUp(page, handle, { welcome: 'stay' })
+  // Signed in as the new member, who starts on the welcome flow; skipping it leads home.
+  await expect(page.getByRole('heading', { level: 1, name: /Find your places/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Skip setup' }).click()
+  await page.waitForURL((url) => url.pathname === '/')
+  // The composer is there and the account menu names them.
   await expect(page.getByRole('textbox', { name: 'New post' })).toBeVisible()
   await page.getByLabel('Account menu').click()
   // Phones also have a Profile tab in the bottom bar; use the one in the open menu.

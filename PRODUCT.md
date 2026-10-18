@@ -68,11 +68,12 @@ private bookmarks; profiles with photo, display name (50 characters) and bio (16
 follow, mute, block; Latest, Following, community and trending feeds; search across
 members, communities and posts; in-app notifications; reporting, moderation queue,
 appeals, moderator-only decision log, rate limits; light, dark and system themes;
-data export (format 3); public governance information and draft constitution;
+data export (format 6); a welcome flow for newcomers (choose communities, then
+suggested people to follow); public governance information and draft constitution;
 About and Progress pages. Voting, verification and the Public Treasury are not live.
 
-Not built (do not design them as if they work): onboarding (interests, communities,
-suggested people), pinned welcome posts, community photos,
+Not built (do not design them as if they work): interests or topics to follow
+(communities stand in for them), pinned welcome posts, community photos,
 email or push notifications, community voting, treasury transactions.
 
 Phase 1 non-goals: native apps, DMs, video, payments or creator revenue, AI

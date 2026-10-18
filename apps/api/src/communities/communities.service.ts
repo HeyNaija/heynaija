@@ -1,6 +1,7 @@
 import { communities, communityMemberships, type Db, members } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
 import { and, asc, eq, ilike, or, sql } from 'drizzle-orm'
+import type { Queries } from '../members/members.service.js'
 import { DB } from '../tokens.js'
 
 export type CommunitySummary = {
@@ -86,19 +87,22 @@ export class CommunitiesService {
     return { ...row, moderators: moderators.map((m) => m.handle) }
   }
 
-  private async idForSlug(slug: string): Promise<string | null> {
-    const [row] = await this.db
+  private async idForSlug(slug: string, db: Queries = this.db): Promise<string | null> {
+    const [row] = await db
       .select({ id: communities.id })
       .from(communities)
       .where(and(eq(communities.slug, slug), eq(communities.active, true)))
     return row?.id ?? null
   }
 
-  /** Idempotent. False if there is no such community. */
-  async join(memberId: string, slug: string): Promise<boolean> {
-    const communityId = await this.idForSlug(slug)
+  /**
+   * Idempotent. False if there is no such community. Runs in `db` when given a
+   * transaction (the welcome flow joins several at once).
+   */
+  async join(memberId: string, slug: string, db: Queries = this.db): Promise<boolean> {
+    const communityId = await this.idForSlug(slug, db)
     if (!communityId) return false
-    await this.db.insert(communityMemberships).values({ communityId, memberId }).onConflictDoNothing()
+    await db.insert(communityMemberships).values({ communityId, memberId }).onConflictDoNothing()
     return true
   }
 

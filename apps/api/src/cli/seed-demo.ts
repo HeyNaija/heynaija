@@ -204,7 +204,8 @@ async function seed() {
     await pool.query('insert into demo_members (id) values ($1)', [id])
     const joined = at(now - m.joinedDaysAgo * 86_400_000)
     await pool.query(
-      `insert into members (id, handle, display_name, bio, created_at, last_seen_at) values ($1, $2, $3, $4, $5, $6)`,
+      // onboarded_at: demo members are settled in, so never sent to /welcome.
+      `insert into members (id, handle, display_name, bio, created_at, last_seen_at, onboarded_at) values ($1, $2, $3, $4, $5, $6, $5)`,
       [id, m.handle, m.name, m.bio, joined, at(now - between(5, 600) * MINUTE)],
     )
     if (m.avatar) await publishAvatar(id, m.avatar, joined)

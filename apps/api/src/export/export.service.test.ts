@@ -51,6 +51,11 @@ test('an export holds what the member made and chose, by handle', async () => {
     { handle: data.account.handle, email: data.account.email, name: data.account.displayName, bio: data.account.bio },
     { handle: 'ada', email: 'ada@example.test', name: 'Ada O.', bio: 'Lagos' },
   )
+  // Not through the welcome flow yet; once through, when.
+  assert.equal(data.account.onboardedAt, null)
+  const onboardedAt = new Date('2026-10-18T09:00:00Z')
+  await db.update(members).set({ onboardedAt }).where(eq(members.id, ada))
+  assert.deepEqual((await service.export(ada, null))!.account.onboardedAt, onboardedAt)
   // Deleted posts are still held, so they are in the export, marked as deleted.
   assert.deepEqual(
     data.posts.map((p) => [p.id, p.text, p.deletedAt !== null, p.quoteOf]),

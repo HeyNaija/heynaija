@@ -34,6 +34,9 @@ export async function membersForHandles(db: Pick<Db, 'execute'>, handles: string
   return new Map(rows.flatMap((r) => (r.member_id ? [[r.handle, r.member_id] as const] : [])))
 }
 
+/** The database, or a transaction on it. */
+export type Queries = Pick<Db, 'select' | 'insert' | 'execute'>
+
 const atMost = (max: number) => (t: string) => t.length <= max * 16 && graphemes(t) <= max
 
 /** What a member can say about themselves. An empty name means "just my handle". */
@@ -83,8 +86,8 @@ export class MembersService {
   ) {}
 
   /** Active members only: a suspended member's profile is not found. */
-  private async idForHandle(handle: string): Promise<string | null> {
-    const [row] = await this.db
+  private async idForHandle(handle: string, db: Queries = this.db): Promise<string | null> {
+    const [row] = await db
       .select({ id: members.id })
       .from(members)
       .where(and(eq(members.handle, handle), eq(members.active, true)))
@@ -198,14 +201,17 @@ export class MembersService {
       .where(eq(members.id, memberId))
   }
 
-  /** Idempotent. False if there is no such member. */
-  async follow(followerId: string, handle: string): Promise<boolean> {
-    const followeeId = await this.idForHandle(handle)
+  /**
+   * Idempotent. False if there is no such member, or either has blocked the other.
+   * Runs in `db` when given a transaction (the welcome flow follows several at once).
+   */
+  async follow(followerId: string, handle: string, db: Queries = this.db): Promise<boolean> {
+    const followeeId = await this.idForHandle(handle, db)
     if (!followeeId) return false
     if (followeeId === followerId) throw new CannotFollowSelfError('you cannot follow yourself')
-    if (await this.blockedEitherWay(followerId, followeeId)) return false
-    await this.db.insert(follows).values({ followerId, followeeId }).onConflictDoNothing()
-    await notify(this.db, [{ recipientId: followeeId, kind: 'follow', actorId: followerId }])
+    if (await this.blockedEitherWay(followerId, followeeId, db)) return false
+    await db.insert(follows).values({ followerId, followeeId }).onConflictDoNothing()
+    await notify(db, [{ recipientId: followeeId, kind: 'follow', actorId: followerId }])
     return true
   }
 
@@ -219,8 +225,8 @@ export class MembersService {
     return true
   }
 
-  private async blockedEitherWay(a: string, b: string): Promise<boolean> {
-    const rows = await this.db
+  private async blockedEitherWay(a: string, b: string, db: Queries = this.db): Promise<boolean> {
+    const rows = await db
       .select({ blockerId: blocks.blockerId })
       .from(blocks)
       .where(

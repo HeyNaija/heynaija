@@ -20,6 +20,8 @@ export type Me = {
   /** Shown as a badge on the Notifications link. */
   unreadNotifications: number
   moderates: boolean
+  /** False until they finish or skip the welcome flow, which the home page sends them to. */
+  onboarded: boolean
 }
 
 /** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
@@ -252,6 +254,25 @@ export const getBookmarks = (cursor?: string) => getPage('/v1/bookmarks', cursor
 export async function getTrending(): Promise<Post[]> {
   const res = await api('/v1/trending')
   if (!res.ok) throw new Error(`API /v1/trending responded ${res.status}`)
+  return res.json()
+}
+
+/** Someone the welcome flow suggests following, and why. */
+export type Suggestion = {
+  handle: string
+  displayName: string | null
+  avatar: string | null
+  bio: string
+  reason:
+    | { kind: 'moderator' | 'community'; community: { slug: string; name: string } }
+    | { kind: 'recent'; community: null }
+}
+
+/** People for a newcomer to follow, drawn from the communities they chose. */
+export async function getOnboardingSuggestions(communities: string[]): Promise<Suggestion[]> {
+  const path = `/v1/me/onboarding/suggestions?communities=${encodeURIComponent(communities.join(','))}`
+  const res = await api(path)
+  if (!res.ok) throw new Error(`API /v1/me/onboarding/suggestions responded ${res.status}`)
   return res.json()
 }
 

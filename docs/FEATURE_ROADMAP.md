@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 28 | 10 | 25 | 14 | 77 |
+| 29 | 10 | 24 | 14 | 77 |
 
 ## Priority order
 
@@ -352,9 +352,10 @@ This tracks product development, not formal governance decisions. Priority means
 #### Guided new-member onboarding
 
 - **ID:** `member-onboarding`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Help newcomers choose interests, communities and people to follow.
-- **Inspected evidence:** `apps/web/app/(auth)/join/page.tsx`, `apps/web/app/(main)/page.tsx`, `PRODUCT.md`
+- **Inspected evidence:** `packages/db/drizzle/0019_onboarding.sql`, `apps/api/src/onboarding/onboarding.service.ts`, `apps/api/src/onboarding/onboarding.controller.ts`, `apps/web/app/(main)/welcome/page.tsx`, `apps/web/app/(main)/page.tsx`, `apps/web/lib/onboarding.ts`, `apps/api/src/onboarding/onboarding.service.test.ts`, `apps/web/tests/onboarding.test.mjs`, `e2e/tests/onboarding.spec.ts`, `e2e/tests/auth.spec.ts`
+- **Audit notes:** New members are sent from the home page to /welcome until they finish or skip it (members.onboarded_at; migration 0019 set it for everyone who joined before). Step 1 chooses communities, step 2 suggests up to 12 people (moderators and recent posters in the chosen communities, then recent posters site-wide; never yourself, suspended members, blocks either way, or people already followed or muted), and finishing joins and follows everything in one transaction through the usual join and follow code, so counts, follow notifications and the shared action rate limit apply; it lands on Following with a nudge to post. Every step, and the whole flow, can be skipped. Communities stand in for interests until topic-following exists; there is no interest or topic picker. No inviter is suggested: invites are admin-created codes. The forms are plain forms, but the page streams like other signed-in pages, so the known no-JavaScript limitation applies. The data export (format 6) includes onboardedAt.
 
 #### Notification preferences
 
