@@ -14,11 +14,21 @@ export const NOTIFICATION_SETTINGS = [
 
 export type OptionalNotificationKind = (typeof NOTIFICATION_SETTINGS)[number]['kind']
 
-/** For each kind a member can turn off, whether it is on. */
-export type NotificationPreferences = Record<OptionalNotificationKind, boolean>
+/**
+ * For each kind a member can turn off, whether it is on, and whether the
+ * notifications they get are also sent to them by email.
+ */
+export type NotificationPreferences = Record<OptionalNotificationKind, boolean> & { email: boolean }
 
-/** The whole set of choices from the Settings form: a ticked box is a kind left on. */
+/**
+ * The whole set of choices from the Settings form: a ticked box is a kind left
+ * on, and the email box says whether notifications are emailed.
+ */
 export function preferencesFromForm(formData: FormData): NotificationPreferences {
   const on = new Set(formData.getAll('on').map(String))
-  return Object.fromEntries(NOTIFICATION_SETTINGS.map(({ kind }) => [kind, on.has(kind)])) as NotificationPreferences
+  const kinds = Object.fromEntries(NOTIFICATION_SETTINGS.map(({ kind }) => [kind, on.has(kind)])) as Record<
+    OptionalNotificationKind,
+    boolean
+  >
+  return { email: formData.has('email'), ...kinds }
 }

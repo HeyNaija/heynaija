@@ -1,4 +1,4 @@
-import { type Db, NOTIFICATION_KINDS, notificationOptOuts, OPTIONAL_NOTIFICATION_KINDS } from '@heynaija/db'
+import { type Db, members, NOTIFICATION_KINDS, notificationOptOuts, OPTIONAL_NOTIFICATION_KINDS } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { decodeCursor, encodeCursor } from '../cursor.js'
@@ -10,15 +10,22 @@ export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]
 /** Other members' activity, which a member may stop being notified about. */
 export type OptionalNotificationKind = (typeof OPTIONAL_NOTIFICATION_KINDS)[number]
 
-/** For each kind a member may turn off, whether it is on. */
-export type NotificationPreferences = Record<OptionalNotificationKind, boolean>
+/**
+ * For each kind a member may turn off, whether it is on, and whether
+ * notifications are also sent by email. The kinds decide what notifies the
+ * member at all, so they decide what is emailed too.
+ */
+export type NotificationPreferences = Record<OptionalNotificationKind, boolean> & { email: boolean }
 
 const isOptional = (kind: string): kind is OptionalNotificationKind =>
   (OPTIONAL_NOTIFICATION_KINDS as readonly string[]).includes(kind)
 
 /** Every kind on except those in `off`. */
-export const preferencesWithout = (off: readonly string[]): NotificationPreferences =>
-  Object.fromEntries(OPTIONAL_NOTIFICATION_KINDS.map((kind) => [kind, !off.includes(kind)])) as NotificationPreferences
+export const preferencesWithout = (off: readonly string[]): Record<OptionalNotificationKind, boolean> =>
+  Object.fromEntries(OPTIONAL_NOTIFICATION_KINDS.map((kind) => [kind, !off.includes(kind)])) as Record<
+    OptionalNotificationKind,
+    boolean
+  >
 
 /** A moderation or account notice was asked to be turned off: members are always told those. */
 export class NotOptionalError extends Error {}
@@ -81,7 +88,7 @@ const EXCERPT = 140
  * follow has not been taken back. A moderation decision about your own post
  * shows even though the post is down.
  */
-const visible = (viewerId: string) => sql`
+export const visible = (viewerId: string) => sql`
   n.recipient_id = ${viewerId}
   and (n.actor_id is null or (
     a.active
@@ -92,7 +99,7 @@ const visible = (viewerId: string) => sql`
   and (n.kind <> 'repost' or exists(select 1 from reposts r where r.post_id = n.post_id and r.member_id = n.actor_id))
   and (n.kind <> 'follow' or exists(select 1 from follows f where f.follower_id = n.actor_id and f.followee_id = ${viewerId}))`
 
-const joins = sql`
+export const joins = sql`
   from notifications n
   left join members a on a.id = n.actor_id
   left join posts p on p.id = n.post_id
@@ -172,25 +179,27 @@ export class NotificationsService {
         and created_at <= (select created_at from notifications where id = ${newestSeenId} and recipient_id = ${viewerId})`)
   }
 
-  /** Everything is on until the member turns it off. */
+  /** Everything is on until the member turns it off, except email for members who joined before it existed. */
   async preferences(memberId: string): Promise<NotificationPreferences> {
-    const off = await this.db
-      .select({ kind: notificationOptOuts.kind })
-      .from(notificationOptOuts)
-      .where(eq(notificationOptOuts.memberId, memberId))
-    return preferencesWithout(off.map((r) => r.kind))
+    const [off, [member]] = await Promise.all([
+      this.db.select({ kind: notificationOptOuts.kind }).from(notificationOptOuts).where(eq(notificationOptOuts.memberId, memberId)),
+      this.db.select({ email: members.emailNotifications }).from(members).where(eq(members.id, memberId)),
+    ])
+    return { email: member?.email ?? true, ...preferencesWithout(off.map((r) => r.kind)) }
   }
 
   /**
-   * Turns kinds on (true) or off (false); kinds left out stay as they are. Only
-   * other members' activity can be turned off: asking to turn off a moderation
-   * or account notice changes nothing and throws NotOptionalError.
+   * Turns kinds on (true) or off (false), and email on or off; anything left out
+   * stays as it is. Only other members' activity can be turned off: asking to
+   * turn off a moderation or account notice changes nothing and throws
+   * NotOptionalError. Turning email off does not touch the kinds.
    */
   async setPreferences(
     memberId: string,
-    changes: Partial<Record<NotificationKind, boolean>>,
+    changes: Partial<Record<NotificationKind | 'email', boolean>>,
   ): Promise<NotificationPreferences> {
-    const entries = Object.entries(changes).filter(([, on]) => on !== undefined)
+    const { email, ...kinds } = changes
+    const entries = Object.entries(kinds).filter(([, on]) => on !== undefined)
     const always = entries.map(([kind]) => kind).filter((kind) => !isOptional(kind))
     if (always.length) throw new NotOptionalError(`always sent: ${always.join(', ')}`)
     const turnedOff = entries.filter(([, on]) => !on).map(([kind]) => kind as OptionalNotificationKind)
@@ -207,13 +216,15 @@ export class NotificationsService {
           .delete(notificationOptOuts)
           .where(and(eq(notificationOptOuts.memberId, memberId), inArray(notificationOptOuts.kind, turnedOn)))
       }
+      if (email !== undefined) await tx.update(members).set({ emailNotifications: email }).where(eq(members.id, memberId))
     })
     return this.preferences(memberId)
   }
 }
 
-const excerpt = (text: string) => {
+/** The start of a post's text, on one line, at most `max` characters. */
+export const excerpt = (text: string, max = EXCERPT) => {
   // By code point, so an emoji is never cut in half.
   const chars = [...text.replace(/\s+/g, ' ').trim()]
-  return chars.length > EXCERPT ? `${chars.slice(0, EXCERPT - 1).join('').trimEnd()}…` : chars.join('')
+  return chars.length > max ? `${chars.slice(0, max - 1).join('').trimEnd()}…` : chars.join('')
 }

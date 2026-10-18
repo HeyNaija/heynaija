@@ -27,7 +27,7 @@ import { preferencesWithout } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/6'
+export const EXPORT_FORMAT = 'heynaija-export/7'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -245,6 +245,8 @@ export class ExportService {
       // Which kinds of activity you are notified about. Moderation and account
       // notices are always sent, so they are not listed.
       notificationPreferences: preferencesWithout(turnedOff.map((r) => r.kind)),
+      // Whether those notifications are also sent to your email address.
+      emailNotifications: me.emailNotifications,
       notifications: received,
     }
   }

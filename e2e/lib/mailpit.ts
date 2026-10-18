@@ -34,3 +34,31 @@ export async function messagesFor(email: string, since: Date): Promise<Message[]
 export async function mailpitUp() {
   return fetch(`${env.mailpitUrl}/api/v1/info`).then((r) => r.ok, () => false)
 }
+
+export type Email = { id: string; subject: string; text: string; html: string; headers: Record<string, string[]> }
+
+/**
+ * The first email to `email` since `since` whose subject matches, read in full.
+ * Notification emails go out a few minutes after the activity (the tests age the
+ * notifications instead of waiting), so this waits for up to `timeoutMs`.
+ */
+export async function emailWhere(email: string, since: Date, subject: RegExp, timeoutMs = 90_000): Promise<Email> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const found = (await messagesFor(email, since)).find((m) => subject.test(m.Subject))
+    if (found) {
+      const [detail, headers] = await Promise.all([
+        fetch(`${env.mailpitUrl}/api/v1/message/${found.ID}`).then((r) => r.json() as Promise<{ Text: string; HTML: string }>),
+        fetch(`${env.mailpitUrl}/api/v1/message/${found.ID}/headers`).then((r) => r.json() as Promise<Record<string, string[]>>),
+      ])
+      return { id: found.ID, subject: found.Subject, text: detail.Text, html: detail.HTML, headers }
+    }
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  throw new Error(`no email for ${email} matching ${subject} in Mailpit after ${timeoutMs / 1000}s`)
+}
+
+/** How many emails went to `email` since `since`. */
+export async function countFor(email: string, since: Date): Promise<number> {
+  return (await messagesFor(email, since)).length
+}

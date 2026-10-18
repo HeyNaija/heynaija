@@ -47,9 +47,9 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
       <section className="content-panel settings-section" aria-labelledby="notifications-heading">
         <div>
           <h2 id="notifications-heading" className="section-title">Notifications</h2>
-          <p className="field-hint mt-1">Choose which activity from other members shows up in Notifications.</p>
+          <p className="field-hint mt-1">Choose which activity from other members notifies you, and whether you get an email too.</p>
         </div>
-        <Suspense fallback={<div aria-busy="true" className="skeleton h-72" />}>
+        <Suspense fallback={<div aria-busy="true" className="skeleton h-[35rem]" />}>
           <NotificationSettings />
         </Suspense>
       </section>

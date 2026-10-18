@@ -285,7 +285,7 @@ test(`only the first ${MENTIONS_NOTIFIED_MAX} members a post names are notified;
   assert.equal((await postsService.post(null, id))!.mentions.length, many.length + 1)
 })
 
-const allOn = { reply: true, like: true, repost: true, quote: true, mention: true, follow: true }
+const allOn = { email: true, reply: true, like: true, repost: true, quote: true, mention: true, follow: true }
 
 test('every kind of activity notifies until the member turns it off', async () => {
   assert.deepEqual(await service.preferences(ada), allOn)
@@ -306,12 +306,28 @@ test('a kind can be turned off and on again; kinds left out stay as they are', a
   assert.deepEqual(await service.preferences(bayo), allOn)
 })
 
+test('email is on for a new member, turns off and on alone, and is theirs only', async () => {
+  assert.equal((await service.preferences(ada)).email, true)
+  // Off: the kinds are untouched, and the notification itself is still written.
+  assert.deepEqual(await service.setPreferences(ada, { email: false }), { ...allOn, email: false })
+  const { id: post } = await postsService.create(ada, 'Jollof or fried rice?')
+  await postsService.like(bayo, post)
+  assert.deepEqual(await kinds(ada), ['like:bayo'])
+  // A kind and email in one request; email left out stays as it is.
+  assert.deepEqual(await service.setPreferences(ada, { like: false }), { ...allOn, email: false, like: false })
+  assert.deepEqual(await service.setPreferences(ada, { email: true, like: true }), allOn)
+  assert.equal((await service.preferences(bayo)).email, true)
+  assert.equal((await db.select().from(notificationOptOuts)).length, 0)
+  // A member who is not there has no setting to change.
+  assert.equal((await service.preferences(randomUUID())).email, true)
+})
+
 test('moderation and account notices cannot be turned off, by the service or in the database', async () => {
   for (const kind of ['post_removed', 'post_restored', 'report_resolved', 'account_reinstated', 'avatar_removed', 'profile_cleared', 'moderator_granted', 'moderator_revoked'] as const) {
     await assert.rejects(service.setPreferences(ada, { [kind]: false }), NotOptionalError)
   }
   // Refused as a whole: the allowed change in the same request is not made either.
-  await assert.rejects(service.setPreferences(ada, { like: false, post_removed: false }), NotOptionalError)
+  await assert.rejects(service.setPreferences(ada, { like: false, post_removed: false, email: false }), NotOptionalError)
   assert.deepEqual(await service.preferences(ada), allOn)
   // Whatever writes to the table, the database keeps them out.
   await assert.rejects(

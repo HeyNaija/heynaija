@@ -42,6 +42,14 @@ export const members = pgTable(
     // then, and the home page sends them there. Migration 0019 set it for everyone
     // who joined before the flow existed, so only newcomers see it.
     onboardedAt: ts('onboarded_at'),
+    // Whether notifications are also sent by email (docs/adr/0009). New members
+    // start on; migration 0021 turned it off for everyone who joined before email
+    // existed, since they were never asked. Turned off in Settings or by the link
+    // in any email.
+    emailNotifications: boolean('email_notifications').notNull().default(true),
+    // When a notification email was last sent to them. The next one waits a while
+    // after it, so a steady trickle of activity is not a steady trickle of mail.
+    lastNotificationEmailAt: ts('last_notification_email_at'),
   },
   (t) => [index('members_handle_idx').on(t.handle)],
 )
@@ -424,9 +432,18 @@ export const notifications = pgTable(
     detail: text('detail'),
     createdAt: ts('created_at').notNull().defaultNow(),
     readAt: ts('read_at'),
+    // Null until the email side has dealt with it: sent in a digest, or passed
+    // over (read in the app first, email off, nothing left to show, too old).
+    // Migration 0021 set it for everything that happened before email existed.
+    emailSettledAt: ts('email_settled_at'),
   },
   (t) => [
     index('notifications_recipient_created_idx').on(t.recipientId, t.createdAt),
+    // What the email job looks through: only what is still waiting, which is a
+    // few minutes' worth.
+    index('notifications_email_pending_idx')
+      .on(t.recipientId, t.createdAt)
+      .where(sql`email_settled_at is null`),
     // Deleting a post or a member must find the notifications pointing at it;
     // without these each delete scanned the whole table.
     index('notifications_actor_idx').on(t.actorId),

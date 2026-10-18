@@ -80,10 +80,11 @@ services:
     volumes:
       - ./.data/minio:/data
 
-  # Catches every email Kratos sends in development. Inbox: http://127.0.0.1:8026
+  # Catches every email Kratos and the API send in development. Inbox: http://127.0.0.1:8026
   mailpit:
     image: axllent/mailpit:v1.31.5
     ports:
+      - "127.0.0.1:1026:1025" # SMTP, for the API's notification emails (Kratos uses mailpit:1025 inside Docker)
       - "127.0.0.1:8026:8025"
 
 configs:

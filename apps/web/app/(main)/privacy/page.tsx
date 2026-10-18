@@ -10,7 +10,7 @@ export default function PrivacyPage() {
       eyebrow="Your data"
       title="Privacy policy"
       summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, and how you get your data or have it deleted. No ads, no selling data, no trackers."
-      updated="16 October 2026"
+      updated="18 October 2026"
       sections={[
         {
           id: 'who',
@@ -79,7 +79,7 @@ export default function PrivacyPage() {
               <ul>
                 <li>To run HeyNaija: show posts, deliver notifications, sign you in.</li>
                 <li>To keep it safe: rate limits, moderation, and checking images against lists of known child abuse material.</li>
-                <li>To email you sign-in codes and account messages. We send no newsletters or marketing.</li>
+                <li>To email you sign-in codes and account messages, and, if notification emails are on for you, a short email when there is something new for you (grouped, at most about twice an hour). Every one has a link that turns them off. We send no newsletters or marketing.</li>
               </ul>
               <p>
                 Feeds are in time order. We do not rank posts by guessing what you will engage with, show
@@ -96,7 +96,7 @@ export default function PrivacyPage() {
               <p>These companies handle data for us, only to provide their service:</p>
               <ul>
                 <li><strong>Cloudflare</strong>: the network in front of the site, security, and storage of images (R2). Its abuse-material scanning tool checks images served through it.</li>
-                <li><strong>Resend</strong>: sends the emails with your sign-in codes.</li>
+                <li><strong>Resend</strong>: sends the emails with your sign-in codes and your notification emails.</li>
                 <li><strong>netcup</strong> and <strong>Contabo</strong>: the servers HeyNaija runs on, in <Placeholder>data centre location</Placeholder>.</li>
                 <li><strong>Google</strong>: only if you choose to sign in with Google.</li>
               </ul>

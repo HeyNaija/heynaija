@@ -36,4 +36,14 @@ ensure S3_SECRET_ACCESS_KEY "$(hex 20)"
 ensure S3_UPLOADS_BUCKET "heynaija-uploads"
 ensure S3_MEDIA_BUCKET "heynaija-media"
 
+# Notification emails: Mailpit catches them (inbox http://127.0.0.1:8026), the same as
+# Kratos's sign-in codes; Kratos's admin API is where members' addresses are kept.
+# Production uses Resend through the same variable names (infra/deploy/.env.example).
+ensure KRATOS_ADMIN_URL "http://127.0.0.1:4534"
+ensure SMTP_CONNECTION_URI "smtp://127.0.0.1:1026"
+ensure SMTP_FROM_ADDRESS "no-reply@heynaija.test"
+ensure SMTP_FROM_NAME "HeyNaija"
+# Look for emails that are due every few seconds instead of every minute.
+ensure EMAIL_SWEEP_EVERY_S "5"
+
 echo "$env_file is up to date"

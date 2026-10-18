@@ -21,7 +21,14 @@ x-api-env: &api-env
   DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
   REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
   KRATOS_PUBLIC_URL: http://kratos:4433
+  # Members' email addresses are kept by Kratos; the API asks its admin API, which
+  # is reachable only on this private network, when it sends a notification email.
+  KRATOS_ADMIN_URL: http://kratos:4434
   KRATOS_WEBHOOK_SECRET: ${KRATOS_WEBHOOK_SECRET:?}
+  # Notification emails go out through the same account as Kratos's sign-in codes.
+  SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:?}
+  SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:?}
+  SMTP_FROM_NAME: ${SMTP_FROM_NAME:-HeyNaija}
   WEB_PUBLIC_URL: ${SITE_URL:?}
   API_HOST: 0.0.0.0
   S3_ENDPOINT: ${S3_ENDPOINT:?}

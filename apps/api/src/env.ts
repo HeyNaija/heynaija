@@ -51,8 +51,34 @@ const schema = z.object({
   // Key for deriving private person keys from a provider's identifier
   // (governance/rules.ts). Only needed once NIN verification exists.
   IDENTITY_KEY_SECRET: z.string().min(32).optional(),
+  // Notification emails. They go out over the same SMTP account Kratos uses for
+  // sign-in codes (Resend in staging and production, Mailpit locally, see
+  // docs/deployment), under the same variable names as infra/deploy/.env.example.
+  // Without SMTP_CONNECTION_URI no email is sent: notifications stay in the app.
+  SMTP_CONNECTION_URI: z.string().min(1).optional(),
+  SMTP_FROM_ADDRESS: z.email().optional(),
+  SMTP_FROM_NAME: z.string().min(1).default('HeyNaija'),
+  // Kratos's admin API, on the private network only: the one place a member's
+  // email address is kept, read when an email is about to be sent.
+  KRATOS_ADMIN_URL: z
+    .url()
+    .transform((u) => u.replace(/\/$/, ''))
+    .optional(),
+  // How long a notification waits for company before it is emailed, and the least
+  // time between two emails to the same member, in seconds (docs/adr/0009).
+  EMAIL_DIGEST_DELAY_S: z.coerce.number().int().min(0).max(3600).default(300),
+  EMAIL_DIGEST_GAP_S: z.coerce.number().int().min(0).max(86_400).default(1800),
+  // How often the job that finds due emails runs, in seconds.
+  EMAIL_SWEEP_EVERY_S: z.coerce.number().int().min(1).max(3600).default(60),
+})
+
+const checked = schema.superRefine((env, ctx) => {
+  if (!env.SMTP_CONNECTION_URI) return
+  for (const name of ['SMTP_FROM_ADDRESS', 'KRATOS_ADMIN_URL'] as const) {
+    if (!env[name]) ctx.addIssue({ code: 'custom', path: [name], message: `${name} is required when SMTP_CONNECTION_URI is set` })
+  }
 })
 
 export type Env = z.infer<typeof schema>
 
-export const loadEnv = (source: Record<string, string | undefined> = process.env): Env => schema.parse(source)
+export const loadEnv = (source: Record<string, string | undefined> = process.env): Env => checked.parse(source)
