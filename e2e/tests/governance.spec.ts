@@ -157,7 +157,7 @@ test('a member downloads their data as JSON', async ({ browser }) => {
   ])
   expect(download.suggestedFilename()).toMatch(new RegExp(`^heynaija-${handle}-\\d{4}-\\d{2}-\\d{2}\\.json$`))
   const data = JSON.parse(await readFile((await download.path())!, 'utf8'))
-  expect(data.format).toBe('heynaija-export/4')
+  expect(data.format).toBe('heynaija-export/5')
   expect(data.account).toMatchObject({ handle, email })
   // They confirmed their age on /join, and that is all that is held about it.
   expect(data.age).toHaveLength(1)
@@ -166,5 +166,7 @@ test('a member downloads their data as JSON', async ({ browser }) => {
   expect(data.votingMembership).toBeNull()
   expect(data.posts).toContainEqual(expect.objectContaining({ text, quoteOf: null, mentions: [] }))
   expect(data.reposts).toEqual([])
+  // Every kind of notification is on until they turn one off.
+  expect(data.notificationPreferences).toEqual({ reply: true, like: true, repost: true, quote: true, mention: true, follow: true })
   await context.close()
 })

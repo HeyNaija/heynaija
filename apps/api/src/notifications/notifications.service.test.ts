@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { members, notifications, posts, reports } from '@heynaija/db'
+import { members, notificationOptOuts, notifications, posts, reports } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { MembersService } from '../members/members.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
 import { MENTIONS_NOTIFIED_MAX } from '../posts/mentions.js'
 import { PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
-import { NotificationsService } from './notifications.service.js'
+import { NotificationsService, NotOptionalError, notify } from './notifications.service.js'
 
 const service = new NotificationsService(db)
 const postsService = new PostsService(db)
@@ -283,4 +283,91 @@ test(`only the first ${MENTIONS_NOTIFIED_MAX} members a post names are notified;
   const told = (await db.select().from(notifications)).map((n) => n.recipientId)
   assert.deepEqual(told.sort(), many.slice(0, MENTIONS_NOTIFIED_MAX).map((m) => m.id).sort())
   assert.equal((await postsService.post(null, id))!.mentions.length, many.length + 1)
+})
+
+const allOn = { reply: true, like: true, repost: true, quote: true, mention: true, follow: true }
+
+test('every kind of activity notifies until the member turns it off', async () => {
+  assert.deepEqual(await service.preferences(ada), allOn)
+  assert.equal((await db.select().from(notificationOptOuts)).length, 0)
+})
+
+test('a kind can be turned off and on again; kinds left out stay as they are', async () => {
+  assert.deepEqual(await service.setPreferences(ada, { like: false, follow: false }), { ...allOn, like: false, follow: false })
+  // Again, and with the other kinds left out: nothing else changes.
+  assert.deepEqual(await service.setPreferences(ada, { like: false }), { ...allOn, like: false, follow: false })
+  assert.deepEqual(await service.setPreferences(ada, {}), { ...allOn, like: false, follow: false })
+  assert.deepEqual(await service.setPreferences(ada, { follow: true, reply: true }), { ...allOn, like: false })
+  assert.deepEqual(await service.preferences(ada), { ...allOn, like: false })
+  // Only what is off is stored, and only for the member who chose it.
+  assert.deepEqual(await db.select({ memberId: notificationOptOuts.memberId, kind: notificationOptOuts.kind }).from(notificationOptOuts), [
+    { memberId: ada, kind: 'like' },
+  ])
+  assert.deepEqual(await service.preferences(bayo), allOn)
+})
+
+test('moderation and account notices cannot be turned off, by the service or in the database', async () => {
+  for (const kind of ['post_removed', 'post_restored', 'report_resolved', 'account_reinstated', 'avatar_removed', 'profile_cleared', 'moderator_granted', 'moderator_revoked'] as const) {
+    await assert.rejects(service.setPreferences(ada, { [kind]: false }), NotOptionalError)
+  }
+  // Refused as a whole: the allowed change in the same request is not made either.
+  await assert.rejects(service.setPreferences(ada, { like: false, post_removed: false }), NotOptionalError)
+  assert.deepEqual(await service.preferences(ada), allOn)
+  // Whatever writes to the table, the database keeps them out.
+  await assert.rejects(
+    db.insert(notificationOptOuts).values({ memberId: ada, kind: 'post_removed' as 'like' }),
+    (err: { cause?: { constraint?: string } }) => err.cause?.constraint === 'notification_opt_outs_kind_check',
+  )
+
+  // With every kind of activity off, a decision about their post still reaches them.
+  await service.setPreferences(ada, { reply: false, like: false, repost: false, quote: false, mention: false, follow: false })
+  const { id: post } = await postsService.create(ada, 'buy my coin')
+  await moderation.report(bayo, { postId: post }, 'scam')
+  const [report] = await db.select().from(reports)
+  await moderation.resolve(sam, report!.id, 'remove_post')
+  assert.deepEqual(await kinds(ada), ['post_removed:-'])
+})
+
+test('a member who turned likes off is not told of likes, and still hears of replies', async () => {
+  const { id: post } = await postsService.create(ada, 'Jollof or fried rice?')
+  await service.setPreferences(ada, { like: false })
+  await postsService.like(bayo, post)
+  await postsService.create(chi, 'Jollof', { replyTo: post })
+  assert.deepEqual(await kinds(ada), ['reply:chi'])
+  assert.equal(await service.unreadCount(ada), 1)
+  // Not written at all, so turning likes back on does not bring it back; new likes notify.
+  await service.setPreferences(ada, { like: true })
+  assert.deepEqual(await kinds(ada), ['reply:chi'])
+  await postsService.like(sam, post)
+  assert.deepEqual(await kinds(ada), ['like:sam', 'reply:chi'])
+})
+
+test('turning a kind off keeps the notifications already received', async () => {
+  const { id: post } = await postsService.create(ada, 'hello')
+  await postsService.like(bayo, post)
+  await service.setPreferences(ada, { like: false })
+  assert.deepEqual(await kinds(ada), ['like:bayo'])
+})
+
+test('one notify call skips the recipients who turned that kind off and tells the rest, in one statement', async () => {
+  const { id: post } = await postsService.create(ada, 'hello')
+  await service.setPreferences(chi, { mention: false })
+  let statements = 0
+  const counting = { execute: ((query: Parameters<typeof db.execute>[0]) => (statements++, db.execute(query))) as typeof db.execute }
+  await notify(counting, [
+    { recipientId: bayo, kind: 'mention', actorId: ada, postId: post },
+    { recipientId: chi, kind: 'mention', actorId: ada, postId: post },
+    // Another kind for the same member still arrives.
+    { recipientId: chi, kind: 'reply', actorId: ada, postId: post },
+    { recipientId: sam, kind: 'mention', actorId: ada, postId: post },
+  ])
+  assert.equal(statements, 1)
+  assert.deepEqual(await kinds(bayo), ['mention:ada'])
+  assert.deepEqual(await kinds(chi), ['reply:ada'])
+  assert.deepEqual(await kinds(sam), ['mention:ada'])
+
+  // Through a post that names them all, the same.
+  await postsService.create(bayo, 'hi @ada @chi @sam')
+  assert.deepEqual(await kinds(chi), ['reply:ada'])
+  assert.deepEqual(await kinds(ada), ['mention:bayo'])
 })

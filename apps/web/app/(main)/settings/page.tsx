@@ -5,9 +5,10 @@ import { AvatarUploader } from '@/app/ui/avatar-uploader'
 import { FlowForm } from '@/app/ui/flow-form'
 import { ForgetFlowParam } from '@/app/ui/forget-flow'
 import { IdentityBadge } from '@/app/ui/identity-badge'
+import { NotificationPreferencesForm } from '@/app/ui/notification-preferences-form'
 import { ProfileForm } from '@/app/ui/profile-form'
 import { ThemeSwitch } from '@/app/ui/theme-switch'
-import { type GovernanceStatus, getGovernanceStatus, getViewer } from '@/lib/api'
+import { type GovernanceStatus, getGovernanceStatus, getNotificationPreferences, getViewer } from '@/lib/api'
 import { getFlow } from '@/lib/kratos'
 
 export const metadata: Metadata = { title: 'Settings' }
@@ -43,6 +44,15 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
         <ThemeSwitch />
         <p className="field-hint">System follows your device. This choice is saved on this device only.</p>
       </section>
+      <section className="content-panel settings-section" aria-labelledby="notifications-heading">
+        <div>
+          <h2 id="notifications-heading" className="section-title">Notifications</h2>
+          <p className="field-hint mt-1">Choose which activity from other members shows up in Notifications.</p>
+        </div>
+        <Suspense fallback={<div aria-busy="true" className="skeleton h-72" />}>
+          <NotificationSettings />
+        </Suspense>
+      </section>
       <div className="content-panel settings-section">
         <p className="page-eyebrow">Account access</p>
         <Suspense fallback={<div aria-busy="true" className="skeleton h-48" />}>
@@ -66,7 +76,7 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
           <h2 id="data-heading" className="section-title">Your data</h2>
           <p className="field-hint mt-1">
             Download everything HeyNaija holds about you: your profile, posts, likes, bookmarks, who you
-            follow, mutes and blocks, and reports you made. It comes as one JSON file.{' '}
+            follow, mutes and blocks, your notification settings and reports you made. It comes as one JSON file.{' '}
             <Link href="/privacy" className="font-semibold text-accent-strong hover:underline">How we use your data</Link>
           </p>
         </div>
@@ -95,6 +105,16 @@ async function NameAndBio() {
   const viewer = await getViewer()
   if (viewer.state !== 'member') return null
   return <ProfileForm displayName={viewer.me.displayName} bio={viewer.me.bio} />
+}
+
+async function NotificationSettings() {
+  const viewer = await getViewer()
+  if (viewer.state !== 'member') return null
+  const preferences = await getNotificationPreferences()
+  if (!preferences) {
+    return <p role="alert" className="notice">Your notification settings could not be loaded just now. Try again in a few minutes.</p>
+  }
+  return <NotificationPreferencesForm preferences={preferences} />
 }
 
 /** The member's age on record, in words. Unknown is said plainly, never shown as adult. */

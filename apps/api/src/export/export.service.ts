@@ -13,6 +13,7 @@ import {
   members,
   moderationActions,
   mutes,
+  notificationOptOuts,
   notifications,
   postMentions,
   posts,
@@ -22,10 +23,11 @@ import {
 import { Inject, Injectable } from '@nestjs/common'
 import { aliasedTable, and, asc, eq, isNotNull, or } from 'drizzle-orm'
 import { avatarPath, postImagePath } from '../media/media.service.js'
+import { preferencesWithout } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/4'
+export const EXPORT_FORMAT = 'heynaija-export/5'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -60,6 +62,7 @@ export class ExportService {
       reported,
       decisions,
       received,
+      turnedOff,
       ageRecords,
       verifications,
       [membership],
@@ -145,6 +148,7 @@ export class ExportService {
         .from(notifications)
         .where(eq(notifications.recipientId, memberId))
         .orderBy(asc(notifications.createdAt)),
+      db.select({ kind: notificationOptOuts.kind }).from(notificationOptOuts).where(eq(notificationOptOuts.memberId, memberId)),
       db
         .select({
           band: ageAssurances.band,
@@ -236,6 +240,9 @@ export class ExportService {
       communities: joined,
       reportsYouMade: reported,
       moderationDecisionsAboutYou: decisions,
+      // Which kinds of activity you are notified about. Moderation and account
+      // notices are always sent, so they are not listed.
+      notificationPreferences: preferencesWithout(turnedOff.map((r) => r.kind)),
       notifications: received,
     }
   }

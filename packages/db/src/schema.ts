@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import {
   boolean,
+  check,
   index,
   integer,
   pgSchema,
@@ -410,6 +411,39 @@ export const notifications = pgTable(
     uniqueIndex('notifications_follow_once_idx')
       .on(t.recipientId, t.actorId)
       .where(sql`kind = 'follow'`),
+  ],
+)
+
+// The kinds of notification a member may turn off: other members' activity.
+// Moderation and account notices are not optional; members are always told
+// about decisions that affect them.
+export const OPTIONAL_NOTIFICATION_KINDS = [
+  'reply',
+  'like',
+  'repost',
+  'quote',
+  'mention',
+  'follow',
+] as const satisfies readonly (typeof NOTIFICATION_KINDS)[number][]
+
+// A kind of notification a member has turned off. Everything is on until they
+// turn it off, so only what is off is stored. The check keeps the other kinds
+// out whatever writes here.
+export const notificationOptOuts = pgTable(
+  'notification_opt_outs',
+  {
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    kind: text('kind', { enum: OPTIONAL_NOTIFICATION_KINDS }).notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.memberId, t.kind] }),
+    check(
+      'notification_opt_outs_kind_check',
+      sql.raw(`kind in (${OPTIONAL_NOTIFICATION_KINDS.map((k) => `'${k}'`).join(', ')})`),
+    ),
   ],
 )
 

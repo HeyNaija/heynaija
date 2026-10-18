@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 27 | 10 | 26 | 14 | 77 |
+| 28 | 10 | 25 | 14 | 77 |
 
 ## Priority order
 
@@ -359,9 +359,10 @@ This tracks product development, not formal governance decisions. Priority means
 #### Notification preferences
 
 - **ID:** `notification-preferences`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Choose which activity should create notifications.
-- **Inspected evidence:** `apps/web/app/(main)/settings/page.tsx`, `apps/api/src/notifications/notifications.service.ts`
+- **Inspected evidence:** `packages/db/drizzle/0018_notification_preferences.sql`, `apps/api/src/notifications/notifications.service.ts`, `apps/api/src/notifications/notifications.controller.ts`, `apps/api/src/export/export.service.ts`, `apps/web/app/(main)/settings/page.tsx`, `apps/web/app/ui/notification-preferences-form.tsx`, `apps/api/src/notifications/notifications.service.test.ts`, `apps/api/src/export/export.service.test.ts`, `apps/web/tests/notification-preferences.test.mjs`, `e2e/tests/notification-preferences.spec.ts`
+- **Audit notes:** Settings has one box each for replies, mentions, likes, reposts, quotes and follows; all are on until turned off, and only what is off is stored (notification_opt_outs). A database check keeps moderation and account notices out, so they are always sent. Turning a kind off stops new notifications of that kind and keeps those already received. In-app only; there is no channel dimension yet. The data export (format 5) includes the choices.
 
 ### Conversations and feeds
 

@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { api } from '@/lib/api'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
 import { startFlowUrl } from '@/lib/kratos'
+import { preferencesFromForm } from '@/lib/notification-preferences'
 import type { ThreadRow } from '@/lib/thread-state'
 
 // The API is the authority on who is signed in and what they may do; these
@@ -166,6 +167,21 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
   if (res.status === 401) redirect('/login')
   if (res.status === 429) return { error: 'You have changed your profile a lot. Try again in an hour.' }
   if (res.status === 400) return { error: 'Keep your name to 50 characters and your bio to 160.' }
+  if (!res.ok) return { error: 'Could not save. Try again in a moment.' }
+  refresh()
+  return { done: true }
+}
+
+/** Saves every box in the Settings form at once: ticked kinds on, the rest off. */
+export async function updateNotificationPreferences(_prev: FormState, formData: FormData): Promise<FormState> {
+  const res = await api('/v1/notifications/preferences', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(preferencesFromForm(formData)),
+  }).catch(() => null)
+  if (!res) return { error: 'Could not save. Check your connection and try again.' }
+  if (res.status === 401) redirect('/login')
+  if (res.status === 429) return { error: 'You are changing settings very fast. Wait a minute and try again.' }
   if (!res.ok) return { error: 'Could not save. Try again in a moment.' }
   refresh()
   return { done: true }

@@ -1,6 +1,7 @@
 import 'server-only'
 import { cookies, headers } from 'next/headers'
 import { cache } from 'react'
+import type { NotificationPreferences } from './notification-preferences'
 
 // Server-to-server address of the NestJS API. Browsers never use this; they go
 // through the /api rewrite in next.config.ts.
@@ -344,6 +345,13 @@ export async function getNotifications(cursor?: string): Promise<{ notifications
   // A mangled cursor in the URL falls back to the first page.
   if (res.status === 400 && cursor) return getNotifications()
   if (!res.ok) throw new Error(`API ${path} responded ${res.status}`)
+  return res.json()
+}
+
+/** Which kinds of activity notify the signed-in member. Null when they could not be loaded. */
+export async function getNotificationPreferences(): Promise<NotificationPreferences | null> {
+  const res = await api('/v1/notifications/preferences').catch(() => null)
+  if (!res?.ok) return null
   return res.json()
 }
 
