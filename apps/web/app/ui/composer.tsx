@@ -6,8 +6,9 @@ import Link from 'next/link'
 import { Globe } from 'lucide-react'
 import { type ComposeState, createPost } from '@/app/actions'
 import { Avatar } from './avatar'
-import { CloseIcon, ImageIcon, PeopleIcon } from './icons'
-import { POST_IMAGE_TYPES } from './shrink-image'
+import { CloseIcon, GifIcon, ImageIcon, PeopleIcon } from './icons'
+import { IMAGE_TYPES } from './shrink-image'
+import { useAutoGrow } from './use-auto-grow'
 import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
 
 const LIMIT = 300
@@ -53,6 +54,8 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
   const input = useRef<HTMLTextAreaElement>(null)
   // A quote keeps the box open: the post being quoted is shown under it.
   const active = expanded || text.length > 0 || images.drafts.length > 0 || !!quote
+  const rows = active ? (replyTo ? 2 : 3) : 1
+  useAutoGrow(input, text, rows)
 
   // Arriving through a "Reply" or "New post" link (…#compose) puts the cursor in the box.
   useEffect(() => {
@@ -85,6 +88,13 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
       onPosted?.(state)
     }
   }, [state, clear, onPosted])
+
+  /** Opens the file picker offering only `types`: photos, or GIFs. */
+  const choose = (types: string[]) => {
+    if (!picker.current) return
+    picker.current.accept = types.join(',')
+    picker.current.click()
+  }
 
   const left = LIMIT - graphemes(text.trim())
   const waiting = images.drafts.some((d) => d.status !== 'ready')
@@ -119,7 +129,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
               ref={input}
               id={inputId}
               name="text"
-              rows={active ? (replyTo ? 2 : 3) : 1}
+              rows={rows}
               onFocus={() => setExpanded(true)}
               onBlur={(e) => {
                 // Tabbing away from the form shrinks it; clicks are handled above.
@@ -160,19 +170,30 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
         <button
           type="button"
           className="icon-btn composer-photo"
-          aria-label={`Add images or GIFs (up to ${MAX_IMAGES})`}
-          title="Add images or GIFs"
+          aria-label={`Add images (up to ${MAX_IMAGES})`}
+          title="Add images"
           disabled={images.drafts.length >= MAX_IMAGES}
-          onClick={() => picker.current?.click()}
+          onClick={() => choose(IMAGE_TYPES)}
         >
           <ImageIcon size={20} />
-          <span>Photo</span>
+          <span className="composer-photo-label">Photo</span>
         </button>
+        <button
+          type="button"
+          className="icon-btn composer-photo"
+          aria-label={`Add a GIF (the post can have up to ${MAX_IMAGES} pictures in all)`}
+          title="Add a GIF"
+          disabled={images.drafts.length >= MAX_IMAGES}
+          onClick={() => choose(['image/gif'])}
+        >
+          <GifIcon size={20} />
+          <span className="composer-photo-label">GIF</span>
+        </button>
+        {/* One hidden picker for both buttons; each says what it will offer before it opens. */}
         <input
           ref={picker}
           type="file"
           multiple
-          accept={POST_IMAGE_TYPES.join(',')}
           className="sr-only"
           tabIndex={-1}
           aria-hidden="true"

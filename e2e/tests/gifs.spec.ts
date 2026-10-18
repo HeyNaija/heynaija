@@ -95,3 +95,33 @@ test('a GIF over 10 MB is refused before it is sent', async ({ browser }) => {
   await expect(page.getByRole('alert').filter({ hasText: 'That GIF is too large' })).toBeVisible()
   await context.close()
 })
+
+test('GIFs have a button of their own, which offers only GIFs, apart from the photo one @mobile', async ({ browser }) => {
+  const { page, context } = await newMember(browser, 'gifbutton')
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'New post' }).click()
+  const picker = page.locator('#compose input[type="file"]')
+
+  const photo = page.getByRole('button', { name: /^Add images/ })
+  const gifButton = page.getByRole('button', { name: /^Add a GIF/ })
+  await expect(photo).toBeVisible()
+  await expect(gifButton).toBeVisible()
+  await expectOnScreen(gifButton)
+  // On a phone the words are dropped and only the icons stay: both must still be there.
+  await expect(gifButton.locator('.gif-glyph')).toBeVisible()
+  await expect(photo.locator('svg')).toBeVisible()
+
+  // Each opens the same picker, offering what its own name says.
+  const photos = page.waitForEvent('filechooser')
+  await photo.click()
+  await (await photos).setFiles([])
+  expect(await picker.getAttribute('accept')).toBe('image/jpeg,image/png,image/webp')
+
+  const gifs = page.waitForEvent('filechooser')
+  await gifButton.click()
+  const chooser = await gifs
+  expect(await picker.getAttribute('accept')).toBe('image/gif')
+  await chooser.setFiles({ name: 'dance.gif', mimeType: 'image/gif', buffer: gif() })
+  await expect(page.getByLabel('Description of GIF 1')).toBeVisible()
+  await context.close()
+})
