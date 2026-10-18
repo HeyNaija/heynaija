@@ -16,6 +16,7 @@ import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, Inval
 import { notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { DB } from '../tokens.js'
+import { MENTIONS_NOTIFIED_MAX, mentionsOf, type PostMention, recordMentions } from './mentions.js'
 import { decodeReplyCursor, encodeReplyCursor } from './reply-cursor.js'
 
 export const POST_MAX_GRAPHEMES = 300
@@ -94,6 +95,11 @@ export type PostView = {
   text: string
   /** Up to four, in order. Empty when `deleted`. */
   images: PostImage[]
+  /**
+   * The @handles in `text` that lead to a member the viewer can see, in order,
+   * each with the handle that member has now. Empty when `deleted`.
+   */
+  mentions: PostMention[]
   createdAt: Date
   replyParentId: string | null
   likeCount: number
@@ -273,6 +279,7 @@ export class PostsService {
         images: sql<
           { id: string; alt: string; width: number; height: number }[]
         >`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${imagesOf(outerId)} else '[]'::json end`,
+        mentions: sql<PostMention[]>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${mentionsOf(viewerId, outerId)} else '[]'::json end`,
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
         // Kept on the row by triggers (see the posts schema): only active
@@ -681,7 +688,7 @@ export class PostsService {
         case when page.unavailable then null else json_build_object(
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
           'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id,
-          'text', p.text, 'images', ${imagesOf(sql`p.id`)},
+          'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
           'createdAt', p.created_at, 'replyParentId', p.reply_parent_id,
           'likeCount', p.like_count, 'replyCount', p.reply_count, 'repostCount', p.repost_count,
           'hasReplies', p.reply_count > 0 or exists(select 1 from posts child where child.reply_parent_id = p.id),
@@ -726,7 +733,8 @@ export class PostsService {
    * `communitySlug` posts into a community the author has joined. A reply always
    * lands in its parent's community (or none), whatever is asked for. `images`
    * must be the author's own uploads, processed and not on another post. `quote`
-   * makes it a quote post of a post the author can currently see.
+   * makes it a quote post of a post the author can currently see. Members named
+   * with @handle in `text` are recorded and told (see `recordMentions`).
    */
   async create(
     authorId: string,
@@ -816,12 +824,18 @@ export class PostsService {
           .returning({ id: media.id })
         if (attached.length === 0) throw new ImagesNotReadyError('an image is missing, still processing or already used')
       }
+      // Someone told about this post as a reply or a quote is not told again that
+      // it mentions them, and only the first few others named are told at all.
+      const mentioned = (await recordMentions(tx, { id: row!.id, authorId, text }))
+        .filter((id) => id !== parent?.authorId && id !== quoted?.authorId)
+        .slice(0, MENTIONS_NOTIFIED_MAX)
       await notify(tx, [
         ...(parent ? [{ recipientId: parent.authorId, kind: 'reply' as const, actorId: authorId, postId: row!.id }] : []),
         // A reply that quotes the post it answers notifies once, as a reply.
         ...(quoted && quoted.authorId !== parent?.authorId
           ? [{ recipientId: quoted.authorId, kind: 'quote' as const, actorId: authorId, postId: row!.id }]
           : []),
+        ...mentioned.map((recipientId) => ({ recipientId, kind: 'mention' as const, actorId: authorId, postId: row!.id })),
       ])
       return row!
     })

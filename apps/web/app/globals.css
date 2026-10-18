@@ -1073,6 +1073,8 @@ summary.menu::-webkit-details-marker {
 .post-primary-link { display: block; user-select: text; -webkit-user-drag: none; }
 .post-primary-link::after { position: absolute; z-index: 1; inset: 0; border-radius: var(--r-panel); content: ''; }
 .post-primary-text { position: relative; z-index: 2; }
+.post-mention { color: var(--accent-strong); font-weight: 500; }
+.post-mention:hover { text-decoration: underline; }
 .post-primary-link:focus-visible { outline: none; }
 .post-primary-link:focus-visible::after { outline: 2px solid var(--focus-ring); outline-offset: -3px; }
 .post-card.is-clickable :is(a:not(.post-primary-link), button, summary, input, select, textarea, form, .post-images) { position: relative; z-index: 2; }
@@ -1227,6 +1229,7 @@ a.notification-row:hover {
 .notification-icon.is-reply,
 .notification-icon.is-repost,
 .notification-icon.is-quote,
+.notification-icon.is-mention,
 .notification-icon.is-follow {
   color: var(--accent-strong);
 }

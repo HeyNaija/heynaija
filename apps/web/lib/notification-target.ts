@@ -7,6 +7,7 @@ export function notificationTarget(n: Pick<Notification, 'kind' | 'post' | 'acto
     case 'like':
     case 'repost':
     case 'quote':
+    case 'mention':
     case 'post_restored':
       return n.post ? `/p/${n.post.id}#post-${n.post.id}` : null
     case 'follow':

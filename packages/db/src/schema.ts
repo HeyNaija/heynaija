@@ -164,6 +164,26 @@ export const posts = pgTable(
   ],
 )
 
+// A member named with @handle in a post, reply or quote, written with the post
+// (posts are never edited). Stored by member ID, so the mention keeps leading to
+// the same person after they rename, while the text keeps the handle as written.
+// `start` and `length` say where that @handle is in the text, in UTF-16 code
+// units as JavaScript counts them, so a reader's app can link exactly that span.
+export const postMentions = pgTable(
+  'post_mentions',
+  {
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => posts.id),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    start: integer('start').notNull(),
+    length: integer('length').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.postId, t.start] }), index('post_mentions_member_idx').on(t.memberId)],
+)
+
 export const likes = pgTable(
   'likes',
   {
@@ -329,6 +349,7 @@ export const NOTIFICATION_KINDS = [
   'like',
   'repost',
   'quote',
+  'mention',
   'follow',
   'post_removed',
   'post_restored',
@@ -340,8 +361,8 @@ export const NOTIFICATION_KINDS = [
   'moderator_revoked',
 ] as const
 
-// Something that happened to a member: a reply, like, repost, quote or follow by someone else,
-// or a moderation decision about their post, account or report. Rows are written
+// Something that happened to a member: a reply, like, repost, quote, mention or follow by
+// someone else, or a moderation decision about their post, account or report. Rows are written
 // when it happens; whether one is still shown (the actor blocked, the post
 // deleted, the like taken back) is decided when it is read.
 export const notifications = pgTable(
@@ -355,7 +376,8 @@ export const notifications = pgTable(
     // Who did it. Null for moderation decisions, which come from "the moderators".
     actorId: uuid('actor_id').references(() => members.id),
     // reply: the reply. like, repost: the post liked or reposted. quote: the quote
-    // post (not the post it quotes). Moderation: the post decided on.
+    // post (not the post it quotes). mention: the post that mentions the recipient.
+    // Moderation: the post decided on.
     postId: uuid('post_id').references(() => posts.id),
     // report_resolved about an account: that account.
     subjectId: uuid('subject_id').references(() => members.id),
@@ -382,6 +404,9 @@ export const notifications = pgTable(
     uniqueIndex('notifications_quote_once_idx')
       .on(t.recipientId, t.actorId, t.postId)
       .where(sql`kind = 'quote'`),
+    uniqueIndex('notifications_mention_once_idx')
+      .on(t.recipientId, t.actorId, t.postId)
+      .where(sql`kind = 'mention'`),
     uniqueIndex('notifications_follow_once_idx')
       .on(t.recipientId, t.actorId)
       .where(sql`kind = 'follow'`),

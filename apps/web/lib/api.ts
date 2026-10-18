@@ -40,6 +40,13 @@ export type QuotedPost =
     }
   | { unavailable: true }
 
+/**
+ * An @handle in a post's text that leads to a member: where it is (in UTF-16
+ * code units, as `String.prototype.slice` counts) and the handle they have now,
+ * which differs from the text if they have renamed since.
+ */
+export type PostMention = { start: number; length: number; handle: string }
+
 export type Post = {
   unavailable?: false
   id: string
@@ -50,6 +57,8 @@ export type Post = {
   authorAvatar: string | null
   text: string
   images: PostImage[]
+  /** Mentions of members the viewer can see, in order. Other @text stays plain. */
+  mentions: PostMention[]
   createdAt: string
   replyParentId: string | null
   likeCount: number
@@ -302,6 +311,7 @@ export type NotificationKind =
   | 'like'
   | 'repost'
   | 'quote'
+  | 'mention'
   | 'follow'
   | 'post_removed'
   | 'post_restored'

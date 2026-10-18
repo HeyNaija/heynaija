@@ -15,6 +15,25 @@ export const HANDLE_HOLD_DAYS = 30
 
 const held = sql`${releasedHandles.releasedAt} > now() - make_interval(days => ${HANDLE_HOLD_DAYS})`
 
+/**
+ * Who each of `handles` leads to now, as /u/<handle> would: the active member
+ * who has it, or else the active member who gave it up in the last
+ * HANDLE_HOLD_DAYS. Handles that lead nobody are left out. Takes a transaction.
+ */
+export async function membersForHandles(db: Pick<Db, 'execute'>, handles: string[]): Promise<Map<string, string>> {
+  if (!handles.length) return new Map()
+  const { rows } = await db.execute<{ handle: string; member_id: string | null }>(sql`
+    select h.handle, coalesce(
+      (select m.id from members m where m.handle = h.handle and m.active
+        order by m.last_seen_at desc nulls last limit 1),
+      (select r.member_id from released_handles r join members m on m.id = r.member_id
+        where r.handle = h.handle and r.released_at > now() - make_interval(days => ${HANDLE_HOLD_DAYS})
+          and m.active and m.handle <> h.handle)
+    ) as member_id
+    from unnest(${sql.param(handles)}::text[]) as h(handle)`)
+  return new Map(rows.flatMap((r) => (r.member_id ? [[r.handle, r.member_id] as const] : [])))
+}
+
 const atMost = (max: number) => (t: string) => t.length <= max * 16 && graphemes(t) <= max
 
 /** What a member can say about themselves. An empty name means "just my handle". */
