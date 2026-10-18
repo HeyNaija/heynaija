@@ -143,6 +143,8 @@ Browser ──> Next.js web app
 - [x] Search over members, communities and posts (PostgreSQL full text)
 - [x] Mute and block, respected in every feed, thread and search
 - [x] Post images: up to 4, with optional descriptions (alt text), processed in a background job
+- [x] GIFs: attached like images (uploaded, not searched for), kept as animated WebP with a still of the first frame; they play unless the device asks for less motion and can be paused. At most 300 frames and 10 MB (18 October 2026)
+- [x] Links: web addresses in a post are links (opening in a new tab), and the first one gets a preview card read by a background job, with its picture kept on our own storage; the server refuses private and local addresses ([ADR 0008](docs/adr/0008-link-previews.md)) (18 October 2026)
 - [x] Notifications (replies, likes, reposts, quotes, follows, moderation outcomes), in-app only
 - [x] Reposts and quote posts: repost to your followers and profile, or quote with your own words. Following and the profile Posts tab show each post once, at the latest time it was reposted by someone you see; blocks and mutes apply to reposter and author; a quote of a deleted post shows a placeholder (16 October 2026, [ADR 0007](docs/adr/0007-reposts-and-quotes.md))
 
@@ -199,7 +201,8 @@ All tables are in `packages/db/src/schema.ts`; migrations in `packages/db/drizzl
 | `invites`, `invite_redemptions` | Hashed invite codes and who each one let in |
 | `reports`, `moderation_actions` | Reports and appeals; the append-only decision log |
 | `notifications` | One row per event for a member: kind, actor, post, read time. What still shows is decided on read |
-| `media` | Uploaded files: owner, kind, status, type, size, dimensions; for post images also the post, position and description |
+| `media` | Uploaded files: owner, kind, status, type, size, dimensions; for post images also the post, position, description and whether it is an animated GIF |
+| `link_previews` | What a web address leads to, shared by every post that links there: status, title, description, thumbnail. `posts.link_url` names the one a post shows |
 | `profile_badges` | Public badges (the green identity tick); a row only while it may be shown and its owner chose to show it |
 | `restricted.*` | Kept apart from ordinary reads (ADR 0005): `age_assurances` (age-band statements and how each was made; ADR 0006), `identity_verifications`, `governance_memberships`, `governance_audit_log` |
 

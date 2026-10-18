@@ -26,6 +26,8 @@ import {
   Link,
   type LucideIcon,
   MessageCircle,
+  Pause,
+  Play,
   Plus,
   Quote,
   Repeat2,
@@ -81,6 +83,8 @@ export const ShieldIcon = icon(Shield)
 export const VoteIcon = icon(Vote)
 export const ImageIcon = icon(ImagePlus)
 export const CloseIcon = icon(X)
+export const PlayIcon = icon(Play)
+export const PauseIcon = icon(Pause)
 export const PreviousIcon = icon(ChevronLeft)
 export const NextIcon = icon(ChevronRight)
 export const ArrowUpRightIcon = icon(ArrowUpRight)

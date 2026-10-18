@@ -46,6 +46,7 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['reports', `delete from reports where reporter_id in (select id from e2e_m) or member_id in (select id from e2e_m)
            or post_id in (select id from e2e_p) or resolved_by in (select id from e2e_m)`],
         ['notification settings', `delete from notification_opt_outs where member_id in (select id from e2e_m)`],
+        ['link previews', `delete from link_previews where url like 'https://links.e2e.test/%'`],
         ['mentions', `delete from post_mentions where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['likes', `delete from likes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['reposts', `delete from reposts where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
@@ -193,5 +194,24 @@ export async function ageSignIn(handle: string, minutes: number) {
     if (!rowCount) throw new Error(`no active Kratos session for @${handle}`)
   } finally {
     await kratos.end()
+  }
+}
+
+/**
+ * Gives an address a ready preview card without the page being fetched: the API
+ * (rightly) refuses to read pages from this machine, and tests cannot reach the
+ * internet. Use an address under https://links.e2e.test/, which cleaning removes.
+ */
+export async function seedLinkPreview(url: string, { title, description }: { title: string; description: string }) {
+  if (!url.startsWith('https://links.e2e.test/')) throw new Error('seed previews only for https://links.e2e.test/')
+  const db = pool()
+  try {
+    await db.query(
+      `insert into link_previews (url, status, title, description, site_name, fetched_at) values ($1, 'ready', $2, $3, 'E2E News', now())
+       on conflict (url) do update set status = 'ready', title = $2, description = $3, fetched_at = now()`,
+      [url, title, description],
+    )
+  } finally {
+    await db.end()
   }
 }

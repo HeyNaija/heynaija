@@ -12,6 +12,9 @@ import { ExportService } from './export/export.service.js'
 import { GovernanceController } from './governance/governance.controller.js'
 import { GovernanceService } from './governance/governance.service.js'
 import { InvitesService } from './invites/invites.service.js'
+import { BullLinkJobs, LinkWorker } from './links/link-queue.js'
+import { LINK_JOBS, LinksService, PAGE_FETCHER } from './links/links.service.js'
+import { SafeFetcher } from './links/safe-fetch.js'
 import { MediaController, PostImagesController } from './media/media.controller.js'
 import { BullMediaJobs, MediaWorker } from './media/media-queue.js'
 import { CONTENT_SCANNER, MEDIA_JOBS, MediaService, NoScanner, OBJECT_STORE } from './media/media.service.js'
@@ -57,6 +60,11 @@ class HealthController {
     { provide: CONTENT_SCANNER, useClass: NoScanner },
     MediaService,
     MediaWorker,
+    { provide: LINK_JOBS, useClass: BullLinkJobs },
+    // Reads linked pages for previews, and only ever from the public internet.
+    { provide: PAGE_FETCHER, useFactory: () => new SafeFetcher() },
+    LinksService,
+    LinkWorker,
     MembersService,
     CommunitiesService,
     InvitesService,

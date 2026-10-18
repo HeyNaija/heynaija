@@ -7,7 +7,7 @@ import { Globe } from 'lucide-react'
 import { type ComposeState, createPost } from '@/app/actions'
 import { Avatar } from './avatar'
 import { CloseIcon, ImageIcon, PeopleIcon } from './icons'
-import { IMAGE_TYPES } from './shrink-image'
+import { POST_IMAGE_TYPES } from './shrink-image'
 import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
 
 const LIMIT = 300
@@ -160,8 +160,8 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
         <button
           type="button"
           className="icon-btn composer-photo"
-          aria-label={`Add images (up to ${MAX_IMAGES})`}
-          title="Add images"
+          aria-label={`Add images or GIFs (up to ${MAX_IMAGES})`}
+          title="Add images or GIFs"
           disabled={images.drafts.length >= MAX_IMAGES}
           onClick={() => picker.current?.click()}
         >
@@ -172,7 +172,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
           ref={picker}
           type="file"
           multiple
-          accept={IMAGE_TYPES.join(',')}
+          accept={POST_IMAGE_TYPES.join(',')}
           className="sr-only"
           tabIndex={-1}
           aria-hidden="true"
@@ -265,7 +265,7 @@ function DraftRow({
       <img src={draft.preview} alt="" className={`composer-thumb ${draft.status === 'ready' ? '' : 'is-busy'}`} />
       <div className="min-w-0 flex-1">
         <label htmlFor={id} className="sr-only">
-          Description of image {index + 1}
+          Description of {draft.gif ? 'GIF' : 'image'} {index + 1}
         </label>
         <input
           id={id}
@@ -274,7 +274,7 @@ function DraftRow({
           value={draft.alt}
           onChange={(e) => onDescribe(e.target.value)}
           maxLength={1000}
-          placeholder="Describe this image (optional)"
+          placeholder={`Describe this ${draft.gif ? 'GIF' : 'image'} (optional)`}
           className="field field-sm"
         />
         {draft.status === 'ready' && draft.mediaId ? <input type="hidden" name="image" value={draft.mediaId} /> : null}
@@ -288,7 +288,7 @@ function DraftRow({
           </p>
         )}
       </div>
-      <button type="button" className="icon-btn -mr-1" aria-label={`Remove image ${index + 1}`} onClick={onRemove}>
+      <button type="button" className="icon-btn -mr-1" aria-label={`Remove ${draft.gif ? 'GIF' : 'image'} ${index + 1}`} onClick={onRemove}>
         <CloseIcon size={18} />
       </button>
     </li>

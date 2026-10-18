@@ -11,4 +11,4 @@ export const { db, pool } = createDb(url)
 export const migrate = () => runMigrations(db)
 
 export const reset = () =>
-  db.execute(sql`truncate notifications, notification_opt_outs, post_mentions, media, moderation_actions, reports, blocks, mutes, likes, reposts, bookmarks, follows, community_memberships, communities, invite_redemptions, invites, profile_badges, restricted.identity_verifications, restricted.governance_memberships, restricted.governance_audit_log, restricted.age_assurances, posts, members cascade`)
+  db.execute(sql`truncate link_previews, notifications, notification_opt_outs, post_mentions, media, moderation_actions, reports, blocks, mutes, likes, reposts, bookmarks, follows, community_memberships, communities, invite_redemptions, invites, profile_badges, restricted.identity_verifications, restricted.governance_memberships, restricted.governance_audit_log, restricted.age_assurances, posts, members cascade`)

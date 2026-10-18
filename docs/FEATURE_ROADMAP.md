@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 29 | 10 | 24 | 14 | 77 |
+| 31 | 10 | 24 | 14 | 79 |
 
 ## Priority order
 
@@ -367,6 +367,23 @@ This tracks product development, not formal governance decisions. Priority means
 
 ### Conversations and feeds
 
+#### Links and preview cards in posts
+
+- **ID:** `post-links`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Availability not verified
+- **Description:** Web addresses in a post are links, and the first one gets a card with the page's title, text and a picture.
+- **Inspected evidence:** `apps/api/src/links/link-text.ts`, `apps/api/src/links/links.service.ts`, `apps/api/src/links/safe-fetch.ts`, `apps/web/app/ui/post-text.tsx`, `apps/web/app/ui/link-card.tsx`, `apps/api/src/links/links.service.test.ts`, `apps/api/src/links/safe-fetch.test.ts`, `e2e/tests/links.spec.ts`
+- **Audit notes:** Pages are read by the server, which refuses private and local addresses (ADR 0008); readers' browsers never contact the linked site. Only addresses starting http(s):// or www. are linked. Link thumbnails pass the same scanner binding as other uploads.
+
+#### GIFs in posts
+
+- **ID:** `gif-posts`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Availability not verified
+- **Description:** Attach a GIF to a post: it plays in the feed, can be paused, and shows its first frame to readers who ask for less motion.
+- **Dependencies:** `image-posts`
+- **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`, `apps/web/app/ui/composer.tsx`, `apps/api/src/media/media.service.test.ts`, `e2e/tests/gifs.spec.ts`
+- **Audit notes:** Uploaded GIFs only (no search provider); at most 300 frames and 40 million pixels in all, 10 MB. Kept as animated WebP with a still of the first frame, which quoted posts and share previews use.
+
 #### Mentions and mention notifications
 
 - **ID:** `mentions`
@@ -463,7 +480,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P1 · **Status:** Planned · **Availability:** Not live
 - **Description:** Let members choose how much media loads on limited connections.
 - **Inspected evidence:** `apps/web/app/ui/post-images.tsx`, `apps/web/app/ui/shrink-image.ts`, `apps/web/app/(main)/settings/page.tsx`
-- **Audit notes:** Upload resizing is implemented; member low-data settings and autoplay controls are not. Video is not supported.
+- **Audit notes:** Upload resizing is implemented; member low-data settings are not. GIFs play unless the device asks for less motion and can be paused. Video is not supported.
 
 ## P2 — Growth and community
 
@@ -636,6 +653,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Support video with accessible playback and appropriate safety processing.
 - **Dependencies:** `upload-scanning`
 - **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`
+- **Audit notes:** Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built.
 
 ## P3 — Later experiments
 

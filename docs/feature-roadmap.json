@@ -236,6 +236,46 @@
       ]
     },
     {
+      "id": "post-links",
+      "name": "Links and preview cards in posts",
+      "description": "Web addresses in a post are links, and the first one gets a card with the page's title, text and a picture.",
+      "category": "conversations",
+      "priority": "P1",
+      "status": "implemented",
+      "availability": "unknown",
+      "evidence": [
+        "apps/api/src/links/link-text.ts",
+        "apps/api/src/links/links.service.ts",
+        "apps/api/src/links/safe-fetch.ts",
+        "apps/web/app/ui/post-text.tsx",
+        "apps/web/app/ui/link-card.tsx",
+        "apps/api/src/links/links.service.test.ts",
+        "apps/api/src/links/safe-fetch.test.ts",
+        "e2e/tests/links.spec.ts"
+      ],
+      "notes": "Pages are read by the server, which refuses private and local addresses (ADR 0008); readers' browsers never contact the linked site. Only addresses starting http(s):// or www. are linked. Link thumbnails pass the same scanner binding as other uploads."
+    },
+    {
+      "id": "gif-posts",
+      "name": "GIFs in posts",
+      "description": "Attach a GIF to a post: it plays in the feed, can be paused, and shows its first frame to readers who ask for less motion.",
+      "category": "conversations",
+      "priority": "P1",
+      "status": "implemented",
+      "availability": "unknown",
+      "dependency": [
+        "image-posts"
+      ],
+      "evidence": [
+        "apps/api/src/media/media.service.ts",
+        "apps/web/app/ui/post-images.tsx",
+        "apps/web/app/ui/composer.tsx",
+        "apps/api/src/media/media.service.test.ts",
+        "e2e/tests/gifs.spec.ts"
+      ],
+      "notes": "Uploaded GIFs only (no search provider); at most 300 frames and 40 million pixels in all, 10 MB. Kept as animated WebP with a still of the first frame, which quoted posts and share previews use."
+    },
+    {
       "id": "chronological-feeds",
       "name": "Chronological home feeds",
       "description": "Read Latest and Following in time order, with explanations of Following entries.",
@@ -778,7 +818,7 @@
         "apps/web/app/ui/shrink-image.ts",
         "apps/web/app/(main)/settings/page.tsx"
       ],
-      "notes": "Upload resizing is implemented; member low-data settings and autoplay controls are not. Video is not supported."
+      "notes": "Upload resizing is implemented; member low-data settings are not. GIFs play unless the device asks for less motion and can be paused. Video is not supported."
     },
     {
       "id": "social-polls",
@@ -1146,7 +1186,8 @@
       ],
       "dependency": [
         "upload-scanning"
-      ]
+      ],
+      "notes": "Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built."
     },
     {
       "id": "live-audio",

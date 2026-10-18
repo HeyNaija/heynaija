@@ -63,7 +63,7 @@ review exist, the product must not claim ownership that members do not yet have.
 ## Capabilities and Constraints
 
 Built: invite-only signup and passwordless sign-in; text posts (300 characters) with
-up to four images and alt text; threaded replies, likes, reposts and quote posts,
+up to four images or GIFs with alt text, links with preview cards; threaded replies, likes, reposts and quote posts,
 private bookmarks; profiles with photo, display name (50 characters) and bio (160);
 follow, mute, block; Latest, Following, community and trending feeds; search across
 members, communities and posts; in-app notifications; reporting, moderation queue,

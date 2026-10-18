@@ -25,7 +25,14 @@ export type Me = {
 }
 
 /** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
-export type PostImage = { src: string; alt: string; width: number; height: number }
+export type PostImage = {
+  src: string
+  alt: string
+  width: number
+  height: number
+  /** A GIF: `/640.webp` and `/1600.webp` move, and `/still.webp` is its first frame. */
+  animated: boolean
+}
 
 /** The post a quote post quotes, or a placeholder when the reader cannot see it. */
 export type QuotedPost =
@@ -50,6 +57,19 @@ export type QuotedPost =
  */
 export type PostMention = { start: number; length: number; handle: string }
 
+/** A web address in the text: where it is (UTF-16 code units) and where it leads. Always http or https. */
+export type PostLink = { start: number; length: number; url: string }
+
+/** What the first web address in a post leads to, read by the server. */
+export type LinkPreview = {
+  url: string
+  title: string
+  description: string | null
+  siteName: string | null
+  /** A copy kept on our servers: append `/640.webp`. */
+  image: { src: string; width: number; height: number } | null
+}
+
 export type Post = {
   unavailable?: false
   id: string
@@ -62,6 +82,10 @@ export type Post = {
   images: PostImage[]
   /** Mentions of members the viewer can see, in order. Other @text stays plain. */
   mentions: PostMention[]
+  /** Web addresses in the text, in order. */
+  links: PostLink[]
+  /** The card for the first address, once the server has read the page. */
+  linkPreview: LinkPreview | null
   createdAt: string
   replyParentId: string | null
   likeCount: number

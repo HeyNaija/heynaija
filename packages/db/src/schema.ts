@@ -83,6 +83,9 @@ export const media = pgTable(
     // Dimensions of the largest processed version, so pages can reserve the space.
     width: integer('width'),
     height: integer('height'),
+    // A GIF kept as an animated WebP, with a still of its first frame beside it so
+    // readers can pause it. False for ordinary images.
+    animated: boolean('animated').notNull().default(false),
     // Post images only: the post it belongs to (null until the post is made),
     // its place among that post's images, and its description for screen readers.
     postId: uuid('post_id').references(() => posts.id),
@@ -95,6 +98,32 @@ export const media = pgTable(
     index('media_owner_status_idx').on(t.ownerId, t.status),
     index('media_post_idx').on(t.postId),
   ],
+)
+
+// What a web address in a post leads to, fetched once and shared by every post
+// that links there: the page's title, description and a thumbnail we keep
+// ourselves (readers' browsers never contact the linked site). A card is shown
+// only when 'ready'. A page that could not be read is 'failed' and tried again
+// after an hour, and a 'ready' one is refreshed after a week.
+export const linkPreviews = pgTable(
+  'link_previews',
+  {
+    url: text('url').primaryKey(),
+    status: text('status', { enum: ['pending', 'ready', 'failed'] })
+      .notNull()
+      .default('pending'),
+    title: text('title'),
+    description: text('description'),
+    siteName: text('site_name'),
+    // The thumbnail's file name in the media bucket (links/<imageId>/640.webp) and
+    // its size, so the card can reserve its space. Null when the page had no usable image.
+    imageId: uuid('image_id'),
+    imageWidth: integer('image_width'),
+    imageHeight: integer('image_height'),
+    requestedAt: ts('requested_at').notNull().defaultNow(),
+    fetchedAt: ts('fetched_at'),
+  },
+  (t) => [index('link_previews_requested_idx').on(t.requestedAt)],
 )
 
 // A public interest group. Anyone can read it; members can post into it.
@@ -141,6 +170,9 @@ export const posts = pgTable(
     // No foreign key, like reply_parent_id: a quoted post that is gone, or that the
     // reader may not see, is shown as a placeholder.
     quotePostId: uuid('quote_post_id'),
+    // The first web address in the text, without its #fragment: the one that gets a
+    // preview card. Matches link_previews.url; null when the text has no address.
+    linkUrl: text('link_url'),
     // At most one community per post. Replies inherit their parent's.
     communityId: uuid('community_id').references(() => communities.id),
     createdAt: ts('created_at').notNull().defaultNow(),

@@ -9,7 +9,7 @@ import { MembersService } from '../members/members.service.js'
 import { ModerationService, NotAModeratorError } from '../moderation/moderation.service.js'
 import { ImagesNotReadyError, newPost, PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
-import { AVATAR_MAX_BYTES, type ContentScanner, MediaError, type MediaJobs, MediaService, POST_IMAGE_MAX_BYTES } from './media.service.js'
+import { ANIMATION_MAX_FRAMES, AVATAR_MAX_BYTES, type ContentScanner, MediaError, type MediaJobs, MediaService, POST_IMAGE_MAX_BYTES, type PostImageType } from './media.service.js'
 import type { Bucket, ObjectStore } from './object-store.js'
 
 // Storage is faked in memory; the image handling under test is real.
@@ -224,8 +224,8 @@ const picture = (width: number, height: number) =>
     .toBuffer()
 
 /** Start, upload and finish, as the browser does; the job has not run yet. */
-const uploadPostImage = async (owner: string, body: Buffer) => {
-  const { mediaId } = await service.startPostImageUpload(owner, 'image/jpeg', body.length)
+const uploadPostImage = async (owner: string, body: Buffer, type: PostImageType = 'image/jpeg') => {
+  const { mediaId } = await service.startPostImageUpload(owner, type, body.length)
   store.upload(mediaId, body, 'posts')
   assert.equal(await service.finishPostImageUpload(owner, mediaId), 'processing')
   return mediaId
@@ -309,8 +309,8 @@ test('images appear on the post in order, with their descriptions', async () => 
 
   const thread = await postsService.thread(null, id)
   assert.deepEqual(thread!.post.images, [
-    { src: `/media/posts/${second}`, alt: 'A tall photo', width: 600, height: 900 },
-    { src: `/media/posts/${first}`, alt: 'Third Mainland Bridge', width: 1200, height: 800 },
+    { src: `/media/posts/${second}`, alt: 'A tall photo', width: 600, height: 900, animated: false },
+    { src: `/media/posts/${first}`, alt: 'Third Mainland Bridge', width: 1200, height: 800, animated: false },
   ])
   assert.deepEqual((await postsService.feed(null, 10)).posts[0]!.images.length, 2)
 })
@@ -528,4 +528,96 @@ test('deleting a reported post keeps its images privately for the moderator', as
   assert.equal(await statusOf(image), 'quarantined')
   assert.deepEqual(store.keys('media'), [])
   assert.equal(store.keys('uploads').length, 2)
+})
+
+// A GIF of `frames` solid-colour frames, as a phone's keyboard or a meme site would hand over.
+const animatedGif = async (frames = 3, width = 120, height = 80) =>
+  sharp(
+    await Promise.all(
+      Array.from({ length: frames }, (_, i) =>
+        sharp({ create: { width, height, channels: 3, background: { r: (i * 80) % 256, g: 120, b: 200 } } }).png().toBuffer(),
+      ),
+    ),
+    { join: { animated: true } },
+  )
+    .gif({ delay: Array.from({ length: frames }, () => 100), loop: 0 })
+    .toBuffer()
+
+test('a GIF becomes an animated WebP at our sizes, with a still of its first frame', async () => {
+  const gif = await animatedGif(4, 1000, 500)
+  assert.equal((await sharp(gif, { animated: true }).metadata()).pages, 4)
+  const mediaId = await uploadPostImage(ada, gif, 'image/gif')
+  await service.processPostImage(mediaId)
+
+  assert.equal(await service.postImageStatus(ada, mediaId), 'ready')
+  assert.deepEqual(store.keys('media'), [`media/posts/${mediaId}/1600.webp`, `media/posts/${mediaId}/640.webp`, `media/posts/${mediaId}/still.webp`])
+  for (const [name, w, h, frames] of [
+    ['640', 640, 320, 4],
+    ['1600', 1000, 500, 4], // not enlarged: the large size is the GIF's own
+  ] as const) {
+    const meta = await sharp(store.objects.get(`media/posts/${mediaId}/${name}.webp`)!, { animated: true }).metadata()
+    assert.deepEqual([meta.format, meta.width, meta.pageHeight, meta.pages], ['webp', w, h, frames], name)
+  }
+  const still = await sharp(store.objects.get(`media/posts/${mediaId}/still.webp`)!, { animated: true }).metadata()
+  assert.deepEqual([still.format, still.width, still.height, still.pages ?? 1], ['webp', 640, 320, 1])
+
+  const [row] = await db.select().from(media).where(eq(media.id, mediaId))
+  assert.deepEqual([row!.animated, row!.width, row!.height], [true, 1000, 500])
+  assert.deepEqual(store.keys('uploads'), [])
+})
+
+test('a GIF already small is encoded once and used for both sizes', async () => {
+  const mediaId = await readyPostImage(ada, await animatedGif(3, 200, 100))
+  // (readyPostImage uploads as a JPEG: the file's bytes decide what it is, not its label)
+  const small = store.objects.get(`media/posts/${mediaId}/640.webp`)!
+  const large = store.objects.get(`media/posts/${mediaId}/1600.webp`)!
+  assert.ok(small.equals(large))
+  assert.equal((await sharp(small, { animated: true }).metadata()).pages, 3)
+})
+
+test('a GIF with one frame is an ordinary image: no animation, no still', async () => {
+  const gif = await sharp({ create: { width: 300, height: 200, channels: 3, background: '#2a7' } }).gif().toBuffer()
+  const mediaId = await readyPostImage(ada, gif)
+  assert.deepEqual(store.keys('media'), [`media/posts/${mediaId}/1600.webp`, `media/posts/${mediaId}/640.webp`])
+  assert.equal((await db.select().from(media).where(eq(media.id, mediaId)))[0]!.animated, false)
+})
+
+test('a GIF that is too long, or too large for all its frames, is refused by the job', async () => {
+  const tooLong = await uploadPostImage(ada, await animatedGif(ANIMATION_MAX_FRAMES + 1, 16, 16), 'image/gif')
+  await service.processPostImage(tooLong)
+  assert.equal(await service.postImageStatus(ada, tooLong), 'failed')
+
+  // 400 × 400 × 260 frames is 41.6 million pixels held at once.
+  const tooBig = await uploadPostImage(ada, await animatedGif(260, 400, 400), 'image/gif')
+  await service.processPostImage(tooBig)
+  assert.equal(await service.postImageStatus(ada, tooBig), 'failed')
+  assert.deepEqual(store.keys('media'), [])
+  assert.deepEqual(store.keys('uploads'), [])
+})
+
+test('a profile photo cannot be a GIF, whatever it is labelled as', async () => {
+  const gif = await animatedGif()
+  const { mediaId } = await service.startAvatarUpload(ada, 'image/png', gif.length)
+  store.upload(mediaId, gif)
+  await assert.rejects(service.finishAvatarUpload(ada, mediaId), (e: MediaError) => e.code === 'not_an_image')
+  assert.deepEqual(store.keys('media'), [])
+})
+
+test('a GIF is on the post as animated, and its still goes with it when the post is taken down and put back', async () => {
+  const postsService = new PostsService(db)
+  const image = await readyPostImage(bayo, await animatedGif())
+  const { id: post } = await postsService.create(bayo, 'funny', { images: [{ id: image, alt: 'A wobbling box' }] })
+  const shown = (await postsService.thread(null, post))!.post.images
+  assert.deepEqual(shown, [{ src: `/media/posts/${image}`, alt: 'A wobbling box', width: 120, height: 80, animated: true }])
+
+  await service.quarantinePostImages(post)
+  assert.deepEqual(store.keys('media'), [])
+  assert.equal(store.keys('uploads').length, 3, 'both sizes and the still are kept privately')
+  await service.releasePostImages(post)
+  assert.equal(store.keys('media').length, 3)
+  assert.equal(store.keys('uploads').length, 0)
+
+  await postsService.remove(bayo, post)
+  await service.discardPostImages(post)
+  assert.deepEqual(store.keys('media'), [], 'deleting the post deletes the still too')
 })

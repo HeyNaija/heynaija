@@ -141,6 +141,13 @@
       "when": 1792322489178,
       "tag": "0019_onboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792353258346,
+      "tag": "0020_links_and_gifs",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,7 @@ import { EmptyState } from './empty-state'
 import type { FeedSource } from './feed-source'
 import { BookmarkIcon, BubbleIcon, DotsIcon, HeartIcon, RepostIcon } from './icons'
 import { LikeButton } from './like-button'
+import { LinkCard } from './link-card'
 import { Menu } from './menu'
 import { MorePosts } from './more-posts'
 import { ComposeLink } from './new-post-link'
@@ -55,8 +56,9 @@ export function PostItem({
 
   const href = `/p/${post.id}`
   const openLabel = `Open ${post.replyParentId ? 'reply' : 'post'} by @${post.authorHandle}`
-  const parts = textParts(post.text, post.mentions)
-  const mentions = parts.some((part) => part.handle)
+  const parts = textParts(post.text, post.mentions, post.links)
+  // Text with links of its own cannot sit inside the post's permalink.
+  const rich = parts.some((part) => part.handle || part.href)
   const likes = post.likeCount === 1 ? '1 like' : `${post.likeCount} likes`
   const replies = post.replyCount === 1 ? '1 reply' : `${post.replyCount} replies`
   const reposts = post.repostCount === 1 ? '1 repost' : `${post.repostCount} reposts`
@@ -173,7 +175,7 @@ export function PostItem({
         <p className={`mt-3 whitespace-pre-wrap break-words ${focused ? 'text-base leading-relaxed' : 'post-body'}`}>
           {focused ? (
             <PostText parts={parts} />
-          ) : mentions ? (
+          ) : rich ? (
             <PostPermalink href={href} label={openLabel} beside>
               <PostText parts={parts} />
             </PostPermalink>
@@ -190,6 +192,12 @@ export function PostItem({
       {post.quote ? (
         <div className="mt-3">
           <QuotedPostCard quote={post.quote} now={now} />
+        </div>
+      ) : null}
+      {/* A card for the first address, unless the post already has pictures or a quote to show. */}
+      {post.linkPreview && !post.images.length && !post.quote ? (
+        <div className="mt-3">
+          <LinkCard preview={post.linkPreview} />
         </div>
       ) : null}
 

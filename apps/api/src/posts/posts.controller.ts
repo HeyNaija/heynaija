@@ -22,6 +22,7 @@ import {
   SessionGuard,
 } from '../auth/session.guard.js'
 import { paged, pageQuery, parse, slugParam } from '../http.js'
+import { LinksService } from '../links/links.service.js'
 import { MediaService } from '../media/media.service.js'
 import { RateLimiter } from '../rate-limit.js'
 import {
@@ -48,6 +49,7 @@ export class PostsController {
   constructor(
     @Inject(PostsService) private readonly posts: PostsService,
     @Inject(MediaService) private readonly media: MediaService,
+    @Inject(LinksService) private readonly links: LinksService,
     @Inject(RateLimiter) private readonly limits: RateLimiter,
   ) {}
 
@@ -109,7 +111,10 @@ export class PostsController {
     const { text, replyTo, community, images, quote } = parse(createPostBody, body)
     await this.limits.hit('post', req.member.id)
     try {
-      return await this.posts.create(req.member.id, text, { replyTo, communitySlug: community, images, quote })
+      const { id, linkUrl } = await this.posts.create(req.member.id, text, { replyTo, communitySlug: community, images, quote })
+      // The card appears once the page has been read, a few seconds on; the post does not wait for it.
+      if (linkUrl) await this.links.request(linkUrl)
+      return { id }
     } catch (err) {
       const code =
         err instanceof ParentNotFoundError

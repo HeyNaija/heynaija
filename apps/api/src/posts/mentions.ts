@@ -1,5 +1,6 @@
 import { type Db, postMentions } from '@heynaija/db'
 import { type SQL, sql } from 'drizzle-orm'
+import { findLinks } from '../links/link-text.js'
 import { membersForHandles } from '../members/members.service.js'
 
 /** How many of the members a post mentions are notified; the rest are only linked. */
@@ -27,7 +28,9 @@ export async function recordMentions(
   tx: Pick<Db, 'execute' | 'insert'>,
   post: { id: string; authorId: string; text: string },
 ): Promise<string[]> {
-  const found = findMentions(post.text)
+  // A handle inside a web address ("…/profile?u=@ada") is part of the address.
+  const links = findLinks(post.text)
+  const found = findMentions(post.text).filter((m) => !links.some((l) => m.start >= l.start && m.start < l.start + l.length))
   if (!found.length) return []
   const holders = await membersForHandles(tx, [...new Set(found.map((m) => m.handle))])
   const rows = found.flatMap(({ handle, start, length }) => {
