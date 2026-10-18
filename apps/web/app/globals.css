@@ -138,9 +138,15 @@ body {
   color: var(--ink);
 }
 
-:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+/* The default focus ring, in the base layer so that anything that draws its own focus
+   treatment (a field's border and ring, a search box's frame) can remove this one with
+   an ordinary rule or `focus:outline-none`. Unlayered, it beat those, and the field
+   showed two rings. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
 }
 
 button,
