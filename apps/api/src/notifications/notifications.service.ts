@@ -19,7 +19,8 @@ export type NewNotification = {
 
 /**
  * Records notifications, inside the caller's transaction when given one. Nobody
- * is notified about their own actions, and a like, repost or follow notifies only once.
+ * is notified about their own actions, and a like, repost, quote, mention or
+ * follow notifies only once.
  */
 export async function notify(db: Pick<Db, 'insert'>, rows: NewNotification[]): Promise<void> {
   const wanted = rows.filter((r) => r.actorId !== r.recipientId)
@@ -58,7 +59,7 @@ const visible = (viewerId: string) => sql`
     a.active
     and not exists(select 1 from blocks b where (b.blocker_id = ${viewerId} and b.blocked_id = n.actor_id) or (b.blocker_id = n.actor_id and b.blocked_id = ${viewerId}))
     and not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = n.actor_id)))
-  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'post_restored') or (p.deleted_at is null and p.removed_at is null))
+  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored') or (p.deleted_at is null and p.removed_at is null))
   and (n.kind <> 'like' or exists(select 1 from likes l where l.post_id = n.post_id and l.member_id = n.actor_id))
   and (n.kind <> 'repost' or exists(select 1 from reposts r where r.post_id = n.post_id and r.member_id = n.actor_id))
   and (n.kind <> 'follow' or exists(select 1 from follows f where f.follower_id = n.actor_id and f.followee_id = ${viewerId}))`

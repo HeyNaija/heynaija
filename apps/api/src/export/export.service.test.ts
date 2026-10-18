@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import { members } from '@heynaija/db'
+import { eq } from 'drizzle-orm'
 import { GovernanceService } from '../governance/governance.service.js'
 import { MembersService } from '../members/members.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
@@ -80,6 +81,20 @@ test('another member’s posts and reports about the member stay out', async () 
   assert.equal(data.reportsYouMade.length, 0)
   // Nothing in the export names who reported the member.
   assert.ok(!JSON.stringify(data).includes('bayo'))
+})
+
+test('each post lists the members it mentions, once each, by the handle they have now', async () => {
+  const { id } = await postsService.create(ada, 'thanks @bayo, @chi and @bayo again')
+  const plain = await postsService.create(ada, 'no one in particular')
+  await db.update(members).set({ handle: 'bayo_new' }).where(eq(members.id, bayo))
+  const data = (await service.export(ada, null))!
+  assert.deepEqual(
+    data.posts.map((p) => [p.id, p.mentions]),
+    [
+      [id, ['bayo_new', 'chi']],
+      [plain.id, []],
+    ],
+  )
 })
 
 test('an unknown member has no export', async () => {

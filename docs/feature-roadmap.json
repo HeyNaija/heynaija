@@ -644,15 +644,18 @@
       "description": "Mention a member by handle and notify the person mentioned.",
       "category": "conversations",
       "priority": "P1",
-      "status": "planned",
+      "status": "implemented",
       "availability": "not_live",
       "evidence": [
-        "packages/db/src/schema.ts",
-        "apps/api/src/posts/posts.controller.ts",
-        "apps/web/app/ui/composer.tsx",
-        "apps/api/src/notifications/notifications.service.ts"
+        "apps/api/src/posts/mentions.ts",
+        "apps/api/src/posts/posts.service.ts",
+        "packages/db/drizzle/0017_mentions.sql",
+        "apps/web/app/ui/post-text.tsx",
+        "apps/api/src/posts/posts.service.test.ts",
+        "apps/api/src/notifications/notifications.service.test.ts",
+        "e2e/tests/mentions.spec.ts"
       ],
-      "notes": "Typing @handle is not a functional mention; notification kinds contain no mention event."
+      "notes": "Mentions are stored by member ID with their place in the text, so they follow renames; held handles lead to their previous owner. At most 10 members per post are notified; blocked members either way are not, mutes hide the notification, and deleting or removing the post hides it. No composer handle autocomplete yet."
     },
     {
       "id": "profile-pins",

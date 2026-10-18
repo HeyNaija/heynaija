@@ -1,0 +1,41 @@
+import { expect, test } from '@playwright/test'
+import { newMember, post } from '../lib/members.ts'
+
+test('a mention links to the member and tells them, and the notification leads back to the post', async ({ browser }) => {
+  const author = await newMember(browser, 'mentioner')
+  const named = await newMember(browser, 'named')
+
+  // A handle nobody has stays plain text; the author's own is a link but tells nobody.
+  const nobody = `zz${Date.now().toString(36)}`
+  const text = `Suya tonight? @${named.handle} knows the spot, @${nobody} does not. Signed, @${author.handle}`
+  const card = await post(author.page, text)
+  await expect(card.getByRole('link', { name: `@${named.handle}`, exact: true })).toHaveAttribute('href', `/u/${named.handle}`)
+  await expect(card.getByRole('link', { name: `@${nobody}` })).toHaveCount(0)
+  await expect(card.locator('.post-mention')).toHaveCount(2)
+
+  // The text around a mention still opens the post, as on any card.
+  await card.getByText('Suya tonight?').click({ position: { x: 4, y: 4 } })
+  await author.page.waitForURL(/\/p\/[0-9a-f-]+$/)
+  const postPath = new URL(author.page.url()).pathname
+
+  // The member mentioned hears about it, and the notification opens the post.
+  await named.page.goto('/notifications')
+  const row = named.page.locator('.notification-row', { hasText: `@${author.handle} mentioned you` })
+  await expect(row).toBeVisible()
+  await expect(row).toContainText(text)
+  await row.click()
+  await named.page.waitForURL((url) => url.pathname === postPath)
+
+  // On the post itself the mention leads to their profile.
+  const focused = named.page.locator('article', { hasText: text })
+  await focused.getByRole('link', { name: `@${named.handle}`, exact: true }).click()
+  await named.page.waitForURL((url) => url.pathname === `/u/${named.handle}`)
+  await expect(named.page.getByRole('heading', { level: 1 })).toBeVisible()
+
+  // Nobody is told they mentioned themselves.
+  await author.page.goto('/notifications')
+  await expect(author.page.getByText('mentioned you')).toHaveCount(0)
+
+  await author.context.close()
+  await named.context.close()
+})

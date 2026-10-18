@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 26 | 10 | 27 | 14 | 77 |
+| 27 | 10 | 26 | 14 | 77 |
 
 ## Priority order
 
@@ -368,10 +368,10 @@ This tracks product development, not formal governance decisions. Priority means
 #### Mentions and mention notifications
 
 - **ID:** `mentions`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Mention a member by handle and notify the person mentioned.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/api/src/notifications/notifications.service.ts`
-- **Audit notes:** Typing @handle is not a functional mention; notification kinds contain no mention event.
+- **Inspected evidence:** `apps/api/src/posts/mentions.ts`, `apps/api/src/posts/posts.service.ts`, `packages/db/drizzle/0017_mentions.sql`, `apps/web/app/ui/post-text.tsx`, `apps/api/src/posts/posts.service.test.ts`, `apps/api/src/notifications/notifications.service.test.ts`, `e2e/tests/mentions.spec.ts`
+- **Audit notes:** Mentions are stored by member ID with their place in the text, so they follow renames; held handles lead to their previous owner. At most 10 members per post are notified; blocked members either way are not, mutes hide the notification, and deleting or removing the post hides it. No composer handle autocomplete yet.
 
 #### Conversation polls
 

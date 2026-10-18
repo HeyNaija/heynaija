@@ -79,6 +79,7 @@ async function clean() {
         or post_id in (select id from d_p)`],
       ['reports', `delete from reports where reporter_id in (select id from d_m) or member_id in (select id from d_m)
         or post_id in (select id from d_p) or resolved_by in (select id from d_m)`],
+      ['mentions', 'delete from post_mentions where member_id in (select id from d_m) or post_id in (select id from d_p)'],
       ['likes', 'delete from likes where member_id in (select id from d_m) or post_id in (select id from d_p)'],
       ['reposts', 'delete from reposts where member_id in (select id from d_m) or post_id in (select id from d_p)'],
       ['bookmarks', 'delete from bookmarks where member_id in (select id from d_m) or post_id in (select id from d_p)'],

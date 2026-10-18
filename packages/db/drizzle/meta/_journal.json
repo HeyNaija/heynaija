@@ -120,6 +120,13 @@
       "when": 1792235839518,
       "tag": "0016_reposts_feed_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792316240510,
+      "tag": "0017_mentions",
+      "breakpoints": true
     }
   ]
 }

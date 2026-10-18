@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, mock, test } from 'node:test'
-import { blocks, communities, communityMemberships, follows, likes, media, members, mutes, notifications, posts } from '@heynaija/db'
+import { blocks, communities, communityMemberships, follows, likes, media, members, mutes, notifications, postMentions, posts, releasedHandles } from '@heynaija/db'
 import { eq, sql } from 'drizzle-orm'
+import { MembersService } from '../members/members.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
+import { findMentions } from './mentions.js'
 import { InvalidCursorError, ParentNotFoundError, PostsService, postText, type ProfileFilter, type ReplyPage, TRENDING_TTL_MS } from './posts.service.js'
 import { decodeReplyCursor, encodeReplyCursor, replyPageQuery } from './reply-cursor.js'
 
@@ -738,4 +740,85 @@ test('post text: trimmed, non-empty, at most 300 characters as a person counts t
   // 300 flag emoji are 300 characters to a person but 1,200 UTF-16 code units.
   assert.equal(postText.safeParse('🇳🇬'.repeat(300)).success, true)
   assert.equal(postText.safeParse('🇳🇬'.repeat(301)).success, false)
+})
+
+test('@handles are found where they stand alone, and read as lower case', () => {
+  const handles = (text: string) => findMentions(text).map((m) => m.handle)
+  assert.deepEqual(handles('@ada and @Bayo_2, (@chi), @ada.'), ['ada', 'bayo_2', 'chi', 'ada'])
+  // Not in an email address or a URL, not too short or too long, not followed by more letters.
+  assert.deepEqual(handles('mail ada@example.com or see x.com/@bayo'), [])
+  assert.deepEqual(handles('@ab @abcdefghijklmnopqrstu @adaé @ada@chi'), [])
+  // Offsets are in UTF-16 code units, as JavaScript slices text.
+  const text = '🇳🇬 hi @ada'
+  const [mention] = findMentions(text)
+  assert.equal(text.slice(mention!.start, mention!.start + mention!.length), '@ada')
+})
+
+const mentionsIn = async (viewerId: string | null, id: string) =>
+  (await service.post(viewerId, id))!.mentions.map((m) => m.handle)
+
+test('mentions are stored by member, and lead to the handle the member has now', async () => {
+  const text = 'hi @bayo and @CHI, not @nobody or bayo@example.com'
+  const { id } = await service.create(ada, text)
+  const post = (await service.post(null, id))!
+  assert.deepEqual(
+    post.mentions.map((m) => [text.slice(m.start, m.start + m.length), m.handle]),
+    [
+      ['@bayo', 'bayo'],
+      ['@CHI', 'chi'],
+    ],
+  )
+  assert.deepEqual(
+    (await db.select({ memberId: postMentions.memberId }).from(postMentions)).map((r) => r.memberId).sort(),
+    [bayo, chi].sort(),
+  )
+
+  // bayo renames: the text keeps what was written, the mention follows bayo.
+  await new MembersService(db).holdHandle(bayo, 'bayo')
+  await db.update(members).set({ handle: 'bayo_new' }).where(eq(members.id, bayo))
+  assert.equal((await service.post(null, id))!.text, text)
+  assert.deepEqual(await mentionsIn(null, id), ['bayo_new', 'chi'])
+})
+
+test('a handle given up by renaming leads to its old owner while it is held, then to nobody', async () => {
+  await new MembersService(db).holdHandle(bayo, 'bayo')
+  await db.update(members).set({ handle: 'bayo_new' }).where(eq(members.id, bayo))
+  const held = await service.create(ada, 'old link: @bayo')
+  assert.deepEqual(await mentionsIn(null, held.id), ['bayo_new'])
+
+  await db.update(releasedHandles).set({ releasedAt: new Date(Date.now() - 31 * 86_400_000) })
+  const later = await service.create(ada, 'old link again: @bayo')
+  assert.deepEqual(await mentionsIn(null, later.id), [])
+  // Someone who now has the handle is who it means.
+  await db.insert(members).values({ id: randomUUID(), handle: 'bayo' })
+  const taken = await service.create(ada, 'new owner: @bayo')
+  assert.equal((await db.select().from(postMentions).where(eq(postMentions.postId, taken.id))).length, 1)
+  assert.notEqual((await db.select().from(postMentions).where(eq(postMentions.postId, taken.id)))[0]!.memberId, bayo)
+})
+
+test('replies and quotes record mentions too, and threads show them', async () => {
+  const { id: root } = await service.create(bayo, 'root')
+  const { id: reply } = await service.create(ada, 'cc @chi', { replyTo: root })
+  const { id: quote } = await service.create(ada, '@chi see this', { quote: root })
+  assert.deepEqual((await service.thread(null, root))!.replies.map((r) => !r.unavailable && r.mentions.map((m) => m.handle)), [['chi']])
+  assert.deepEqual(await mentionsIn(null, reply), ['chi'])
+  assert.deepEqual(await mentionsIn(null, quote), ['chi'])
+})
+
+test('a mention of someone the reader cannot see reads as plain text', async () => {
+  const { id } = await service.create(ada, 'hello @bayo')
+  // bayo blocked chi: to chi, bayo does not exist, so there is nothing to link to.
+  await db.insert(blocks).values({ blockerId: bayo, blockedId: chi })
+  assert.deepEqual(await mentionsIn(chi, id), [])
+  assert.deepEqual(await mentionsIn(ada, id), ['bayo'])
+  // A suspended member's profile is not found either.
+  await db.update(members).set({ active: false }).where(eq(members.id, bayo))
+  assert.deepEqual(await mentionsIn(ada, id), [])
+  await db.update(members).set({ active: true }).where(eq(members.id, bayo))
+  assert.deepEqual(await mentionsIn(ada, id), ['bayo'])
+  // A suspended member's handle is not theirs to be mentioned by when the post is made.
+  await db.update(members).set({ active: false }).where(eq(members.id, chi))
+  const { id: later } = await service.create(ada, 'hello @chi')
+  await db.update(members).set({ active: true }).where(eq(members.id, chi))
+  assert.deepEqual(await mentionsIn(ada, later), [])
 })

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { members, notifications, reports } from '@heynaija/db'
+import { members, notifications, posts, reports } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { MembersService } from '../members/members.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
+import { MENTIONS_NOTIFIED_MAX } from '../posts/mentions.js'
 import { PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { NotificationsService } from './notifications.service.js'
@@ -216,4 +217,70 @@ test('a rejected appeal shows on the suspended account, not as a notification', 
   assert.equal(latest.status, 'dismissed')
   assert.ok(latest.resolvedAt)
   assert.deepEqual(await kinds(bayo), [])
+})
+
+test('a mention notifies the person mentioned once, with the post that mentions them', async () => {
+  const { id } = await postsService.create(ada, 'Ask @bayo, @bayo knows suya')
+  const [mention] = (await service.list(bayo, 50)).notifications
+  assert.equal(mention!.kind, 'mention')
+  assert.deepEqual(mention!.actor, { handle: 'ada', displayName: 'Ada Obi', avatar: null })
+  assert.deepEqual(mention!.post, { id, excerpt: 'Ask @bayo, @bayo knows suya' })
+  assert.deepEqual(await kinds(bayo), ['mention:ada'])
+  assert.equal(await service.unreadCount(bayo), 1)
+  // Nothing for the author, nor for a handle nobody has.
+  assert.deepEqual(await kinds(ada), [])
+})
+
+test('mentioning yourself notifies nobody', async () => {
+  await postsService.create(ada, 'note to self, @ada')
+  assert.deepEqual(await kinds(ada), [])
+  assert.equal((await db.select().from(notifications)).length, 0)
+})
+
+test('someone told of a reply or a quote is not told again that it mentions them', async () => {
+  const { id: post } = await postsService.create(ada, 'Jollof or fried rice?')
+  // A reply to ada that names ada and chi: ada hears of the reply, chi of the mention.
+  await postsService.create(bayo, '@ada jollof, and @chi agrees', { replyTo: post })
+  assert.deepEqual(await kinds(ada), ['reply:bayo'])
+  assert.deepEqual(await kinds(chi), ['mention:bayo'])
+  // A quote of ada's post that names her: one quote notification.
+  await postsService.create(chi, '@ada asked the real question', { quote: post })
+  assert.deepEqual(await kinds(ada), ['quote:chi', 'reply:bayo'])
+})
+
+test('blocking either way stops mention notifications; muting hides them', async () => {
+  await membersService.block(bayo, 'ada')
+  await membersService.block(ada, 'chi')
+  await postsService.create(ada, 'hello @bayo and @chi and @sam')
+  assert.deepEqual(await kinds(bayo), [])
+  assert.deepEqual(await kinds(chi), [])
+  assert.deepEqual(await kinds(sam), ['mention:ada'])
+  // Not written at all, so lifting the block does not bring them back.
+  await membersService.unblock(bayo, 'ada')
+  assert.deepEqual(await kinds(bayo), [])
+
+  await membersService.mute(sam, 'ada')
+  assert.deepEqual(await kinds(sam), [])
+  await membersService.unmute(sam, 'ada')
+  assert.deepEqual(await kinds(sam), ['mention:ada'])
+})
+
+test('a mention in a post that is deleted or taken down disappears', async () => {
+  const { id: deleted } = await postsService.create(ada, 'hi @bayo')
+  const { id: removed } = await postsService.create(chi, 'hey @bayo')
+  assert.deepEqual(await kinds(bayo), ['mention:chi', 'mention:ada'])
+  await postsService.remove(ada, deleted)
+  await db.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, removed))
+  assert.deepEqual(await kinds(bayo), [])
+  assert.equal(await service.unreadCount(bayo), 0)
+})
+
+test(`only the first ${MENTIONS_NOTIFIED_MAX} members a post names are notified; the rest are only linked`, async () => {
+  const many = Array.from({ length: MENTIONS_NOTIFIED_MAX + 2 }, (_, i) => ({ id: randomUUID(), handle: `m${String(i).padStart(2, '0')}` }))
+  await db.insert(members).values(many)
+  // The author first, who does not count against the limit.
+  const { id } = await postsService.create(ada, ['@ada', ...many.map((m) => `@${m.handle}`)].join(' '))
+  const told = (await db.select().from(notifications)).map((n) => n.recipientId)
+  assert.deepEqual(told.sort(), many.slice(0, MENTIONS_NOTIFIED_MAX).map((m) => m.id).sort())
+  assert.equal((await postsService.post(null, id))!.mentions.length, many.length + 1)
 })

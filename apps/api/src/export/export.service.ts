@@ -14,6 +14,7 @@ import {
   moderationActions,
   mutes,
   notifications,
+  postMentions,
   posts,
   reports,
   reposts,
@@ -24,7 +25,7 @@ import { avatarPath, postImagePath } from '../media/media.service.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/3'
+export const EXPORT_FORMAT = 'heynaija-export/4'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -47,6 +48,7 @@ export class ExportService {
     const [
       ownPosts,
       images,
+      mentioned,
       liked,
       reposted,
       saved,
@@ -82,6 +84,13 @@ export class ExportService {
         .from(media)
         .where(and(eq(media.ownerId, memberId), eq(media.kind, 'post_image'), isNotNull(media.postId)))
         .orderBy(asc(media.position)),
+      db
+        .select({ postId: postMentions.postId, handle: other.handle })
+        .from(postMentions)
+        .innerJoin(posts, eq(posts.id, postMentions.postId))
+        .innerJoin(other, eq(other.id, postMentions.memberId))
+        .where(eq(posts.authorId, memberId))
+        .orderBy(asc(postMentions.start)),
       db.select({ postId: likes.postId, at: likes.createdAt }).from(likes).where(eq(likes.memberId, memberId)).orderBy(asc(likes.createdAt)),
       db.select({ postId: reposts.postId, at: reposts.createdAt }).from(reposts).where(eq(reposts.memberId, memberId)).orderBy(asc(reposts.createdAt)),
       db.select({ postId: bookmarks.postId, at: bookmarks.createdAt }).from(bookmarks).where(eq(bookmarks.memberId, memberId)).orderBy(asc(bookmarks.createdAt)),
@@ -184,6 +193,13 @@ export class ExportService {
       list.push({ url: postImagePath(image.id), description: image.alt })
       imagesByPost.set(image.postId, list)
     }
+    // The members each post mentions, once each, by the handle they have now.
+    const mentionsByPost = new Map<string, string[]>()
+    for (const { postId, handle } of mentioned) {
+      const list = mentionsByPost.get(postId) ?? []
+      if (!list.includes(handle)) list.push(handle)
+      mentionsByPost.set(postId, list)
+    }
 
     return {
       format: EXPORT_FORMAT,
@@ -209,7 +225,7 @@ export class ExportService {
       age: ageRecords,
       identityVerifications: verifications,
       votingMembership: membership ?? null,
-      posts: ownPosts.map((p) => ({ ...p, images: imagesByPost.get(p.id) ?? [] })),
+      posts: ownPosts.map((p) => ({ ...p, images: imagesByPost.get(p.id) ?? [], mentions: mentionsByPost.get(p.id) ?? [] })),
       likes: liked,
       reposts: reposted,
       bookmarks: saved,
