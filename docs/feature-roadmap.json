@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "scope": "Audit scope: the local staging working tree and its inspected code, tests and operational documentation. Staging is documented as deployed, but this audit does not verify the live revision or individual feature availability there. Production is not recorded as launched. Unknown availability is intentional, even when implementation is tested.",
+  "scope": "Audit scope: the local staging working tree and its inspected code, tests and operational documentation. Staging and production are deployed, but this audit does not verify their live revisions or individual feature availability there, except where a feature is recorded in an environment. Unknown availability is intentional, even when implementation is tested.",
   "features": [
     {
       "id": "invite-signup",
@@ -56,16 +56,16 @@
       "description": "Use the configured Google identity provider to access an invited account.",
       "category": "accounts",
       "priority": "P0",
-      "status": "partial",
-      "availability": "unknown",
+      "status": "implemented",
+      "availability": "production",
       "evidence": [
         "infra/kratos/google.jsonnet",
         "infra/kratos/kratos.yml",
         "apps/web/app/ui/flow-form.tsx",
+        "e2e/tests/google-auth.spec.ts",
         "docs/deployment/google-sign-in.md"
       ],
-      "caveat": "Provider configuration and UI exist; a real Google sign-in journey still needs verification.",
-      "notes": "docs/e2e.md explicitly excludes real Google sign-in coverage."
+      "notes": "google-auth.spec.ts covers signup, sign-in and linking against a local signed OIDC issuer. Live Google consent stays outside automated tests; the owner confirmed a real Google sign-in on staging and production (reported 18 Oct 2026)."
     },
     {
       "id": "account-recovery",
@@ -421,15 +421,15 @@
       "category": "operations",
       "priority": "P0",
       "status": "partial",
-      "availability": "staging",
+      "availability": "production",
       "evidence": [
         "docs/deployment/staging.md",
         "docs/deployment/production.md",
         "infra/deploy/deploy.sh",
         ".github/workflows/ci.yml"
       ],
-      "caveat": "Staging is documented as deployed; production launch and the current deployed revision are not verified.",
-      "notes": "Local HEAD matches the cached origin/staging ref at audit start; no claim that this is the live server revision."
+      "caveat": "Staging and production are deployed; the revision each one runs is not verified.",
+      "notes": "Local HEAD matches the cached origin/staging ref at audit start; no claim that this is the live server revision. The owner reported production running on 18 Oct 2026, when Google sign-in was tested there."
     },
     {
       "id": "backup-restore",

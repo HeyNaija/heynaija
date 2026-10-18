@@ -15,6 +15,7 @@ export const STATUSES = {
 } as const
 
 export const AVAILABILITY = {
+  production: 'Recorded in production',
   staging: 'Recorded on staging',
   not_live: 'Not live',
   unknown: 'Availability not verified',
