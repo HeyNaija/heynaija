@@ -13,7 +13,9 @@ import {
   members,
   moderationActions,
   mutes,
+  notificationOptOuts,
   notifications,
+  postMentions,
   posts,
   reports,
   reposts,
@@ -21,10 +23,11 @@ import {
 import { Inject, Injectable } from '@nestjs/common'
 import { aliasedTable, and, asc, eq, isNotNull, or } from 'drizzle-orm'
 import { avatarPath, postImagePath } from '../media/media.service.js'
+import { preferencesWithout } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/3'
+export const EXPORT_FORMAT = 'heynaija-export/6'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -47,6 +50,7 @@ export class ExportService {
     const [
       ownPosts,
       images,
+      mentioned,
       liked,
       reposted,
       saved,
@@ -58,6 +62,7 @@ export class ExportService {
       reported,
       decisions,
       received,
+      turnedOff,
       ageRecords,
       verifications,
       [membership],
@@ -82,6 +87,13 @@ export class ExportService {
         .from(media)
         .where(and(eq(media.ownerId, memberId), eq(media.kind, 'post_image'), isNotNull(media.postId)))
         .orderBy(asc(media.position)),
+      db
+        .select({ postId: postMentions.postId, handle: other.handle })
+        .from(postMentions)
+        .innerJoin(posts, eq(posts.id, postMentions.postId))
+        .innerJoin(other, eq(other.id, postMentions.memberId))
+        .where(eq(posts.authorId, memberId))
+        .orderBy(asc(postMentions.start)),
       db.select({ postId: likes.postId, at: likes.createdAt }).from(likes).where(eq(likes.memberId, memberId)).orderBy(asc(likes.createdAt)),
       db.select({ postId: reposts.postId, at: reposts.createdAt }).from(reposts).where(eq(reposts.memberId, memberId)).orderBy(asc(reposts.createdAt)),
       db.select({ postId: bookmarks.postId, at: bookmarks.createdAt }).from(bookmarks).where(eq(bookmarks.memberId, memberId)).orderBy(asc(bookmarks.createdAt)),
@@ -136,6 +148,7 @@ export class ExportService {
         .from(notifications)
         .where(eq(notifications.recipientId, memberId))
         .orderBy(asc(notifications.createdAt)),
+      db.select({ kind: notificationOptOuts.kind }).from(notificationOptOuts).where(eq(notificationOptOuts.memberId, memberId)),
       db
         .select({
           band: ageAssurances.band,
@@ -184,6 +197,13 @@ export class ExportService {
       list.push({ url: postImagePath(image.id), description: image.alt })
       imagesByPost.set(image.postId, list)
     }
+    // The members each post mentions, once each, by the handle they have now.
+    const mentionsByPost = new Map<string, string[]>()
+    for (const { postId, handle } of mentioned) {
+      const list = mentionsByPost.get(postId) ?? []
+      if (!list.includes(handle)) list.push(handle)
+      mentionsByPost.set(postId, list)
+    }
 
     return {
       format: EXPORT_FORMAT,
@@ -201,6 +221,8 @@ export class ExportService {
         photo: avatarPath(me.avatarMediaId),
         joinedAt: me.createdAt,
         lastSeenAt: me.lastSeenAt,
+        // When you finished or skipped the welcome flow; null if you have not yet.
+        onboardedAt: me.onboardedAt,
         role: me.role,
         active: me.active,
       },
@@ -209,7 +231,7 @@ export class ExportService {
       age: ageRecords,
       identityVerifications: verifications,
       votingMembership: membership ?? null,
-      posts: ownPosts.map((p) => ({ ...p, images: imagesByPost.get(p.id) ?? [] })),
+      posts: ownPosts.map((p) => ({ ...p, images: imagesByPost.get(p.id) ?? [], mentions: mentionsByPost.get(p.id) ?? [] })),
       likes: liked,
       reposts: reposted,
       bookmarks: saved,
@@ -220,6 +242,9 @@ export class ExportService {
       communities: joined,
       reportsYouMade: reported,
       moderationDecisionsAboutYou: decisions,
+      // Which kinds of activity you are notified about. Moderation and account
+      // notices are always sent, so they are not listed.
+      notificationPreferences: preferencesWithout(turnedOff.map((r) => r.kind)),
       notifications: received,
     }
   }

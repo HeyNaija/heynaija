@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "scope": "Audit scope: the local staging working tree and its inspected code, tests and operational documentation. Staging is documented as deployed, but this audit does not verify the live revision or individual feature availability there. Production is not recorded as launched. Unknown availability is intentional, even when implementation is tested.",
+  "scope": "Audit scope: the local staging working tree and its inspected code, tests and operational documentation. Staging and production are deployed, but this audit does not verify their live revisions or individual feature availability there, except where a feature is recorded in an environment. Unknown availability is intentional, even when implementation is tested.",
   "features": [
     {
       "id": "invite-signup",
@@ -56,16 +56,16 @@
       "description": "Use the configured Google identity provider to access an invited account.",
       "category": "accounts",
       "priority": "P0",
-      "status": "partial",
-      "availability": "unknown",
+      "status": "implemented",
+      "availability": "production",
       "evidence": [
         "infra/kratos/google.jsonnet",
         "infra/kratos/kratos.yml",
         "apps/web/app/ui/flow-form.tsx",
+        "e2e/tests/google-auth.spec.ts",
         "docs/deployment/google-sign-in.md"
       ],
-      "caveat": "Provider configuration and UI exist; a real Google sign-in journey still needs verification.",
-      "notes": "docs/e2e.md explicitly excludes real Google sign-in coverage."
+      "notes": "google-auth.spec.ts covers signup, sign-in and linking against a local signed OIDC issuer. Live Google consent stays outside automated tests; the owner confirmed a real Google sign-in on staging and production (reported 18 Oct 2026)."
     },
     {
       "id": "account-recovery",
@@ -421,15 +421,15 @@
       "category": "operations",
       "priority": "P0",
       "status": "partial",
-      "availability": "staging",
+      "availability": "production",
       "evidence": [
         "docs/deployment/staging.md",
         "docs/deployment/production.md",
         "infra/deploy/deploy.sh",
         ".github/workflows/ci.yml"
       ],
-      "caveat": "Staging is documented as deployed; production launch and the current deployed revision are not verified.",
-      "notes": "Local HEAD matches the cached origin/staging ref at audit start; no claim that this is the live server revision."
+      "caveat": "Staging and production are deployed; the revision each one runs is not verified.",
+      "notes": "Local HEAD matches the cached origin/staging ref at audit start; no claim that this is the live server revision. The owner reported production running on 18 Oct 2026, when Google sign-in was tested there."
     },
     {
       "id": "backup-restore",
@@ -584,13 +584,21 @@
       "description": "Help newcomers choose interests, communities and people to follow.",
       "category": "accounts",
       "priority": "P1",
-      "status": "planned",
+      "status": "implemented",
       "availability": "not_live",
       "evidence": [
-        "apps/web/app/(auth)/join/page.tsx",
+        "packages/db/drizzle/0019_onboarding.sql",
+        "apps/api/src/onboarding/onboarding.service.ts",
+        "apps/api/src/onboarding/onboarding.controller.ts",
+        "apps/web/app/(main)/welcome/page.tsx",
         "apps/web/app/(main)/page.tsx",
-        "PRODUCT.md"
-      ]
+        "apps/web/lib/onboarding.ts",
+        "apps/api/src/onboarding/onboarding.service.test.ts",
+        "apps/web/tests/onboarding.test.mjs",
+        "e2e/tests/onboarding.spec.ts",
+        "e2e/tests/auth.spec.ts"
+      ],
+      "notes": "New members are sent from the home page to /welcome until they finish or skip it (members.onboarded_at; migration 0019 set it for everyone who joined before). Step 1 chooses communities, step 2 suggests up to 12 people (moderators and recent posters in the chosen communities, then recent posters site-wide; never yourself, suspended members, blocks either way, or people already followed or muted), and finishing joins and follows everything in one transaction through the usual join and follow code, so counts, follow notifications and the shared action rate limit apply; it lands on Following with a nudge to post. Every step, and the whole flow, can be skipped. Communities stand in for interests until topic-following exists; there is no interest or topic picker. No inviter is suggested: invites are admin-created codes. The forms are plain forms, but the page streams like other signed-in pages, so the known no-JavaScript limitation applies. The data export (format 6) includes onboardedAt."
     },
     {
       "id": "basic-trending",
@@ -644,15 +652,18 @@
       "description": "Mention a member by handle and notify the person mentioned.",
       "category": "conversations",
       "priority": "P1",
-      "status": "planned",
+      "status": "implemented",
       "availability": "not_live",
       "evidence": [
-        "packages/db/src/schema.ts",
-        "apps/api/src/posts/posts.controller.ts",
-        "apps/web/app/ui/composer.tsx",
-        "apps/api/src/notifications/notifications.service.ts"
+        "apps/api/src/posts/mentions.ts",
+        "apps/api/src/posts/posts.service.ts",
+        "packages/db/drizzle/0017_mentions.sql",
+        "apps/web/app/ui/post-text.tsx",
+        "apps/api/src/posts/posts.service.test.ts",
+        "apps/api/src/notifications/notifications.service.test.ts",
+        "e2e/tests/mentions.spec.ts"
       ],
-      "notes": "Typing @handle is not a functional mention; notification kinds contain no mention event."
+      "notes": "Mentions are stored by member ID with their place in the text, so they follow renames; held handles lead to their previous owner. At most 10 members per post are notified; blocked members either way are not, mutes hide the notification, and deleting or removing the post hides it. No composer handle autocomplete yet."
     },
     {
       "id": "profile-pins",
@@ -704,12 +715,21 @@
       "description": "Choose which activity should create notifications.",
       "category": "accounts",
       "priority": "P1",
-      "status": "planned",
+      "status": "implemented",
       "availability": "not_live",
       "evidence": [
+        "packages/db/drizzle/0018_notification_preferences.sql",
+        "apps/api/src/notifications/notifications.service.ts",
+        "apps/api/src/notifications/notifications.controller.ts",
+        "apps/api/src/export/export.service.ts",
         "apps/web/app/(main)/settings/page.tsx",
-        "apps/api/src/notifications/notifications.service.ts"
-      ]
+        "apps/web/app/ui/notification-preferences-form.tsx",
+        "apps/api/src/notifications/notifications.service.test.ts",
+        "apps/api/src/export/export.service.test.ts",
+        "apps/web/tests/notification-preferences.test.mjs",
+        "e2e/tests/notification-preferences.spec.ts"
+      ],
+      "notes": "Settings has one box each for replies, mentions, likes, reposts, quotes and follows; all are on until turned off, and only what is off is stored (notification_opt_outs). A database check keeps moderation and account notices out, so they are always sent. Turning a kind off stops new notifications of that kind and keeps those already received. In-app only; there is no channel dimension yet. The data export (format 5) includes the choices."
     },
     {
       "id": "email-push",

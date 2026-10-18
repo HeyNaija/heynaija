@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { AppealForm } from '@/app/ui/appeal-form'
 import { Composer } from '@/app/ui/composer'
@@ -22,6 +23,10 @@ async function Home({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
   const cursor = one(params.cursor)
   const viewer = await getViewer()
   const me = viewer.state === 'member' ? viewer.me : null
+  // Newcomers go through the welcome flow first, until they finish or skip it.
+  if (me && !me.onboarded) redirect('/welcome')
+  // Its last step: having joined and followed, a nudge to say hello.
+  const welcomed = me && one(params.welcome) === '1'
 
   // "Following" only exists for members; anyone else gets the public feed.
   const following = me && one(params.feed) === 'following' ? await getFollowingFeed(cursor) : null
@@ -46,7 +51,22 @@ async function Home({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
             </Tab>
             <span className="feed-order"><span aria-hidden="true" /> Newest first, not ranked</span>
           </nav>
-          <Composer handle={me.handle} avatar={me.avatar} choices={joined} />
+          {welcomed ? (
+            <section className="welcome-nudge" aria-labelledby="welcome-nudge-title">
+              <p className="page-eyebrow">You are in</p>
+              <h2 id="welcome-nudge-title" className="section-title">Say hello to the town square</h2>
+              <p className="field-hint">
+                Write a first post to introduce yourself. It is how people here find you, and follow you back.
+              </p>
+              <Link href={following ? '/?feed=following' : '/'} className="welcome-back self-start">Not now</Link>
+            </section>
+          ) : null}
+          <Composer
+            handle={me.handle}
+            avatar={me.avatar}
+            choices={joined}
+            placeholder={welcomed ? 'Introduce yourself: who are you, and what brings you here?' : undefined}
+          />
         </>
       ) : viewer.state === 'blocked' ? (
         viewer.suspended ? (

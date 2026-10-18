@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import { members } from '@heynaija/db'
+import { eq } from 'drizzle-orm'
 import { GovernanceService } from '../governance/governance.service.js'
 import { MembersService } from '../members/members.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
+import { NotificationsService } from '../notifications/notifications.service.js'
 import { PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { EXPORT_FORMAT, ExportService } from './export.service.js'
@@ -13,6 +15,7 @@ const service = new ExportService(db)
 const postsService = new PostsService(db)
 const membersService = new MembersService(db)
 const moderation = new ModerationService(db)
+const notificationsService = new NotificationsService(db)
 const ada = randomUUID()
 const bayo = randomUUID()
 const chi = randomUUID()
@@ -48,6 +51,11 @@ test('an export holds what the member made and chose, by handle', async () => {
     { handle: data.account.handle, email: data.account.email, name: data.account.displayName, bio: data.account.bio },
     { handle: 'ada', email: 'ada@example.test', name: 'Ada O.', bio: 'Lagos' },
   )
+  // Not through the welcome flow yet; once through, when.
+  assert.equal(data.account.onboardedAt, null)
+  const onboardedAt = new Date('2026-10-18T09:00:00Z')
+  await db.update(members).set({ onboardedAt }).where(eq(members.id, ada))
+  assert.deepEqual((await service.export(ada, null))!.account.onboardedAt, onboardedAt)
   // Deleted posts are still held, so they are in the export, marked as deleted.
   assert.deepEqual(
     data.posts.map((p) => [p.id, p.text, p.deletedAt !== null, p.quoteOf]),
@@ -80,6 +88,29 @@ test('another member’s posts and reports about the member stay out', async () 
   assert.equal(data.reportsYouMade.length, 0)
   // Nothing in the export names who reported the member.
   assert.ok(!JSON.stringify(data).includes('bayo'))
+})
+
+test('each post lists the members it mentions, once each, by the handle they have now', async () => {
+  const { id } = await postsService.create(ada, 'thanks @bayo, @chi and @bayo again')
+  const plain = await postsService.create(ada, 'no one in particular')
+  await db.update(members).set({ handle: 'bayo_new' }).where(eq(members.id, bayo))
+  const data = (await service.export(ada, null))!
+  assert.deepEqual(
+    data.posts.map((p) => [p.id, p.mentions]),
+    [
+      [id, ['bayo_new', 'chi']],
+      [plain.id, []],
+    ],
+  )
+})
+
+test('an export says which kinds of activity the member is notified about', async () => {
+  const allOn = { reply: true, like: true, repost: true, quote: true, mention: true, follow: true }
+  assert.deepEqual((await service.export(ada, null))!.notificationPreferences, allOn)
+  await notificationsService.setPreferences(ada, { like: false, follow: false })
+  assert.deepEqual((await service.export(ada, null))!.notificationPreferences, { ...allOn, like: false, follow: false })
+  // Only their own choices.
+  assert.deepEqual((await service.export(bayo, null))!.notificationPreferences, allOn)
 })
 
 test('an unknown member has no export', async () => {

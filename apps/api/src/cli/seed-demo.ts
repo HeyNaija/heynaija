@@ -79,6 +79,8 @@ async function clean() {
         or post_id in (select id from d_p)`],
       ['reports', `delete from reports where reporter_id in (select id from d_m) or member_id in (select id from d_m)
         or post_id in (select id from d_p) or resolved_by in (select id from d_m)`],
+      ['notification settings', 'delete from notification_opt_outs where member_id in (select id from d_m)'],
+      ['mentions', 'delete from post_mentions where member_id in (select id from d_m) or post_id in (select id from d_p)'],
       ['likes', 'delete from likes where member_id in (select id from d_m) or post_id in (select id from d_p)'],
       ['reposts', 'delete from reposts where member_id in (select id from d_m) or post_id in (select id from d_p)'],
       ['bookmarks', 'delete from bookmarks where member_id in (select id from d_m) or post_id in (select id from d_p)'],
@@ -202,7 +204,8 @@ async function seed() {
     await pool.query('insert into demo_members (id) values ($1)', [id])
     const joined = at(now - m.joinedDaysAgo * 86_400_000)
     await pool.query(
-      `insert into members (id, handle, display_name, bio, created_at, last_seen_at) values ($1, $2, $3, $4, $5, $6)`,
+      // onboarded_at: demo members are settled in, so never sent to /welcome.
+      `insert into members (id, handle, display_name, bio, created_at, last_seen_at, onboarded_at) values ($1, $2, $3, $4, $5, $6, $5)`,
       [id, m.handle, m.name, m.bio, joined, at(now - between(5, 600) * MINUTE)],
     )
     if (m.avatar) await publishAvatar(id, m.avatar, joined)

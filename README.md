@@ -10,8 +10,11 @@ is [docs/FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md), generated from
 `docs/feature-roadmap.json`; [the audit notes](docs/roadmap-audit.md) explain evidence,
 availability limits and outstanding confirmations.
 
-**Status:** staging is live at https://staging.heynaija.ng; production is not
-deployed yet. Everything needed to deploy is in `infra/deploy/` and `.github/workflows/`, with
+**Status:** staging is live at https://staging.heynaija.ng and production is
+deployed at https://heynaija.ng. Signup stays invite-only: production is not
+publicly launched until the conditions in
+[PLAN.md §11](PLAN.md#11-definition-of-done-for-the-first-public-beta) are met.
+Everything needed to deploy is in `infra/deploy/` and `.github/workflows/`, with
 step-by-step guides in [docs/deployment/](docs/deployment/staging.md). What works:
 
 - **Accounts:** join with an invite code (18 and over during the beta, a

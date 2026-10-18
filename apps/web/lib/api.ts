@@ -1,6 +1,7 @@
 import 'server-only'
 import { cookies, headers } from 'next/headers'
 import { cache } from 'react'
+import type { NotificationPreferences } from './notification-preferences'
 
 // Server-to-server address of the NestJS API. Browsers never use this; they go
 // through the /api rewrite in next.config.ts.
@@ -19,6 +20,8 @@ export type Me = {
   /** Shown as a badge on the Notifications link. */
   unreadNotifications: number
   moderates: boolean
+  /** False until they finish or skip the welcome flow, which the home page sends them to. */
+  onboarded: boolean
 }
 
 /** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
@@ -40,6 +43,13 @@ export type QuotedPost =
     }
   | { unavailable: true }
 
+/**
+ * An @handle in a post's text that leads to a member: where it is (in UTF-16
+ * code units, as `String.prototype.slice` counts) and the handle they have now,
+ * which differs from the text if they have renamed since.
+ */
+export type PostMention = { start: number; length: number; handle: string }
+
 export type Post = {
   unavailable?: false
   id: string
@@ -50,6 +60,8 @@ export type Post = {
   authorAvatar: string | null
   text: string
   images: PostImage[]
+  /** Mentions of members the viewer can see, in order. Other @text stays plain. */
+  mentions: PostMention[]
   createdAt: string
   replyParentId: string | null
   likeCount: number
@@ -245,6 +257,25 @@ export async function getTrending(): Promise<Post[]> {
   return res.json()
 }
 
+/** Someone the welcome flow suggests following, and why. */
+export type Suggestion = {
+  handle: string
+  displayName: string | null
+  avatar: string | null
+  bio: string
+  reason:
+    | { kind: 'moderator' | 'community'; community: { slug: string; name: string } }
+    | { kind: 'recent'; community: null }
+}
+
+/** People for a newcomer to follow, drawn from the communities they chose. */
+export async function getOnboardingSuggestions(communities: string[]): Promise<Suggestion[]> {
+  const path = `/v1/me/onboarding/suggestions?communities=${encodeURIComponent(communities.join(','))}`
+  const res = await api(path)
+  if (!res.ok) throw new Error(`API /v1/me/onboarding/suggestions responded ${res.status}`)
+  return res.json()
+}
+
 export type SearchResults = {
   members: { handle: string; displayName: string | null; avatar: string | null }[]
   communities: Community[]
@@ -302,6 +333,7 @@ export type NotificationKind =
   | 'like'
   | 'repost'
   | 'quote'
+  | 'mention'
   | 'follow'
   | 'post_removed'
   | 'post_restored'
@@ -334,6 +366,13 @@ export async function getNotifications(cursor?: string): Promise<{ notifications
   // A mangled cursor in the URL falls back to the first page.
   if (res.status === 400 && cursor) return getNotifications()
   if (!res.ok) throw new Error(`API ${path} responded ${res.status}`)
+  return res.json()
+}
+
+/** Which kinds of activity notify the signed-in member. Null when they could not be loaded. */
+export async function getNotificationPreferences(): Promise<NotificationPreferences | null> {
+  const res = await api('/v1/notifications/preferences').catch(() => null)
+  if (!res?.ok) return null
   return res.json()
 }
 

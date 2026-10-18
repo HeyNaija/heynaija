@@ -1,8 +1,8 @@
 # HeyNaija: a Nigeria-first social network, built toward community ownership
 ## Phase 1 plan — v3.0
 
-**Updated:** 14 October 2026
-**Status:** Core product built; staging live at https://staging.heynaija.ng (15 October 2026). Production not deployed.
+**Updated:** 18 October 2026
+**Status:** Core product built; staging live at https://staging.heynaija.ng (15 October 2026); production deployed at https://heynaija.ng (confirmed 18 October 2026), invite-only and not publicly launched.
 **Strategy:** Ship a focused, invite-only web beta; validate retention before expanding infrastructure.
 **Initial cohort:** Up to 200 invited users in 3–5 active communities; Nigeria-first, open to the diaspora.
 
@@ -23,7 +23,7 @@ Following, community and trending feeds; search; reporting, a moderation queue,
 appeals and a decision log; notifications (replies, likes, reposts, quotes, follows,
 moderation outcomes); rate limits; light, dark and system themes.
 
-**Current feature inventory:** [docs/FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md) is the canonical prioritised roadmap, also readable at `/progress`. Production deployment and other P0 safety, operations, disclosure and access gaps remain incomplete. See [§8 Roadmap](#8-roadmap).
+**Current feature inventory:** [docs/FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md) is the canonical prioritised roadmap, also readable at `/progress`. Production is deployed, but public launch waits on the P0 safety, operations, disclosure and access gaps that remain incomplete. See [§8 Roadmap](#8-roadmap).
 
 **Key documents**
 
@@ -132,7 +132,7 @@ Browser ──> Next.js web app
       (ADR 0003); sign out; change email or handle; connect or disconnect Google
 - [x] Profile photo (upload, replace, remove)
 - [x] Display name (50 characters) and short bio (160), searchable by name
-- [ ] Onboarding: pick interests and communities, suggested people
+- [x] Onboarding at `/welcome`: newcomers choose communities, then people to follow (moderators and recent posters in those communities, then recent posters site-wide), and land on Following with a nudge to post; every step can be skipped, and members from before it are never sent there (18 October 2026). Communities stand in for interests until topic-following exists.
 - [x] Data export ("download my data"): Settings → Your data, one JSON file (15 October 2026; format 2 adds age confirmation and verification status, 16 October; format 3 adds reposts and quote posts, 16 October)
 
 ### Social
@@ -176,7 +176,7 @@ Browser ──> Next.js web app
 
 ### Operations
 - [x] CI: build, typecheck, tests, dependency audit (never run: no GitHub remote yet)
-- [ ] Staging and production environments; TLS; real domains (staging live at staging.heynaija.ng behind Cloudflare, 15 October 2026; production not provisioned: [production guide](docs/deployment/production.md))
+- [x] Staging and production environments; TLS; real domains (staging live at staging.heynaija.ng behind Cloudflare, 15 October 2026; production at heynaija.ng on netcup, confirmed 18 October 2026: [production guide](docs/deployment/production.md))
 - [x] Production Kratos config and an email provider (Resend)
 - [ ] Backups and a rehearsed restore (Postgres, Kratos database, media bucket): scripts built, backup and restore rehearsed locally; media not copied outside R2
 - [ ] Logging, metrics, uptime alerts (logs capped per service; uptime check and backup ping described in the guide; no error alerts yet)
@@ -237,7 +237,7 @@ Everything visual comes from tokens in `apps/web/app/globals.css`; the full syst
 
 ## 7. Production infrastructure
 
-**Staging is live** at https://staging.heynaija.ng (15 October 2026); **production is not provisioned yet.** Step-by-step guides:
+**Staging is live** at https://staging.heynaija.ng (15 October 2026); **production is deployed** at https://heynaija.ng (confirmed 18 October 2026) but not publicly launched (§11). Step-by-step guides:
 [staging](docs/deployment/staging.md) and [production](docs/deployment/production.md);
 the files are in `infra/deploy/` and `.github/workflows/`.
 

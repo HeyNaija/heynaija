@@ -145,12 +145,14 @@ const createBatch = async (from) => {
 // 2. Members.
 await step('member ids', `insert into loadtest_members (idx, id) select g, gen_random_uuid() from generate_series(${K}, ${N - 1}) g`)
 await step('members', `
-  insert into members (id, handle, display_name, bio, created_at, last_seen_at)
+  insert into members (id, handle, display_name, bio, created_at, last_seen_at, onboarded_at)
   select id, 'lt_' || idx,
     case when random() < 0.6 then ($1::text[])[1 + floor(random() * cardinality($1))::int] || ' ' || ($2::text[])[1 + floor(random() * cardinality($2))::int] end,
     case when random() < 0.3 then ($3::text[])[1 + floor(random() * cardinality($3))::int] else '' end,
     now() - random() * interval '730 days',
-    case when random() < 0.4 then now() - random() * interval '30 days' end
+    case when random() < 0.4 then now() - random() * interval '30 days' end,
+    -- Settled members: the home page would otherwise send them to /welcome.
+    now()
   from loadtest_members`, [FIRST, LAST, BIOS])
 await step('community memberships', `
   insert into community_memberships (community_id, member_id, joined_at)

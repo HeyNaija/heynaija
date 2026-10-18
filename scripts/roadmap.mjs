@@ -15,7 +15,7 @@ export function renderRoadmap(roadmap = ROADMAP) {
     'This tracks product development, not formal governance decisions. Priority means importance, not completion. No delivery dates or launch-readiness percentages are implied. The public readable counterpart is `/progress`; the repository is private, so the website does not link to it.', '',
     '## Status and availability', '',
     ...Object.entries(STATUSES).map(([key, status]) => `- **${status.label}** (\`${key}\`): ${status.definition}`), '',
-    ...Object.entries(AVAILABILITY).map(([key, label]) => `- **${label}** (\`${key}\`)${key === 'staging' ? ': staging is recorded in deployment documentation; it is not production or proof this local revision is deployed.' : key === 'unknown' ? ': code and test evidence do not establish live availability.' : ': the described feature is unavailable.'}`), '',
+    ...Object.entries(AVAILABILITY).map(([key, label]) => `- **${label}** (\`${key}\`)${key === 'production' ? ': the owner confirmed the feature working in production; this does not show which revision is deployed there.' : key === 'staging' ? ': staging is recorded in deployment documentation; it is not production or proof this local revision is deployed.' : key === 'unknown' ? ': code and test evidence do not establish live availability.' : ': the described feature is unavailable.'}`), '',
     '## Feature counts', '',
     '| Implemented | Partial | Planned | Blocked | Total |', '| --- | --- | --- | --- | --- |',
     `| ${counts.implemented} | ${counts.partial} | ${counts.planned} | ${counts.blocked} | ${roadmap.features.length} |`, '',

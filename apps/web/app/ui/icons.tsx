@@ -1,5 +1,6 @@
 import {
   ArrowUpRight,
+  AtSign,
   BadgeCheck,
   Bell,
   Bookmark,
@@ -69,6 +70,7 @@ export const ShareIcon = icon(Share2)
 export const LinkIcon = icon(Link)
 export const RepostIcon = icon(Repeat2)
 export const QuoteIcon = icon(Quote)
+export const MentionIcon = icon(AtSign)
 export const CheckIcon = icon(Check)
 export const PlusIcon = icon(Plus)
 export const UserIcon = icon(User)

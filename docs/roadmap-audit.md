@@ -73,10 +73,10 @@ Later ideas remain proposals, without delivery dates or invented completion scor
 - Names and roles of custodians, legal operator, funding disclosure and a real
   privacy/safety contact; decide and operate the governance feedback channel.
 - Authority and readiness to publish source; the repository remains private.
-- Which local revision is actually deployed on staging, and whether/when production
-  is ready. Individual feature availability remains unknown without a live check.
-- Google provider journey and recovery acceptance, monitored alerts, backup and
-  media recovery, response ownership and current operational rehearsals.
+- Which local revision is actually deployed on staging and production. Individual
+  feature availability remains unknown without a live check.
+- Recovery acceptance, monitored alerts, backup and media recovery, response
+  ownership and current operational rehearsals.
 - Scanning-provider approval, legal/privacy decisions and an operational abuse
   response process before uploads expand beyond the invited pilot.
 - The legal entity, draft adoption, identity-provider approvals, secure eligibility,
@@ -86,6 +86,16 @@ Later ideas remain proposals, without delivery dates or invented completion scor
 
 The About origin is presented as a product motivation supplied in the brief,
 not a personal founder memoir, founding date or invented historical event.
+
+## Updates since the audit
+
+- 18 October 2026: Google sign-in moved to Implemented, recorded in production.
+  `e2e/tests/google-auth.spec.ts` now covers signup, sign-in and account linking
+  against a local signed OIDC issuer, and the owner reported a real Google sign-in
+  on staging and production. The registry gained a `production` availability
+  value; the deployment entry now records both environments as deployed. Account
+  recovery stays Partial: Kratos recovery is still disabled and there is no
+  process for losing access to the account email.
 
 ## Validation record
 

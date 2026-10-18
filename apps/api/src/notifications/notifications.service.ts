@@ -1,11 +1,27 @@
-import { type Db, NOTIFICATION_KINDS, notifications } from '@heynaija/db'
+import { type Db, NOTIFICATION_KINDS, notificationOptOuts, OPTIONAL_NOTIFICATION_KINDS } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
-import { sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { decodeCursor, encodeCursor } from '../cursor.js'
 import { avatarPath } from '../media/media.service.js'
 import { DB } from '../tokens.js'
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]
+
+/** Other members' activity, which a member may stop being notified about. */
+export type OptionalNotificationKind = (typeof OPTIONAL_NOTIFICATION_KINDS)[number]
+
+/** For each kind a member may turn off, whether it is on. */
+export type NotificationPreferences = Record<OptionalNotificationKind, boolean>
+
+const isOptional = (kind: string): kind is OptionalNotificationKind =>
+  (OPTIONAL_NOTIFICATION_KINDS as readonly string[]).includes(kind)
+
+/** Every kind on except those in `off`. */
+export const preferencesWithout = (off: readonly string[]): NotificationPreferences =>
+  Object.fromEntries(OPTIONAL_NOTIFICATION_KINDS.map((kind) => [kind, !off.includes(kind)])) as NotificationPreferences
+
+/** A moderation or account notice was asked to be turned off: members are always told those. */
+export class NotOptionalError extends Error {}
 
 export type NewNotification = {
   recipientId: string
@@ -18,12 +34,25 @@ export type NewNotification = {
 }
 
 /**
- * Records notifications, inside the caller's transaction when given one. Nobody
- * is notified about their own actions, and a like, repost or follow notifies only once.
+ * Records notifications in one statement, inside the caller's transaction when
+ * given one. Nobody is notified about their own actions or about a kind they
+ * turned off, and a like, repost, quote, mention or follow notifies only once.
  */
-export async function notify(db: Pick<Db, 'insert'>, rows: NewNotification[]): Promise<void> {
+export async function notify(db: Pick<Db, 'execute'>, rows: NewNotification[]): Promise<void> {
   const wanted = rows.filter((r) => r.actorId !== r.recipientId)
-  if (wanted.length) await db.insert(notifications).values(wanted).onConflictDoNothing()
+  if (!wanted.length) return
+  const values = sql.join(
+    wanted.map(
+      (r) => sql`(${r.recipientId}::uuid, ${r.kind}::text, ${r.actorId ?? null}::uuid, ${r.postId ?? null}::uuid,
+        ${r.subjectId ?? null}::uuid, ${r.communityId ?? null}::uuid, ${r.detail ?? null}::text)`,
+    ),
+    sql`, `,
+  )
+  await db.execute(sql`
+    insert into notifications (recipient_id, kind, actor_id, post_id, subject_id, community_id, detail)
+    select * from (values ${values}) as v(recipient_id, kind, actor_id, post_id, subject_id, community_id, detail)
+    where not exists(select 1 from notification_opt_outs o where o.member_id = v.recipient_id and o.kind = v.kind)
+    on conflict do nothing`)
 }
 
 export type NotificationView = {
@@ -58,7 +87,7 @@ const visible = (viewerId: string) => sql`
     a.active
     and not exists(select 1 from blocks b where (b.blocker_id = ${viewerId} and b.blocked_id = n.actor_id) or (b.blocker_id = n.actor_id and b.blocked_id = ${viewerId}))
     and not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = n.actor_id)))
-  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'post_restored') or (p.deleted_at is null and p.removed_at is null))
+  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored') or (p.deleted_at is null and p.removed_at is null))
   and (n.kind <> 'like' or exists(select 1 from likes l where l.post_id = n.post_id and l.member_id = n.actor_id))
   and (n.kind <> 'repost' or exists(select 1 from reposts r where r.post_id = n.post_id and r.member_id = n.actor_id))
   and (n.kind <> 'follow' or exists(select 1 from follows f where f.follower_id = n.actor_id and f.followee_id = ${viewerId}))`
@@ -141,6 +170,45 @@ export class NotificationsService {
       update notifications set read_at = now()
       where recipient_id = ${viewerId} and read_at is null
         and created_at <= (select created_at from notifications where id = ${newestSeenId} and recipient_id = ${viewerId})`)
+  }
+
+  /** Everything is on until the member turns it off. */
+  async preferences(memberId: string): Promise<NotificationPreferences> {
+    const off = await this.db
+      .select({ kind: notificationOptOuts.kind })
+      .from(notificationOptOuts)
+      .where(eq(notificationOptOuts.memberId, memberId))
+    return preferencesWithout(off.map((r) => r.kind))
+  }
+
+  /**
+   * Turns kinds on (true) or off (false); kinds left out stay as they are. Only
+   * other members' activity can be turned off: asking to turn off a moderation
+   * or account notice changes nothing and throws NotOptionalError.
+   */
+  async setPreferences(
+    memberId: string,
+    changes: Partial<Record<NotificationKind, boolean>>,
+  ): Promise<NotificationPreferences> {
+    const entries = Object.entries(changes).filter(([, on]) => on !== undefined)
+    const always = entries.map(([kind]) => kind).filter((kind) => !isOptional(kind))
+    if (always.length) throw new NotOptionalError(`always sent: ${always.join(', ')}`)
+    const turnedOff = entries.filter(([, on]) => !on).map(([kind]) => kind as OptionalNotificationKind)
+    const turnedOn = entries.filter(([, on]) => on).map(([kind]) => kind as OptionalNotificationKind)
+    await this.db.transaction(async (tx) => {
+      if (turnedOff.length) {
+        await tx
+          .insert(notificationOptOuts)
+          .values(turnedOff.map((kind) => ({ memberId, kind })))
+          .onConflictDoNothing()
+      }
+      if (turnedOn.length) {
+        await tx
+          .delete(notificationOptOuts)
+          .where(and(eq(notificationOptOuts.memberId, memberId), inArray(notificationOptOuts.kind, turnedOn)))
+      }
+    })
+    return this.preferences(memberId)
   }
 }
 

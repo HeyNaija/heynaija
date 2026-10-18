@@ -6,6 +6,8 @@ import { redirect } from 'next/navigation'
 import { api } from '@/lib/api'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
 import { startFlowUrl } from '@/lib/kratos'
+import { preferencesFromForm } from '@/lib/notification-preferences'
+import { choicesFromForm, welcomePath } from '@/lib/onboarding'
 import type { ThreadRow } from '@/lib/thread-state'
 
 // The API is the authority on who is signed in and what they may do; these
@@ -171,6 +173,21 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
   return { done: true }
 }
 
+/** Saves every box in the Settings form at once: ticked kinds on, the rest off. */
+export async function updateNotificationPreferences(_prev: FormState, formData: FormData): Promise<FormState> {
+  const res = await api('/v1/notifications/preferences', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(preferencesFromForm(formData)),
+  }).catch(() => null)
+  if (!res) return { error: 'Could not save. Check your connection and try again.' }
+  if (res.status === 401) redirect('/login')
+  if (res.status === 429) return { error: 'You are changing settings very fast. Wait a minute and try again.' }
+  if (!res.ok) return { error: 'Could not save. Try again in a moment.' }
+  refresh()
+  return { done: true }
+}
+
 // --- Profile photo: the browser uploads straight to storage between these two calls. ---
 
 export type UploadTicket = { mediaId: string; uploadUrl: string } | { error: string }
@@ -331,6 +348,35 @@ export async function setFollow(formData: FormData): Promise<void> {
   const res = await api(`/v1/members/${encodeURIComponent(handle)}/follow`, { method })
   if (res.status === 401) redirect('/login')
   refresh()
+}
+
+// --- The welcome flow (/welcome). Plain forms, so they work before JavaScript loads. ---
+
+/**
+ * The last step: joins the communities chosen in step 1 and follows the people
+ * ticked in step 2, all at once, then lands on the Following feed with a nudge to
+ * post. "Skip this step" still joins the communities.
+ */
+export async function finishOnboarding(formData: FormData): Promise<void> {
+  const choices = choicesFromForm(formData)
+  const res = await api('/v1/me/onboarding/complete', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(choices),
+  }).catch(() => null)
+  if (res?.status === 401) redirect('/login')
+  if (!res?.ok) redirect(welcomePath('people', choices.communities, res?.status === 429 ? 'busy' : 'failed'))
+  // The side rail, in the shared layout, lists communities with Join buttons.
+  refresh()
+  redirect('/?feed=following&welcome=1')
+}
+
+/** Leaves the welcome flow without joining or following anyone. It is not shown again. */
+export async function skipOnboarding(): Promise<void> {
+  const res = await api('/v1/me/onboarding/skip', { method: 'POST' }).catch(() => null)
+  if (res?.status === 401) redirect('/login')
+  if (!res?.ok) redirect(welcomePath('communities', [], res?.status === 429 ? 'busy' : 'failed'))
+  redirect('/')
 }
 
 export type JoinState = { error?: string; ageError?: string; code?: string; adult?: boolean; next?: string }

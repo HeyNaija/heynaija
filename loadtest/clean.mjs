@@ -43,6 +43,8 @@ const steps = [
      or member_id in (select id from lt_m) or post_id in (select id from lt_p))`],
   ['reports', `delete from reports where reporter_id in (select id from lt_m) or member_id in (select id from lt_m)
      or post_id in (select id from lt_p) or resolved_by in (select id from lt_m)`],
+  ['notification settings', `delete from notification_opt_outs where member_id in (select id from lt_m)`],
+  ['mentions', `delete from post_mentions where member_id in (select id from lt_m) or post_id in (select id from lt_p)`],
   ['likes', `delete from likes where member_id in (select id from lt_m) or post_id in (select id from lt_p)`],
   ['reposts', `delete from reposts where member_id in (select id from lt_m) or post_id in (select id from lt_p)`],
   ['bookmarks', `delete from bookmarks where member_id in (select id from lt_m) or post_id in (select id from lt_p)`],

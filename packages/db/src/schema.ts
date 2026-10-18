@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import {
   boolean,
+  check,
   index,
   integer,
   pgSchema,
@@ -37,6 +38,10 @@ export const members = pgTable(
     bio: text('bio').notNull().default(''),
     createdAt: ts('created_at').notNull().defaultNow(),
     lastSeenAt: ts('last_seen_at'),
+    // When the member finished or skipped the welcome flow (/welcome). Null until
+    // then, and the home page sends them there. Migration 0019 set it for everyone
+    // who joined before the flow existed, so only newcomers see it.
+    onboardedAt: ts('onboarded_at'),
   },
   (t) => [index('members_handle_idx').on(t.handle)],
 )
@@ -162,6 +167,26 @@ export const posts = pgTable(
     // Full-text search. 'simple' (no stemming) suits mixed English, Pidgin and names.
     index('posts_text_search_idx').using('gin', sql`to_tsvector('simple', ${t.text})`),
   ],
+)
+
+// A member named with @handle in a post, reply or quote, written with the post
+// (posts are never edited). Stored by member ID, so the mention keeps leading to
+// the same person after they rename, while the text keeps the handle as written.
+// `start` and `length` say where that @handle is in the text, in UTF-16 code
+// units as JavaScript counts them, so a reader's app can link exactly that span.
+export const postMentions = pgTable(
+  'post_mentions',
+  {
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => posts.id),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    start: integer('start').notNull(),
+    length: integer('length').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.postId, t.start] }), index('post_mentions_member_idx').on(t.memberId)],
 )
 
 export const likes = pgTable(
@@ -329,6 +354,7 @@ export const NOTIFICATION_KINDS = [
   'like',
   'repost',
   'quote',
+  'mention',
   'follow',
   'post_removed',
   'post_restored',
@@ -340,8 +366,8 @@ export const NOTIFICATION_KINDS = [
   'moderator_revoked',
 ] as const
 
-// Something that happened to a member: a reply, like, repost, quote or follow by someone else,
-// or a moderation decision about their post, account or report. Rows are written
+// Something that happened to a member: a reply, like, repost, quote, mention or follow by
+// someone else, or a moderation decision about their post, account or report. Rows are written
 // when it happens; whether one is still shown (the actor blocked, the post
 // deleted, the like taken back) is decided when it is read.
 export const notifications = pgTable(
@@ -355,7 +381,8 @@ export const notifications = pgTable(
     // Who did it. Null for moderation decisions, which come from "the moderators".
     actorId: uuid('actor_id').references(() => members.id),
     // reply: the reply. like, repost: the post liked or reposted. quote: the quote
-    // post (not the post it quotes). Moderation: the post decided on.
+    // post (not the post it quotes). mention: the post that mentions the recipient.
+    // Moderation: the post decided on.
     postId: uuid('post_id').references(() => posts.id),
     // report_resolved about an account: that account.
     subjectId: uuid('subject_id').references(() => members.id),
@@ -382,9 +409,45 @@ export const notifications = pgTable(
     uniqueIndex('notifications_quote_once_idx')
       .on(t.recipientId, t.actorId, t.postId)
       .where(sql`kind = 'quote'`),
+    uniqueIndex('notifications_mention_once_idx')
+      .on(t.recipientId, t.actorId, t.postId)
+      .where(sql`kind = 'mention'`),
     uniqueIndex('notifications_follow_once_idx')
       .on(t.recipientId, t.actorId)
       .where(sql`kind = 'follow'`),
+  ],
+)
+
+// The kinds of notification a member may turn off: other members' activity.
+// Moderation and account notices are not optional; members are always told
+// about decisions that affect them.
+export const OPTIONAL_NOTIFICATION_KINDS = [
+  'reply',
+  'like',
+  'repost',
+  'quote',
+  'mention',
+  'follow',
+] as const satisfies readonly (typeof NOTIFICATION_KINDS)[number][]
+
+// A kind of notification a member has turned off. Everything is on until they
+// turn it off, so only what is off is stored. The check keeps the other kinds
+// out whatever writes here.
+export const notificationOptOuts = pgTable(
+  'notification_opt_outs',
+  {
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    kind: text('kind', { enum: OPTIONAL_NOTIFICATION_KINDS }).notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.memberId, t.kind] }),
+    check(
+      'notification_opt_outs_kind_check',
+      sql.raw(`kind in (${OPTIONAL_NOTIFICATION_KINDS.map((k) => `'${k}'`).join(', ')})`),
+    ),
   ],
 )
 

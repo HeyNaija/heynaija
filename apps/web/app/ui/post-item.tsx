@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { deletePost, setBlock, setBookmark, setMute } from '@/app/actions'
 import type { Post } from '@/lib/api'
+import { textParts } from '@/lib/mentions'
 import { excerpt } from '@/lib/previews'
 import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
@@ -13,6 +14,7 @@ import { MorePosts } from './more-posts'
 import { ComposeLink } from './new-post-link'
 import { PostImages } from './post-images'
 import { PostPermalink } from './post-permalink'
+import { PostText } from './post-text'
 import { QuotedPostCard } from './quoted-post'
 import { RepostButton } from './repost-button'
 import { ShareButton } from './share-button'
@@ -52,6 +54,9 @@ export function PostItem({
   }
 
   const href = `/p/${post.id}`
+  const openLabel = `Open ${post.replyParentId ? 'reply' : 'post'} by @${post.authorHandle}`
+  const parts = textParts(post.text, post.mentions)
+  const mentions = parts.some((part) => part.handle)
   const likes = post.likeCount === 1 ? '1 like' : `${post.likeCount} likes`
   const replies = post.replyCount === 1 ? '1 reply' : `${post.replyCount} replies`
   const reposts = post.repostCount === 1 ? '1 repost' : `${post.repostCount} reposts`
@@ -166,9 +171,17 @@ export function PostItem({
 
       {post.text ? (
         <p className={`mt-3 whitespace-pre-wrap break-words ${focused ? 'text-base leading-relaxed' : 'post-body'}`}>
-          {focused ? post.text : <PostPermalink href={href}>{post.text}</PostPermalink>}
+          {focused ? (
+            <PostText parts={parts} />
+          ) : mentions ? (
+            <PostPermalink href={href} label={openLabel} beside>
+              <PostText parts={parts} />
+            </PostPermalink>
+          ) : (
+            <PostPermalink href={href}>{post.text}</PostPermalink>
+          )}
         </p>
-      ) : !focused ? <PostPermalink href={href} label={`Open ${post.replyParentId ? 'reply' : 'post'} by @${post.authorHandle}`}><span className="sr-only">Open conversation</span></PostPermalink> : null}
+      ) : !focused ? <PostPermalink href={href} label={openLabel}><span className="sr-only">Open conversation</span></PostPermalink> : null}
       {post.images.length ? (
         <div className="mt-3">
           <PostImages images={post.images} />

@@ -220,9 +220,11 @@ test('a new invited Google member can choose a handle and create one account', a
   await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
   await page.getByLabel('Handle').fill(handle)
   await page.locator('button[name="provider"][value="google"]').click()
-  await page.waitForURL((url) => url.pathname === '/')
+  // Like any newcomer, they start on the welcome flow.
+  await page.waitForURL((url) => url.pathname === '/welcome')
   const me = await (await page.context().request.get('/api/v1/me')).json()
   expect(me.handle).toBe(handle)
+  expect(me.onboarded).toBe(false)
   expect((await identity(me.id)).credentials?.oidc?.identifiers).toHaveLength(1)
 })
 

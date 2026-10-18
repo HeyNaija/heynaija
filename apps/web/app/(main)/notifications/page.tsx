@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { type ReactNode, Suspense } from 'react'
 import { Avatar } from '@/app/ui/avatar'
 import { EmptyState } from '@/app/ui/empty-state'
-import { BellIcon, BubbleIcon, FlagIcon, FollowIcon, HeartIcon, QuoteIcon, RepostIcon, ShieldIcon } from '@/app/ui/icons'
+import { BellIcon, BubbleIcon, FlagIcon, FollowIcon, HeartIcon, MentionIcon, QuoteIcon, RepostIcon, ShieldIcon } from '@/app/ui/icons'
 import { MarkRead } from '@/app/ui/mark-read'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { timeAgo } from '@/app/ui/time'
@@ -19,7 +19,7 @@ export default function NotificationsPage({ searchParams }: PageProps<'/notifica
       <header className="page-intro">
         <p className="page-eyebrow">Stay in the conversation</p>
         <h1 className="page-title">Notifications</h1>
-        <p className="page-description">Replies, follows and updates from your corner of HeyNaija.</p>
+        <p className="page-description">Replies, mentions, follows and updates from your corner of HeyNaija.</p>
       </header>
       <Suspense fallback={<PostsSkeleton />}>
         <Notifications searchParams={searchParams} />
@@ -43,7 +43,7 @@ async function Notifications({ searchParams }: Pick<PageProps<'/notifications'>,
     return (
       <div className="content-panel">
         <EmptyState icon={<BellIcon size={24} />} title={page ? 'No older notifications' : 'You’re all caught up'}>
-          {page ? null : 'When people reply to you, like, repost or quote your posts, or follow you, you’ll hear about it here.'}
+          {page ? null : 'When people reply to you, mention you, like, repost or quote your posts, or follow you, you’ll hear about it here.'}
         </EmptyState>
       </div>
     )
@@ -90,6 +90,8 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
       return { icon: <RepostIcon size={18} />, text: <>{who} reposted your post</> }
     case 'quote':
       return { icon: <QuoteIcon size={17} />, text: <>{who} quoted your post</> }
+    case 'mention':
+      return { icon: <MentionIcon size={18} />, text: <>{who} mentioned you</> }
     case 'follow':
       return { icon: <FollowIcon size={18} />, text: <>{who} followed you</> }
     case 'post_removed':
@@ -155,7 +157,7 @@ function NotificationRow({ notification: n, now }: { notification: Notification;
         )}
       </div>
       {n.post?.excerpt ? <p className="line-clamp-2 break-words text-[13px] leading-5 text-muted">{n.post.excerpt}</p> : null}
-      {href ? <span className="notification-destination">{n.kind === 'reply' ? 'View reply' : n.kind === 'quote' ? 'View quote' : n.kind === 'follow' ? 'View profile' : n.post ? 'View post' : 'View details'} →</span> : null}
+      {href ? <span className="notification-destination">{n.kind === 'reply' ? 'View reply' : n.kind === 'quote' ? 'View quote' : n.kind === 'mention' ? 'View mention' : n.kind === 'follow' ? 'View profile' : n.post ? 'View post' : 'View details'} →</span> : null}
     </>
   )
   const className = `notification-row ${n.read ? '' : 'is-unread'}`

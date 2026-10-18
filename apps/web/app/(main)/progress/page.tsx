@@ -47,10 +47,11 @@ export default function ProgressPage() {
         <div className="progress-availability" role="note">
           <p><strong>Implementation and availability are different.</strong></p>
           <p>
-            This inventory checks the local staging code and tests. Individual live feature availability
-            has not been verified. Staging is an invite-only test environment; “recorded on staging”
-            does not confirm this revision is deployed or guarantee general availability. Production
-            is not recorded as launched.
+            This inventory checks the local staging code and tests. Live availability has not been
+            verified for most features. Staging is an invite-only test environment; “recorded on staging”
+            does not confirm this revision is deployed or guarantee general availability. Production is
+            deployed; “recorded in production” means a feature was confirmed working there, not that every
+            feature is.
           </p>
         </div>
       </section>
