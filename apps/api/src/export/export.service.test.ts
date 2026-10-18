@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm'
 import { GovernanceService } from '../governance/governance.service.js'
 import { MembersService } from '../members/members.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
+import { NotificationsService } from '../notifications/notifications.service.js'
 import { PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { EXPORT_FORMAT, ExportService } from './export.service.js'
@@ -14,6 +15,7 @@ const service = new ExportService(db)
 const postsService = new PostsService(db)
 const membersService = new MembersService(db)
 const moderation = new ModerationService(db)
+const notificationsService = new NotificationsService(db)
 const ada = randomUUID()
 const bayo = randomUUID()
 const chi = randomUUID()
@@ -95,6 +97,15 @@ test('each post lists the members it mentions, once each, by the handle they hav
       [plain.id, []],
     ],
   )
+})
+
+test('an export says which kinds of activity the member is notified about', async () => {
+  const allOn = { reply: true, like: true, repost: true, quote: true, mention: true, follow: true }
+  assert.deepEqual((await service.export(ada, null))!.notificationPreferences, allOn)
+  await notificationsService.setPreferences(ada, { like: false, follow: false })
+  assert.deepEqual((await service.export(ada, null))!.notificationPreferences, { ...allOn, like: false, follow: false })
+  // Only their own choices.
+  assert.deepEqual((await service.export(bayo, null))!.notificationPreferences, allOn)
 })
 
 test('an unknown member has no export', async () => {

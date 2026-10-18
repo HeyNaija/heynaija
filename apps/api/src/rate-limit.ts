@@ -15,7 +15,8 @@ export const LIMITS = {
     { max: 10, windowMs: MINUTE },
     { max: 60, windowMs: HOUR },
   ],
-  // Likes, reposts, bookmarks, follows, joins, blocks and mutes share one budget.
+  // Likes, reposts, bookmarks, follows, joins, blocks, mutes and notification
+  // settings share one budget.
   action: [{ max: 120, windowMs: MINUTE }],
   report: [{ max: 10, windowMs: HOUR }],
   search: [{ max: 60, windowMs: MINUTE }],
