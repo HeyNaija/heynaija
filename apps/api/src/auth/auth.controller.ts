@@ -95,7 +95,12 @@ export class AuthController {
       this.moderation.scope(req.member.id),
       this.notifications.unreadCount(req.member.id),
       this.db
-        .select({ avatarMediaId: members.avatarMediaId, displayName: members.displayName, bio: members.bio })
+        .select({
+          avatarMediaId: members.avatarMediaId,
+          displayName: members.displayName,
+          bio: members.bio,
+          onboardedAt: members.onboardedAt,
+        })
         .from(members)
         .where(eq(members.id, req.member.id)),
     ])
@@ -108,6 +113,9 @@ export class AuthController {
       bio: row?.bio ?? '',
       unreadNotifications: unread,
       moderates: scope.siteWide || scope.communityIds.length > 0,
+      // False until the member finishes or skips the welcome flow; the web app's
+      // home page sends them to /welcome until then.
+      onboarded: Boolean(row?.onboardedAt),
     }
   }
 

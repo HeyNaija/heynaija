@@ -38,6 +38,10 @@ export const members = pgTable(
     bio: text('bio').notNull().default(''),
     createdAt: ts('created_at').notNull().defaultNow(),
     lastSeenAt: ts('last_seen_at'),
+    // When the member finished or skipped the welcome flow (/welcome). Null until
+    // then, and the home page sends them there. Migration 0019 set it for everyone
+    // who joined before the flow existed, so only newcomers see it.
+    onboardedAt: ts('onboarded_at'),
   },
   (t) => [index('members_handle_idx').on(t.handle)],
 )

@@ -132,7 +132,7 @@ Browser ──> Next.js web app
       (ADR 0003); sign out; change email or handle; connect or disconnect Google
 - [x] Profile photo (upload, replace, remove)
 - [x] Display name (50 characters) and short bio (160), searchable by name
-- [ ] Onboarding: pick interests and communities, suggested people
+- [x] Onboarding at `/welcome`: newcomers choose communities, then people to follow (moderators and recent posters in those communities, then recent posters site-wide), and land on Following with a nudge to post; every step can be skipped, and members from before it are never sent there (18 October 2026). Communities stand in for interests until topic-following exists.
 - [x] Data export ("download my data"): Settings → Your data, one JSON file (15 October 2026; format 2 adds age confirmation and verification status, 16 October; format 3 adds reposts and quote posts, 16 October)
 
 ### Social

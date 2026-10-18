@@ -19,11 +19,20 @@ export function handleFor(role: string) {
   return `${MARK.handlePrefix}${run}${counter}_${role}`.slice(0, 20).toLowerCase()
 }
 
-/** Signs a new member up through the UI in `page`. */
-export async function signUp(page: Page, handle: string) {
+/**
+ * Signs a new member up through the UI in `page`. Newcomers land on the welcome
+ * flow; most tests are about something else, so this skips it and waits for the
+ * home page, unless `welcome` is 'stay'.
+ */
+export async function signUp(page: Page, handle: string, { welcome = 'skip' }: { welcome?: 'skip' | 'stay' } = {}) {
   const email = await submitSignUp(page, handle)
-  await page.waitForURL((url) => url.pathname === '/')
+  await page.waitForURL((url) => url.pathname === '/welcome')
   await expect(page.getByLabel('Account menu')).toBeVisible()
+  if (welcome === 'skip') {
+    await page.getByRole('button', { name: 'Skip setup' }).click()
+    await page.waitForURL((url) => url.pathname === '/')
+    await expect(page.getByLabel('Account menu')).toBeVisible()
+  }
   return email
 }
 
