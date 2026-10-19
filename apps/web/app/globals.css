@@ -479,7 +479,7 @@ summary.menu::-webkit-details-marker {
   max-height: 100dvh;
   flex-shrink: 0;
   flex-direction: column;
-  gap: 24px;
+  gap: 18px;
   align-self: flex-start;
   overflow-y: auto;
   margin-right: 28px;
@@ -502,7 +502,7 @@ summary.menu::-webkit-details-marker {
 }
 .sidebar-nav-item {
   display: flex;
-  min-height: 46px;
+  min-height: 42px;
   align-items: center;
   gap: 13px;
   border: 1px solid transparent;
@@ -564,6 +564,14 @@ summary.menu::-webkit-details-marker {
 }
 .ownership-link:hover { text-decoration: underline; }
 .sidebar-footer { padding-left: 8px; font-size: 10px; color: var(--muted); }
+/* Shorter windows: the card's image gets shorter before the nav does. */
+@media (max-height: 960px) {
+  .ownership-illustration { height: 72px; }
+  .ownership-copy { padding: 14px; }
+}
+@media (max-height: 820px) {
+  .ownership-illustration { height: 56px; }
+}
 .square-content {
   display: flex;
   min-width: 0;
