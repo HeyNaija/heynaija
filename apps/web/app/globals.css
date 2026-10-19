@@ -415,13 +415,21 @@ summary.menu::-webkit-details-marker {
     letter-spacing: -0.01em;
   }
 
+  /* Held back for 150ms, so a page that loads quickly goes straight to its content
+     instead of flashing grey shapes first. The fade is listed last so that it wins
+     over the pulse while it runs. */
   .skeleton {
     border-radius: 6px;
     background: var(--line);
-    animation: pulse 1.4s ease-in-out infinite;
+    animation: pulse 1.4s ease-in-out infinite, skeleton-in 0.2s ease-out 0.15s backwards;
   }
 }
 
+@keyframes skeleton-in {
+  from {
+    opacity: 0;
+  }
+}
 @keyframes menu-in {
   from {
     opacity: 0;
@@ -471,30 +479,38 @@ summary.menu::-webkit-details-marker {
   margin: 0 auto;
   padding-inline: 32px;
 }
+/* The sidebar fits the window instead of scrolling. Under the brand, the links, the
+   compose button and a card share what is left, and the window's height decides
+   what gives way, in CSS, so the first paint is already right and it needs no
+   JavaScript. The card gives way first (its picture shrinks, then goes, then the
+   card goes); after that the links tuck into a More menu, a tier at a time.
+
+   The numbers are heights of .sidebar-body, from the rows below: the label is 32px
+   and each link 46px with a 4px gap (a 50px step), the compose button 44px, the
+   gaps between blocks 18px. A list of m rows with the button needs 94 + 50m.
+   Link tiers (data-tier, set in shell.tsx) hide at 94 + 50 * (tier + 1) = 144 + 50 * tier;
+   the More row itself counts as one of the m. */
 .square-sidebar {
   position: sticky;
   top: 0;
+  z-index: 30; /* over the feed and the top bar, so the More menu can open across them */
   display: flex;
   width: 210px;
-  max-height: 100dvh;
+  height: 100dvh;
   flex-shrink: 0;
   flex-direction: column;
   gap: 18px;
   align-self: flex-start;
-  overflow-y: auto;
   margin-right: 28px;
   padding: 22px 0;
-  scrollbar-width: none;
-  /* The scrollbar is hidden, so fade the bottom edge while there is more below.
-     No overflow (or no scroll timelines, as in Firefox) leaves the fade at 0. */
-  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--sidebar-fade)), transparent);
-  animation: sidebar-fade linear both;
-  animation-timeline: scroll(self);
 }
-@property --sidebar-fade { syntax: '<length>'; inherits: false; initial-value: 0px; }
-@keyframes sidebar-fade {
-  from, 95% { --sidebar-fade: 40px; }
-  to { --sidebar-fade: 0px; }
+.sidebar-body {
+  container: sidebar / size;
+  display: flex;
+  min-height: 0;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 18px;
 }
 .sidebar-brand {
   display: flex;
@@ -535,29 +551,71 @@ summary.menu::-webkit-details-marker {
 }
 .sidebar-nav-item[aria-current="page"] > svg { color: var(--accent); }
 .sidebar-compose { min-height: 44px; font-size: 13px; }
-/* The image and copy are siblings in the sidebar, drawn as one card. On short
-   windows the image is the one thing that gives way, from 108px down to 56px;
-   past that the sidebar scrolls. */
+.sidebar-nav, .sidebar-nav-list { display: flex; flex-direction: column; gap: 4px; }
+.sidebar-nav-list { margin: 0; padding: 0; list-style: none; }
+
+/* More: the links that no longer fit, in a menu that opens above the button. Each
+   link is in the list and in the menu; a tier's copy is shown exactly when its
+   list item is hidden (the rules at the end of this block). */
+.sidebar-more, .sidebar-more-dot { display: none; }
+.sidebar-more summary { cursor: pointer; }
+.sidebar-more details[open] > summary { background: var(--surface); color: var(--ink); }
+.sidebar-more-panel {
+  right: auto;
+  bottom: 100%;
+  left: 0;
+  width: 232px;
+  min-width: 0;
+  margin: 0 0 6px;
+}
+.sidebar-more-panel > * { display: none; }
+.sidebar-more-panel [aria-current="page"] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; }
+.sidebar-more-panel .unread-badge { margin-left: auto; }
+
+/* The card takes what the links and button leave. */
+.sidebar-card-slot {
+  container: sidebar-card / size;
+  display: flex;
+  min-height: 0;
+  flex: 1 1 0;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 18px;
+  overflow: hidden;
+}
+.ownership-card {
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+}
 .ownership-illustration {
   display: block;
   width: 100%;
-  height: auto;
-  min-height: 56px;
-  flex: 0 1 108px;
-  margin-top: auto;
-  border: 1px solid var(--line);
-  border-bottom: 0;
-  border-radius: var(--r-panel) var(--r-panel) 0 0;
+  height: 108px;
   object-fit: cover;
   object-position: center 30%;
 }
+/* Card, gap and footer are 360px tall. The picture drops to 56px below 368px of room
+   (a little spare for text that wraps differently), goes below 316px, and the card
+   below 260px. */
+@container sidebar-card (height < 368px) { .ownership-illustration { height: 56px; } }
+@container sidebar-card (height < 316px) { .ownership-illustration { display: none; } }
+@container sidebar-card (height < 260px) { .ownership-card, .sidebar-footer { display: none; } }
+
+/* One block per tier, from 194px (tier 1) in steps of 50px: hide the link in the
+   list, show its copy in More, show More itself (on the tier that is last for this
+   member) and the unread dot there if the Notifications link is the one that left. */
+@container sidebar (height < 194px) { .sidebar-nav-list > [data-tier="1"] { display: none; } .sidebar-more-panel > [data-tier="1"] { display: block; } .sidebar-more[data-more-tier="1"] { display: block; } .sidebar-more-dot[data-tier="1"] { display: contents; } }
+@container sidebar (height < 244px) { .sidebar-nav-list > [data-tier="2"] { display: none; } .sidebar-more-panel > [data-tier="2"] { display: block; } .sidebar-more[data-more-tier="2"] { display: block; } .sidebar-more-dot[data-tier="2"] { display: contents; } }
+@container sidebar (height < 294px) { .sidebar-nav-list > [data-tier="3"] { display: none; } .sidebar-more-panel > [data-tier="3"] { display: block; } .sidebar-more[data-more-tier="3"] { display: block; } .sidebar-more-dot[data-tier="3"] { display: contents; } }
+@container sidebar (height < 344px) { .sidebar-nav-list > [data-tier="4"] { display: none; } .sidebar-more-panel > [data-tier="4"] { display: block; } .sidebar-more[data-more-tier="4"] { display: block; } .sidebar-more-dot[data-tier="4"] { display: contents; } }
+@container sidebar (height < 394px) { .sidebar-nav-list > [data-tier="5"] { display: none; } .sidebar-more-panel > [data-tier="5"] { display: block; } .sidebar-more[data-more-tier="5"] { display: block; } .sidebar-more-dot[data-tier="5"] { display: contents; } }
+@container sidebar (height < 444px) { .sidebar-nav-list > [data-tier="6"] { display: none; } .sidebar-more-panel > [data-tier="6"] { display: block; } .sidebar-more[data-more-tier="6"] { display: block; } .sidebar-more-dot[data-tier="6"] { display: contents; } }
+@container sidebar (height < 494px) { .sidebar-nav-list > [data-tier="7"] { display: none; } .sidebar-more-panel > [data-tier="7"] { display: block; } .sidebar-more[data-more-tier="7"] { display: block; } .sidebar-more-dot[data-tier="7"] { display: contents; } }
+@container sidebar (height < 544px) { .sidebar-nav-list > [data-tier="8"] { display: none; } .sidebar-more-panel > [data-tier="8"] { display: block; } .sidebar-more[data-more-tier="8"] { display: block; } .sidebar-more-dot[data-tier="8"] { display: contents; } }
 .ownership-copy {
-  flex-shrink: 0;
-  margin-top: -18px; /* cancels .square-sidebar's gap, joining the copy to the image */
-  border: 1px solid var(--line);
-  border-top: 0;
-  border-radius: 0 0 var(--r-panel) var(--r-panel);
-  background: var(--surface);
   padding: 17px;
 }
 .ownership-copy > p:first-child {

@@ -177,7 +177,7 @@ Same roles, set on `:root[data-theme="dark"]`: ground-dark for the ground, card-
 ## Layout
 
 - **Desktop (1024px and up):** an open shell inside a 1320px container with 32px side padding, with no frame or sheet.
-  - **Left sidebar (210px, sticky):** approved wordmark, navigation, a 44px "Create a post" action and the existing community illustration card. A 28px margin separates it from the content.
+  - **Left sidebar (210px, sticky, as tall as the window):** approved wordmark, navigation, a 44px "Create a post" action and the existing community illustration card. A 28px margin separates it from the content. It never scrolls: as the window gets shorter the card gives way first (its picture shrinks to 56px, then goes, then the card goes), and after that the least needed links move into a **More** menu that opens above its button, a few at a time. The choice is made in CSS from the window's height, so it holds on the first paint and without JavaScript.
   - **Centre feed:** fluid width, with 28px top and 48px bottom padding. The gap between feed and discovery rail is 24px.
   - **Right rail (282px, from 1200px up):** a calmer discovery heading and a stack of cards 16px apart, sticky beneath the header with independent scrolling when needed.
 - **Desktop header:** an 80px sticky bar with a search field up to 480px wide and a compact account menu. A hairline separates it from the content. The sidebar post action focuses the composer on the feed or takes the member there from another page.

@@ -1,7 +1,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
-import { Suspense } from 'react'
-import { getCommunities, getTrending, getViewer } from '@/lib/api'
+import { type ComponentType, Suspense } from 'react'
+import { getCommunities, getTrending, getViewer, type Viewer } from '@/lib/api'
 import { getLogoutUrl } from '@/lib/kratos'
 import { Avatar } from './avatar'
 import { CommunityMark } from './community-mark'
@@ -10,6 +10,7 @@ import {
   BellIcon,
   BookmarkIcon,
   ChevronIcon,
+  DotsIcon,
   FlameIcon,
   GovernanceIcon,
   GearIcon,
@@ -30,16 +31,29 @@ import { ThemeSwitch } from './theme-switch'
 import { TreasuryPreview } from './treasury-preview'
 import { UnreadBadge } from './unread-badge'
 
-const NAV = [
-  { href: '/', label: 'Home', icon: HomeIcon, exact: true },
-  { href: '/c', label: 'Communities', icon: PeopleIcon },
-  { href: '/about', label: 'About HeyNaija', icon: InfoIcon },
-  { href: '/progress', label: 'Progress', icon: HistoryIcon },
-  { href: '/governance', label: 'Governance', icon: GovernanceIcon },
-  { href: '/bookmarks', label: 'Bookmarks', icon: BookmarkIcon },
-  { href: '/settings', label: 'Settings', icon: GearIcon },
-]
+type SidebarLink = {
+  href: string
+  label: string
+  icon: ComponentType<{ size?: number }>
+  exact?: boolean
+  /** Which goes into More first when the window is short: 1 stays out longest. */
+  keep: number
+  unread?: number
+  /** Drawn empty, for its room only (see `sidebarLinks`). */
+  placeholder?: boolean
+}
 
+/** The member as far as the sidebar can tell: undefined until it is known who is looking. */
+type Looking = Extract<Viewer, { state: 'member' }>['me'] | null | undefined
+
+/**
+ * How much of the sidebar shows is decided by the window's height, in CSS (see
+ * "The sidebar" in globals.css), so it is right on the first paint and with
+ * JavaScript off. Each link is also listed in the More menu; the stylesheet shows
+ * those copies, and hides the ones in the list, a tier at a time as space runs out.
+ * The two least wanted links share the last tier: a More button takes the room of
+ * one link, so hiding a single link would gain nothing.
+ */
 export function Sidebar() {
   return (
     <aside className="square-sidebar">
@@ -47,45 +61,134 @@ export function Sidebar() {
         <Logo />
       </div>
 
-      {/* usePathname makes the active highlight request-specific, hence the boundary. */}
-      <Suspense>
-        <nav aria-label="Main" className="flex flex-col gap-1">
-          <p className="sidebar-label">Your space</p>
-          {NAV.slice(0, 2).map(({ href, label, icon: Icon, exact }) => (
-            <NavLink key={href} href={href} exact={exact} className="sidebar-nav-item">
-              <Icon />
-              {label}
-            </NavLink>
-          ))}
-          <NotificationsLink />
-          {NAV.slice(2).map(({ href, label, icon: Icon }) => (
-            <NavLink key={href} href={href} className="sidebar-nav-item">
-              <Icon />
-              {label}
-            </NavLink>
-          ))}
-          <ModerationLink />
-        </nav>
-        <SidebarCompose />
-      </Suspense>
+      <div className="sidebar-body">
+        {/* Who is looking, and the current page (usePathname), are only known per request,
+            hence the boundaries. What they hold is the same for everyone apart from a few
+            details, so the links are drawn at once, as plain links, and the real ones
+            (highlighting the current page, with the unread count) take their place. */}
+        <Suspense fallback={<SidebarLinks links={sidebarLinks(undefined)} known={false} />}>
+          <SidebarNav />
+        </Suspense>
+        <Suspense fallback={<div className="sidebar-compose" aria-hidden="true" />}>
+          <SidebarCompose />
+        </Suspense>
 
-      {/* Two siblings drawn as one card, so the image can shrink inside the
-          sidebar's flex column without the copy shrinking with it. */}
-      <Image
-        src="/brand/community-conversation.jpg"
-        alt=""
-        width={640}
-        height={427}
-        sizes="232px"
-        className="ownership-illustration"
-      />
-      <div className="ownership-copy">
-        <p>Different places.<br />A shared sense of home.</p>
-        <p className="mt-2">Made for Nigerians, at home and everywhere. Built toward a community-owned future.</p>
-        <Link href="/about" className="ownership-link">Get to know HeyNaija <ArrowUpRightIcon size={14} /></Link>
+        <div className="sidebar-card-slot">
+          <div className="ownership-card">
+            <Image
+              src="/brand/community-conversation.jpg"
+              alt=""
+              width={640}
+              height={427}
+              sizes="232px"
+              className="ownership-illustration"
+            />
+            <div className="ownership-copy">
+              <p>Different places.<br />A shared sense of home.</p>
+              <p className="mt-2">Made for Nigerians, at home and everywhere. Built toward a community-owned future.</p>
+              <Link href="/about" className="ownership-link">Get to know HeyNaija <ArrowUpRightIcon size={14} /></Link>
+            </div>
+          </div>
+          <p className="sidebar-footer">Real people. Real conversations.</p>
+        </div>
       </div>
-      <p className="sidebar-footer">Real people. Real conversations.</p>
     </aside>
+  )
+}
+
+/**
+ * The links in the order they are drawn; `keep` is the order they are given up in.
+ * Which links there are depends on who is looking. Until that is known (`me`
+ * undefined) the page is drawn for a member, whose list is the longer: the
+ * Notifications row is kept, empty, so nothing below it moves when a member's page
+ * fills in. For a visitor that row goes away when it is known they are one.
+ */
+function sidebarLinks(me: Looking): SidebarLink[] {
+  return [
+    { href: '/', label: 'Home', icon: HomeIcon, exact: true, keep: 1 },
+    { href: '/c', label: 'Communities', icon: PeopleIcon, keep: 2 },
+    // Members only, with the unread count.
+    ...(me !== null
+      ? [{ href: '/notifications', label: 'Notifications', icon: BellIcon, keep: 3, unread: me?.unreadNotifications, placeholder: me === undefined }]
+      : []),
+    { href: '/about', label: 'About HeyNaija', icon: InfoIcon, keep: 9 },
+    { href: '/progress', label: 'Progress', icon: HistoryIcon, keep: 8 },
+    { href: '/governance', label: 'Governance', icon: GovernanceIcon, keep: 7 },
+    { href: '/bookmarks', label: 'Bookmarks', icon: BookmarkIcon, keep: 5 },
+    { href: '/settings', label: 'Settings', icon: GearIcon, keep: 6 },
+    // Only moderators see this; the API checks the role again on every request.
+    ...(me?.moderates ? [{ href: '/mod', label: 'Moderation', icon: ShieldIcon, keep: 4 }] : []),
+  ]
+}
+
+async function SidebarNav() {
+  const viewer = await getViewer()
+  return <SidebarLinks links={sidebarLinks(viewer.state === 'member' ? viewer.me : null)} known />
+}
+
+/** A link in the list or in More. Before it is known who is looking (and which page this is), plain links. */
+function SidebarLinkItem({ link, known, className, size }: { link: SidebarLink; known: boolean; className: string; size: number }) {
+  const { href, label, icon: Icon, exact, unread, placeholder } = link
+  const content = (
+    <>
+      <Icon size={size} />
+      {label}
+      {unread ? <UnreadBadge count={unread} /> : null}
+    </>
+  )
+  if (placeholder) return <span className={`${className} invisible`} aria-hidden="true">{content}</span>
+  return known ? (
+    <NavLink href={href} exact={exact} className={className}>{content}</NavLink>
+  ) : (
+    <Link href={href} className={className}>{content}</Link>
+  )
+}
+
+function SidebarLinks({ links, known }: { links: SidebarLink[]; known: boolean }) {
+  const lastTier = links.length - 1
+  const tiers = new Map(
+    [...links].sort((a, b) => a.keep - b.keep).map((link, i) => [link.href, Math.min(i + 1, lastTier)]),
+  )
+  const notifications = links.find((link) => link.unread)
+
+  return (
+    <nav aria-label="Main" className="sidebar-nav">
+      <p className="sidebar-label">Your space</p>
+      <ul className="sidebar-nav-list">
+        {links.map((link) => (
+          <li key={link.href} data-tier={tiers.get(link.href)}>
+            <SidebarLinkItem link={link} known={known} className="sidebar-nav-item" size={20} />
+          </li>
+        ))}
+        <li className="sidebar-more" data-more-tier={lastTier}>
+          <Menu
+            label="More"
+            triggerClassName="sidebar-nav-item"
+            panelClassName="sidebar-more-panel"
+            trigger={
+              <>
+                <span className="relative">
+                  <DotsIcon />
+                  {/* The count is on a link that has moved into this menu. */}
+                  {notifications ? (
+                    <span className="sidebar-more-dot" data-tier={tiers.get(notifications.href)}>
+                      <UnreadBadge count={notifications.unread!} dot />
+                    </span>
+                  ) : null}
+                </span>
+                More
+              </>
+            }
+          >
+            {links.filter((link) => !link.placeholder).map((link) => (
+              <div key={link.href} data-tier={tiers.get(link.href)}>
+                <SidebarLinkItem link={link} known={known} className="menu-item" size={18} />
+              </div>
+            ))}
+          </Menu>
+        </li>
+      </ul>
+    </nav>
   )
 }
 
@@ -93,31 +196,6 @@ async function SidebarCompose() {
   const viewer = await getViewer()
   return viewer.state === 'member' ? <NewPostLink expanded /> : (
     <Link href="/join" className="btn btn-primary btn-block sidebar-compose">Find your community <ArrowUpRightIcon size={17} /></Link>
-  )
-}
-
-/** Members only, with the unread count. */
-async function NotificationsLink() {
-  const viewer = await getViewer()
-  if (viewer.state !== 'member') return null
-  return (
-    <NavLink href="/notifications" className="sidebar-nav-item">
-      <BellIcon />
-      Notifications
-      <UnreadBadge count={viewer.me.unreadNotifications} />
-    </NavLink>
-  )
-}
-
-/** Only moderators see this; the API checks the role again on every request. */
-async function ModerationLink() {
-  const viewer = await getViewer()
-  if (viewer.state !== 'member' || !viewer.me.moderates) return null
-  return (
-    <NavLink href="/mod" className="sidebar-nav-item">
-      <ShieldIcon />
-      Moderation
-    </NavLink>
   )
 }
 
@@ -151,7 +229,13 @@ export function TopBar() {
         <Link href="/search" aria-label="Search" className="icon-btn lg:hidden">
           <SearchIcon />
         </Link>
-        <Suspense fallback={<span className="skeleton size-9 !rounded-full" />}>
+        {/* Nothing is drawn while the account controls load: they differ in shape (a
+            circle for a member, buttons for a visitor), so a skeleton flashed a grey
+            circle before it turned into either. On a phone a member's is always 70px
+            wide, and that room is kept so the icons beside it do not slide left when it
+            arrives. From 640px up its width depends on the handle, and from 1024px
+            nothing sits beside it, so nothing is kept. */}
+        <Suspense fallback={<span className="block h-[42px] w-[70px] sm:hidden" aria-hidden="true" />}>
           <UserMenu />
         </Suspense>
       </div>
