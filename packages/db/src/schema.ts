@@ -633,6 +633,9 @@ export const identityVerifications = restricted.table(
 
 export const GOVERNANCE_MEMBERSHIP_STATUSES = ['pending', 'active', 'suspended', 'resigned'] as const
 
+// A platform user's voluntary online voting participation, NOT the legal
+// association register. 'resigned' means online opt-out, not legal resignation.
+// Formal legal admission needs its own reviewed register before activation.
 // A member's explicit opt-in to voting membership. Separate from identity
 // verification on purpose: verifying never makes anyone a voting member. Whether
 // they may vote is worked out on read from this row, their verification and the
@@ -643,7 +646,7 @@ export const governanceMemberships = restricted.table('governance_memberships', 
     .references(() => members.id),
   status: text('status', { enum: GOVERNANCE_MEMBERSHIP_STATUSES }).notNull(),
   optedInAt: ts('opted_in_at').notNull(),
-  // The governing documents they accepted, e.g. 'constitution-0.2'.
+  // The governing documents they accepted, e.g. 'constitution-0.3'.
   documentsVersion: text('documents_version').notNull(),
   statusChangedAt: ts('status_changed_at').notNull().defaultNow(),
   suspendedUntil: ts('suspended_until'),

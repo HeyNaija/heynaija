@@ -556,18 +556,18 @@ This tracks product development, not formal governance decisions. Priority means
 
 - **ID:** `voting-membership`
 - **Priority:** P2 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Let eligible adults explicitly join a separate governance electorate.
-- **Remaining work / caveat:** Verified adulthood, identity checks and approved membership terms are required.
+- **Description:** Let every eligible adult legal member voluntarily activate equal participation in the platform governance electorate.
+- **Remaining work / caveat:** Separate formal legal admission, verified adulthood, identity checks, voluntary activation and approved terms are required; online opt-out preserves legal membership and formal meeting rights.
 - **Dependencies:** `nin-verification`, `member-legal-entity`
 - **Inspected evidence:** `apps/web/lib/governance.ts`, `apps/api/src/governance/rules.ts`, `apps/api/src/env.ts`, `docs/governance/open-items.md`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** The beta’s self-declared age never establishes verified voting eligibility.
+- **Audit notes:** Legal admission is not implemented; preparatory eligibility fails closed. The beta’s self-declared age never establishes verified voting eligibility.
 
 #### Member-controlled legal entity
 
 - **ID:** `member-legal-entity`
 - **Priority:** P2 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Establish and adopt the legal structure required for community control.
-- **Remaining work / caveat:** Legal advice, an agreed entity, adopted rules and the required ownership steps remain outstanding.
+- **Description:** Proposed nonprofit Incorporated Trustees under CAMA Part F, with three founding trustees on initial three-year terms.
+- **Remaining work / caveat:** Qualified Nigerian legal review, lawful founding appointments, adopted constitution, CAC incorporation and essential asset transfers remain outstanding.
 - **Inspected evidence:** `docs/governance/open-items.md`, `apps/web/lib/governance.ts`, `apps/web/app/(main)/governance/constitution/page.tsx`
 
 #### Independent ballot assurance
@@ -583,11 +583,11 @@ This tracks product development, not formal governance decisions. Priority means
 
 - **ID:** `binding-votes`
 - **Priority:** P2 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Hold legitimate member decisions and council elections under adopted rules.
-- **Remaining work / caveat:** Approved eligibility, a legal framework, an eligible electorate and independently reviewed ballots are prerequisites.
+- **Description:** Hold lawful member decisions: three trustee seats together at founding-term expiry and every three years thereafter; two representatives annually from readiness.
+- **Remaining work / caveat:** Activation does not trigger founding trustee re-election. Legal membership, independent secret ballots, formal resolutions and applicable CAC procedures remain required.
 - **Dependencies:** `voting-membership`, `ballot-audit`
 - **Inspected evidence:** `apps/web/lib/governance.ts`, `apps/api/src/governance/rules.ts`, `apps/api/src/env.ts`, `docs/governance/open-items.md`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** Binding governance voting cannot be enabled by configuration.
+- **Audit notes:** Binding governance voting cannot be enabled by configuration; an online result alone grants no statutory trustee status.
 
 #### Operational public treasury
 

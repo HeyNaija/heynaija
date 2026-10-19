@@ -39,7 +39,14 @@ step-by-step guides in [docs/deployment/](docs/deployment/staging.md). What work
 - **Governance information:** `/governance` (founding-stage status, how members
   would govern, the path to community ownership, empty states for votes, the
   treasury and decisions), the draft constitution at `/governance/constitution`,
-  and explainers for voting membership and optional NIN verification. Settings
+  and explainers for legal membership, voluntary online voting and optional NIN
+  verification. Draft v0.3 proposes Incorporated Trustees, three founding trustees
+  on initial three-year terms, and two annual representatives. Activation does not
+  trigger founding trustee re-election; all three trustee seats open at term expiry.
+  No incorporation or legal community ownership is claimed. The generated
+  [CAC review copy](docs/governance/cac-constitution.md), [charter/policy guide](docs/governance/README.md)
+  and [legal questions](docs/governance/legal-review.md) require Nigerian counsel
+  review before adoption. `pnpm governance:check` checks the public/CAC text. Settings
   shows each member's own status. Identity verification, voting membership,
   binding votes and the treasury are not live, and the API refuses to start with
   them switched on ([ADR 0005](docs/adr/0005-governance-and-identity-groundwork.md),

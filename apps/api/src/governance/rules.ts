@@ -14,7 +14,7 @@ export type GovernanceFlags = Pick<
   'NIN_VERIFICATION_ENABLED' | 'BINDING_GOVERNANCE_VOTING_ENABLED' | 'UNDER_18_ACCOUNTS_ENABLED'
 >
 
-/** Draft constitution v0.2: Article 5.5 (freeze, account age) and Article 8.10 (electorate). */
+/** Draft constitution v0.3, Articles 5 and 8. Proposals; features remain locked. */
 export const PROPOSED_RULES = {
   eligibilityFreezeDays: 14,
   accountAgeDays: 30,
@@ -36,9 +36,17 @@ export type VerificationFacts = {
 }
 
 export type MembershipFacts = {
+  // Online participation only. 'resigned' deactivates online voting and never
+  // proves resignation from the legal association.
   status: MembershipStatus
   optedInAt: Date
   suspendedUntil: Date | null
+}
+
+/** Future association register facts, separate from platform accounts/opt-in. */
+export type LegalMembershipFacts = {
+  status: 'admitted' | 'suspended' | 'ended'
+  admittedAt: Date
 }
 
 /**
@@ -69,6 +77,7 @@ export function badgeAllowed(flags: GovernanceFlags, record: VerificationFacts |
 }
 
 export type MembershipGap =
+  | 'not_legal_member'
   | 'registration_closed'
   | 'not_verified'
   | 'not_reviewed'
@@ -92,11 +101,14 @@ export function membershipEligibility(input: {
   verification: VerificationFacts | null
   age: AgeStatus
   membership: MembershipFacts | null
+  /** Missing until a lawful admission register exists: always fail closed. */
+  legalMembership?: LegalMembershipFacts | null
   now: Date
 }): { eligible: boolean; unmet: MembershipGap[] } {
-  const { flags, verification, age, membership, now } = input
+  const { flags, verification, age, membership, legalMembership, now } = input
   const unmet: MembershipGap[] = []
   if (!flags.NIN_VERIFICATION_ENABLED || !flags.BINDING_GOVERNANCE_VOTING_ENABLED) unmet.push('registration_closed')
+  if (legalMembership?.status !== 'admitted' || legalMembership.admittedAt > now) unmet.push('not_legal_member')
   if (effectiveVerificationStatus(verification, now) !== 'verified') {
     unmet.push('not_verified')
   } else {
@@ -116,7 +128,7 @@ export type BallotGap = 'not_a_member' | 'account_too_new' | 'joined_after_freez
 
 /**
  * Whether an eligible member may vote in a ballot opening at `ballotOpensAt`
- * (Article 5.5): they were a member and verified before the list froze 14 days
+ * (Article 5): they were legally admitted, opted in and verified before the list froze 14 days
  * earlier, and their account is at least 30 days old when the ballot opens.
  * People who qualify after the freeze vote in the next ballot.
  */
@@ -125,15 +137,16 @@ export function ballotEligibility(input: {
   accountCreatedAt: Date
   optedInAt: Date | null
   verifiedAt: Date | null
+  legalAdmittedAt: Date | null
   ballotOpensAt: Date
 }): { eligible: boolean; unmet: BallotGap[] } {
-  const { membershipEligible, accountCreatedAt, optedInAt, verifiedAt, ballotOpensAt } = input
+  const { membershipEligible, accountCreatedAt, optedInAt, verifiedAt, legalAdmittedAt, ballotOpensAt } = input
   const unmet: BallotGap[] = []
-  if (!membershipEligible || !optedInAt || !verifiedAt) {
+  if (!membershipEligible || !optedInAt || !verifiedAt || !legalAdmittedAt) {
     unmet.push('not_a_member')
   } else {
     const freeze = ballotOpensAt.getTime() - PROPOSED_RULES.eligibilityFreezeDays * DAY_MS
-    if (optedInAt.getTime() > freeze || verifiedAt.getTime() > freeze) unmet.push('joined_after_freeze')
+    if (optedInAt.getTime() > freeze || verifiedAt.getTime() > freeze || legalAdmittedAt.getTime() > freeze) unmet.push('joined_after_freeze')
   }
   if (ballotOpensAt.getTime() - accountCreatedAt.getTime() < PROPOSED_RULES.accountAgeDays * DAY_MS) {
     unmet.push('account_too_new')
@@ -142,7 +155,7 @@ export function ballotEligibility(input: {
 }
 
 /**
- * Whether a binding ballot may open at all (Article 8.10). Below the minimum
+ * Whether a binding ballot may open at all (Article 8). Below the minimum
  * electorate only polls labelled non-binding may run.
  */
 export function bindingBallotMayOpen(flags: GovernanceFlags, eligibleVoters: number): boolean {
