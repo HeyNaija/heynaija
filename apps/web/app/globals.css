@@ -485,6 +485,16 @@ summary.menu::-webkit-details-marker {
   margin-right: 28px;
   padding: 22px 0;
   scrollbar-width: none;
+  /* The scrollbar is hidden, so fade the bottom edge while there is more below.
+     No overflow (or no scroll timelines, as in Firefox) leaves the fade at 0. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--sidebar-fade)), transparent);
+  animation: sidebar-fade linear both;
+  animation-timeline: scroll(self);
+}
+@property --sidebar-fade { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@keyframes sidebar-fade {
+  from, 95% { --sidebar-fade: 40px; }
+  to { --sidebar-fade: 0px; }
 }
 .sidebar-brand {
   display: flex;
@@ -502,7 +512,7 @@ summary.menu::-webkit-details-marker {
 }
 .sidebar-nav-item {
   display: flex;
-  min-height: 42px;
+  min-height: 46px;
   align-items: center;
   gap: 13px;
   border: 1px solid transparent;
@@ -525,21 +535,31 @@ summary.menu::-webkit-details-marker {
 }
 .sidebar-nav-item[aria-current="page"] > svg { color: var(--accent); }
 .sidebar-compose { min-height: 44px; font-size: 13px; }
-.ownership-card {
-  margin-top: auto;
-  flex-shrink: 0;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--r-panel);
-  background: var(--surface);
-}
+/* The image and copy are siblings in the sidebar, drawn as one card. On short
+   windows the image is the one thing that gives way, from 108px down to 56px;
+   past that the sidebar scrolls. */
 .ownership-illustration {
   display: block;
   width: 100%;
-  height: 108px;
+  height: auto;
+  min-height: 56px;
+  flex: 0 1 108px;
+  margin-top: auto;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: var(--r-panel) var(--r-panel) 0 0;
   object-fit: cover;
+  object-position: center 30%;
 }
-.ownership-copy { padding: 17px; }
+.ownership-copy {
+  flex-shrink: 0;
+  margin-top: -18px; /* cancels .square-sidebar's gap, joining the copy to the image */
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 var(--r-panel) var(--r-panel);
+  background: var(--surface);
+  padding: 17px;
+}
 .ownership-copy > p:first-child {
   color: var(--brand-deep);
   font-size: 16px;
@@ -564,14 +584,6 @@ summary.menu::-webkit-details-marker {
 }
 .ownership-link:hover { text-decoration: underline; }
 .sidebar-footer { padding-left: 8px; font-size: 10px; color: var(--muted); }
-/* Shorter windows: the card's image gets shorter before the nav does. */
-@media (max-height: 960px) {
-  .ownership-illustration { height: 72px; }
-  .ownership-copy { padding: 14px; }
-}
-@media (max-height: 820px) {
-  .ownership-illustration { height: 56px; }
-}
 .square-content {
   display: flex;
   min-width: 0;

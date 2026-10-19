@@ -69,20 +69,20 @@ export function Sidebar() {
         <SidebarCompose />
       </Suspense>
 
-      <div className="ownership-card">
-        <Image
-          src="/brand/community-conversation.jpg"
-          alt=""
-          width={640}
-          height={427}
-          sizes="232px"
-          className="ownership-illustration"
-        />
-        <div className="ownership-copy">
-          <p>Different places.<br />A shared sense of home.</p>
-          <p className="mt-2">Made for Nigerians, at home and everywhere. Built toward a community-owned future.</p>
-          <Link href="/about" className="ownership-link">Get to know HeyNaija <ArrowUpRightIcon size={14} /></Link>
-        </div>
+      {/* Two siblings drawn as one card, so the image can shrink inside the
+          sidebar's flex column without the copy shrinking with it. */}
+      <Image
+        src="/brand/community-conversation.jpg"
+        alt=""
+        width={640}
+        height={427}
+        sizes="232px"
+        className="ownership-illustration"
+      />
+      <div className="ownership-copy">
+        <p>Different places.<br />A shared sense of home.</p>
+        <p className="mt-2">Made for Nigerians, at home and everywhere. Built toward a community-owned future.</p>
+        <Link href="/about" className="ownership-link">Get to know HeyNaija <ArrowUpRightIcon size={14} /></Link>
       </div>
       <p className="sidebar-footer">Real people. Real conversations.</p>
     </aside>
