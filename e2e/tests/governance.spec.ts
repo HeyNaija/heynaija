@@ -5,7 +5,7 @@ import { newMember, post } from '../lib/members.ts'
 const documents = [
   { path: '/rules', heading: 'HeyNaija rules' },
   { path: '/privacy', heading: 'Privacy policy' },
-  { path: '/charter', heading: 'HeyNaija charter' },
+  { path: '/charter', heading: 'HeyNaija Community Governance Charter' },
   { path: '/licence', heading: 'Licence' },
 ]
 
@@ -29,7 +29,7 @@ test('the governance documents are public and say they are drafts @mobile', asyn
   // The governance page lists all of them.
   await page.goto('/governance')
   const list = page.locator('#documents')
-  for (const name of ['Charter', 'Rules', 'Privacy policy', 'Draft constitution', 'Licence']) {
+  for (const name of ['Community Governance Charter', 'Rules', 'Privacy policy', 'Draft constitution', 'Licence']) {
     await expect(list.getByRole('link', { name, exact: true })).toBeVisible()
   }
 })
@@ -38,13 +38,13 @@ test('the governance page says plainly what is and is not live @mobile', async (
   await page.goto('/governance')
   await expect(page.getByRole('heading', { level: 1, name: 'A social network shaped by its community.' })).toBeVisible()
   await expect(page.getByRole('note').first()).toContainText(
-    'Founding stage. HeyNaija is not legally community-owned yet. Governance proposals and voting rules are drafts. No binding community vote or treasury is currently live.',
+    'Founding stage. HeyNaija is founder-operated. Incorporation as a nonprofit under Incorporated Trustees is proposed, not completed. It is not legally community-owned yet. Governance and voting rules are drafts; no binding community vote or treasury is live.',
   )
   await expect(page.getByText('Proposed, not yet in effect')).toBeVisible()
 
   // The three ways to take part are told apart.
   const participation = page.locator('#participation')
-  for (const name of ['Regular account', 'NIN-verified account', 'Voting member']) {
+  for (const name of ['Platform user', 'Legal member', 'Active voting member']) {
     await expect(participation.getByRole('heading', { name })).toBeVisible()
   }
 
@@ -58,6 +58,11 @@ test('the governance page says plainly what is and is not live @mobile', async (
   await expect(milestones).toHaveCount(7)
   await expect(page.locator('#ownership')).not.toContainText('Completed')
 
+  await expect(page.locator('#structure')).toContainText('three registered trustees plus two community representatives')
+  await expect(page.locator('.governance-summary')).toContainText('The founding trustees will complete their initial terms')
+  await expect(page.locator('#ownership')).toContainText('activation does not trigger their re-election')
+  await expect(page.locator('#ownership')).toContainText('At the founding three-year term expiry')
+
   // No feedback link that goes nowhere.
   await expect(page.getByText('Feedback channel being prepared').first()).toBeVisible()
 
@@ -68,8 +73,8 @@ test('the governance page says plainly what is and is not live @mobile', async (
 
 test('the draft constitution is complete, versioned and marked as a draft', async ({ page }) => {
   await page.goto('/governance/constitution')
-  await expect(page.getByRole('heading', { level: 1, name: 'HeyNaija Governance Constitution' })).toBeVisible()
-  await expect(page.getByText(/Draft v0\.2 · Last updated 16 October 2026/)).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'HeyNaija nonprofit constitution' })).toBeVisible()
+  await expect(page.getByText(/Draft v0\.3 · Last updated 19 October 2026/)).toBeVisible()
   await expect(page.getByRole('note').first()).toContainText('Not yet adopted or legally operative')
 
   const contents = page.getByRole('navigation', { name: 'On this page' })
@@ -116,6 +121,9 @@ test('voting membership says registration has not opened', async ({ page }) => {
   await page.goto('/governance/membership')
   await expect(page.getByRole('heading', { level: 1, name: 'Voting membership' })).toBeVisible()
   await expect(page.getByText('Voting membership registration has not opened.')).toBeVisible()
+  await expect(page.locator('.eligibility-list')).toContainText('formally admitted as a legal member')
+  await expect(page.getByText('Opting out, hiding a badge or an expired identity check')).toBeVisible()
+  await expect(page.locator('#founding-term-heading').locator('..')).toContainText('does not trigger immediate trustee re-election')
   // Accounts and voting have different age rules, and the account one is temporary.
   const age = page.locator('section', { has: page.getByRole('heading', { name: 'Age: accounts and voting are different' }) })
   await expect(age).toContainText('temporary beta rule')

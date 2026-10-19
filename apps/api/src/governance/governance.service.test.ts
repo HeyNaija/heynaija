@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { ageAssurances, governanceAuditLog, identityVerifications, members, profileBadges } from '@heynaija/db'
+import { ageAssurances, governanceAuditLog, governanceMemberships, identityVerifications, members, profileBadges } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { MembersService } from '../members/members.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
@@ -55,7 +55,7 @@ test('a member starts with an unknown age, unverified, without a badge, and regi
   assert.equal(status.membership.status, 'none')
   assert.equal(status.membership.registrationOpen, false)
   assert.equal(status.membership.eligible, false)
-  assert.deepEqual(status.membership.unmet, ['registration_closed', 'not_verified', 'age_not_verified', 'not_opted_in'])
+  assert.deepEqual(status.membership.unmet, ['registration_closed', 'not_legal_member', 'not_verified', 'age_not_verified', 'not_opted_in'])
 })
 
 test('nothing can be recorded while verification is switched off', async () => {
@@ -208,4 +208,13 @@ test('voting membership needs the verified age, not the signup declaration', asy
   await verify(ada, 'ada-code', voting)
   await voting.reviewVerification(ada, reviewer)
   assert.equal((await voting.statusFor(ada)).membership.unmet.includes('age_not_verified'), false)
+  // Even a reviewed verified adult with an online opt-in is not evidence of
+  // admission to the legal association. The future register is not built.
+  await db.insert(governanceMemberships).values({
+    memberId: ada, status: 'active', optedInAt: new Date(), documentsVersion: 'constitution-0.3',
+  })
+  const status = await voting.statusFor(ada)
+  assert.equal(status.membership.status, 'active')
+  assert.deepEqual(status.membership.unmet, ['not_legal_member'])
+  assert.equal(status.membership.eligible, false)
 })

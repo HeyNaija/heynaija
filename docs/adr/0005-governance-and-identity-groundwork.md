@@ -2,6 +2,10 @@
 
 **Date:** 16 October 2026 · **Status:** Accepted (groundwork); verification and voting not approved
 
+Updated 19 October 2026: [ADR 0010](0010-nonprofit-governance-v0.3.md) supersedes
+the original membership assumptions and constitution version, preserving feature
+locks and privacy/age guarantees. The v0.2 description below is historical.
+
 ## Decision
 
 1. **Public governance information first.** `/governance` explains founding-stage

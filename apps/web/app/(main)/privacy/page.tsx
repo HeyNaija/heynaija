@@ -171,7 +171,7 @@ export default function PrivacyPage() {
               <p>
                 The <Link href="/governance/constitution#article-4">draft constitution</Link> proposes optional NIN
                 verification through an authorised NINAuth provider, for people who want a green identity tick or to
-                become voting members. It would be opt-in, and HeyNaija would keep only the result: the status, its
+                activate voting as eligible legal members. Formal association admission is separate; verification does not grant membership. It would be opt-in, and HeyNaija would keep only the result: the status, its
                 dates, an over-18 result where the provider may share one, and a private key that stops one person
                 holding two voting memberships. Never the NIN itself. <Link href="/governance/verification">How it would
                 work</Link>.

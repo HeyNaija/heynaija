@@ -170,6 +170,7 @@ Browser ──> Next.js web app
 - [x] Notifying people about moderation decisions that affect them (post removed or restored, report outcome, reinstatement; a rejected appeal shows on the suspended account)
 
 ### Open governance
+- [x] Draft v0.3 update (19 October 2026): proposed Incorporated Trustees; three founding trustees with initial three-year terms, no immediate re-election at activation; two annually elected representatives; first common trustee election at initial expiry, then every three years. Legal admission and voluntary voting are distinct. [Framework, legal review and preparatory specification](docs/governance/README.md). No legal adoption, incorporation or governance activation is claimed.
 - [x] Governance information page and Public Treasury preview, clearly marked coming soon
 - [x] Governance overview rebuilt from draft constitution v0.2 (16 October 2026): founding-stage notice, participation types, proposed structure and thresholds, ownership milestones with truthful statuses, empty states. `/governance/constitution`, `/governance/membership`, `/governance/verification`; Settings shows each member's status
 - [ ] Optional NIN verification (NINAuth) and voting membership: data model, rules and tests built behind switches the API refuses to turn on; verification, opt-in and ballots wait for the approvals in [docs/governance/open-items.md](docs/governance/open-items.md)

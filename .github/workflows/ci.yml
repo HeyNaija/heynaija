@@ -62,6 +62,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm roadmap:check
+      - run: pnpm governance:check
       - run: pnpm roadmap:test
       - run: pnpm build
       - run: pnpm typecheck

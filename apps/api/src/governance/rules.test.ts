@@ -37,6 +37,7 @@ const verified = (over: Partial<VerificationFacts> = {}): VerificationFacts => (
   ...over,
 })
 const verifiedAdult: AgeStatus = { band: '18_plus', assurance: 'verified', reviewDue: false }
+const legalMembership = { status: 'admitted' as const, admittedAt: daysAgo(40) }
 const activeMember: MembershipFacts = { status: 'active', optedInAt: daysAgo(35), suspendedUntil: null }
 
 test('a verified record past its expiry counts as expired', () => {
@@ -61,23 +62,23 @@ test('the green tick needs a current, reviewed verification', () => {
 })
 
 test('nobody can be a voting member while registration is closed', () => {
-  const result = membershipEligibility({ flags: today, verification: verified(), age: verifiedAdult, membership: activeMember, now })
+  const result = membershipEligibility({ legalMembership, flags: today, verification: verified(), age: verifiedAdult, membership: activeMember, now })
   assert.deepEqual(result, { eligible: false, unmet: ['registration_closed'] })
 })
 
 test('a fresh account lists every missing condition', () => {
-  const result = membershipEligibility({ flags: today, verification: null, age: UNKNOWN_AGE, membership: null, now })
-  assert.deepEqual(result.unmet, ['registration_closed', 'not_verified', 'age_not_verified', 'not_opted_in'])
+  const result = membershipEligibility({ legalMembership: null, flags: today, verification: null, age: UNKNOWN_AGE, membership: null, now })
+  assert.deepEqual(result.unmet, ['registration_closed', 'not_legal_member', 'not_verified', 'age_not_verified', 'not_opted_in'])
 })
 
-test('verifying alone does not make someone a member: they must opt in', () => {
-  const result = membershipEligibility({ flags: approved, verification: verified(), age: verifiedAdult, membership: null, now })
+test('an admitted verified legal member still must activate online participation', () => {
+  const result = membershipEligibility({ legalMembership, flags: approved, verification: verified(), age: verifiedAdult, membership: null, now })
   assert.deepEqual(result, { eligible: false, unmet: ['not_opted_in'] })
 })
 
 test('voting membership needs a verified adult age, kept apart from the identity check', () => {
   const check = (age: AgeStatus) =>
-    membershipEligibility({ flags: approved, verification: verified(), age, membership: activeMember, now }).unmet
+    membershipEligibility({ legalMembership, flags: approved, verification: verified(), age, membership: activeMember, now }).unmet
   assert.deepEqual(check(verifiedAdult), [])
   // Unknown (an older account), a stated adult age, a moderator's view, or a minor: no vote.
   assert.deepEqual(check(UNKNOWN_AGE), ['age_not_verified'])
@@ -88,22 +89,22 @@ test('voting membership needs a verified adult age, kept apart from the identity
 
 test('voting membership needs a reviewed verification and a person key', () => {
   const check = (verification: VerificationFacts) =>
-    membershipEligibility({ flags: approved, verification, age: verifiedAdult, membership: activeMember, now }).unmet
+    membershipEligibility({ legalMembership, flags: approved, verification, age: verifiedAdult, membership: activeMember, now }).unmet
   assert.deepEqual(check(verified({ personKey: null })), ['uniqueness_unavailable'])
   assert.deepEqual(check(verified({ reviewedAt: null })), ['not_reviewed'])
 })
 
 test('an expired or revoked verification ends eligibility', () => {
   for (const verification of [verified({ expiresAt: daysAgo(1) }), verified({ status: 'revoked' })]) {
-    const result = membershipEligibility({ flags: approved, verification, age: verifiedAdult, membership: activeMember, now })
+    const result = membershipEligibility({ legalMembership, flags: approved, verification, age: verifiedAdult, membership: activeMember, now })
     assert.deepEqual(result.unmet, ['not_verified'])
   }
 })
 
-test('suspensions count until they end; resigning ends membership', () => {
+test('online suspensions count until they end; online resignation deactivates voting', () => {
   const suspended = (until: Date | null): MembershipFacts => ({ ...activeMember, status: 'suspended', suspendedUntil: until })
   const check = (membership: MembershipFacts) =>
-    membershipEligibility({ flags: approved, verification: verified(), age: verifiedAdult, membership, now }).unmet
+    membershipEligibility({ legalMembership, flags: approved, verification: verified(), age: verifiedAdult, membership, now }).unmet
   assert.deepEqual(check(suspended(daysAhead(3))), ['suspended'])
   assert.deepEqual(check(suspended(null)), ['suspended'])
   assert.deepEqual(check(suspended(daysAgo(1))), [])
@@ -119,6 +120,7 @@ test('the voter list freezes 14 days before a ballot, and accounts must be 30 da
     accountCreatedAt: daysAgo(60),
     optedInAt: daysAgo(10),
     verifiedAt: daysAgo(10),
+    legalAdmittedAt: daysAgo(10),
     ballotOpensAt,
   }
   assert.deepEqual(ballotEligibility(base), { eligible: true, unmet: [] })
@@ -128,6 +130,9 @@ test('the voter list freezes 14 days before a ballot, and accounts must be 30 da
   assert.deepEqual(late.unmet, ['joined_after_freeze'])
   const lateVerify = ballotEligibility({ ...base, verifiedAt: daysAhead(7) })
   assert.deepEqual(lateVerify.unmet, ['joined_after_freeze'])
+
+  assert.deepEqual(ballotEligibility({ ...base, legalAdmittedAt: daysAhead(7) }).unmet, ['joined_after_freeze'])
+  assert.deepEqual(ballotEligibility({ ...base, legalAdmittedAt: null }).unmet, ['not_a_member'])
 
   const young = ballotEligibility({ ...base, accountCreatedAt: daysAgo(5) })
   assert.deepEqual(young.unmet, ['account_too_new'])
@@ -150,4 +155,14 @@ test('person keys are keyed, stable and reveal nothing of the identifier', () =>
   assert.notEqual(key, derivePersonKey(secret, 'other', 'subject-123'))
   assert.equal(key.includes('subject'), false)
   assert.throws(() => derivePersonKey('short', 'ninauth', 'subject-123'))
+})
+
+test('verification and online activation never substitute for legal admission', () => {
+  const base = { flags: approved, verification: verified(), age: verifiedAdult, membership: activeMember, now }
+  assert.deepEqual(membershipEligibility(base).unmet, ['not_legal_member'])
+  for (const record of [null, { ...legalMembership, status: 'suspended' as const }, { ...legalMembership, status: 'ended' as const }, { ...legalMembership, admittedAt: daysAhead(1) }]) {
+    assert.deepEqual(membershipEligibility({ ...base, legalMembership: record }).unmet, ['not_legal_member'])
+  }
+  assert.equal(membershipEligibility({ ...base, legalMembership }).eligible, true)
+  assert.deepEqual(membershipEligibility({ ...base, legalMembership, membership: { ...activeMember, status: 'resigned' } }).unmet, ['resigned'])
 })
