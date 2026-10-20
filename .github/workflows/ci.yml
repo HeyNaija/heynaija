@@ -73,7 +73,10 @@ jobs:
   e2e:
     if: inputs.e2e != false
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Setting up the stack and the build take several minutes, and the suite (about 150
+    # tests, every one signing up its own members) runs on one worker, so it sat close
+    # to the old 30. This is there to stop a hang, not to hold the suite to a budget.
+    timeout-minutes: 45
     env:
       # Kratos runs in a container and calls the API's invite webhooks through
       # host.docker.internal, which on Linux only reaches ports bound beyond loopback.
@@ -127,11 +130,13 @@ jobs:
         env:
           CI: true
 
+      # `failure()` alone skips a run that hit the time limit, which is the run whose
+      # logs and traces are most wanted, so a cancelled one keeps them too.
       - name: Keep the report, traces and logs
-        if: failure()
+        if: failure() || cancelled()
         run: docker compose --env-file .env -f infra/compose/docker-compose.dev.yml logs > compose.log 2>&1 || true
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() || cancelled()
         with:
           name: e2e-report
           path: |
