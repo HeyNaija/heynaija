@@ -17,8 +17,9 @@ export default function MembershipPage() {
         <p className="governance-eyebrow"><GovernanceIcon size={17} /> Governance</p>
         <h1 className="mt-3 page-title">Voting membership</h1>
         <p className="governance-lead">
-          Everyone with an account belongs to the HeyNaija community. Voting membership is something more: an opt-in
-          role for verified adults who want a vote in how HeyNaija is run.
+          Everyone with an account belongs to the HeyNaija community. Legal membership means formal admission to the association. Active voting membership adds voluntary
+          participation in platform ballots for eligible adult legal members. Neither an account nor verification
+          automatically grants either status.
         </p>
         <GovernanceNav />
       </header>
@@ -38,16 +39,20 @@ export default function MembershipPage() {
 
       <section className="governance-section" aria-labelledby="eligibility-heading">
         <h2 id="eligibility-heading" className="section-title">Who could become a voting member</h2>
-        <p className="governance-copy">Someone who meets all five conditions:</p>
+        <p className="governance-copy">Someone who meets all six conditions, with equal access for every eligible legal member:</p>
         <ol className="eligibility-list">
+          <li><strong>Has been formally admitted as a legal member</strong> under the registered constitution and entered in the association register through transparent admission and appeals procedures.</li>
           <li><strong>Is 18 or older, confirmed by a check.</strong> Saying so at signup is not enough, and an account with no age on record never counts.</li>
-          <li><strong>Has completed NIN identity verification</strong> that is still valid. <Link href="/governance/verification">How verification would work</Link>.</li>
-          <li><strong>Has opted in</strong> and accepted the governing documents. Verifying alone never makes anyone a member.</li>
+          <li><strong>Has completed a current authorised identity check.</strong> NIN is initially preferred; future legally acceptable alternatives need equivalent adult-age and anti-duplicate safeguards. <Link href="/governance/verification">How verification would work</Link>.</li>
+          <li><strong>Has voluntarily activated platform voting</strong> and accepted the governing documents. Verification alone never admits anyone to the legal association or activates voting.</li>
           <li><strong>Registered before the deadline</strong> for the ballot in question.</li>
           <li><strong>Is not under a governance suspension.</strong> Any suspension must be proportionate, explained and open to appeal.</li>
         </ol>
         <p className="governance-copy">
-          The final conditions must also fit the bylaws of whatever legal entity members end up controlling.
+          The proposed legal structure is Incorporated Trustees under CAMA Part F. Every eligible legal member may
+          activate or deactivate online participation subject to published deadlines. Opting out, hiding a badge or an
+          expired identity check does not itself terminate legal membership. Lawful notice, attendance and voting
+          rights at formal association meetings remain protected, regardless of online opt-in.
         </p>
       </section>
 
@@ -75,7 +80,7 @@ export default function MembershipPage() {
           <li>Each voting member has exactly one vote in each ballot. Donations, payments, followers, job titles or tokens never add votes.</li>
           <li>One verified person can hold only one active voting membership, whichever account they use. <Link href="/governance/verification#duplicates-heading">How duplicates would be stopped</Link>.</li>
           <li>Ballots are private: who may vote is kept separate from how anyone voted.</li>
-          <li>Membership is proposed to be free. If the final legal structure requires anything else, it will be put to consultation first.</li>
+          <li>Legal admission and online participation are initially proposed to be free of mandatory membership fees. Contributions remain voluntary, and nobody can purchase additional voting weight.</li>
         </ul>
       </section>
 
@@ -84,7 +89,7 @@ export default function MembershipPage() {
         <dl className="verification-glance">
           <div>
             <dt>Eligibility freeze</dt>
-            <dd>The voter list is fixed {PROPOSAL_RULES.eligibilityFreezeDays} days before a ballot opens. Anyone who verifies later can vote in the next one.</dd>
+            <dd>The voter list is fixed {PROPOSAL_RULES.eligibilityFreezeDays} days before a ballot opens. Legal admission, verification and online activation must all precede the cutoff; anyone qualifying later can vote in the next ballot.</dd>
           </div>
           <div>
             <dt>Account age</dt>
@@ -92,7 +97,7 @@ export default function MembershipPage() {
           </div>
           <div>
             <dt>First binding vote</dt>
-            <dd>Not before at least {MINIMUM_ELECTORATE} verified adults have opted in, the legal requirements are met and the voting controls are tested.</dd>
+            <dd>Not before at least {MINIMUM_ELECTORATE} verified adult legal members have activated voting, the legal requirements are met and the voting controls are tested.</dd>
           </div>
         </dl>
       </section>
@@ -103,12 +108,13 @@ export default function MembershipPage() {
           <div>
             <h3 className="governance-subtitle">Rights</h3>
             <ul className="governance-list">
-              <li>Vote in council elections, recalls and reserved member decisions</li>
+              <li>Vote for three trustees together every three years after their founding term, and two community representatives annually from activation</li>
+              <li>Initiate independent recall and reserved member decisions without founder permission, with legal follow-through for trustee changes</li>
               <li>Propose changes, and endorse other members’ proposals</li>
               <li>Nominate candidates and stand for the Community Council</li>
               <li>Read non-confidential governance records and ask for explanations of major council decisions</li>
               <li>Challenge procedural mistakes and complain without retaliation</li>
-              <li>Leave at any time</li>
+              <li>Deactivate online voting without losing legal membership or lawful formal meeting rights; legal resignation is a separate express process</li>
             </ul>
           </div>
           <div>
@@ -136,6 +142,15 @@ export default function MembershipPage() {
         </ul>
       </section>
 
+      <section className="governance-section" aria-labelledby="founding-term-heading">
+        <h2 id="founding-term-heading" className="section-title">The founding term and later elections</h2>
+        <p className="governance-copy">Three founders would serve as initial registered trustees for three years from
+          incorporation, subject to legal review. Activation elects two representatives for one-year terms and does
+          not trigger immediate trustee re-election. All three trustee seats open together at founding-term expiry;
+          founders may contest equally. There are no reserved founder seats or lifetime rights. The retained limit is
+          two consecutive full terms per role, then a one-term break; the founding term counts. Representatives are
+          not registered trustees. A platform election cannot itself appoint or remove a legal trustee.</p>
+      </section>
       <FoundingStageNotice />
     </div>
   )

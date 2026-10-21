@@ -52,7 +52,7 @@ ensure SMTP_FROM_NAME "HeyNaija"
 # Look for emails that are due every few seconds instead of every minute.
 ensure EMAIL_SWEEP_EVERY_S "5"
 
-# Push notifications (docs/adr/0010). The two keys are made together, once.
+# Push notifications (docs/adr/0011). The two keys are made together, once.
 if [[ -z "$(get PUSH_VAPID_PRIVATE_KEY)" && -z "$(get PUSH_VAPID_PUBLIC_KEY)" ]]; then
   pem="$(openssl ecparam -name prime256v1 -genkey -noout)"
   ensure PUSH_VAPID_PRIVATE_KEY "$(vapid_private "$pem")"

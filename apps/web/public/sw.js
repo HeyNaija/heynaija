@@ -1,5 +1,5 @@
 // HeyNaija's service worker: it shows push notifications and opens what they are
-// about (docs/adr/0010). It does nothing else: no caching, no offline pages, and
+// about (docs/adr/0011). It does nothing else: no caching, no offline pages, and
 // no fetch handler, so every request goes to the network exactly as without it.
 // Registered from Settings when a member turns push on (app/ui/push-switch.tsx).
 

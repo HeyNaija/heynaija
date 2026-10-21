@@ -470,7 +470,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Optionally receive social activity as push notifications outside the app.
 - **Dependencies:** `in-app-notifications`, `notification-preferences`, `email-notifications`
-- **Inspected evidence:** `packages/db/drizzle/0022_push_notifications.sql`, `apps/api/src/push/push-notifications.service.ts`, `apps/api/src/push/push-queue.ts`, `apps/api/src/push/push.controller.ts`, `apps/api/src/push/push-sender.ts`, `apps/api/src/push/push-message.ts`, `apps/web/public/sw.js`, `apps/web/app/ui/push-switch.tsx`, `apps/web/app/ui/push-check.tsx`, `apps/web/app/logout/route.ts`, `apps/api/src/push/push-notifications.service.test.ts`, `apps/api/src/push/push-sender.test.ts`, `apps/web/tests/push.test.mjs`, `apps/web/tests/service-worker.test.mjs`, `e2e/tests/push-notifications.spec.ts`, `docs/adr/0010-push-notifications.md`
+- **Inspected evidence:** `packages/db/drizzle/0022_push_notifications.sql`, `apps/api/src/push/push-notifications.service.ts`, `apps/api/src/push/push-queue.ts`, `apps/api/src/push/push.controller.ts`, `apps/api/src/push/push-sender.ts`, `apps/api/src/push/push-message.ts`, `apps/web/public/sw.js`, `apps/web/app/ui/push-switch.tsx`, `apps/web/app/ui/push-check.tsx`, `apps/web/app/logout/route.ts`, `apps/api/src/push/push-notifications.service.test.ts`, `apps/api/src/push/push-sender.test.ts`, `apps/web/tests/push.test.mjs`, `apps/web/tests/service-worker.test.mjs`, `e2e/tests/push-notifications.spec.ts`, `docs/adr/0011-push-notifications.md`
 - **Audit notes:** Web Push with VAPID keys of our own (no Firebase account): Settings has a per-browser button that asks the browser's permission and subscribes it; the service worker (public/sw.js) only shows notifications and opens what they are about. A BullMQ job looks every 10 seconds and pushes what is waiting to each of the member's browsers, in the same words as the email digest: replies, mentions and quotes quote the post briefly, likes, reposts and follows are counted in with ones already pushed and replace them on the device (one tag per post), more than three things at once are one push that says how many, and moderation notices are in general words. What is pushed is decided when it is sent, with the same rules as email: nothing read, opted out of, blocked, muted, taken down, for suspended members, or over ten minutes old. Email waits until the push side has dealt with a notification and leaves out what a browser took (notifications.pushed_at). A browser has one subscription; it moves to whoever turns push on in it, a page load stops one that belongs to another member, and signing out removes it. Subscriptions may only point at Google's, Mozilla's, Apple's or Microsoft's push services. iPhones and iPads get it only from the Home Screen (iOS 16.4+), and Settings says so. The data export (format 8) lists the browsers, without their addresses. The end-to-end tests use a stand-in push service; delivery through the real push services, and how the notifications look on Android, iOS and desktop, have not been checked on staging.
 
 ### Reliability and access
@@ -556,18 +556,18 @@ This tracks product development, not formal governance decisions. Priority means
 
 - **ID:** `voting-membership`
 - **Priority:** P2 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Let eligible adults explicitly join a separate governance electorate.
-- **Remaining work / caveat:** Verified adulthood, identity checks and approved membership terms are required.
+- **Description:** Let every eligible adult legal member voluntarily activate equal participation in the platform governance electorate.
+- **Remaining work / caveat:** Separate formal legal admission, verified adulthood, identity checks, voluntary activation and approved terms are required; online opt-out preserves legal membership and formal meeting rights.
 - **Dependencies:** `nin-verification`, `member-legal-entity`
 - **Inspected evidence:** `apps/web/lib/governance.ts`, `apps/api/src/governance/rules.ts`, `apps/api/src/env.ts`, `docs/governance/open-items.md`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** The beta’s self-declared age never establishes verified voting eligibility.
+- **Audit notes:** Legal admission is not implemented; preparatory eligibility fails closed. The beta’s self-declared age never establishes verified voting eligibility.
 
 #### Member-controlled legal entity
 
 - **ID:** `member-legal-entity`
 - **Priority:** P2 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Establish and adopt the legal structure required for community control.
-- **Remaining work / caveat:** Legal advice, an agreed entity, adopted rules and the required ownership steps remain outstanding.
+- **Description:** Proposed nonprofit Incorporated Trustees under CAMA Part F, with three founding trustees on initial three-year terms.
+- **Remaining work / caveat:** Qualified Nigerian legal review, lawful founding appointments, adopted constitution, CAC incorporation and essential asset transfers remain outstanding.
 - **Inspected evidence:** `docs/governance/open-items.md`, `apps/web/lib/governance.ts`, `apps/web/app/(main)/governance/constitution/page.tsx`
 
 #### Independent ballot assurance
@@ -583,11 +583,11 @@ This tracks product development, not formal governance decisions. Priority means
 
 - **ID:** `binding-votes`
 - **Priority:** P2 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Hold legitimate member decisions and council elections under adopted rules.
-- **Remaining work / caveat:** Approved eligibility, a legal framework, an eligible electorate and independently reviewed ballots are prerequisites.
+- **Description:** Hold lawful member decisions: three trustee seats together at founding-term expiry and every three years thereafter; two representatives annually from readiness.
+- **Remaining work / caveat:** Activation does not trigger founding trustee re-election. Legal membership, independent secret ballots, formal resolutions and applicable CAC procedures remain required.
 - **Dependencies:** `voting-membership`, `ballot-audit`
 - **Inspected evidence:** `apps/web/lib/governance.ts`, `apps/api/src/governance/rules.ts`, `apps/api/src/env.ts`, `docs/governance/open-items.md`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** Binding governance voting cannot be enabled by configuration.
+- **Audit notes:** Binding governance voting cannot be enabled by configuration; an online result alone grants no statutory trustee status.
 
 #### Operational public treasury
 

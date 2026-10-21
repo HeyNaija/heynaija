@@ -27,8 +27,9 @@ export function GovernanceNav() {
 export function FoundingStageNotice() {
   return (
     <p className="notice governance-status" role="note">
-      <strong>Founding stage.</strong> HeyNaija is not legally community-owned yet. Governance proposals and
-      voting rules are drafts. No binding community vote or treasury is currently live.
+      <strong>Founding stage.</strong> HeyNaija is founder-operated. Incorporation as a nonprofit under Incorporated
+      Trustees is proposed, not completed. It is not legally community-owned yet. Governance and voting rules are
+      drafts; no binding community vote or treasury is live.
     </p>
   )
 }

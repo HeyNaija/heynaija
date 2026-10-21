@@ -444,7 +444,7 @@ test('the unsubscribe link is on the web app’s own address, which the web app 
 })
 
 // With push on, a notification is emailed only once the push side is done with
-// it, and not at all if a browser took it (docs/adr/0010).
+// it, and not at all if a browser took it (docs/adr/0011).
 test('with push on, email waits for the push side, and leaves out whatever was pushed', async () => {
   const withPush = new EmailNotificationsService(db, jobs, { ...settings, waitForPush: true }, outbox, directory)
   const send = async () => {

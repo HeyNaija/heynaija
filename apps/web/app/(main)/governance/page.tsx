@@ -11,10 +11,9 @@ import {
   PeopleIcon,
   ShieldIcon,
   TreasuryIcon,
-  VerifiedIcon,
   VoteIcon,
 } from '@/app/ui/icons'
-import { CONSTITUTION, MINIMUM_ELECTORATE, OWNERSHIP_MILESTONES, PROPOSAL_RULES, PROPOSED_THRESHOLDS } from '@/lib/governance'
+import { CONSTITUTION, MINIMUM_ELECTORATE, OWNERSHIP_MILESTONES, PROPOSAL_RULES, PROPOSED_THRESHOLDS, TRANSITION_EXPLANATION } from '@/lib/governance'
 
 export const metadata: Metadata = {
   title: 'Governance',
@@ -53,9 +52,11 @@ export default function GovernancePage() {
           <ProposedChip>Proposed, not yet in effect</ProposedChip>
         </div>
         <p className="governance-summary-text">
-          Post without NIN. Verify optionally for a green identity tick. If you’re 18+, complete verification and
-          opt into membership to vote. Members elect a council; operations and moderation remain accountable.
+          Post without NIN. Legal association membership would be a separate admission. Every eligible adult legal
+          member could voluntarily activate an equal governance vote after verification. Proposed registration:
+          Incorporated Trustees under Part F of CAMA 2020, with no private shareholders or profit distributions.
         </p>
+        <p className="governance-copy">Proposed, subject to lawful adoption and Nigerian legal review: {TRANSITION_EXPLANATION}</p>
         <div className="governance-actions">
           <Link href="/governance/constitution" className="btn btn-primary">Read the draft constitution</Link>
           <Link href="/governance/verification" className="btn btn-secondary">How verification would work</Link>
@@ -77,22 +78,22 @@ export default function GovernancePage() {
           <ProposedChip />
         </div>
         <p className="governance-copy">
-          Under the draft constitution, authority would flow from voting members to an elected council, which
-          oversees the teams that run the service day to day. Today none of these bodies exists: the founders run
-          HeyNaija.
+          The proposed Council has three registered trustees plus two community representatives. After incorporation,
+          the three founding trustees would form the initial body; two representatives join after readiness and elections.
+          Today the founders run HeyNaija and these proposed bodies are not claimed operational.
         </p>
         <ol className="gov-flow" aria-label="Proposed structure, from members to the teams that run HeyNaija">
           <li className="gov-flow-tier">
             <div className="gov-flow-node is-root">
               <p className="gov-flow-name">Voting members</p>
-              <p className="gov-flow-role">Adults who verified their identity and opted in. One person, one vote.</p>
+              <p className="gov-flow-role">Eligible legal members who verified adult identity and voluntarily activated platform voting. One person, one vote.</p>
             </div>
           </li>
           <li className="gov-flow-tier">
             <span className="gov-flow-arrow" aria-hidden="true"><ChevronIcon size={18} /></span>
             <div className="gov-flow-node">
               <p className="gov-flow-name">Community Council</p>
-              <p className="gov-flow-role">Five members elected for 12-month terms. Oversees budgets, leads, roadmap and risk.</p>
+              <p className="gov-flow-role">Three registered trustees on a common three-year cycle, plus two annually elected representatives. Oversees budgets, leads, roadmap and risk.</p>
             </div>
           </li>
           <li className="gov-flow-tier">
@@ -113,6 +114,13 @@ export default function GovernancePage() {
             </ul>
           </li>
         </ol>
+        <p className="governance-copy">
+          Proposed quorum: two for the initial three-trustee body; three for the full five-member Council. Routine
+          decisions use a majority of non-conflicted members present; ties fail. Representatives participate in
+          oversight but do not gain statutory trustee powers. Trustee changes require lawful association resolutions
+          and applicable CAC approval. The founding term counts toward the retained limit of two consecutive full
+          terms per role, followed by a one-term break.
+        </p>
         <div className="governance-callout">
           <p className="flex items-center gap-2 text-sm font-semibold"><ShieldIcon size={17} /> Moderation stays independent</p>
           <p className="mt-1 text-[13px] leading-relaxed text-muted">
@@ -132,8 +140,9 @@ export default function GovernancePage() {
           <h2 id="participation-heading" className="section-title">Three ways to take part</h2>
         </div>
         <p className="governance-copy">
-          Identity verification and voting membership are separate. Verifying does not make you a voting member,
-          and you never need to verify to use HeyNaija.
+          Platform users, legal members and active voting members are distinct. Identity verification and public
+          badges are separate from all three. An account, verification or online opt-in alone does not admit anyone
+          to the association. You never need NIN verification for ordinary social activity.
         </p>
         <p className="governance-copy">
           Accounts are 18+ only while the beta runs. HeyNaija intends to open them to younger people once child-safety
@@ -144,7 +153,7 @@ export default function GovernancePage() {
           <li className="participation-card">
             <div className="participation-head">
               <span className="participation-icon"><PeopleIcon size={18} /></span>
-              <h3 className="participation-name">Regular account</h3>
+              <h3 className="participation-name">Platform user</h3>
             </div>
             <p className="participation-status">Available now, by invite</p>
             <dl className="participation-facts">
@@ -155,26 +164,26 @@ export default function GovernancePage() {
           </li>
           <li className="participation-card">
             <div className="participation-head">
-              <span className="participation-icon"><VerifiedIcon size={18} /></span>
-              <h3 className="participation-name">NIN-verified account</h3>
+              <span className="participation-icon"><PeopleIcon size={18} /></span>
+              <h3 className="participation-name">Legal member</h3>
             </div>
-            <p className="participation-status">Not available yet. HeyNaija is not collecting NIN details.</p>
+            <p className="participation-status">Formal association admission is proposed; not open in the platform.</p>
             <dl className="participation-facts">
-              <div><dt>What it adds</dt><dd>An optional green “NIN identity verified” tick you can choose to show or hide.</dd></div>
-              <div><dt>What it needs</dt><dd>Consent-based verification through an authorised NINAuth provider.</dd></div>
-              <div><dt>What it does not mean</dt><dd>Not an endorsement, not proof of citizenship, and not a vote on its own.</dd></div>
+              <div><dt>What it adds</dt><dd>Rights under the association’s registered constitution, including formal meeting rights.</dd></div>
+              <div><dt>What it needs</dt><dd>Documented admission under transparent, consistently applied constitutional rules.</dd></div>
+              <div><dt>Choice</dt><dd>Every eligible legal member may activate platform voting voluntarily. Opting out does not end legal membership or formal meeting rights.</dd></div>
             </dl>
-            <Link href="/governance/verification" className="participation-link">How verification would work <ArrowUpRightIcon size={15} /></Link>
+            <Link href="/governance/membership" className="participation-link">Legal and voting membership <ArrowUpRightIcon size={15} /></Link>
           </li>
           <li className="participation-card">
             <div className="participation-head">
               <span className="participation-icon"><VoteIcon size={18} /></span>
-              <h3 className="participation-name">Voting member</h3>
+              <h3 className="participation-name">Active voting member</h3>
             </div>
             <p className="participation-status">Registration has not opened.</p>
             <dl className="participation-facts">
               <div><dt>What it adds</dt><dd>One vote in member decisions and council elections; the right to propose, nominate and stand.</dd></div>
-              <div><dt>What it needs</dt><dd>A verified age of 18 or older, NIN verification, an explicit opt-in, and the other published conditions.</dd></div>
+              <div><dt>What it needs</dt><dd>Legal admission, verified adult identity (NIN initially preferred), voluntary activation and published eligibility deadlines. Future lawful verification alternatives are permitted.</dd></div>
               <div><dt>Cost</dt><dd>Proposed to be free. Payments and donations never buy votes.</dd></div>
             </dl>
             <Link href="/governance/membership" className="participation-link">Voting membership in full <ArrowUpRightIcon size={15} /></Link>
@@ -193,7 +202,7 @@ export default function GovernancePage() {
           <div>
             <h3 className="governance-subtitle">Members would vote on</h3>
             <ul className="governance-list">
-              <li>Electing and recalling the Community Council</li>
+              <li>Electing and recalling three trustees on their three-year cycle and two representatives annually</li>
               <li>Adopting and changing the constitution</li>
               <li>Major policy questions and changes to HeyNaija’s mission</li>
               <li>Selling, permanently transferring or dissolving core assets, or changing who controls them</li>
@@ -210,6 +219,11 @@ export default function GovernancePage() {
           </div>
         </div>
 
+        <p className="governance-copy">
+          Platform ballots and formal association meetings are distinct. Legal members keep lawful meeting rights
+          even if they opt out online. Recall has independent oversight, notice and a fair hearing; no founder
+          permission is needed. A trustee ballot requires legal follow-through, not an automatic appointment or removal.
+        </p>
         <h3 className="governance-subtitle mt-6">How a proposal would work</h3>
         <ol className="proposal-steps">
           <li><span className="proposal-step-name">Publish</span><span>A voting member publishes the purpose, exact text, alternatives, costs and risks. It needs {PROPOSAL_RULES.endorsements} to reach a ballot.</span></li>
@@ -222,7 +236,7 @@ export default function GovernancePage() {
         <details className="governance-disclosure">
           <summary className="menu">Proposed thresholds, awaiting community and legal approval <ChevronIcon size={16} /></summary>
           <p className="mt-2 text-[13px] leading-relaxed text-muted">
-            These numbers come from the draft constitution and are not in force. If turnout falls short, nothing
+            These are platform ballot thresholds from the draft constitution, not yet in force; formal association meetings have separate rules. If turnout falls short, nothing
             passes: the discussion reopens and the ballot is rerun, without lowering the bar.
           </p>
           <div className="threshold-table-wrap">
@@ -255,7 +269,7 @@ export default function GovernancePage() {
             <p className="text-sm font-semibold">Elections</p>
             <p className="mt-1 text-[13px] leading-relaxed text-muted">
               There is no Community Council yet and no election has been scheduled. Under the draft, no binding vote
-              can open until at least {MINIMUM_ELECTORATE} verified adults have opted into voting membership and
+              can open until at least {MINIMUM_ELECTORATE} verified adult legal members have activated voting and
               independent voting controls have been tested.
             </p>
           </div>
@@ -272,8 +286,10 @@ export default function GovernancePage() {
         </div>
         <p className="governance-copy">
           HeyNaija is not community-owned today. These are the steps the draft constitution proposes, with where
-          each one actually stands. No dates are given because none has been set: a timetable will follow the legal
-          review.
+          each one actually stands. Actual dates depend on incorporation and legal review. Prepare the first trustee
+          election 180 days before founding-term expiry and publish its timetable by 90 days before expiry. If online
+          governance is delayed, the draft requires lawful formal member procedures; any caretaker authority needs a
+          legal basis and member approval, lasts at most 90 days and cannot automatically renew founder control.
         </p>
         <ol className="milestone-list">
           {OWNERSHIP_MILESTONES.map((m, i) => (
@@ -300,12 +316,13 @@ export default function GovernancePage() {
         </div>
         <p className="governance-copy">
           An open view of HeyNaija’s own funds: what comes in, what goes out, and the decisions behind each
-          allocation. Donations, grants and subscriptions could pay for running HeyNaija, but they would never buy
-          votes or control.
+          allocation. Lawful donations, grants, voluntary contributions, permitted subscriptions, platform revenue
+          and sponsorships could fund the nonprofit objects, without buying votes or control. No profits may be
+          distributed privately. The proposed bank mandate requires multiple signatories and two approvals.
         </p>
         <dl className="treasury-plan">
           <div><dt>Funds received</dt><dd>Where support comes from, and any material sponsorship terms</dd></div>
-          <div><dt>Spending and allocations</dt><dd>What the money pays for, including any payments to founders or councillors</dd></div>
+          <div><dt>Spending and allocations</dt><dd>Actual approved spending; any founder or councillor payment needs conflict controls and compliance with CAMA section 838’s paid-office restrictions, reviewed by Nigerian counsel</dd></div>
           <div><dt>Reports</dt><dd>Independently reviewed summaries, at least quarterly once money flows</dd></div>
         </dl>
         <div className="governance-empty">
@@ -350,7 +367,7 @@ export default function GovernancePage() {
           governed, and does not apply until it is lawfully adopted.
         </p>
         <ul className="governance-documents">
-          <li><Link href="/charter">Charter</Link><span>What HeyNaija is for, the promises it keeps today, and who runs it now.</span></li>
+          <li><Link href="/charter">Community Governance Charter</Link><span>Current promises and proposed public governance, separate from the CAC legal constitution.</span></li>
           <li><Link href="/rules">Rules</Link><span>How we treat each other, and what moderators do. In force during the pilot.</span></li>
           <li><Link href="/privacy">Privacy policy</Link><span>What we collect, what is public, and your rights. In force during the pilot.</span></li>
           <li><Link href="/governance/constitution">Draft constitution</Link><span>{CONSTITUTION.label}: the proposed rules for membership, votes, the council and ownership. Not adopted.</span></li>

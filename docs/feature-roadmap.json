@@ -825,7 +825,7 @@
         "apps/web/tests/push.test.mjs",
         "apps/web/tests/service-worker.test.mjs",
         "e2e/tests/push-notifications.spec.ts",
-        "docs/adr/0010-push-notifications.md"
+        "docs/adr/0011-push-notifications.md"
       ],
       "dependency": [
         "in-app-notifications",
@@ -1066,7 +1066,7 @@
     {
       "id": "voting-membership",
       "name": "Verified adult voting membership",
-      "description": "Let eligible adults explicitly join a separate governance electorate.",
+      "description": "Let every eligible adult legal member voluntarily activate equal participation in the platform governance electorate.",
       "category": "governance",
       "priority": "P2",
       "status": "blocked",
@@ -1078,17 +1078,17 @@
         "docs/governance/open-items.md",
         "e2e/tests/governance.spec.ts"
       ],
-      "caveat": "Verified adulthood, identity checks and approved membership terms are required.",
+      "caveat": "Separate formal legal admission, verified adulthood, identity checks, voluntary activation and approved terms are required; online opt-out preserves legal membership and formal meeting rights.",
       "dependency": [
         "nin-verification",
         "member-legal-entity"
       ],
-      "notes": "The beta’s self-declared age never establishes verified voting eligibility."
+      "notes": "Legal admission is not implemented; preparatory eligibility fails closed. The beta’s self-declared age never establishes verified voting eligibility."
     },
     {
       "id": "member-legal-entity",
       "name": "Member-controlled legal entity",
-      "description": "Establish and adopt the legal structure required for community control.",
+      "description": "Proposed nonprofit Incorporated Trustees under CAMA Part F, with three founding trustees on initial three-year terms.",
       "category": "governance",
       "priority": "P2",
       "status": "blocked",
@@ -1098,7 +1098,7 @@
         "apps/web/lib/governance.ts",
         "apps/web/app/(main)/governance/constitution/page.tsx"
       ],
-      "caveat": "Legal advice, an agreed entity, adopted rules and the required ownership steps remain outstanding."
+      "caveat": "Qualified Nigerian legal review, lawful founding appointments, adopted constitution, CAC incorporation and essential asset transfers remain outstanding."
     },
     {
       "id": "ballot-audit",
@@ -1119,7 +1119,7 @@
     {
       "id": "binding-votes",
       "name": "Binding community votes",
-      "description": "Hold legitimate member decisions and council elections under adopted rules.",
+      "description": "Hold lawful member decisions: three trustee seats together at founding-term expiry and every three years thereafter; two representatives annually from readiness.",
       "category": "governance",
       "priority": "P2",
       "status": "blocked",
@@ -1131,12 +1131,12 @@
         "docs/governance/open-items.md",
         "e2e/tests/governance.spec.ts"
       ],
-      "caveat": "Approved eligibility, a legal framework, an eligible electorate and independently reviewed ballots are prerequisites.",
+      "caveat": "Activation does not trigger founding trustee re-election. Legal membership, independent secret ballots, formal resolutions and applicable CAC procedures remain required.",
       "dependency": [
         "voting-membership",
         "ballot-audit"
       ],
-      "notes": "Binding governance voting cannot be enabled by configuration."
+      "notes": "Binding governance voting cannot be enabled by configuration; an online result alone grants no statutory trustee status."
     },
     {
       "id": "public-treasury",

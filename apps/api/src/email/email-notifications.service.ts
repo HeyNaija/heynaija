@@ -26,7 +26,7 @@ export type EmailSettings = {
   /** At least this long passes between two emails to one member. */
   gapS: number
   /**
-   * Push notifications are on (docs/adr/0010): a notification is not emailed
+   * Push notifications are on (docs/adr/0011): a notification is not emailed
    * until the push side has dealt with it, and not at all if it was pushed.
    */
   waitForPush: boolean

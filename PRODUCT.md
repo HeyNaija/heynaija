@@ -43,7 +43,7 @@ repository is currently private. Moderation decisions go into a moderator-only
 log, governance proposals are published, and members can download their data from
 Settings. Public governance decision records are separate future work.
 
-"Community-owned" is a direction, not a current fact. Until a charter and legal
+"Community-owned" is a direction, not a current fact. Draft v0.3 proposes a nonprofit under Incorporated Trustees: three founding trustees serve initial three-year terms, two representatives are elected annually from readiness, and all three trustee seats open at founding-term expiry. Incorporation, elected representation, elected trustee authority and legal asset control are separate milestones; none is implied by a draft or online ballot. Until a charter and legal
 review exist, the product must not claim ownership that members do not yet have.
 
 ## Operating Context

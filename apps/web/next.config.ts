@@ -34,7 +34,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // The push service worker (docs/adr/0010): never served from a cache, so a
+        // The push service worker (docs/adr/0011): never served from a cache, so a
         // fix reaches browsers on their next visit, and it may only load itself.
         source: '/sw.js',
         headers: [

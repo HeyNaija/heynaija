@@ -17,7 +17,7 @@ const faq = [
     a: (
       <>
         <p>
-          Two reasons, both optional. Voting membership, when it opens, needs a strong check that every member is a
+          Two reasons, both optional. Active voting by eligible legal members, when it opens, needs a strong check that every member is a
           real, distinct adult, so that one person really does get one vote. And some people may want a green tick so
           others know a verified person holds the account.
         </p>
@@ -76,9 +76,8 @@ const faq = [
     q: 'What about diaspora Nigerians?',
     a: (
       <p>
-        You can use HeyNaija from anywhere without a NIN. Voting membership is harder: the first design depends on
-        NINAuth, and some people abroad may not have a NIN or be able to complete it. This is an open question in the
-        draft (Annex B). Any other way of proving identity would need a formal amendment to the constitution and the same
+        You can use HeyNaija from anywhere without a NIN. NIN is initially preferred for active voting, and some people abroad may not have a NIN or be able to
+        complete NINAuth. The draft permits future legally acceptable alternatives under a reviewed policy, with the same
         protection against duplicate votes.
       </p>
     ),
@@ -87,8 +86,8 @@ const faq = [
     q: 'Do I have to expose my real name?',
     a: (
       <p>
-        No. Your handle and display name stay your choice. HeyNaija would not keep or show your legal name, NIN, date of
-        birth or anything else the provider holds. If you show the tick, it says only that an identity was verified,
+        No. Your handle and display name stay your choice. The proposed verification flow would not keep or show your legal name, NIN or date of
+        birth. A separate legal-membership register may need lawful private particulars; its reviewed policy must explain them. If you show the tick, it says only that an identity was verified,
         not whose.
       </p>
     ),
@@ -144,8 +143,8 @@ export default function VerificationPage() {
             <dd>Every ordinary feature works without it.</dd>
           </div>
           <div>
-            <dt>Required for voting membership</dt>
-            <dd>Under the draft, adults need it to join the first electorate, together with an opt-in.</dd>
+            <dt>Initially preferred for platform voting</dt>
+            <dd>The initial design uses it for eligible adult legal members who voluntarily activate voting; legal admission is a separate process. Future lawful equivalent methods are permitted.</dd>
           </div>
           <div>
             <dt>Separate from the green tick</dt>
@@ -221,7 +220,7 @@ export default function VerificationPage() {
           </li>
           <li>
             <span className="proposal-step-name">You decide what is public</span>
-            <span>Settings shows that you are verified. The public tick appears only if you switch it on, and voting membership needs a separate opt-in.</span>
+            <span>Settings shows that you are verified. The public tick appears only if you switch it on, and voting also needs separate legal admission and voluntary activation.</span>
           </li>
         </ol>
         <p className="governance-copy">

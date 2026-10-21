@@ -5,7 +5,10 @@ Internal checklist for the operator. Everything public about these items is on
 as visible `[placeholders]`, not guessed. Update this file when an item closes,
 and change the public page in the same commit.
 
-Last reviewed: 16 October 2026.
+Last reviewed: 19 October 2026 (draft v0.3).
+
+Canonical framework: [README.md](README.md), [CAC review copy](cac-constitution.md),
+[policies](policies.md), [legal review](legal-review.md) and [implementation](implementation.md).
 
 ## 1. Facts the public pages still need (placeholders)
 
@@ -24,8 +27,10 @@ Last reviewed: 16 October 2026.
 
 ## 2. Needs legal review before anything is adopted
 
-- [ ] The whole draft constitution (v0.2): cooperative, corporate and
-      data-protection counsel in Nigeria (Article 13.4, Annex B).
+- [ ] The whole draft constitution (v0.3), Community Governance Charter and supporting
+      policies: qualified Nigerian nonprofit/corporate and privacy counsel, including
+      Incorporated Trustees under CAMA Part F, founding terms and Annex B. No adoption
+      or filing before written review and completion of Schedule 1.
 - [ ] The temporary 18+ beta rule as now implemented: a self-declared
       confirmation at `/join`, refused server-side without it. Is a
       self-declaration enough age assurance for the pilot under the NDPA and the
@@ -45,8 +50,28 @@ Last reviewed: 16 October 2026.
       verification is revoked.
 - [ ] Whether a fixed 14-day notice period may replace the charter placeholder
       before the constitution is adopted.
-- [ ] Final legal vehicle and what member admission or fees it requires
-      (Annex B.1).
+- [ ] Confirm the preferred Incorporated Trustees structure, lawful objects/name,
+      three founding trustees’ eligibility (including CAC residence requirements),
+      founding resolutions and initial Chairperson/Secretary appointments.
+- [ ] Approve initial fixed three-year terms from incorporation, no immediate
+      re-election on activation, first election at expiry and all three seats on
+      the common three-year cycle; retain lawful recall and term limits.
+- [ ] Validate the initial three-trustee body, full three-plus-two Council, powers,
+      non-conflicted quorum and separate annual representative elections.
+- [ ] Approve legal-member admission/cessation, equal access to voluntary online
+      voting and protected formal meeting rights on online opt-out; validate
+      requisitions, notice, quorum and electronic/hybrid procedures.
+- [ ] Approve trustee removal/replacement, same-person re-election filing treatment,
+      particulars/office changes, constitutional amendments and separate returns.
+- [ ] Validate election preparation 180 days before expiry, timetable by 90 days
+      before expiry, lawful formal-member fallback and any non-renewable 90-day
+      caretaker authority; never automatic indefinite founder extensions.
+- [ ] Resolve s838 paid-office/benefit restrictions for trustees and representatives;
+      no founder salary assumption. Approve separated operational employment,
+      conflicts, bank mandate, funding, tax, audits, assets and dissolution.
+- [ ] Review all items in [legal-review.md](legal-review.md) and the final adopted
+      charter/constitution for consistency, including required constitutional
+      recognition of supporting policies.
 
 ## 3. Before `NIN_VERIFICATION_ENABLED` may change
 
@@ -74,15 +99,37 @@ All of these, then a reviewed code change to `apps/api/src/env.ts`:
 ## 4. Before `BINDING_GOVERNANCE_VOTING_ENABLED` may change
 
 - [ ] Everything in section 3.
-- [ ] A member-controlled legal entity with adopted bylaws, or a legally reviewed
-      founding procedure for the first election (Articles 8.11, 13).
+- [ ] A legally incorporated nonprofit with an adopted registered constitution,
+      recorded founding trustee terms and lawful association resolution procedures
+      (Articles 6–9 and 13). Online activation elects only two representatives; it
+      must not reset or shorten the initial trustee term.
+- [ ] Separate audited legal-membership admission register and fair appeals, linked
+      to voluntary online activation without treating an account, verification or
+      opt-in as admission. GovernanceService currently supplies no admission facts
+      and eligibility fails closed.
+- [ ] Online opt-out preserves legal membership and formal meeting rights. The
+      existing online `resigned` status must never mean legal resignation.
 - [ ] Opt-in flow with explicit acceptance of the governing documents
       (`governance_memberships.documents_version`).
 - [ ] A ballot design reviewed for security, keeping eligibility separate from
       choices (no `member → choice` rows), with an independent audit method.
-- [ ] Election method published (how many candidates each voter may pick).
-- [ ] At least 100 verified, opted-in adults before any binding ballot
+- [ ] Election methods, nomination qualifications, equal candidate access, independent
+      oversight, recall, disputes, term limits, vacancy calendar and legal
+      follow-through published for separate three-seat trustee and two-seat
+      representative contests. App roles must not grant statutory authority.
+- [ ] At least 100 eligible verified, opted-in adult legal members before any binding online ballot
       (`bindingBallotMayOpen`).
+
+## Additional controls before funds or legal asset-control claims
+
+- [ ] Trustee-approved multi-signatory bank mandate, expenditure limits, conflicts
+      register, funding/revenue clearance and independent accounts/audit calendar.
+- [ ] Documented legal resolutions, CAC actions and effective dates; no online
+      appointment/removal or automated filing assumptions.
+- [ ] Signed asset instruments, licence/contract consents, organisational access
+      and shared recovery; independent confirmation and final transition report.
+- [ ] Complete operator, funding, trustee/officer names, registered office and
+      Schedule 1 before adoption/filing; publish only appropriate public details.
 
 ## 5. Before `UNDER_18_ACCOUNTS_ENABLED` may change
 

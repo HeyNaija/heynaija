@@ -7,10 +7,17 @@ item marked *requires provider confirmation* must be confirmed by NIMC in the
 partner agreement and in its production API, not from example payloads or the
 public demo.
 
-Sources: draft constitution Article 4 and Annex A; NIMC's NINAuth
+Sources: draft constitution v0.3 Article 4 and Annex A; NIMC's NINAuth
 [getting started](https://ninauth.nimc.gov.ng/get-started),
 [verification partners](https://ninauth.nimc.gov.ng/verification-partner) and
 [developer guide](https://sso.ninauth.nimc.gov.ng/demo-sign-in/developer-guide).
+
+NIN remains the initially preferred method, not a permanently exclusive legal
+class. The constitution permits future legally acceptable equivalent identity
+methods under a published reviewed policy; no alternative provider is built.
+Legal membership is separate formal admission to the association. This design
+only verifies identity; it neither admits legal members nor activates voting.
+See [implementation.md](implementation.md) for the missing admission register.
 
 ## Principles
 
@@ -45,7 +52,9 @@ Sources: draft constitution Article 4 and Annex A; NIMC's NINAuth
 4. **Review:** a person on the team confirms the verification
    (`reviewVerification`) before any public badge.
 5. **The member chooses** to show the tick (`setBadgeVisible`), and separately
-   whether to opt into voting membership.
+   whether, once formally admitted as an eligible legal member, to activate online
+   voting voluntarily. Online deactivation never itself ends legal membership or
+   formal association meeting rights.
 
 If NIMC offers signed webhooks (for revocation, say), verify the signature and a
 timestamp, and keep a short-lived record of event IDs to reject replays.

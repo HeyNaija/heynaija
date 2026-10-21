@@ -36,7 +36,7 @@ const COUNTED_IN_S = 24 * 60 * 60
 const READ_MAX = 300
 
 /**
- * Push notifications (docs/adr/0010). A notification is written by whatever
+ * Push notifications (docs/adr/0011). A notification is written by whatever
  * happened and never waits on a push. Every few seconds `sweep` passes over what
  * nothing will be pushed for and asks for one push per member with something
  * waiting; `send` then decides what to say and sends it to each of the member's

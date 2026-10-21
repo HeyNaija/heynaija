@@ -366,7 +366,7 @@ existing account.
       about ten minutes (Resend's logs show it). Its link turns email off again.
       They need the same `SMTP_*` settings as the sign-in codes; the API reaches
       Kratos's admin API on the private network for the address.
-- [ ] Push notifications ([ADR 0010](../adr/0010-push-notifications.md)): on an
+- [ ] Push notifications ([ADR 0011](../adr/0011-push-notifications.md)): on an
       Android phone, in Chrome, press **Turn on push notifications** in Settings and
       allow them. Have another member reply to one of your posts: the notification
       arrives within seconds and tapping it opens the reply; no email follows for it.

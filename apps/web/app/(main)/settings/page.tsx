@@ -64,8 +64,8 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
         <div>
           <h2 id="governance-heading" className="section-title">Identity and governance</h2>
           <p className="field-hint mt-1">
-            Your age on record, optional NIN verification and voting membership. You never need to verify
-            anything to use HeyNaija.
+            Your age on record, optional NIN verification and voluntary online voting status. Legal association
+            membership requires separate formal admission. You never need NIN verification for ordinary social use.
           </p>
         </div>
         <Suspense fallback={<div aria-busy="true" className="skeleton h-40" />}>
@@ -152,7 +152,7 @@ const membershipLabel: Record<GovernanceStatus['membership']['status'], string> 
   pending: 'Waiting for checks',
   active: 'Voting member',
   suspended: 'Suspended',
-  resigned: 'Left',
+  resigned: 'Online voting deactivated',
 }
 
 /** What the API knows about the member's verification and membership, in words. */

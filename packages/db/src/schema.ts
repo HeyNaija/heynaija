@@ -436,7 +436,7 @@ export const notifications = pgTable(
     // over (read in the app first, email off, nothing left to show, too old).
     // Migration 0021 set it for everything that happened before email existed.
     emailSettledAt: ts('email_settled_at'),
-    // Null until the push side has dealt with it (docs/adr/0010): pushed, or
+    // Null until the push side has dealt with it (docs/adr/0011): pushed, or
     // passed over (read first, no device to push to, too old). Email waits for
     // this. Migration 0022 set it for everything that happened before push existed.
     pushSettledAt: ts('push_settled_at'),
@@ -512,7 +512,7 @@ export const notificationOptOuts = pgTable(
 )
 
 // A browser that agreed to show a member's notifications as push notifications
-// (docs/adr/0010): the address its push service (Google, Mozilla, Apple or
+// (docs/adr/0011): the address its push service (Google, Mozilla, Apple or
 // Microsoft) gave it, and the keys that encrypt what is sent there. One row per
 // browser: when someone else signs in on it and turns push on, the row moves to
 // them. Signing out deletes it.
@@ -667,6 +667,9 @@ export const identityVerifications = restricted.table(
 
 export const GOVERNANCE_MEMBERSHIP_STATUSES = ['pending', 'active', 'suspended', 'resigned'] as const
 
+// A platform user's voluntary online voting participation, NOT the legal
+// association register. 'resigned' means online opt-out, not legal resignation.
+// Formal legal admission needs its own reviewed register before activation.
 // A member's explicit opt-in to voting membership. Separate from identity
 // verification on purpose: verifying never makes anyone a voting member. Whether
 // they may vote is worked out on read from this row, their verification and the
@@ -677,7 +680,7 @@ export const governanceMemberships = restricted.table('governance_memberships', 
     .references(() => members.id),
   status: text('status', { enum: GOVERNANCE_MEMBERSHIP_STATUSES }).notNull(),
   optedInAt: ts('opted_in_at').notNull(),
-  // The governing documents they accepted, e.g. 'constitution-0.2'.
+  // The governing documents they accepted, e.g. 'constitution-0.3'.
   documentsVersion: text('documents_version').notNull(),
   statusChangedAt: ts('status_changed_at').notNull().defaultNow(),
   suspendedUntil: ts('suspended_until'),

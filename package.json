@@ -7,6 +7,8 @@
     "node": ">=22"
   },
   "scripts": {
+    "governance:generate": "node --experimental-strip-types scripts/governance.mjs",
+    "governance:check": "node --experimental-strip-types scripts/governance.mjs --check",
     "roadmap:generate": "node --experimental-strip-types scripts/roadmap.mjs",
     "roadmap:check": "node --experimental-strip-types scripts/roadmap.mjs --check",
     "roadmap:test": "node --experimental-strip-types --test scripts/roadmap.test.mjs",

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Placeholder, PolicyPage } from '@/app/ui/policy-page'
+import { CONSTITUTION, OWNERSHIP_MILESTONES, TRANSITION_EXPLANATION } from '@/lib/governance'
 
 export const metadata: Metadata = { title: 'Charter' }
 
@@ -8,9 +9,10 @@ export default function CharterPage() {
   return (
     <PolicyPage
       eyebrow="Our shared future"
-      title="HeyNaija charter"
+      title="HeyNaija Community Governance Charter"
       summary="What HeyNaija is for, the promises it makes to members now, who is responsible for it today, and the steps toward members having a real say in how it is run. It is honest about what has not happened yet."
-      updated="16 October 2026"
+      version={CONSTITUTION.label}
+      updated={CONSTITUTION.updated}
       sections={[
         {
           id: 'purpose',
@@ -29,16 +31,18 @@ export default function CharterPage() {
           body: (
             <>
               <p>
-                This charter sets out the promises that apply today. The{' '}
-                <Link href="/governance/constitution">draft constitution</Link> proposes how HeyNaija would be governed
-                once members can vote: voting membership, a five-member Community Council, ballots and the transfer of
-                ownership. It is open for consultation and does not apply until it is lawfully adopted with a published
-                effective date. Until then, where the two differ, this charter applies.
+                This charter keeps today’s service promises and describes the proposed community governance framework.
+                Future offices and rights below remain proposals until lawfully adopted. The separate{' '}
+                <Link href="/governance/constitution">CAC-facing nonprofit constitution</Link> would be the association’s
+                legal constitution once adopted and registered. Applicable law and that registered constitution prevail;
+                the charter and supporting policies cannot amend them. Any inconsistency must be disclosed and corrected.
               </p>
               <p>
-                Proposals in the draft, such as an 18+ rule for voting membership or optional NIN verification, are not
-                in force unless this charter, the <Link href="/rules">rules</Link> or the{' '}
-                <Link href="/privacy">privacy policy</Link> say so.
+                Incorporated Trustees under Part F of CAMA 2020 is the proposed registration structure. HeyNaija is
+                founder-operated today; incorporation, representative elections, elected trustee governance and asset
+                control are separate milestones. No binding election or NIN verification is live. Current account and
+                privacy rules remain in the <Link href="/rules">rules</Link> and <Link href="/privacy">privacy policy</Link>.
+                Qualified Nigerian nonprofit counsel must review the whole framework before legal adoption or filing.
               </p>
             </>
           ),
@@ -63,7 +67,7 @@ export default function CharterPage() {
           body: (
             <>
               <p>
-                HeyNaija is not community-owned yet. Today it is run, paid for and decided by its
+                HeyNaija is founder-operated, with no incorporation or legal community ownership claimed. Today it is run, paid for and decided by its
                 provisional custodians: <Placeholder>names and roles</Placeholder>. They are accountable
                 for keeping the promises above.
               </p>
@@ -84,22 +88,65 @@ export default function CharterPage() {
           body: (
             <>
               <p>
-                These are the steps the draft constitution proposes, in order (Article 13). Where each one stands is
+                These are the seven phases the draft constitution proposes (Article 13). Where each one stands is
                 shown on the <Link href="/governance#ownership">governance page</Link>, and each will be announced there
-                when it is done. Ownership has not transferred, and no poll or vote will be called binding until it has.
+                when it is done. Legal asset control has not transferred. Platform ballots need the legal, membership,
+                security and readiness gates; an election by itself never completes the asset transfer.
               </p>
+              <p>Proposed arrangement: {TRANSITION_EXPLANATION}</p>
               <ol>
-                <li>Publish the drafts, and who runs HeyNaija.</li>
-                <li>Hold a public consultation, with a temporary advisory group that includes members.</li>
-                <li>Have the drafts reviewed by Nigerian cooperative, corporate and data-protection lawyers.</li>
-                <li>Choose and register a member-controlled Nigerian legal entity.</li>
-                <li>Adopt its membership bylaws and hold the first election of the Community Council.</li>
-                <li>Transfer the domain, name, core assets and governance control to it, by signed documents.</li>
-                <li>Publish independent confirmation that the transfer happened.</li>
+                {OWNERSHIP_MILESTONES.map((phase) => <li key={phase.id}><strong>{phase.title}.</strong> {phase.detail}</li>)}
               </ol>
+              <p>Prepare the first trustee election 180 days before term expiry and publish its timetable by 90 days
+                before expiry. If online governance is delayed, use lawful formal member procedures reviewed by
+                counsel. Any caretaker authority needs an express legal basis and prior member resolution, lasts at
+                most 90 days and cannot be renewed under the fallback clause. There is no indefinite founder holdover.</p>
               <p>A public treasury opens once money flows, with reports at least every quarter.</p>
             </>
           ),
+        },
+        {
+          id: 'participation', title: 'Proposed democratic participation and accountability',
+          body: <>
+            <p>Platform users have accounts; legal members are formally admitted to the association; active voting
+              members are eligible legal members who voluntarily activate platform ballots. Every eligible legal member
+              has equal access to activation and one equal-weight ballot. Online opt-out does not terminate legal
+              membership or lawful formal meeting rights. No donation, founder status or subscription buys more power.</p>
+            <p>Voting remains 18+ with verified age and identity. NIN is initially preferred; legally acceptable future
+              alternatives need equivalent safeguards. Identity, legal admission, online activation and optional badges
+              remain separate. No NIN or sensitive identity data may be exposed publicly.</p>
+            <p>The full Council is three registered trustees on a common three-year cycle and two community
+              representatives elected annually. Representatives oversee community interests and accountability without
+              automatically becoming trustees. Quorum is two for the initial trustee body and three for the full Council;
+              routine decisions use a majority of non-conflicted members present, with ties failing. The retained limit
+              is two consecutive full terms per role followed by a one-term break; the founding term counts.</p>
+            <p>Preserve published nominations, equal candidate access, secret auditable ballots, independent oversight,
+              published results, impartial dispute resolution and fair recall. A 10% petition can initiate recall without
+              founder permission; formal legal-member meeting rights provide a separate route. Notice, a fair hearing,
+              lawful trustee resolutions and applicable CAC procedures remain required. Individual moderation cases
+              stay outside public votes, with independent appeals and privacy safeguards.</p>
+            <p>Keep the existing proposed electorate, turnout, consultation and notice safeguards in{' '}
+              <Link href="/governance/constitution#article-8">Article 8</Link>. Supporting election and membership policies
+              depend on recognition in the registered constitution wherever necessary to give them legal effect.</p>
+          </>,
+        },
+        {
+          id: 'independence', title: 'Proposed nonprofit finance and protection from capture',
+          body: <>
+            <p>The nonprofit shall have no private shareholders or profit distributions. Income and property serve its
+              objects; donors, political parties and private commercial interests acquire no exclusive control. Lawful
+              grants, donations, voluntary contributions, permitted subscriptions, revenue and sponsorships need
+              transparent conditions, budgets, accounts and independent audits.</p>
+            <p>Propose at least three bank signatories with any two independent approvals, subject to trustee approval,
+              the constitution and bank requirements. No individual may withdraw organisational funds or control
+              essential assets alone. Founder compensation for real work requires legal clearance, disinterested
+              approval and conflict disclosure. CAMA section 838 restricts paid offices and benefits for Council members,
+              including trustees and representatives; recusal does not itself make an unlawful payment lawful.</p>
+            <p>Domains, branding, IP, infrastructure and funds must be vested through lawful instruments and access
+              changes, respecting licences and contracts. On dissolution, debts are settled and residual assets pass
+              only to legally eligible compatible institutions or the lawful charitable destination, never founders or
+              members. The legal constitution and Nigerian legal review govern these actions.</p>
+          </>,
         },
         {
           id: 'changes',
@@ -112,6 +159,12 @@ export default function CharterPage() {
               (Article 14), except for urgent legal or security corrections; that is not yet adopted.
             </p>
           ),
+        },
+        {
+          id: 'version-history', title: 'Draft version history',
+          body: <ul>{CONSTITUTION.changelog.map((entry) => <li key={entry.version}>
+            <strong>v{entry.version}, {entry.date}:</strong> {entry.summary}
+          </li>)}</ul>,
         },
       ]}
     />

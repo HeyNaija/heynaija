@@ -121,8 +121,10 @@ export default function AboutPage() {
         <div className="about-copy">
           <p>
             Having a say should mean more than being asked for feedback. The draft constitution
-            proposes voting membership, an elected council and a transfer of ownership to a
-            member-controlled legal entity. Those steps need consultation, legal review, secure
+            proposes nonprofit Incorporated Trustees with three founding trustees serving initial three-year terms,
+            two annually elected representatives from readiness, and all three trustee seats open to election at
+            founding-term expiry. Legal membership and voluntary online voting are separate, and essential assets
+            require lawful transfer to the nonprofit. Those steps need consultation, legal review, secure
             systems and published evidence. They have not happened simply because a draft exists.
           </p>
         </div>

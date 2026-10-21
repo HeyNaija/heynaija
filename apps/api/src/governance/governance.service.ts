@@ -134,7 +134,9 @@ export class GovernanceService {
       membership: {
         status: membership?.status ?? 'none',
         registrationOpen: this.env.NIN_VERIFICATION_ENABLED && this.env.BINDING_GOVERNANCE_VOTING_ENABLED,
-        ...membershipEligibility({ flags: this.env, verification: facts, age, membership: membership ?? null, now }),
+        // There is no legal association admission register yet. An account or
+        // governance_memberships row is not proof of legal membership (v0.3).
+        ...membershipEligibility({ flags: this.env, verification: facts, age, membership: membership ?? null, legalMembership: null, now }),
       },
     }
   }

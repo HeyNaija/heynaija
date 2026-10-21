@@ -73,7 +73,7 @@ const schema = z.object({
   EMAIL_DIGEST_GAP_S: z.coerce.number().int().min(0).max(86_400).default(1800),
   // How often the job that finds due emails runs, in seconds.
   EMAIL_SWEEP_EVERY_S: z.coerce.number().int().min(1).max(3600).default(60),
-  // Push notifications (docs/adr/0010): the VAPID key pair browsers subscribe
+  // Push notifications (docs/adr/0011): the VAPID key pair browsers subscribe
   // with, both base64url (infra/scripts/gen-dev-env.sh and infra/deploy/gen-env.sh
   // make one). Without them nothing is pushed and Settings does not offer push.
   // Changing them cuts off every browser that has subscribed until it subscribes again.

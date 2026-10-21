@@ -1,4 +1,4 @@
-# ADR 0010 — Push notifications are per browser, decided when they are sent, and replace email for what they carry
+# ADR 0011 — Push notifications are per browser, decided when they are sent, and replace email for what they carry
 
 **Date:** 21 October 2026 · **Status:** Accepted
 
