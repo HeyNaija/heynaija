@@ -10,6 +10,12 @@ umask 077
 touch "$env_file"
 
 hex() { openssl rand -hex "$1"; }
+# Push notifications need a VAPID key pair: P-256, both halves in base64url.
+b64url() { base64 | tr -d '\n=' | tr '+/' '-_'; }
+# SEC1 DER is a 7-byte header, then the 32-byte private key.
+vapid_private() { printf '%s\n' "$1" | openssl ec -outform DER 2>/dev/null | tail -c +8 | head -c 32 | b64url; }
+# SubjectPublicKeyInfo DER ends with the 65-byte public point.
+vapid_public() { printf '%s\n' "$1" | openssl ec -pubout -outform DER 2>/dev/null | tail -c 65 | b64url; }
 get() { grep -E "^$1=" "$env_file" | head -1 | cut -d= -f2- || true; }
 ensure() {
   if [[ -z "$(get "$1")" ]]; then
@@ -45,5 +51,17 @@ ensure SMTP_FROM_ADDRESS "no-reply@heynaija.test"
 ensure SMTP_FROM_NAME "HeyNaija"
 # Look for emails that are due every few seconds instead of every minute.
 ensure EMAIL_SWEEP_EVERY_S "5"
+
+# Push notifications (docs/adr/0011). The two keys are made together, once.
+if [[ -z "$(get PUSH_VAPID_PRIVATE_KEY)" && -z "$(get PUSH_VAPID_PUBLIC_KEY)" ]]; then
+  pem="$(openssl ecparam -name prime256v1 -genkey -noout)"
+  ensure PUSH_VAPID_PRIVATE_KEY "$(vapid_private "$pem")"
+  ensure PUSH_VAPID_PUBLIC_KEY "$(vapid_public "$pem")"
+fi
+# Push services want an address for whoever sends, and WEB_PUBLIC_URL is not https here.
+ensure PUSH_CONTACT "mailto:no-reply@heynaija.test"
+# The end-to-end tests stand in for the push service on 127.0.0.1; look every two seconds.
+ensure PUSH_ALLOW_LOOPBACK "true"
+ensure PUSH_SWEEP_EVERY_S "2"
 
 echo "$env_file is up to date"

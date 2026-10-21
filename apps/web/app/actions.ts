@@ -7,6 +7,7 @@ import { api } from '@/lib/api'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
 import { startFlowUrl } from '@/lib/kratos'
 import { preferencesFromForm } from '@/lib/notification-preferences'
+import { PUSH_COOKIE } from '@/lib/push'
 import { choicesFromForm, welcomePath } from '@/lib/onboarding'
 import type { ThreadRow } from '@/lib/thread-state'
 
@@ -186,6 +187,64 @@ export async function updateNotificationPreferences(_prev: FormState, formData: 
   if (!res.ok) return { error: 'Could not save. Try again in a moment.' }
   refresh()
   return { done: true }
+}
+
+// --- Push notifications: the browser subscribes with its push service, then tells the API. ---
+
+/** What `PushSubscription.toJSON()` gives, which is what the API takes. */
+export type PushSubscriptionJson = { endpoint: string; keys: { p256dh: string; auth: string } }
+
+export async function subscribeToPush(subscription: PushSubscriptionJson): Promise<{ error?: string }> {
+  const res = await api('/v1/push/subscriptions', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(subscription),
+  }).catch(() => null)
+  if (!res) return { error: 'Could not turn on push notifications. Check your connection and try again.' }
+  if (res.status === 401) redirect('/login')
+  if (res.status === 429) return { error: 'You are changing settings very fast. Wait a minute and try again.' }
+  if (res.status === 400) return { error: 'HeyNaija cannot send push notifications to this browser.' }
+  if (!res.ok) return { error: 'Could not turn on push notifications. Try again in a moment.' }
+  const { id } = (await res.json()) as { id: string }
+  // Read by /logout, which stops this browser's pushes when its member signs out.
+  ;(await cookies()).set(PUSH_COOKIE, id, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 400 * 24 * 60 * 60,
+  })
+  return {}
+}
+
+export async function unsubscribeFromPush(endpoint: string): Promise<{ error?: string }> {
+  const res = await api('/v1/push/subscriptions/remove', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ endpoint }),
+  }).catch(() => null)
+  if (!res) return { error: 'Could not turn off push notifications. Check your connection and try again.' }
+  if (res.status === 401) redirect('/login')
+  if (res.status === 429) return { error: 'You are changing settings very fast. Wait a minute and try again.' }
+  // 400: not a push service's address, so nothing was ever sent to it.
+  if (!res.ok && res.status !== 400) return { error: 'Could not turn off push notifications. Try again in a moment.' }
+  ;(await cookies()).delete(PUSH_COOKIE)
+  return {}
+}
+
+/**
+ * Whether the signed-in member's notifications are pushed to the browser with
+ * this address. If another member's are, the API stops them. Treated as "no"
+ * when the API cannot be asked.
+ */
+export async function checkPushSubscription(endpoint: string): Promise<{ subscribed: boolean }> {
+  const res = await api('/v1/push/subscriptions/check', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ endpoint }),
+  }).catch(() => null)
+  if (!res?.ok) return { subscribed: false }
+  return res.json()
 }
 
 // --- Profile photo: the browser uploads straight to storage between these two calls. ---

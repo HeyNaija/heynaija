@@ -17,6 +17,7 @@ import {
   notifications,
   postMentions,
   posts,
+  pushSubscriptions,
   reports,
   reposts,
 } from '@heynaija/db'
@@ -27,7 +28,7 @@ import { preferencesWithout } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/7'
+export const EXPORT_FORMAT = 'heynaija-export/8'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -63,6 +64,7 @@ export class ExportService {
       decisions,
       received,
       turnedOff,
+      pushedTo,
       ageRecords,
       verifications,
       [membership],
@@ -149,6 +151,11 @@ export class ExportService {
         .where(eq(notifications.recipientId, memberId))
         .orderBy(asc(notifications.createdAt)),
       db.select({ kind: notificationOptOuts.kind }).from(notificationOptOuts).where(eq(notificationOptOuts.memberId, memberId)),
+      db
+        .select({ since: pushSubscriptions.createdAt, lastPushedAt: pushSubscriptions.lastPushedAt })
+        .from(pushSubscriptions)
+        .where(eq(pushSubscriptions.memberId, memberId))
+        .orderBy(asc(pushSubscriptions.createdAt)),
       db
         .select({
           band: ageAssurances.band,
@@ -247,6 +254,9 @@ export class ExportService {
       notificationPreferences: preferencesWithout(turnedOff.map((r) => r.kind)),
       // Whether those notifications are also sent to your email address.
       emailNotifications: me.emailNotifications,
+      // The browsers they are pushed to: when each was turned on and last sent one.
+      // A browser's push address is left out; it is only good for sending to it.
+      pushNotifications: pushedTo,
       notifications: received,
     }
   }

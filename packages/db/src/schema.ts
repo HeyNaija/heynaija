@@ -436,6 +436,13 @@ export const notifications = pgTable(
     // over (read in the app first, email off, nothing left to show, too old).
     // Migration 0021 set it for everything that happened before email existed.
     emailSettledAt: ts('email_settled_at'),
+    // Null until the push side has dealt with it (docs/adr/0011): pushed, or
+    // passed over (read first, no device to push to, too old). Email waits for
+    // this. Migration 0022 set it for everything that happened before push existed.
+    pushSettledAt: ts('push_settled_at'),
+    // When at least one of the member's devices took it as a push notification.
+    // What has been pushed is not emailed as well.
+    pushedAt: ts('pushed_at'),
   },
   (t) => [
     index('notifications_recipient_created_idx').on(t.recipientId, t.createdAt),
@@ -444,6 +451,10 @@ export const notifications = pgTable(
     index('notifications_email_pending_idx')
       .on(t.recipientId, t.createdAt)
       .where(sql`email_settled_at is null`),
+    // The same for the push job, which has seconds' worth.
+    index('notifications_push_pending_idx')
+      .on(t.recipientId, t.createdAt)
+      .where(sql`push_settled_at is null`),
     // Deleting a post or a member must find the notifications pointing at it;
     // without these each delete scanned the whole table.
     index('notifications_actor_idx').on(t.actorId),
@@ -498,6 +509,29 @@ export const notificationOptOuts = pgTable(
       sql.raw(`kind in (${OPTIONAL_NOTIFICATION_KINDS.map((k) => `'${k}'`).join(', ')})`),
     ),
   ],
+)
+
+// A browser that agreed to show a member's notifications as push notifications
+// (docs/adr/0011): the address its push service (Google, Mozilla, Apple or
+// Microsoft) gave it, and the keys that encrypt what is sent there. One row per
+// browser: when someone else signs in on it and turns push on, the row moves to
+// them. Signing out deletes it.
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    endpoint: text('endpoint').notNull(),
+    // The browser's public key (P-256, base64url) and its 16-byte auth secret.
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    // When its push service last accepted a notification for it.
+    lastPushedAt: ts('last_pushed_at'),
+  },
+  (t) => [uniqueIndex('push_subscriptions_endpoint_idx').on(t.endpoint), index('push_subscriptions_member_idx').on(t.memberId)],
 )
 
 // Signup is invite-only. Only the SHA-256 of a code is stored.

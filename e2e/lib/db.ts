@@ -46,6 +46,7 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['reports', `delete from reports where reporter_id in (select id from e2e_m) or member_id in (select id from e2e_m)
            or post_id in (select id from e2e_p) or resolved_by in (select id from e2e_m)`],
         ['notification settings', `delete from notification_opt_outs where member_id in (select id from e2e_m)`],
+        ['push subscriptions', `delete from push_subscriptions where member_id in (select id from e2e_m)`],
         ['link previews', `delete from link_previews where url like 'https://links.e2e.test/%'`],
         ['mentions', `delete from post_mentions where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['likes', `delete from likes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
@@ -249,6 +250,40 @@ export async function waitForEmailJob(handle: string, timeoutMs = 90_000) {
       await new Promise((r) => setTimeout(r, 500))
     }
     throw new Error(`the email job did not deal with @${handle}'s notifications within ${timeoutMs / 1000}s`)
+  } finally {
+    await db.end()
+  }
+}
+
+/** Waits until the push job has dealt with every notification `handle` has: pushed, or passed over. */
+export async function waitForPushJob(handle: string, timeoutMs = 60_000) {
+  const db = pool()
+  try {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const { rows } = await db.query<{ waiting: number; total: number }>(
+        `select count(*) filter (where n.push_settled_at is null)::int as waiting, count(*)::int as total
+         from notifications n join members m on m.id = n.recipient_id where m.handle = $1`,
+        [handle],
+      )
+      if (rows[0]!.total > 0 && rows[0]!.waiting === 0) return
+      await new Promise((r) => setTimeout(r, 500))
+    }
+    throw new Error(`the push job did not deal with @${handle}'s notifications within ${timeoutMs / 1000}s`)
+  } finally {
+    await db.end()
+  }
+}
+
+/** How many browsers `handle`'s notifications are pushed to. */
+export async function pushSubscriptionCount(handle: string): Promise<number> {
+  const db = pool()
+  try {
+    const { rows } = await db.query<{ count: number }>(
+      `select count(*)::int as count from push_subscriptions s join members m on m.id = s.member_id where m.handle = $1`,
+      [handle],
+    )
+    return rows[0]!.count
   } finally {
     await db.end()
   }

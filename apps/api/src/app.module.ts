@@ -36,6 +36,10 @@ import { OnboardingController } from './onboarding/onboarding.controller.js'
 import { OnboardingService } from './onboarding/onboarding.service.js'
 import { PostsController } from './posts/posts.controller.js'
 import { PostsService } from './posts/posts.service.js'
+import { PushController } from './push/push.controller.js'
+import { PUSH_JOBS, PushNotificationsService } from './push/push-notifications.service.js'
+import { BullPushJobs, PushWorker } from './push/push-queue.js'
+import { PUSH_SENDER, webPushSender } from './push/push-sender.js'
 import { RateLimiter, RedisRateLimiter } from './rate-limit.js'
 import { SearchController } from './search/search.controller.js'
 import { DB, ENV } from './tokens.js'
@@ -49,7 +53,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, ExportController, GovernanceController, OnboardingController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -87,11 +91,18 @@ class HealthController {
         unsubscribeKey: unsubscribeKey(env.KRATOS_WEBHOOK_SECRET),
         delayS: env.EMAIL_DIGEST_DELAY_S,
         gapS: env.EMAIL_DIGEST_GAP_S,
+        // Whatever is pushed is not emailed, so email waits for the push side.
+        waitForPush: Boolean(env.PUSH_VAPID_PUBLIC_KEY),
       }),
       inject: [ENV],
     },
     EmailNotificationsService,
     EmailWorker,
+    { provide: PUSH_JOBS, useClass: BullPushJobs },
+    // Without VAPID keys (PUSH_VAPID_*) this is null and nothing is pushed.
+    { provide: PUSH_SENDER, useFactory: webPushSender, inject: [ENV] },
+    PushNotificationsService,
+    PushWorker,
     ExportService,
     GovernanceService,
     OnboardingService,

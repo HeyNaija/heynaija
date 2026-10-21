@@ -29,6 +29,10 @@ x-api-env: &api-env
   SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:?}
   SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:?}
   SMTP_FROM_NAME: ${SMTP_FROM_NAME:-HeyNaija}
+  # Push notifications; without the keys nothing is pushed. Push services reach us
+  # at WEB_PUBLIC_URL (docs/adr/0011).
+  PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
+  PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
   WEB_PUBLIC_URL: ${SITE_URL:?}
   API_HOST: 0.0.0.0
   S3_ENDPOINT: ${S3_ENDPOINT:?}

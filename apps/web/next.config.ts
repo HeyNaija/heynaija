@@ -31,6 +31,19 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  async headers() {
+    return [
+      {
+        // The push service worker (docs/adr/0011): never served from a cache, so a
+        // fix reaches browsers on their next visit, and it may only load itself.
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self'" },
+        ],
+      },
+    ]
+  },
   async rewrites() {
     return [
       { source: '/api/v1/:path*', destination: `${apiInternalUrl}/v1/:path*` },
