@@ -93,5 +93,5 @@ at again.
 
 - Choosing email per kind, or how often. The kinds decide notifications, and email
   follows.
-- Push notifications.
+- Push notifications (since built: ADR 0010).
 - A resubscribe link. Turning email back on is in Settings.

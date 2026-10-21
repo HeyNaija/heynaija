@@ -85,6 +85,7 @@ As `heynaija`, clone to `/srv/heynaija`, run `./gen-env.sh`, and edit `.env`:
 | `BACKUP_DESTINATION` | `r2backup:heynaija-backups/production` |
 | `IMAGE_PREFIX` | `ghcr.io/heynaija/heynaija`, lower case, as for staging |
 | `S3_*`, `SMTP_*`, `BACKUP_AGE_RECIPIENT` | as for staging, with production's tokens and keys |
+| `PUSH_VAPID_*` | made by `gen-env.sh`, production's own: never staging's. Keep a copy; a new pair cuts off every browser that turned push on ([ADR 0010](../adr/0010-push-notifications.md)) |
 | `POSTGRES_*`, `DATABASE_POOL_MAX` | delete these lines: `compose.yml`'s defaults are sized for this 16 GB server |
 | `WEB_WORKERS` | `4` |
 

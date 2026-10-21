@@ -157,7 +157,7 @@ test('a member downloads their data as JSON', async ({ browser }) => {
   ])
   expect(download.suggestedFilename()).toMatch(new RegExp(`^heynaija-${handle}-\\d{4}-\\d{2}-\\d{2}\\.json$`))
   const data = JSON.parse(await readFile((await download.path())!, 'utf8'))
-  expect(data.format).toBe('heynaija-export/7')
+  expect(data.format).toBe('heynaija-export/8')
   expect(data.account).toMatchObject({ handle, email })
   // They skipped the welcome flow on joining (newMember does), and the export says when.
   expect(Date.parse(data.account.onboardedAt)).not.toBeNaN()
@@ -172,5 +172,7 @@ test('a member downloads their data as JSON', async ({ browser }) => {
   expect(data.notificationPreferences).toEqual({ reply: true, like: true, repost: true, quote: true, mention: true, follow: true })
   // New members are emailed their notifications until they turn it off.
   expect(data.emailNotifications).toBe(true)
+  // Push is per browser, and they have not turned it on anywhere.
+  expect(data.pushNotifications).toEqual([])
   await context.close()
 })

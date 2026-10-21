@@ -22,8 +22,8 @@ export const EXCERPT_MAX = 80
 /** Most entries an email lists; the rest are counted and left to the app. */
 export const LINES_MAX = 8
 
-/** `count` is how many notifications the line stands for. */
-type Line = { headline: string; quote: string | null; href: string; count: number }
+/** One line of an email, or one push notification: `items` are the notifications it stands for, newest first. */
+export type Line<T extends DigestItem = DigestItem> = { headline: string; quote: string | null; href: string; items: T[] }
 
 /** "@a", "@a and @b", "@a, @b and 1 other", "@a, @b and 3 others". */
 const names = (handles: string[]): string => {
@@ -36,10 +36,11 @@ const names = (handles: string[]): string => {
 /**
  * One line for each thing that happened: likes of the same post, reposts of the
  * same post and follows are rolled into one, so a burst of thirty likes is a
- * single line. Newest first.
+ * single line. Newest first. Links start with `webUrl`; an empty one makes them
+ * paths on the site.
  */
-function linesFor(items: DigestItem[], webUrl: string): Line[] {
-  type Group = { first: DigestItem; actors: string[]; count: number }
+export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line<T>[] {
+  type Group = { items: T[]; actors: string[] }
   const keyOf = (item: DigestItem, i: number): string => {
     switch (item.kind) {
       case 'like':
@@ -62,16 +63,16 @@ function linesFor(items: DigestItem[], webUrl: string): Line[] {
   const groups = new Map<string, Group>()
   items.forEach((item, i) => {
     const key = keyOf(item, i)
-    const group = groups.get(key) ?? { first: item, actors: [], count: 0 }
+    const group = groups.get(key) ?? { items: [], actors: [] }
     if (item.actor && !group.actors.includes(item.actor)) group.actors.push(item.actor)
-    group.count++
+    group.items.push(item)
     groups.set(key, group)
   })
 
   const post = (id: string | null) => (id ? `${webUrl}/p/${id}` : `${webUrl}/notifications`)
-  return [...groups.values()].map(({ first: item, actors, count }): Line => ({ ...describe(item, actors, count), count }))
+  return [...groups.values()].map(({ items, actors }) => ({ ...describe(items[0]!, actors, items.length), items }))
 
-  function describe(item: DigestItem, actors: string[], count: number): Omit<Line, 'count'> {
+  function describe(item: DigestItem, actors: string[], count: number): Omit<Line, 'items'> {
     const who = names(actors)
     const quote = KINDS_WITH_EXCERPT.includes(item.kind) && item.excerpt ? item.excerpt : null
     const inApp = `${webUrl}/notifications`
@@ -133,7 +134,7 @@ export function renderDigest(input: {
   const lines = linesFor(items, webUrl)
   const shown = lines.slice(0, LINES_MAX)
   // What is not listed, counted in notifications rather than lines.
-  const hidden = total - shown.reduce((sum, line) => sum + line.count, 0)
+  const hidden = total - shown.reduce((sum, line) => sum + line.items.length, 0)
   const more = hidden > 0
 
   const subject = total === 1 && lines[0] ? lines[0].headline : `${total} new notifications on HeyNaija`

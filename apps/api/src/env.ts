@@ -14,6 +14,9 @@ const lockedOff = (name: string) =>
     .transform((value) => value === 'true')
     .refine((on) => !on, { error: `${name} cannot be enabled yet; see docs/governance/open-items.md` })
 
+/** An optional setting that may also be given empty (compose passes `${NAME:-}`), which means unset. */
+const optional = <T extends z.ZodType>(type: T) => z.preprocess((value) => (value === '' ? undefined : value), type.optional())
+
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
   // Ory Kratos public API, reached server-to-server to validate sessions.
@@ -70,12 +73,39 @@ const schema = z.object({
   EMAIL_DIGEST_GAP_S: z.coerce.number().int().min(0).max(86_400).default(1800),
   // How often the job that finds due emails runs, in seconds.
   EMAIL_SWEEP_EVERY_S: z.coerce.number().int().min(1).max(3600).default(60),
+  // Push notifications (docs/adr/0010): the VAPID key pair browsers subscribe
+  // with, both base64url (infra/scripts/gen-dev-env.sh and infra/deploy/gen-env.sh
+  // make one). Without them nothing is pushed and Settings does not offer push.
+  // Changing them cuts off every browser that has subscribed until it subscribes again.
+  PUSH_VAPID_PUBLIC_KEY: optional(z.string().regex(/^[\w-]{87}$/, 'a P-256 public key in base64url')),
+  PUSH_VAPID_PRIVATE_KEY: optional(z.string().regex(/^[\w-]{43}$/, 'a P-256 private key in base64url')),
+  // How push services can reach us about our traffic: a mailto: or https: address.
+  // Defaults to WEB_PUBLIC_URL, which is enough wherever that is https.
+  PUSH_CONTACT: optional(z.string().regex(/^(mailto:|https:\/\/)\S+$/, 'a mailto: or https:// address')),
+  // How often the job that pushes new notifications runs, in seconds.
+  PUSH_SWEEP_EVERY_S: z.coerce.number().int().min(1).max(600).default(10),
+  // Lets browsers subscribe with an http://127.0.0.1 address, for the end-to-end
+  // tests' stand-in push service. Only allowed while WEB_PUBLIC_URL is on this machine.
+  PUSH_ALLOW_LOOPBACK: z
+    .enum(['false', 'true'])
+    .default('false')
+    .transform((value) => value === 'true'),
 })
 
 const checked = schema.superRefine((env, ctx) => {
-  if (!env.SMTP_CONNECTION_URI) return
-  for (const name of ['SMTP_FROM_ADDRESS', 'KRATOS_ADMIN_URL'] as const) {
-    if (!env[name]) ctx.addIssue({ code: 'custom', path: [name], message: `${name} is required when SMTP_CONNECTION_URI is set` })
+  if (env.SMTP_CONNECTION_URI) {
+    for (const name of ['SMTP_FROM_ADDRESS', 'KRATOS_ADMIN_URL'] as const) {
+      if (!env[name]) ctx.addIssue({ code: 'custom', path: [name], message: `${name} is required when SMTP_CONNECTION_URI is set` })
+    }
+  }
+  if (Boolean(env.PUSH_VAPID_PUBLIC_KEY) !== Boolean(env.PUSH_VAPID_PRIVATE_KEY)) {
+    ctx.addIssue({ code: 'custom', path: ['PUSH_VAPID_PRIVATE_KEY'], message: 'set both PUSH_VAPID_PUBLIC_KEY and PUSH_VAPID_PRIVATE_KEY, or neither' })
+  }
+  if (env.PUSH_VAPID_PUBLIC_KEY && !env.PUSH_CONTACT && !env.WEB_PUBLIC_URL.startsWith('https://')) {
+    ctx.addIssue({ code: 'custom', path: ['PUSH_CONTACT'], message: 'PUSH_CONTACT is required when WEB_PUBLIC_URL is not https' })
+  }
+  if (env.PUSH_ALLOW_LOOPBACK && new URL(env.WEB_PUBLIC_URL).hostname !== '127.0.0.1') {
+    ctx.addIssue({ code: 'custom', path: ['PUSH_ALLOW_LOOPBACK'], message: 'PUSH_ALLOW_LOOPBACK is only for a WEB_PUBLIC_URL on 127.0.0.1' })
   }
 })
 

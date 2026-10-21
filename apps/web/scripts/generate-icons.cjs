@@ -39,7 +39,18 @@ async function main() {
     offset += frame.length
   })
   await fs.writeFile(path.join(root, 'app/favicon.ico'), Buffer.concat([directory, ...frames]))
-  console.log('Generated browser, Apple, and installable-app icons from heynaija-mark.svg.')
+  await writeBadge(source)
+  console.log('Generated browser, Apple, installable-app and notification badge icons from heynaija-mark.svg.')
+}
+
+/**
+ * Android draws a push notification's badge in the status bar from its alpha
+ * channel alone, so the badge is the white letters without their green tile.
+ */
+async function writeBadge(source) {
+  const letters = Buffer.from(source.toString().replace(/<rect[^>]*\/>/, ''))
+  const badge = await sharp(letters, { density: 192 }).resize(96, 96).png().toBuffer()
+  await fs.writeFile(path.join(root, 'public/icons/badge-96.png'), badge)
 }
 
 main().catch((error) => {

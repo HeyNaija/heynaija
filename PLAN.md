@@ -52,7 +52,7 @@ moderation outcomes), in the app and by email; rate limits; light, dark and syst
 | Frontend | **Next.js 16** (App Router, Cache Components), server-rendered, meant to work without JavaScript for core reading and posting. **Not true at present:** streamed pages stay on their loading skeleton without JavaScript (found by the e2e tests, 15 October 2026; [docs/e2e.md](docs/e2e.md)) | Fast on low-end Android and slow networks |
 | Backend | **NestJS + Fastify** | A separate API with its own tests and deploys |
 | Media storage | **S3-compatible**: MinIO locally, **Cloudflare R2** in production | No download fees on R2; same code everywhere |
-| Queue/cache | **Redis with BullMQ** for background jobs: post-image processing and an hourly media sweep, link previews, and notification emails (a sweep every minute, one job per member), run inside the API process. Next: push notifications | Add only when measured or needed |
+| Queue/cache | **Redis with BullMQ** for background jobs: post-image processing and an hourly media sweep, link previews, and notification emails (a sweep every minute, one job per member) and push notifications (a sweep every 10 seconds, [ADR 0010](docs/adr/0010-push-notifications.md)), run inside the API process | Add only when measured or needed |
 | Deploy | **Docker Compose on one VPS** (netcup recommended, or Contabo) behind Cloudflare; staging at `staging.heynaija.ng`; email through **Resend** | See §7 |
 | Governance | Open charter, provisional steering group, legal review before any ownership claim | Publishing code does not make a project community-owned |
 | Federation | **None in Phase 1.** Portability through data export and open source instead | See ADR 0002 |

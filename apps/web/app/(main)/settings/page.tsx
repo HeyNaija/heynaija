@@ -7,8 +7,9 @@ import { ForgetFlowParam } from '@/app/ui/forget-flow'
 import { IdentityBadge } from '@/app/ui/identity-badge'
 import { NotificationPreferencesForm } from '@/app/ui/notification-preferences-form'
 import { ProfileForm } from '@/app/ui/profile-form'
+import { PushSwitch } from '@/app/ui/push-switch'
 import { ThemeSwitch } from '@/app/ui/theme-switch'
-import { type GovernanceStatus, getGovernanceStatus, getNotificationPreferences, getViewer } from '@/lib/api'
+import { type GovernanceStatus, getGovernanceStatus, getNotificationPreferences, getPushKey, getViewer } from '@/lib/api'
 import { getFlow } from '@/lib/kratos'
 
 export const metadata: Metadata = { title: 'Settings' }
@@ -47,9 +48,9 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
       <section className="content-panel settings-section" aria-labelledby="notifications-heading">
         <div>
           <h2 id="notifications-heading" className="section-title">Notifications</h2>
-          <p className="field-hint mt-1">Choose which activity from other members notifies you, and whether you get an email too.</p>
+          <p className="field-hint mt-1">Choose which activity from other members notifies you, and how it reaches you.</p>
         </div>
-        <Suspense fallback={<div aria-busy="true" className="skeleton h-[35rem]" />}>
+        <Suspense fallback={<div aria-busy="true" className="skeleton h-[46rem]" />}>
           <NotificationSettings />
         </Suspense>
       </section>
@@ -110,11 +111,17 @@ async function NameAndBio() {
 async function NotificationSettings() {
   const viewer = await getViewer()
   if (viewer.state !== 'member') return null
-  const preferences = await getNotificationPreferences()
+  const [preferences, pushKey] = await Promise.all([getNotificationPreferences(), getPushKey()])
   if (!preferences) {
     return <p role="alert" className="notice">Your notification settings could not be loaded just now. Try again in a few minutes.</p>
   }
-  return <NotificationPreferencesForm preferences={preferences} />
+  return (
+    <>
+      {/* Only where the server can push (it has VAPID keys). */}
+      {pushKey ? <PushSwitch publicKey={pushKey} /> : null}
+      <NotificationPreferencesForm preferences={preferences} />
+    </>
+  )
 }
 
 /** The member's age on record, in words. Unknown is said plainly, never shown as adult. */
