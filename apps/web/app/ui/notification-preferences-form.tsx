@@ -22,7 +22,8 @@ export function NotificationPreferencesForm({ preferences }: { preferences: Noti
       </fieldset>
       <p id="email-hint" className="field-hint">
         One email with everything new, at most about twice an hour and never for what you have already read in
-        HeyNaija, to the address you sign in with. Every email has a link that turns this off.
+        HeyNaija or had as a push notification, to the address you sign in with. Every email has a link that turns
+        this off.
       </p>
 
       <fieldset className="settings-checks">
@@ -37,8 +38,9 @@ export function NotificationPreferencesForm({ preferences }: { preferences: Noti
         ))}
       </fieldset>
       <p className="field-hint">
-        Changes apply to new activity, in HeyNaija and by email. Safety and moderation notices, about your posts,
-        your account and the reports you make, are always sent in HeyNaija, and by email while email is on.
+        Changes apply to new activity, in HeyNaija, by email and as push notifications. Safety and moderation
+        notices, about your posts, your account and the reports you make, are always sent in HeyNaija, and by email
+        or push while those are on.
       </p>
 
       <div className="flex items-center gap-3">

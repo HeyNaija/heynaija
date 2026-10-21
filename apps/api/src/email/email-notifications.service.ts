@@ -25,6 +25,11 @@ export type EmailSettings = {
   delayS: number
   /** At least this long passes between two emails to one member. */
   gapS: number
+  /**
+   * Push notifications are on (docs/adr/0011): a notification is not emailed
+   * until the push side has dealt with it, and not at all if it was pushed.
+   */
+  waitForPush: boolean
 }
 
 // A notification that nothing has emailed within a day is not worth emailing
@@ -46,7 +51,8 @@ const LISTED_MAX = 100
  * decided at that moment, from what is true then: a member who has since turned
  * email off, been suspended or read the notification in the app is not emailed
  * about it, and neither is anything whose actor has been blocked or whose post
- * has been taken down.
+ * has been taken down, or that one of the member's browsers took as a push
+ * notification.
  */
 @Injectable()
 export class EmailNotificationsService {
@@ -88,13 +94,14 @@ export class EmailNotificationsService {
    * enough and who has not been emailed too recently. Returns how many it asked for.
    */
   async sweep(): Promise<number> {
-    // Settled so it is never looked at again: read in the app already, too old,
-    // or for a member who is suspended or has email off. Turning email on later
-    // does not bring these back.
+    // Settled so it is never looked at again: read in the app already, pushed,
+    // too old, or for a member who is suspended or has email off. Turning email on
+    // later does not bring these back.
     await this.db.execute(sql`
       update notifications n set email_settled_at = now()
       where n.email_settled_at is null
         and (n.read_at is not null
+          or n.pushed_at is not null
           or n.created_at < now() - make_interval(secs => ${STALE_AFTER_S})
           or exists(select 1 from members m where m.id = n.recipient_id and (not m.active or not m.email_notifications)))`)
 
@@ -102,7 +109,7 @@ export class EmailNotificationsService {
       select n.recipient_id as id
       from notifications n
       join members m on m.id = n.recipient_id
-      where n.email_settled_at is null and m.active and m.email_notifications
+      where n.email_settled_at is null and ${this.pushDone()} and m.active and m.email_notifications
         and (m.last_notification_email_at is null
           or m.last_notification_email_at <= now() - make_interval(secs => ${this.settings.gapS}))
       group by n.recipient_id
@@ -119,9 +126,11 @@ export class EmailNotificationsService {
    * notifications waiting, so that the job is retried.
    */
   async sendDigest(memberId: string): Promise<boolean> {
+    // Only what the push side is done with: anything still to be pushed waits for
+    // the next email, so it is never both pushed and emailed.
     const { rows: waiting } = await this.db.execute<{ id: string }>(sql`
-      select id from notifications where recipient_id = ${memberId} and email_settled_at is null
-      order by created_at desc limit ${PENDING_MAX}`)
+      select n.id from notifications n where n.recipient_id = ${memberId} and n.email_settled_at is null and ${this.pushDone()}
+      order by n.created_at desc limit ${PENDING_MAX}`)
     if (!waiting.length) return false
     const ids = waiting.map((r) => r.id)
     const settle = () =>
@@ -167,11 +176,16 @@ export class EmailNotificationsService {
     return true
   }
 
+  /** Whether the push side has dealt with notification `n`, when there is a push side. */
+  private pushDone() {
+    return this.settings.waitForPush ? sql`n.push_settled_at is not null` : sql`true`
+  }
+
   /**
    * Which of the waiting notifications are still worth an email, newest first:
    * what the member would still be shown in the app (not from someone blocked,
    * muted or suspended, not about a post taken down or a like taken back) that
-   * they have not read and have not since opted out of.
+   * they have not read, have not since opted out of and were not pushed.
    */
   private async eligible(memberId: string, ids: string[]): Promise<{ items: DigestItem[]; total: number }> {
     const optional = sql.join(OPTIONAL_NOTIFICATION_KINDS.map((k) => sql`${k}`), sql`, `)
@@ -190,7 +204,7 @@ export class EmailNotificationsService {
         case when n.kind in (${excerptKinds}) then p.text end as post_text,
         c.name as community_name, count(*) over ()::int as total
       ${joins}
-      where ${visible(memberId)} and n.id in (${waiting}) and n.read_at is null
+      where ${visible(memberId)} and n.id in (${waiting}) and n.read_at is null and n.pushed_at is null
         and (n.kind not in (${optional})
           or not exists(select 1 from notification_opt_outs o where o.member_id = n.recipient_id and o.kind = n.kind))
       order by n.created_at desc, n.id desc

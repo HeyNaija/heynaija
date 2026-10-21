@@ -799,7 +799,7 @@
         "in-app-notifications",
         "notification-preferences"
       ],
-      "notes": "A background job (BullMQ) looks every minute for members whose oldest waiting notification is five minutes old and who were not emailed in the last 30 minutes, and sends each one email for everything waiting; likes of one post, reposts and follows are rolled into one line. What is emailed is decided when it is sent: nothing the member has read in the app, opted out of, blocked, muted, or that was taken down; nothing for suspended members or notifications over a day old; moderation notices are always emailed while email is on, in general words with no post text or reason. One switch in Settings (members.email_notifications), on for members who join from now on and off for everyone who joined before (migration 0021). Every email has a signed one-click unsubscribe link (body and List-Unsubscribe headers, RFC 8058) that turns email off and nothing else. The address is read from Kratos's admin API when sending and is not copied; mail goes through the SMTP account Kratos already uses (Resend, Mailpit locally). Delivery through Resend, and the inbox placement of these emails, have not been checked on staging. The data export (format 7) includes the switch."
+      "notes": "A background job (BullMQ) looks every minute for members whose oldest waiting notification is five minutes old and who were not emailed in the last 30 minutes, and sends each one email for everything waiting; likes of one post, reposts and follows are rolled into one line. What is emailed is decided when it is sent: nothing the member has read in the app, opted out of, blocked, muted, that was taken down, or that a browser took as a push notification (push-notifications); nothing for suspended members or notifications over a day old; moderation notices are always emailed while email is on, in general words with no post text or reason. One switch in Settings (members.email_notifications), on for members who join from now on and off for everyone who joined before (migration 0021). Every email has a signed one-click unsubscribe link (body and List-Unsubscribe headers, RFC 8058) that turns email off and nothing else. The address is read from Kratos's admin API when sending and is not copied; mail goes through the SMTP account Kratos already uses (Resend, Mailpit locally). Delivery through Resend, and the inbox placement of these emails, have not been checked on staging. The data export (format 7) includes the switch."
     },
     {
       "id": "push-notifications",
@@ -807,17 +807,32 @@
       "description": "Optionally receive social activity as push notifications outside the app.",
       "category": "discovery",
       "priority": "P1",
-      "status": "planned",
+      "status": "implemented",
       "availability": "not_live",
       "evidence": [
-        "apps/api/src/notifications/notifications.service.ts",
-        "apps/web/app/manifest.ts",
-        "docs/e2e.md"
+        "packages/db/drizzle/0022_push_notifications.sql",
+        "apps/api/src/push/push-notifications.service.ts",
+        "apps/api/src/push/push-queue.ts",
+        "apps/api/src/push/push.controller.ts",
+        "apps/api/src/push/push-sender.ts",
+        "apps/api/src/push/push-message.ts",
+        "apps/web/public/sw.js",
+        "apps/web/app/ui/push-switch.tsx",
+        "apps/web/app/ui/push-check.tsx",
+        "apps/web/app/logout/route.ts",
+        "apps/api/src/push/push-notifications.service.test.ts",
+        "apps/api/src/push/push-sender.test.ts",
+        "apps/web/tests/push.test.mjs",
+        "apps/web/tests/service-worker.test.mjs",
+        "e2e/tests/push-notifications.spec.ts",
+        "docs/adr/0011-push-notifications.md"
       ],
       "dependency": [
-        "notification-preferences"
+        "in-app-notifications",
+        "notification-preferences",
+        "email-notifications"
       ],
-      "notes": "Email notifications are a separate feature (email-notifications); a manifest and icons do not establish push delivery."
+      "notes": "Web Push with VAPID keys of our own (no Firebase account): Settings has a per-browser button that asks the browser's permission and subscribes it; the service worker (public/sw.js) only shows notifications and opens what they are about. A BullMQ job looks every 10 seconds and pushes what is waiting to each of the member's browsers, in the same words as the email digest: replies, mentions and quotes quote the post briefly, likes, reposts and follows are counted in with ones already pushed and replace them on the device (one tag per post), more than three things at once are one push that says how many, and moderation notices are in general words. What is pushed is decided when it is sent, with the same rules as email: nothing read, opted out of, blocked, muted, taken down, for suspended members, or over ten minutes old. Email waits until the push side has dealt with a notification and leaves out what a browser took (notifications.pushed_at). A browser has one subscription; it moves to whoever turns push on in it, a page load stops one that belongs to another member, and signing out removes it. Subscriptions may only point at Google's, Mozilla's, Apple's or Microsoft's push services. iPhones and iPads get it only from the Home Screen (iOS 16.4+), and Settings says so. The data export (format 8) lists the browsers, without their addresses. The end-to-end tests use a stand-in push service; delivery through the real push services, and how the notifications look on Android, iOS and desktop, have not been checked on staging."
     },
     {
       "id": "accessible-interface",

@@ -27,6 +27,7 @@ import { Logo } from './logo'
 import { Menu } from './menu'
 import { NavLink } from './nav-link'
 import { NewPostLink } from './new-post-link'
+import { PushCheck } from './push-check'
 import { ThemeSwitch } from './theme-switch'
 import { TreasuryPreview } from './treasury-preview'
 import { UnreadBadge } from './unread-badge'
@@ -280,6 +281,7 @@ async function UserMenu() {
     >
       {handle ? (
         <>
+          {viewer.state === 'member' ? <PushCheck memberId={viewer.me.id} /> : null}
           <Link href={`/u/${handle}`} className="menu-item">
             <UserIcon size={18} />
             Profile

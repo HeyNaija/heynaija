@@ -62,3 +62,30 @@ test('the email timings are numbers of seconds within sensible limits', () => {
   assert.throws(() => loadEnv({ ...base, EMAIL_DIGEST_DELAY_S: '-1' }))
   assert.throws(() => loadEnv({ ...base, EMAIL_DIGEST_GAP_S: 'soon' }))
 })
+
+const vapid = { PUSH_VAPID_PUBLIC_KEY: `B${'p'.repeat(86)}`, PUSH_VAPID_PRIVATE_KEY: 'k'.repeat(43) }
+
+test('push is off without VAPID keys, also when they are given empty, and needs both halves', () => {
+  const off = loadEnv(base)
+  assert.equal(off.PUSH_VAPID_PUBLIC_KEY, undefined)
+  assert.equal(off.PUSH_SWEEP_EVERY_S, 10)
+  assert.equal(off.PUSH_ALLOW_LOOPBACK, false)
+  // What compose passes when the server's .env has no keys.
+  assert.equal(loadEnv({ ...base, PUSH_VAPID_PUBLIC_KEY: '', PUSH_VAPID_PRIVATE_KEY: '' }).PUSH_VAPID_PUBLIC_KEY, undefined)
+  assert.throws(() => loadEnv({ ...base, PUSH_VAPID_PUBLIC_KEY: vapid.PUSH_VAPID_PUBLIC_KEY }), /set both/)
+  assert.throws(() => loadEnv({ ...base, PUSH_VAPID_PRIVATE_KEY: vapid.PUSH_VAPID_PRIVATE_KEY }), /set both/)
+  assert.throws(() => loadEnv({ ...base, ...vapid, PUSH_VAPID_PRIVATE_KEY: 'too short', WEB_PUBLIC_URL: 'https://heynaija.ng' }))
+})
+
+test('push services need a mailto: or https: contact, which an https site address is', () => {
+  assert.throws(() => loadEnv({ ...base, ...vapid }), /PUSH_CONTACT is required/)
+  assert.equal(loadEnv({ ...base, ...vapid, WEB_PUBLIC_URL: 'https://heynaija.ng' }).PUSH_CONTACT, undefined)
+  assert.equal(loadEnv({ ...base, ...vapid, PUSH_CONTACT: 'mailto:no-reply@heynaija.test' }).PUSH_CONTACT, 'mailto:no-reply@heynaija.test')
+  assert.throws(() => loadEnv({ ...base, ...vapid, PUSH_CONTACT: 'http://heynaija.test' }))
+})
+
+test('the stand-in push service on this machine is only allowed while the site is on this machine too', () => {
+  assert.equal(loadEnv({ ...base, PUSH_ALLOW_LOOPBACK: 'true' }).PUSH_ALLOW_LOOPBACK, true)
+  assert.throws(() => loadEnv({ ...base, PUSH_ALLOW_LOOPBACK: 'true', WEB_PUBLIC_URL: 'https://staging.heynaija.ng' }), /only for a WEB_PUBLIC_URL on 127\.0\.0\.1/)
+  assert.throws(() => loadEnv({ ...base, PUSH_ALLOW_LOOPBACK: 'yes' }))
+})

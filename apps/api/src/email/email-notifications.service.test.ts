@@ -18,6 +18,7 @@ const settings: EmailSettings = {
   unsubscribeKey: unsubscribeKey('s'.repeat(32)),
   delayS: 300,
   gapS: 1800,
+  waitForPush: false,
 }
 
 class Jobs implements EmailJobs {
@@ -440,4 +441,56 @@ test('a link that is not one of ours changes nothing', async () => {
 test('the unsubscribe link is on the web app’s own address, which the web app passes to the API', () => {
   const url = email.unsubscribeUrl(ada)
   assert.ok(url.startsWith(`https://heynaija.test/api/v1/email/unsubscribe/${ada}.`))
+})
+
+// With push on, a notification is emailed only once the push side is done with
+// it, and not at all if a browser took it (docs/adr/0011).
+test('with push on, email waits for the push side, and leaves out whatever was pushed', async () => {
+  const withPush = new EmailNotificationsService(db, jobs, { ...settings, waitForPush: true }, outbox, directory)
+  const send = async () => {
+    jobs.queued = []
+    await withPush.sweep()
+    for (const id of [...jobs.queued]) await withPush.sendDigest(id)
+  }
+  const { id: post } = await postsService.create(ada, 'Who is coming to the meetup?')
+  const { id: reply } = await postsService.create(bayo, 'Count me in', { replyTo: post })
+  await postsService.like(chi, post)
+  await age(ada)
+
+  // Old enough to email, but the push side has not looked at either yet.
+  await send()
+  assert.equal(outbox.sent.length, 0)
+  assert.deepEqual(jobs.queued, [])
+
+  // It pushed the reply to a browser, and found nothing to push the like to.
+  await db.execute(sql`update notifications set push_settled_at = now(), pushed_at = case when post_id = ${reply} then now() end
+    where recipient_id = ${ada}`)
+  await send()
+  assert.equal(outbox.sent.length, 1)
+  assert.equal(outbox.sent[0]!.subject, '@chi liked your post')
+  assert.doesNotMatch(outbox.sent[0]!.text, /Count me in|replied/)
+  assert.deepEqual(await settled(ada), [true, true])
+})
+
+test('with push on, a member with only pushed notifications gets no email at all', async () => {
+  const withPush = new EmailNotificationsService(db, jobs, { ...settings, waitForPush: true }, outbox, directory)
+  const { id: post } = await postsService.create(ada, 'Suya spots in Abuja?')
+  await postsService.create(bayo, 'Wuse market, evenings', { replyTo: post })
+  await age(ada)
+  await db.execute(sql`update notifications set push_settled_at = now(), pushed_at = now() where recipient_id = ${ada}`)
+  jobs.queued = []
+  await withPush.sweep()
+  assert.deepEqual(jobs.queued, [])
+  // A digest asked for anyway (queued before the push went out) sends nothing.
+  assert.equal(await withPush.sendDigest(ada), false)
+  assert.equal(outbox.sent.length, 0)
+  assert.deepEqual(await settled(ada), [true])
+})
+
+test('with push off, email does not wait for a push side that is not there', async () => {
+  const { id: post } = await postsService.create(ada, 'Owambe this weekend')
+  await postsService.create(bayo, 'I will bring the chin chin', { replyTo: post })
+  await age(ada)
+  await deliver()
+  assert.equal(outbox.sent.length, 1)
 })

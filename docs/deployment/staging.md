@@ -266,7 +266,15 @@ registry rejects capitals, and the organization is `HeyNaija`), the R2 settings
 (`S3_*`, with your account ID in `S3_ENDPOINT`),
 `SMTP_CONNECTION_URI=smtps://resend:<API key>@smtp.resend.com:465/`,
 `SMTP_FROM_ADDRESS`, and `BACKUP_AGE_RECIPIENT` (step 6). The rest is already right
-for staging. Keep a copy of the whole file in the password manager.
+for staging, including the push notification keys `gen-env.sh` made (`PUSH_VAPID_*`).
+Keep a copy of the whole file in the password manager.
+
+A server set up before push notifications existed has no `PUSH_VAPID_*` lines. Add
+them empty and let `gen-env.sh` fill them, then deploy again:
+
+```bash
+printf 'PUSH_VAPID_PUBLIC_KEY=\nPUSH_VAPID_PRIVATE_KEY=\n' >> .env && ./gen-env.sh
+```
 
 The scripts load `.env` as shell, so a placeholder left in it breaks them with an
 error like `ACCOUNT_ID: No such file or directory`. This must print nothing:
@@ -358,6 +366,13 @@ existing account.
       about ten minutes (Resend's logs show it). Its link turns email off again.
       They need the same `SMTP_*` settings as the sign-in codes; the API reaches
       Kratos's admin API on the private network for the address.
+- [ ] Push notifications ([ADR 0011](../adr/0011-push-notifications.md)): on an
+      Android phone, in Chrome, press **Turn on push notifications** in Settings and
+      allow them. Have another member reply to one of your posts: the notification
+      arrives within seconds and tapping it opens the reply; no email follows for it.
+      A second like on one post replaces the first like's notification. On an iPhone,
+      add HeyNaija to the Home Screen, open it from there and do the same. Signing
+      out stops them.
 - [ ] If Google sign-in is on ([google-sign-in.md](google-sign-in.md)): sign in
       with Google, and connect Google to an existing account in Settings.
 - [ ] A profile photo and a post with images work: the checks in

@@ -400,6 +400,13 @@ export async function getNotificationPreferences(): Promise<NotificationPreferen
   return res.json()
 }
 
+/** The key browsers subscribe to push notifications with, or null when this server does not push. */
+export async function getPushKey(): Promise<string | null> {
+  const res = await api('/v1/push/key').catch(() => null)
+  if (!res?.ok) return null
+  return ((await res.json()) as { publicKey: string | null }).publicKey
+}
+
 export type Appeal = { status: 'open' | 'actioned' | 'dismissed'; createdAt: string; resolvedAt: string | null }
 
 /** A suspended member's most recent appeal, if any. */
