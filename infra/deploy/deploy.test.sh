@@ -84,10 +84,12 @@ run_case() {
   printf 'IMAGE_PREFIX=ghcr.io/HeyNaija/heynaija\nBUILD=0\n' > "$DEPLOY_TEST_REPO/infra/deploy/.env"
 
   if [[ -n "$workflow" ]]; then
-    # Run the actual workflow body, substituting only its server checkout path.
+    # Run the actual workflow body, substituting only its server checkout path. The
+    # body ends at its first line indented less, where later jobs may follow.
     awk '
       /^      - name: Deploy / { deploy = 1 }
       deploy && /^        run: \|$/ { body = 1; next }
+      body && $0 != "" && !/^          / { exit }
       body && /^          / {
         if ($0 == "          cd /srv/heynaija") print "cd \"$DEPLOY_TEST_REPO\""
         else { sub(/^          /, ""); print }

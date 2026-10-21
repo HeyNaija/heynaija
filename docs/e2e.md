@@ -90,7 +90,8 @@ Useful variants: `pnpm e2e --ui` (watch tests run), `pnpm e2e feed` (one file),
 ## In CI
 
 The `e2e` job in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs the
-suite on every push and pull request:
+suite on every pull request, and on any branch from **Actions → CI → Run
+workflow** (pushing a branch alone does not run CI):
 
 1. starts the dev stack with Docker Compose (`pnpm infra:env`, `pnpm infra:up`) and
    waits for Kratos and Mailpit;
@@ -102,8 +103,11 @@ suite on every push and pull request:
 On failure it uploads the Playwright report, traces, screenshots and the API, web
 and Compose logs as the `e2e-report` artifact, kept 7 days.
 
-The deploy workflows call CI, so a staging or production deploy also waits for
-this job. A deploy workflow can pass `e2e: false` to skip it.
+The staging deploy calls CI, so it waits for this job; that is the one full run a
+release gets. A pull request from `staging` into `main` skips the suite, and the
+production deploy ships the images staging is running when the code is the same
+([deployment/production.md](deployment/production.md)), calling CI, suite
+included, only when it is not. A deploy workflow can pass `e2e: false` to skip it.
 
 ## Test data
 
