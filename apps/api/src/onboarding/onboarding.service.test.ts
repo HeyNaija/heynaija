@@ -211,7 +211,7 @@ test('members from before the welcome flow are not sent to it; newcomers are, un
   // Someone invited afterwards, seen for the first time by the session guard.
   const newcomer = { id: randomUUID(), handle: 'newcomer' }
   assert.equal(await invites.redeem(await invites.create(), newcomer.id), true)
-  const guard = new SessionGuard({ identityForSession: async () => newcomer }, { WEB_PUBLIC_URL: 'http://127.0.0.1:3000' }, db, invites)
+  const guard = new SessionGuard({ identityForRequest: async () => newcomer }, { WEB_PUBLIC_URL: 'http://127.0.0.1:3000' }, db, invites)
   const req = { method: 'GET', headers: {}, cookies: { hn_session: 'good' } }
   assert.equal(await guard.canActivate({ switchToHttp: () => ({ getRequest: () => req }) } as unknown as ExecutionContext), true)
   assert.equal((await meFor(newcomer.id, newcomer.handle)).onboarded, false)

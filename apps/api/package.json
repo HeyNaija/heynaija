@@ -11,6 +11,7 @@
     "dev": "tsc -p tsconfig.json && (tsc -p tsconfig.json --watch --preserveWatchOutput & node --watch --env-file=../../.env dist/main.js)",
     "test": "pnpm build && ../../infra/scripts/with-test-db.sh node --test --test-concurrency=1 'dist/**/*.test.js'",
     "invite:create": "node --env-file=../../.env dist/cli/create-invite.js",
+    "identity:backfill": "node --env-file=../../.env dist/cli/identity-migrate.js",
     "moderator": "node --env-file=../../.env dist/cli/moderator.js",
     "media:init": "node --env-file=../../.env dist/cli/media-init.js",
     "demo:seed": "node --env-file=../../.env dist/cli/seed-demo.js",

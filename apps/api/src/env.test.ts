@@ -17,6 +17,16 @@ const base = {
 
 const locked = ['NIN_VERIFICATION_ENABLED', 'BINDING_GOVERNANCE_VOTING_ENABLED', 'UNDER_18_ACCOUNTS_ENABLED'] as const
 
+test('auth redirects allow exact HTTPS origins and explicit loopback test issuers only', () => {
+  assert.deepEqual(loadEnv(base).AUTH_EXTERNAL_REDIRECT_ORIGINS, ['https://accounts.google.com'])
+  assert.deepEqual(loadEnv({ ...base, AUTH_EXTERNAL_REDIRECT_ORIGINS: 'https://accounts.google.com,http://127.0.0.1:5099' }).AUTH_EXTERNAL_REDIRECT_ORIGINS,
+    ['https://accounts.google.com', 'http://127.0.0.1:5099'])
+  for (const origin of ['http://evil.test', 'https://accounts.google.com/path', 'https://name:password@accounts.google.com', 'javascript:alert(1)']) {
+    assert.throws(() => loadEnv({ ...base, AUTH_EXTERNAL_REDIRECT_ORIGINS: origin }))
+  }
+  assert.throws(() => loadEnv({ ...base, AUTH_EXTERNAL_REDIRECT_ORIGINS: '' }))
+})
+
 test('identity checks, binding votes and under-18 accounts are off by default', () => {
   const env = loadEnv(base)
   for (const name of locked) assert.equal(env[name], false, name)

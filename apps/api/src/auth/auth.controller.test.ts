@@ -11,6 +11,7 @@ import { MembersService } from '../members/members.service.js'
 import { MemoryRateLimiter } from '../rate-limit.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { AuthController } from './auth.controller.js'
+import { KratosLifecycleProvider } from './kratos-lifecycle.provider.js'
 
 const secret = 'w'.repeat(32)
 const unsaved = '00000000-0000-0000-0000-000000000000'
@@ -23,6 +24,7 @@ const env = {
 } as Env
 
 // Only the registration webhooks are exercised, so the services they do not use are left out.
+const lifecycle = new KratosLifecycleProvider()
 const controller = new AuthController(
   invites,
   {} as never,
@@ -30,7 +32,11 @@ const controller = new AuthController(
   new MemoryRateLimiter(),
   env,
   db,
-  {} as never,
+  {
+    invalidateSessionCache: async () => {},
+    registrationCallback: async (_providerId: string, body: unknown) => lifecycle.registration(body),
+    settingsCallback: async (_providerId: string, body: unknown) => lifecycle.settings(body),
+  },
   new MembersService(db),
   new GovernanceService(db, env),
 )

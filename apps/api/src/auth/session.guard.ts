@@ -6,6 +6,8 @@ import {
   HttpException,
   Inject,
   Injectable,
+  Optional,
+  ConflictException,
   UnauthorizedException,
 } from '@nestjs/common'
 import type {} from '@fastify/cookie' // request.cookies typings
@@ -14,10 +16,12 @@ import type { FastifyRequest } from 'fastify'
 import type { Env } from '../env.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { DB, ENV } from '../tokens.js'
-import { type Identity, KratosService, SESSION_COOKIE } from './kratos.service.js'
+import { AuthService, type MemberIdentity } from './auth.service.js'
+import { IdentityMappingService } from './identity-mapping.service.js'
+import { MembersService } from '../members/members.service.js'
 
-export type AuthedRequest = FastifyRequest & { member: Identity }
-export type MaybeAuthedRequest = FastifyRequest & { member?: Identity }
+export type AuthedRequest = FastifyRequest & { member: MemberIdentity }
+export type MaybeAuthedRequest = FastifyRequest & { member?: MemberIdentity }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
@@ -30,10 +34,12 @@ export class SessionGuard implements CanActivate {
   protected readonly requireActive: boolean = true
 
   constructor(
-    @Inject(KratosService) private readonly kratos: Pick<KratosService, 'identityForSession'>,
+    @Inject(AuthService) private readonly auth: Pick<AuthService, 'identityForRequest'>,
     @Inject(ENV) private readonly env: Pick<Env, 'WEB_PUBLIC_URL'>,
     @Inject(DB) private readonly db: Db,
     @Inject(InvitesService) private readonly invites: Pick<InvitesService, 'hasRedeemed'>,
+    @Optional() @Inject(IdentityMappingService) private readonly mappings?: IdentityMappingService,
+    @Optional() @Inject(MembersService) private readonly memberPolicy?: Pick<MembersService, 'syncHandle'>,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -45,8 +51,10 @@ export class SessionGuard implements CanActivate {
       throw new ForbiddenException('cross-origin write rejected')
     }
 
-    const cookie = req.cookies[SESSION_COOKIE]
-    const identity = cookie ? await this.kratos.identityForSession(cookie) : null
+    const identity = await this.auth.identityForRequest({
+      cookieHeader: req.headers.cookie,
+      authorizationHeader: req.headers.authorization,
+    })
     if (!identity) throw new UnauthorizedException('sign in required')
 
     // A plain primary-key read on every request: `active` is never cached, so a
@@ -67,6 +75,7 @@ export class SessionGuard implements CanActivate {
         .values({ id: identity.id, handle: identity.handle, lastSeenAt: new Date() })
         .onConflictDoUpdate({ target: members.id, set: { lastSeenAt: new Date() } })
         .returning({ active: members.active, handle: members.handle, lastSeenAt: members.lastSeenAt })
+      if (member && this.mappings) await this.mappings.ensure('kratos', identity.id, identity.id)
     } else if (
       member.handle !== identity.handle ||
       !member.lastSeenAt ||
@@ -74,9 +83,16 @@ export class SessionGuard implements CanActivate {
     ) {
       // Writing last_seen_at on every call meant 3–5 row updates per page view;
       // "last seen" only needs to be right to within a few minutes.
-      await this.db
-        .update(members)
-        .set({ handle: identity.handle, lastSeenAt: new Date() })
+      if (member.handle !== identity.handle && this.memberPolicy) {
+        try {
+          await this.memberPolicy.syncHandle(identity.id, identity.handle)
+        } catch (error) {
+          if (error instanceof Error && error.message === 'handle_unavailable') throw new ConflictException('handle_unavailable')
+          throw error
+        }
+      }
+      await this.db.update(members)
+        .set({ ...(this.memberPolicy ? {} : { handle: identity.handle }), lastSeenAt: new Date() })
         .where(eq(members.id, identity.id))
     }
     if (!member) throw new ForbiddenException('account_inactive')

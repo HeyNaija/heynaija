@@ -27,6 +27,7 @@
     "e2e:google": "pnpm --filter @heynaija/e2e e2e:google",
     "invite:create": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api invite:create",
     "db:seed": "pnpm --filter @heynaija/db seed",
+    "identity:backfill": "pnpm --silent --filter @heynaija/db build && pnpm --silent --filter @heynaija/api build && pnpm --filter @heynaija/api identity:backfill",
     "mod:grant": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api moderator grant",
     "mod:revoke": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api moderator revoke",
     "media:init": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api media:init",

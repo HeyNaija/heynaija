@@ -72,7 +72,9 @@ jobs:
   # Browser end-to-end tests (docs/e2e.md): the dev stack from Docker Compose, a
   # production build of the API and web app on this runner, Playwright in Chromium.
   e2e:
-    if: inputs.e2e != false
+    # Always run when CI is called by a deploy workflow; for pull requests the
+    # staging branch is the integration gate. Other PRs keep the faster checks.
+    if: (github.event_name != 'workflow_call' || inputs.e2e) && (github.event_name != 'pull_request' || github.base_ref == 'staging')
     runs-on: ubuntu-latest
     # Setting up the stack and the build take several minutes, and the suite (about 150
     # tests, every one signing up its own members) runs on one worker, so it sat close

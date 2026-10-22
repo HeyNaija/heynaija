@@ -21,6 +21,14 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1),
   // Ory Kratos public API, reached server-to-server to validate sessions.
   KRATOS_PUBLIC_URL: z.url().transform((u) => u.replace(/\/$/, '')),
+  // Exact browser authorization origins, never arbitrary provider redirect URLs.
+  AUTH_EXTERNAL_REDIRECT_ORIGINS: z.string().default('https://accounts.google.com')
+    .transform((value) => value.split(',').map((item) => item.trim().replace(/\/$/, '')).filter(Boolean))
+    .pipe(z.array(z.url().refine((value) => {
+      const url = new URL(value)
+      return value === url.origin && (url.protocol === 'https:' ||
+        (url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)))
+    }, 'expected an HTTPS origin (HTTP is allowed only for loopback test issuers)')).min(1, 'at least one external auth origin is required')),
   // Shared secret Kratos presents when it calls our registration webhook.
   KRATOS_WEBHOOK_SECRET: z.string().min(32),
   // Origin browsers use for the web app; the only origin allowed to make writes.

@@ -1,7 +1,16 @@
 import { createDb } from '@heynaija/db'
 import { Controller, Get, Module } from '@nestjs/common'
+import { AuthFlowsController } from './auth/auth-flows.controller.js'
+import { AUTH_DEFAULT_PROVIDER } from './auth/auth-flow.provider.js'
+import { KratosAccountProvider } from './auth/kratos-account.provider.js'
+import { KratosFlowProvider } from './auth/kratos-flow.provider.js'
+import { KratosLifecycleProvider } from './auth/kratos-lifecycle.provider.js'
 import { AuthController } from './auth/auth.controller.js'
+import { AUTH_SESSION_PROVIDERS, type AuthRequest } from './auth/auth-session.provider.js'
+import { AuthService } from './auth/auth.service.js'
+import { KratosSessionProvider } from './auth/kratos-session.provider.js'
 import { KratosService } from './auth/kratos.service.js'
+import { IdentityMappingService } from './auth/identity-mapping.service.js'
 import { RedisSessionCache, SESSION_CACHE } from './auth/session-cache.js'
 import { OptionalSessionGuard, SessionGuard, SuspendedAllowedGuard } from './auth/session.guard.js'
 import { CommunitiesController } from './communities/communities.controller.js'
@@ -53,12 +62,35 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController],
+  controllers: [AuthFlowsController, HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
     { provide: SESSION_CACHE, useClass: RedisSessionCache },
     KratosService,
+    // Kratos is the only enabled provider; its subjects resolve through the
+    // application mapping with a compatibility fallback until cutover.
+    KratosSessionProvider,
+    KratosFlowProvider,
+    KratosAccountProvider,
+    KratosLifecycleProvider,
+    IdentityMappingService,
+    { provide: AUTH_DEFAULT_PROVIDER, useValue: 'kratos' },
+    {
+      provide: AUTH_SESSION_PROVIDERS,
+      useFactory: (kratos: KratosSessionProvider, flows: KratosFlowProvider, account: KratosAccountProvider, lifecycle: KratosLifecycleProvider) => ({
+        kratos: {
+          hasCredentials: (request: AuthRequest) => kratos.hasCredentials(request),
+          authenticate: (request: AuthRequest) => kratos.authenticate(request),
+          invalidateSessionCache: (request: AuthRequest) => kratos.invalidateSessionCache(request),
+          account,
+          flows,
+          lifecycle,
+        },
+      }),
+      inject: [KratosSessionProvider, KratosFlowProvider, KratosAccountProvider, KratosLifecycleProvider],
+    },
+    AuthService,
     SessionGuard,
     OptionalSessionGuard,
     SuspendedAllowedGuard,

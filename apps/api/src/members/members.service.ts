@@ -147,11 +147,36 @@ export class MembersService {
    * than `memberId` (null for someone signing up), so it is not theirs to take.
    */
   async handleHeld(handle: string, memberId: string | null): Promise<boolean> {
+    const [owner] = await this.db
+      .select({ id: members.id })
+      .from(members)
+      .where(memberId ? and(eq(members.handle, handle), ne(members.id, memberId)) : eq(members.handle, handle))
+      .limit(1)
+    if (owner) return true
     const [hold] = await this.db
       .select({ memberId: releasedHandles.memberId })
       .from(releasedHandles)
       .where(and(eq(releasedHandles.handle, handle), held))
     return Boolean(hold && hold.memberId !== memberId)
+  }
+
+  /** Current owner, if the handle is presently assigned rather than merely held. */
+  async currentHandleOwner(handle: string): Promise<string | null> {
+    const [owner] = await this.db
+      .select({ id: members.id })
+      .from(members)
+      .where(eq(members.handle, handle))
+      .limit(1)
+    return owner?.id ?? null
+  }
+
+  /** Applies a provider-reported handle under application ownership policy. */
+  async syncHandle(memberId: string, handle: string): Promise<void> {
+    const [member] = await this.db.select({ handle: members.handle }).from(members).where(eq(members.id, memberId))
+    if (!member || member.handle === handle) return
+    if (await this.handleHeld(handle, memberId)) throw new Error('handle_unavailable')
+    await this.holdHandle(memberId, member.handle)
+    await this.db.update(members).set({ handle }).where(eq(members.id, memberId))
   }
 
   /**

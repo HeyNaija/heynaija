@@ -1,5 +1,31 @@
 # End-to-end tests: real browsers against the local stack
 
+## Frontend auth facade checks (fixture services)
+
+`pnpm --filter @heynaija/e2e e2e:auth-facade` runs the separate
+`auth-facade.config.ts` suite. It builds the API, then starts Next.js on port 3307,
+a fixture Kratos HTTP server on port 4407 and a minimal Nest application on port
+4408 using the real auth flow controller/service/adapter. The full application
+stack and Kratos/Postgres are not required.
+Chromium and its Linux dependencies must be installed. These ports must be free;
+the suite does not reuse existing services.
+
+The checks cover login flow redirects and form submission, CSRF-cookie forwarding,
+reauthentication, invite/age-cookie navigation into signup, verification/error
+pages, settings email-confirmation state, private session-cookie forwarding and
+logout redirects/cache invalidation. They exercise the frontend integration with
+controlled provider responses. They do not validate real email delivery, token
+validation, Google OAuth or Kratos policy enforcement; the live-stack journeys
+below remain the evidence for those behaviours.
+
+For live Google-issuer tests, the API must allow the fixture authorization origin:
+`AUTH_EXTERNAL_REDIRECT_ORIGINS=https://accounts.google.com,http://127.0.0.1:5099`.
+Playwright supplies this when it starts the API. If reusing a manually started API,
+set it there and restart first. Normal deployments default to Google's HTTPS origin
+only; the callback still goes directly through the existing Kratos proxy.
+
+## Live-stack setup
+
 Playwright drives Chromium through the same pages members use, against the dev
 stack on this machine: Next.js on :3000, the API on :4000, Kratos, Postgres,
 Redis, MinIO and Mailpit from `pnpm infra:up`. Everything is in [`e2e/`](../e2e).

@@ -4,6 +4,12 @@
 architecture sections of PLAN.md (§0, §2, §3, §5, §6 PDS parts, §8 Phase 0) ·
 **Amended by:** ADR 0003 (no passwords)
 
+**Evolution:** [ADR 0008](0008-detachable-authentication.md) defines an
+application-owned authentication boundary with Kratos as its first provider.
+Session lookup and account journeys now use the application boundary. Kratos
+remains the first implementation, including its renderer, OAuth callbacks and
+registration/settings policy hooks. Provider migration remains later work.
+
 ## Decision
 
 heynaija is a conventional web application: Next.js, a NestJS API and PostgreSQL

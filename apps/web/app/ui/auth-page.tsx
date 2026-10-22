@@ -1,4 +1,7 @@
 import { type ReactNode, Suspense } from 'react'
+import { linkClass } from '@/lib/auth/link-class'
+
+export { linkClass }
 
 /** Shared frame for the account pages. The form streams in; the frame is static. */
 export function AuthPage({
@@ -31,5 +34,3 @@ export function AuthPage({
     </div>
   )
 }
-
-export const linkClass = 'font-semibold text-accent-strong underline-offset-4 hover:underline'

@@ -6,6 +6,7 @@
   "description": "Playwright end-to-end tests against the local dev stack. See docs/e2e.md.",
   "scripts": {
     "e2e": "playwright test",
+    "e2e:auth-facade": "pnpm --filter @heynaija/db build && pnpm --filter @heynaija/api build && playwright test --config auth-facade.config.ts",
     "e2e:google": "playwright test --project=google --project=google-mobile --no-deps --workers=1",
     "clean": "node --env-file-if-exists=../.env --experimental-strip-types lib/clean-cli.ts",
     "typecheck": "tsc --noEmit"

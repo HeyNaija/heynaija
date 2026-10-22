@@ -21,6 +21,7 @@ x-api-env: &api-env
   DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
   REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
   KRATOS_PUBLIC_URL: http://kratos:4433
+  AUTH_EXTERNAL_REDIRECT_ORIGINS: ${AUTH_EXTERNAL_REDIRECT_ORIGINS:-https://accounts.google.com}
   # Members' email addresses are kept by Kratos; the API asks its admin API, which
   # is reachable only on this private network, when it sends a notification email.
   KRATOS_ADMIN_URL: http://kratos:4434
@@ -93,7 +94,7 @@ services:
   # Applies the app's database migrations, then exits. Runs on every deploy.
   migrate:
     image: ${IMAGE_PREFIX:-heynaija}-api:${RELEASE:-latest}
-    command: ["node", "node_modules/@heynaija/db/dist/migrate.js"]
+    command: ["sh", "-c", "node dist/cli/identity-migrate.js --preflight --allow-remote && node node_modules/@heynaija/db/dist/migrate.js"]
     environment:
       DATABASE_URL: postgres://heynaija:${POSTGRES_PASSWORD}@postgres:5432/heynaija
     depends_on:

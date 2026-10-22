@@ -36,6 +36,7 @@ export default defineConfig({
   webServer: [
     {
       command: 'pnpm dev:api',
+      env: { AUTH_EXTERNAL_REDIRECT_ORIGINS: 'https://accounts.google.com,http://127.0.0.1:5099' },
       cwd: root,
       url: `${env.apiUrl}/healthz`,
       reuseExistingServer: true,

@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { afterEach, mock, test } from 'node:test'
 import { KratosService } from './kratos.service.js'
+import { KratosSessionProvider } from './kratos-session.provider.js'
+import { AuthProviderError } from './auth-session.provider.js'
+import { ServiceUnavailableException } from '@nestjs/common'
 import { RedisSessionCache, type SessionCache, sessionCacheKey } from './session-cache.js'
 
 const KRATOS = 'http://kratos.test'
@@ -79,6 +82,49 @@ test('a corrupt cache entry is ignored and replaced', async () => {
   assert.deepEqual(JSON.parse(cache.entries.get('good')!), identity)
 })
 
+test('cache read and write failures still validate credentials with Kratos', async () => {
+  const fetch = stubKratos()
+  const cache: SessionCache = {
+    get: async () => { throw new Error('cache read failed') },
+    set: async () => { throw new Error('cache write failed') },
+    delete: async () => {},
+  }
+  const adapter = new KratosSessionProvider(service(cache))
+  const result = await adapter.authenticate({ cookieHeader: 'hn_session=good' })
+  assert.equal(result.status, 'authenticated')
+  if (result.status === 'authenticated') assert.deepEqual(result.identity.details, identity)
+  assert.deepEqual(await adapter.authenticate({ cookieHeader: 'hn_session=stale' }), { status: 'anonymous' })
+  assert.equal(fetch.mock.callCount(), 2)
+})
+
+test('cache write failure after a normal miss preserves the validated identity', async () => {
+  const fetch = stubKratos()
+  const cache = new MemoryCache()
+  mock.method(cache, 'set', async () => { throw new Error('cache write failed') })
+  assert.deepEqual(await service(cache).identityForSession('good'), identity)
+  assert.equal(fetch.mock.callCount(), 1)
+})
+
+test('provider unavailability is preserved after a cache read failure', async () => {
+  const cache = new MemoryCache()
+  mock.method(cache, 'get', async () => { throw new Error('cache read failed') })
+  mock.method(globalThis, 'fetch', async () => new Response(null, { status: 503 }))
+  const kratos = service(cache)
+  await assert.rejects(kratos.identityForSession('good'), ServiceUnavailableException)
+  await assert.rejects(new KratosSessionProvider(kratos).authenticate({ cookieHeader: 'hn_session=good' }),
+    (error: unknown) => error instanceof AuthProviderError && error.kind === 'unavailable')
+})
+
+test('the adapter still propagates unrelated lookup errors unchanged', async () => {
+  const failure = new Error('unrelated failure')
+  const adapter = new KratosSessionProvider({
+    identityForSession: async () => { throw failure },
+    forgetSession: async () => {},
+  })
+  await assert.rejects(adapter.authenticate({ cookieHeader: 'hn_session=good' }),
+    (error: unknown) => error === failure)
+})
+
 test('the Redis key is a hash of the cookie, never the cookie itself', () => {
   const key = sessionCacheKey('ory_st_secret-token')
   assert.match(key, /^hn:whoami:[0-9a-f]{64}$/)
@@ -97,6 +143,10 @@ test('the Redis cache round-trips, and fails soft when Redis is down', { skip: !
       await new Promise((r) => setTimeout(r, 20))
     }
     assert.equal(await cache.get(cookie), 'x')
+    await cache.set(cookie, 'short-lived', 1)
+    await new Promise((resolve) => setTimeout(resolve, 1100))
+    assert.equal(await cache.get(cookie), null)
+    await cache.set(cookie, 'x', 30)
     await cache.delete(cookie)
     assert.equal(await cache.get(cookie), null)
   } finally {

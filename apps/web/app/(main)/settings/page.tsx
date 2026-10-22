@@ -2,15 +2,13 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { AvatarUploader } from '@/app/ui/avatar-uploader'
-import { FlowForm } from '@/app/ui/flow-form'
-import { ForgetFlowParam } from '@/app/ui/forget-flow'
 import { IdentityBadge } from '@/app/ui/identity-badge'
 import { NotificationPreferencesForm } from '@/app/ui/notification-preferences-form'
 import { ProfileForm } from '@/app/ui/profile-form'
 import { PushSwitch } from '@/app/ui/push-switch'
 import { ThemeSwitch } from '@/app/ui/theme-switch'
 import { type GovernanceStatus, getGovernanceStatus, getNotificationPreferences, getPushKey, getViewer } from '@/lib/api'
-import { getFlow } from '@/lib/kratos'
+import { AuthForm } from '@/lib/auth/server'
 
 export const metadata: Metadata = { title: 'Settings' }
 
@@ -220,17 +218,5 @@ async function ExportNotice({ searchParams }: Pick<PageProps<'/settings'>, 'sear
 }
 
 async function SettingsForm({ searchParams }: Pick<PageProps<'/settings'>, 'searchParams'>) {
-  const flow = await getFlow('settings', (await searchParams).flow)
-  const shown = Boolean(flow.ui.messages?.length) || flow.ui.nodes.some((node) => node.messages?.length)
-  const confirmingEmail = flow.ui.nodes.some((node) => node.attributes.name === 'email_change_code')
-  return (
-    <>
-      {shown && !confirmingEmail ? <ForgetFlowParam /> : null}
-      <FlowForm
-        flow={flow}
-        sections={{ profile: 'Email and handle', oidc: 'Connected accounts' }}
-        fallback="Your change was not saved. Make it again and press Save."
-      />
-    </>
-  )
+  return <AuthForm kind="settings" flowId={(await searchParams).flow} />
 }

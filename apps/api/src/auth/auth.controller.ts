@@ -10,6 +10,7 @@ import {
   HttpException,
   Inject,
   Logger,
+  Optional,
   Post,
   Req,
   UnauthorizedException,
@@ -28,25 +29,10 @@ import { MembersService } from '../members/members.service.js'
 import { NotificationsService } from '../notifications/notifications.service.js'
 import { RateLimiter, visitor } from '../rate-limit.js'
 import { DB, ENV } from '../tokens.js'
-import { KratosService, SESSION_COOKIE } from './kratos.service.js'
+import { AuthService } from './auth.service.js'
+import { IdentityMappingService } from './identity-mapping.service.js'
 import { type AuthedRequest, SessionGuard } from './session.guard.js'
 
-// identity_id is all zeros in the first hook (the account is not saved yet).
-// adult_declared: the person ticked "I am 18 or older" on /join (the hn_age
-// cookie, read by infra/kratos/invite-check.jsonnet).
-const registrationHook = z.object({
-  identity_id: z.guid(),
-  invite_code: z.string().max(100),
-  handle: z.string().max(100),
-  adult_declared: z.boolean().default(false),
-})
-// previous_handle is the member's handle until this save; the same as `handle`
-// when they changed something else.
-const settingsHook = z.object({
-  identity_id: z.guid(),
-  handle: z.string().max(100),
-  previous_handle: z.string().max(100),
-})
 const inviteCheckBody = z.object({ code: z.string().max(100) })
 
 // The shape Kratos expects from a webhook that aborts a flow; `text` is shown to
@@ -72,6 +58,19 @@ const handleUnavailable = () =>
     400,
   )
 
+const handleTaken = () =>
+  new HttpException(
+    {
+      messages: [
+        {
+          instance_ptr: '#/traits/handle',
+          messages: [{ id: 4000007, text: 'An account with that email or handle already exists.', type: 'error', context: {} }],
+        },
+      ],
+    },
+    400,
+  )
+
 @Controller()
 export class AuthController {
   private readonly logger = new Logger(AuthController.name)
@@ -83,9 +82,10 @@ export class AuthController {
     @Inject(RateLimiter) private readonly limits: RateLimiter,
     @Inject(ENV) private readonly env: Env,
     @Inject(DB) private readonly db: Db,
-    @Inject(KratosService) private readonly kratos: KratosService,
+    @Inject(AuthService) private readonly auth: Pick<AuthService, 'invalidateSessionCache' | 'registrationCallback' | 'settingsCallback'>,
     @Inject(MembersService) private readonly members: MembersService,
     @Inject(GovernanceService) private readonly governance: GovernanceService,
+    @Optional() @Inject(IdentityMappingService) private readonly mappings?: IdentityMappingService,
   ) {}
 
   @Get('v1/me')
@@ -127,8 +127,10 @@ export class AuthController {
   @Post('v1/logout')
   @HttpCode(204)
   async logout(@Req() req: FastifyRequest) {
-    const cookie = req.cookies[SESSION_COOKIE]
-    if (cookie) await this.kratos.forgetSession(cookie)
+    await this.auth.invalidateSessionCache({
+      cookieHeader: req.headers.cookie,
+      authorizationHeader: req.headers.authorization,
+    })
   }
 
   /** Lets /join tell someone their code is wrong before they fill in a signup form. */
@@ -158,16 +160,17 @@ export class AuthController {
   @HttpCode(200)
   async registration(@Headers('x-webhook-secret') secret: string | undefined, @Body() body: unknown) {
     this.assertFromKratos(secret)
-    const parsed = registrationHook.safeParse(body)
-    if (!parsed.success || !(await this.invites.isUsable(parsed.data.invite_code))) {
+    const parsed = await this.auth.registrationCallback('kratos', body)
+    if (!parsed || !(await this.invites.isUsable(parsed.inviteCode))) {
       throw rejectSignup('That invite code is not valid any more. Ask whoever invited you for a new one.')
     }
-    if (await this.members.handleHeld(parsed.data.handle, null)) {
-      throw rejectSignup('That handle is not available. Go back and choose another.')
+    if (await this.members.handleHeld(parsed.handle, null)) {
+      const owner = await this.members.currentHandleOwner(parsed.handle)
+      throw rejectSignup(owner ? 'An account with that email or handle already exists.' : 'That handle is not available. Go back and choose another.')
     }
     // During the beta, accounts are 18+ (a temporary rule; see signupAgeDecision).
     // Checked here, not only on /join, so a signup that skips that page is refused too.
-    if (!signupAgeDecision(parsed.data.adult_declared ? 'adult' : null).allowed) {
+    if (!signupAgeDecision(parsed.adultDeclared ? 'adult' : null).allowed) {
       throw rejectSignup('During the beta, HeyNaija is open to people aged 18 or older. Go back to your invite link and confirm your age to join.')
     }
     return {}
@@ -182,11 +185,17 @@ export class AuthController {
   @HttpCode(200)
   async settings(@Headers('x-webhook-secret') secret: string | undefined, @Body() body: unknown) {
     this.assertFromKratos(secret)
-    const parsed = settingsHook.safeParse(body)
-    if (!parsed.success) throw new BadRequestException()
-    const { identity_id: memberId, handle, previous_handle: previous } = parsed.data
+    const parsed = await this.auth.settingsCallback('kratos', body)
+    if (!parsed) throw new BadRequestException()
+    const memberId = this.mappings
+      ? (await this.mappings.resolve(parsed.providerId, parsed.subject)) ?? parsed.subject
+      : parsed.subject
+    const { handle, previousHandle: previous } = parsed
     if (handle === previous) return {}
-    if (await this.members.handleHeld(handle, memberId)) throw handleUnavailable()
+    if (await this.members.handleHeld(handle, memberId)) {
+      const owner = await this.members.currentHandleOwner(handle)
+      throw owner && owner !== memberId ? handleTaken() : handleUnavailable()
+    }
     await this.members.holdHandle(memberId, previous)
     return {}
   }
@@ -196,13 +205,20 @@ export class AuthController {
   @HttpCode(200)
   async registered(@Headers('x-webhook-secret') secret: string | undefined, @Body() body: unknown) {
     this.assertFromKratos(secret)
-    const parsed = registrationHook.safeParse(body)
+    const parsed = await this.auth.registrationCallback('kratos', body)
     const redeemed =
-      parsed.success && (await this.invites.redeem(parsed.data.invite_code, parsed.data.identity_id))
+      parsed !== null && (await this.invites.redeem(parsed.inviteCode, parsed.subject))
     // Losing a race for the last use leaves an account without membership; the
     // session guard refuses it. Kratos cannot undo the signup at this point.
-    if (!redeemed) this.logger.warn(`signup without a redeemable invite: ${parsed.data?.identity_id}`)
-    if (redeemed && parsed.data.adult_declared) await this.governance.recordAgeDeclaration(parsed.data.identity_id)
+    if (!redeemed) this.logger.warn(`signup without a redeemable invite: ${parsed?.subject}`)
+    if (redeemed && parsed) {
+      // Create the application row after invite admission. The ID remains the
+      // legacy Kratos UUID during compatibility mode; the mapping is what lets
+      // the later cutover stop depending on that coincidence.
+      await this.db.insert(members).values({ id: parsed.subject, handle: parsed.handle }).onConflictDoNothing()
+      if (this.mappings) await this.mappings.ensure(parsed.providerId, parsed.subject, parsed.subject)
+      if (parsed.adultDeclared) await this.governance.recordAgeDeclaration(parsed.subject)
+    }
     return { redeemed }
   }
 }

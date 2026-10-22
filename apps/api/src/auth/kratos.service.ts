@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { Env } from '../env.js'
 import { ENV } from '../tokens.js'
 import { SESSION_CACHE, type SessionCache } from './session-cache.js'
+import { AuthProviderError } from './auth-session.provider.js'
 
 /** Name of the Kratos session cookie (set in infra/kratos/kratos.yml). */
 export const SESSION_COOKIE = 'hn_session'
@@ -63,11 +64,24 @@ export class KratosService {
 
     const ttl = this.env.WHOAMI_CACHE_TTL_S
     if (ttl > 0) {
-      const hit = parseCached(await this.cache.get(sessionCookie))
+      let cached: string | null = null
+      try {
+        cached = await this.cache.get(sessionCookie)
+      } catch {
+        // Cache failure is a miss; Kratos must still validate the session.
+      }
+      const hit = parseCached(cached)
       if (hit) return hit
     }
     const identity = await this.whoami(sessionCookie)
-    if (identity && ttl > 0) await this.cache.set(sessionCookie, JSON.stringify(identity), ttl)
+    if (identity && ttl > 0) {
+      const value = JSON.stringify(identity)
+      try {
+        await this.cache.set(sessionCookie, value, ttl)
+      } catch {
+        // A failed cache write cannot invalidate a provider-validated identity.
+      }
+    }
     return identity
   }
 
@@ -104,7 +118,10 @@ export class KratosService {
     if (res.status === 401 || res.status === 403) return null
     if (!res.ok) throw new ServiceUnavailableException('identity service error')
 
-    const session = whoami.parse(await res.json())
+    const body: unknown = await res.json().catch(() => { throw new AuthProviderError('protocol') })
+    const parsed = whoami.safeParse(body)
+    if (!parsed.success) throw new AuthProviderError('protocol')
+    const session = parsed.data
     if (!session.active || (session.identity.state ?? 'active') !== 'active') return null
     return session
   }

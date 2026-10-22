@@ -76,10 +76,10 @@ test('a suspended follower stops counting', async () => {
   assert.equal((await service.profile(null, 'ada'))!.followerCount, 0)
 })
 
-test('after a rename, a handle resolves to whoever was seen with it most recently', async () => {
+test('current handles cannot be copied after a rename', async () => {
   const renamed = randomUUID()
-  await db.insert(members).values({ id: renamed, handle: 'ada', lastSeenAt: new Date() })
-  assert.equal((await service.profile(null, 'ada'))!.id, renamed)
+  await assert.rejects(db.insert(members).values({ id: renamed, handle: 'ada', lastSeenAt: new Date() }))
+  assert.equal((await service.profile(null, 'ada'))!.id, ada)
 })
 
 test('a handle given up by renaming is its owner’s for 30 days, and leads to them', async () => {

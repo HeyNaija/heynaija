@@ -15,16 +15,15 @@ import {
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
 
-// A member of the network. `id` is the Ory Kratos identity ID: Kratos owns the
-// email, password and sessions; this table holds only what the app itself needs.
+// A member of the network. `id` is owned by HeyNaija; authentication subjects
+// are mapped separately in providerIdentities. Kratos still owns email, login
+// methods and sessions; this table holds what the app itself needs.
 export const members = pgTable(
   'members',
   {
-    id: uuid('id').primaryKey(),
-    // Copy of the Kratos `handle` trait, refreshed whenever the member is seen.
-    // Not unique here: Kratos keeps handles unique (the handle is a credential
-    // identifier in infra/kratos/identity.schema.json), and this copy can briefly
-    // lag a rename, so for a moment two rows can hold the same handle.
+    id: uuid('id').primaryKey().defaultRandom(),
+    // Application-owned current handle. Provider traits are inputs to the
+    // handle policy, not the authority for ownership or uniqueness.
     handle: text('handle').notNull(),
     // Inactive members (suspended, deactivated) are filtered out of feeds on read.
     active: boolean('active').notNull().default(true),
@@ -51,7 +50,54 @@ export const members = pgTable(
     // after it, so a steady trickle of activity is not a steady trickle of mail.
     lastNotificationEmailAt: ts('last_notification_email_at'),
   },
-  (t) => [index('members_handle_idx').on(t.handle)],
+  (t) => [uniqueIndex('members_handle_unique_idx').on(t.handle), index('members_handle_idx').on(t.handle)],
+)
+
+// Provider subjects are opaque credentials. They are never social member IDs;
+// this table is the application-owned identity boundary.
+export const providerIdentities = pgTable(
+  'provider_identities',
+  {
+    providerId: text('provider_id').notNull(),
+    subject: text('subject').notNull(),
+    memberId: uuid('member_id').notNull().references(() => members.id),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.providerId, t.subject] }),
+    index('provider_identities_member_idx').on(t.memberId),
+  ],
+)
+
+export const IDENTITY_MIGRATION_STATUSES = ['completed', 'rolled_back'] as const
+
+// Backfill provenance makes rollback narrow: only rows created by a specific
+// run can be removed by that run's rollback command.
+export const identityMigrationRuns = pgTable('identity_migration_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  providerId: text('provider_id').notNull(),
+  status: text('status', { enum: IDENTITY_MIGRATION_STATUSES }).notNull(),
+  backupRef: text('backup_ref').notNull(),
+  insertedCount: integer('inserted_count').notNull().default(0),
+  startedAt: ts('started_at').notNull().defaultNow(),
+  completedAt: ts('completed_at'),
+  cutoverAt: ts('cutover_at'),
+  rolledBackAt: ts('rolled_back_at'),
+})
+
+export const identityMigrationRows = pgTable(
+  'identity_migration_rows',
+  {
+    runId: uuid('run_id').notNull().references(() => identityMigrationRuns.id),
+    providerId: text('provider_id').notNull(),
+    subject: text('subject').notNull(),
+    memberId: uuid('member_id').notNull().references(() => members.id),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.runId, t.providerId, t.subject] }),
+    index('identity_migration_rows_member_idx').on(t.memberId),
+  ],
 )
 
 // A handle a member gave up by renaming. For a while afterwards only they can take
