@@ -13,6 +13,7 @@ export const env = {
   apiUrl: url(process.env.E2E_API_URL, 'http://127.0.0.1:4000'),
   mailpitUrl: url(process.env.MAILPIT_URL, 'http://127.0.0.1:8026'),
   kratosAdminUrl: url(process.env.KRATOS_ADMIN_URL, 'http://127.0.0.1:4534'),
+  kratosPublicUrl: url(process.env.KRATOS_PUBLIC_URL, 'http://127.0.0.1:4533'),
   databaseUrl: process.env.E2E_DATABASE_URL ?? process.env.DATABASE_URL,
 }
 
@@ -25,7 +26,8 @@ export function assertLocal() {
   const name = `${db.hostname}${db.pathname}`
   if (!LOOPBACK.has(db.hostname)) throw new Error(`refusing to run: database ${db.hostname} is not on this machine`)
   if (/prod|staging|live/i.test(name)) throw new Error(`refusing to run: database ${name} looks like a real environment`)
-  for (const [what, value] of Object.entries({ web: env.baseUrl, mailpit: env.mailpitUrl, kratos: env.kratosAdminUrl })) {
+  const services = { web: env.baseUrl, mailpit: env.mailpitUrl, kratos: env.kratosAdminUrl, 'kratos public': env.kratosPublicUrl }
+  for (const [what, value] of Object.entries(services)) {
     if (!LOOPBACK.has(new URL(value).hostname)) throw new Error(`refusing to run: ${what} ${value} is not on this machine`)
   }
 }

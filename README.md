@@ -193,7 +193,7 @@ pnpm test        # API tests, against a scratch Postgres database (needs `pnpm i
 ```
 
 ```bash
-pnpm e2e         # browser tests with Playwright against the local stack (docs/e2e.md)
+pnpm e2e posting # browser tests for one area, with Playwright against the local stack (docs/e2e.md)
 ```
 
 CI (`.github/workflows/ci.yml`) runs build, typecheck, tests and a dependency audit,
