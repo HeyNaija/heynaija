@@ -1,11 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { api } from '@/lib/api'
+import { isLogoutUrl } from '@/lib/auth/server'
 import { PUSH_COOKIE } from '@/lib/push'
-
-// Only Kratos's own logout URL (with its one-time token) is followed, so this
-// cannot be used as an open redirect, and a forged link without the token signs
-// nobody out.
-const KRATOS_LOGOUT = '/kratos/self-service/logout?'
 
 /**
  * Sign out: stops push notifications to this browser, if it gets them, and tells
@@ -15,7 +11,8 @@ const KRATOS_LOGOUT = '/kratos/self-service/logout?'
  */
 export async function GET(request: NextRequest) {
   const to = request.nextUrl.searchParams.get('to') ?? ''
-  if (!to.startsWith(KRATOS_LOGOUT)) return seeOther('/')
+  // Only the provider's own logout URL is followed (lib/auth/providers/kratos/urls.ts).
+  if (!isLogoutUrl(to)) return seeOther('/')
 
   // While the session still works, so the API knows whose subscription it is.
   // Best effort: the next member to sign in here has it stopped too (app/ui/push-check.tsx).

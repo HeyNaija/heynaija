@@ -3,9 +3,8 @@ import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { AuthPage, linkClass } from '@/app/ui/auth-page'
-import { FlowForm } from '@/app/ui/flow-form'
 import { AGE_COOKIE, INVITE_COOKIE } from '@/lib/invite'
-import { getFlow } from '@/lib/kratos'
+import { AuthForm } from '@/lib/auth/server'
 
 export const metadata: Metadata = { title: 'Create your account' }
 
@@ -41,6 +40,5 @@ async function SignupForm({ searchParams }: Pick<PageProps<'/signup'>, 'searchPa
   // Kratos hands them to our API.
   const jar = await cookies()
   if (!jar.has(INVITE_COOKIE) || !jar.has(AGE_COOKIE)) redirect('/join')
-  const flow = await getFlow('registration', (await searchParams).flow)
-  return <FlowForm flow={flow} />
+  return <AuthForm kind="registration" flowId={(await searchParams).flow} />
 }

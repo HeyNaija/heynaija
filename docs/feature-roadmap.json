@@ -61,7 +61,7 @@
       "evidence": [
         "infra/kratos/google.jsonnet",
         "infra/kratos/kratos.yml",
-        "apps/web/app/ui/flow-form.tsx",
+        "apps/web/lib/auth/providers/kratos/flow-form.tsx",
         "e2e/tests/google-auth.spec.ts",
         "docs/deployment/google-sign-in.md"
       ],
@@ -77,8 +77,8 @@
       "availability": "unknown",
       "evidence": [
         "infra/kratos/kratos.yml",
-        "apps/web/lib/kratos.ts",
-        "apps/web/app/ui/flow-form.tsx",
+        "apps/web/lib/auth/providers/kratos/client.ts",
+        "apps/web/lib/auth/providers/kratos/flow-form.tsx",
         "docs/adr/0003-passwordless-sign-in.md",
         "e2e/tests/auth.spec.ts"
       ],

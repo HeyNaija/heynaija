@@ -6,16 +6,23 @@ import { type ExecutionContext, ForbiddenException, UnauthorizedException } from
 import { eq } from 'drizzle-orm'
 import { InvitesService } from '../invites/invites.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
-import type { Identity } from './kratos.service.js'
+import { AuthService, type MemberIdentity as Identity } from './auth.service.js'
+import { KratosSessionProvider } from './kratos-session.provider.js'
 import { type AuthedRequest, LAST_SEEN_EVERY_MS, SessionGuard, SuspendedAllowedGuard } from './session.guard.js'
 
 const WEB = 'http://127.0.0.1:3000'
 const invites = new InvitesService(db)
 
-// Kratos is stubbed: "good" is a valid session cookie for `identity`.
+// Through AuthService and the Kratos adapter, with Kratos stubbed: "good" is a
+// valid session cookie for `identity`.
+const authFor = (identity: Identity) => new AuthService(new KratosSessionProvider({
+  identityForSession: async (cookie) => (cookie === 'good' ? identity : null),
+  forgetSession: async () => {},
+  emailForSession: async () => null,
+}))
 const guardFor = (identity: Identity) =>
   new SessionGuard(
-    { identityForSession: async (cookie) => (cookie === 'good' ? identity : null) },
+    authFor(identity),
     { WEB_PUBLIC_URL: WEB },
     db,
     invites,
@@ -24,8 +31,10 @@ const guardFor = (identity: Identity) =>
 const request = (over: { method?: string; origin?: string; cookie?: string } = {}) => {
   const req = {
     method: over.method ?? 'GET',
-    headers: over.origin ? { origin: over.origin } : {},
-    cookies: over.cookie ? { hn_session: over.cookie } : {},
+    headers: {
+      ...(over.origin ? { origin: over.origin } : {}),
+      ...(over.cookie ? { cookie: `hn_session=${over.cookie}` } : {}),
+    },
   } as unknown as AuthedRequest
   const context = { switchToHttp: () => ({ getRequest: () => req }) } as unknown as ExecutionContext
   return { req, context }
@@ -123,8 +132,7 @@ test('the appeal guard lets a suspended member through, but still not a stranger
   await guardFor(identity).canActivate(request({ cookie: 'good' }).context)
   await db.update(members).set({ active: false }).where(eq(members.id, identity.id))
 
-  const kratos = { identityForSession: async (cookie: string) => (cookie === 'good' ? identity : null) }
-  const appealGuard = new SuspendedAllowedGuard(kratos, { WEB_PUBLIC_URL: WEB }, db, invites)
+  const appealGuard = new SuspendedAllowedGuard(authFor(identity), { WEB_PUBLIC_URL: WEB }, db, invites)
   const { req, context } = request({ cookie: 'good', method: 'POST' })
   assert.equal(await appealGuard.canActivate(context), true)
   assert.equal(req.member.id, identity.id)

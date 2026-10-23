@@ -1,10 +1,23 @@
 import 'server-only'
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
 
 // Server-to-server address of Ory Kratos. Browsers reach it through /kratos.
 const KRATOS_URL = process.env.KRATOS_INTERNAL_URL ?? 'http://127.0.0.1:4533'
+
+/** The Kratos session cookie (named in infra/kratos/kratos.yml). */
+const SESSION_COOKIE = 'hn_session'
+
+/** What the API needs to know who is asking: the session cookie, never the CSRF or invite ones. */
+export async function getApiAuthHeaders(): Promise<Record<string, string>> {
+  const session = (await cookies()).get(SESSION_COOKIE)?.value
+  return session ? { cookie: `${SESSION_COOKIE}=${session}` } : {}
+}
+
+export async function hasSessionCredentials(): Promise<boolean> {
+  return (await cookies()).has(SESSION_COOKIE)
+}
 
 export type FlowKind = 'login' | 'registration' | 'verification' | 'settings'
 
