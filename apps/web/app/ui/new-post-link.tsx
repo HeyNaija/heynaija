@@ -33,16 +33,32 @@ export function ComposeLink({ href, label, className, children, prefetch }: { hr
       aria-label={label}
       onClick={(e) => {
         if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-        const box = pathname === href.split('#')[0] ? document.querySelector<HTMLTextAreaElement>('#compose textarea') : null
-        if (!box) return
+        if (pathname !== href.split('#')[0] || !document.querySelector('#compose textarea')) return
         e.preventDefault()
-        box.focus({ preventScroll: true })
-        const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        box.closest('form')?.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' })
+        focusComposer()
       }}
       className={className}
     >
       {children}
     </Link>
   )
+}
+
+/**
+ * Puts the cursor in the composer and brings it into view. Just after a page
+ * loads, React can still be holding the composer in a hidden streamed segment
+ * (`<div hidden id="S:…">`) for a moment, where focus() does nothing; then this
+ * tries again each frame until React has moved it into place. That later focus
+ * is outside the tap, so a phone may want a second tap to show its keyboard.
+ */
+function focusComposer(frames = 120) {
+  const box = document.querySelector<HTMLTextAreaElement>('#compose textarea')
+  if (!box) return
+  if (box.getClientRects().length === 0) {
+    if (frames > 0) requestAnimationFrame(() => focusComposer(frames - 1))
+    return
+  }
+  box.focus({ preventScroll: true })
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  box.closest('form')?.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' })
 }

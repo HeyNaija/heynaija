@@ -6,9 +6,17 @@ Redis, MinIO and Mailpit from `pnpm infra:up`. Everything is in [`e2e/`](../e2e)
 
 ## What they cover
 
-Each file is one area. Every test creates its own members through the real
-invite and sign-up flow, so tests do not depend on each other or on what is
-already in the database.
+Each file is one area. Every test creates its own members with a real invite
+and Kratos's real sign-up flow, so tests do not depend on each other or on what
+is already in the database. `auth.spec.ts` signs up through the pages (`/join`,
+`/signup`, the emailed code, `/welcome`); elsewhere members are signed up over
+HTTP (`signUpOverHttp` in [`e2e/lib/members.ts`](../e2e/lib/members.ts)): the
+same Kratos flow with the same invite and age cookies, so the API's checks run
+as for anyone, but without rendering those pages for every member. Measured on
+social and posting (10 tests, 13 members): 73 s and 218 CPU-seconds through the
+pages, 49 s and 93 CPU-seconds over HTTP, `next dev`'s share falling from 115 s
+to 32 s. Tests where the sign-up form itself is the subject, such as the
+refused handles in `handles.spec.ts`, still use the pages.
 
 | File | Flows |
 | --- | --- |
@@ -59,11 +67,29 @@ passing, Playwright will report that, and the marks come off.
 ## Running them
 
 The dev stack must be up (`pnpm infra:up`) and the API built at least once
-(`pnpm dev:api` does that). Then:
+(`pnpm dev:api` does that). Then name the tests for what you changed:
 
 ```bash
-pnpm e2e
+pnpm e2e posting
 ```
+
+That is a file (part of its name will do, and several work), or `-g "<title>"`,
+or `--last-failed`. Outside CI, `pnpm e2e` with nothing named refuses: the whole
+suite keeps every core busy for many minutes, and CI runs it on every pull
+request. To run it all here anyway:
+
+```bash
+E2E_ALL=1 pnpm e2e
+```
+
+**One run at a time.** Every run starts by deleting all test members, so a second
+`pnpm e2e`, from another terminal, checkout, worktree or agent, waits until the
+first has finished and says whose run it is waiting for (`pnpm --filter
+@heynaija/e2e clean` waits too). The lock is a Postgres advisory lock on the dev
+database ([`e2e/lib/lock.ts`](../e2e/lib/lock.ts)), so a run that crashes or is
+stopped lets go of it straight away. `pnpm e2e` takes it before Playwright
+starts, as Playwright empties `test-results` first; a bare `playwright test`
+takes it in global setup, still before anything is deleted.
 
 Playwright reuses `pnpm dev:web` and `pnpm dev:api` if they are already running
 and starts them otherwise. `google-auth.spec.ts` restarts Kratos with a local
@@ -75,22 +101,30 @@ teardown restores the normal Google configuration. To run only those:
 pnpm e2e:google
 ```
 
-(`pnpm e2e google-auth` works too, but runs the whole desktop and mobile suites
-first, because the Google projects depend on them.) The first time, install the
-browser:
+Because the Google projects depend on the desktop and mobile ones, naming any of
+their tests would run those whole suites first (`pnpm e2e auth` matches
+`google-auth.spec.ts` too). So a run that names tests leaves the Google projects
+out unless it names projects itself, and `pnpm e2e google-auth` points to
+`pnpm e2e:google`. The dependency also means that when any desktop or mobile
+test fails, Playwright does not run the Google tests at all; the report lists
+them as not run, so check for that before reading a red run as one failure.
+The first time, install the browser:
 
 ```bash
 pnpm --filter @heynaija/e2e exec playwright install chromium
 ```
 
-Useful variants: `pnpm e2e --ui` (watch tests run), `pnpm e2e feed` (one file),
-`pnpm e2e --project=mobile`. A failed test keeps a trace:
+Useful variants: `pnpm e2e --ui` (pick tests and watch them run),
+`pnpm e2e images --project=mobile` (one file's `@mobile` tests, on the phone
+screen only). A failed
+test keeps a trace:
 `pnpm --filter @heynaija/e2e exec playwright show-trace <path>`.
 
 ## In CI
 
 The `e2e` job in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs the
-suite on every push and pull request:
+suite on every pull request, and on any branch from **Actions → CI → Run
+workflow** (pushing a branch alone does not run CI):
 
 1. starts the dev stack with Docker Compose (`pnpm infra:env`, `pnpm infra:up`) and
    waits for Kratos and Mailpit;
@@ -102,8 +136,11 @@ suite on every push and pull request:
 On failure it uploads the Playwright report, traces, screenshots and the API, web
 and Compose logs as the `e2e-report` artifact, kept 7 days.
 
-The deploy workflows call CI, so a staging or production deploy also waits for
-this job. A deploy workflow can pass `e2e: false` to skip it.
+The staging deploy calls CI, so it waits for this job; that is the one full run a
+release gets. A pull request from `staging` into `main` skips the suite, and the
+production deploy ships the images staging is running when the code is the same
+([deployment/production.md](deployment/production.md)), calling CI, suite
+included, only when it is not. A deploy workflow can pass `e2e: false` to skip it.
 
 ## Test data
 

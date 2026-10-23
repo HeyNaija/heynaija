@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { expectNoHorizontalScroll } from '../lib/layout.ts'
-import { handleFor, newMember, post, signIn, signUp } from '../lib/members.ts'
+import { handleFor, newMember, post, signIn, signUpOverHttp } from '../lib/members.ts'
 
 /** Joins a community from its own page, as a member would. */
 async function join(page: Page, slug: string) {
@@ -29,7 +29,7 @@ test('a newcomer chooses communities and people, then finds their posts in Follo
   await post(bayo.page, bayoText)
 
   const handle = handleFor('newbie')
-  await signUp(page, handle, { welcome: 'stay' })
+  await signUpOverHttp(page, handle, { welcome: 'stay' })
   // Until they finish or skip, the home page sends them back here.
   await page.goto('/')
   await onPath(page, '/welcome')
@@ -87,7 +87,7 @@ test('a newcomer chooses communities and people, then finds their posts in Follo
 
 test('the whole welcome flow can be skipped, and is not shown again @mobile', async ({ page }) => {
   const handle = handleFor('skipper')
-  const email = await signUp(page, handle, { welcome: 'stay' })
+  const email = await signUpOverHttp(page, handle, { welcome: 'stay' })
   await page.getByRole('button', { name: 'Skip setup' }).click()
 
   await onPath(page, '/')
@@ -107,7 +107,7 @@ test('the whole welcome flow can be skipped, and is not shown again @mobile', as
 })
 
 test('each step can be skipped on its own', async ({ page }) => {
-  await signUp(page, handleFor('stepper'), { welcome: 'stay' })
+  await signUpOverHttp(page, handleFor('stepper'), { welcome: 'stay' })
   await page.getByRole('link', { name: 'Skip this step' }).click()
   await expect(page.getByRole('heading', { level: 1, name: /Find your people/ })).toBeVisible()
   await page.getByRole('button', { name: 'Skip this step' }).click()

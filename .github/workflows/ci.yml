@@ -1,11 +1,12 @@
 name: CI
 
-# Pushes to staging and main run this through their deploy workflows instead,
-# which deploy only if it passes.
+# Runs on pull requests, and on any branch by hand (Actions → CI → Run workflow).
+# A push to a branch does not run it as well: with a pull request open, that ran
+# everything twice. Pushes to staging and main run it through their deploy
+# workflows, which deploy only if it passes.
 on:
-  push:
-    branches-ignore: [main, staging]
   pull_request:
+  workflow_dispatch:
   workflow_call:
     inputs:
       build_images:
@@ -72,7 +73,10 @@ jobs:
   # Browser end-to-end tests (docs/e2e.md): the dev stack from Docker Compose, a
   # production build of the API and web app on this runner, Playwright in Chromium.
   e2e:
-    if: inputs.e2e != false
+    # Not on a pull request from staging into main: staging has already run the suite
+    # on that code. If main has changes staging lacks, the merged code is not
+    # running on staging, and the production deploy runs the suite on it first.
+    if: inputs.e2e != false && !(github.event_name == 'pull_request' && github.head_ref == 'staging' && github.base_ref == 'main')
     runs-on: ubuntu-latest
     # Setting up the stack and the build take several minutes, and the suite (about 150
     # tests, every one signing up its own members) runs on one worker, so it sat close

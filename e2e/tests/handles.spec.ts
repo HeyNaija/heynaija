@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test'
 import { ageSignIn } from '../lib/db.ts'
 import { MARK } from '../lib/env.ts'
 import { codeFor } from '../lib/mailpit.ts'
-import { handleFor, newMember, signUp, submitSignUp } from '../lib/members.ts'
+import { handleFor, newMember, signUpOverHttp, submitSignUp } from '../lib/members.ts'
 
 // A handle names one member: profiles, reports and moderation all look people up
 // by it. Kratos keeps it unique (see infra/kratos/identity.schema.json), and a
@@ -35,7 +35,7 @@ test('a handle someone already has is refused at sign-up', async ({ browser, pag
 
 test('renaming to a handle someone already has is refused; a free one works', async ({ browser, page }) => {
   const owner = await newMember(browser, 'owner')
-  await signUp(page, handleFor('renamer'))
+  await signUpOverHttp(page, handleFor('renamer'))
 
   await rename(page, owner.handle)
   await expect(page.getByText(taken)).toBeVisible()

@@ -25,6 +25,12 @@ restarts only when those files or its configuration change: `deploy.sh` also
 labels it with a hash of its rendered configuration, so mounted files cannot
 remain stale.
 
+Once the site answers, a last job also tags the API and web images
+`staged-<tree>`, with the tree of the code rather than the commit. Merging staging
+into `main` makes a new commit with the same tree, so production finds those tags
+and deploys the images staging is running, without testing or building that code
+again ([production.md](production.md)).
+
 The deploy job checks out the requested commit before starting its deploy script.
 Manual deployments also restart the script if checkout changes it, so upgrades
 and rollbacks use the instructions from the requested release.

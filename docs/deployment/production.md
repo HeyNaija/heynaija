@@ -4,6 +4,15 @@ Production runs alone on a **netcup** server. It works exactly like staging (rea
 [staging.md](staging.md) first): the same images, Compose file, nginx template,
 scripts and backups, with production settings, and deployed by pushes to `main`.
 
+**How a deploy happens:** a release is a merge from `staging`, whose code is
+already running on staging. The production workflow finds staging's images by the
+code's tree (`staged-<tree>`, tagged once the staging deploy succeeds), tags them
+with the `main` commit in the registry, and deploys them, without running CI or
+building again, so production runs exactly what ran on staging. Code staging is
+not running (a fix made on `main`, or a merge into a `main` that has changes
+staging lacks) has no such images: it must pass CI, including the browser tests,
+and is built first, as on staging.
+
 **Do not launch publicly** until the launch rule in PLAN.md §11 holds and the
 checklist in [docs/safety/abuse-material-scanning.md](../safety/abuse-material-scanning.md)
 is done.

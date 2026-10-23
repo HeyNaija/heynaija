@@ -1,4 +1,6 @@
-# Every push to `main` that passes CI is built and deployed to production.
+# Every push to `main` is deployed to production. Code that is already running on
+# staging ships as the images staging runs, without testing or building it again;
+# anything else (a fix made on main, say) must pass CI and is built here first.
 # Roll back by running this workflow on an earlier commit (Run workflow, then pick
 # a branch or tag), or on the server: infra/deploy/deploy.sh <commit>.
 name: Deploy production
@@ -17,13 +19,67 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # deploy-staging.yml tags the images staged-<tree> once they run on staging. A
+  # merge from staging leaves the tree as it was, so this finds them and tags them
+  # with this commit, which is what deploy.sh pulls.
+  staged:
+    name: Find the images running on staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      found: ${{ steps.find.outputs.found }}
+      image_prefix: ${{ steps.prefix.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The registry wants lower case; GitHub owner names may not be.
+      - id: prefix
+        run: echo "value=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/heynaija" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Adds tags in the registry; nothing is downloaded or rebuilt. With
+      # --prefer-index=false the tag points at the very manifest staging runs.
+      - id: find
+        env:
+          IMAGE_PREFIX: ${{ steps.prefix.outputs.value }}
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          for image in "api:staged-$tree" "web:staged-$tree" "kratos:$(git rev-parse HEAD:infra/kratos)"; do
+            if ! docker buildx imagetools inspect "$IMAGE_PREFIX-$image" >/dev/null 2>&1; then
+              echo "Staging is not running this code ($IMAGE_PREFIX-$image is missing), so it is checked and built here."
+              echo "found=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          for app in api web; do
+            docker buildx imagetools create --prefer-index=false \
+              --tag "$IMAGE_PREFIX-$app:$GITHUB_SHA" "$IMAGE_PREFIX-$app:staged-$tree"
+          done
+          echo "Deploying the images staging runs for this code (tree $tree)."
+          echo "found=true" >> "$GITHUB_OUTPUT"
+
+  # Also when looking for staging's images failed: a registry hiccup then means
+  # building here, not skipping the deploy.
   check:
+    needs: staged
+    if: ${{ !cancelled() && needs.staged.outputs.found != 'true' }}
     uses: ./.github/workflows/ci.yml
     with:
       build_images: false
 
   images:
     needs: check
+    if: ${{ !cancelled() && needs.check.result == 'success' }}
     uses: ./.github/workflows/build-images.yml
     permissions:
       contents: read
@@ -31,7 +87,8 @@ jobs:
 
   deploy:
     name: Deploy to production
-    needs: images
+    needs: [staged, images]
+    if: ${{ !cancelled() && (needs.staged.outputs.found == 'true' || needs.images.result == 'success') }}
     # HeyNaija's own runner on the production server (docs/deployment/production.md).
     runs-on: [self-hosted, heynaija-production]
     environment: production
@@ -48,7 +105,7 @@ jobs:
 
       - name: Deploy ${{ github.sha }}
         env:
-          IMAGE_PREFIX: ${{ needs.images.outputs.image_prefix }}
+          IMAGE_PREFIX: ${{ needs.images.outputs.image_prefix || needs.staged.outputs.image_prefix }}
           DEPLOY_REF: ${{ github.sha }}
         # Load this release's script, including on the first deploy of a change
         # to deploy.sh. A running Bash script cannot update its own instructions.
