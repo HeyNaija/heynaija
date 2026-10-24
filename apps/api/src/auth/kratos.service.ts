@@ -1,7 +1,8 @@
-import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import { z } from 'zod'
 import type { Env } from '../env.js'
 import { ENV } from '../tokens.js'
+import { AuthProviderError } from './auth-session.provider.js'
 import { SESSION_CACHE, type SessionCache } from './session-cache.js'
 
 /** Name of the Kratos session cookie (set in infra/kratos/kratos.yml). */
@@ -63,11 +64,13 @@ export class KratosService {
 
     const ttl = this.env.WHOAMI_CACHE_TTL_S
     if (ttl > 0) {
-      const hit = parseCached(await this.cache.get(sessionCookie))
+      // A cache that fails is a miss: Kratos still decides.
+      const hit = parseCached(await this.cache.get(sessionCookie).catch(() => null))
       if (hit) return hit
     }
     const identity = await this.whoami(sessionCookie)
-    if (identity && ttl > 0) await this.cache.set(sessionCookie, JSON.stringify(identity), ttl)
+    // Nor can a failed write undo an answer Kratos has already given.
+    if (identity && ttl > 0) await this.cache.set(sessionCookie, JSON.stringify(identity), ttl).catch(() => {})
     return identity
   }
 
@@ -99,12 +102,14 @@ export class KratosService {
         signal: AbortSignal.timeout(5000),
       })
     } catch {
-      throw new ServiceUnavailableException('identity service unreachable')
+      throw new AuthProviderError('unavailable')
     }
     if (res.status === 401 || res.status === 403) return null
-    if (!res.ok) throw new ServiceUnavailableException('identity service error')
+    if (!res.ok) throw new AuthProviderError('unavailable')
 
-    const session = whoami.parse(await res.json())
+    const parsed = whoami.safeParse(await res.json().catch(() => null))
+    if (!parsed.success) throw new AuthProviderError('protocol')
+    const session = parsed.data
     if (!session.active || (session.identity.state ?? 'active') !== 'active') return null
     return session
   }

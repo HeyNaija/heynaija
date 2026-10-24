@@ -1,14 +1,12 @@
 import 'server-only'
-import { cookies, headers } from 'next/headers'
+import { headers } from 'next/headers'
 import { cache } from 'react'
+import { getApiAuthHeaders, hasSessionCredentials } from './auth/server'
 import type { NotificationPreferences } from './notification-preferences'
 
 // Server-to-server address of the NestJS API. Browsers never use this; they go
 // through the /api rewrite in next.config.ts.
 const API_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000'
-
-/** The Kratos session cookie (named in infra/kratos/kratos.yml). */
-export const SESSION_COOKIE = 'hn_session'
 
 /** `avatar` fields are a path without the size suffix (see app/ui/avatar.tsx), or null. */
 export type Me = {
@@ -169,13 +167,13 @@ export type Profile = {
  * through the rewrite in next.config.ts, which passes the header on itself.)
  */
 export async function api(path: string, init: RequestInit = {}): Promise<Response> {
-  const session = (await cookies()).get(SESSION_COOKIE)?.value
+  const authHeaders = await getApiAuthHeaders()
   const address = (await headers()).get('x-real-ip')
   return fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       ...init.headers,
-      ...(session ? { cookie: `${SESSION_COOKIE}=${session}` } : {}),
+      ...authHeaders,
       ...(address ? { 'x-real-ip': address } : {}),
     },
   })
@@ -190,7 +188,7 @@ export type Viewer =
 // The shell, the side rail and the page all ask who is looking; `cache` makes that
 // one API call per request instead of three.
 export const getViewer = cache(async (): Promise<Viewer> => {
-  if (!(await cookies()).has(SESSION_COOKIE)) return { state: 'anonymous' }
+  if (!(await hasSessionCredentials())) return { state: 'anonymous' }
   const res = await api('/v1/me')
   if (res.status === 401) return { state: 'anonymous' }
   if (res.status === 403) {

@@ -1,8 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AuthPage, linkClass } from '@/app/ui/auth-page'
-import { FlowForm } from '@/app/ui/flow-form'
-import { getFlow } from '@/lib/kratos'
+import { AuthForm } from '@/lib/auth/server'
 
 export const metadata: Metadata = { title: 'Confirm your email' }
 
@@ -26,6 +25,5 @@ export default function VerificationPage({ searchParams }: PageProps<'/verificat
 }
 
 async function VerificationForm({ searchParams }: Pick<PageProps<'/verification'>, 'searchParams'>) {
-  const flow = await getFlow('verification', (await searchParams).flow)
-  return <FlowForm flow={flow} />
+  return <AuthForm kind="verification" flowId={(await searchParams).flow} />
 }

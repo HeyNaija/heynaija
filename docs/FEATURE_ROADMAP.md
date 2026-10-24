@@ -63,7 +63,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `google-signin`
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Recorded in production
 - **Description:** Use the configured Google identity provider to access an invited account.
-- **Inspected evidence:** `infra/kratos/google.jsonnet`, `infra/kratos/kratos.yml`, `apps/web/app/ui/flow-form.tsx`, `e2e/tests/google-auth.spec.ts`, `docs/deployment/google-sign-in.md`
+- **Inspected evidence:** `infra/kratos/google.jsonnet`, `infra/kratos/kratos.yml`, `apps/web/lib/auth/providers/kratos/flow-form.tsx`, `e2e/tests/google-auth.spec.ts`, `docs/deployment/google-sign-in.md`
 - **Audit notes:** google-auth.spec.ts covers signup, sign-in and linking against a local signed OIDC issuer. Live Google consent stays outside automated tests; the owner confirmed a real Google sign-in on staging and production (reported 18 Oct 2026).
 
 #### Account recovery
@@ -72,7 +72,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Partial · **Availability:** Availability not verified
 - **Description:** Regain account access while distinguishing email-code sign-in from a separate recovery process.
 - **Remaining work / caveat:** Email-code sign-in restores access if you can receive email; a separate process for losing that email account is not provided.
-- **Inspected evidence:** `infra/kratos/kratos.yml`, `apps/web/lib/kratos.ts`, `apps/web/app/ui/flow-form.tsx`, `docs/adr/0003-passwordless-sign-in.md`, `e2e/tests/auth.spec.ts`
+- **Inspected evidence:** `infra/kratos/kratos.yml`, `apps/web/lib/auth/providers/kratos/client.ts`, `apps/web/lib/auth/providers/kratos/flow-form.tsx`, `docs/adr/0003-passwordless-sign-in.md`, `e2e/tests/auth.spec.ts`
 - **Audit notes:** Kratos password recovery is explicitly disabled. ADR 0003 replaced it with passwordless sign-in; do not claim a configured recovery flow exists.
 
 #### Temporary beta age declaration

@@ -1,4 +1,4 @@
-import type { Flow, UiMessage, UiNode } from '@/lib/kratos'
+import type { Flow, UiMessage, UiNode } from './client'
 
 // Kratos describes each form as a list of fields ("nodes"); this renders them as
 // plain HTML forms that post straight to Kratos, so they work without JavaScript.

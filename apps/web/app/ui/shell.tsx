@@ -2,7 +2,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { type ComponentType, Suspense } from 'react'
 import { getCommunities, getTrending, getViewer, type Viewer } from '@/lib/api'
-import { getLogoutUrl } from '@/lib/kratos'
+import { getLogoutUrl } from '@/lib/auth/server'
 import { Avatar } from './avatar'
 import { CommunityMark } from './community-mark'
 import {

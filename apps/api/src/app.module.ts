@@ -1,6 +1,9 @@
 import { createDb } from '@heynaija/db'
 import { Controller, Get, Module } from '@nestjs/common'
 import { AuthController } from './auth/auth.controller.js'
+import { AuthService } from './auth/auth.service.js'
+import { AUTH_SESSION_PROVIDER } from './auth/auth-session.provider.js'
+import { KratosSessionProvider } from './auth/kratos-session.provider.js'
 import { KratosService } from './auth/kratos.service.js'
 import { RedisSessionCache, SESSION_CACHE } from './auth/session-cache.js'
 import { OptionalSessionGuard, SessionGuard, SuspendedAllowedGuard } from './auth/session.guard.js'
@@ -59,6 +62,8 @@ class HealthController {
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
     { provide: SESSION_CACHE, useClass: RedisSessionCache },
     KratosService,
+    { provide: AUTH_SESSION_PROVIDER, useClass: KratosSessionProvider },
+    AuthService,
     SessionGuard,
     OptionalSessionGuard,
     SuspendedAllowedGuard,
