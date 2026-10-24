@@ -46,6 +46,8 @@ import { PUSH_SENDER, webPushSender } from './push/push-sender.js'
 import { RateLimiter, RedisRateLimiter } from './rate-limit.js'
 import { SearchController } from './search/search.controller.js'
 import { DB, ENV } from './tokens.js'
+import { TopicsController } from './topics/topics.controller.js'
+import { TopicsService } from './topics/topics.service.js'
 
 @Controller()
 class HealthController {
@@ -56,7 +58,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -84,6 +86,7 @@ class HealthController {
     CommunitiesService,
     InvitesService,
     PostsService,
+    TopicsService,
     NotificationsService,
     { provide: EMAIL_JOBS, useClass: BullEmailJobs },
     // Without an SMTP account (SMTP_CONNECTION_URI) these are null and no email is sent.

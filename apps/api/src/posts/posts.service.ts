@@ -18,6 +18,7 @@ import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/me
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
 import { notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
+import { Refreshing } from '../refreshing.js'
 import { DB } from '../tokens.js'
 import { hashtagsOf, type PostHashtag, recordHashtags } from './hashtags.js'
 import { MENTIONS_NOTIFIED_MAX, mentionsOf, type PostMention, recordMentions } from './mentions.js'
@@ -553,8 +554,7 @@ export class PostsService {
     return this.page(viewerId, inArray(posts.id, saved), limit, cursor)
   }
 
-  private trendingRanking: { ids: string[]; expiresAt: number } | null = null
-  private trendingRefresh: Promise<void> | null = null
+  private readonly trendingRanking = new Refreshing(TRENDING_TTL_MS, () => this.rankTrending())
 
   /**
    * The conversations people are engaging with this week: top-level posts ranked
@@ -566,36 +566,12 @@ export class PostsService {
    * `TRENDING_CANDIDATES` posts, however many were posted this week.
    */
   async trending(viewerId: string | null, limit: number): Promise<PostView[]> {
-    const ids = await this.trendingIds()
+    const ids = await this.trendingRanking.get()
     if (ids.length === 0) return []
     return this.select(viewerId, inArray(posts.id, ids), {
       order: [sql`array_position(array[${sql.join(ids.map((id) => sql`${id}`), sql`, `)}]::uuid[], "posts"."id")`],
       limit,
     })
-  }
-
-  /**
-   * The cached ranking. Once it is older than `TRENDING_TTL_MS`, one refresh runs
-   * in the background and callers keep getting the old ranking until it lands,
-   * so no page waits on the ranking query after the first.
-   */
-  private async trendingIds(): Promise<string[]> {
-    const cached = this.trendingRanking
-    if (cached && cached.expiresAt > Date.now()) return cached.ids
-    this.trendingRefresh ??= this.rankTrending()
-      .then((ids) => {
-        this.trendingRanking = { ids, expiresAt: Date.now() + TRENDING_TTL_MS }
-      })
-      .finally(() => {
-        this.trendingRefresh = null
-      })
-    if (!cached) {
-      await this.trendingRefresh
-      return this.trendingRanking!.ids
-    }
-    // A failed refresh leaves the old ranking in place; the next call retries.
-    this.trendingRefresh.catch(() => {})
-    return cached.ids
   }
 
   /**

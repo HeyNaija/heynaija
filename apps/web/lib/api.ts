@@ -292,6 +292,29 @@ export async function getHashtagPosts(tag: string, cursor?: string): Promise<Fee
   return res.json()
 }
 
+/** A hashtag many members are using this week. */
+export type TrendingTopic = {
+  /** The key every spelling shares (lower case). */
+  tag: string
+  /** How most of its uses spell it, without the #: link to its page with this. */
+  label: string
+  /** Different members who used it in the window. */
+  members: number
+  /** Posts and replies it was used in, in the window. */
+  posts: number
+}
+
+/** The rules topics trend by, as the API applies them. */
+export type TopicRules = { windowDays: number; minMembers: number; refreshSeconds: number }
+
+export type TrendingTopics = { topics: TrendingTopic[]; rules: TopicRules }
+
+export async function getTrendingTopics(): Promise<TrendingTopics> {
+  const res = await api('/v1/topics/trending')
+  if (!res.ok) throw new Error(`API /v1/topics/trending responded ${res.status}`)
+  return res.json()
+}
+
 export async function getTrending(): Promise<Post[]> {
   const res = await api('/v1/trending')
   if (!res.ok) throw new Error(`API /v1/trending responded ${res.status}`)

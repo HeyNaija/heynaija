@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 34 | 10 | 22 | 14 | 80 |
+| 35 | 10 | 21 | 14 | 80 |
 
 ## Priority order
 
@@ -421,10 +421,11 @@ This tracks product development, not formal governance decisions. Priority means
 #### Transparent topic discovery
 
 - **ID:** `topic-discovery`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Improve Nigerian topic and category discovery with understandable selection rules.
-- **Dependencies:** `basic-trending`
-- **Inspected evidence:** `apps/api/src/posts/posts.service.ts`, `apps/web/app/(main)/search/page.tsx`
+- **Dependencies:** `basic-trending`, `hashtags`
+- **Inspected evidence:** `apps/api/src/topics/topics.service.ts`, `apps/api/src/topics/topics.controller.ts`, `apps/api/src/refreshing.ts`, `apps/web/app/(main)/topics/page.tsx`, `apps/web/app/ui/topic-list.tsx`, `apps/web/app/ui/shell.tsx`, `apps/web/app/(main)/search/page.tsx`, `apps/api/src/topics/topics.service.test.ts`, `apps/web/tests/topics.test.mjs`, `e2e/tests/topics.spec.ts`
+- **Audit notes:** Trending topics are hashtags ranked by how many different members used them in live posts and replies in the last 7 days (many uses by one member count once), listed once at least 3 members have; ties go to more posts, then the latest use. Deleted, taken-down and suspended members' posts do not count. The ranking is the same for everyone (no follows, blocks or mutes change it; nothing is picked by hand) and is worked out at most once a minute. Each topic shows its counts and is spelled as most of its uses spell it. The API sends the rules with the topics, and /topics states them in words from those numbers. Shown in the side rail (top 5), on /topics (up to 20), on Search before anything is typed (top 10), and linked from Communities and About. Communities remain the categories; there is no separate category list. No moderator control hides a topic: removing its posts drops it. No topic search yet.
 
 #### Clickable hashtags
 
@@ -432,7 +433,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Open a topic feed by selecting a hashtag in a post.
 - **Inspected evidence:** `packages/db/drizzle/0023_hashtags.sql`, `apps/api/src/posts/hashtags.ts`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/post-text.tsx`, `apps/web/app/(main)/hashtag/[tag]/page.tsx`, `apps/web/app/(main)/search/page.tsx`, `apps/api/src/posts/hashtags.test.ts`, `apps/web/tests/hashtags.test.mjs`, `e2e/tests/hashtags.spec.ts`
-- **Audit notes:** A # followed by up to 50 letters, digits or underscores, at least one of them a letter, is a hashtag (tone marks typed as separate characters stay in the word); not inside a word (C#), a web address (…#comments) or an HTML entity, and #2027 is a number, not a topic. Each is stored with the post (post_hashtags) under one key for every spelling: composed (NFC) and in lower case, so #EndSARS and #endsars are one topic. In a post it links to /hashtag/<tag as written>, a public page listing live posts and replies with it, newest first, with the usual blocks, mutes and suspensions applied; every spelling's page points search engines at the lower-case one. A search for exactly one #hashtag offers its page. Posts made before hashtags were recorded have no rows, so their #words stay plain text (as with mentions). No trending hashtags, topic following or composer suggestions yet.
+- **Audit notes:** A # followed by up to 50 letters, digits or underscores, at least one of them a letter, is a hashtag (tone marks typed as separate characters stay in the word); not inside a word (C#), a web address (…#comments) or an HTML entity, and #2027 is a number, not a topic. Each is stored with the post (post_hashtags) under one key for every spelling: composed (NFC) and in lower case, so #EndSARS and #endsars are one topic. In a post it links to /hashtag/<tag as written>, a public page listing live posts and replies with it, newest first, with the usual blocks, mutes and suspensions applied; every spelling's page points search engines at the lower-case one. A search for exactly one #hashtag offers its page. Posts made before hashtags were recorded have no rows, so their #words stay plain text (as with mentions). Trending hashtags are topic-discovery; no topic following or composer suggestions yet.
 
 #### Pinned profile posts
 

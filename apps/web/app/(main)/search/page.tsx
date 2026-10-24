@@ -4,10 +4,11 @@ import { Suspense } from 'react'
 import { Avatar } from '@/app/ui/avatar'
 import { CommunityMark } from '@/app/ui/community-mark'
 import { EmptyState } from '@/app/ui/empty-state'
-import { ArrowUpRightIcon, SearchIcon } from '@/app/ui/icons'
+import { ArrowUpRightIcon, HashIcon, SearchIcon } from '@/app/ui/icons'
 import { JoinButton } from '@/app/ui/join-button'
 import { PostList, PostsSkeleton } from '@/app/ui/post-item'
-import { getViewer, search } from '@/lib/api'
+import { TopicList } from '@/app/ui/topic-list'
+import { getTrendingTopics, getViewer, search } from '@/lib/api'
 import { hashtagHref, hashtagIn } from '@/lib/hashtags'
 
 export const metadata: Metadata = { title: 'Search' }
@@ -30,7 +31,13 @@ export default function SearchPage({ searchParams }: PageProps<'/search'>) {
 async function Results({ searchParams }: Pick<PageProps<'/search'>, 'searchParams'>) {
   const { q: raw } = await searchParams
   const q = typeof raw === 'string' ? raw.trim().slice(0, 80) : ''
-  const [results, viewer] = await Promise.all([q.length >= 2 ? search(q) : null, getViewer()])
+  // Before anything is typed, what people are talking about is somewhere to start;
+  // if it cannot be read, search works without it.
+  const [results, viewer, trending] = await Promise.all([
+    q.length >= 2 ? search(q) : null,
+    getViewer(),
+    q ? null : getTrendingTopics().catch(() => null),
+  ])
   const viewerId = viewer.state === 'member' ? viewer.me.id : null
   // Searching for "#EndSARS" also offers the hashtag's own page, which has every post with it.
   const tag = hashtagIn(q)
@@ -57,15 +64,31 @@ async function Results({ searchParams }: Pick<PageProps<'/search'>, 'searchParam
       </form>
 
       {!q ? (
-        <div className="content-panel">
-          <EmptyState
-            icon={<SearchIcon size={24} />}
-            title="Follow your curiosity"
-            action={<Link href="/c" className="btn btn-secondary">Explore communities</Link>}
-          >
-            Try a member’s handle, a community name or a few words from a post.
-          </EmptyState>
-        </div>
+        <>
+          <div className="content-panel">
+            <EmptyState
+              icon={<SearchIcon size={24} />}
+              title="Follow your curiosity"
+              action={<Link href="/c" className="btn btn-secondary">Explore communities</Link>}
+            >
+              Try a member’s handle, a community name, a #hashtag or a few words from a post.
+            </EmptyState>
+          </div>
+          {trending?.topics.length ? (
+            <section className="content-panel" aria-labelledby="trending-topics">
+              <div className="section-heading">
+                <h2 id="trending-topics" className="section-title flex items-center gap-2">
+                  <span className="text-accent-strong"><HashIcon size={18} /></span>
+                  Trending topics
+                </h2>
+                <Link href="/topics" className="text-[13px] font-semibold text-accent-strong hover:underline">
+                  How they’re chosen
+                </Link>
+              </div>
+              <TopicList topics={trending.topics.slice(0, 10)} rules={trending.rules} />
+            </section>
+          ) : null}
+        </>
       ) : !results ? (
         <div className="content-panel">
           <EmptyState icon={<SearchIcon size={24} />} title="A little more to go on">
