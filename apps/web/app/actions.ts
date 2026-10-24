@@ -130,6 +130,24 @@ export async function setBookmark(formData: FormData): Promise<void> {
   refresh()
 }
 
+/** Pins one of your own posts to the top of your profile, or unpins it. */
+export async function setProfilePin(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '')
+  const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/pin`, { method })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+/** Pins a post to the top of its community, or unpins it. The API checks the visitor moderates it. */
+export async function setCommunityPin(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '')
+  const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/community-pin`, { method })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
 export async function setMembership(formData: FormData): Promise<void> {
   const slug = String(formData.get('slug') ?? '')
   const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'

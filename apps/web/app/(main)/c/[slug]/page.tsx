@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import { Composer } from '@/app/ui/composer'
 import { JoinButton } from '@/app/ui/join-button'
 import { CommunityMark } from '@/app/ui/community-mark'
-import { PostList, PostsSkeleton } from '@/app/ui/post-item'
+import { PostItem, PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { getCommunity, getCommunityPosts, getViewer } from '@/lib/api'
 
 type Props = PageProps<'/c/[slug]'>
@@ -26,6 +26,7 @@ async function CommunityView({ params, searchParams }: Props) {
   const feed = await getCommunityPosts(community.slug, page)
   const viewerId = viewer.state === 'member' ? viewer.me.id : null
   const rules = community.rules.split('\n').filter((line) => line.trim())
+  const now = Date.now()
 
   return (
     <div className="page-stack">
@@ -95,6 +96,13 @@ async function CommunityView({ params, searchParams }: Props) {
         </p>
       )}
 
+      {/* The welcome or guidance its moderators keep first, above the conversations. */}
+      {feed.pinned ? (
+        <section aria-label="Pinned by the moderators">
+          <PostItem post={feed.pinned} viewerId={viewerId} now={now} hideCommunity pinned="community" />
+        </section>
+      ) : null}
+
       <section aria-label={`Posts in ${community.name}`} className="flex flex-col gap-3">
         <div className="section-heading">
           <h2 className="section-title">Conversations</h2>
@@ -103,7 +111,7 @@ async function CommunityView({ params, searchParams }: Props) {
         <PostList
           posts={feed.posts}
           viewerId={viewerId}
-          now={Date.now()}
+          now={now}
           hideCommunity
           empty={page ? { title: 'No older posts' } : {
             title: 'The conversation starts here',

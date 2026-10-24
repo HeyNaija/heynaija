@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Inject,
@@ -29,6 +30,7 @@ import {
   CommunityNotFoundError,
   ImagesNotReadyError,
   NotACommunityMemberError,
+  NotACommunityModeratorError,
   ParentNotFoundError,
   newPost,
   PostsService,
@@ -43,6 +45,16 @@ const createPostBody = newPost(slugParam)
 const postId = (id: string): string => {
   if (!z.uuid().safeParse(id).success) throw new NotFoundException()
   return id
+}
+
+/** Runs a community pin change, turning "not one of its moderators" into a 403. */
+async function forbidden<T>(change: () => Promise<T>): Promise<T> {
+  try {
+    return await change()
+  } catch (err) {
+    if (err instanceof NotACommunityModeratorError) throw new ForbiddenException({ code: 'not_a_moderator', message: err.message })
+    throw err
+  }
 }
 
 @Controller('v1')
@@ -181,6 +193,39 @@ export class PostsController {
   @UseGuards(SessionGuard)
   async unrepost(@Req() req: AuthedRequest, @Param('id') id: string) {
     await this.posts.unrepost(req.member.id, postId(id))
+  }
+
+  /** Keeps one of your own top-level posts at the top of your profile, in place of any other. */
+  @Put('posts/:id/pin')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async pin(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await this.limits.hit('action', req.member.id)
+    if (!(await this.posts.pinToProfile(req.member.id, postId(id)))) throw new NotFoundException()
+  }
+
+  @Delete('posts/:id/pin')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async unpin(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await this.posts.unpinFromProfile(req.member.id, postId(id))
+  }
+
+  /** Keeps a top-level post at the top of its community. For that community's moderators and site-wide ones. */
+  @Put('posts/:id/community-pin')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async pinInCommunity(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await this.limits.hit('action', req.member.id)
+    const pinned = await forbidden(() => this.posts.pinInCommunity(req.member.id, postId(id)))
+    if (!pinned) throw new NotFoundException()
+  }
+
+  @Delete('posts/:id/community-pin')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async unpinInCommunity(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await forbidden(() => this.posts.unpinInCommunity(req.member.id, postId(id)))
   }
 
   @Put('posts/:id/bookmark')

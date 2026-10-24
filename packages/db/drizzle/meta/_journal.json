@@ -169,6 +169,13 @@
       "when": 1792879551296,
       "tag": "0023_hashtags",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792883939931,
+      "tag": "0024_pins",
+      "breakpoints": true
     }
   ]
 }

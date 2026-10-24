@@ -289,3 +289,26 @@ export async function pushSubscriptionCount(handle: string): Promise<number> {
     await db.end()
   }
 }
+
+/**
+ * The post pinned at the top of a community (by id), or null. For a test that
+ * pins one in a real community to put back what was there before.
+ */
+export async function communityPin(slug: string): Promise<string | null> {
+  const db = pool()
+  try {
+    const { rows } = await db.query<{ id: string | null }>('select pinned_post_id as id from communities where slug = $1', [slug])
+    return rows[0]?.id ?? null
+  } finally {
+    await db.end()
+  }
+}
+
+export async function setCommunityPin(slug: string, postId: string | null) {
+  const db = pool()
+  try {
+    await db.query('update communities set pinned_post_id = $2 where slug = $1', [slug, postId])
+  } finally {
+    await db.end()
+  }
+}

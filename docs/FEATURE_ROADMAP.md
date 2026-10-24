@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 35 | 10 | 21 | 14 | 80 |
+| 37 | 10 | 19 | 14 | 80 |
 
 ## Priority order
 
@@ -251,7 +251,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Download your own profile, posts, social choices and account-status records as JSON.
 - **Inspected evidence:** `apps/api/src/export/export.service.ts`, `apps/api/src/export/export.controller.ts`, `apps/web/app/(main)/settings/export/route.ts`, `apps/api/src/export/export.service.test.ts`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** Format 3 includes reposts and quoteOf; restricted person keys and reports about someone stay excluded.
+- **Audit notes:** Format 9: since format 3 it includes reposts and quoteOf, and since format 9 the post pinned to the profile; restricted person keys and reports about someone stay excluded.
 
 #### Account deletion and privacy requests
 
@@ -438,16 +438,18 @@ This tracks product development, not formal governance decisions. Priority means
 #### Pinned profile posts
 
 - **ID:** `profile-pins`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Choose a post to keep at the top of your profile.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/(main)/u/[handle]/page.tsx`
+- **Inspected evidence:** `packages/db/drizzle/0024_pins.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/api/src/members/members.controller.ts`, `apps/web/app/ui/post-item.tsx`, `apps/web/app/(main)/u/[handle]/page.tsx`, `apps/api/src/posts/pins.test.ts`, `e2e/tests/pins.spec.ts`
+- **Audit notes:** One pin per member (members.pinned_post_id), chosen from the post menu on any of their own live top-level posts; pinning another replaces it. It shows above the first page of their profile's Posts list, marked Pinned, and stays in its place in the list too. It shows only while live and while the reader may see the author (blocks hide it; a mute does not, on the author's own profile). Replies cannot be pinned. The data export (format 9) includes it.
 
 #### Pinned community welcome posts
 
 - **ID:** `community-welcome-pins`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Keep a welcome post and essential community guidance easy to find.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/(main)/c/[slug]/page.tsx`
+- **Inspected evidence:** `packages/db/drizzle/0024_pins.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/api/src/communities/communities.controller.ts`, `apps/web/app/ui/post-item.tsx`, `apps/web/app/(main)/c/[slug]/page.tsx`, `apps/api/src/posts/pins.test.ts`, `e2e/tests/pins.spec.ts`
+- **Audit notes:** One pin per community (communities.pinned_post_id): any live top-level post in it, its author's or not. Only that community's moderators and site-wide moderators can pin or unpin it, from the post menu wherever the post appears; pinning another replaces it. It shows above the community's Conversations, marked Pinned by the moderators, and only while live and visible to the reader. Pinning is not recorded in the moderation log, and nobody is notified.
 
 #### Community photos
 

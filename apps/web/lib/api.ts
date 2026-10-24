@@ -102,6 +102,12 @@ export type Post = {
   viewerLiked: boolean
   viewerReposted: boolean
   viewerBookmarked: boolean
+  /** Its author keeps it at the top of their profile. */
+  pinnedOnProfile: boolean
+  /** Its community's moderators keep it at the top of the community. */
+  pinnedInCommunity: boolean
+  /** The viewer moderates its community and may pin it there (top-level posts only). */
+  viewerCanPinInCommunity: boolean
   deleted: boolean
   community: { slug: string; name: string } | null
   /** A quote post's quoted post; null for other posts. */
@@ -112,7 +118,11 @@ export type Post = {
   repostedBy: { id: string; handle: string; displayName: string | null } | null
 }
 
-export type Feed = { posts: Post[]; cursor: string | null }
+/**
+ * A page of posts. The first page of a profile's posts and of a community also
+ * has the post pinned above the list (null when none, or none the viewer may see).
+ */
+export type Feed = { posts: Post[]; cursor: string | null; pinned?: Post | null }
 
 /** The lists on a member's profile: top-level posts, replies, and posts with images. */
 export const PROFILE_FILTERS = ['posts', 'replies', 'media'] as const

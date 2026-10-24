@@ -28,7 +28,7 @@ import { preferencesWithout } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/8'
+export const EXPORT_FORMAT = 'heynaija-export/9'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -230,6 +230,8 @@ export class ExportService {
         lastSeenAt: me.lastSeenAt,
         // When you finished or skipped the welcome flow; null if you have not yet.
         onboardedAt: me.onboardedAt,
+        // The post you keep at the top of your profile, if any.
+        pinnedPostId: me.pinnedPostId,
         role: me.role,
         active: me.active,
       },

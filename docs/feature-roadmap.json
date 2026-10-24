@@ -616,7 +616,7 @@
         "apps/api/src/export/export.service.test.ts",
         "e2e/tests/governance.spec.ts"
       ],
-      "notes": "Format 3 includes reposts and quoteOf; restricted person keys and reports about someone stay excluded."
+      "notes": "Format 9: since format 3 it includes reposts and quoteOf, and since format 9 the post pinned to the profile; restricted person keys and reports about someone stay excluded."
     },
     {
       "id": "member-onboarding",
@@ -728,14 +728,19 @@
       "description": "Choose a post to keep at the top of your profile.",
       "category": "discovery",
       "priority": "P1",
-      "status": "planned",
+      "status": "implemented",
       "availability": "not_live",
       "evidence": [
-        "packages/db/src/schema.ts",
+        "packages/db/drizzle/0024_pins.sql",
+        "apps/api/src/posts/posts.service.ts",
         "apps/api/src/posts/posts.controller.ts",
-        "apps/web/app/ui/composer.tsx",
-        "apps/web/app/(main)/u/[handle]/page.tsx"
-      ]
+        "apps/api/src/members/members.controller.ts",
+        "apps/web/app/ui/post-item.tsx",
+        "apps/web/app/(main)/u/[handle]/page.tsx",
+        "apps/api/src/posts/pins.test.ts",
+        "e2e/tests/pins.spec.ts"
+      ],
+      "notes": "One pin per member (members.pinned_post_id), chosen from the post menu on any of their own live top-level posts; pinning another replaces it. It shows above the first page of their profile's Posts list, marked Pinned, and stays in its place in the list too. It shows only while live and while the reader may see the author (blocks hide it; a mute does not, on the author's own profile). Replies cannot be pinned. The data export (format 9) includes it."
     },
     {
       "id": "community-welcome-pins",
@@ -743,14 +748,19 @@
       "description": "Keep a welcome post and essential community guidance easy to find.",
       "category": "discovery",
       "priority": "P1",
-      "status": "planned",
+      "status": "implemented",
       "availability": "not_live",
       "evidence": [
-        "packages/db/src/schema.ts",
+        "packages/db/drizzle/0024_pins.sql",
+        "apps/api/src/posts/posts.service.ts",
         "apps/api/src/posts/posts.controller.ts",
-        "apps/web/app/ui/composer.tsx",
-        "apps/web/app/(main)/c/[slug]/page.tsx"
-      ]
+        "apps/api/src/communities/communities.controller.ts",
+        "apps/web/app/ui/post-item.tsx",
+        "apps/web/app/(main)/c/[slug]/page.tsx",
+        "apps/api/src/posts/pins.test.ts",
+        "e2e/tests/pins.spec.ts"
+      ],
+      "notes": "One pin per community (communities.pinned_post_id): any live top-level post in it, its author's or not. Only that community's moderators and site-wide moderators can pin or unpin it, from the post menu wherever the post appears; pinning another replaces it. It shows above the community's Conversations, marked Pinned by the moderators, and only while live and visible to the reader. Pinning is not recorded in the moderation log, and nobody is notified."
     },
     {
       "id": "community-photos",

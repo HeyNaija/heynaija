@@ -131,6 +131,15 @@ export type PostView = {
   viewerReposted: boolean
   /** Always false for anonymous viewers. Bookmarks are private to their owner. */
   viewerBookmarked: boolean
+  /** Its author keeps it at the top of their profile. */
+  pinnedOnProfile: boolean
+  /** Its community's moderators keep it at the top of the community. */
+  pinnedInCommunity: boolean
+  /**
+   * The viewer may pin it to, or unpin it from, the top of its community: it is a
+   * top-level post in one, and they moderate that community or the whole site.
+   */
+  viewerCanPinInCommunity: boolean
   /**
    * Deleted by its author or taken down by a moderator. Only ever true for
    * ancestors shown in a thread, as a placeholder.
@@ -181,6 +190,7 @@ export { InvalidCursorError }
 export class NotACommunityMemberError extends Error {}
 export class ImagesNotReadyError extends Error {}
 export class QuotedPostNotFoundError extends Error {}
+export class NotACommunityModeratorError extends Error {}
 
 const MAX_THREAD_DEPTH = 50
 const REPLY_PAGE_SIZE = 20
@@ -215,6 +225,11 @@ const visibleAuthor = (viewerId: string | null, authorId: SQL, active: SQL, unmu
       ? sql`(not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = ${authorId})${unmuted ? sql` or ${authorId} = ${unmuted}` : sql``})`
       : undefined,
   )
+
+/** True when `memberId` moderates the community: as one of its moderators, or site-wide. */
+const moderatesCommunity = (memberId: string, communityId: SQL) =>
+  sql<boolean>`(exists(select 1 from members sm where sm.id = ${memberId} and sm.role = 'moderator')
+    or exists(select 1 from community_memberships cm where cm.community_id = ${communityId} and cm.member_id = ${memberId} and cm.role = 'moderator'))`
 
 /** True when either member has blocked the other. */
 export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
@@ -319,6 +334,11 @@ export class PostsService {
           ? sql<boolean>`exists(select 1 from bookmarks b where b.post_id = ${outerId} and b.member_id = ${viewerId})`
           : sql<boolean>`false`,
         deleted: sql<boolean>`${posts.deletedAt} is not null or ${posts.removedAt} is not null`,
+        pinnedOnProfile: sql<boolean>`coalesce(${members.pinnedPostId} = ${posts.id}, false)`,
+        pinnedInCommunity: sql<boolean>`coalesce(${communities.pinnedPostId} = ${posts.id}, false)`,
+        viewerCanPinInCommunity: viewerId
+          ? sql<boolean>`(${communities.id} is not null and ${posts.replyParentId} is null and ${moderatesCommunity(viewerId, sql`${communities.id}`)})`
+          : sql<boolean>`false`,
         communitySlug: communities.slug,
         communityName: communities.name,
         quote: sql<QuoteRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${quoteOf(viewerId, sql`${posts.quotePostId}`)} end`,
@@ -545,6 +565,88 @@ export class PostsService {
     return this.page(viewerId, inArray(posts.id, tagged), limit, cursor)
   }
 
+  /** The post a member keeps at the top of their profile, if the viewer may see it. */
+  async pinnedOnProfile(viewerId: string | null, authorId: string): Promise<PostView | null> {
+    const pinned = sql`(select m.pinned_post_id from members m where m.id = ${authorId})`
+    const [post] = await this.select(viewerId, and(sql`${posts.id} = ${pinned}`, eq(posts.authorId, authorId), topLevel), {
+      unmuted: authorId,
+      limit: 1,
+    })
+    return post ?? null
+  }
+
+  /** The post a community's moderators keep at the top of it, if the viewer may see it. */
+  async pinnedInCommunity(viewerId: string | null, communityId: string): Promise<PostView | null> {
+    const pinned = sql`(select c.pinned_post_id from communities c where c.id = ${communityId})`
+    const [post] = await this.select(viewerId, and(sql`${posts.id} = ${pinned}`, eq(posts.communityId, communityId), topLevel), {
+      limit: 1,
+    })
+    return post ?? null
+  }
+
+  /**
+   * Keeps one of the member's own live top-level posts at the top of their
+   * profile, in place of any they pinned before. False if it is not one.
+   */
+  async pinToProfile(memberId: string, postId: string): Promise<boolean> {
+    const rows = await this.db
+      .update(members)
+      .set({ pinnedPostId: postId })
+      .where(
+        and(
+          eq(members.id, memberId),
+          sql`exists(select 1 from posts p where p.id = ${postId} and p.author_id = ${memberId}
+            and p.reply_parent_id is null and p.deleted_at is null and p.removed_at is null)`,
+        ),
+      )
+      .returning({ id: members.id })
+    return rows.length > 0
+  }
+
+  /** Idempotent: nothing changes unless `postId` is the one pinned. */
+  async unpinFromProfile(memberId: string, postId: string): Promise<void> {
+    await this.db
+      .update(members)
+      .set({ pinnedPostId: null })
+      .where(and(eq(members.id, memberId), eq(members.pinnedPostId, postId)))
+  }
+
+  /**
+   * Keeps a live top-level post at the top of its community, in place of any
+   * pinned before. Only the community's moderators and site-wide moderators may.
+   * False if it is not such a post in an active community.
+   */
+  async pinInCommunity(memberId: string, postId: string): Promise<boolean> {
+    const [post] = await this.db
+      .select({ communityId: communities.id, allowed: moderatesCommunity(memberId, sql`${communities.id}`) })
+      .from(posts)
+      .innerJoin(members, eq(members.id, posts.authorId))
+      .innerJoin(communities, and(eq(communities.id, posts.communityId), eq(communities.active, true)))
+      .where(and(eq(posts.id, postId), live, topLevel, eq(members.active, true)))
+    if (!post) return false
+    if (!post.allowed) throw new NotACommunityModeratorError('only its moderators can pin posts in a community')
+    await this.db.update(communities).set({ pinnedPostId: postId }).where(eq(communities.id, post.communityId))
+    return true
+  }
+
+  /**
+   * Idempotent: nothing changes unless `postId` is pinned in a community, and then
+   * only its moderators and site-wide moderators may unpin it, even if it has
+   * since been deleted or taken down.
+   */
+  async unpinInCommunity(memberId: string, postId: string): Promise<void> {
+    const [community] = await this.db
+      .select({ id: communities.id, allowed: moderatesCommunity(memberId, sql`${communities.id}`) })
+      .from(communities)
+      .where(eq(communities.pinnedPostId, postId))
+    if (!community) return
+    if (!community.allowed) throw new NotACommunityModeratorError('only its moderators can unpin posts in a community')
+    await this.db
+      .update(communities)
+      .set({ pinnedPostId: null })
+      .where(and(eq(communities.id, community.id), eq(communities.pinnedPostId, postId)))
+  }
+
   /** The posts a member has saved. Only ever shown to that member. */
   bookmarked(viewerId: string, limit: number, cursor?: string): Promise<PostPage> {
     const saved = this.db
@@ -711,6 +813,7 @@ export class PostsService {
           'viewerReposted', ${viewerId ? sql`exists(select 1 from reposts r where r.post_id = p.id and r.member_id = ${viewerId})` : sql`false`},
           'quote', ${quoteOf(viewerId, sql`p.quote_post_id`)},
           'deleted', false, 'reason', null, 'repostedBy', null,
+          'pinnedOnProfile', false, 'pinnedInCommunity', false, 'viewerCanPinInCommunity', false,
           'community', case when c.id is null then null else json_build_object('slug', c.slug, 'name', c.name) end
         ) end as view
       from page join posts p on p.id = page.id

@@ -60,7 +60,10 @@ export class MembersController {
     const viewerId = req.member?.id ?? null
     const profile = await this.members.profile(viewerId, handleOf(handle))
     if (!profile) throw new NotFoundException()
-    return paged(() => this.posts.byAuthor(viewerId, profile.id, limit, cursor, filter))
+    const page = await paged(() => this.posts.byAuthor(viewerId, profile.id, limit, cursor, filter))
+    // The first page of posts also brings the one pinned above them.
+    if (filter !== 'posts' || cursor) return page
+    return { ...page, pinned: await this.posts.pinnedOnProfile(viewerId, profile.id) }
   }
 
   @Put(':handle/follow')
