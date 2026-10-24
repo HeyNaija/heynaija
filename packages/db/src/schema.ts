@@ -229,6 +229,24 @@ export const postMentions = pgTable(
   (t) => [primaryKey({ columns: [t.postId, t.start] }), index('post_mentions_member_idx').on(t.memberId)],
 )
 
+// A #hashtag in a post, reply or quote, written with the post. `tag` is the key
+// every spelling shares (#EndSARS and #endsars are one topic): the letters after
+// the #, composed (NFC) and in lower case. `start` and `length` say where it is
+// in the text, in UTF-16 code units, as for mentions. Posts from before hashtags
+// were recorded have no rows, so their #words stay plain text.
+export const postHashtags = pgTable(
+  'post_hashtags',
+  {
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => posts.id),
+    tag: text('tag').notNull(),
+    start: integer('start').notNull(),
+    length: integer('length').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.postId, t.start] }), index('post_hashtags_tag_idx').on(t.tag, t.postId)],
+)
+
 export const likes = pgTable(
   'likes',
   {

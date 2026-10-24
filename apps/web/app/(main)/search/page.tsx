@@ -8,6 +8,7 @@ import { ArrowUpRightIcon, SearchIcon } from '@/app/ui/icons'
 import { JoinButton } from '@/app/ui/join-button'
 import { PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { getViewer, search } from '@/lib/api'
+import { hashtagHref, hashtagIn } from '@/lib/hashtags'
 
 export const metadata: Metadata = { title: 'Search' }
 
@@ -31,6 +32,8 @@ async function Results({ searchParams }: Pick<PageProps<'/search'>, 'searchParam
   const q = typeof raw === 'string' ? raw.trim().slice(0, 80) : ''
   const [results, viewer] = await Promise.all([q.length >= 2 ? search(q) : null, getViewer()])
   const viewerId = viewer.state === 'member' ? viewer.me.id : null
+  // Searching for "#EndSARS" also offers the hashtag's own page, which has every post with it.
+  const tag = hashtagIn(q)
   const nothing = results && !results.members.length && !results.communities.length && !results.posts.length
 
   return (
@@ -78,6 +81,24 @@ async function Results({ searchParams }: Pick<PageProps<'/search'>, 'searchParam
       ) : (
         <>
           <p className="text-sm text-muted">Results for <span className="font-semibold text-ink">“{q}”</span></p>
+          {tag ? (
+            <section className="content-panel" aria-labelledby="hashtag-result">
+              <div className="section-heading">
+                <h2 id="hashtag-result" className="section-title">Hashtag</h2>
+              </div>
+              <ul className="result-list mt-3">
+                <li>
+                  <Link href={hashtagHref(tag)} className="result-row group">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold group-hover:underline">#{tag}</span>
+                      <span className="block truncate text-[13px] text-muted">Every post and reply with this hashtag</span>
+                    </span>
+                    <span className="text-muted"><ArrowUpRightIcon size={16} /></span>
+                  </Link>
+                </li>
+              </ul>
+            </section>
+          ) : null}
           {results.members.length ? (
             <section className="content-panel" aria-labelledby="member-results">
               <div className="section-heading">

@@ -56,9 +56,9 @@ export function PostItem({
 
   const href = `/p/${post.id}`
   const openLabel = `Open ${post.replyParentId ? 'reply' : 'post'} by @${post.authorHandle}`
-  const parts = textParts(post.text, post.mentions, post.links)
+  const parts = textParts(post.text, post.mentions, post.links, post.hashtags)
   // Text with links of its own cannot sit inside the post's permalink.
-  const rich = parts.some((part) => part.handle || part.href)
+  const rich = parts.some((part) => part.handle || part.tag || part.href)
   const likes = post.likeCount === 1 ? '1 like' : `${post.likeCount} likes`
   const replies = post.replyCount === 1 ? '1 reply' : `${post.replyCount} replies`
   const reposts = post.repostCount === 1 ? '1 repost' : `${post.repostCount} reposts`

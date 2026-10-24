@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 33 | 10 | 23 | 14 | 80 |
+| 34 | 10 | 22 | 14 | 80 |
 
 ## Priority order
 
@@ -429,10 +429,10 @@ This tracks product development, not formal governance decisions. Priority means
 #### Clickable hashtags
 
 - **ID:** `hashtags`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Open a topic feed by selecting a hashtag in a post.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`
-- **Audit notes:** Hashtags are ordinary post text; no parser, hashtag relation or topic endpoint was found.
+- **Inspected evidence:** `packages/db/drizzle/0023_hashtags.sql`, `apps/api/src/posts/hashtags.ts`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/post-text.tsx`, `apps/web/app/(main)/hashtag/[tag]/page.tsx`, `apps/web/app/(main)/search/page.tsx`, `apps/api/src/posts/hashtags.test.ts`, `apps/web/tests/hashtags.test.mjs`, `e2e/tests/hashtags.spec.ts`
+- **Audit notes:** A # followed by up to 50 letters, digits or underscores, at least one of them a letter, is a hashtag (tone marks typed as separate characters stay in the word); not inside a word (C#), a web address (…#comments) or an HTML entity, and #2027 is a number, not a topic. Each is stored with the post (post_hashtags) under one key for every spelling: composed (NFC) and in lower case, so #EndSARS and #endsars are one topic. In a post it links to /hashtag/<tag as written>, a public page listing live posts and replies with it, newest first, with the usual blocks, mutes and suspensions applied; every spelling's page points search engines at the lower-case one. A search for exactly one #hashtag offers its page. Posts made before hashtags were recorded have no rows, so their #words stay plain text (as with mentions). No trending hashtags, topic following or composer suggestions yet.
 
 #### Pinned profile posts
 

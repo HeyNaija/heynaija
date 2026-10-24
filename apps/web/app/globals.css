@@ -1163,6 +1163,8 @@ summary.menu::-webkit-details-marker {
 .post-primary-text { position: relative; z-index: 2; }
 .post-mention { color: var(--accent-strong); font-weight: 500; }
 .post-mention:hover { text-decoration: underline; }
+.post-hashtag { color: var(--accent-strong); font-weight: 500; }
+.post-hashtag:hover { text-decoration: underline; }
 .post-link { color: var(--accent-strong); overflow-wrap: anywhere; }
 .post-link:hover { text-decoration: underline; }
 /* A page the post links to: its picture, its own host name (never only what the page

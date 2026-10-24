@@ -34,6 +34,7 @@ import {
   PostsService,
   QuotedPostNotFoundError,
 } from './posts.service.js'
+import { parseHashtag } from './hashtags.js'
 import { replyPageQuery } from './reply-cursor.js'
 
 const createPostBody = newPost(slugParam)
@@ -72,6 +73,16 @@ export class PostsController {
   bookmarks(@Req() req: AuthedRequest, @Query() query: unknown) {
     const { limit, cursor } = parse(pageQuery, query)
     return paged(() => this.posts.bookmarked(req.member.id, limit, cursor))
+  }
+
+  /** Everything tagged with one hashtag, however it is spelled. Not a hashtag: 404, as for an unknown community. */
+  @Get('hashtags/:tag/posts')
+  @UseGuards(OptionalSessionGuard)
+  hashtag(@Req() req: MaybeAuthedRequest, @Param('tag') written: string, @Query() query: unknown) {
+    const { limit, cursor } = parse(pageQuery, query)
+    const tag = parseHashtag(written)
+    if (!tag) throw new NotFoundException()
+    return paged(() => this.posts.withHashtag(req.member?.id ?? null, tag, limit, cursor))
   }
 
   @Get('trending')

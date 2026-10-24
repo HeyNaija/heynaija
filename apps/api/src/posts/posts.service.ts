@@ -5,6 +5,7 @@ import {
   likes,
   media,
   members,
+  postHashtags,
   posts,
   reposts,
 } from '@heynaija/db'
@@ -18,6 +19,7 @@ import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, Inval
 import { notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { DB } from '../tokens.js'
+import { hashtagsOf, type PostHashtag, recordHashtags } from './hashtags.js'
 import { MENTIONS_NOTIFIED_MAX, mentionsOf, type PostMention, recordMentions } from './mentions.js'
 import { decodeReplyCursor, encodeReplyCursor } from './reply-cursor.js'
 
@@ -108,6 +110,8 @@ export type PostView = {
    * each with the handle that member has now. Empty when `deleted`.
    */
   mentions: PostMention[]
+  /** The #hashtags in `text`, in order, each with the topic it opens. Empty when `deleted`. */
+  hashtags: PostHashtag[]
   /** The web addresses in `text`, in order, for the reader's app to link. Empty when `deleted`. */
   links: PostLink[]
   /**
@@ -295,6 +299,7 @@ export class PostsService {
           ImageRow[]
         >`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${imagesOf(outerId)} else '[]'::json end`,
         mentions: sql<PostMention[]>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${mentionsOf(viewerId, outerId)} else '[]'::json end`,
+        hashtags: sql<PostHashtag[]>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${hashtagsOf(outerId)} else '[]'::json end`,
         linkPreview: sql<LinkPreviewRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${linkPreviewOf(sql`"posts"."link_url"`)} end`,
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
@@ -527,6 +532,18 @@ export class PostsService {
     })
   }
 
+  /**
+   * Posts and replies with `#tag` in them, newest first. `tag` is a key from
+   * `parseHashtag`, so every spelling of the hashtag is found.
+   */
+  withHashtag(viewerId: string | null, tag: string, limit: number, cursor?: string): Promise<PostPage> {
+    const tagged = this.db
+      .select({ id: postHashtags.postId })
+      .from(postHashtags)
+      .where(eq(postHashtags.tag, tag))
+    return this.page(viewerId, inArray(posts.id, tagged), limit, cursor)
+  }
+
   /** The posts a member has saved. Only ever shown to that member. */
   bookmarked(viewerId: string, limit: number, cursor?: string): Promise<PostPage> {
     const saved = this.db
@@ -708,6 +725,7 @@ export class PostsService {
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
           'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id,
           'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
+          'hashtags', ${hashtagsOf(sql`p.id`)},
           'linkPreview', ${linkPreviewOf(sql`p.link_url`)},
           'createdAt', p.created_at, 'replyParentId', p.reply_parent_id,
           'likeCount', p.like_count, 'replyCount', p.reply_count, 'repostCount', p.repost_count,
@@ -756,7 +774,8 @@ export class PostsService {
    * lands in its parent's community (or none), whatever is asked for. `images`
    * must be the author's own uploads, processed and not on another post. `quote`
    * makes it a quote post of a post the author can currently see. Members named
-   * with @handle in `text` are recorded and told (see `recordMentions`).
+   * with @handle in `text` are recorded and told (see `recordMentions`), and
+   * its #hashtags recorded (see `recordHashtags`).
    */
   async create(
     authorId: string,
@@ -850,6 +869,7 @@ export class PostsService {
           .returning({ id: media.id })
         if (attached.length === 0) throw new ImagesNotReadyError('an image is missing, still processing or already used')
       }
+      await recordHashtags(tx, { id: row!.id, text })
       // Someone told about this post as a reply or a quote is not told again that
       // it mentions them, and only the first few others named are told at all.
       const mentioned = (await recordMentions(tx, { id: row!.id, authorId, text }))

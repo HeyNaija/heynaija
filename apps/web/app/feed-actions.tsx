@@ -9,6 +9,7 @@ import {
   getCommunityPosts,
   getFeed,
   getFollowingFeed,
+  getHashtagPosts,
   getMemberPosts,
   getViewer,
   PROFILE_FILTERS,
@@ -31,6 +32,8 @@ function fetchPage(source: FeedSource, cursor: string): Promise<Feed | null> {
       return getFollowingFeed(cursor)
     case 'community':
       return getCommunityPosts(source.slug, cursor)
+    case 'hashtag':
+      return getHashtagPosts(source.tag, cursor)
     case 'member':
       return getMemberPosts(source.handle, source.filter, cursor)
     case 'bookmarks':
@@ -40,8 +43,9 @@ function fetchPage(source: FeedSource, cursor: string): Promise<Feed | null> {
 
 const isSource = (s: unknown): s is FeedSource => {
   if (!s || typeof s !== 'object') return false
-  const { kind, slug, handle, filter } = s as Record<string, unknown>
+  const { kind, slug, tag, handle, filter } = s as Record<string, unknown>
   if (kind === 'community') return typeof slug === 'string' && slug.length <= 100
+  if (kind === 'hashtag') return typeof tag === 'string' && tag.length <= 200
   if (kind === 'member') {
     return typeof handle === 'string' && handle.length <= 100 && PROFILE_FILTERS.includes(filter as never)
   }

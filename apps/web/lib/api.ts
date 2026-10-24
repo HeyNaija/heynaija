@@ -55,6 +55,12 @@ export type QuotedPost =
  */
 export type PostMention = { start: number; length: number; handle: string }
 
+/**
+ * A #hashtag in the text: where it is (UTF-16 code units) and the topic it is,
+ * the key every spelling shares (lower case).
+ */
+export type PostHashtag = { start: number; length: number; tag: string }
+
 /** A web address in the text: where it is (UTF-16 code units) and where it leads. Always http or https. */
 export type PostLink = { start: number; length: number; url: string }
 
@@ -80,6 +86,8 @@ export type Post = {
   images: PostImage[]
   /** Mentions of members the viewer can see, in order. Other @text stays plain. */
   mentions: PostMention[]
+  /** Hashtags in the text, in order. */
+  hashtags: PostHashtag[]
   /** Web addresses in the text, in order. */
   links: PostLink[]
   /** The card for the first address, once the server has read the page. */
@@ -272,6 +280,17 @@ export const getCommunityPosts = (slug: string, cursor?: string) =>
   getPage(`/v1/communities/${encodeURIComponent(slug)}/posts`, cursor)
 
 export const getBookmarks = (cursor?: string) => getPage('/v1/bookmarks', cursor)
+
+/** Posts and replies with a hashtag, written without its #. Null when that is not a hashtag. */
+export async function getHashtagPosts(tag: string, cursor?: string): Promise<Feed | null> {
+  const path = `/v1/hashtags/${encodeURIComponent(tag)}/posts`
+  const res = await api(cursor ? `${path}?cursor=${encodeURIComponent(cursor)}` : path)
+  if (res.status === 404) return null
+  // A mangled cursor in the URL should fall back to the first page, as in getPage.
+  if (res.status === 400 && cursor) return getHashtagPosts(tag)
+  if (!res.ok) throw new Error(`API ${path} responded ${res.status}`)
+  return res.json()
+}
 
 export async function getTrending(): Promise<Post[]> {
   const res = await api('/v1/trending')

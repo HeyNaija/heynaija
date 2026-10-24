@@ -49,6 +49,7 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['push subscriptions', `delete from push_subscriptions where member_id in (select id from e2e_m)`],
         ['link previews', `delete from link_previews where url like 'https://links.e2e.test/%'`],
         ['mentions', `delete from post_mentions where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
+        ['hashtags', `delete from post_hashtags where post_id in (select id from e2e_p)`],
         ['likes', `delete from likes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['reposts', `delete from reposts where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['bookmarks', `delete from bookmarks where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
