@@ -12,6 +12,7 @@
 #   - creates a `heynaija` user who runs the deployment and the GitHub runner
 #   - turns off SSH password logins and direct root login
 #   - lets in only SSH, HTTP and HTTPS (ufw), and turns on automatic security updates
+#   - has systemd keep restarting nginx if it ever fails to start
 # HTTPS is only accepted from Cloudflare: nginx requires Cloudflare's client
 # certificate (Authenticated Origin Pulls), see nginx/heynaija.conf.template.
 set -euo pipefail
@@ -69,6 +70,19 @@ ufw --force enable
 
 # Security updates install themselves; reboots are left to a person.
 dpkg-reconfigure -f noninteractive unattended-upgrades
+
+# Those updates restart nginx, and a failed start (once, a DNS blip) used to leave
+# the site down until someone noticed. Keep trying every 10 seconds instead.
+install -d /etc/systemd/system/nginx.service.d
+cat > /etc/systemd/system/nginx.service.d/restart.conf <<'UNIT'
+[Unit]
+StartLimitIntervalSec=0
+
+[Service]
+Restart=on-failure
+RestartSec=10s
+UNIT
+systemctl daemon-reload
 
 # Container logs are capped per service in compose.yml; this caps everything else.
 cat > /etc/docker/daemon.json <<'JSON'
