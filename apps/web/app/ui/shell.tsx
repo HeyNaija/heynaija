@@ -1,8 +1,8 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { type ComponentType, Suspense } from 'react'
-import { getCommunities, getTrending, getViewer, type Viewer } from '@/lib/api'
-import { getLogoutUrl } from '@/lib/kratos'
+import { getCommunities, getTrending, getTrendingTopics, getViewer, type Viewer } from '@/lib/api'
+import { getLogoutUrl } from '@/lib/auth/server'
 import { Avatar } from './avatar'
 import { CommunityMark } from './community-mark'
 import {
@@ -14,6 +14,7 @@ import {
   FlameIcon,
   GovernanceIcon,
   GearIcon,
+  HashIcon,
   HomeIcon,
   HistoryIcon,
   InfoIcon,
@@ -29,6 +30,7 @@ import { NavLink } from './nav-link'
 import { NewPostLink } from './new-post-link'
 import { PushCheck } from './push-check'
 import { ThemeSwitch } from './theme-switch'
+import { TopicList } from './topic-list'
 import { TreasuryPreview } from './treasury-preview'
 import { UnreadBadge } from './unread-badge'
 
@@ -341,6 +343,9 @@ export function RightRail() {
         <PopularCommunities />
       </Suspense>
       <Suspense fallback={null}>
+        <TrendingTopics />
+      </Suspense>
+      <Suspense fallback={null}>
         <Trending />
       </Suspense>
       <TreasuryPreview />
@@ -378,6 +383,30 @@ async function PopularCommunities() {
           </li>
         ))}
       </ul>
+    </section>
+  )
+}
+
+async function TrendingTopics() {
+  // Something extra beside the page: if it cannot be read, the page goes on without it.
+  const trending = await getTrendingTopics().catch(() => null)
+  if (!trending?.topics.length) return null
+  const { topics, rules } = trending
+
+  return (
+    <section className="rail-section">
+      <div className="flex items-baseline justify-between">
+        <h2 className="section-title flex items-center gap-2">
+          <span className="text-accent-strong">
+            <HashIcon size={18} />
+          </span>
+          Trending topics
+        </h2>
+        <Link href="/topics" className="text-[13px] font-semibold text-accent-strong hover:underline">
+          How they’re chosen
+        </Link>
+      </div>
+      <TopicList topics={topics.slice(0, 5)} rules={rules} compact />
     </section>
   )
 }

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AuthPage, linkClass } from '@/app/ui/auth-page'
-import { getFlowError } from '@/lib/kratos'
+import { getFlowError } from '@/lib/auth/server'
 
 export const metadata: Metadata = { title: 'Something went wrong' }
 

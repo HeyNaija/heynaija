@@ -17,7 +17,12 @@ export default function CommunitiesPage() {
         <p className="page-eyebrow">Find your people</p>
         <h1 className="page-title">Communities</h1>
         <p className="page-description">
-          Join a community to post in it and bring its conversations into your Following feed.
+          Join a community to post in it and bring its conversations into your Following feed. Looking for a subject
+          instead? See the{' '}
+          <Link href="/topics" className="font-semibold text-accent-strong hover:underline">
+            trending topics
+          </Link>
+          .
         </p>
       </header>
       <Suspense fallback={<PostsSkeleton />}>

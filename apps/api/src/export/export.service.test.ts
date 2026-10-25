@@ -56,6 +56,10 @@ test('an export holds what the member made and chose, by handle', async () => {
   const onboardedAt = new Date('2026-10-18T09:00:00Z')
   await db.update(members).set({ onboardedAt }).where(eq(members.id, ada))
   assert.deepEqual((await service.export(ada, null))!.account.onboardedAt, onboardedAt)
+  // The post kept at the top of the profile, once there is one.
+  assert.equal(data.account.pinnedPostId, null)
+  await postsService.pinToProfile(ada, kept.id)
+  assert.equal((await service.export(ada, null))!.account.pinnedPostId, kept.id)
   // Deleted posts are still held, so they are in the export, marked as deleted.
   assert.deepEqual(
     data.posts.map((p) => [p.id, p.text, p.deletedAt !== null, p.quoteOf]),

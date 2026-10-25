@@ -15,6 +15,8 @@ import {
   FileText,
   Flag,
   Flame,
+  Hash,
+  Pin,
   Heart,
   History,
   House,
@@ -79,6 +81,8 @@ export const UserIcon = icon(User)
 export const DotsIcon = icon(Ellipsis)
 export const ChevronIcon = icon(ChevronDown)
 export const FlameIcon = icon(Flame)
+export const HashIcon = icon(Hash)
+export const PinIcon = icon(Pin)
 export const ShieldIcon = icon(Shield)
 export const VoteIcon = icon(Vote)
 export const ImageIcon = icon(ImagePlus)

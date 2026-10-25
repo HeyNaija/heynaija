@@ -8,16 +8,15 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common'
-import type {} from '@fastify/cookie' // request.cookies typings
 import { eq } from 'drizzle-orm'
 import type { FastifyRequest } from 'fastify'
 import type { Env } from '../env.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { DB, ENV } from '../tokens.js'
-import { type Identity, KratosService, SESSION_COOKIE } from './kratos.service.js'
+import { AuthService, authRequest, type MemberIdentity } from './auth.service.js'
 
-export type AuthedRequest = FastifyRequest & { member: Identity }
-export type MaybeAuthedRequest = FastifyRequest & { member?: Identity }
+export type AuthedRequest = FastifyRequest & { member: MemberIdentity }
+export type MaybeAuthedRequest = FastifyRequest & { member?: MemberIdentity }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
@@ -30,7 +29,7 @@ export class SessionGuard implements CanActivate {
   protected readonly requireActive: boolean = true
 
   constructor(
-    @Inject(KratosService) private readonly kratos: Pick<KratosService, 'identityForSession'>,
+    @Inject(AuthService) private readonly auth: Pick<AuthService, 'identityForRequest'>,
     @Inject(ENV) private readonly env: Pick<Env, 'WEB_PUBLIC_URL'>,
     @Inject(DB) private readonly db: Db,
     @Inject(InvitesService) private readonly invites: Pick<InvitesService, 'hasRedeemed'>,
@@ -45,8 +44,7 @@ export class SessionGuard implements CanActivate {
       throw new ForbiddenException('cross-origin write rejected')
     }
 
-    const cookie = req.cookies[SESSION_COOKIE]
-    const identity = cookie ? await this.kratos.identityForSession(cookie) : null
+    const identity = await this.auth.identityForRequest(authRequest(req))
     if (!identity) throw new UnauthorizedException('sign in required')
 
     // A plain primary-key read on every request: `active` is never cached, so a

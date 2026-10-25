@@ -7,7 +7,7 @@ import { Avatar } from '@/app/ui/avatar'
 import { IdentityBadge } from '@/app/ui/identity-badge'
 import { DotsIcon } from '@/app/ui/icons'
 import { Menu } from '@/app/ui/menu'
-import { PostList, PostsSkeleton } from '@/app/ui/post-item'
+import { PostItem, PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
 import { findProfile, getMemberPosts, getViewer, PROFILE_FILTERS, type ProfileFilter } from '@/lib/api'
 import { defaultPreviewImage, excerpt, siteOpenGraph } from '@/lib/previews'
@@ -70,6 +70,7 @@ async function ProfileView({ params, searchParams }: Props) {
   // Behind a block there is nothing to load: the API would return no posts anyway.
   const feed = profile.viewerBlocks ? { posts: [], cursor: null } : await getMemberPosts(profile.handle, tab, page)
   const viewerId = viewer.state === 'member' ? viewer.me.id : null
+  const now = Date.now()
 
   return (
     <div className="page-stack">
@@ -167,10 +168,12 @@ async function ProfileView({ params, searchParams }: Props) {
 
       {/* Keyed so switching tabs starts a fresh list instead of reloading the old one's batches. */}
       <section key={tab} aria-label={`${TABS[tab].listLabel} by @${profile.handle}`} className="flex flex-col gap-3">
+        {/* Only on the first page of Posts: the API sends it there and nowhere else. */}
+        {feed.pinned ? <PostItem post={feed.pinned} viewerId={viewerId} now={now} pinned="profile" /> : null}
         <PostList
           posts={feed.posts}
           viewerId={viewerId}
-          now={Date.now()}
+          now={now}
           empty={
             profile.viewerBlocks
               ? { title: `You blocked @${profile.handle}`, detail: 'Unblock to see their posts.' }

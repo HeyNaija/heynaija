@@ -1,8 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AuthPage, linkClass } from '@/app/ui/auth-page'
-import { FlowForm } from '@/app/ui/flow-form'
-import { getFlow, getLogoutUrl, getSessionEmail } from '@/lib/kratos'
+import { AuthForm } from '@/lib/auth/server'
 
 export const metadata: Metadata = { title: 'Sign in' }
 
@@ -27,22 +26,5 @@ export default function LoginPage({ searchParams }: PageProps<'/login'>) {
 }
 
 async function LoginForm({ searchParams }: Pick<PageProps<'/login'>, 'searchParams'>) {
-  const flow = await getFlow('login', (await searchParams).flow)
-  if (!flow.refresh) return <FlowForm flow={flow} />
-
-  // Already signed in, confirming it is them before a change in Settings.
-  const [email, logoutUrl] = await Promise.all([getSessionEmail(), getLogoutUrl()])
-  return (
-    <div className="flex flex-col gap-5">
-      <FlowForm flow={flow} identifier={email ?? undefined} />
-      {logoutUrl ? (
-        <p className="text-sm text-muted">
-          Not you?{' '}
-          <a href={`/logout?to=${encodeURIComponent(logoutUrl)}`} className={linkClass}>
-            Sign out
-          </a>
-        </p>
-      ) : null}
-    </div>
-  )
+  return <AuthForm kind="login" flowId={(await searchParams).flow} />
 }

@@ -2,7 +2,7 @@
 
 **Date:** 13 October 2026 · **Status:** Accepted · **Supersedes:** ADR 0001 and the
 architecture sections of PLAN.md (§0, §2, §3, §5, §6 PDS parts, §8 Phase 0) ·
-**Amended by:** ADR 0003 (no passwords)
+**Amended by:** ADR 0003 (no passwords), ADR 0012 (session lookup through AuthService)
 
 ## Decision
 

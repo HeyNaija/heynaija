@@ -1,6 +1,9 @@
 import { createDb } from '@heynaija/db'
 import { Controller, Get, Module } from '@nestjs/common'
 import { AuthController } from './auth/auth.controller.js'
+import { AuthService } from './auth/auth.service.js'
+import { AUTH_SESSION_PROVIDER } from './auth/auth-session.provider.js'
+import { KratosSessionProvider } from './auth/kratos-session.provider.js'
 import { KratosService } from './auth/kratos.service.js'
 import { RedisSessionCache, SESSION_CACHE } from './auth/session-cache.js'
 import { OptionalSessionGuard, SessionGuard, SuspendedAllowedGuard } from './auth/session.guard.js'
@@ -43,6 +46,8 @@ import { PUSH_SENDER, webPushSender } from './push/push-sender.js'
 import { RateLimiter, RedisRateLimiter } from './rate-limit.js'
 import { SearchController } from './search/search.controller.js'
 import { DB, ENV } from './tokens.js'
+import { TopicsController } from './topics/topics.controller.js'
+import { TopicsService } from './topics/topics.service.js'
 
 @Controller()
 class HealthController {
@@ -53,12 +58,14 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
     { provide: SESSION_CACHE, useClass: RedisSessionCache },
     KratosService,
+    { provide: AUTH_SESSION_PROVIDER, useClass: KratosSessionProvider },
+    AuthService,
     SessionGuard,
     OptionalSessionGuard,
     SuspendedAllowedGuard,
@@ -79,6 +86,7 @@ class HealthController {
     CommunitiesService,
     InvitesService,
     PostsService,
+    TopicsService,
     NotificationsService,
     { provide: EMAIL_JOBS, useClass: BullEmailJobs },
     // Without an SMTP account (SMTP_CONNECTION_URI) these are null and no email is sent.

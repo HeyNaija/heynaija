@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -50,6 +51,9 @@ export const members = pgTable(
     // When a notification email was last sent to them. The next one waits a while
     // after it, so a steady trickle of activity is not a steady trickle of mail.
     lastNotificationEmailAt: ts('last_notification_email_at'),
+    // The one of their own top-level posts they keep at the top of their profile.
+    // Shown only while it is live; a post removed for good takes the pin with it.
+    pinnedPostId: uuid('pinned_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
   },
   (t) => [index('members_handle_idx').on(t.handle)],
 )
@@ -144,6 +148,9 @@ export const communities = pgTable('communities', {
   // Inactive communities disappear from lists; their posts stay in members' profiles.
   active: boolean('active').notNull().default(true),
   createdAt: ts('created_at').notNull().defaultNow(),
+  // A top-level post in the community its moderators keep at the top: a welcome,
+  // or the guidance everyone should read. Shown only while it is live.
+  pinnedPostId: uuid('pinned_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
 })
 
 export const communityMemberships = pgTable(
@@ -227,6 +234,24 @@ export const postMentions = pgTable(
     length: integer('length').notNull(),
   },
   (t) => [primaryKey({ columns: [t.postId, t.start] }), index('post_mentions_member_idx').on(t.memberId)],
+)
+
+// A #hashtag in a post, reply or quote, written with the post. `tag` is the key
+// every spelling shares (#EndSARS and #endsars are one topic): the letters after
+// the #, composed (NFC) and in lower case. `start` and `length` say where it is
+// in the text, in UTF-16 code units, as for mentions. Posts from before hashtags
+// were recorded have no rows, so their #words stay plain text.
+export const postHashtags = pgTable(
+  'post_hashtags',
+  {
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => posts.id),
+    tag: text('tag').notNull(),
+    start: integer('start').notNull(),
+    length: integer('length').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.postId, t.start] }), index('post_hashtags_tag_idx').on(t.tag, t.postId)],
 )
 
 export const likes = pgTable(

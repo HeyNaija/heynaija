@@ -28,7 +28,7 @@ import { MembersService } from '../members/members.service.js'
 import { NotificationsService } from '../notifications/notifications.service.js'
 import { RateLimiter, visitor } from '../rate-limit.js'
 import { DB, ENV } from '../tokens.js'
-import { KratosService, SESSION_COOKIE } from './kratos.service.js'
+import { AuthService, authRequest } from './auth.service.js'
 import { type AuthedRequest, SessionGuard } from './session.guard.js'
 
 // identity_id is all zeros in the first hook (the account is not saved yet).
@@ -83,7 +83,7 @@ export class AuthController {
     @Inject(RateLimiter) private readonly limits: RateLimiter,
     @Inject(ENV) private readonly env: Env,
     @Inject(DB) private readonly db: Db,
-    @Inject(KratosService) private readonly kratos: KratosService,
+    @Inject(AuthService) private readonly auth: Pick<AuthService, 'invalidateSessionCache'>,
     @Inject(MembersService) private readonly members: MembersService,
     @Inject(GovernanceService) private readonly governance: GovernanceService,
   ) {}
@@ -127,8 +127,7 @@ export class AuthController {
   @Post('v1/logout')
   @HttpCode(204)
   async logout(@Req() req: FastifyRequest) {
-    const cookie = req.cookies[SESSION_COOKIE]
-    if (cookie) await this.kratos.forgetSession(cookie)
+    await this.auth.invalidateSessionCache(authRequest(req))
   }
 
   /** Lets /join tell someone their code is wrong before they fill in a signup form. */

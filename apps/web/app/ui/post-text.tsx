@@ -1,16 +1,22 @@
 import Link from 'next/link'
 import { Fragment } from 'react'
+import { hashtagHref } from '@/lib/hashtags'
 import type { TextPart } from '@/lib/mentions'
 
 /**
- * Post text with each mention linked to the profile it leads to now, each web
- * address linked to its page, and the rest as written. Addresses open in a new
+ * Post text with each mention linked to the profile it leads to now, each
+ * hashtag to its topic page, each web address to its page, and the rest as
+ * written. Addresses open in a new
  * tab and tell search engines the link was written by a member, not by us.
  */
 export function PostText({ parts }: { parts: TextPart[] }) {
   return parts.map((part, i) =>
     part.handle ? (
       <Link key={i} prefetch={false} href={`/u/${part.handle}`} className="post-mention">
+        {part.text}
+      </Link>
+    ) : part.tag ? (
+      <Link key={i} prefetch={false} href={hashtagHref(part.tag)} className="post-hashtag">
         {part.text}
       </Link>
     ) : part.href ? (

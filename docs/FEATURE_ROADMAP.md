@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 33 | 10 | 23 | 14 | 80 |
+| 37 | 10 | 19 | 14 | 80 |
 
 ## Priority order
 
@@ -63,7 +63,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `google-signin`
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Recorded in production
 - **Description:** Use the configured Google identity provider to access an invited account.
-- **Inspected evidence:** `infra/kratos/google.jsonnet`, `infra/kratos/kratos.yml`, `apps/web/app/ui/flow-form.tsx`, `e2e/tests/google-auth.spec.ts`, `docs/deployment/google-sign-in.md`
+- **Inspected evidence:** `infra/kratos/google.jsonnet`, `infra/kratos/kratos.yml`, `apps/web/lib/auth/providers/kratos/flow-form.tsx`, `e2e/tests/google-auth.spec.ts`, `docs/deployment/google-sign-in.md`
 - **Audit notes:** google-auth.spec.ts covers signup, sign-in and linking against a local signed OIDC issuer. Live Google consent stays outside automated tests; the owner confirmed a real Google sign-in on staging and production (reported 18 Oct 2026).
 
 #### Account recovery
@@ -72,7 +72,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Partial · **Availability:** Availability not verified
 - **Description:** Regain account access while distinguishing email-code sign-in from a separate recovery process.
 - **Remaining work / caveat:** Email-code sign-in restores access if you can receive email; a separate process for losing that email account is not provided.
-- **Inspected evidence:** `infra/kratos/kratos.yml`, `apps/web/lib/kratos.ts`, `apps/web/app/ui/flow-form.tsx`, `docs/adr/0003-passwordless-sign-in.md`, `e2e/tests/auth.spec.ts`
+- **Inspected evidence:** `infra/kratos/kratos.yml`, `apps/web/lib/auth/providers/kratos/client.ts`, `apps/web/lib/auth/providers/kratos/flow-form.tsx`, `docs/adr/0003-passwordless-sign-in.md`, `e2e/tests/auth.spec.ts`
 - **Audit notes:** Kratos password recovery is explicitly disabled. ADR 0003 replaced it with passwordless sign-in; do not claim a configured recovery flow exists.
 
 #### Temporary beta age declaration
@@ -251,7 +251,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Download your own profile, posts, social choices and account-status records as JSON.
 - **Inspected evidence:** `apps/api/src/export/export.service.ts`, `apps/api/src/export/export.controller.ts`, `apps/web/app/(main)/settings/export/route.ts`, `apps/api/src/export/export.service.test.ts`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** Format 3 includes reposts and quoteOf; restricted person keys and reports about someone stay excluded.
+- **Audit notes:** Format 9: since format 3 it includes reposts and quoteOf, and since format 9 the post pinned to the profile; restricted person keys and reports about someone stay excluded.
 
 #### Account deletion and privacy requests
 
@@ -421,32 +421,35 @@ This tracks product development, not formal governance decisions. Priority means
 #### Transparent topic discovery
 
 - **ID:** `topic-discovery`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Improve Nigerian topic and category discovery with understandable selection rules.
-- **Dependencies:** `basic-trending`
-- **Inspected evidence:** `apps/api/src/posts/posts.service.ts`, `apps/web/app/(main)/search/page.tsx`
+- **Dependencies:** `basic-trending`, `hashtags`
+- **Inspected evidence:** `apps/api/src/topics/topics.service.ts`, `apps/api/src/topics/topics.controller.ts`, `apps/api/src/refreshing.ts`, `apps/web/app/(main)/topics/page.tsx`, `apps/web/app/ui/topic-list.tsx`, `apps/web/app/ui/shell.tsx`, `apps/web/app/(main)/search/page.tsx`, `apps/api/src/topics/topics.service.test.ts`, `apps/web/tests/topics.test.mjs`, `e2e/tests/topics.spec.ts`
+- **Audit notes:** Trending topics are hashtags ranked by how many different members used them in live posts and replies in the last 7 days (many uses by one member count once), listed once at least 3 members have; ties go to more posts, then the latest use. Deleted, taken-down and suspended members' posts do not count. The ranking is the same for everyone (no follows, blocks or mutes change it; nothing is picked by hand) and is worked out at most once a minute. Each topic shows its counts and is spelled as most of its uses spell it. The API sends the rules with the topics, and /topics states them in words from those numbers. Shown in the side rail (top 5), on /topics (up to 20), on Search before anything is typed (top 10), and linked from Communities and About. Communities remain the categories; there is no separate category list. No moderator control hides a topic: removing its posts drops it. No topic search yet.
 
 #### Clickable hashtags
 
 - **ID:** `hashtags`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Open a topic feed by selecting a hashtag in a post.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`
-- **Audit notes:** Hashtags are ordinary post text; no parser, hashtag relation or topic endpoint was found.
+- **Inspected evidence:** `packages/db/drizzle/0023_hashtags.sql`, `apps/api/src/posts/hashtags.ts`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/post-text.tsx`, `apps/web/app/(main)/hashtag/[tag]/page.tsx`, `apps/web/app/(main)/search/page.tsx`, `apps/api/src/posts/hashtags.test.ts`, `apps/web/tests/hashtags.test.mjs`, `e2e/tests/hashtags.spec.ts`
+- **Audit notes:** A # followed by up to 50 letters, digits or underscores, at least one of them a letter, is a hashtag (tone marks typed as separate characters stay in the word); not inside a word (C#), a web address (…#comments) or an HTML entity, and #2027 is a number, not a topic. Each is stored with the post (post_hashtags) under one key for every spelling: composed (NFC) and in lower case, so #EndSARS and #endsars are one topic. In a post it links to /hashtag/<tag as written>, a public page listing live posts and replies with it, newest first, with the usual blocks, mutes and suspensions applied; every spelling's page points search engines at the lower-case one. A search for exactly one #hashtag offers its page. Posts made before hashtags were recorded have no rows, so their #words stay plain text (as with mentions). Trending hashtags are topic-discovery; no topic following or composer suggestions yet.
 
 #### Pinned profile posts
 
 - **ID:** `profile-pins`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Choose a post to keep at the top of your profile.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/(main)/u/[handle]/page.tsx`
+- **Inspected evidence:** `packages/db/drizzle/0024_pins.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/api/src/members/members.controller.ts`, `apps/web/app/ui/post-item.tsx`, `apps/web/app/(main)/u/[handle]/page.tsx`, `apps/api/src/posts/pins.test.ts`, `e2e/tests/pins.spec.ts`
+- **Audit notes:** One pin per member (members.pinned_post_id), chosen from the post menu on any of their own live top-level posts; pinning another replaces it. It shows above the first page of their profile's Posts list, marked Pinned, and stays in its place in the list too. It shows only while live and while the reader may see the author (blocks hide it; a mute does not, on the author's own profile). Replies cannot be pinned. The data export (format 9) includes it.
 
 #### Pinned community welcome posts
 
 - **ID:** `community-welcome-pins`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Keep a welcome post and essential community guidance easy to find.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/(main)/c/[slug]/page.tsx`
+- **Inspected evidence:** `packages/db/drizzle/0024_pins.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/api/src/communities/communities.controller.ts`, `apps/web/app/ui/post-item.tsx`, `apps/web/app/(main)/c/[slug]/page.tsx`, `apps/api/src/posts/pins.test.ts`, `e2e/tests/pins.spec.ts`
+- **Audit notes:** One pin per community (communities.pinned_post_id): any live top-level post in it, its author's or not. Only that community's moderators and site-wide moderators can pin or unpin it, from the post menu wherever the post appears; pinning another replaces it. It shows above the community's Conversations, marked Pinned by the moderators, and only while live and visible to the reader. Pinning is not recorded in the moderation log, and nobody is notified.
 
 #### Community photos
 

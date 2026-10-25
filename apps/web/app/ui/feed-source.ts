@@ -1,10 +1,12 @@
 import type { ProfileFilter } from '@/lib/api'
+import { hashtagHref } from '@/lib/hashtags'
 
 /** Which list of posts a page shows, so more of the same list can be loaded onto it. */
 export type FeedSource =
   | { kind: 'latest' }
   | { kind: 'following' }
   | { kind: 'community'; slug: string }
+  | { kind: 'hashtag'; tag: string }
   | { kind: 'member'; handle: string; filter: ProfileFilter }
   | { kind: 'bookmarks' }
 
@@ -18,6 +20,8 @@ export function olderHref(source: FeedSource, cursor: string) {
       return `/?feed=following&${c}`
     case 'community':
       return `/c/${encodeURIComponent(source.slug)}?${c}`
+    case 'hashtag':
+      return `${hashtagHref(source.tag)}?${c}`
     case 'member':
       return `/u/${encodeURIComponent(source.handle)}?${source.filter === 'posts' ? '' : `tab=${source.filter}&`}${c}`
     case 'bookmarks':

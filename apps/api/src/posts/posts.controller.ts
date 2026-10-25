@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Inject,
@@ -29,11 +30,13 @@ import {
   CommunityNotFoundError,
   ImagesNotReadyError,
   NotACommunityMemberError,
+  NotACommunityModeratorError,
   ParentNotFoundError,
   newPost,
   PostsService,
   QuotedPostNotFoundError,
 } from './posts.service.js'
+import { parseHashtag } from './hashtags.js'
 import { replyPageQuery } from './reply-cursor.js'
 
 const createPostBody = newPost(slugParam)
@@ -42,6 +45,16 @@ const createPostBody = newPost(slugParam)
 const postId = (id: string): string => {
   if (!z.uuid().safeParse(id).success) throw new NotFoundException()
   return id
+}
+
+/** Runs a community pin change, turning "not one of its moderators" into a 403. */
+async function forbidden<T>(change: () => Promise<T>): Promise<T> {
+  try {
+    return await change()
+  } catch (err) {
+    if (err instanceof NotACommunityModeratorError) throw new ForbiddenException({ code: 'not_a_moderator', message: err.message })
+    throw err
+  }
 }
 
 @Controller('v1')
@@ -72,6 +85,16 @@ export class PostsController {
   bookmarks(@Req() req: AuthedRequest, @Query() query: unknown) {
     const { limit, cursor } = parse(pageQuery, query)
     return paged(() => this.posts.bookmarked(req.member.id, limit, cursor))
+  }
+
+  /** Everything tagged with one hashtag, however it is spelled. Not a hashtag: 404, as for an unknown community. */
+  @Get('hashtags/:tag/posts')
+  @UseGuards(OptionalSessionGuard)
+  hashtag(@Req() req: MaybeAuthedRequest, @Param('tag') written: string, @Query() query: unknown) {
+    const { limit, cursor } = parse(pageQuery, query)
+    const tag = parseHashtag(written)
+    if (!tag) throw new NotFoundException()
+    return paged(() => this.posts.withHashtag(req.member?.id ?? null, tag, limit, cursor))
   }
 
   @Get('trending')
@@ -170,6 +193,39 @@ export class PostsController {
   @UseGuards(SessionGuard)
   async unrepost(@Req() req: AuthedRequest, @Param('id') id: string) {
     await this.posts.unrepost(req.member.id, postId(id))
+  }
+
+  /** Keeps one of your own top-level posts at the top of your profile, in place of any other. */
+  @Put('posts/:id/pin')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async pin(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await this.limits.hit('action', req.member.id)
+    if (!(await this.posts.pinToProfile(req.member.id, postId(id)))) throw new NotFoundException()
+  }
+
+  @Delete('posts/:id/pin')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async unpin(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await this.posts.unpinFromProfile(req.member.id, postId(id))
+  }
+
+  /** Keeps a top-level post at the top of its community. For that community's moderators and site-wide ones. */
+  @Put('posts/:id/community-pin')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async pinInCommunity(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await this.limits.hit('action', req.member.id)
+    const pinned = await forbidden(() => this.posts.pinInCommunity(req.member.id, postId(id)))
+    if (!pinned) throw new NotFoundException()
+  }
+
+  @Delete('posts/:id/community-pin')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async unpinInCommunity(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await forbidden(() => this.posts.unpinInCommunity(req.member.id, postId(id)))
   }
 
   @Put('posts/:id/bookmark')

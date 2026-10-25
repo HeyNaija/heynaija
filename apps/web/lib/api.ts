@@ -1,14 +1,12 @@
 import 'server-only'
-import { cookies, headers } from 'next/headers'
+import { headers } from 'next/headers'
 import { cache } from 'react'
+import { getApiAuthHeaders, hasSessionCredentials } from './auth/server'
 import type { NotificationPreferences } from './notification-preferences'
 
 // Server-to-server address of the NestJS API. Browsers never use this; they go
 // through the /api rewrite in next.config.ts.
 const API_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000'
-
-/** The Kratos session cookie (named in infra/kratos/kratos.yml). */
-export const SESSION_COOKIE = 'hn_session'
 
 /** `avatar` fields are a path without the size suffix (see app/ui/avatar.tsx), or null. */
 export type Me = {
@@ -57,6 +55,12 @@ export type QuotedPost =
  */
 export type PostMention = { start: number; length: number; handle: string }
 
+/**
+ * A #hashtag in the text: where it is (UTF-16 code units) and the topic it is,
+ * the key every spelling shares (lower case).
+ */
+export type PostHashtag = { start: number; length: number; tag: string }
+
 /** A web address in the text: where it is (UTF-16 code units) and where it leads. Always http or https. */
 export type PostLink = { start: number; length: number; url: string }
 
@@ -82,6 +86,8 @@ export type Post = {
   images: PostImage[]
   /** Mentions of members the viewer can see, in order. Other @text stays plain. */
   mentions: PostMention[]
+  /** Hashtags in the text, in order. */
+  hashtags: PostHashtag[]
   /** Web addresses in the text, in order. */
   links: PostLink[]
   /** The card for the first address, once the server has read the page. */
@@ -96,6 +102,12 @@ export type Post = {
   viewerLiked: boolean
   viewerReposted: boolean
   viewerBookmarked: boolean
+  /** Its author keeps it at the top of their profile. */
+  pinnedOnProfile: boolean
+  /** Its community's moderators keep it at the top of the community. */
+  pinnedInCommunity: boolean
+  /** The viewer moderates its community and may pin it there (top-level posts only). */
+  viewerCanPinInCommunity: boolean
   deleted: boolean
   community: { slug: string; name: string } | null
   /** A quote post's quoted post; null for other posts. */
@@ -106,7 +118,11 @@ export type Post = {
   repostedBy: { id: string; handle: string; displayName: string | null } | null
 }
 
-export type Feed = { posts: Post[]; cursor: string | null }
+/**
+ * A page of posts. The first page of a profile's posts and of a community also
+ * has the post pinned above the list (null when none, or none the viewer may see).
+ */
+export type Feed = { posts: Post[]; cursor: string | null; pinned?: Post | null }
 
 /** The lists on a member's profile: top-level posts, replies, and posts with images. */
 export const PROFILE_FILTERS = ['posts', 'replies', 'media'] as const
@@ -169,13 +185,13 @@ export type Profile = {
  * through the rewrite in next.config.ts, which passes the header on itself.)
  */
 export async function api(path: string, init: RequestInit = {}): Promise<Response> {
-  const session = (await cookies()).get(SESSION_COOKIE)?.value
+  const authHeaders = await getApiAuthHeaders()
   const address = (await headers()).get('x-real-ip')
   return fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       ...init.headers,
-      ...(session ? { cookie: `${SESSION_COOKIE}=${session}` } : {}),
+      ...authHeaders,
       ...(address ? { 'x-real-ip': address } : {}),
     },
   })
@@ -190,7 +206,7 @@ export type Viewer =
 // The shell, the side rail and the page all ask who is looking; `cache` makes that
 // one API call per request instead of three.
 export const getViewer = cache(async (): Promise<Viewer> => {
-  if (!(await cookies()).has(SESSION_COOKIE)) return { state: 'anonymous' }
+  if (!(await hasSessionCredentials())) return { state: 'anonymous' }
   const res = await api('/v1/me')
   if (res.status === 401) return { state: 'anonymous' }
   if (res.status === 403) {
@@ -274,6 +290,40 @@ export const getCommunityPosts = (slug: string, cursor?: string) =>
   getPage(`/v1/communities/${encodeURIComponent(slug)}/posts`, cursor)
 
 export const getBookmarks = (cursor?: string) => getPage('/v1/bookmarks', cursor)
+
+/** Posts and replies with a hashtag, written without its #. Null when that is not a hashtag. */
+export async function getHashtagPosts(tag: string, cursor?: string): Promise<Feed | null> {
+  const path = `/v1/hashtags/${encodeURIComponent(tag)}/posts`
+  const res = await api(cursor ? `${path}?cursor=${encodeURIComponent(cursor)}` : path)
+  if (res.status === 404) return null
+  // A mangled cursor in the URL should fall back to the first page, as in getPage.
+  if (res.status === 400 && cursor) return getHashtagPosts(tag)
+  if (!res.ok) throw new Error(`API ${path} responded ${res.status}`)
+  return res.json()
+}
+
+/** A hashtag many members are using this week. */
+export type TrendingTopic = {
+  /** The key every spelling shares (lower case). */
+  tag: string
+  /** How most of its uses spell it, without the #: link to its page with this. */
+  label: string
+  /** Different members who used it in the window. */
+  members: number
+  /** Posts and replies it was used in, in the window. */
+  posts: number
+}
+
+/** The rules topics trend by, as the API applies them. */
+export type TopicRules = { windowDays: number; minMembers: number; refreshSeconds: number }
+
+export type TrendingTopics = { topics: TrendingTopic[]; rules: TopicRules }
+
+export async function getTrendingTopics(): Promise<TrendingTopics> {
+  const res = await api('/v1/topics/trending')
+  if (!res.ok) throw new Error(`API /v1/topics/trending responded ${res.status}`)
+  return res.json()
+}
 
 export async function getTrending(): Promise<Post[]> {
   const res = await api('/v1/trending')

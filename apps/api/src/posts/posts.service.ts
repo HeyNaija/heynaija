@@ -5,6 +5,7 @@ import {
   likes,
   media,
   members,
+  postHashtags,
   posts,
   reposts,
 } from '@heynaija/db'
@@ -17,7 +18,9 @@ import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/me
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
 import { notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
+import { Refreshing } from '../refreshing.js'
 import { DB } from '../tokens.js'
+import { hashtagsOf, type PostHashtag, recordHashtags } from './hashtags.js'
 import { MENTIONS_NOTIFIED_MAX, mentionsOf, type PostMention, recordMentions } from './mentions.js'
 import { decodeReplyCursor, encodeReplyCursor } from './reply-cursor.js'
 
@@ -108,6 +111,8 @@ export type PostView = {
    * each with the handle that member has now. Empty when `deleted`.
    */
   mentions: PostMention[]
+  /** The #hashtags in `text`, in order, each with the topic it opens. Empty when `deleted`. */
+  hashtags: PostHashtag[]
   /** The web addresses in `text`, in order, for the reader's app to link. Empty when `deleted`. */
   links: PostLink[]
   /**
@@ -126,6 +131,15 @@ export type PostView = {
   viewerReposted: boolean
   /** Always false for anonymous viewers. Bookmarks are private to their owner. */
   viewerBookmarked: boolean
+  /** Its author keeps it at the top of their profile. */
+  pinnedOnProfile: boolean
+  /** Its community's moderators keep it at the top of the community. */
+  pinnedInCommunity: boolean
+  /**
+   * The viewer may pin it to, or unpin it from, the top of its community: it is a
+   * top-level post in one, and they moderate that community or the whole site.
+   */
+  viewerCanPinInCommunity: boolean
   /**
    * Deleted by its author or taken down by a moderator. Only ever true for
    * ancestors shown in a thread, as a placeholder.
@@ -176,6 +190,7 @@ export { InvalidCursorError }
 export class NotACommunityMemberError extends Error {}
 export class ImagesNotReadyError extends Error {}
 export class QuotedPostNotFoundError extends Error {}
+export class NotACommunityModeratorError extends Error {}
 
 const MAX_THREAD_DEPTH = 50
 const REPLY_PAGE_SIZE = 20
@@ -210,6 +225,11 @@ const visibleAuthor = (viewerId: string | null, authorId: SQL, active: SQL, unmu
       ? sql`(not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = ${authorId})${unmuted ? sql` or ${authorId} = ${unmuted}` : sql``})`
       : undefined,
   )
+
+/** True when `memberId` moderates the community: as one of its moderators, or site-wide. */
+const moderatesCommunity = (memberId: string, communityId: SQL) =>
+  sql<boolean>`(exists(select 1 from members sm where sm.id = ${memberId} and sm.role = 'moderator')
+    or exists(select 1 from community_memberships cm where cm.community_id = ${communityId} and cm.member_id = ${memberId} and cm.role = 'moderator'))`
 
 /** True when either member has blocked the other. */
 export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
@@ -295,6 +315,7 @@ export class PostsService {
           ImageRow[]
         >`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${imagesOf(outerId)} else '[]'::json end`,
         mentions: sql<PostMention[]>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${mentionsOf(viewerId, outerId)} else '[]'::json end`,
+        hashtags: sql<PostHashtag[]>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${hashtagsOf(outerId)} else '[]'::json end`,
         linkPreview: sql<LinkPreviewRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${linkPreviewOf(sql`"posts"."link_url"`)} end`,
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
@@ -313,6 +334,11 @@ export class PostsService {
           ? sql<boolean>`exists(select 1 from bookmarks b where b.post_id = ${outerId} and b.member_id = ${viewerId})`
           : sql<boolean>`false`,
         deleted: sql<boolean>`${posts.deletedAt} is not null or ${posts.removedAt} is not null`,
+        pinnedOnProfile: sql<boolean>`coalesce(${members.pinnedPostId} = ${posts.id}, false)`,
+        pinnedInCommunity: sql<boolean>`coalesce(${communities.pinnedPostId} = ${posts.id}, false)`,
+        viewerCanPinInCommunity: viewerId
+          ? sql<boolean>`(${communities.id} is not null and ${posts.replyParentId} is null and ${moderatesCommunity(viewerId, sql`${communities.id}`)})`
+          : sql<boolean>`false`,
         communitySlug: communities.slug,
         communityName: communities.name,
         quote: sql<QuoteRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${quoteOf(viewerId, sql`${posts.quotePostId}`)} end`,
@@ -527,6 +553,100 @@ export class PostsService {
     })
   }
 
+  /**
+   * Posts and replies with `#tag` in them, newest first. `tag` is a key from
+   * `parseHashtag`, so every spelling of the hashtag is found.
+   */
+  withHashtag(viewerId: string | null, tag: string, limit: number, cursor?: string): Promise<PostPage> {
+    const tagged = this.db
+      .select({ id: postHashtags.postId })
+      .from(postHashtags)
+      .where(eq(postHashtags.tag, tag))
+    return this.page(viewerId, inArray(posts.id, tagged), limit, cursor)
+  }
+
+  /** The post a member keeps at the top of their profile, if the viewer may see it. */
+  async pinnedOnProfile(viewerId: string | null, authorId: string): Promise<PostView | null> {
+    const pinned = sql`(select m.pinned_post_id from members m where m.id = ${authorId})`
+    const [post] = await this.select(viewerId, and(sql`${posts.id} = ${pinned}`, eq(posts.authorId, authorId), topLevel), {
+      unmuted: authorId,
+      limit: 1,
+    })
+    return post ?? null
+  }
+
+  /** The post a community's moderators keep at the top of it, if the viewer may see it. */
+  async pinnedInCommunity(viewerId: string | null, communityId: string): Promise<PostView | null> {
+    const pinned = sql`(select c.pinned_post_id from communities c where c.id = ${communityId})`
+    const [post] = await this.select(viewerId, and(sql`${posts.id} = ${pinned}`, eq(posts.communityId, communityId), topLevel), {
+      limit: 1,
+    })
+    return post ?? null
+  }
+
+  /**
+   * Keeps one of the member's own live top-level posts at the top of their
+   * profile, in place of any they pinned before. False if it is not one.
+   */
+  async pinToProfile(memberId: string, postId: string): Promise<boolean> {
+    const rows = await this.db
+      .update(members)
+      .set({ pinnedPostId: postId })
+      .where(
+        and(
+          eq(members.id, memberId),
+          sql`exists(select 1 from posts p where p.id = ${postId} and p.author_id = ${memberId}
+            and p.reply_parent_id is null and p.deleted_at is null and p.removed_at is null)`,
+        ),
+      )
+      .returning({ id: members.id })
+    return rows.length > 0
+  }
+
+  /** Idempotent: nothing changes unless `postId` is the one pinned. */
+  async unpinFromProfile(memberId: string, postId: string): Promise<void> {
+    await this.db
+      .update(members)
+      .set({ pinnedPostId: null })
+      .where(and(eq(members.id, memberId), eq(members.pinnedPostId, postId)))
+  }
+
+  /**
+   * Keeps a live top-level post at the top of its community, in place of any
+   * pinned before. Only the community's moderators and site-wide moderators may.
+   * False if it is not such a post in an active community.
+   */
+  async pinInCommunity(memberId: string, postId: string): Promise<boolean> {
+    const [post] = await this.db
+      .select({ communityId: communities.id, allowed: moderatesCommunity(memberId, sql`${communities.id}`) })
+      .from(posts)
+      .innerJoin(members, eq(members.id, posts.authorId))
+      .innerJoin(communities, and(eq(communities.id, posts.communityId), eq(communities.active, true)))
+      .where(and(eq(posts.id, postId), live, topLevel, eq(members.active, true)))
+    if (!post) return false
+    if (!post.allowed) throw new NotACommunityModeratorError('only its moderators can pin posts in a community')
+    await this.db.update(communities).set({ pinnedPostId: postId }).where(eq(communities.id, post.communityId))
+    return true
+  }
+
+  /**
+   * Idempotent: nothing changes unless `postId` is pinned in a community, and then
+   * only its moderators and site-wide moderators may unpin it, even if it has
+   * since been deleted or taken down.
+   */
+  async unpinInCommunity(memberId: string, postId: string): Promise<void> {
+    const [community] = await this.db
+      .select({ id: communities.id, allowed: moderatesCommunity(memberId, sql`${communities.id}`) })
+      .from(communities)
+      .where(eq(communities.pinnedPostId, postId))
+    if (!community) return
+    if (!community.allowed) throw new NotACommunityModeratorError('only its moderators can unpin posts in a community')
+    await this.db
+      .update(communities)
+      .set({ pinnedPostId: null })
+      .where(and(eq(communities.id, community.id), eq(communities.pinnedPostId, postId)))
+  }
+
   /** The posts a member has saved. Only ever shown to that member. */
   bookmarked(viewerId: string, limit: number, cursor?: string): Promise<PostPage> {
     const saved = this.db
@@ -536,8 +656,7 @@ export class PostsService {
     return this.page(viewerId, inArray(posts.id, saved), limit, cursor)
   }
 
-  private trendingRanking: { ids: string[]; expiresAt: number } | null = null
-  private trendingRefresh: Promise<void> | null = null
+  private readonly trendingRanking = new Refreshing(TRENDING_TTL_MS, () => this.rankTrending())
 
   /**
    * The conversations people are engaging with this week: top-level posts ranked
@@ -549,36 +668,12 @@ export class PostsService {
    * `TRENDING_CANDIDATES` posts, however many were posted this week.
    */
   async trending(viewerId: string | null, limit: number): Promise<PostView[]> {
-    const ids = await this.trendingIds()
+    const ids = await this.trendingRanking.get()
     if (ids.length === 0) return []
     return this.select(viewerId, inArray(posts.id, ids), {
       order: [sql`array_position(array[${sql.join(ids.map((id) => sql`${id}`), sql`, `)}]::uuid[], "posts"."id")`],
       limit,
     })
-  }
-
-  /**
-   * The cached ranking. Once it is older than `TRENDING_TTL_MS`, one refresh runs
-   * in the background and callers keep getting the old ranking until it lands,
-   * so no page waits on the ranking query after the first.
-   */
-  private async trendingIds(): Promise<string[]> {
-    const cached = this.trendingRanking
-    if (cached && cached.expiresAt > Date.now()) return cached.ids
-    this.trendingRefresh ??= this.rankTrending()
-      .then((ids) => {
-        this.trendingRanking = { ids, expiresAt: Date.now() + TRENDING_TTL_MS }
-      })
-      .finally(() => {
-        this.trendingRefresh = null
-      })
-    if (!cached) {
-      await this.trendingRefresh
-      return this.trendingRanking!.ids
-    }
-    // A failed refresh leaves the old ranking in place; the next call retries.
-    this.trendingRefresh.catch(() => {})
-    return cached.ids
   }
 
   /**
@@ -708,6 +803,7 @@ export class PostsService {
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
           'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id,
           'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
+          'hashtags', ${hashtagsOf(sql`p.id`)},
           'linkPreview', ${linkPreviewOf(sql`p.link_url`)},
           'createdAt', p.created_at, 'replyParentId', p.reply_parent_id,
           'likeCount', p.like_count, 'replyCount', p.reply_count, 'repostCount', p.repost_count,
@@ -717,6 +813,7 @@ export class PostsService {
           'viewerReposted', ${viewerId ? sql`exists(select 1 from reposts r where r.post_id = p.id and r.member_id = ${viewerId})` : sql`false`},
           'quote', ${quoteOf(viewerId, sql`p.quote_post_id`)},
           'deleted', false, 'reason', null, 'repostedBy', null,
+          'pinnedOnProfile', false, 'pinnedInCommunity', false, 'viewerCanPinInCommunity', false,
           'community', case when c.id is null then null else json_build_object('slug', c.slug, 'name', c.name) end
         ) end as view
       from page join posts p on p.id = page.id
@@ -756,7 +853,8 @@ export class PostsService {
    * lands in its parent's community (or none), whatever is asked for. `images`
    * must be the author's own uploads, processed and not on another post. `quote`
    * makes it a quote post of a post the author can currently see. Members named
-   * with @handle in `text` are recorded and told (see `recordMentions`).
+   * with @handle in `text` are recorded and told (see `recordMentions`), and
+   * its #hashtags recorded (see `recordHashtags`).
    */
   async create(
     authorId: string,
@@ -850,6 +948,7 @@ export class PostsService {
           .returning({ id: media.id })
         if (attached.length === 0) throw new ImagesNotReadyError('an image is missing, still processing or already used')
       }
+      await recordHashtags(tx, { id: row!.id, text })
       // Someone told about this post as a reply or a quote is not told again that
       // it mentions them, and only the first few others named are told at all.
       const mentioned = (await recordMentions(tx, { id: row!.id, authorId, text }))

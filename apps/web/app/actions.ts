@@ -5,7 +5,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { api } from '@/lib/api'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
-import { startFlowUrl } from '@/lib/kratos'
+import { startAuthUrl } from '@/lib/auth/server'
 import { preferencesFromForm } from '@/lib/notification-preferences'
 import { PUSH_COOKIE } from '@/lib/push'
 import { choicesFromForm, welcomePath } from '@/lib/onboarding'
@@ -126,6 +126,24 @@ export async function setBookmark(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '')
   const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
   const res = await api(`/v1/posts/${encodeURIComponent(id)}/bookmark`, { method })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+/** Pins one of your own posts to the top of your profile, or unpins it. */
+export async function setProfilePin(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '')
+  const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/pin`, { method })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+/** Pins a post to the top of its community, or unpins it. The API checks the visitor moderates it. */
+export async function setCommunityPin(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '')
+  const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/community-pin`, { method })
   if (res.status === 401) redirect('/login')
   refresh()
 }
@@ -475,5 +493,5 @@ export async function acceptInvite(_prev: JoinState, formData: FormData): Promis
   // server, so Kratos's anti-CSRF cookie never reaches the browser and /signup is
   // rendered without the invite cookie, which sends the visitor back to /join.
   // The form navigates the browser itself instead.
-  return { next: startFlowUrl('registration') }
+  return { next: startAuthUrl('registration') }
 }

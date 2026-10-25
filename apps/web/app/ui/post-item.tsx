@@ -1,13 +1,13 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { deletePost, setBlock, setBookmark, setMute } from '@/app/actions'
+import { deletePost, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin } from '@/app/actions'
 import type { Post } from '@/lib/api'
 import { textParts } from '@/lib/mentions'
 import { excerpt } from '@/lib/previews'
 import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
 import type { FeedSource } from './feed-source'
-import { BookmarkIcon, BubbleIcon, DotsIcon, HeartIcon, RepostIcon } from './icons'
+import { BookmarkIcon, BubbleIcon, DotsIcon, HeartIcon, PinIcon, RepostIcon } from './icons'
 import { LikeButton } from './like-button'
 import { LinkCard } from './link-card'
 import { Menu } from './menu'
@@ -34,6 +34,7 @@ export function PostItem({
   hideCommunity = false,
   explain = false,
   replyAction,
+  pinned,
 }: {
   post: Post
   /** Null for visitors who are not signed-in members. */
@@ -49,6 +50,8 @@ export function PostItem({
   explain?: boolean
   /** A thread supplies an in-place target picker; ordinary feeds retain navigation. */
   replyAction?: ReactNode
+  /** Shown above the list as the profile's or the community's pinned post. */
+  pinned?: 'profile' | 'community'
 }) {
   if (post.deleted) {
     return <p className="post-card text-sm italic text-muted">This post is no longer available.</p>
@@ -56,9 +59,9 @@ export function PostItem({
 
   const href = `/p/${post.id}`
   const openLabel = `Open ${post.replyParentId ? 'reply' : 'post'} by @${post.authorHandle}`
-  const parts = textParts(post.text, post.mentions, post.links)
+  const parts = textParts(post.text, post.mentions, post.links, post.hashtags)
   // Text with links of its own cannot sit inside the post's permalink.
-  const rich = parts.some((part) => part.handle || part.href)
+  const rich = parts.some((part) => part.handle || part.tag || part.href)
   const likes = post.likeCount === 1 ? '1 like' : `${post.likeCount} likes`
   const replies = post.replyCount === 1 ? '1 reply' : `${post.replyCount} replies`
   const reposts = post.repostCount === 1 ? '1 repost' : `${post.repostCount} reposts`
@@ -69,7 +72,12 @@ export function PostItem({
   ) : null
   const reposter = post.reason === 'repost' ? post.repostedBy : null
   const why =
-    reposter ? (
+    pinned ? (
+      <span className="inline-flex items-center gap-1.5">
+        <PinIcon size={13} />
+        {pinned === 'community' ? 'Pinned by the moderators' : 'Pinned'}
+      </span>
+    ) : reposter ? (
       <span className="inline-flex items-center gap-1.5">
         <RepostIcon size={13} />
         {reposter.id === viewerId ? (
@@ -89,6 +97,17 @@ export function PostItem({
       <>From {community}, which you joined</>
     ) : explain && community ? (
       <>Posted in {community}</>
+    ) : null
+  // A community's moderators keep one post at its top; the menu offers it to them anywhere.
+  const communityPin =
+    post.viewerCanPinInCommunity && post.community ? (
+      <form action={setCommunityPin}>
+        <input type="hidden" name="id" value={post.id} />
+        <input type="hidden" name="on" value={post.pinnedInCommunity ? '0' : '1'} />
+        <SubmitButton className="menu-item">
+          {post.pinnedInCommunity ? `Unpin from ${post.community.name}` : `Pin to the top of ${post.community.name}`}
+        </SubmitButton>
+      </form>
     ) : null
   // The reason line already links the community when it names it; a chip would say it twice.
   const showChip = post.community && !hideCommunity && !(why && post.reason !== 'following' && !reposter)
@@ -128,17 +147,30 @@ export function PostItem({
             {viewerId ? (
               <Menu label="Post options" trigger={<DotsIcon />} className="-mr-2 -mt-1.5">
                 {post.authorId === viewerId ? (
-                  <form action={deletePost}>
-                    <input type="hidden" name="id" value={post.id} />
-                    <SubmitButton
-                      className="menu-item menu-item-danger"
-                      confirmMessage="Delete this post? This cannot be undone."
-                    >
-                      Delete post
-                    </SubmitButton>
-                  </form>
+                  <>
+                    {post.replyParentId ? null : (
+                      <form action={setProfilePin}>
+                        <input type="hidden" name="id" value={post.id} />
+                        <input type="hidden" name="on" value={post.pinnedOnProfile ? '0' : '1'} />
+                        <SubmitButton className="menu-item">
+                          {post.pinnedOnProfile ? 'Unpin from your profile' : 'Pin to your profile'}
+                        </SubmitButton>
+                      </form>
+                    )}
+                    {communityPin}
+                    <form action={deletePost}>
+                      <input type="hidden" name="id" value={post.id} />
+                      <SubmitButton
+                        className="menu-item menu-item-danger"
+                        confirmMessage="Delete this post? This cannot be undone."
+                      >
+                        Delete post
+                      </SubmitButton>
+                    </form>
+                  </>
                 ) : (
                   <>
+                    {communityPin}
                     <Link prefetch={false} href={`/report?post=${post.id}`} className="menu-item">
                       Report post
                     </Link>

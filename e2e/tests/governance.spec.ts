@@ -165,10 +165,12 @@ test('a member downloads their data as JSON', async ({ browser }) => {
   ])
   expect(download.suggestedFilename()).toMatch(new RegExp(`^heynaija-${handle}-\\d{4}-\\d{2}-\\d{2}\\.json$`))
   const data = JSON.parse(await readFile((await download.path())!, 'utf8'))
-  expect(data.format).toBe('heynaija-export/8')
+  expect(data.format).toBe('heynaija-export/9')
   expect(data.account).toMatchObject({ handle, email })
   // They skipped the welcome flow on joining (newMember does), and the export says when.
   expect(Date.parse(data.account.onboardedAt)).not.toBeNaN()
+  // Nothing pinned to their profile.
+  expect(data.account.pinnedPostId).toBeNull()
   // They confirmed their age on /join, and that is all that is held about it.
   expect(data.age).toHaveLength(1)
   expect(data.age[0]).toMatchObject({ method: 'self_declared', band: '18_plus', withdrawnAt: null })

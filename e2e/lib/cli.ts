@@ -26,7 +26,7 @@ export function createInvite(uses = 1): string {
   return code
 }
 
-/** Makes `handle` a site-wide moderator. */
-export function grantModerator(handle: string) {
-  run('moderator', ['grant', handle])
+/** Makes `handle` a site-wide moderator, or with `community` (a slug) a moderator of that community. */
+export function grantModerator(handle: string, community?: string) {
+  run('moderator', ['grant', handle, ...(community ? ['--community', community] : [])])
 }

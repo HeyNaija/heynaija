@@ -57,7 +57,10 @@ export class CommunitiesController {
     const viewerId = req.member?.id ?? null
     const community = await this.communities.detail(viewerId, slugOf(slug))
     if (!community) throw new NotFoundException()
-    return paged(() => this.posts.inCommunity(viewerId, community.id, limit, cursor))
+    const page = await paged(() => this.posts.inCommunity(viewerId, community.id, limit, cursor))
+    // The first page also brings the post its moderators pinned above the rest.
+    if (cursor) return page
+    return { ...page, pinned: await this.posts.pinnedInCommunity(viewerId, community.id) }
   }
 
   @Put(':slug/membership')
