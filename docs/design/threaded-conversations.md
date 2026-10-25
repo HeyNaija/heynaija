@@ -47,7 +47,7 @@ The HeyNaija recommendation is an engineering inference from these patterns and 
 3. **Answer the right person.** “Reply” opens one active editor at the selected row, labeled “Replying to @handle.” The editor submits that row's ID as `replyTo`. Keep drafts through expansion and errors; changing the reply target must be explicit. Do not mount a composer for every post.
 4. **Keep reading on a phone.** Cap indentation at one step on small screens and two on desktop. Deeper rows name their immediate parent rather than repeatedly narrowing the text column. Use semantic lists, accessible button names, expanded/loading states and the existing mobile target sizes.
 5. **Keep links useful.** Timestamps retain their permalinks and existing `#post-{id}` anchors. Notifications keep their current targets. A deeply nested permalink starts with that post and bounded parent context, so it never needs to reconstruct every branch from the root.
-6. **Respect chronology.** Continue the current oldest-first order. If a new reply is newer than an incomplete loaded page, show it in a separate “Your reply” position with the gap made clear. Keep the page cursor unchanged and deduplicate by ID when pagination reaches it. Append normally only when the sibling list is complete.
+6. **Respect chronology.** Continue the current oldest-first order. *(Since 25 October 2026, [ADR 0013](../adr/0013-reply-order.md): the replied-to post's author's replies come first, then everyone else's, newest first by default with a switch to oldest first. The gap handling below still applies.)* If a new reply is newer than an incomplete loaded page, show it in a separate “Your reply” position with the gap made clear. Keep the page cursor unchanged and deduplicate by ID when pagination reaches it. Append normally only when the sibling list is complete.
 
 A reply badge remains a direct-reply count, not the size of the whole conversation or an exact viewer-visible total. Existing counters include replies hidden by an individual member's blocks/mutes. A thread-only `hasReplies` structural hint keeps live rows expandable when their only children are unavailable intermediates and the direct live count is zero. A branch may still open with no available replies; show a neutral empty state and hide its expansion control for that loaded state.
 
@@ -65,7 +65,7 @@ Add `GET /v1/posts/:id/replies?cursor=...&limit=20`, with a server-enforced maxi
 
 Authorize the parent on every request, then select only its immediate children using the shared visibility policy. Target at most two post-related SQL statements: a minimal parent check and a paginated child/hydration query. Existing session/member checks remain additional work. Do not add an API request or application query for each child row.
 
-Use ascending keyset pagination by `(created_at, id)`:
+Use ascending keyset pagination by `(created_at, id)` (since [ADR 0013](../adr/0013-reply-order.md), within each of two groups, in either direction):
 
 ```sql
 -- Ordering skeleton only; real SQL must also enforce viewer visibility,

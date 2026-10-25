@@ -103,7 +103,9 @@ export default function AboutPage() {
           <p>
             You can post short text and photos, reply in a thread, like, repost, quote, and follow
             people or join communities. Latest and Following are chronological: newest entries first,
-            with explanations of why Following entries appear. Basic trending highlights recent
+            with explanations of why Following entries appear. Under a post, its author&apos;s own
+            replies come first, then everyone else&apos;s, newest first, or oldest first if you
+            choose. Basic trending highlights recent
             active conversations, and <Link href="/topics">trending topics</Link> are the hashtags most
             members are using, by rules published on that page. Neither is a personalised
             recommendation engine.

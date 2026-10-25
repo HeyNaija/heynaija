@@ -125,7 +125,7 @@ test('you cannot reply to a post that is missing, deleted or by a suspended memb
   await assert.rejects(service.create(bayo, 'x', { replyTo: hidden.id }), ParentNotFoundError)
 })
 
-test('a thread shows the conversation above and the direct replies below, oldest first', async () => {
+test('a thread shows the conversation above and the direct replies below, newest first', async () => {
   const root = await service.create(ada, 'root')
   const mid = await service.create(bayo, 'mid', { replyTo: root.id })
   const first = await service.create(ada, 'first reply', { replyTo: mid.id })
@@ -135,13 +135,60 @@ test('a thread shows the conversation above and the direct replies below, oldest
   const thread = (await service.thread(null, mid.id))!
   assert.deepEqual(thread.ancestors.map((p) => p.text), ['root'])
   assert.equal(thread.post.text, 'mid')
-  assert.deepEqual(thread.replies.map((p) => p.id), [first.id, second.id])
+  assert.deepEqual(thread.replies.map((p) => p.id), [second.id, first.id])
+  assert.deepEqual((await service.thread(null, mid.id, 'oldest'))!.replies.map((p) => p.id), [first.id, second.id])
   assert.equal(thread.post.replyCount, 2)
-  assert.equal(thread.replies[0]!.unavailable, undefined)
-  if (!thread.replies[0]!.unavailable) assert.equal(thread.replies[0]!.replyCount, 1)
+  assert.equal(thread.replies[1]!.unavailable, undefined)
+  if (!thread.replies[1]!.unavailable) assert.equal(thread.replies[1]!.replyCount, 1)
 
   const deep = (await service.thread(null, first.id))!
   assert.deepEqual(deep.ancestors.map((p) => p.text), ['root', 'mid'])
+})
+
+test("the post author's own replies come first, then everyone else's, in the order asked for", async () => {
+  const root = await service.create(ada, 'root')
+  const bayo1 = await service.create(bayo, 'bayo 1', { replyTo: root.id })
+  const ada1 = await service.create(ada, 'ada 1', { replyTo: root.id })
+  const chi1 = await service.create(chi, 'chi 1', { replyTo: root.id })
+  const ada2 = await service.create(ada, 'ada 2', { replyTo: root.id })
+  const bayo2 = await service.create(bayo, 'bayo 2', { replyTo: root.id })
+  const ids = (page: ReplyPage | null) => page!.replies.map((p) => p.id)
+
+  assert.deepEqual(ids(await service.replies(null, root.id)), [ada2.id, ada1.id, bayo2.id, chi1.id, bayo1.id])
+  assert.deepEqual(ids(await service.replies(null, root.id, 20, undefined, 'oldest')), [ada1.id, ada2.id, bayo1.id, chi1.id, bayo2.id])
+  assert.deepEqual((await service.thread(null, root.id))!.replies.map((p) => p.id), [ada2.id, ada1.id, bayo2.id, chi1.id, bayo1.id])
+
+  // Under a reply, its own author leads: here, bayo answering chi's replies to bayo.
+  const chiAnswer = await service.create(chi, 'chi answers', { replyTo: bayo1.id })
+  const bayoAnswer = await service.create(bayo, 'bayo answers', { replyTo: bayo1.id })
+  assert.deepEqual(ids(await service.replies(null, bayo1.id)), [bayoAnswer.id, chiAnswer.id])
+
+  // A deleted reply by the author keeps its branch as a placeholder among everyone else's.
+  await service.create(chi, 'under ada 2', { replyTo: ada2.id })
+  await service.remove(ada, ada2.id)
+  assert.deepEqual(ids(await service.replies(null, root.id)), [ada1.id, bayo2.id, ada2.id, chi1.id, bayo1.id])
+
+  // Pages cross from the author's replies into everyone else's in both orders.
+  for (const order of ['newest', 'oldest'] as const) {
+    const all = ids(await service.replies(null, root.id, 20, undefined, order))
+    const seen: string[] = []
+    let cursor: string | undefined
+    do {
+      const page: ReplyPage = (await service.replies(null, root.id, 2, cursor, order))!
+      seen.push(...page.replies.map((p) => p.id))
+      cursor = page.cursor ?? undefined
+    } while (cursor)
+    assert.deepEqual(seen, all)
+  }
+})
+
+test('a reply to your own post by someone you block or mute is left out, and your own replies still lead', async () => {
+  const root = await service.create(bayo, 'root')
+  const own = await service.create(bayo, 'own', { replyTo: root.id })
+  const other = await service.create(chi, 'other', { replyTo: root.id })
+  await db.insert(mutes).values({ muterId: ada, mutedId: chi })
+  assert.deepEqual((await service.thread(ada, root.id))!.replies.map((p) => p.id), [own.id])
+  assert.deepEqual((await service.thread(null, root.id))!.replies.map((p) => p.id), [own.id, other.id])
 })
 
 test('a deleted post in the middle of a thread is a placeholder with no text', async () => {
@@ -165,39 +212,46 @@ test('reply pages keep microseconds and exact timestamp ties without repeating o
     from generate_series(0, 46) g`)
   const expected = (await db.execute<{ id: string }>(sql`
     select id from posts where reply_parent_id = ${root.id} order by created_at, id`)).rows.map((p) => p.id)
-  const thread = (await service.thread(null, root.id))!
-  assert.equal(thread.replies.length, 20)
-  assert.ok(thread.replyCursor)
-  const [timestamp] = decodeReplyCursor(thread.replyCursor, root.id)
-  assert.match(timestamp, /\.123\d{3}Z$/)
-  const seen = thread.replies.map((p) => p.id)
-  let cursor: string | null = thread.replyCursor
-  while (cursor) {
-    const page: ReplyPage = (await service.replies(null, root.id, 20, cursor))!
-    seen.push(...page.replies.map((p) => p.id))
-    cursor = page.cursor
+  for (const order of ['oldest', 'newest'] as const) {
+    const thread = (await service.thread(null, root.id, order))!
+    assert.equal(thread.replies.length, 20)
+    assert.ok(thread.replyCursor)
+    const { timestamp } = decodeReplyCursor(thread.replyCursor, root.id, order)
+    assert.match(timestamp, /\.123\d{3}Z$/)
+    const seen = thread.replies.map((p) => p.id)
+    let cursor: string | null = thread.replyCursor
+    while (cursor) {
+      const page: ReplyPage = (await service.replies(null, root.id, 20, cursor, order))!
+      seen.push(...page.replies.map((p) => p.id))
+      cursor = page.cursor
+    }
+    assert.deepEqual(seen, order === 'oldest' ? expected : expected.toReversed())
+    assert.equal(new Set(seen).size, 47)
   }
-  assert.deepEqual(seen, expected)
-  assert.equal(new Set(seen).size, 47)
   assert.equal((await service.replies(null, root.id, 100))!.replies.length, 20)
 })
 
-test('reply cursors reject malformed data, another parent, unknown versions and descending order', async () => {
+test('reply cursors reject malformed data, another parent, another order and unknown versions', async () => {
   const one = await service.create(ada, 'one')
   const two = await service.create(ada, 'two')
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
   const timestamp = '2026-01-01T00:00:00.123456Z'
-  const otherParent = encodeReplyCursor(two.id, timestamp, randomUUID())
+  const otherParent = encodeReplyCursor(two.id, 'newest', { group: 1, timestamp, id: randomUUID() })
+  const oldest = encodeReplyCursor(one.id, 'oldest', { group: 1, timestamp, id: randomUUID() })
   for (const cursor of [
-    'garbage', 'x'.repeat(201), otherParent,
-    encode([2, one.id, 'asc', timestamp, randomUUID()]),
-    encode([1, one.id, 'desc', timestamp, randomUUID()]),
-    encode([1, one.id, 'asc', 'invalid', randomUUID()]),
-    encode([1, one.id, 'asc', timestamp, "x' or 1=1 --"]),
+    'garbage', 'x'.repeat(201), otherParent, oldest,
+    encode([1, one.id, 'asc', timestamp, randomUUID()]),
+    encode([3, one.id, 'newest', 1, timestamp, randomUUID()]),
+    encode([2, one.id, 'liked', 1, timestamp, randomUUID()]),
+    encode([2, one.id, 'newest', 2, timestamp, randomUUID()]),
+    encode([2, one.id, 'newest', 1, 'invalid', randomUUID()]),
+    encode([2, one.id, 'newest', 1, timestamp, "x' or 1=1 --"]),
   ]) await assert.rejects(service.replies(null, one.id, 20, cursor), InvalidCursorError)
-  for (const query of [{ limit: 21 }, { limit: 0 }, { limit: 1.5 }, { cursor: '' }]) {
+  assert.ok(await service.replies(null, one.id, 20, oldest, 'oldest'))
+  for (const query of [{ limit: 21 }, { limit: 0 }, { limit: 1.5 }, { cursor: '' }, { order: 'liked' }]) {
     assert.equal(replyPageQuery.safeParse(query).success, false)
   }
+  assert.equal(replyPageQuery.parse({}).order, 'newest')
 })
 
 test('deleted and moderated intermediates stay traversable without serializing unavailable content', async () => {
@@ -266,10 +320,10 @@ test('reply pagination tolerates insertion and leaves global counts separate fro
   const root = await service.create(ada, 'root')
   const initial = []
   for (let i = 0; i < 3; i++) initial.push(await service.create(bayo, `r${i}`, { replyTo: root.id }))
-  const page = (await service.replies(chi, root.id, 2))!
+  const page = (await service.replies(chi, root.id, 2, undefined, 'oldest'))!
   assert.equal(page.replies.length, 2)
   const later = await service.create(chi, 'later', { replyTo: root.id })
-  const rest = (await service.replies(chi, root.id, 2, page.cursor!))!
+  const rest = (await service.replies(chi, root.id, 2, page.cursor!, 'oldest'))!
   assert.deepEqual(rest.replies.map((p) => p.id), [initial[2]!.id, later.id])
   assert.equal(rest.cursor, null)
   await db.insert(mutes).values({ muterId: ada, mutedId: bayo })
@@ -302,16 +356,16 @@ test('remaining reply pages apply fresh deletion, restoration and suspension vis
   const root = await service.create(ada, 'root')
   const siblings = []
   for (let i = 0; i < 6; i++) siblings.push(await service.create(i === 4 ? chi : bayo, `r${i}`, { replyTo: root.id }))
-  const first = (await service.replies(null, root.id, 2))!
+  const first = (await service.replies(null, root.id, 2, undefined, 'oldest'))!
   await service.remove(bayo, siblings[2]!.id)
   await db.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, siblings[3]!.id))
   await db.update(members).set({ active: false }).where(eq(members.id, chi))
-  const hidden = (await service.replies(null, root.id, 2, first.cursor!))!
+  const hidden = (await service.replies(null, root.id, 2, first.cursor!, 'oldest'))!
   assert.deepEqual(hidden.replies.map((p) => p.id), [siblings[5]!.id])
   assert.equal(hidden.cursor, null)
   await db.update(posts).set({ removedAt: null }).where(eq(posts.id, siblings[3]!.id))
   await db.update(members).set({ active: true }).where(eq(members.id, chi))
-  const restored = (await service.replies(null, root.id, 2, first.cursor!))!
+  const restored = (await service.replies(null, root.id, 2, first.cursor!, 'oldest'))!
   assert.deepEqual(restored.replies.map((p) => p.id), [siblings[3]!.id, siblings[4]!.id])
   assert.ok(restored.cursor)
 })

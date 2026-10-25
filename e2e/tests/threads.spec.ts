@@ -6,7 +6,7 @@ test('expands, reuses and pages branches, and replies to the selected post @mobi
   const { page, handle, context } = await newMember(browser, 'threads')
   try {
     const fixture = await seedThread(handle)
-    await page.goto(`/p/${fixture.root}`)
+    await page.goto(`/p/${fixture.root}?replies=oldest`)
     await expect(page.locator('article', { hasText: `Thread reply ` })).toHaveCount(20)
     await expect(page.locator(`#post-${fixture.nested[0]}`)).toHaveCount(0)
     const url = page.url()
@@ -68,7 +68,7 @@ test('keeps surviving replies reachable through consecutive unavailable posts', 
   const { page, handle, context } = await newMember(browser, 'bridge')
   try {
     const fixture = await seedThread(handle)
-    await page.goto(`/p/${fixture.root}`)
+    await page.goto(`/p/${fixture.root}?replies=oldest`)
     const branch = page.locator(`.thread-branch[data-thread-id="${fixture.bridgeParent}"]`)
     await branch.getByRole('link', { name: /^View.*replies/i }).first().click()
     for (const id of [fixture.bridge, fixture.nextBridge]) {
@@ -86,15 +86,36 @@ test('keeps surviving replies reachable through consecutive unavailable posts', 
   }
 })
 
+test('newest first, your new reply shows at the top and once, as more replies load', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'top')
+  try {
+    const fixture = await seedThread(handle)
+    await page.goto(`/p/${fixture.root}`)
+    await expect(page.locator('article', { hasText: 'Thread reply ' }).first()).toContainText('Thread reply 25 ')
+    const text = `Newest reply from ${handle}`
+    await (await replyBox(page, fixture.root)).fill(text)
+    await page.getByRole('button', { name: 'Reply', exact: true }).click()
+    const rows = page.locator(`#replies-${fixture.root} > .thread-list > li > .thread-branch > .thread-row article`)
+    await expect(rows.first()).toContainText(text)
+    await page.getByRole('link', { name: 'More replies', exact: true }).click()
+    await expect(page.locator('article', { hasText: 'Thread reply ' })).toHaveCount(25)
+    await expect(page.locator('article', { hasText: text })).toHaveCount(1)
+    await expect(rows.last()).toContainText('Thread reply 01 ')
+  } finally {
+    await context.close()
+  }
+})
+
 test('a new reply preserves an incomplete oldest-first page and is deduplicated later', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'gap')
   try {
     const fixture = await seedThread(handle)
-    await page.goto(`/p/${fixture.root}`)
+    await page.goto(`/p/${fixture.root}?replies=oldest`)
     const text = `Newest reply from ${handle}`
     await (await replyBox(page, fixture.root)).fill(text)
     await page.getByRole('button', { name: 'Reply', exact: true }).click()
     await expect(page.locator('article', { hasText: text })).toBeVisible()
+    await expect(page.getByText('Your reply · Some replies are not loaded yet.')).toBeVisible()
     await expect(page.locator('article', { hasText: 'Thread reply ' })).toHaveCount(20)
     await expect(page.getByRole('link', { name: 'More replies', exact: true })).toBeVisible()
     await page.getByRole('link', { name: 'More replies', exact: true }).click()
@@ -118,13 +139,64 @@ test('a malformed reply cycle cannot recursively render cached branches', async 
     }
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
-    await page.goto(`/p/${fixture.root}`)
+    await page.goto(`/p/${fixture.root}?replies=oldest`)
     const branch = page.locator(`.thread-branch[data-thread-id="${fixture.first}"]`)
     await branch.getByRole('link', { name: /^View.*replies/i }).first().click()
     await expect(branch.getByRole('link', { name: 'Continue conversation', exact: true })).toBeVisible()
     await expect(page.locator(`#post-${fixture.root}`)).toHaveCount(1)
     expect(errors).toEqual([])
   } finally {
+    await context.close()
+  }
+})
+
+test("the author's own replies come first, then everyone else's newest first, and a switch reads them oldest first @mobile", async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'order')
+  const other = await newMember(browser, 'other')
+  await other.context.close()
+  const db = pool()
+  try {
+    const { rows: [root] } = await db.query<{ id: string }>(
+      `insert into posts (author_id, text, created_at)
+       select id, 'Order fixture from ' || handle, now() - interval '1 hour' from members where handle = $1 returning id`,
+      [handle],
+    )
+    // Alternating authors, a minute apart: the other member, then the post's author, twice.
+    const replies: Record<string, string> = {}
+    for (const [n, who] of [[1, other.handle], [2, handle], [3, other.handle], [4, handle]] as const) {
+      const { rows: [reply] } = await db.query<{ id: string }>(
+        `insert into posts (author_id, text, reply_parent_id, root_id, created_at)
+         select id, $2, $3, $3, now() - interval '1 hour' + make_interval(mins => $4) from members where handle = $1 returning id`,
+        [who, `Order reply ${n} from ${who}`, root!.id, n],
+      )
+      replies[n] = reply!.id
+    }
+    const order = () => page.locator(`#replies-${root!.id} > .thread-list > li > .thread-branch`)
+      .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.threadId))
+
+    await page.goto(`/p/${root!.id}`)
+    await expect(page.getByText(`@${handle}'s own replies come first, then everyone else's, newest first.`)).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Newest first', exact: true })).toHaveAttribute('aria-current', 'true')
+    expect(await order()).toEqual([replies[4], replies[2], replies[3], replies[1]])
+
+    await page.getByRole('link', { name: 'Oldest first', exact: true }).click()
+    await expect(page).toHaveURL(/[?&]replies=oldest/)
+    await expect(page.getByText(`@${handle}'s own replies come first, then everyone else's, oldest first.`)).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Oldest first', exact: true })).toHaveAttribute('aria-current', 'true')
+    expect(await order()).toEqual([replies[2], replies[4], replies[1], replies[3]])
+
+    // The author's new reply joins the end of their own, ahead of everyone else's.
+    const text = `Author follow-up from ${handle}`
+    await (await replyBox(page, root!.id)).fill(text)
+    await page.getByRole('button', { name: 'Reply', exact: true }).click()
+    await expect(page.locator(`#replies-${root!.id} > .thread-list > li`).nth(2)).toContainText(text)
+
+    await page.getByRole('link', { name: 'Newest first', exact: true }).click()
+    await expect(page).not.toHaveURL(/replies=oldest/)
+    await expect(page.locator(`#replies-${root!.id} > .thread-list > li`).first()).toContainText(text)
+    expect((await order()).slice(1)).toEqual([replies[4], replies[2], replies[3], replies[1]])
+  } finally {
+    await db.end()
     await context.close()
   }
 })

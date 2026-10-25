@@ -22,6 +22,7 @@ async function Form({ kind, flowId }: AuthFormProps) {
       </>
     )
   }
+  if (kind === 'registration') return <FlowForm flow={flow} signup />
   if (kind !== 'login' || !flow.refresh) return <FlowForm flow={flow} />
 
   // Already signed in, confirming it is them before a change in Settings.

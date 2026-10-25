@@ -13,6 +13,21 @@ async function join(page: Page, slug: string) {
 
 const onPath = (page: Page, path: string) => page.waitForURL((url) => url.pathname === path)
 
+/**
+ * Step 3 offers push notifications on this device, and leaving it goes home. Headless
+ * Chromium refuses notifications, so here it says so and offers Continue; where it
+ * can ask, it offers Not now (push-notifications.spec.ts turns push on from here).
+ */
+async function passNotifications(page: Page) {
+  await page.waitForURL((url) => url.pathname === '/welcome' && url.searchParams.get('step') === 'notifications')
+  await expect(page.getByRole('heading', { level: 1, name: /Stay in the loop/ })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Setup steps' }).locator('[aria-current="step"]')).toHaveText(/Notifications/)
+  // Setup is already finished, so there is nothing left to skip.
+  await expect(page.getByRole('button', { name: 'Skip setup' })).toHaveCount(0)
+  await expectNoHorizontalScroll(page.locator('body'))
+  await page.getByRole('link', { name: /^(Continue|Not now)$/ }).click()
+}
+
 test('a newcomer chooses communities and people, then finds their posts in Following @mobile', async ({ browser, page }) => {
   // Two members already here, each posting in a community the newcomer will choose,
   // which is how the welcome flow comes to suggest them.
@@ -59,7 +74,10 @@ test('a newcomer chooses communities and people, then finds their posts in Follo
   await bayoBox.check()
   await page.getByRole('button', { name: 'Finish' }).click()
 
-  // Step 3: home, on Following, with a nudge to say hello.
+  // Step 3: notifications. Setup is finished already, so leaving here loses nothing.
+  await passNotifications(page)
+
+  // Step 4: home, on Following, with a nudge to say hello.
   await page.waitForURL((url) => url.pathname === '/' && url.searchParams.get('feed') === 'following')
   await expect(page.getByRole('heading', { name: 'Say hello to the town square' })).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'New post' })).toHaveAttribute('placeholder', /Introduce yourself/)
@@ -111,6 +129,7 @@ test('each step can be skipped on its own', async ({ page }) => {
   await page.getByRole('link', { name: 'Skip this step' }).click()
   await expect(page.getByRole('heading', { level: 1, name: /Find your people/ })).toBeVisible()
   await page.getByRole('button', { name: 'Skip this step' }).click()
+  await passNotifications(page)
 
   await page.waitForURL((url) => url.pathname === '/' && url.searchParams.get('feed') === 'following')
   await expect(page.getByRole('heading', { name: 'Say hello to the town square' })).toBeVisible()

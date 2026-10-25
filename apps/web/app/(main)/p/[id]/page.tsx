@@ -7,6 +7,7 @@ import { ThreadConversation } from '@/app/ui/thread-conversation'
 import { renderThreadRow } from '@/app/ui/thread-row'
 import { getReplies, getThread, getViewer } from '@/lib/api'
 import { defaultPreviewImage, excerpt, siteOpenGraph } from '@/lib/previews'
+import type { ReplyOrder } from '@/lib/thread-state'
 import { ChevronIcon } from '@/app/ui/icons'
 
 type Props = PageProps<'/p/[id]'>
@@ -51,14 +52,15 @@ export default function ThreadPage(props: Props) {
 
 async function ThreadView({ params, searchParams }: Props) {
   const [{ id }, query] = await Promise.all([params, searchParams])
-  const [thread, viewer] = await Promise.all([getThread(id), getViewer()])
+  const order: ReplyOrder = query.replies === 'oldest' ? 'oldest' : 'newest'
+  const [thread, viewer] = await Promise.all([getThread(id, order), getViewer()])
   if (!thread) notFound()
 
   const viewerId = viewer.state === 'member' ? viewer.me.id : null
   const now = Date.now()
   // Plain pagination links keep branch reading available without JavaScript.
   const page = typeof query.repliesCursor === 'string'
-    ? await getReplies(id, query.repliesCursor).catch(() => null)
+    ? await getReplies(id, query.repliesCursor, order).catch(() => null)
     : null
   const replies = page?.replies ?? thread.replies
   const cursor = page ? page.cursor : thread.replyCursor
@@ -102,11 +104,12 @@ async function ThreadView({ params, searchParams }: Props) {
       ) : null}
 
       <ThreadConversation
-        key={`${viewerId ?? 'visitor'}:${id}`}
+        key={`${viewerId ?? 'visitor'}:${id}:${order}`}
         focus={{ id, parentId: thread.post.replyParentId, handle: thread.post.authorHandle, depth: 0 }}
         member={viewer.state === 'member' ? { handle: viewer.me.handle, avatar: viewer.me.avatar } : null}
         initialRows={replies.map((post) => renderThreadRow(post, viewerId, now, 1, thread.post.authorHandle))}
         cursor={cursor}
+        order={order}
         version={now}
       >
         {renderThreadRow(thread.post, viewerId, now, 0, parent && !parent.deleted ? parent.authorHandle : null, true).node}

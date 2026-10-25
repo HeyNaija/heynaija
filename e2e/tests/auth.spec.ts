@@ -53,9 +53,8 @@ test('the API refuses a signup that skipped the 18+ confirmation', async ({ page
   await page.waitForURL(/\/signup/)
   await page.getByLabel('Email address').fill(email)
   await page.getByLabel('Handle').fill(handle)
-  await page.getByRole('button', { name: 'Sign up' }).click()
   const asked = new Date()
-  await page.getByRole('button', { name: 'Send sign up code' }).click()
+  await page.getByRole('button', { name: 'Email me a code' }).click()
   await page.getByLabel('Code from the email').fill(await codeFor(email, asked))
 
   // The confirmation disappears just before the account would be saved: the

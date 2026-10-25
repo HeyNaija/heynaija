@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 import { ageNotifications, pushSubscriptionCount, waitForEmailJob, waitForPushJob } from '../lib/db.ts'
 import { countFor, emailWhere } from '../lib/mailpit.ts'
-import { type Member, newMember, post, replyBox } from '../lib/members.ts'
+import { handleFor, type Member, newMember, post, replyBox, signUpOverHttp } from '../lib/members.ts'
 import { allowPush, standInPushService, waitForPushes } from '../lib/push.ts'
 
 // See lib/push.ts: the browser's push service is a stand-in on this machine, which
@@ -110,4 +110,85 @@ test('on an iPhone, Settings explains that push needs HeyNaija on the Home Scree
   await expect(group).toContainText('add HeyNaija to your Home Screen first')
   await expect(group.getByRole('button')).toHaveCount(0)
   await member.context.close()
+})
+
+test('a newcomer turns push on in the welcome flow, and lands on home', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: test.info().project.use.baseURL })
+  const page = await context.newPage()
+  const handle = handleFor('welcomed')
+  await allowPush(context, test.info().project.use.baseURL!, service.subscription(handle))
+  await signUpOverHttp(page, handle, { welcome: 'stay' })
+  await page.getByRole('link', { name: 'Skip this step' }).click()
+  await page.getByRole('button', { name: 'Skip this step' }).click()
+
+  await page.waitForURL((url) => url.searchParams.get('step') === 'notifications')
+  const panel = page.getByRole('region', { name: 'Notifications on this device' })
+  await expect(panel).toContainText('Only this device gets them')
+  await panel.getByRole('button', { name: 'Turn on notifications' }).click()
+  await expect(panel.getByRole('status')).toHaveText('Notifications are on for this device.')
+  expect(await pushSubscriptionCount(handle)).toBe(1)
+  // The button is gone; the way on is focused in its place.
+  await expect(panel.getByRole('link', { name: 'Continue' })).toBeFocused()
+  await panel.getByRole('link', { name: 'Continue' }).click()
+  await expect(page.getByRole('heading', { name: 'Say hello to the town square' })).toBeVisible()
+  // On in Settings too: it is the same switch.
+  await page.goto('/settings')
+  await expect(pushGroup(page).getByRole('button', { name: 'Turn off on this device' })).toBeVisible()
+  await context.close()
+})
+
+test('on an iPhone, the welcome flow shows how to add HeyNaija to the Home Screen', async ({ browser }) => {
+  const member = await newMember(browser, 'iwelcome', {
+    userAgent:
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1',
+  })
+  await member.page.goto('/welcome?step=notifications')
+  const panel = member.page.getByRole('region', { name: 'Add HeyNaija to your Home Screen' })
+  await expect(panel.getByRole('listitem')).toHaveText([/Tap Share/, /Add to Home Screen/, /Open HeyNaija from your Home Screen/])
+  await expect(panel.getByRole('button')).toHaveCount(0)
+  await panel.getByRole('link', { name: 'Continue' }).click()
+  await expect(member.page.getByRole('heading', { name: 'Say hello to the town square' })).toBeVisible()
+  await member.context.close()
+})
+
+/** Makes the pages in `context` believe they are HeyNaija opened from the Home Screen, not a tab. */
+async function openAsInstalledApp(context: Member['context']) {
+  await context.addInitScript(() => {
+    const real = window.matchMedia.bind(window)
+    window.matchMedia = (query: string) =>
+      query === '(display-mode: standalone)' ? ({ ...real(query), matches: true, media: query } as MediaQueryList) : real(query)
+  })
+}
+
+test('the installed app offers push on the home page until it is on or put off', async ({ browser }) => {
+  const card = (page: Page) => page.getByRole('region', { name: /^(Turn on notifications|Notifications are on)$/ })
+
+  // In a browser tab, Settings has the switch and home says nothing.
+  const later = await newMember(browser, 'applater')
+  await allowPush(later.context, test.info().project.use.baseURL!, service.subscription(later.handle))
+  await later.page.goto('/')
+  await later.page.waitForLoadState('networkidle')
+  await expect(card(later.page)).toHaveCount(0)
+  // As the app: offered, and "Not now" holds on this device.
+  await openAsInstalledApp(later.context)
+  await later.page.reload()
+  await card(later.page).getByRole('button', { name: 'Not now' }).click()
+  await expect(card(later.page)).toHaveCount(0)
+  await later.page.reload()
+  await later.page.waitForLoadState('networkidle')
+  await expect(card(later.page)).toHaveCount(0)
+  await later.context.close()
+
+  const now = await newMember(browser, 'appnow')
+  await allowPush(now.context, test.info().project.use.baseURL!, service.subscription(now.handle))
+  await openAsInstalledApp(now.context)
+  await now.page.goto('/')
+  await card(now.page).getByRole('button', { name: 'Turn on notifications' }).click()
+  await expect(card(now.page).getByRole('heading')).toHaveText('Notifications are on')
+  expect(await pushSubscriptionCount(now.handle)).toBe(1)
+  await card(now.page).getByRole('button', { name: 'Done' }).click()
+  await now.page.reload()
+  await now.page.waitForLoadState('networkidle')
+  await expect(card(now.page)).toHaveCount(0)
+  await now.context.close()
 })

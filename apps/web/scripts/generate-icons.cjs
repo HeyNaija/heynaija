@@ -40,7 +40,8 @@ async function main() {
   })
   await fs.writeFile(path.join(root, 'app/favicon.ico'), Buffer.concat([directory, ...frames]))
   await writeBadge(source)
-  console.log('Generated browser, Apple, installable-app and notification badge icons from heynaija-mark.svg.')
+  await writeMaskable(source)
+  console.log('Generated browser, Apple, installable-app, maskable and notification badge icons from heynaija-mark.svg.')
 }
 
 /**
@@ -51,6 +52,22 @@ async function writeBadge(source) {
   const letters = Buffer.from(source.toString().replace(/<rect[^>]*\/>/, ''))
   const badge = await sharp(letters, { density: 192 }).resize(96, 96).png().toBuffer()
   await fs.writeFile(path.join(root, 'public/icons/badge-96.png'), badge)
+}
+
+/**
+ * Android crops an installed app's icon to its own shape (a circle, a squircle),
+ * keeping only the middle 80% for certain. The tile's letters reach nearly to its
+ * edges, so this one draws them smaller, on green to the very corners.
+ */
+async function writeMaskable(source) {
+  const letters = Buffer.from(source.toString().replace(/<rect[^>]*\/>/, ''))
+  const inner = Math.round(512 * 0.72)
+  const art = await sharp(letters, { density: 192 }).resize(inner, inner).png().toBuffer()
+  const icon = await sharp({ create: { width: 512, height: 512, channels: 4, background: '#024822' } })
+    .composite([{ input: art, gravity: 'centre' }])
+    .png()
+    .toBuffer()
+  await fs.writeFile(path.join(root, 'public/icons/maskable-512.png'), icon)
 }
 
 main().catch((error) => {

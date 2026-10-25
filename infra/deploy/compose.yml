@@ -248,6 +248,8 @@ configs:
           registration:
             ui_url: ${SITE_URL}/signup
             lifespan: 15m
+            # Email and handle go with "Email me a code" in one step (infra/kratos/kratos.yml).
+            enable_legacy_one_step: true
             # Invite-only signup: see the comments in infra/compose/docker-compose.dev.yml.
             after:
               code:

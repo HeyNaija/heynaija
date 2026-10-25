@@ -53,9 +53,8 @@ export async function submitSignUp(page: Page, handle: string, email = `${handle
 
   await page.getByLabel('Email address').fill(email)
   await page.getByLabel('Handle').fill(handle)
-  await page.getByRole('button', { name: 'Sign up' }).click()
   const asked = new Date()
-  await page.getByRole('button', { name: 'Send sign up code' }).click()
+  await page.getByRole('button', { name: 'Email me a code' }).click()
   await page.getByLabel('Code from the email').fill(await codeFor(email, asked))
   await page.getByRole('button', { name: 'Continue' }).click()
   return email

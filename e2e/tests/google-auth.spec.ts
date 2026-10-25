@@ -209,17 +209,23 @@ test('a new Google account still needs an invite', async ({ page }) => {
   expect(await response.json()).toEqual([])
 })
 
-test('a new invited Google member can choose a handle and create one account', async ({ page }) => {
+test('a new invited Google member finishes with only a handle, on a page that says Google worked', async ({ page }) => {
   const handle = handleFor('gjoin')
   const email = `${handle}@${MARK.emailDomain}`
   google.use(email)
+  const before = google.authorizations
   await page.goto(`/join?code=${createInvite()}`)
   await page.getByLabel('I am 18 or older').check()
   await page.getByRole('button', { name: 'Check invite code' }).click()
   await page.waitForURL((url) => url.pathname === '/signup')
   await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
+  // Back from Google: the sign-up form is not shown again, only the handle.
+  await expect(page.getByText('You’re signed in with Google as', { exact: false })).toContainText(email)
+  await expect(page.getByLabel('Email address')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Continue with Google' })).toHaveCount(0)
+  expect(google.authorizations - before).toBe(1)
   await page.getByLabel('Handle').fill(handle)
-  await page.locator('button[name="provider"][value="google"]').click()
+  await page.getByRole('button', { name: 'Finish creating my account' }).click()
   // Like any newcomer, they start on the welcome flow.
   await page.waitForURL((url) => url.pathname === '/welcome')
   const me = await (await page.context().request.get('/api/v1/me')).json()
@@ -228,7 +234,7 @@ test('a new invited Google member can choose a handle and create one account', a
   expect((await identity(me.id)).credentials?.oidc?.identifiers).toHaveLength(1)
 })
 
-test('a colliding handle cannot connect a new Google email to another member', async ({ browser, page }) => {
+test('a taken handle cannot connect a new Google email to another member, and a free one finishes the signup', async ({ browser, page }) => {
   const member = await newMember(browser, 'ghandle')
   try {
     const original = await (await member.context.request.get('/api/v1/me')).json()
@@ -240,11 +246,21 @@ test('a colliding handle cannot connect a new Google email to another member', a
     await page.waitForURL((url) => url.pathname === '/signup')
     await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
     await page.getByLabel('Handle').fill(member.handle)
-    await page.locator('button[name="provider"][value="google"]').click()
+    await page.getByRole('button', { name: 'Finish creating my account' }).click()
+    // Refused, on the same page, which still says Google worked.
     await expect(page.getByText('That handle is not available.', { exact: false })).toBeVisible()
+    await expect(page.getByText('You’re signed in with Google as', { exact: false })).toContainText(email)
     await expect(page).toHaveURL((url) => url.pathname === '/signup')
     await expect(page.getByLabel('Code from the email')).toHaveCount(0)
     expect((await identity(original.id)).credentials?.oidc?.identifiers ?? []).toEqual([])
+
+    const fresh = handleFor('gfresh')
+    await page.getByLabel('Handle').fill(fresh)
+    await page.getByRole('button', { name: 'Finish creating my account' }).click()
+    await page.waitForURL((url) => url.pathname === '/welcome')
+    const me = await (await page.context().request.get('/api/v1/me')).json()
+    expect(me.handle).toBe(fresh)
+    expect(me.id).not.toBe(original.id)
   } finally { await member.context.close() }
 })
 

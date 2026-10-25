@@ -430,9 +430,10 @@ export async function setFollow(formData: FormData): Promise<void> {
 // --- The welcome flow (/welcome). Plain forms, so they work before JavaScript loads. ---
 
 /**
- * The last step: joins the communities chosen in step 1 and follows the people
- * ticked in step 2, all at once, then lands on the Following feed with a nudge to
- * post. "Skip this step" still joins the communities.
+ * Step 2's form: joins the communities chosen in step 1 and follows the people
+ * ticked in step 2, all at once, which finishes setup. Then comes the offer of
+ * notifications, and after it the Following feed with a nudge to post. "Skip this
+ * step" still joins the communities.
  */
 export async function finishOnboarding(formData: FormData): Promise<void> {
   const choices = choicesFromForm(formData)
@@ -445,7 +446,7 @@ export async function finishOnboarding(formData: FormData): Promise<void> {
   if (!res?.ok) redirect(welcomePath('people', choices.communities, res?.status === 429 ? 'busy' : 'failed'))
   // The side rail, in the shared layout, lists communities with Join buttons.
   refresh()
-  redirect('/?feed=following&welcome=1')
+  redirect(welcomePath('notifications', []))
 }
 
 /** Leaves the welcome flow without joining or following anyone. It is not shown again. */

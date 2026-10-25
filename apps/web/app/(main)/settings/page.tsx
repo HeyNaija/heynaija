@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Suspense } from 'react'
 import { AvatarUploader } from '@/app/ui/avatar-uploader'
 import { IdentityBadge } from '@/app/ui/identity-badge'
+import { InstallApp } from '@/app/ui/install-app'
 import { NotificationPreferencesForm } from '@/app/ui/notification-preferences-form'
 import { ProfileForm } from '@/app/ui/profile-form'
 import { PushSwitch } from '@/app/ui/push-switch'
@@ -117,6 +118,8 @@ async function NotificationSettings() {
     <>
       {/* Only where the server can push (it has VAPID keys). */}
       {pushKey ? <PushSwitch publicKey={pushKey} /> : null}
+      {/* Only where the browser offers it (Chrome, Edge, Samsung Internet); on an iPhone, PushSwitch explains. */}
+      <InstallApp />
       <NotificationPreferencesForm preferences={preferences} />
     </>
   )

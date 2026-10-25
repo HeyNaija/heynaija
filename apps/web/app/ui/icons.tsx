@@ -35,6 +35,7 @@ import {
   Repeat2,
   Search,
   Settings,
+  Share,
   Share2,
   Shield,
   User,
@@ -71,6 +72,8 @@ export const SearchIcon = icon(Search)
 export const HeartIcon = icon(Heart)
 export const BubbleIcon = icon(MessageCircle)
 export const ShareIcon = icon(Share2)
+/** Safari's Share button on iPhone and iPad, a box with an arrow, as the install steps describe it. */
+export const AppleShareIcon = icon(Share)
 export const LinkIcon = icon(Link)
 export const RepostIcon = icon(Repeat2)
 export const QuoteIcon = icon(Quote)

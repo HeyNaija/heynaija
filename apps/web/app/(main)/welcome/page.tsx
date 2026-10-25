@@ -9,16 +9,18 @@ import { CommunityMark } from '@/app/ui/community-mark'
 import { EmptyState } from '@/app/ui/empty-state'
 import { PeopleIcon } from '@/app/ui/icons'
 import { SubmitButton } from '@/app/ui/submit-button'
-import { type Community, getCommunities, getOnboardingSuggestions, getViewer, type Suggestion } from '@/lib/api'
-import { listOf, welcomePath } from '@/lib/onboarding'
+import { WelcomeNotifications } from '@/app/ui/welcome-notifications'
+import { type Community, getCommunities, getOnboardingSuggestions, getPushKey, getViewer, type Suggestion } from '@/lib/api'
+import { listOf, type OnboardingStep, WELCOMED_HOME, welcomePath } from '@/lib/onboarding'
 
 export const metadata: Metadata = { title: 'Welcome' }
 
 // A newcomer is sent here from the home page until they finish or skip (see
 // members.onboarded_at). Step 1 picks communities and carries them in the URL;
-// step 2 picks people, and its form joins and follows everything at once;
-// step 3 is the home page's nudge to post. Every form is a plain form, so the
-// flow works before JavaScript has loaded.
+// step 2 picks people, and its form joins and follows everything at once, which
+// finishes setup; step 3 offers push notifications on this device, where the
+// server can push; the last is the home page's nudge to post. Every form is a
+// plain form, so the flow works before JavaScript has loaded (bar push itself).
 export default function WelcomePage({ searchParams }: PageProps<'/welcome'>) {
   return (
     <div className="page-stack">
@@ -37,14 +39,16 @@ const ERRORS: Record<string, string> = {
 }
 
 async function Welcome({ searchParams }: Pick<PageProps<'/welcome'>, 'searchParams'>) {
-  const [viewer, params, communities] = await Promise.all([getViewer(), searchParams, getCommunities()])
+  const [viewer, params, communities, pushKey] = await Promise.all([getViewer(), searchParams, getCommunities(), getPushKey()])
   if (viewer.state === 'anonymous') redirect('/login')
   if (viewer.state !== 'member') redirect('/')
 
   // Only communities that exist: the URL is the member's to edit.
   const asked = new Set(all(params.c))
   const chosen = communities.filter((c) => asked.has(c.slug) || c.viewerIsMember)
-  const step = params.step === 'people' ? 'people' : 'communities'
+  const step: OnboardingStep = params.step === 'people' || params.step === 'notifications' ? params.step : 'communities'
+  // Only where the server can push (it has VAPID keys); otherwise setup ends with step 2.
+  if (step === 'notifications' && !pushKey) redirect(WELCOMED_HOME)
   const error = ERRORS[all(params.error)[0] ?? '']
 
   return (
@@ -52,44 +56,60 @@ async function Welcome({ searchParams }: Pick<PageProps<'/welcome'>, 'searchPara
       <header className="page-intro">
         <div className="welcome-intro-top">
           <p className="page-eyebrow">Welcome to HeyNaija</p>
-          <form action={skipOnboarding}>
-            <SubmitButton className="welcome-skip">Skip setup</SubmitButton>
-          </form>
+          {/* Setup is finished by the time notifications come up, so there is nothing to skip. */}
+          {step === 'notifications' ? null : (
+            <form action={skipOnboarding}>
+              <SubmitButton className="welcome-skip">Skip setup</SubmitButton>
+            </form>
+          )}
         </div>
         <h1 className="page-title">
-          {step === 'communities' ? 'Find your places' : 'Find your people'}
+          {TITLES[step]}
           <span className="text-accent">.</span>
         </h1>
-        <p className="page-description">
-          {step === 'communities'
-            ? 'Join a few communities to fill your Following feed with conversations you care about. It takes a minute, and you can change everything later.'
-            : 'Follow a few people and their posts and reposts will show up in your Following feed.'}
-        </p>
-        <Steps current={step} />
+        <p className="page-description">{DESCRIPTIONS[step]}</p>
+        <Steps current={step} withNotifications={!!pushKey} />
       </header>
       {error ? <p role="alert" className="notice notice-danger">{error}</p> : null}
       {step === 'communities' ? (
         <CommunitiesStep communities={communities} chosen={chosen} />
-      ) : (
+      ) : step === 'people' ? (
         <Suspense fallback={<div aria-busy="true" className="skeleton h-96" />}>
           <PeopleStep chosen={chosen} />
         </Suspense>
+      ) : (
+        <WelcomeNotifications publicKey={pushKey!} next={WELCOMED_HOME} />
       )}
     </>
   )
 }
 
+const TITLES: Record<OnboardingStep, string> = {
+  communities: 'Find your places',
+  people: 'Find your people',
+  notifications: 'Stay in the loop',
+}
+
+const DESCRIPTIONS: Record<OnboardingStep, string> = {
+  communities:
+    'Join a few communities to fill your Following feed with conversations you care about. It takes a minute, and you can change everything later.',
+  people: 'Follow a few people and their posts and reposts will show up in your Following feed.',
+  notifications: 'You are all set up. One last thing: hear about replies and new followers without having to check.',
+}
+
 const STEPS = [
   { key: 'communities', label: 'Communities' },
   { key: 'people', label: 'People' },
+  { key: 'notifications', label: 'Notifications' },
   { key: 'post', label: 'Say hello' },
 ] as const
 
-function Steps({ current }: { current: 'communities' | 'people' }) {
-  const at = STEPS.findIndex((s) => s.key === current)
+function Steps({ current, withNotifications }: { current: OnboardingStep; withNotifications: boolean }) {
+  const steps = withNotifications ? STEPS : STEPS.filter((s) => s.key !== 'notifications')
+  const at = steps.findIndex((s) => s.key === current)
   return (
     <ol className="welcome-steps" aria-label="Setup steps">
-      {STEPS.map((s, i) => (
+      {steps.map((s, i) => (
         <li key={s.key} aria-current={i === at ? 'step' : undefined} className={i < at ? 'is-done' : undefined}>
           <span aria-hidden="true">{i + 1}</span>
           {s.label}

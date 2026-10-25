@@ -1,7 +1,8 @@
 // HeyNaija's service worker: it shows push notifications and opens what they are
 // about (docs/adr/0011). It does nothing else: no caching, no offline pages, and
 // no fetch handler, so every request goes to the network exactly as without it.
-// Registered from Settings when a member turns push on (app/ui/push-switch.tsx).
+// Registered when a member turns push on, in Settings, the welcome flow or the
+// installed app's home page (app/ui/push-device.ts).
 
 // A new version takes over at once rather than after every tab has closed.
 self.addEventListener('install', () => self.skipWaiting())

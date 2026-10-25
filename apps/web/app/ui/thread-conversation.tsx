@@ -12,6 +12,7 @@ import {
   insertConfirmedReply,
   nextThreadPath,
   pruneCollapsedBranches,
+  type ReplyOrder,
   type ReplyTarget,
   type ThreadRow,
   THREAD_MAX_DEPTH,
@@ -21,6 +22,7 @@ import { BubbleIcon } from './icons'
 
 type Position = { id: string; parentId: string | null; handle: string | null; depth: number }
 type ConversationContext = {
+  order: ReplyOrder
   branches: BranchCache
   increments: Record<string, number>
   canReply: boolean
@@ -43,6 +45,7 @@ export function ThreadConversation({
   member,
   initialRows,
   cursor,
+  order,
   version,
   children,
 }: {
@@ -50,6 +53,8 @@ export function ThreadConversation({
   member: { handle: string; avatar: string | null } | null
   initialRows: ThreadRow[]
   cursor: string | null
+  /** Every list of replies on the page, the focus's and each branch's, is in this order. */
+  order: ReplyOrder
   version: number
   children: ReactNode
 }) {
@@ -137,7 +142,7 @@ export function ThreadConversation({
       [position.id]: { ...(all[position.id] ?? current), open: true, status: 'loading', error: undefined, touched: Date.now() },
     }))
     startTransition(async () => {
-      const result = await loadThreadReplies(position.id, next, position.depth + 1, position.handle)
+      const result = await loadThreadReplies(position.id, next, position.depth + 1, position.handle, order)
         .catch(() => ({ error: 'Replies could not be loaded. Check your connection and try again.' }))
       busy.current.delete(request)
       if (!mounted.current || gen !== generation.current) return
@@ -150,7 +155,7 @@ export function ThreadConversation({
         return pruneCollapsedBranches({ ...all, [position.id]: updated }, focus.id, selected.current)
       }))
     })
-  }, [focus.id])
+  }, [focus.id, order])
 
   const onPosted = useCallback((state: ComposeState) => {
     if (!state.postId || posted.current.has(state.postId)) return
@@ -162,10 +167,10 @@ export function ThreadConversation({
       const parent = current[parentId] ?? emptyBranch(selected.current.id === parentId ? selected.current.parentId : null)
       return {
         ...current,
-        [parentId]: { ...insertConfirmedReply(parent, row), touched: Date.now() },
+        [parentId]: { ...insertConfirmedReply(parent, row, order), touched: Date.now() },
       }
     })
-  }, [])
+  }, [order])
 
   const editor = member ? (
     <Composer
@@ -184,7 +189,7 @@ export function ThreadConversation({
   ) : null
 
   return (
-    <Conversation.Provider value={{ branches, increments, canReply: member !== null, posting, select, load, collapse, editor }}>
+    <Conversation.Provider value={{ order, branches, increments, canReply: member !== null, posting, select, load, collapse, editor }}>
       {children}
     </Conversation.Provider>
   )
@@ -251,6 +256,7 @@ export function ThreadBranch({
   const expandable = !empty && (hasReplies || total > 0 || items.length > 0 || recent.length > 0)
   const open = root || state?.open === true
   const position = { id, parentId, handle, depth }
+  const order = context?.order ?? 'newest'
 
   return (
     <BranchAncestry.Provider value={path}>
@@ -298,19 +304,19 @@ export function ThreadBranch({
 
       {renderChildren && (root || state) ? (
         <section id={`replies-${id}`} className="thread-children" aria-label={root ? 'Replies' : `Replies${handle ? ` to @${handle}` : ' to unavailable post'}`} hidden={!open} aria-busy={busy || undefined}>
-          {root ? <h2 className="thread-replies-heading">Replies</h2> : null}
+          {root ? <RepliesHeading id={id} handle={handle} order={order} ordered={items.length + recent.length > 0 || !!state?.cursor} /> : null}
           {items.length ? <ul className="thread-list">{items.map((row) => <li key={row.id}>{row.node}</li>)}</ul> : null}
           {empty ? <p className="thread-empty">{root && total === 0 ? 'No replies yet.' : 'No available replies.'}</p> : null}
           {recent.length ? (
             <div className="thread-recent">
-              <p className="thread-gap">Your reply · Earlier replies may still be unloaded.</p>
+              <p className="thread-gap">Your reply · Some replies are not loaded yet.</p>
               <ul className="thread-list">{recent.map((row) => <li key={row.id}>{row.node}</li>)}</ul>
             </div>
           ) : null}
           {state?.error ? <p role="alert" className="thread-error">{state.error}</p> : null}
           {state?.cursor || state?.status === 'error' ? (
             <Link
-              href={`/p/${id}${state.cursor ? `?repliesCursor=${encodeURIComponent(state.cursor)}` : ''}#replies-${id}`}
+              href={`/p/${id}${replyQuery(order, state.cursor)}#replies-${id}`}
               prefetch={false}
               className="thread-more btn btn-secondary btn-sm"
               aria-disabled={busy || undefined}
@@ -327,5 +333,47 @@ export function ThreadBranch({
       ) : null}
     </div>
     </BranchAncestry.Provider>
+  )
+}
+
+/** The page's address for an order and, for reading on without JavaScript, a page of replies. */
+function replyQuery(order: ReplyOrder, cursor: string | null) {
+  const query = new URLSearchParams()
+  if (order === 'oldest') query.set('replies', 'oldest')
+  if (cursor) query.set('repliesCursor', cursor)
+  return query.size ? `?${query}` : ''
+}
+
+/**
+ * The order of replies, stated where they are read, with the switch between
+ * its two directions. Plain links, so it works before JavaScript loads.
+ */
+function RepliesHeading({ id, handle, order, ordered }: { id: string; handle: string | null; order: ReplyOrder; ordered: boolean }) {
+  return (
+    <>
+      <div className="thread-replies-head">
+        <h2 className="thread-replies-heading">Replies</h2>
+        {ordered ? (
+          <nav aria-label="Order of replies" className="thread-order">
+            {(['newest', 'oldest'] as const).map((value) => (
+              <Link
+                key={value}
+                href={`/p/${id}${replyQuery(value, null)}#replies-${id}`}
+                prefetch={false}
+                aria-current={value === order ? 'true' : undefined}
+              >
+                {value === 'newest' ? 'Newest first' : 'Oldest first'}
+              </Link>
+            ))}
+          </nav>
+        ) : null}
+      </div>
+      {ordered ? (
+        <p className="thread-order-rule">
+          {handle ? `@${handle}'s` : "The author's"} own replies come first, then everyone else's, {order} first.
+          Under each reply, its author's replies come first the same way. Nothing is ranked by likes or reach.
+        </p>
+      ) : null}
+    </>
   )
 }

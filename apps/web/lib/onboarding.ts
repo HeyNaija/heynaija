@@ -2,7 +2,10 @@
 // Step 1's choices travel to step 2 in the URL (`c`, once per community), so
 // every step is a plain link or form that works before JavaScript has loaded.
 
-export type OnboardingStep = 'communities' | 'people'
+export type OnboardingStep = 'communities' | 'people' | 'notifications'
+
+/** Where the flow ends: the Following feed, with its nudge to say hello. */
+export const WELCOMED_HOME = '/?feed=following&welcome=1'
 
 /** The communities and people the last form asks to join and follow. */
 export type OnboardingChoices = { communities: string[]; follow: string[] }
@@ -23,7 +26,7 @@ export function choicesFromForm(form: FormData): OnboardingChoices {
 /** /welcome at `step`, carrying the communities chosen so far and, after a failure, what went wrong. */
 export function welcomePath(step: OnboardingStep, communities: string[], error?: 'busy' | 'failed'): string {
   const query = new URLSearchParams([
-    ...(step === 'people' ? [['step', 'people']] : []),
+    ...(step === 'communities' ? [] : [['step', step]]),
     ...communities.map((slug) => ['c', slug]),
     ...(error ? [['error', error]] : []),
   ]).toString()
