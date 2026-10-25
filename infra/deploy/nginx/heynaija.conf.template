@@ -50,7 +50,15 @@ ${ROBOTS_HEADER}
         limit_except GET {
             deny all;
         }
-        proxy_pass ${MEDIA_ORIGIN}/;
+        # The media host is looked up per request, not when nginx starts: a host
+        # name written straight into proxy_pass must resolve at startup, so a DNS
+        # blip then (security updates restart nginx and the resolver together)
+        # kept the whole site down. Now it can only fail image requests.
+        resolver ${NGINX_RESOLVER};
+        set $media_origin ${MEDIA_ORIGIN};
+        # With a variable in proxy_pass nginx no longer swaps /media/ for /.
+        rewrite ^/media/(.*)$ /$1 break;
+        proxy_pass $media_origin;
         proxy_ssl_server_name on;
         proxy_set_header Host ${MEDIA_HOST};
         # The site's cookies are none of storage's business.

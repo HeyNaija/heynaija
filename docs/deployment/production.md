@@ -41,6 +41,15 @@ and automatic security updates. **Check `ssh heynaija@<server-ip>` works in a se
 terminal before closing the root session.** The provider's web console still works
 if you lock yourself out.
 
+A server set up before 25 October 2026 lacks one part of the script: systemd
+restarting nginx when it fails to start. (On 23 October nginx failed to come back
+after the security updates restarted it, and the site was down until someone
+started it by hand.) Add it once, as `heynaija`:
+
+```bash
+sudo install -d /etc/systemd/system/nginx.service.d && printf '[Unit]\nStartLimitIntervalSec=0\n\n[Service]\nRestart=on-failure\nRestartSec=10s\n' | sudo tee /etc/systemd/system/nginx.service.d/restart.conf && sudo systemctl daemon-reload
+```
+
 ## 2. Cloudflare
 
 1. **DNS:** `A` record `heynaija.ng` (`@`) → the netcup server, **Proxied**; `AAAA` if

@@ -15,6 +15,11 @@ export WEB_UPSTREAM=${NGINX_WEB_UPSTREAM:-127.0.0.1:${WEB_PORT:-3100}}
 # The host part of the media origin, which storage expects as the Host header.
 MEDIA_HOST=$(sed -E 's#^[a-z]+://##; s#/.*##' <<< "$MEDIA_ORIGIN")
 export MEDIA_HOST
+# The template's rewrite drops /media/ from the path, so the origin can have none.
+[[ $MEDIA_ORIGIN =~ ^https?://[^/]+/?$ ]] || { echo "MEDIA_ORIGIN must be a bare origin, like https://media.heynaija.ng" >&2; exit 1; }
+export MEDIA_ORIGIN=${MEDIA_ORIGIN%/}
+# Looks up the media host at request time: systemd-resolved's local stub on Ubuntu.
+export NGINX_RESOLVER=${NGINX_RESOLVER:-127.0.0.53}
 if [[ ${ROBOTS:-noindex} == noindex ]]; then
   export ROBOTS_HEADER='    add_header X-Robots-Tag "noindex, nofollow" always;'
 else
@@ -27,5 +32,5 @@ CLOUDFLARE_REAL_IP=$(sed 's/.*/    set_real_ip_from &;/' <<< "$ranges")
 export CLOUDFLARE_REAL_IP
 
 # Only these placeholders are replaced; nginx's own $variables are left alone.
-envsubst '${SITE_ADDRESS} ${NGINX_CERT} ${NGINX_CERT_KEY} ${NGINX_CLIENT_CA} ${CLOUDFLARE_REAL_IP} ${ROBOTS_HEADER} ${MEDIA_ORIGIN} ${MEDIA_HOST} ${WEB_UPSTREAM}' \
+envsubst '${SITE_ADDRESS} ${NGINX_CERT} ${NGINX_CERT_KEY} ${NGINX_CLIENT_CA} ${CLOUDFLARE_REAL_IP} ${ROBOTS_HEADER} ${MEDIA_ORIGIN} ${MEDIA_HOST} ${NGINX_RESOLVER} ${WEB_UPSTREAM}' \
   < nginx/heynaija.conf.template
