@@ -2,11 +2,13 @@
 package oidc
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/ory/kratos/identity"
 	"github.com/ory/kratos/selfservice/flow"
 	"github.com/ory/kratos/selfservice/flow/login"
+	"github.com/ory/kratos/selfservice/flow/registration"
 	"github.com/ory/kratos/x"
 )
 
@@ -58,5 +60,40 @@ func TestHeyNaijaPendingLinkBinding(t *testing.T) {
 	i.Traits = identity.Traits(`{"email":"ada@gmail.com"}`)
 	if err := heynaijaCheckPendingGoogle(i, credentials.Config); err == nil {
 		t.Fatal("an unbound legacy flow was accepted")
+	}
+}
+
+type heynaijaTestProvider string
+
+func (p heynaijaTestProvider) Config() *Configuration { return &Configuration{ID: string(p)} }
+
+func TestHeyNaijaGoogleSignupWaitsForItsHandle(t *testing.T) {
+	google, other := heynaijaTestProvider("google"), heynaijaTestProvider("other")
+	claims := &Claims{Subject: "google-subject", Email: "ada@gmail.com", EmailVerified: x.ConvertibleBoolean(true)}
+	token := &identity.CredentialsOIDCEncryptedTokens{IDToken: "encrypted-id-token"}
+	rf := &registration.Flow{InternalContext: []byte("{}")}
+
+	if err := heynaijaKeepGoogle(rf, other, claims, token); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, ok := heynaijaPendingGoogle(rf, google, nil); ok {
+		t.Fatal("another provider's result was kept")
+	}
+	if err := heynaijaKeepGoogle(rf, google, claims, token); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, ok := heynaijaPendingGoogle(rf, other, nil); ok {
+		t.Fatal("a Google result was offered to another provider")
+	}
+	kept, keptToken, traits, ok := heynaijaPendingGoogle(rf, google, json.RawMessage(`{"email":"someone-else@gmail.com","handle":"ada"}`))
+	if !ok || kept.Subject != "google-subject" || kept.Email != "ada@gmail.com" || keptToken.IDToken != "encrypted-id-token" {
+		t.Fatalf("the Google result did not come back: %+v %+v", kept, keptToken)
+	}
+	// The address is Google's: a form cannot replace it, only add the handle.
+	if string(traits) != `{"handle":"ada"}` {
+		t.Fatalf("traits sent with the handle: %s", traits)
+	}
+	if _, _, _, ok := heynaijaPendingGoogle(&registration.Flow{InternalContext: []byte("{}")}, google, nil); ok {
+		t.Fatal("a flow without a Google result offered one")
 	}
 }

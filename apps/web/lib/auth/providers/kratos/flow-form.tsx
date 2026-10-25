@@ -200,8 +200,8 @@ function Form({ flow, nodes: unordered, identifier, googleConnected }: { flow: F
 /**
  * Back from Google on a signup: Google gives no handle, so Kratos asks for one.
  * Google is done, and this says so, and asks for the handle alone, not the
- * signup form again. On the button Kratos checks back with Google, which,
- * already agreed to, sends the member straight on to their new account.
+ * signup form again. The button finishes with the Google result Kratos kept
+ * (infra/kratos/policy: heynaijaPendingGoogle), without another trip to Google.
  */
 function FinishGoogleSignup({ flow }: { flow: Flow }) {
   const nodes = [...flow.ui.nodes].sort((a, b) => rank(a) - rank(b))

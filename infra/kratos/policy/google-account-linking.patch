@@ -30,7 +30,33 @@
  	if err := json.NewDecoder(bytes.NewBuffer(c.Config)).Decode(&oidcCredentials); err != nil {
 --- a/selfservice/strategy/oidc/strategy_registration.go
 +++ b/selfservice/strategy/oidc/strategy_registration.go
-@@ -349,6 +349,14 @@
+@@ -210,6 +210,25 @@ func (s *Strategy) Register(w http.ResponseWriter, r *http.Request, f *registrat
+ 		return errors.WithStack(registration.ErrAlreadyLoggedIn)
+ 	}
+ 
++	if claims, token, traits, ok := heynaijaPendingGoogle(f, provider, p.Traits); ok {
++		f.Active = s.ID()
++		lf, err := s.processRegistration(ctx, w, r, f, token, claims, provider, &AuthCodeContainer{
++			FlowID:           f.ID.String(),
++			Traits:           traits,
++			TransientPayload: f.TransientPayload,
++			IdentitySchema:   f.IdentitySchema,
++		})
++		if errors.Is(err, flow.ErrCompletedByStrategy) {
++			return err
++		} else if err != nil && lf != nil {
++			s.forwardError(ctx, w, r, lf, err)
++			return errors.WithStack(flow.ErrCompletedByStrategy)
++		} else if err != nil {
++			return err
++		}
++		return errors.WithStack(flow.ErrCompletedByStrategy)
++	}
++
+ 	if p.IDToken != "" {
+ 		claims, err := s.ProcessIDToken(r, provider, p.IDToken, p.IDTokenNonce)
+ 		if err != nil {
+@@ -349,10 +368,21 @@ func (s *Strategy) processRegistration(ctx context.Context, w http.ResponseWrite
  		return nil, nil
  	}
  
@@ -45,6 +71,13 @@
  	i, va, err := s.newIdentityFromClaims(ctx, claims, provider, container, rf.IdentitySchema)
  	if err != nil {
  		return nil, s.HandleError(ctx, w, r, rf, provider.Config().ID, nil, err)
+ 	}
++	if err := heynaijaKeepGoogle(rf, provider, claims, token); err != nil {
++		return nil, s.HandleError(ctx, w, r, rf, provider.Config().ID, nil, err)
++	}
+ 
+ 	// Validate the identity itself
+ 	if err := s.d.IdentityValidator().Validate(ctx, i); err != nil {
 --- a/selfservice/strategy/oidc/strategy_settings.go
 +++ b/selfservice/strategy/oidc/strategy_settings.go
 @@ -413,6 +413,9 @@

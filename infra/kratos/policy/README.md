@@ -44,6 +44,11 @@ This patch adds policy that the upstream open-source image does not enforce:
   addresses and when. The notice is a settings post-persist hook, so it is sent
   only for a change that was actually saved.
 - An occupied public handle cannot trigger a cross-email account-linking prompt.
+- A new Google member chooses their handle after Google, which gives none. The
+  verified Google result waits in that registration flow's private context (the
+  database, not the browser), and the handle finishes the signup with it instead
+  of sending the member to Google a second time. Only the handle is taken from
+  that form: the email is always the one Google verified.
 - New Google accounts still use the ordinary invite, age and registration hooks.
   The identity schema and database migrations are unchanged.
 
