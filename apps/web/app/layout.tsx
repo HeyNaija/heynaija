@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import { siteOpenGraph, siteOrigin } from '@/lib/previews'
+import { installScript } from '@/lib/install'
 import { themeScript } from '@/lib/theme'
 import './globals.css'
 
@@ -45,6 +46,12 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
           type={typeof window === 'undefined' ? 'text/javascript' : 'text/plain'}
           suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: themeScript }}
+        />
+        {/* Catches the browser's offer to install HeyNaija, which can come before React does. */}
+        <script
+          type={typeof window === 'undefined' ? 'text/javascript' : 'text/plain'}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: installScript }}
         />
       </head>
       <body className="min-h-full font-sans">{children}</body>

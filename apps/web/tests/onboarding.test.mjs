@@ -32,6 +32,7 @@ test('step links carry the communities chosen so far, and an error when one went
   assert.equal(welcomePath('communities', []), '/welcome')
   assert.equal(welcomePath('people', []), '/welcome?step=people')
   assert.equal(welcomePath('people', ['lagos', 'abuja']), '/welcome?step=people&c=lagos&c=abuja')
+  assert.equal(welcomePath('notifications', []), '/welcome?step=notifications')
   assert.equal(welcomePath('communities', ['lagos'], 'busy'), '/welcome?c=lagos&error=busy')
 })
 

@@ -1705,6 +1705,11 @@ html:has(.image-viewer[open]) {
 .result-list > li + li { border-top: 1px solid var(--line); }
 a.result-row:hover { color: var(--accent-strong); }
 .profile-stats { font-variant-numeric: tabular-nums; }
+/* Adding HeyNaija to an iPhone's Home Screen: numbered like the setup steps above, with Safari's buttons named as they look. */
+.install-steps { display: flex; flex-direction: column; gap: 14px; counter-reset: install; font-size: 14px; line-height: 1.6; }
+.install-steps > li { display: flex; gap: 12px; counter-increment: install; overflow-wrap: anywhere; }
+.install-steps > li::before { content: counter(install); display: inline-flex; width: 24px; height: 24px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 9999px; background: var(--accent-soft); color: var(--accent-strong); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.install-steps-key { display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; background: var(--panel); padding: 1px 7px; font-weight: 600; white-space: nowrap; vertical-align: 1px; }
 .community-rules { border-radius: var(--r-control); }
 .empty-state { display: flex; flex-direction: column; align-items: center; border: 1px dashed var(--line-strong); border-radius: var(--r-panel); padding: 48px 24px; text-align: center; }
 .empty-state-icon { display: inline-flex; width: 48px; height: 48px; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); color: var(--accent-strong); }

@@ -6,8 +6,10 @@
 
 A member can have their notifications **pushed** to a browser: the phone, tablet
 or computer shows them as they happen, even with HeyNaija closed. It is turned on
-in Settings, on the device itself (**Turn on push notifications**), because push
-belongs to a browser, not to an account. What notifies a member at all is
+on the device itself, because push belongs to a browser, not to an account: in
+Settings (**Turn on push notifications**), and offered at the end of the welcome
+flow and, in HeyNaija opened as an installed app, once on the home page (see
+*Offered, not asked* below). What notifies a member at all is
 unchanged: the per-kind choices (migration 0018) decide that, so a kind switched
 off is neither shown, nor emailed, nor pushed. Replies, likes, reposts, quotes,
 mentions, follows and every moderation notice can be pushed.
@@ -47,6 +49,18 @@ mentions, follows and every moderation notice can be pushed.
   and opened from there. Settings says so in a Safari tab, where push does not exist.
 - Browsers without service workers (Opera Mini's data-saving mode, for one) get
   nothing; Settings says so, and the app and email are unchanged.
+
+## Offered, not asked
+
+*Added 25 October 2026.* A newcomer is offered push as the welcome flow's third
+step, after setup is finished, so leaving it loses nothing. The browser's own
+permission prompt comes only from a tap on **Turn on notifications**, never on
+arrival: a prompt nobody asked for is one people block for good. On an iPhone or
+iPad in Safari the step shows instead how to add HeyNaija to the Home Screen, and
+HeyNaija opened from there offers push on its home page until the member turns it
+on or says **Not now** (remembered on that device). Chrome, Edge and Samsung
+Internet also get an **Install HeyNaija** button, there and in Settings; their
+own install bar is held back for it (`apps/web/lib/install.ts`).
 
 ## How
 

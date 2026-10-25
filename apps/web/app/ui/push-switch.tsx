@@ -1,12 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { checkPushSubscription, subscribeToPush, unsubscribeFromPush } from '@/app/actions'
-import { keyBytes, madeWithKey, pushSupport } from '@/lib/push'
-
-type State = 'checking' | 'unsupported' | 'install' | 'blocked' | 'off' | 'on'
-
-const CONNECTION = 'Check your connection and try again.'
+import { type PushState, readPushState, turnOffPush, turnOnPush } from './push-device'
 
 /**
  * Turns push notifications on or off for the browser it is open in. Push belongs
@@ -14,76 +9,25 @@ const CONNECTION = 'Check your connection and try again.'
  * a box in the form below. Needs JavaScript, as push itself does.
  */
 export function PushSwitch({ publicKey }: { publicKey: string }) {
-  const [state, setState] = useState<State>('checking')
+  const [state, setState] = useState<PushState | 'checking'>('checking')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     let live = true
-    const show = (next: State) => live && setState(next)
-    const support = pushSupport({
-      userAgent: navigator.userAgent,
-      maxTouchPoints: navigator.maxTouchPoints,
-      standalone: matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true,
-      hasPush: 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window,
-    })
-    if (support !== 'supported') return void show(support)
-    if (Notification.permission === 'denied') return void show('blocked')
-    void (async () => {
-      const subscription = await (await navigator.serviceWorker.getRegistration('/'))?.pushManager.getSubscription()
-      // One made with a key the server no longer has is as good as none: turning push on replaces it.
-      const usable = subscription && madeWithKey(subscription.options.applicationServerKey, publicKey) ? subscription : null
-      const on = Notification.permission === 'granted' && usable ? (await checkPushSubscription(usable.endpoint)).subscribed : false
-      show(on ? 'on' : 'off')
-    })().catch(() => show('off'))
+    void readPushState(publicKey).then((next) => live && setState(next))
     return () => {
       live = false
     }
   }, [publicKey])
 
-  async function turnOn() {
+  async function turn(to: 'on' | 'off') {
     setPending(true)
     setError('')
-    try {
-      // First, while the tap still counts: browsers only ask in answer to one.
-      const permission = await Notification.requestPermission()
-      if (permission !== 'granted') return setState(permission === 'denied' ? 'blocked' : 'off')
-      const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
-      await navigator.serviceWorker.ready
-      let subscription = await registration.pushManager.getSubscription()
-      // Made with a key the server no longer has, so nothing could reach it.
-      if (subscription && !madeWithKey(subscription.options.applicationServerKey, publicKey)) {
-        await subscription.unsubscribe()
-        subscription = null
-      }
-      subscription ??= await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) })
-      const { keys } = subscription.toJSON()
-      const result = await subscribeToPush({ endpoint: subscription.endpoint, keys: { p256dh: keys?.p256dh ?? '', auth: keys?.auth ?? '' } })
-      if (result.error) return setError(result.error)
-      setState('on')
-    } catch {
-      setError(`Could not turn on push notifications in this browser. ${CONNECTION}`)
-    } finally {
-      setPending(false)
-    }
-  }
-
-  async function turnOff() {
-    setPending(true)
-    setError('')
-    try {
-      const subscription = await (await navigator.serviceWorker.getRegistration('/'))?.pushManager.getSubscription()
-      if (subscription) {
-        const result = await unsubscribeFromPush(subscription.endpoint)
-        if (result.error) return setError(result.error)
-        await subscription.unsubscribe()
-      }
-      setState('off')
-    } catch {
-      setError(`Could not turn off push notifications. ${CONNECTION}`)
-    } finally {
-      setPending(false)
-    }
+    const result = to === 'on' ? await turnOnPush(publicKey) : await turnOffPush()
+    setState(result.state)
+    setError(result.error ?? '')
+    setPending(false)
   }
 
   return (
@@ -95,7 +39,7 @@ export function PushSwitch({ publicKey }: { publicKey: string }) {
           <button
             type="button"
             disabled={pending}
-            onClick={state === 'on' ? turnOff : turnOn}
+            onClick={() => turn(state === 'on' ? 'off' : 'on')}
             className={state === 'on' ? 'btn btn-secondary' : 'btn btn-primary'}
           >
             {pending ? (state === 'on' ? 'Turning off…' : 'Turning on…') : state === 'on' ? 'Turn off on this device' : 'Turn on push notifications'}

@@ -1,11 +1,12 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
+import { AppPushCard } from '@/app/ui/app-push-card'
 import { AppealForm } from '@/app/ui/appeal-form'
 import { Composer } from '@/app/ui/composer'
 import { ArrowUpRightIcon, PeopleIcon } from '@/app/ui/icons'
 import { card, PostList, PostsSkeleton } from '@/app/ui/post-item'
-import { getCommunities, getFeed, getFollowingFeed, getLatestAppeal, getViewer } from '@/lib/api'
+import { getCommunities, getFeed, getFollowingFeed, getLatestAppeal, getPushKey, getViewer } from '@/lib/api'
 
 export default function HomePage({ searchParams }: PageProps<'/'>) {
   // Everything that depends on the visitor streams in; the shell renders at once.
@@ -95,6 +96,9 @@ async function HomeHeader({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
             <Link href={following ? '/?feed=following' : '/'} className="welcome-back self-start">Not now</Link>
           </section>
         ) : null}
+        <Suspense fallback={null}>
+          <AppPush />
+        </Suspense>
       </>
     )
   }
@@ -135,6 +139,15 @@ async function HomeHeader({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
       <div className="feed-section-heading"><h2 className="section-title">From the town square</h2><span className="feed-order"><span aria-hidden="true" /> Newest first, not ranked</span></div>
     </>
   )
+}
+
+/**
+ * In HeyNaija opened as an installed app, the offer of push notifications. It
+ * fetches the key on its own, so the heading does not wait for it.
+ */
+async function AppPush() {
+  const publicKey = await getPushKey()
+  return publicKey ? <AppPushCard publicKey={publicKey} /> : null
 }
 
 async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
