@@ -14,6 +14,8 @@ export function renderThreadRow(
   const unavailable = post.unavailable === true
   return {
     id: post.id,
+    // The API puts the parent's author's live replies first; this tells a new one where to go.
+    lead: !unavailable && parentHandle !== null && post.authorHandle === parentHandle,
     node: (
       <ThreadBranch
         key={post.id}

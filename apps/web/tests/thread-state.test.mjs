@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { appendReplyPage, canRenderThreadChildren, emptyBranch, insertConfirmedReply, nextThreadPath, pruneCollapsedBranches } from '../lib/thread-state.ts'
 
-const row = (id) => ({ id, node: id })
+const row = (id) => ({ id, node: id, lead: id.startsWith('lead') })
 const loaded = (items = [], cursor = null) => ({ ...emptyBranch('root'), items: items.map(row), cursor, loaded: true, open: true })
+const ids = (rows) => rows.map((item) => item.id)
 
 test('a corrupt branch cycle stops at the repeated ancestor without suppressing unrelated paths', () => {
   const root = nextThreadPath([], 'root')
@@ -24,15 +25,15 @@ test('cached children cannot bypass the rendered depth cap even if their saved d
 })
 
 test('a confirmed reply stays separate from an incomplete oldest-first page and cannot move its cursor', () => {
-  const branch = insertConfirmedReply(loaded(['a', 'b'], 'after-b'), row('new'))
+  const branch = insertConfirmedReply(loaded(['a', 'b'], 'after-b'), row('new'), 'oldest')
   assert.deepEqual(branch.items.map((item) => item.id), ['a', 'b'])
   assert.deepEqual(branch.recent.map((item) => item.id), ['new'])
   assert.equal(branch.cursor, 'after-b')
-  assert.equal(insertConfirmedReply(branch, row('new')), branch)
+  assert.equal(insertConfirmedReply(branch, row('new'), 'oldest'), branch)
 })
 
 test('pagination deduplicates a confirmed reply when the server reaches it, while preserving a remaining gap', () => {
-  const branch = insertConfirmedReply(loaded(['a'], 'after-a'), row('new'))
+  const branch = insertConfirmedReply(loaded(['a'], 'after-a'), row('new'), 'oldest')
   const next = appendReplyPage(branch, [row('b'), row('new')], 'after-new')
   assert.deepEqual(next.items.map((item) => item.id), ['a', 'b', 'new'])
   assert.deepEqual(next.recent, [])
@@ -40,20 +41,42 @@ test('pagination deduplicates a confirmed reply when the server reaches it, whil
 })
 
 test('a final page joins a newer confirmed reply into the complete sibling list once', () => {
-  const branch = insertConfirmedReply(loaded(['a'], 'after-a'), row('new'))
+  const branch = insertConfirmedReply(loaded(['a'], 'after-a'), row('new'), 'oldest')
   const next = appendReplyPage(branch, [row('a'), row('b')], null)
   assert.deepEqual(next.items.map((item) => item.id), ['a', 'b', 'new'])
   assert.deepEqual(next.recent, [])
   assert.equal(next.cursor, null)
 })
 
-test('new replies append normally only to a complete loaded branch', () => {
-  const complete = insertConfirmedReply(loaded(['a']), row('new'))
+test('oldest first, new replies append normally only to a complete loaded branch', () => {
+  const complete = insertConfirmedReply(loaded(['a']), row('new'), 'oldest')
   assert.deepEqual(complete.items.map((item) => item.id), ['a', 'new'])
-  const unopened = insertConfirmedReply(emptyBranch('root'), row('new'))
-  assert.equal(unopened.loaded, false)
-  assert.deepEqual(unopened.items, [])
-  assert.deepEqual(unopened.recent.map((item) => item.id), ['new'])
+  for (const order of ['oldest', 'newest']) {
+    const unopened = insertConfirmedReply(emptyBranch('root'), row('new'), order)
+    assert.equal(unopened.loaded, false)
+    assert.deepEqual(unopened.items, [])
+    assert.deepEqual(unopened.recent.map((item) => item.id), ['new'])
+  }
+})
+
+test("newest first, a new reply goes to the top of its group: the author's, or everyone else's after them", () => {
+  assert.deepEqual(ids(insertConfirmedReply(loaded(['lead-b', 'lead-a', 'b', 'a'], 'after-a'), row('new'), 'newest').items), ['lead-b', 'lead-a', 'new', 'b', 'a'])
+  assert.deepEqual(ids(insertConfirmedReply(loaded(['lead-b', 'b'], 'after-b'), row('lead-new'), 'newest').items), ['lead-new', 'lead-b', 'b'])
+  assert.deepEqual(ids(insertConfirmedReply(loaded(['a'], 'after-a'), row('new'), 'newest').items), ['new', 'a'])
+  assert.deepEqual(ids(insertConfirmedReply(loaded([]), row('new'), 'newest').items), ['new'])
+  // The author may have more replies on the next page, so where everyone else's start is not known yet.
+  const gap = insertConfirmedReply(loaded(['lead-b', 'lead-a'], 'after-lead-a'), row('new'), 'newest')
+  assert.deepEqual(ids(gap.items), ['lead-b', 'lead-a'])
+  assert.deepEqual(ids(gap.recent), ['new'])
+  // The next page reaches it at its place, and it shows once.
+  assert.deepEqual(ids(appendReplyPage(gap, [row('new'), row('a')], null).items), ['lead-b', 'lead-a', 'new', 'a'])
+})
+
+test("oldest first, the author's new reply ends their group once everyone else's have begun", () => {
+  assert.deepEqual(ids(insertConfirmedReply(loaded(['lead-a', 'lead-b', 'a'], 'after-a'), row('lead-new'), 'oldest').items), ['lead-a', 'lead-b', 'lead-new', 'a'])
+  assert.deepEqual(ids(insertConfirmedReply(loaded(['lead-a'], null), row('lead-new'), 'oldest').items), ['lead-a', 'lead-new'])
+  assert.deepEqual(ids(insertConfirmedReply(loaded(['lead-a'], 'after-lead-a'), row('lead-new'), 'oldest').recent), ['lead-new'])
+  assert.deepEqual(ids(insertConfirmedReply(loaded(['lead-a', 'a'], 'after-a'), row('new'), 'oldest').recent), ['new'])
 })
 
 test('an in-flight page finishing after collapse does not reopen its branch', () => {

@@ -3,21 +3,28 @@
 import { createPost, type ComposeState } from '@/app/actions'
 import { renderThreadRow } from '@/app/ui/thread-row'
 import { getPost, getReplies, getViewer } from '@/lib/api'
-import type { ThreadRow } from '@/lib/thread-state'
+import type { ReplyOrder, ThreadRow } from '@/lib/thread-state'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export type LoadedReplies = { rows: ThreadRow[]; cursor: string | null } | { error: string }
 
 /** One explicit page, with authentication and visibility still decided by the API. */
-export async function loadThreadReplies(id: string, cursor: string | null, depth: number, parentHandle: string | null): Promise<LoadedReplies> {
+export async function loadThreadReplies(
+  id: string,
+  cursor: string | null,
+  depth: number,
+  parentHandle: string | null,
+  order: ReplyOrder,
+): Promise<LoadedReplies> {
   if (!uuid.test(id) || (cursor !== null && (typeof cursor !== 'string' || cursor.length > 500)) ||
+    (order !== 'newest' && order !== 'oldest') ||
     !Number.isInteger(depth) || depth < 1 || depth > 6 ||
     (parentHandle !== null && (typeof parentHandle !== 'string' || parentHandle.length > 100))) {
     return { error: 'These replies could not be loaded. Open the conversation and try again.' }
   }
   try {
-    const [page, viewer] = await Promise.all([getReplies(id, cursor ?? undefined), getViewer()])
+    const [page, viewer] = await Promise.all([getReplies(id, cursor ?? undefined, order), getViewer()])
     if (!page) return { error: 'These replies are no longer available.' }
     const viewerId = viewer.state === 'member' ? viewer.me.id : null
     const now = Date.now()

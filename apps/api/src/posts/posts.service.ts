@@ -22,7 +22,7 @@ import { Refreshing } from '../refreshing.js'
 import { DB } from '../tokens.js'
 import { hashtagsOf, type PostHashtag, recordHashtags } from './hashtags.js'
 import { MENTIONS_NOTIFIED_MAX, mentionsOf, type PostMention, recordMentions } from './mentions.js'
-import { decodeReplyCursor, encodeReplyCursor } from './reply-cursor.js'
+import { decodeReplyCursor, encodeReplyCursor, type ReplyOrder } from './reply-cursor.js'
 
 export const POST_MAX_GRAPHEMES = 300
 
@@ -701,8 +701,8 @@ export class PostsService {
     )
   }
 
-  /** A post with the conversation above it and the direct replies below it. */
-  async thread(viewerId: string | null, id: string): Promise<Thread | null> {
+  /** A post with the conversation above it and the first page of direct replies below it, in `order`. */
+  async thread(viewerId: string | null, id: string, order: ReplyOrder = 'newest'): Promise<Thread | null> {
     const post = await this.post(viewerId, id)
     if (!post) return null
 
@@ -726,7 +726,7 @@ export class PostsService {
       ancestorIds.length
         ? this.select(viewerId, inArray(posts.id, ancestorIds), { includeDeleted: true })
         : Promise.resolve([]),
-      this.replyPage(viewerId, id, REPLY_PAGE_SIZE),
+      this.replyPage(viewerId, id, REPLY_PAGE_SIZE, order),
     ])
     // Root first. An ancestor by a now-inactive member is simply absent.
     ancestors.sort((a, b) => ancestorIds.indexOf(a.id) - ancestorIds.indexOf(b.id))
@@ -749,9 +749,15 @@ export class PostsService {
   }
 
   /** A parent is checked afresh, including when its structural stub was loaded earlier. */
-  async replies(viewerId: string | null, parentId: string, limit = REPLY_PAGE_SIZE, cursor?: string): Promise<ReplyPage | null> {
+  async replies(
+    viewerId: string | null,
+    parentId: string,
+    limit = REPLY_PAGE_SIZE,
+    cursor?: string,
+    order: ReplyOrder = 'newest',
+  ): Promise<ReplyPage | null> {
     // Validate even when the parent is unavailable. A cursor grants no access.
-    if (cursor) decodeReplyCursor(cursor, parentId)
+    if (cursor) decodeReplyCursor(cursor, parentId, order)
     const [parent] = await this.db
       .select({ id: posts.id })
       .from(posts)
@@ -765,16 +771,36 @@ export class PostsService {
       )
       .limit(1)
     if (!parent) return null
-    return this.replyPage(viewerId, parentId, Math.min(REPLY_PAGE_SIZE, Math.max(1, limit)), cursor)
+    return this.replyPage(viewerId, parentId, Math.min(REPLY_PAGE_SIZE, Math.max(1, limit)), order, cursor)
   }
 
-  /** One bounded sibling query, followed by live-row hydration inside that statement. */
-  private async replyPage(viewerId: string | null, parentId: string, limit: number, cursor?: string): Promise<ReplyPage> {
-    const after = cursor ? decodeReplyCursor(cursor, parentId) : null
+  /**
+   * One bounded sibling query, followed by live-row hydration inside that statement.
+   *
+   * Replies by the author of the post they answer come first, then everyone
+   * else's; each group is in time order, newest or oldest first. Nothing is
+   * ranked. Each group is its own index-ordered read of at most a page, so a
+   * page never sorts all of a busy post's replies. A deleted or taken-down reply
+   * by the author is a placeholder among everyone else's, so its place does not
+   * say whose it was.
+   */
+  private async replyPage(viewerId: string | null, parentId: string, limit: number, order: ReplyOrder, cursor?: string): Promise<ReplyPage> {
+    const after = cursor ? decodeReplyCursor(cursor, parentId, order) : null
+    const direction = sql.raw(order === 'newest' ? 'desc' : 'asc')
+    const beyond = (group: 0 | 1) => {
+      if (!after || after.group < group) return sql``
+      if (after.group > group) return sql`and false`
+      return order === 'newest'
+        ? sql`and (p.created_at, p.id) < (${after.timestamp}::timestamptz, ${after.id}::uuid)`
+        : sql`and (p.created_at, p.id) > (${after.timestamp}::timestamptz, ${after.id}::uuid)`
+    }
+    const parentAuthor = sql`(select author_id from posts where id = ${parentId})`
+    const visible = visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)
     type ReplyRow = {
       id: string
       reply_parent_id: string | null
       created_at: Date
+      grp: 0 | 1
       cursor_timestamp: string
       view: (Omit<PostView, 'images' | 'createdAt' | 'authorAvatar' | 'quote' | 'links' | 'linkPreview'> & {
         images: ImageRow[]
@@ -786,18 +812,32 @@ export class PostsService {
     }
     const { rows } = await this.db.execute<ReplyRow>(sql`
       with page as materialized (
-        select p.id, p.reply_parent_id, p.created_at,
-          p.deleted_at is not null or p.removed_at is not null as unavailable
-        from posts p join members a on a.id = p.author_id
-        where p.reply_parent_id = ${parentId}
-          and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)}
-          and ((p.deleted_at is null and p.removed_at is null)
-            or exists(select 1 from posts child where child.reply_parent_id = p.id))
-          ${after ? sql`and (p.created_at, p.id) > (${after[0]}::timestamptz, ${after[1]}::uuid)` : sql``}
-        order by p.created_at asc, p.id asc
+        select * from (
+          (select p.id, p.reply_parent_id, p.created_at, false as unavailable, 0 as grp
+          from posts p join members a on a.id = p.author_id
+          where p.reply_parent_id = ${parentId}
+            and p.author_id = ${parentAuthor} and p.deleted_at is null and p.removed_at is null
+            and ${visible}
+            ${beyond(0)}
+          order by p.created_at ${direction}, p.id ${direction}
+          limit ${limit + 1})
+          union all
+          (select p.id, p.reply_parent_id, p.created_at,
+            p.deleted_at is not null or p.removed_at is not null as unavailable, 1 as grp
+          from posts p join members a on a.id = p.author_id
+          where p.reply_parent_id = ${parentId}
+            and (p.author_id is distinct from ${parentAuthor} or p.deleted_at is not null or p.removed_at is not null)
+            and ${visible}
+            and ((p.deleted_at is null and p.removed_at is null)
+              or exists(select 1 from posts child where child.reply_parent_id = p.id))
+            ${beyond(1)}
+          order by p.created_at ${direction}, p.id ${direction}
+          limit ${limit + 1})
+        ) candidates
+        order by grp, created_at ${direction}, id ${direction}
         limit ${limit + 1}
       )
-      select page.id, page.reply_parent_id, page.created_at,
+      select page.id, page.reply_parent_id, page.created_at, page.grp,
         to_char(page.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp,
         case when page.unavailable then null else json_build_object(
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
@@ -819,7 +859,7 @@ export class PostsService {
       from page join posts p on p.id = page.id
       join members a on a.id = p.author_id
       left join communities c on c.id = p.community_id and c.active
-      order by page.created_at asc, page.id asc`)
+      order by page.grp, page.created_at ${direction}, page.id ${direction}`)
     const page = rows.slice(0, limit)
     const last = page.at(-1)
     return {
@@ -844,7 +884,9 @@ export class PostsService {
           quote: toQuote(quote),
         }
       }),
-      cursor: rows.length > limit && last ? encodeReplyCursor(parentId, last.cursor_timestamp, last.id) : null,
+      cursor: rows.length > limit && last
+        ? encodeReplyCursor(parentId, order, { group: last.grp, timestamp: last.cursor_timestamp, id: last.id })
+        : null,
     }
   }
 

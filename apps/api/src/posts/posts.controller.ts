@@ -37,7 +37,7 @@ import {
   QuotedPostNotFoundError,
 } from './posts.service.js'
 import { parseHashtag } from './hashtags.js'
-import { replyPageQuery } from './reply-cursor.js'
+import { replyOrderQuery, replyPageQuery } from './reply-cursor.js'
 
 const createPostBody = newPost(slugParam)
 
@@ -105,8 +105,9 @@ export class PostsController {
 
   @Get('posts/:id')
   @UseGuards(OptionalSessionGuard)
-  async thread(@Req() req: MaybeAuthedRequest, @Param('id') id: string) {
-    const thread = await this.posts.thread(req.member?.id ?? null, postId(id))
+  async thread(@Req() req: MaybeAuthedRequest, @Param('id') id: string, @Query() query: unknown) {
+    const { order } = parse(replyOrderQuery, query)
+    const thread = await this.posts.thread(req.member?.id ?? null, postId(id), order)
     if (!thread) throw new NotFoundException()
     return thread
   }
@@ -114,8 +115,8 @@ export class PostsController {
   @Get('posts/:id/replies')
   @UseGuards(OptionalSessionGuard)
   async replies(@Req() req: MaybeAuthedRequest, @Param('id') id: string, @Query() query: unknown) {
-    const { limit, cursor } = parse(replyPageQuery, query)
-    const page = await paged(() => this.posts.replies(req.member?.id ?? null, postId(id), limit, cursor))
+    const { limit, cursor, order } = parse(replyPageQuery, query)
+    const page = await paged(() => this.posts.replies(req.member?.id ?? null, postId(id), limit, cursor, order))
     if (!page) throw new NotFoundException()
     return page
   }

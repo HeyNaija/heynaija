@@ -1,7 +1,12 @@
 import type { ReactNode } from 'react'
 
-/** Server-rendered rows travel through the action without shipping PostItem as client code. */
-export type ThreadRow = { id: string; node: ReactNode }
+/**
+ * Server-rendered rows travel through the action without shipping PostItem as client code.
+ * `lead` marks a reply by the author of the post it answers; those come first.
+ */
+export type ThreadRow = { id: string; node: ReactNode; lead?: boolean }
+/** Each group of replies (the author's, then everyone else's) in time order: newest or oldest first. */
+export type ReplyOrder = 'newest' | 'oldest'
 export type ReplyTarget = { id: string; parentId: string | null; handle: string; depth: number }
 export type BranchState = {
   parentId: string | null
@@ -35,12 +40,27 @@ function uniqueRows(rows: ThreadRow[]) {
   return rows.filter((row) => !seen.has(row.id) && !!seen.add(row.id))
 }
 
+/**
+ * Where a just-posted reply belongs among the loaded rows, or null while rows
+ * not loaded yet could still come before it. It is the newest in its group.
+ */
+function confirmedPlace(branch: BranchState, row: ThreadRow, order: ReplyOrder): number | null {
+  if (!branch.loaded) return null
+  const complete = branch.cursor === null
+  const firstOther = branch.items.findIndex((item) => !item.lead)
+  // Every one of the author's replies is loaded once anyone else's is, or the list is complete.
+  const leadEnd = firstOther !== -1 ? firstOther : complete ? branch.items.length : null
+  if (order === 'newest') return row.lead ? 0 : leadEnd
+  return row.lead ? leadEnd : complete ? branch.items.length : null
+}
+
 /** A confirmed write never becomes a pagination cursor or disguises an unloaded gap. */
-export function insertConfirmedReply(branch: BranchState, row: ThreadRow): BranchState {
+export function insertConfirmedReply(branch: BranchState, row: ThreadRow, order: ReplyOrder): BranchState {
   if (branch.items.some((item) => item.id === row.id) || branch.recent.some((item) => item.id === row.id)) return branch
-  return branch.loaded && branch.cursor === null
-    ? { ...branch, open: true, items: [...branch.items, row] }
-    : { ...branch, open: true, recent: [...branch.recent, row] }
+  const at = confirmedPlace(branch, row, order)
+  return at === null
+    ? { ...branch, open: true, recent: [...branch.recent, row] }
+    : { ...branch, open: true, items: [...branch.items.slice(0, at), row, ...branch.items.slice(at)] }
 }
 
 export function appendReplyPage(branch: BranchState, rows: ThreadRow[], cursor: string | null): BranchState {

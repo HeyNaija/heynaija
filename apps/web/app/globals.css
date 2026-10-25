@@ -1261,6 +1261,14 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-context[open] summary > svg { transform: rotate(180deg); }
 .thread-context .post-list { margin-block: 10px 16px; }
 .thread-replies-heading { padding: 4px 0 10px; font-size: 13px; font-weight: 600; }
+/* The order of replies, said in words beside its switch, as feeds say "Newest first, not ranked". */
+.thread-replies-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+.thread-replies-head .thread-replies-heading { padding-bottom: 4px; }
+.thread-order { display: inline-flex; gap: 2px; border: 1px solid var(--line-strong); border-radius: var(--r-control); padding: 2px; }
+.thread-order a { display: inline-flex; min-height: 32px; align-items: center; border-radius: 5px; padding: 4px 10px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.thread-order a:hover { color: var(--ink); }
+.thread-order a[aria-current="true"] { background: var(--accent-soft); color: var(--accent-strong); }
+.thread-order-rule { margin: 6px 0 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .thread-list { display: flex; flex-direction: column; gap: 14px; }
 .thread-children { margin-top: 12px; margin-left: 16px; border-left: 2px solid var(--line-strong); padding-left: 16px; }
 .thread-children[hidden] { display: none; }
@@ -1697,6 +1705,11 @@ html:has(.image-viewer[open]) {
 .welcome-nudge { display: flex; flex-direction: column; gap: 6px; border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); border-radius: var(--r-panel); background: var(--accent-soft); padding: 16px 18px 10px; color: var(--brand-deep); }
 .welcome-nudge .field-hint { color: var(--brand-deep); }
 .welcome-nudge .welcome-back { padding-inline: 0; }
+/* Adding HeyNaija to an iPhone's Home Screen: numbered like the setup steps above, with Safari's buttons named as they look. */
+.install-steps { display: flex; flex-direction: column; gap: 14px; counter-reset: install; font-size: 14px; line-height: 1.6; }
+.install-steps > li { display: flex; gap: 12px; counter-increment: install; overflow-wrap: anywhere; }
+.install-steps > li::before { content: counter(install); display: inline-flex; width: 24px; height: 24px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 9999px; background: var(--accent-soft); color: var(--accent-strong); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.install-steps-key { display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; background: var(--panel); padding: 1px 7px; font-weight: 600; white-space: nowrap; vertical-align: 1px; }
 .search-form { display: flex; align-items: center; gap: 8px; }
 .search-form .square-search { flex: 1; max-width: none; }
 .result-list { margin-top: 12px; }
@@ -1705,11 +1718,6 @@ html:has(.image-viewer[open]) {
 .result-list > li + li { border-top: 1px solid var(--line); }
 a.result-row:hover { color: var(--accent-strong); }
 .profile-stats { font-variant-numeric: tabular-nums; }
-/* Adding HeyNaija to an iPhone's Home Screen: numbered like the setup steps above, with Safari's buttons named as they look. */
-.install-steps { display: flex; flex-direction: column; gap: 14px; counter-reset: install; font-size: 14px; line-height: 1.6; }
-.install-steps > li { display: flex; gap: 12px; counter-increment: install; overflow-wrap: anywhere; }
-.install-steps > li::before { content: counter(install); display: inline-flex; width: 24px; height: 24px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 9999px; background: var(--accent-soft); color: var(--accent-strong); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.install-steps-key { display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; background: var(--panel); padding: 1px 7px; font-weight: 600; white-space: nowrap; vertical-align: 1px; }
 .community-rules { border-radius: var(--r-control); }
 .empty-state { display: flex; flex-direction: column; align-items: center; border: 1px dashed var(--line-strong); border-radius: var(--r-panel); padding: 48px 24px; text-align: center; }
 .empty-state-icon { display: inline-flex; width: 48px; height: 48px; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); color: var(--accent-strong); }

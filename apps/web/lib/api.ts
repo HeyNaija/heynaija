@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 import { cache } from 'react'
 import { getApiAuthHeaders, hasSessionCredentials } from './auth/server'
 import type { NotificationPreferences } from './notification-preferences'
+import type { ReplyOrder } from './thread-state'
 
 // Server-to-server address of the NestJS API. Browsers never use this; they go
 // through the /api rewrite in next.config.ts.
@@ -266,15 +267,18 @@ export const getProfile = async (handle: string): Promise<Profile | null> => {
   return found && 'movedTo' in found ? null : found
 }
 
-export const getThread = (id: string) => getOrNull<Thread>(`/v1/posts/${encodeURIComponent(id)}`)
+/** The post, its context, and its first page of replies in `order` (the API's default is newest first). */
+export const getThread = (id: string, order: ReplyOrder = 'newest') =>
+  getOrNull<Thread>(`/v1/posts/${encodeURIComponent(id)}${order === 'oldest' ? '?order=oldest' : ''}`)
 
 /** Hydrate one confirmed post without fetching its ancestors or replies. */
 export const getPost = (id: string) => getOrNull<Post>(`/v1/posts/${encodeURIComponent(id)}/post`)
 
 /** A branch is always an explicit, bounded page; it never fetches descendants. */
-export async function getReplies(id: string, cursor?: string): Promise<ReplyPage | null> {
-  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
-  return getOrNull<ReplyPage>(`/v1/posts/${encodeURIComponent(id)}/replies${query}`)
+export async function getReplies(id: string, cursor?: string, order: ReplyOrder = 'newest'): Promise<ReplyPage | null> {
+  const query = new URLSearchParams({ order })
+  if (cursor) query.set('cursor', cursor)
+  return getOrNull<ReplyPage>(`/v1/posts/${encodeURIComponent(id)}/replies?${query}`)
 }
 
 export const getCommunities = cache(async (): Promise<Community[]> => {
