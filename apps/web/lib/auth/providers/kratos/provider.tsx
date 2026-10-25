@@ -6,7 +6,7 @@ import { FlowForm } from './flow-form'
 import { ForgetFlowParam } from './forget-flow'
 import { isLogoutUrl } from './urls'
 
-async function Form({ kind, flowId, signup }: AuthFormProps) {
+async function Form({ kind, flowId, googleAction }: AuthFormProps) {
   const flow = await getFlow(kind, flowId)
   if (kind === 'settings') {
     const shown = Boolean(flow.ui.messages?.length) || flow.ui.nodes.some((node) => node.messages?.length)
@@ -22,7 +22,7 @@ async function Form({ kind, flowId, signup }: AuthFormProps) {
       </>
     )
   }
-  if (kind === 'registration') return <FlowForm flow={flow} signup={signup} />
+  if (kind === 'registration') return <FlowForm flow={flow} googleAction={googleAction} />
   if (kind !== 'login' || !flow.refresh) return <FlowForm flow={flow} />
 
   // Already signed in, confirming it is them before a change in Settings.

@@ -64,8 +64,10 @@ test('choosing Google on signup recognizes an existing email account', async ({ 
     google.use(member.email)
     const before = google.authorizations
     await page.goto(`/join?code=${createInvite()}`)
-    await page.waitForURL((url) => url.pathname === '/signup')
     await page.getByLabel('I am 18 or older').check()
+    await page.getByRole('button', { name: 'Check invite code' }).click()
+    await page.waitForURL((url) => url.pathname === '/signup')
+    await page.getByLabel('Handle').fill(handleFor('gsignuphandle'))
     await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
     await expect(page.getByText('Google confirmed your email.', { exact: false })).toBeVisible()
     await expect(page).toHaveURL((url) => url.pathname === '/login')
@@ -203,47 +205,65 @@ test('a new Google account still needs an invite', async ({ page }) => {
   google.use(email)
   await page.goto('/login')
   await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
-  // Asked for an invite with the handle, on the sign-up page, before any account exists.
-  await expect(page).toHaveURL((url) => url.pathname === '/signup')
-  await expect(page.getByLabel('Invite code')).toHaveValue('')
+  await expect(page).toHaveURL((url) => url.pathname === '/join')
   const response = await fetch(`${env.kratosAdminUrl}/admin/identities?credentials_identifier=${encodeURIComponent(email)}`)
   expect(await response.json()).toEqual([])
 })
 
-test('a new invited Google member can choose a handle and create one account', async ({ page }) => {
+test('a new invited Google member chooses a handle first, and Google creates the account in one trip', async ({ page }) => {
   const handle = handleFor('gjoin')
   const email = `${handle}@${MARK.emailDomain}`
   google.use(email)
+  const before = google.authorizations
   await page.goto(`/join?code=${createInvite()}`)
-  await page.waitForURL((url) => url.pathname === '/signup')
   await page.getByLabel('I am 18 or older').check()
-  await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
+  await page.getByRole('button', { name: 'Check invite code' }).click()
+  await page.waitForURL((url) => url.pathname === '/signup')
+  // Google needs the handle first: the browser keeps the form here without one.
+  const google_ = page.getByRole('button', { name: 'Continue with Google', exact: true })
+  await google_.click()
+  await expect(page).toHaveURL((url) => url.pathname === '/signup')
+  expect(google.authorizations - before).toBe(0)
+  // A handle, then Google, then straight to the welcome flow, like any newcomer.
   await page.getByLabel('Handle').fill(handle)
-  await page.locator('button[name="provider"][value="google"]').click()
-  // Like any newcomer, they start on the welcome flow.
+  await google_.click()
   await page.waitForURL((url) => url.pathname === '/welcome')
+  expect(google.authorizations - before).toBe(1)
   const me = await (await page.context().request.get('/api/v1/me')).json()
   expect(me.handle).toBe(handle)
   expect(me.onboarded).toBe(false)
   expect((await identity(me.id)).credentials?.oidc?.identifiers).toHaveLength(1)
 })
 
-test('a colliding handle cannot connect a new Google email to another member', async ({ browser, page }) => {
+test('a taken handle cannot connect a new Google email to another member, and a free one finishes the signup', async ({ browser, page }) => {
   const member = await newMember(browser, 'ghandle')
   try {
     const original = await (await member.context.request.get('/api/v1/me')).json()
     const email = `${handleFor('gcollision')}@${MARK.emailDomain}`
     google.use(email)
     await page.goto(`/join?code=${createInvite()}`)
-    await page.waitForURL((url) => url.pathname === '/signup')
     await page.getByLabel('I am 18 or older').check()
-    await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
+    await page.getByRole('button', { name: 'Check invite code' }).click()
+    await page.waitForURL((url) => url.pathname === '/signup')
     await page.getByLabel('Handle').fill(member.handle)
-    await page.locator('button[name="provider"][value="google"]').click()
+    await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
+    // Google is done, and the page says so: only a free handle is needed to finish.
+    await expect(page.getByText('You’re signed in with Google as', { exact: false })).toContainText(email)
     await expect(page.getByText('That handle is not available.', { exact: false })).toBeVisible()
-    await expect(page).toHaveURL((url) => url.pathname === '/signup')
+    await expect(page.getByLabel('Email address')).toHaveCount(0)
     await expect(page.getByLabel('Code from the email')).toHaveCount(0)
     expect((await identity(original.id)).credentials?.oidc?.identifiers ?? []).toEqual([])
+
+    const before = google.authorizations
+    const fresh = handleFor('gfresh')
+    await page.getByLabel('Handle').fill(fresh)
+    await page.getByRole('button', { name: 'Finish creating my account' }).click()
+    await page.waitForURL((url) => url.pathname === '/welcome')
+    const me = await (await page.context().request.get('/api/v1/me')).json()
+    expect(me.handle).toBe(fresh)
+    expect(me.id).not.toBe(original.id)
+    // Kratos checks back with Google once on Finish; Google, already agreed to, answers at once.
+    expect(google.authorizations - before).toBe(1)
   } finally { await member.context.close() }
 })
 

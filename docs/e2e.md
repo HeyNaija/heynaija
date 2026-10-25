@@ -8,8 +8,8 @@ Redis, MinIO and Mailpit from `pnpm infra:up`. Everything is in [`e2e/`](../e2e)
 
 Each file is one area. Every test creates its own members with a real invite
 and Kratos's real sign-up flow, so tests do not depend on each other or on what
-is already in the database. `auth.spec.ts` signs up through the pages (an invite
-link, the one `/signup` page, the emailed code, `/welcome`); elsewhere members are signed up over
+is already in the database. `auth.spec.ts` signs up through the pages (`/join`,
+`/signup`, the emailed code, `/welcome`); elsewhere members are signed up over
 HTTP (`signUpOverHttp` in [`e2e/lib/members.ts`](../e2e/lib/members.ts)): the
 same Kratos flow with the same invite and age cookies, so the API's checks run
 as for anyone, but without rendering those pages for every member. Measured on

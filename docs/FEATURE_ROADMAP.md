@@ -80,7 +80,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `temporary-beta-age`
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Require new beta members to state that they are 18 or older.
-- **Inspected evidence:** `apps/api/src/auth/auth.controller.ts`, `apps/api/src/governance/age.ts`, `apps/web/app/(auth)/signup/page.tsx`, `apps/api/src/governance/age.test.ts`, `e2e/tests/auth.spec.ts`
+- **Inspected evidence:** `apps/api/src/auth/auth.controller.ts`, `apps/api/src/governance/age.ts`, `apps/web/app/(auth)/join/join-form.tsx`, `apps/api/src/governance/age.test.ts`, `e2e/tests/auth.spec.ts`
 - **Audit notes:** Temporary self-declaration, not verified age; under-18 access and voting eligibility remain separate.
 
 ### Conversations and feeds

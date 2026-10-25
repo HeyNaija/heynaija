@@ -1,4 +1,3 @@
-import type { SignupStart } from '../../types'
 import type { Flow, UiMessage, UiNode } from './client'
 
 // Kratos describes each form as a list of fields ("nodes"); this renders them as
@@ -66,13 +65,16 @@ function Messages({ messages, field, fallback }: { messages?: UiMessage[]; field
   )
 }
 
-function Field({ node, flowId, identifier, googleConnected, filled }: { node: UiNode; flowId: string; identifier?: string; googleConnected?: boolean; filled?: string }) {
+/** How a signup form uses a field beyond what Kratos says: where a button posts, and whether the browser checks the form first. */
+type FieldUse = { formAction?: string; validate?: boolean; optional?: boolean; label?: string }
+
+function Field({ node, flowId, identifier, googleConnected, use = {} }: { node: UiNode; flowId: string; identifier?: string; googleConnected?: boolean; use?: FieldUse }) {
   const a = node.attributes
   const name = a.name ?? ''
   // Confirming it is you: only the signed-in address will do, so it is shown, not asked for.
   const locked = name === 'identifier' && a.type !== 'hidden' && identifier !== undefined
   const googleEmail = googleConnected && name === 'traits.email' && a.type !== 'hidden'
-  const value = locked ? identifier : a.value === undefined || a.value === null ? filled : String(a.value)
+  const value = locked ? identifier : a.value === undefined || a.value === null ? undefined : String(a.value)
   const hint = googleEmail
     ? 'Disconnect Google in Connected accounts below to change your email address.'
     : locked ? 'The address you are signed in with.' : HINTS[name]
@@ -80,11 +82,11 @@ function Field({ node, flowId, identifier, googleConnected, filled }: { node: Ui
   if (a.type === 'hidden') return <input type="hidden" name={name} value={value ?? ''} />
 
   if (a.type === 'submit' || a.type === 'button') {
-    const label = (node.meta.label && TEXT[node.meta.label.id]) ?? node.meta.label?.text ?? 'Continue'
+    const label = use.label ?? (node.meta.label && TEXT[node.meta.label.id]) ?? node.meta.label?.text ?? 'Continue'
     // Google: sign in, sign up, or connect and disconnect in settings.
     if (node.group === 'oidc') {
       return (
-        <button type="submit" name={name} value={value} disabled={a.disabled} formNoValidate className="btn btn-secondary btn-lg btn-block">
+        <button type="submit" name={name} value={value} disabled={a.disabled} formAction={use.formAction} formNoValidate={!use.validate} className="btn btn-secondary btn-lg btn-block">
           <GoogleMark />
           {label}
         </button>
@@ -122,7 +124,7 @@ function Field({ node, flowId, identifier, googleConnected, filled }: { node: Ui
         name={name}
         type={a.type ?? 'text'}
         defaultValue={a.type === 'password' ? undefined : value}
-        required={a.required}
+        required={a.required && !use.optional}
         disabled={a.disabled || googleEmail}
         readOnly={locked || undefined}
         autoComplete={a.autocomplete}
@@ -193,37 +195,63 @@ function Form({ flow, nodes: unordered, identifier, googleConnected }: { flow: F
 }
 
 /**
- * The first step of a signup as one form: the page's own fields (the invite
- * code), then Google, then email and handle. Both buttons post to the page's
- * route, which checks what is its own and hands the rest on to Kratos. Back from
- * Google with a handle still to choose, it is the invite, the handle, then Google.
+ * A signup's first step as one form: the handle, then Google, then email. The
+ * handle goes with either button. Google posts to `googleAction`, which sends
+ * Kratos the handle and not the email field, so the address Google confirms is
+ * the one the account gets; the browser checks the handle before Google opens.
+ * The email button posts straight to Kratos, as every other form does.
  */
-function SignupStartForm({ flow, signup, google, rest, afterGoogle }: { flow: Flow; signup: SignupStart; google: UiNode[]; rest: UiNode[]; afterGoogle: boolean }) {
-  const nodes = [...rest].sort((a, b) => rank(a) - rank(b))
-  const field = (node: UiNode, i: number) => (
-    <Field key={`${node.attributes.name}-${i}`} node={node} flowId={flow.id} filled={signup.values?.[node.attributes.name ?? '']} />
+function SignupStart({ flow, google, rest, googleAction }: { flow: Flow; google: UiNode[]; rest: UiNode[]; googleAction: (flowId: string) => string }) {
+  const named = (name: string) => rest.filter((n) => n.type === 'input' && n.attributes.name === name && n.attributes.type !== 'hidden')
+  const field = (use: FieldUse) => (node: UiNode, i: number) => (
+    <Field key={`${node.attributes.name}-${node.attributes.value}-${i}`} node={node} flowId={flow.id} use={use} />
   )
-  const typed = nodes.filter((n) => n.type === 'input' && n.attributes.type !== 'hidden')
   return (
-    <form action={signup.action(flow.id)} method="post" className="flex flex-col gap-5">
-      {nodes.filter((n) => n.attributes.type === 'hidden').map(field)}
-      {signup.fields}
-      {afterGoogle ? (
-        <>
-          {typed.map(field)}
-          {google.map(field)}
-        </>
-      ) : google.length ? (
-        <>
-          {google.map(field)}
-          <div className="flex items-center gap-3 text-xs text-muted" role="separator">
-            <span className="h-px flex-1 bg-line" />
-            or use email
-            <span className="h-px flex-1 bg-line" />
-          </div>
-        </>
-      ) : null}
-      {afterGoogle ? null : typed.map(field)}
+    <form action={flow.ui.action} method={flow.ui.method} className="flex flex-col gap-5">
+      {rest.filter((n) => n.attributes.type === 'hidden').map(field({}))}
+      {named('traits.handle').map(field({}))}
+      {google.map(field({ formAction: googleAction(flow.id), validate: true }))}
+      <div className="flex items-center gap-3 text-xs text-muted" role="separator">
+        <span className="h-px flex-1 bg-line" />
+        or use email
+        <span className="h-px flex-1 bg-line" />
+      </div>
+      {/* Not required: the Google button must not need it. Kratos asks for it if it is missing. */}
+      {named('traits.email').map(field({ optional: true }))}
+      {rest.filter((n) => n.attributes.type === 'submit').map(field({}))}
+    </form>
+  )
+}
+
+/**
+ * Back from Google with no handle yet (the one chosen was taken meanwhile, or
+ * Google began on the sign-in page): Google is done, so this says so, and asks
+ * for the handle alone. On the button Kratos checks back with Google, which,
+ * already agreed to, sends the member straight on to their new account.
+ */
+function FinishGoogleSignup({ flow }: { flow: Flow }) {
+  const nodes = [...flow.ui.nodes].sort((a, b) => rank(a) - rank(b))
+  const email = nodes.find((n) => n.attributes.name === 'traits.email')?.attributes.value
+  const visible = (n: UiNode) => n.type === 'input' && n.attributes.type !== 'hidden'
+  return (
+    <form action={flow.ui.action} method={flow.ui.method} className="flex flex-col gap-5">
+      <p role="status" className="notice">
+        You’re signed in with Google{typeof email === 'string' && email ? <> as <strong>{email}</strong></> : null}. Choose a
+        handle to finish creating your account.
+      </p>
+      {nodes.map((node, i) => {
+        const name = node.attributes.name ?? ''
+        // The address is Google's; it goes back as it came, not as a field to edit.
+        if (name === 'traits.email' || !visible(node)) {
+          return node.type === 'input' && node.attributes.type !== 'submit' ? (
+            <input key={`${name}-${i}`} type="hidden" name={name} value={node.attributes.value === undefined || node.attributes.value === null ? '' : String(node.attributes.value)} />
+          ) : null
+        }
+        if (node.attributes.type === 'submit') {
+          return node.group === 'oidc' ? <Field key={`${name}-${i}`} node={node} flowId={flow.id} use={{ validate: true, label: 'Finish creating my account' }} /> : null
+        }
+        return <Field key={`${name}-${i}`} node={node} flowId={flow.id} />
+      })}
     </form>
   )
 }
@@ -238,7 +266,7 @@ export function FlowForm({
   sections,
   fallback = 'That did not go through. Please try again.',
   identifier,
-  signup,
+  googleAction,
 }: {
   flow: Flow
   sections?: Record<string, string>
@@ -246,8 +274,8 @@ export function FlowForm({
   fallback?: string
   /** The signed-in member's email, when the flow asks them to confirm it is them. */
   identifier?: string
-  /** On a registration flow: the page's own fields for its first step, and where that step posts. */
-  signup?: SignupStart
+  /** On a registration flow: where the Google button posts, with only the handle (AuthFormProps). */
+  googleAction?: (flowId: string) => string
 }) {
   const shared = flow.ui.nodes.filter((n) => n.group === 'default')
   const groups = sections ? Object.keys(sections).filter((g) => flow.ui.nodes.some((n) => n.group === g)) : []
@@ -259,9 +287,9 @@ export function FlowForm({
   // Keep them with the provider button so a new member can finish choosing a handle.
   const completingGoogleSignup = flow.active === 'oidc' && rest.some((n) => n.attributes.name?.startsWith('traits.'))
   const hasEmailForm = rest.some((n) => n.attributes.type === 'submit')
-  // The first step of a signup (details still to type, not yet the emailed code),
-  // or choosing a handle after Google, which may have begun on the sign-in page.
-  const startingSignup = signup && (completingGoogleSignup || rest.some((n) => n.attributes.name === 'traits.email' && n.attributes.type !== 'hidden'))
+  // A signup's first step, with Google offered: the handle is asked first, for both ways.
+  const startingSignup = Boolean(googleAction) && !completingGoogleSignup && google.length > 0 &&
+    rest.some((n) => n.attributes.name === 'traits.email' && n.attributes.type !== 'hidden')
 
   return (
     <div className="flex flex-col gap-6">
@@ -278,8 +306,10 @@ export function FlowForm({
             <Form flow={flow} nodes={[...shared, ...flow.ui.nodes.filter((n) => n.group === group)]} googleConnected={googleConnected} />
           </section>
         ))
-      ) : startingSignup ? (
-        <SignupStartForm flow={flow} signup={signup} google={google} rest={rest} afterGoogle={completingGoogleSignup} />
+      ) : startingSignup && googleAction ? (
+        <SignupStart flow={flow} google={google} rest={rest} googleAction={googleAction} />
+      ) : completingGoogleSignup && googleAction ? (
+        <FinishGoogleSignup flow={flow} />
       ) : completingGoogleSignup ? (
         <Form flow={flow} nodes={flow.ui.nodes} />
       ) : (

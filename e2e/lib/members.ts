@@ -46,10 +46,11 @@ export async function signUp(page: Page, handle: string, { welcome = 'skip' }: {
  * the emailed code, without checking that it worked.
  */
 export async function submitSignUp(page: Page, handle: string, email = `${handle}@${MARK.emailDomain}`) {
-  // An invite link: one page with the code filled in, then the emailed code.
   await page.goto(`/join?code=${createInvite()}`)
-  await page.waitForURL(/\/signup/)
   await page.getByLabel('I am 18 or older').check()
+  await page.getByRole('button', { name: 'Check invite code' }).click()
+  await page.waitForURL(/\/signup/)
+
   await page.getByLabel('Email address').fill(email)
   await page.getByLabel('Handle').fill(handle)
   const asked = new Date()

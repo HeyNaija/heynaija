@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { createInvite } from '../lib/cli.ts'
 import { env, MARK } from '../lib/env.ts'
-import { codeFor, countFor } from '../lib/mailpit.ts'
+import { codeFor } from '../lib/mailpit.ts'
 import { handleFor, signIn, signUp } from '../lib/members.ts'
 
 test('joins with an invite, signs up with an emailed code and lands signed in @mobile', async ({ page }) => {
@@ -19,51 +19,28 @@ test('joins with an invite, signs up with an emailed code and lands signed in @m
   await expect(page).toHaveURL(new RegExp(`/u/${handle}$`))
 })
 
-test('refuses a wrong invite code before any email is sent, keeping what was typed', async ({ page }) => {
-  const handle = handleFor('wrongcode')
-  const email = `${handle}@${MARK.emailDomain}`
-  const since = new Date()
-  await page.goto('/signup')
+test('refuses a wrong invite code', async ({ page }) => {
+  await page.goto('/join')
   await page.getByLabel('Invite code').fill('HN-0000-0000-0000')
   await page.getByLabel('I am 18 or older').check()
-  await page.getByLabel('Email address').fill(email)
-  await page.getByLabel('Handle').fill(handle)
-  await page.getByRole('button', { name: 'Email me a code' }).click()
+  await page.getByRole('button', { name: 'Check invite code' }).click()
   // Next's route announcer is also an alert, so look for the message itself.
   await expect(page.getByText('That code is not valid')).toBeVisible()
-  await expect(page).toHaveURL(/\/signup/)
-  await expect(page.getByLabel('Invite code')).toHaveValue('HN-0000-0000-0000')
-  await expect(page.getByLabel('Email address')).toHaveValue(email)
-  await expect(page.getByLabel('Handle')).toHaveValue(handle)
-  await expect(page.getByLabel('Code from the email')).toHaveCount(0)
-  expect(await countFor(email, since)).toBe(0)
+  await expect(page).toHaveURL(/\/join/)
 })
 
-test('signing up is one page, and an invite link fills in its code @mobile', async ({ page }) => {
-  const code = createInvite()
-  await page.goto(`/join?code=${code}`)
-  await expect(page).toHaveURL(/\/signup\?flow=/)
-  await expect(page.getByLabel('Invite code')).toHaveValue(code)
-  for (const label of ['I am 18 or older', 'Email address', 'Handle']) await expect(page.getByLabel(label)).toBeVisible()
-  // The Google button shows only where Google sign-in is set up; google-auth.spec.ts covers it.
-  await expect(page.getByRole('button', { name: 'Email me a code' })).toBeVisible()
-  // Without an invite, the same page, with the box empty.
-  await page.context().clearCookies()
+test('without an invite, the sign-up page sends people to join first', async ({ page }) => {
   await page.goto('/signup')
-  await expect(page).toHaveURL(/\/signup\?flow=/)
-  await expect(page.getByLabel('Invite code')).toHaveValue('')
+  await expect(page).toHaveURL(/\/join/)
 })
 
 test('joining needs the 18+ confirmation @mobile', async ({ page }) => {
-  const handle = handleFor('noage')
   await page.goto(`/join?code=${createInvite()}`)
   const adult = page.getByLabel('I am 18 or older')
   await expect(adult).not.toBeChecked()
-  await page.getByLabel('Email address').fill(`${handle}@${MARK.emailDomain}`)
-  await page.getByLabel('Handle').fill(handle)
-  await page.getByRole('button', { name: 'Email me a code' }).click()
+  await page.getByRole('button', { name: 'Check invite code' }).click()
   // The box is required, so the browser keeps the form here.
-  await expect(page.getByLabel('Code from the email')).toHaveCount(0)
+  await expect(page).toHaveURL(/\/join/)
   expect(await adult.evaluate((el: HTMLInputElement) => el.validity.valueMissing)).toBe(true)
 })
 
@@ -72,6 +49,8 @@ test('the API refuses a signup that skipped the 18+ confirmation', async ({ page
   const email = `${handle}@${MARK.emailDomain}`
   await page.goto(`/join?code=${createInvite()}`)
   await page.getByLabel('I am 18 or older').check()
+  await page.getByRole('button', { name: 'Check invite code' }).click()
+  await page.waitForURL(/\/signup/)
   await page.getByLabel('Email address').fill(email)
   await page.getByLabel('Handle').fill(handle)
   const asked = new Date()
@@ -82,8 +61,7 @@ test('the API refuses a signup that skipped the 18+ confirmation', async ({ page
   // registration webhook refuses it, and no account is created.
   await context.clearCookies({ name: 'hn_age' })
   await page.getByRole('button', { name: 'Continue' }).click()
-  // The page's intro says this too; the refusal is the alert.
-  await expect(page.getByRole('alert').filter({ hasText: 'open to people aged 18 or older' })).toBeVisible()
+  await expect(page).toHaveURL(/\/join/)
   await expect(page.getByLabel('Account menu')).toHaveCount(0)
   const res = await fetch(`${env.kratosAdminUrl}/admin/identities?credentials_identifier=${encodeURIComponent(email)}`)
   expect(await res.json()).toEqual([])

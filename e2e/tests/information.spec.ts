@@ -93,7 +93,7 @@ test('visitors can find About and Progress from existing public surfaces @mobile
   await page.goto('/')
   await page.locator('.welcome-intro').getByRole('link', { name: 'About HeyNaija' }).click()
   await expect(page).toHaveURL(/\/about$/)
-  await page.goto('/signup')
+  await page.goto('/join')
   const footer = page.getByRole('navigation', { name: 'About HeyNaija' })
   await expect(footer.getByRole('link', { name: 'About HeyNaija' })).toHaveAttribute('href', '/about')
   await footer.getByRole('link', { name: 'Progress', exact: true }).click()
