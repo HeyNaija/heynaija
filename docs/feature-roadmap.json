@@ -96,7 +96,7 @@
       "evidence": [
         "apps/api/src/auth/auth.controller.ts",
         "apps/api/src/governance/age.ts",
-        "apps/web/app/(auth)/join/join-form.tsx",
+        "apps/web/app/(auth)/signup/page.tsx",
         "apps/api/src/governance/age.test.ts",
         "e2e/tests/auth.spec.ts"
       ],
