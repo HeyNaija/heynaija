@@ -1,3 +1,4 @@
+import type { SignupStart } from '../../types'
 import type { Flow, UiMessage, UiNode } from './client'
 
 // Kratos describes each form as a list of fields ("nodes"); this renders them as
@@ -18,6 +19,7 @@ const TEXT: Record<number, string> = {
   1010003: 'For your security, confirm it is you before saving changes to your account.',
   1010015: 'Email me a code', // "Send sign in code"
   1040002: 'Continue with Google', // "Sign up with google"
+  1040006: 'Email me a code', // "Send sign up code"
   1050002: 'Connect Google', // "Link google"
   1050003: 'Disconnect Google', // "Unlink google"
   4000007: 'An account with that email or handle already exists.',
@@ -64,13 +66,13 @@ function Messages({ messages, field, fallback }: { messages?: UiMessage[]; field
   )
 }
 
-function Field({ node, flowId, identifier, googleConnected }: { node: UiNode; flowId: string; identifier?: string; googleConnected?: boolean }) {
+function Field({ node, flowId, identifier, googleConnected, filled }: { node: UiNode; flowId: string; identifier?: string; googleConnected?: boolean; filled?: string }) {
   const a = node.attributes
   const name = a.name ?? ''
   // Confirming it is you: only the signed-in address will do, so it is shown, not asked for.
   const locked = name === 'identifier' && a.type !== 'hidden' && identifier !== undefined
   const googleEmail = googleConnected && name === 'traits.email' && a.type !== 'hidden'
-  const value = locked ? identifier : a.value === undefined || a.value === null ? undefined : String(a.value)
+  const value = locked ? identifier : a.value === undefined || a.value === null ? filled : String(a.value)
   const hint = googleEmail
     ? 'Disconnect Google in Connected accounts below to change your email address.'
     : locked ? 'The address you are signed in with.' : HINTS[name]
@@ -191,6 +193,42 @@ function Form({ flow, nodes: unordered, identifier, googleConnected }: { flow: F
 }
 
 /**
+ * The first step of a signup as one form: the page's own fields (the invite
+ * code), then Google, then email and handle. Both buttons post to the page's
+ * route, which checks what is its own and hands the rest on to Kratos. Back from
+ * Google with a handle still to choose, it is the invite, the handle, then Google.
+ */
+function SignupStartForm({ flow, signup, google, rest, afterGoogle }: { flow: Flow; signup: SignupStart; google: UiNode[]; rest: UiNode[]; afterGoogle: boolean }) {
+  const nodes = [...rest].sort((a, b) => rank(a) - rank(b))
+  const field = (node: UiNode, i: number) => (
+    <Field key={`${node.attributes.name}-${i}`} node={node} flowId={flow.id} filled={signup.values?.[node.attributes.name ?? '']} />
+  )
+  const typed = nodes.filter((n) => n.type === 'input' && n.attributes.type !== 'hidden')
+  return (
+    <form action={signup.action(flow.id)} method="post" className="flex flex-col gap-5">
+      {nodes.filter((n) => n.attributes.type === 'hidden').map(field)}
+      {signup.fields}
+      {afterGoogle ? (
+        <>
+          {typed.map(field)}
+          {google.map(field)}
+        </>
+      ) : google.length ? (
+        <>
+          {google.map(field)}
+          <div className="flex items-center gap-3 text-xs text-muted" role="separator">
+            <span className="h-px flex-1 bg-line" />
+            or use email
+            <span className="h-px flex-1 bg-line" />
+          </div>
+        </>
+      ) : null}
+      {afterGoogle ? null : typed.map(field)}
+    </form>
+  )
+}
+
+/**
  * `sections` splits a flow into one form per Kratos group, with a heading each
  * (the settings flow: the profile and connected accounts are saved separately).
  * Without sections, Google gets its own form above the email one.
@@ -200,6 +238,7 @@ export function FlowForm({
   sections,
   fallback = 'That did not go through. Please try again.',
   identifier,
+  signup,
 }: {
   flow: Flow
   sections?: Record<string, string>
@@ -207,6 +246,8 @@ export function FlowForm({
   fallback?: string
   /** The signed-in member's email, when the flow asks them to confirm it is them. */
   identifier?: string
+  /** On a registration flow: the page's own fields for its first step, and where that step posts. */
+  signup?: SignupStart
 }) {
   const shared = flow.ui.nodes.filter((n) => n.group === 'default')
   const groups = sections ? Object.keys(sections).filter((g) => flow.ui.nodes.some((n) => n.group === g)) : []
@@ -218,6 +259,9 @@ export function FlowForm({
   // Keep them with the provider button so a new member can finish choosing a handle.
   const completingGoogleSignup = flow.active === 'oidc' && rest.some((n) => n.attributes.name?.startsWith('traits.'))
   const hasEmailForm = rest.some((n) => n.attributes.type === 'submit')
+  // The first step of a signup (details still to type, not yet the emailed code),
+  // or choosing a handle after Google, which may have begun on the sign-in page.
+  const startingSignup = signup && (completingGoogleSignup || rest.some((n) => n.attributes.name === 'traits.email' && n.attributes.type !== 'hidden'))
 
   return (
     <div className="flex flex-col gap-6">
@@ -234,6 +278,8 @@ export function FlowForm({
             <Form flow={flow} nodes={[...shared, ...flow.ui.nodes.filter((n) => n.group === group)]} googleConnected={googleConnected} />
           </section>
         ))
+      ) : startingSignup ? (
+        <SignupStartForm flow={flow} signup={signup} google={google} rest={rest} afterGoogle={completingGoogleSignup} />
       ) : completingGoogleSignup ? (
         <Form flow={flow} nodes={flow.ui.nodes} />
       ) : (

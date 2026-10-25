@@ -13,3 +13,4 @@ export const isLogoutUrl = provider.isLogoutUrl
 export const getFlowError = provider.getFlowError
 export const getApiAuthHeaders = provider.getApiAuthHeaders
 export const hasSessionCredentials = provider.hasSessionCredentials
+export const submitRegistration = provider.submitRegistration

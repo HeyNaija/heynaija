@@ -139,7 +139,7 @@ test('a member sees their real status in Settings, and no tick on their profile'
   const { page, handle, context } = await newMember(browser, 'citizen')
   await page.goto('/settings')
   const section = page.locator('section', { has: page.getByRole('heading', { name: 'Identity and governance' }) })
-  // They confirmed their age on /join: a stated age, not a verified one.
+  // They confirmed their age when signing up: a stated age, not a verified one.
   await expect(section).toContainText('18 or older')
   await expect(section).toContainText('It is not a verified age.')
   await expect(section).toContainText('Not verified')
@@ -171,7 +171,7 @@ test('a member downloads their data as JSON', async ({ browser }) => {
   expect(Date.parse(data.account.onboardedAt)).not.toBeNaN()
   // Nothing pinned to their profile.
   expect(data.account.pinnedPostId).toBeNull()
-  // They confirmed their age on /join, and that is all that is held about it.
+  // They confirmed their age when signing up, and that is all that is held about it.
   expect(data.age).toHaveLength(1)
   expect(data.age[0]).toMatchObject({ method: 'self_declared', band: '18_plus', withdrawnAt: null })
   expect(data.identityVerifications).toEqual([])

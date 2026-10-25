@@ -4,7 +4,7 @@
 // nothing else about the person.
 //
 // The invite code arrives in the hn_invite cookie, and the age confirmation in
-// the hn_age cookie, both set by the web app on /join. identity_id is all zeros
+// the hn_age cookie, both set by the web app when /signup is sent. identity_id is all zeros
 // until Kratos has saved the account.
 function(ctx)
   local cookies = if std.objectHas(ctx, 'request_cookies') then ctx.request_cookies else {};

@@ -49,8 +49,10 @@ handling, verification and recovery are security-critical and already solved.
   stored or cached on our side.
 - **Members.** `members.id` is the Kratos identity ID. The row is created the
   first time the API sees an identity that has redeemed an invite.
-- **Invite-only signup.** `/join` checks the code and stores it in a short-lived
-  HttpOnly cookie. Kratos passes that cookie to two API webhooks: one before the
+- **Invite-only signup.** `/signup` asks for the code with the email and handle,
+  on one page; its form posts to `/signup/continue`, which checks the code, stores
+  it in a short-lived HttpOnly cookie and hands the rest to Kratos (`/join?code=`
+  links fill the code in). Kratos passes that cookie to two API webhooks: one before the
   account is saved (is the code usable? abort with a message if not) and one
   after (spend it for this identity). The API refuses any identity without a
   redemption, so the invite rule is enforced by us, not by trust in the flow.

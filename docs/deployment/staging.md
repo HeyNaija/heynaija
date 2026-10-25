@@ -44,7 +44,7 @@ with a verification email, and a backup and restore.
 Staging is **live** at `https://staging.heynaija.ng`: Cloudflare, the origin
 certificate and Authenticated Origin Pulls, the nginx site, GitHub Actions with the
 runner, images from GitHub's registry, and the first deploy all work. Invite codes
-are checked on `/join`.
+are checked on `/signup`.
 
 **Sign-in changed after the first deploy:** members now sign in with an emailed
 code or Google, never a password ([ADR 0003](../adr/0003-passwordless-sign-in.md)).

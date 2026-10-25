@@ -64,9 +64,8 @@ test('choosing Google on signup recognizes an existing email account', async ({ 
     google.use(member.email)
     const before = google.authorizations
     await page.goto(`/join?code=${createInvite()}`)
-    await page.getByLabel('I am 18 or older').check()
-    await page.getByRole('button', { name: 'Check invite code' }).click()
     await page.waitForURL((url) => url.pathname === '/signup')
+    await page.getByLabel('I am 18 or older').check()
     await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
     await expect(page.getByText('Google confirmed your email.', { exact: false })).toBeVisible()
     await expect(page).toHaveURL((url) => url.pathname === '/login')
@@ -204,7 +203,9 @@ test('a new Google account still needs an invite', async ({ page }) => {
   google.use(email)
   await page.goto('/login')
   await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
-  await expect(page).toHaveURL((url) => url.pathname === '/join')
+  // Asked for an invite with the handle, on the sign-up page, before any account exists.
+  await expect(page).toHaveURL((url) => url.pathname === '/signup')
+  await expect(page.getByLabel('Invite code')).toHaveValue('')
   const response = await fetch(`${env.kratosAdminUrl}/admin/identities?credentials_identifier=${encodeURIComponent(email)}`)
   expect(await response.json()).toEqual([])
 })
@@ -214,9 +215,8 @@ test('a new invited Google member can choose a handle and create one account', a
   const email = `${handle}@${MARK.emailDomain}`
   google.use(email)
   await page.goto(`/join?code=${createInvite()}`)
-  await page.getByLabel('I am 18 or older').check()
-  await page.getByRole('button', { name: 'Check invite code' }).click()
   await page.waitForURL((url) => url.pathname === '/signup')
+  await page.getByLabel('I am 18 or older').check()
   await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
   await page.getByLabel('Handle').fill(handle)
   await page.locator('button[name="provider"][value="google"]').click()
@@ -235,9 +235,8 @@ test('a colliding handle cannot connect a new Google email to another member', a
     const email = `${handleFor('gcollision')}@${MARK.emailDomain}`
     google.use(email)
     await page.goto(`/join?code=${createInvite()}`)
-    await page.getByLabel('I am 18 or older').check()
-    await page.getByRole('button', { name: 'Check invite code' }).click()
     await page.waitForURL((url) => url.pathname === '/signup')
+    await page.getByLabel('I am 18 or older').check()
     await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
     await page.getByLabel('Handle').fill(member.handle)
     await page.locator('button[name="provider"][value="google"]').click()

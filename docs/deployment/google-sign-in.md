@@ -11,9 +11,11 @@ OAuth client and switch it on, as below.
 
 - `/login` shows **Continue with Google** above the email field. Kratos sends the
   code through Resend (Mailpit locally).
-- `/join` checks the invite and sets the `hn_invite` cookie. `/signup` then asks
-  for email and handle and emails a code, or offers Google. After Google, Kratos
-  asks for the handle, since Google does not provide one.
+- `/signup` asks for the invite code, the 18+ confirmation, and either Google or
+  an email and handle, on one page. `/signup/continue` checks the invite and sets
+  the `hn_invite` cookie before handing on to Kratos. After Google, Kratos asks
+  for the handle, since Google does not provide one; the invite is asked for
+  there too, for someone who began with Google on `/login`.
 - Either way, Kratos calls the API's registration webhooks, which check and then
   spend the invite. Without one, signup is refused.
 - When an email-only member first chooses Google, Kratos verifies the Google

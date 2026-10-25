@@ -44,6 +44,9 @@ selfservice:
     registration:
       ui_url: http://127.0.0.1:3000/signup
       lifespan: 15m
+      # Email and handle go with "Email me a code" in one step. Without this,
+      # Kratos asks for them, then asks again how to sign in, then sends the code.
+      enable_legacy_one_step: true
       # The hooks live in docker-compose.dev.yml (they hold a secret): invite check
       # via webhook to our API, then a session. The emailed code (or Google)
       # already proves the address, so there is no separate verification step.

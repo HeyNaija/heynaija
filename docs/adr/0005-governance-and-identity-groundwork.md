@@ -19,11 +19,11 @@ locks and privacy/age guarantees. The v0.2 description below is historical.
    owner asked for under-18 accounts to stay disabled until child-safety
    requirements are approved, so the draft's proposed 18+ pilot rule is adopted
    for the beta only; HeyNaija is not meant to stay adults-only (ADR 0006,
-   [under-18-rollout.md](../governance/under-18-rollout.md)). `/join` asks for an
+   [under-18-rollout.md](../governance/under-18-rollout.md)). Signing up asks for an
    "I am 18 or older" confirmation, the web app sets an `hn_age` cookie, Kratos
    passes it to the registration webhook (`infra/kratos/invite-check.jsonnet`),
    and the API refuses any signup without it, including Google sign-ups and anyone
-   who skips `/join`. The confirmation is stored as a stated age band, never an
+   who skips that box. The confirmation is stored as a stated age band, never an
    age or birth date, and never counts as a verified age. How age is modelled is
    in ADR 0006.
 3. **Three switches that cannot be switched on.** `NIN_VERIFICATION_ENABLED`,
