@@ -34,7 +34,8 @@ test('clicking a reply card focuses its own conversation without sibling replies
   const { page, handle, context } = await newMember(browser, 'focus')
   try {
     const fixture = await seedThread(handle)
-    await page.goto(`/p/${fixture.root}`)
+    // Reply 01 is the oldest of 25: oldest first keeps it on the first page.
+    await page.goto(`/p/${fixture.root}?replies=oldest`)
     await page.locator(`#post-${fixture.first}`).click({ position: { x: 4, y: 4 } })
     await expect(page).toHaveURL((url) => url.pathname === `/p/${fixture.first}`)
     await expect(page.locator(`#post-${fixture.first}.is-focused`)).toBeVisible()
@@ -56,7 +57,8 @@ test('reply card controls keep their actions without opening the card @mobile', 
   const { page, handle, context } = await newMember(browser, 'controls')
   try {
     const fixture = await seedThread(handle)
-    await page.goto(`/p/${fixture.root}`)
+    // Reply 01 is the oldest of 25: oldest first keeps it on the first page.
+    await page.goto(`/p/${fixture.root}?replies=oldest`)
     const url = page.url()
     const card = page.locator(`#post-${fixture.first}`)
     await card.getByRole('button', { name: 'Like (0 likes)', exact: true }).click()

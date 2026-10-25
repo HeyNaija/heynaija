@@ -45,7 +45,7 @@ test('signing up is one page, and an invite link fills in its code @mobile', asy
   await expect(page).toHaveURL(/\/signup\?flow=/)
   await expect(page.getByLabel('Invite code')).toHaveValue(code)
   for (const label of ['I am 18 or older', 'Email address', 'Handle']) await expect(page.getByLabel(label)).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible()
+  // The Google button shows only where Google sign-in is set up; google-auth.spec.ts covers it.
   await expect(page.getByRole('button', { name: 'Email me a code' })).toBeVisible()
   // Without an invite, the same page, with the box empty.
   await page.context().clearCookies()
