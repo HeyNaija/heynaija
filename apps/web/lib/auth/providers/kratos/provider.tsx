@@ -1,12 +1,12 @@
 import 'server-only'
 import { linkClass } from '@/lib/auth/link-class'
 import type { AuthFormProps, FrontendAuthProvider } from '../../types'
-import { getApiAuthHeaders, getFlow, getFlowError, getLogoutUrl, getSessionEmail, hasSessionCredentials, startFlowUrl, submitRegistration } from './client'
+import { getApiAuthHeaders, getFlow, getFlowError, getLogoutUrl, getSessionEmail, hasSessionCredentials, startFlowUrl } from './client'
 import { FlowForm } from './flow-form'
 import { ForgetFlowParam } from './forget-flow'
 import { isLogoutUrl } from './urls'
 
-async function Form({ kind, flowId, googleAction }: AuthFormProps) {
+async function Form({ kind, flowId }: AuthFormProps) {
   const flow = await getFlow(kind, flowId)
   if (kind === 'settings') {
     const shown = Boolean(flow.ui.messages?.length) || flow.ui.nodes.some((node) => node.messages?.length)
@@ -22,7 +22,7 @@ async function Form({ kind, flowId, googleAction }: AuthFormProps) {
       </>
     )
   }
-  if (kind === 'registration') return <FlowForm flow={flow} googleAction={googleAction} />
+  if (kind === 'registration') return <FlowForm flow={flow} signup />
   if (kind !== 'login' || !flow.refresh) return <FlowForm flow={flow} />
 
   // Already signed in, confirming it is them before a change in Settings.
@@ -50,5 +50,4 @@ export const kratosAuth: FrontendAuthProvider = {
   getFlowError,
   getApiAuthHeaders,
   hasSessionCredentials,
-  submitRegistration,
 }

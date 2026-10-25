@@ -74,23 +74,6 @@ export async function getFlow(kind: FlowKind, id: string | string[] | undefined)
 }
 
 /**
- * Sends a registration step to Kratos on the browser's behalf, exactly as the
- * browser's own form post would: its cookies byte for byte, a form body, an HTML
- * client. Kratos answers with where the browser goes next (the signup page again,
- * or Google) and cookies to set, which the caller hands on.
- */
-export async function submitRegistration(flowId: string, fields: Record<string, string>) {
-  const res = await fetch(`${KRATOS_URL}/self-service/registration?flow=${encodeURIComponent(flowId)}`, {
-    method: 'POST',
-    headers: { cookie: await cookieHeader(), 'content-type': 'application/x-www-form-urlencoded', accept: 'text/html' },
-    body: new URLSearchParams(fields),
-    redirect: 'manual',
-    cache: 'no-store',
-  })
-  return { location: res.headers.get('location'), cookies: res.headers.getSetCookie() }
-}
-
-/**
  * The signed-in member's email, or null. Kratos leaves the address empty when it
  * asks someone to confirm it is them, although only that address will do.
  */

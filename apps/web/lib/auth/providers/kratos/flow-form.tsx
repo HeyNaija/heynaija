@@ -38,6 +38,9 @@ const FIELD_ERRORS: Record<string, Record<number, string>> = {
 
 const tone = { error: 'text-danger', success: 'text-accent-strong', info: '' } as const
 
+/** Kratos's "Property … is missing" (a required field left empty). */
+const MISSING = 4000002
+
 // Above a form, 4000001 carries Kratos's internal reason ("Unable to decode body
 // because…", "The HTTP Request Header included the Cookie key…") and 5xxxxxx are
 // server faults. Neither is written for people, so they get `fallback` instead.
@@ -65,8 +68,8 @@ function Messages({ messages, field, fallback }: { messages?: UiMessage[]; field
   )
 }
 
-/** How a signup form uses a field beyond what Kratos says: where a button posts, and whether the browser checks the form first. */
-type FieldUse = { formAction?: string; validate?: boolean; optional?: boolean; label?: string }
+/** How the Google finish step uses its button beyond what Kratos says: the browser checks the form first, its words, and its weight. */
+type FieldUse = { validate?: boolean; label?: string; primary?: boolean }
 
 function Field({ node, flowId, identifier, googleConnected, use = {} }: { node: UiNode; flowId: string; identifier?: string; googleConnected?: boolean; use?: FieldUse }) {
   const a = node.attributes
@@ -84,23 +87,23 @@ function Field({ node, flowId, identifier, googleConnected, use = {} }: { node: 
   if (a.type === 'submit' || a.type === 'button') {
     const label = use.label ?? (node.meta.label && TEXT[node.meta.label.id]) ?? node.meta.label?.text ?? 'Continue'
     // Google: sign in, sign up, or connect and disconnect in settings.
-    if (node.group === 'oidc') {
+    if (node.group === 'oidc' && !use.primary) {
       return (
-        <button type="submit" name={name} value={value} disabled={a.disabled} formAction={use.formAction} formNoValidate={!use.validate} className="btn btn-secondary btn-lg btn-block">
+        <button type="submit" name={name} value={value} disabled={a.disabled} formNoValidate={!use.validate} className="btn btn-secondary btn-lg btn-block">
           <GoogleMark />
           {label}
         </button>
       )
     }
     // The main action of a form is "method"; anything else (resend code, etc.) is secondary.
-    const primary = name === 'method' || (name === 'email_change_action' && value === 'confirm')
+    const primary = use.primary || name === 'method' || (name === 'email_change_action' && value === 'confirm')
     return (
       <button
         type="submit"
         name={name}
         value={value}
         disabled={a.disabled}
-        formNoValidate={!primary}
+        formNoValidate={!primary && !use.validate}
         className={primary ? 'btn btn-primary btn-lg btn-block' : 'btn btn-ghost min-h-11 self-center text-accent-strong underline-offset-4 hover:underline'}
       >
         {label}
@@ -124,7 +127,7 @@ function Field({ node, flowId, identifier, googleConnected, use = {} }: { node: 
         name={name}
         type={a.type ?? 'text'}
         defaultValue={a.type === 'password' ? undefined : value}
-        required={a.required && !use.optional}
+        required={a.required}
         disabled={a.disabled || googleEmail}
         readOnly={locked || undefined}
         autoComplete={a.autocomplete}
@@ -195,38 +198,9 @@ function Form({ flow, nodes: unordered, identifier, googleConnected }: { flow: F
 }
 
 /**
- * A signup's first step as one form: the handle, then Google, then email. The
- * handle goes with either button. Google posts to `googleAction`, which sends
- * Kratos the handle and not the email field, so the address Google confirms is
- * the one the account gets; the browser checks the handle before Google opens.
- * The email button posts straight to Kratos, as every other form does.
- */
-function SignupStart({ flow, google, rest, googleAction }: { flow: Flow; google: UiNode[]; rest: UiNode[]; googleAction: (flowId: string) => string }) {
-  const named = (name: string) => rest.filter((n) => n.type === 'input' && n.attributes.name === name && n.attributes.type !== 'hidden')
-  const field = (use: FieldUse) => (node: UiNode, i: number) => (
-    <Field key={`${node.attributes.name}-${node.attributes.value}-${i}`} node={node} flowId={flow.id} use={use} />
-  )
-  return (
-    <form action={flow.ui.action} method={flow.ui.method} className="flex flex-col gap-5">
-      {rest.filter((n) => n.attributes.type === 'hidden').map(field({}))}
-      {named('traits.handle').map(field({}))}
-      {google.map(field({ formAction: googleAction(flow.id), validate: true }))}
-      <div className="flex items-center gap-3 text-xs text-muted" role="separator">
-        <span className="h-px flex-1 bg-line" />
-        or use email
-        <span className="h-px flex-1 bg-line" />
-      </div>
-      {/* Not required: the Google button must not need it. Kratos asks for it if it is missing. */}
-      {named('traits.email').map(field({ optional: true }))}
-      {rest.filter((n) => n.attributes.type === 'submit').map(field({}))}
-    </form>
-  )
-}
-
-/**
- * Back from Google with no handle yet (the one chosen was taken meanwhile, or
- * Google began on the sign-in page): Google is done, so this says so, and asks
- * for the handle alone. On the button Kratos checks back with Google, which,
+ * Back from Google on a signup: Google gives no handle, so Kratos asks for one.
+ * Google is done, and this says so, and asks for the handle alone, not the
+ * signup form again. On the button Kratos checks back with Google, which,
  * already agreed to, sends the member straight on to their new account.
  */
 function FinishGoogleSignup({ flow }: { flow: Flow }) {
@@ -248,9 +222,11 @@ function FinishGoogleSignup({ flow }: { flow: Flow }) {
           ) : null
         }
         if (node.attributes.type === 'submit') {
-          return node.group === 'oidc' ? <Field key={`${name}-${i}`} node={node} flowId={flow.id} use={{ validate: true, label: 'Finish creating my account' }} /> : null
+          return node.group === 'oidc' ? <Field key={`${name}-${i}`} node={node} flowId={flow.id} use={{ validate: true, label: 'Finish creating my account', primary: true }} /> : null
         }
-        return <Field key={`${name}-${i}`} node={node} flowId={flow.id} />
+        // Kratos says "Property handle is missing" on arrival; nobody has left it out yet.
+        const shown = { ...node, messages: node.messages.filter((m) => m.id !== MISSING) }
+        return <Field key={`${name}-${i}`} node={shown} flowId={flow.id} />
       })}
     </form>
   )
@@ -266,7 +242,7 @@ export function FlowForm({
   sections,
   fallback = 'That did not go through. Please try again.',
   identifier,
-  googleAction,
+  signup,
 }: {
   flow: Flow
   sections?: Record<string, string>
@@ -274,8 +250,8 @@ export function FlowForm({
   fallback?: string
   /** The signed-in member's email, when the flow asks them to confirm it is them. */
   identifier?: string
-  /** On a registration flow: where the Google button posts, with only the handle (AuthFormProps). */
-  googleAction?: (flowId: string) => string
+  /** A registration flow: email first, then Google, and a page of its own to finish Google with a handle. */
+  signup?: boolean
 }) {
   const shared = flow.ui.nodes.filter((n) => n.group === 'default')
   const groups = sections ? Object.keys(sections).filter((g) => flow.ui.nodes.some((n) => n.group === g)) : []
@@ -287,9 +263,14 @@ export function FlowForm({
   // Keep them with the provider button so a new member can finish choosing a handle.
   const completingGoogleSignup = flow.active === 'oidc' && rest.some((n) => n.attributes.name?.startsWith('traits.'))
   const hasEmailForm = rest.some((n) => n.attributes.type === 'submit')
-  // A signup's first step, with Google offered: the handle is asked first, for both ways.
-  const startingSignup = Boolean(googleAction) && !completingGoogleSignup && google.length > 0 &&
-    rest.some((n) => n.attributes.name === 'traits.email' && n.attributes.type !== 'hidden')
+  const googleForm = google.length ? <Form flow={flow} nodes={[...shared.filter((n) => n.attributes.type === 'hidden'), ...google]} /> : null
+  const separator = (words: string) => (
+    <div className="flex items-center gap-3 text-xs text-muted" role="separator">
+      <span className="h-px flex-1 bg-line" />
+      {words}
+      <span className="h-px flex-1 bg-line" />
+    </div>
+  )
 
   return (
     <div className="flex flex-col gap-6">
@@ -306,24 +287,21 @@ export function FlowForm({
             <Form flow={flow} nodes={[...shared, ...flow.ui.nodes.filter((n) => n.group === group)]} googleConnected={googleConnected} />
           </section>
         ))
-      ) : startingSignup && googleAction ? (
-        <SignupStart flow={flow} google={google} rest={rest} googleAction={googleAction} />
-      ) : completingGoogleSignup && googleAction ? (
+      ) : completingGoogleSignup && signup ? (
         <FinishGoogleSignup flow={flow} />
       ) : completingGoogleSignup ? (
         <Form flow={flow} nodes={flow.ui.nodes} />
+      ) : signup ? (
+        // Signing up, email and handle come first; Google asks for a handle after it.
+        <>
+          {hasEmailForm ? <Form flow={flow} nodes={rest} identifier={identifier} /> : null}
+          {googleForm && hasEmailForm ? separator('or') : null}
+          {googleForm}
+        </>
       ) : (
         <>
-          {google.length ? (
-            <Form flow={flow} nodes={[...shared.filter((n) => n.attributes.type === 'hidden'), ...google]} />
-          ) : null}
-          {google.length && hasEmailForm ? (
-            <div className="flex items-center gap-3 text-xs text-muted" role="separator">
-              <span className="h-px flex-1 bg-line" />
-              or use email
-              <span className="h-px flex-1 bg-line" />
-            </div>
-          ) : null}
+          {googleForm}
+          {googleForm && hasEmailForm ? separator('or use email') : null}
           {hasEmailForm ? <Form flow={flow} nodes={rest} identifier={identifier} /> : null}
         </>
       )}

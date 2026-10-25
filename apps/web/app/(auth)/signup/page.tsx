@@ -40,6 +40,5 @@ async function SignupForm({ searchParams }: Pick<PageProps<'/signup'>, 'searchPa
   // Kratos hands them to our API.
   const jar = await cookies()
   if (!jar.has(INVITE_COOKIE) || !jar.has(AGE_COOKIE)) redirect('/join')
-  // Google takes only the handle with it (./google/route.ts), so it comes back to an account, not this form.
-  return <AuthForm kind="registration" flowId={(await searchParams).flow} googleAction={(flow) => `/signup/google?flow=${encodeURIComponent(flow)}`} />
+  return <AuthForm kind="registration" flowId={(await searchParams).flow} />
 }
