@@ -317,7 +317,7 @@ export function ThreadBranch({
       ) : null}
 
       {renderChildren && (root || state) ? (
-        <section id={`replies-${id}`} className="thread-children" aria-label={root ? 'Replies' : `Replies${handle ? ` to @${handle}` : ' to unavailable post'}`} hidden={!open} aria-busy={busy || undefined}>
+        <section id={`replies-${id}`} className={`thread-children${depth >= THREAD_MAX_DEPTH ? ' is-beyond' : ''}`} aria-label={root ? 'Replies' : `Replies${handle ? ` to @${handle}` : ' to unavailable post'}`} hidden={!open} aria-busy={busy || undefined}>
           {root ? <RepliesHeading id={id} handle={handle} order={order} ordered={items.length + recent.length > 0 || !!state?.cursor} /> : null}
           {items.length ? <ul className="thread-list">{items.map((row) => <li key={row.id}>{row.node}</li>)}</ul> : null}
           {empty ? <p className="thread-empty">{root && total === 0 ? 'No replies yet.' : 'No available replies.'}</p> : null}

@@ -248,14 +248,14 @@ test("the author's own replies come first, then everyone else's newest first, an
   }
 })
 
-test('replies open in place three levels deep; below that a post continues as its own conversation @mobile', async ({ browser }) => {
+test('replies open in place five levels deep; below that a post continues as its own conversation @mobile', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'depth')
   const db = pool()
   try {
-    // A post and a chain of replies under it, one level each: level 4 is out of reach in place.
+    // A post and a chain of replies under it, one level each: level 6 is out of reach in place.
     const { rows: [member] } = await db.query<{ id: string }>('select id from members where handle = $1', [handle])
     const ids: string[] = []
-    for (let level = 0; level <= 4; level++) {
+    for (let level = 0; level <= 6; level++) {
       const { rows: [post] } = await db.query<{ id: string }>(
         `insert into posts (author_id, text, reply_parent_id, root_id, created_at)
          values ($1, $2, $3, $4, now() - interval '1 hour' + make_interval(secs => $5)) returning id`,
@@ -267,26 +267,30 @@ test('replies open in place three levels deep; below that a post continues as it
 
     await page.goto(`/p/${ids[0]}`)
     await expect(page.locator(`#post-${ids[1]}`)).toBeVisible()
-    await expand(ids[1]!).click()
-    await expect(page.locator(`#post-${ids[2]}`)).toBeVisible()
-    await expand(ids[2]!).click()
-    await expect(page.locator(`#post-${ids[3]}`)).toBeVisible()
-    // The third level offers the conversation, not another level.
-    await expect(expand(ids[3]!)).toHaveText('Continue conversation')
-    await expect(page.locator(`#post-${ids[4]}`)).toHaveCount(0)
+    for (const level of [1, 2, 3, 4]) {
+      await expand(ids[level]!).click()
+      await expect(page.locator(`#post-${ids[level + 1]}`)).toBeVisible()
+    }
+    // The fifth level offers the conversation, not another level.
+    await expect(expand(ids[5]!)).toHaveText('Continue conversation')
+    await expect(page.locator(`#post-${ids[6]}`)).toHaveCount(0)
+    // Every level indents, and the fifth still has room for its text and buttons.
+    const lefts = await Promise.all(ids.slice(1, 6).map((id) => page.locator(`#post-${id}`).evaluate((node) => node.getBoundingClientRect().left)))
+    for (let i = 1; i < lefts.length; i++) expect(lefts[i]!).toBeGreaterThan(lefts[i - 1]!)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 
-    // Answering the second level adds its reply in place.
+    // Answering the fourth level adds its reply in place.
     const url = page.url()
-    await page.locator(`#post-${ids[2]} .post-actions a[aria-label^="Reply"]`).click()
-    await (await replyBox(page, ids[2])).fill('An answer one level down')
+    await page.locator(`#post-${ids[4]} .post-actions a[aria-label^="Reply"]`).click()
+    await (await replyBox(page, ids[4])).fill('An answer one level down')
     await page.getByRole('button', { name: 'Reply', exact: true }).click()
     await expect(page.locator('article', { hasText: 'An answer one level down' })).toBeVisible()
     expect(page.url()).toBe(url)
 
-    // Answering the third opens it, since a reply there would not be shown on this page.
-    await page.locator(`#post-${ids[3]} .post-actions a[aria-label^="Reply"]`).click()
-    await expect(page).toHaveURL(new RegExp(`/p/${ids[3]}#compose$`))
-    await expect(page.locator(`#post-${ids[4]}`)).toBeVisible()
+    // Answering the fifth opens it, since a reply there would not be shown on this page.
+    await page.locator(`#post-${ids[5]} .post-actions a[aria-label^="Reply"]`).click()
+    await expect(page).toHaveURL(new RegExp(`/p/${ids[5]}#compose$`))
+    await expect(page.locator(`#post-${ids[6]}`)).toBeVisible()
   } finally {
     await db.end()
     await context.close()

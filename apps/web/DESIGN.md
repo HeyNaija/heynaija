@@ -185,7 +185,7 @@ Same roles, set on `:root[data-theme="dark"]`: ground-dark for the ground, card-
 - **Desktop header:** an 80px sticky bar with a search field up to 480px wide and a compact account menu. A hairline separates it from the content. The sidebar post action focuses the composer on the feed or takes the member there from another page.
 - **Feed tabs:** sticky at 80px on desktop and 64px on mobile, with Latest, Following and a small "Newest first, not ranked" label.
 - **Cards:** posts stack 14px apart; the home page uses a 16px rhythm, while shared discovery, profile and settings pages use 20px between sections.
-- **Conversations:** compact reply cards stack 8px apart. Nested connectors start at the parent's avatar axis, with one visual indentation step on phones and two on desktop. The reading rail reduces to three community suggestions and the footer on thread pages.
+- **Conversations:** compact reply cards stack 8px apart. Nested connectors start at the parent's avatar axis. Replies open in place five levels deep, and every level indents: 44px on desktop, so the line runs under the parent's avatar, and 12px on phones, so the fifth level keeps most of the width. The reading rail reduces to three community suggestions and the footer on thread pages.
 - **Narrower desktops:** the sidebar remains 210px; the rail is hidden between 1024px and 1199px.
 - **Phones and small tablets (under 1024px):**
   - Only the centre column shows, inside a shell up to 720px wide.

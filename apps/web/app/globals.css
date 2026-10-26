@@ -1314,11 +1314,12 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-branch.is-root > .thread-children > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
 /* Nothing to show yet while a branch loads, so no space either: the next reply stays put. */
 .thread-children[hidden], .thread-children:empty { display: none; }
-/* Replies stop at THREAD_MAX_DEPTH (3): two indents on a desktop, one on a phone (below).
-   Only the replies behind a deleted post go further. They keep the width they have, and
-   a second line beside them, in the gutter, shows where their run starts and ends. */
-.thread-branch .thread-branch .thread-branch .thread-branch > .thread-children { margin-left: -7px; padding-left: 5px; }
-.thread-branch .thread-branch .thread-branch .thread-branch > .thread-children > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
+/* Replies stop at THREAD_MAX_DEPTH (5), and every level indents: 44px on a desktop,
+   12px on a phone (below). Only the replies behind a deleted post go further
+   (.is-beyond). They keep the width they have, and a second line beside them, in
+   the gutter, shows where their run starts and ends. */
+.thread-children.is-beyond { margin-left: -7px; padding-left: 5px; }
+.thread-children.is-beyond > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
 .thread-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
 /* In a reply's action row, as tall as its buttons, so a reply with answers is no taller. */
 .thread-toggle { display: inline-flex; min-height: 34px; align-items: center; padding-inline: 6px; color: var(--accent-strong); font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -1895,13 +1896,11 @@ a.result-row:hover { color: var(--accent-strong); }
   .square-composer { padding: 16px; }
   .post-card, .post-list .post-card { padding: 18px 16px 8px; }
   .post-card.is-focused { padding: 20px 18px 10px; }
-  /* One narrow indent. The line stays clear of the card's rounded corner, so it starts
-     a gap below it. The third level lines up with the second, with its own line in the gutter. */
-  .thread-children { margin-top: var(--reply-gap); margin-left: 4px; padding: 0 0 0 10px; }
-  .thread-children > .thread-list > li > .thread-branch > .thread-row::before { left: -11px; width: 11px; }
-  .thread-branch .thread-branch .thread-branch > .thread-children,
-  .thread-branch .thread-branch .thread-branch .thread-branch > .thread-children { margin-left: -6px; padding-left: 4px; }
-  .thread-branch .thread-branch .thread-branch > .thread-children > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
+  /* Narrow indents, 12px a level, so the fifth level still keeps most of the width. The line
+     stays clear of the card's rounded corner, so it starts a gap below it. */
+  .thread-children { margin-top: var(--reply-gap); margin-left: 2px; padding: 0 0 0 8px; }
+  .thread-children > .thread-list > li > .thread-branch > .thread-row::before { left: -9px; width: 9px; }
+  .thread-children.is-beyond { margin-left: -5px; padding-left: 3px; }
   .notification-row { padding: 16px; }
   .page-header, .content-panel, .community-card, .governance-section { padding: 20px; }
 }

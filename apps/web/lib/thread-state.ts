@@ -30,9 +30,10 @@ export type BranchCache = Record<string, BranchState>
 /**
  * Replies opened in place stop here, counting from the post in focus: its replies are
  * level 1. A reply at the limit has no replies drawn under it; "Continue conversation"
- * opens it as the focus instead. More levels only narrow the column on a phone.
+ * opens it as the focus instead. Five lets a back-and-forth run a few turns in place;
+ * each level indents, so more would only narrow the column on a phone.
  */
-export const THREAD_MAX_DEPTH = 3
+export const THREAD_MAX_DEPTH = 5
 /**
  * A post that is gone has no page to continue to, so one at the limit would strand
  * the replies behind it. These may open a few levels further, the way they always
