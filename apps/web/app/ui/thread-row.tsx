@@ -1,7 +1,7 @@
 import type { Post, ThreadReply } from '@/lib/api'
 import type { ThreadRow } from '@/lib/thread-state'
 import { PostItem } from './post-item'
-import { ThreadBranch, ThreadReplyAction } from './thread-conversation'
+import { ThreadBranch, ThreadReplyAction, ThreadToggle } from './thread-conversation'
 
 export function renderThreadRow(
   post: ThreadReply,
@@ -22,15 +22,15 @@ export function renderThreadRow(
         id={post.id}
         parentId={post.replyParentId}
         handle={unavailable ? null : post.authorHandle}
-        parentHandle={parentHandle}
         replyCount={unavailable ? null : post.replyCount}
         hasReplies={unavailable || post.hasReplies === true || post.replyCount > 0}
         depth={depth}
         root={root}
       >
         {unavailable ? (
-          <article id={`post-${post.id}`} className="post-card thread-unavailable">
+          <article id={`post-${post.id}`} className="post-card is-reply thread-unavailable">
             <p className="text-sm italic text-muted">This post is no longer available.</p>
+            <div className="post-actions"><ThreadToggle /></div>
           </article>
         ) : (
           <PostItem
@@ -48,6 +48,7 @@ export function renderThreadRow(
                 count={post.replyCount}
               />
             )}
+            threadToggle={<ThreadToggle />}
           />
         )}
       </ThreadBranch>

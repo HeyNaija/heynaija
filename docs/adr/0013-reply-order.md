@@ -1,6 +1,8 @@
 # ADR 0013 — Replies: the author's first, then everyone else's, newest first
 
-**Date:** 25 October 2026 · **Status:** Accepted · **Amends:** the reply order in
+**Date:** 25 October 2026 · **Status:** Accepted, amended 26 October 2026 (replies
+under a reply read oldest first; see [Amendment](#amendment-26-october-2026)) ·
+**Amends:** the reply order in
 [docs/design/threaded-conversations.md](../design/threaded-conversations.md)
 
 ## Decision
@@ -57,6 +59,23 @@ the same way. Nothing is ranked by likes or reach."
   its group when newest first, last when oldest first, or in the separate
   "Your reply" spot while the rows before it are not loaded yet. Rows carry
   `lead` (by the parent's author) to tell which group.
+
+## Amendment, 26 October 2026
+
+Replies under a reply, when its branch is opened, are always **oldest first**:
+the reply's author's own, then everyone else's. The switch above the replies
+now orders only the replies to the post in focus.
+
+Newest first suited the replies to the post, which are separate answers to it.
+Under a reply it read a back-and-forth backwards: on a test thread, an author's
+second answer to someone ("omor", an hour later) sat above their first. Threads
+shows a sub-conversation oldest first, and X draws a reply chain top to bottom
+in time order. Reddit applies one sort to every level, but its default ("Best")
+is not by time.
+
+The API is unchanged: the web asks `GET /v1/posts/:id/replies` for
+`order=oldest` for every branch (`branchOrder` in `apps/web/lib/thread-state.ts`),
+and a just-posted answer in a branch goes where oldest first puts it.
 
 ## Not done
 

@@ -7,6 +7,13 @@ import type { ReactNode } from 'react'
 export type ThreadRow = { id: string; node: ReactNode; lead?: boolean }
 /** Each group of replies (the author's, then everyone else's) in time order: newest or oldest first. */
 export type ReplyOrder = 'newest' | 'oldest'
+/**
+ * The post in focus lists its replies in the order the reader chose. Under any other
+ * reply they read oldest first, so a back-and-forth reads down the page.
+ */
+export function branchOrder(focusOrder: ReplyOrder, isFocus: boolean): ReplyOrder {
+  return isFocus ? focusOrder : 'oldest'
+}
 export type ReplyTarget = { id: string; parentId: string | null; handle: string; depth: number }
 export type BranchState = {
   parentId: string | null
@@ -23,9 +30,10 @@ export type BranchCache = Record<string, BranchState>
 /**
  * Replies opened in place stop here, counting from the post in focus: its replies are
  * level 1. A reply at the limit has no replies drawn under it; "Continue conversation"
- * opens it as the focus instead. More levels only narrow the column on a phone.
+ * opens it as the focus instead. Five lets a back-and-forth run a few turns in place;
+ * each level indents, so more would only narrow the column on a phone.
  */
-export const THREAD_MAX_DEPTH = 3
+export const THREAD_MAX_DEPTH = 5
 /**
  * A post that is gone has no page to continue to, so one at the limit would strand
  * the replies behind it. These may open a few levels further, the way they always

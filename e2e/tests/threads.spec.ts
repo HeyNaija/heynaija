@@ -33,6 +33,12 @@ test('expands, reuses and pages branches, and replies to the selected post @mobi
     await branch.getByRole('link', { name: /^View.*replies/i }).first().click()
     await expect(page.locator(`#post-${fixture.nested[0]}`)).toBeVisible()
     await expect(page).toHaveURL(url)
+    // The toggle lives in the reply's action row, so its answers sit as close to it as to each other.
+    const gaps = await page.evaluate((ids) => {
+      const box = (id: string) => document.getElementById(`post-${id}`)!.getBoundingClientRect()
+      return [Math.round(box(ids[1]!).top - box(ids[0]!).bottom), Math.round(box(ids[2]!).top - box(ids[1]!).bottom)]
+    }, [fixture.first, fixture.nested[0]!, fixture.nested[1]!])
+    expect(gaps[0]).toBe(gaps[1])
     const afterExpansion = actions
     expect(afterExpansion).toBeGreaterThan(0)
     await branch.getByRole('link', { name: /^Hide replies/i }).first().click()
@@ -79,7 +85,7 @@ test('expands, reuses and pages branches, and replies to the selected post @mobi
       await card.scrollIntoViewIfNeeded()
       expect(await card.evaluate((node) => {
         const bounds = node.getBoundingClientRect()
-        return Array.from(node.querySelectorAll('.post-actions .icon-btn')).every((control) => {
+        return Array.from(node.querySelectorAll('.post-actions .icon-btn, .post-actions .thread-toggle')).every((control) => {
           const box = control.getBoundingClientRect()
           return box.width >= 44 && box.height >= 34 && box.left >= bounds.left && box.right <= bounds.right
         })
@@ -100,7 +106,7 @@ test('keeps surviving replies reachable through consecutive unavailable posts', 
     await branch.getByRole('link', { name: /^View.*replies/i }).first().click()
     for (const id of [fixture.bridge, fixture.nextBridge]) {
       const unavailable = page.locator(`.thread-branch[data-thread-id="${id}"]`)
-      await expect(unavailable.locator(`#post-${id}`)).toHaveText('This post is no longer available.')
+      await expect(unavailable.locator(`#post-${id} > p`)).toHaveText('This post is no longer available.')
       await unavailable.getByRole('link', { name: /^View.*replies/i }).first().click()
     }
     await expect(page.locator(`#post-${fixture.survivor}`)).toHaveText(new RegExp(fixture.survivorText))
@@ -128,6 +134,11 @@ test('newest first, your new reply shows at the top and once, as more replies lo
     await expect(page.locator('article', { hasText: 'Thread reply ' })).toHaveCount(25)
     await expect(page.locator('article', { hasText: text })).toHaveCount(1)
     await expect(rows.last()).toContainText('Thread reply 01 ')
+    // Under a reply, a back-and-forth reads down the page: oldest first, whatever the order above.
+    await page.locator(`.thread-branch[data-thread-id="${fixture.first}"] > .thread-row a.thread-toggle`).click()
+    await expect(page.locator(`#post-${fixture.nested[1]}`)).toBeVisible()
+    expect(await page.locator(`#replies-${fixture.first} > .thread-list > li > .thread-branch`)
+      .evaluateAll((branches) => branches.map((row) => (row as HTMLElement).dataset.threadId))).toEqual(fixture.nested)
   } finally {
     await context.close()
   }
@@ -218,6 +229,9 @@ test("the author's own replies come first, then everyone else's newest first, an
     await expect(page.getByText(`@${handle}'s own replies come first, then everyone else's, oldest first.`)).toBeVisible()
     await expect(page.getByRole('link', { name: 'Oldest first', exact: true })).toHaveAttribute('aria-current', 'true')
     expect(await order()).toEqual([replies[2], replies[4], replies[1], replies[3]])
+    // Closed before writing, as anyone would: kept inside the screen, the open panel can sit over the editor.
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.thread-order-rule')).toBeHidden()
 
     // The author's new reply joins the end of their own, ahead of everyone else's.
     const text = `Author follow-up from ${handle}`
@@ -237,14 +251,14 @@ test("the author's own replies come first, then everyone else's newest first, an
   }
 })
 
-test('replies open in place three levels deep; below that a post continues as its own conversation @mobile', async ({ browser }) => {
+test('replies open in place five levels deep; below that a post continues as its own conversation @mobile', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'depth')
   const db = pool()
   try {
-    // A post and a chain of replies under it, one level each: level 4 is out of reach in place.
+    // A post and a chain of replies under it, one level each: level 6 is out of reach in place.
     const { rows: [member] } = await db.query<{ id: string }>('select id from members where handle = $1', [handle])
     const ids: string[] = []
-    for (let level = 0; level <= 4; level++) {
+    for (let level = 0; level <= 6; level++) {
       const { rows: [post] } = await db.query<{ id: string }>(
         `insert into posts (author_id, text, reply_parent_id, root_id, created_at)
          values ($1, $2, $3, $4, now() - interval '1 hour' + make_interval(secs => $5)) returning id`,
@@ -252,30 +266,34 @@ test('replies open in place three levels deep; below that a post continues as it
       )
       ids.push(post!.id)
     }
-    const expand = (id: string) => page.locator(`.thread-branch[data-thread-id="${id}"] > .thread-controls > a.thread-toggle`)
+    const expand = (id: string) => page.locator(`.thread-branch[data-thread-id="${id}"] > .thread-row a.thread-toggle`)
 
     await page.goto(`/p/${ids[0]}`)
     await expect(page.locator(`#post-${ids[1]}`)).toBeVisible()
-    await expand(ids[1]!).click()
-    await expect(page.locator(`#post-${ids[2]}`)).toBeVisible()
-    await expand(ids[2]!).click()
-    await expect(page.locator(`#post-${ids[3]}`)).toBeVisible()
-    // The third level offers the conversation, not another level.
-    await expect(expand(ids[3]!)).toHaveText('Continue conversation')
-    await expect(page.locator(`#post-${ids[4]}`)).toHaveCount(0)
+    for (const level of [1, 2, 3, 4]) {
+      await expand(ids[level]!).click()
+      await expect(page.locator(`#post-${ids[level + 1]}`)).toBeVisible()
+    }
+    // The fifth level offers the conversation, not another level.
+    await expect(expand(ids[5]!)).toHaveText('Continue conversation')
+    await expect(page.locator(`#post-${ids[6]}`)).toHaveCount(0)
+    // Every level indents, and the fifth still has room for its text and buttons.
+    const lefts = await Promise.all(ids.slice(1, 6).map((id) => page.locator(`#post-${id}`).evaluate((node) => node.getBoundingClientRect().left)))
+    for (let i = 1; i < lefts.length; i++) expect(lefts[i]!).toBeGreaterThan(lefts[i - 1]!)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 
-    // Answering the second level adds its reply in place.
+    // Answering the fourth level adds its reply in place.
     const url = page.url()
-    await page.locator(`#post-${ids[2]} .post-actions a[aria-label^="Reply"]`).click()
-    await (await replyBox(page, ids[2])).fill('An answer one level down')
+    await page.locator(`#post-${ids[4]} .post-actions a[aria-label^="Reply"]`).click()
+    await (await replyBox(page, ids[4])).fill('An answer one level down')
     await page.getByRole('button', { name: 'Reply', exact: true }).click()
     await expect(page.locator('article', { hasText: 'An answer one level down' })).toBeVisible()
     expect(page.url()).toBe(url)
 
-    // Answering the third opens it, since a reply there would not be shown on this page.
-    await page.locator(`#post-${ids[3]} .post-actions a[aria-label^="Reply"]`).click()
-    await expect(page).toHaveURL(new RegExp(`/p/${ids[3]}#compose$`))
-    await expect(page.locator(`#post-${ids[4]}`)).toBeVisible()
+    // Answering the fifth opens it, since a reply there would not be shown on this page.
+    await page.locator(`#post-${ids[5]} .post-actions a[aria-label^="Reply"]`).click()
+    await expect(page).toHaveURL(new RegExp(`/p/${ids[5]}#compose$`))
+    await expect(page.locator(`#post-${ids[6]}`)).toBeVisible()
   } finally {
     await db.end()
     await context.close()
