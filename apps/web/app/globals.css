@@ -45,7 +45,7 @@
   --post-text-size: 15px;
   --post-text-leading: 1.6;
   --post-meta-size: 12px;
-  --reply-padding: 12px 14px 3px;
+  --reply-padding: 12px 14px 4px;
   --reply-gap: 8px;
   --touch-target: 44px;
 
@@ -1281,10 +1281,9 @@ ol.post-list .post-card { padding-inline: 18px; }
 .post-card.is-reply .post-author { min-width: 0; max-width: 100%; }
 .post-card.is-reply .post-meta { margin-top: 0; }
 .post-card.is-reply > .mt-3 { margin-top: var(--reply-gap); }
-/* Replies are read in a run, so their action row is lighter: no divider, buttons 34px tall
-   (44px wide, so neighbours stay apart), close under the text and the card's edge. */
-.post-card.is-reply .post-actions { margin-top: 4px; border-top: 0; padding-top: 0; }
-.post-card.is-reply .post-actions .icon-btn { min-height: 34px; }
+/* Replies are read in a run, so their action row is lighter: no divider, just a little
+   space under the text. Its buttons keep the full 44px touch target, as in the feed. */
+.post-card.is-reply .post-actions { margin-top: 6px; border-top: 0; padding-top: 0; }
 .thread-author-label { color: var(--accent-strong); font-size: var(--post-meta-size); font-weight: 600; line-height: 18px; }
 .thread-view { gap: 14px; }
 .thread-context { border-bottom: 1px solid var(--line); }
@@ -1320,7 +1319,7 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-children.is-beyond > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
 .thread-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
 /* In a reply's action row, as tall as its buttons, so a reply with answers is no taller. */
-.thread-toggle { display: inline-flex; min-height: 34px; align-items: center; padding-inline: 6px; color: var(--accent-strong); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.thread-toggle { display: inline-flex; min-height: var(--touch-target); align-items: center; padding-inline: 6px; color: var(--accent-strong); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .thread-toggle:hover { text-decoration: underline; }
 .thread-toggle[aria-busy="true"], .thread-more[aria-disabled="true"] { cursor: wait; opacity: 0.65; }
 .post-actions > .thread-toggle { flex: none; max-width: none; }
@@ -1342,7 +1341,7 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-editor-host:not(:empty) { margin-top: 14px; }
 .thread-editor-host:empty { display: none; }
 .composer-posted { margin-top: 6px; color: var(--muted); font-size: 12px; }
-.thread-list > li > .thread-branch > .thread-row > .post-card { content-visibility: auto; contain-intrinsic-size: auto 140px; }
+.thread-list > li > .thread-branch > .thread-row > .post-card { content-visibility: auto; contain-intrinsic-size: auto 156px; }
 .thread-list > li > .thread-branch > .thread-row > .post-card:has(details[open]) { content-visibility: visible; }
 
 /* Avatars and identity share a header; the content below uses the full card. */

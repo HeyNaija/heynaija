@@ -64,7 +64,7 @@ spacing:
   card-padding: "22px"
   card-padding-mobile: "18px"
   gutter-mobile: "12px"
-  reply-padding: "12px 14px 8px"
+  reply-padding: "12px 14px 4px"
   reply-gap: "8px"
   feed-padding: "28px 0 48px"
 components:
@@ -238,7 +238,7 @@ Image drafts use the control radius; published post galleries use the 12px card 
 - **Border:** 1px Hairline. Feed cards go to Hairline Strong on hover.
 - **Behavior:** a post card opens its conversation from anywhere on the card (a reply opens its own conversation). Avatars, names, timestamps, community links, images, menus and actions keep their own targets, and post text stays selectable by dragging. The focused post on its own page is not a link.
 - **Shadow Strategy:** none; cards are flush (see Elevation & Depth).
-- **Internal Padding:** feed posts use 20px 20px 10px; below 1024px they use 18px 16px 8px, and below 420px, 16px 14px 6px. Compact replies use 12px 14px 8px at every width. Rail sections use 20px, shared content panels 22px and profile/community headers 24px. Shared page cards reduce to 20px on mobile and 18px on small phones. Focused thread posts use 24px 24px 12px on desktop.
+- **Internal Padding:** feed posts use 20px 20px 10px; below 1024px they use 18px 16px 8px, and below 420px, 16px 14px 6px. Compact replies use 12px 14px 4px at every width, with their 44px action row 6px under the text. Rail sections use 20px, shared content panels 22px and profile/community headers 24px. Shared page cards reduce to 20px on mobile and 18px on small phones. Focused thread posts use 24px 24px 12px on desktop.
 - **Applies to:** posts, notifications (unread ones take Sage Wash with a green-tinted border), the new-post composer, profile and community headers, forms and moderation cases, and each right-rail section, Public Treasury included. Reply composers use an inline field instead of a card.
 - **Content alignment:** avatars stay in the header row. Post text, images and actions, and notification excerpts and destination links, use the full card width beneath the header without an empty avatar column.
 

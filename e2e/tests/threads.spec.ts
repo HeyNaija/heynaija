@@ -229,6 +229,9 @@ test("the author's own replies come first, then everyone else's newest first, an
     await expect(page.getByText(`@${handle}'s own replies come first, then everyone else's, oldest first.`)).toBeVisible()
     await expect(page.getByRole('link', { name: 'Oldest first', exact: true })).toHaveAttribute('aria-current', 'true')
     expect(await order()).toEqual([replies[2], replies[4], replies[1], replies[3]])
+    // Closed before writing, as anyone would: kept inside the screen, the open panel can sit over the editor.
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.thread-order-rule')).toBeHidden()
 
     // The author's new reply joins the end of their own, ahead of everyone else's.
     const text = `Author follow-up from ${handle}`
