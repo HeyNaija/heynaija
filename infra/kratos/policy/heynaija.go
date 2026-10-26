@@ -12,6 +12,7 @@ import (
 	"github.com/ory/kratos/schema"
 	"github.com/ory/kratos/selfservice/flow"
 	"github.com/ory/kratos/selfservice/flow/login"
+	"github.com/ory/kratos/selfservice/flow/registration"
 	"github.com/ory/kratos/text"
 	"github.com/ory/kratos/x"
 	"github.com/ory/x/sqlcon"
@@ -138,4 +139,54 @@ func heynaijaCheckPendingGoogle(i *identity.Identity, config []byte) error {
 		}
 	}
 	return nil
+}
+
+// A new Google member is asked for a handle after Google, which does not give
+// one. Kratos would send them to Google again when they send it. Instead the
+// verified Google result waits in the registration flow's private context (the
+// database, never the browser), and the handle finishes the signup with it.
+const heynaijaPendingGoogleKey = "heynaija_pending_google"
+
+type heynaijaPendingGoogleSignup struct {
+	Claims *Claims                                  `json:"claims"`
+	Token  *identity.CredentialsOIDCEncryptedTokens `json:"token,omitempty"`
+}
+
+// Called with every verified Google result on a registration flow, before the
+// new account is checked, so it is there if a handle turns out to be needed.
+func heynaijaKeepGoogle(rf *registration.Flow, provider Provider, claims *Claims, token *identity.CredentialsOIDCEncryptedTokens) error {
+	if !heynaijaGoogle(provider) || claims == nil || claims.Subject == "" {
+		return nil
+	}
+	kept, err := sjson.SetBytes(rf.InternalContext, heynaijaPendingGoogleKey, heynaijaPendingGoogleSignup{Claims: claims, Token: token})
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	rf.InternalContext = kept
+	return nil
+}
+
+// The Google result this flow is waiting to finish with, if any. The traits sent
+// with it keep everything but the email: the account's address is the one
+// Google verified, not one typed or altered in the form.
+func heynaijaPendingGoogle(rf *registration.Flow, provider Provider, traits json.RawMessage) (*Claims, *identity.CredentialsOIDCEncryptedTokens, json.RawMessage, bool) {
+	if !heynaijaGoogle(provider) {
+		return nil, nil, nil, false
+	}
+	raw := gjson.GetBytes(rf.InternalContext, heynaijaPendingGoogleKey)
+	if !raw.IsObject() {
+		return nil, nil, nil, false
+	}
+	var pending heynaijaPendingGoogleSignup
+	if err := json.Unmarshal([]byte(raw.Raw), &pending); err != nil || pending.Claims == nil || pending.Claims.Subject == "" {
+		return nil, nil, nil, false
+	}
+	if len(traits) > 0 {
+		if withoutEmail, err := sjson.DeleteBytes(traits, "email"); err == nil {
+			traits = withoutEmail
+		} else {
+			traits = nil
+		}
+	}
+	return pending.Claims, pending.Token, traits, true
 }

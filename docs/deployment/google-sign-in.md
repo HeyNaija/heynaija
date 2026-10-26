@@ -16,7 +16,9 @@ OAuth client and switch it on, as below.
   does not provide a handle, so after Google, `/signup` says the member is
   signed in with Google as their address and asks for the handle alone, with
   one "Finish creating my account" button; it does not show the signup form
-  again.
+  again. Kratos keeps the verified Google result with that signup (a HeyNaija
+  patch, `infra/kratos/policy`), so the button finishes the account without a
+  second trip to Google.
 - Either way, Kratos calls the API's registration webhooks, which check and then
   spend the invite. Without one, signup is refused.
 - When an email-only member first chooses Google, Kratos verifies the Google

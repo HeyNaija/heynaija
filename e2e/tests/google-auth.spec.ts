@@ -225,13 +225,18 @@ test('a new invited Google member finishes with only a handle, on a page that sa
   await expect(page.getByRole('button', { name: 'Continue with Google' })).toHaveCount(0)
   expect(google.authorizations - before).toBe(1)
   await page.getByLabel('Handle').fill(handle)
+  // An address changed in the page is ignored: the account gets the one Google verified.
+  await page.locator('input[name="traits.email"]').evaluate((input: HTMLInputElement) => { input.value = 'someone-else@e2e.test' })
   await page.getByRole('button', { name: 'Finish creating my account' }).click()
-  // Like any newcomer, they start on the welcome flow.
+  // Like any newcomer, they start on the welcome flow, without a second trip to Google.
   await page.waitForURL((url) => url.pathname === '/welcome')
+  expect(google.authorizations - before).toBe(1)
   const me = await (await page.context().request.get('/api/v1/me')).json()
   expect(me.handle).toBe(handle)
   expect(me.onboarded).toBe(false)
-  expect((await identity(me.id)).credentials?.oidc?.identifiers).toHaveLength(1)
+  const account = await identity(me.id)
+  expect(account.credentials?.oidc?.identifiers).toHaveLength(1)
+  expect(account.traits.email).toBe(email)
 })
 
 test('a taken handle cannot connect a new Google email to another member, and a free one finishes the signup', async ({ browser, page }) => {
@@ -240,6 +245,7 @@ test('a taken handle cannot connect a new Google email to another member, and a 
     const original = await (await member.context.request.get('/api/v1/me')).json()
     const email = `${handleFor('gcollision')}@${MARK.emailDomain}`
     google.use(email)
+    const before = google.authorizations
     await page.goto(`/join?code=${createInvite()}`)
     await page.getByLabel('I am 18 or older').check()
     await page.getByRole('button', { name: 'Check invite code' }).click()
@@ -261,6 +267,9 @@ test('a taken handle cannot connect a new Google email to another member, and a 
     const me = await (await page.context().request.get('/api/v1/me')).json()
     expect(me.handle).toBe(fresh)
     expect(me.id).not.toBe(original.id)
+    // One trip to Google, however many handles it took.
+    expect(google.authorizations - before).toBe(1)
+    expect((await identity(me.id)).traits?.email).toBe(email)
   } finally { await member.context.close() }
 })
 
