@@ -7,6 +7,13 @@ import type { ReactNode } from 'react'
 export type ThreadRow = { id: string; node: ReactNode; lead?: boolean }
 /** Each group of replies (the author's, then everyone else's) in time order: newest or oldest first. */
 export type ReplyOrder = 'newest' | 'oldest'
+/**
+ * The post in focus lists its replies in the order the reader chose. Under any other
+ * reply they read oldest first, so a back-and-forth reads down the page.
+ */
+export function branchOrder(focusOrder: ReplyOrder, isFocus: boolean): ReplyOrder {
+  return isFocus ? focusOrder : 'oldest'
+}
 export type ReplyTarget = { id: string; parentId: string | null; handle: string; depth: number }
 export type BranchState = {
   parentId: string | null

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { appendReplyPage, canRenderThreadChildren, emptyBranch, insertConfirmedReply, nextThreadPath, pruneCollapsedBranches, THREAD_MAX_DEPTH, THREAD_MAX_GAPS } from '../lib/thread-state.ts'
+import { appendReplyPage, branchOrder, canRenderThreadChildren, emptyBranch, insertConfirmedReply, nextThreadPath, pruneCollapsedBranches, THREAD_MAX_DEPTH, THREAD_MAX_GAPS } from '../lib/thread-state.ts'
 
 const row = (id) => ({ id, node: id, lead: id.startsWith('lead') })
 const loaded = (items = [], cursor = null) => ({ ...emptyBranch('root'), items: items.map(row), cursor, loaded: true, open: true })
@@ -85,6 +85,15 @@ test("oldest first, the author's new reply ends their group once everyone else's
   assert.deepEqual(ids(insertConfirmedReply(loaded(['lead-a'], null), row('lead-new'), 'oldest').items), ['lead-a', 'lead-new'])
   assert.deepEqual(ids(insertConfirmedReply(loaded(['lead-a'], 'after-lead-a'), row('lead-new'), 'oldest').recent), ['lead-new'])
   assert.deepEqual(ids(insertConfirmedReply(loaded(['lead-a', 'a'], 'after-a'), row('new'), 'oldest').recent), ['new'])
+})
+
+test('the post in focus keeps the order the reader chose; under any other reply, oldest first', () => {
+  assert.equal(branchOrder('newest', true), 'newest')
+  assert.equal(branchOrder('oldest', true), 'oldest')
+  assert.equal(branchOrder('newest', false), 'oldest')
+  assert.equal(branchOrder('oldest', false), 'oldest')
+  // A new answer in a complete branch goes after the answers already there.
+  assert.deepEqual(ids(insertConfirmedReply(loaded(['a', 'b']), row('new'), branchOrder('newest', false)).items), ['a', 'b', 'new'])
 })
 
 test('an in-flight page finishing after collapse does not reopen its branch', () => {

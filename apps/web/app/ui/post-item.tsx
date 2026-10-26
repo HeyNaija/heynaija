@@ -21,7 +21,7 @@ import { RepostButton } from './repost-button'
 import { ShareButton } from './share-button'
 import { SubmitButton } from './submit-button'
 import { ThreadAuthorLabel } from './thread-author'
-import { timeAgo } from './time'
+import { exactTime, postedAt, timeAgo } from './time'
 
 /** The shared surface for forms, cases and other distinct objects. */
 export const card = 'square-card'
@@ -35,6 +35,7 @@ export function PostItem({
   hideCommunity = false,
   explain = false,
   replyAction,
+  threadToggle,
   pinned,
 }: {
   post: Post
@@ -51,6 +52,8 @@ export function PostItem({
   explain?: boolean
   /** A thread supplies an in-place target picker; ordinary feeds retain navigation. */
   replyAction?: ReactNode
+  /** A thread's control for the replies under this one, after the counts. */
+  threadToggle?: ReactNode
   /** Shown above the list as the profile's or the community's pinned post. */
   pinned?: 'profile' | 'community'
 }) {
@@ -135,8 +138,8 @@ export function PostItem({
               <p className="post-meta">
                 {post.authorName && !compact ? <><span className="truncate">@{post.authorHandle}</span><span aria-hidden="true">·</span></> : null}
                 <Link prefetch={false} href={href} className="shrink-0 hover:underline">
-                  <time dateTime={post.createdAt} title={new Date(post.createdAt).toUTCString()}>
-                    {timeAgo(post.createdAt, now)}
+                  <time dateTime={post.createdAt} title={exactTime(post.createdAt)}>
+                    {focused ? postedAt(post.createdAt) : timeAgo(post.createdAt, now)}
                   </time>
                 </Link>
               </p>
@@ -271,6 +274,8 @@ export function PostItem({
             <span className="sr-only">{likes}</span>
           </span>
         )}
+
+        {threadToggle}
 
         <div className="post-actions-end">
           {viewerId && !compact ? (

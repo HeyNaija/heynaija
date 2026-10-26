@@ -33,6 +33,12 @@ test('expands, reuses and pages branches, and replies to the selected post @mobi
     await branch.getByRole('link', { name: /^View.*replies/i }).first().click()
     await expect(page.locator(`#post-${fixture.nested[0]}`)).toBeVisible()
     await expect(page).toHaveURL(url)
+    // The toggle lives in the reply's action row, so its answers sit as close to it as to each other.
+    const gaps = await page.evaluate((ids) => {
+      const box = (id: string) => document.getElementById(`post-${id}`)!.getBoundingClientRect()
+      return [Math.round(box(ids[1]!).top - box(ids[0]!).bottom), Math.round(box(ids[2]!).top - box(ids[1]!).bottom)]
+    }, [fixture.first, fixture.nested[0]!, fixture.nested[1]!])
+    expect(gaps[0]).toBe(gaps[1])
     const afterExpansion = actions
     expect(afterExpansion).toBeGreaterThan(0)
     await branch.getByRole('link', { name: /^Hide replies/i }).first().click()
@@ -79,7 +85,7 @@ test('expands, reuses and pages branches, and replies to the selected post @mobi
       await card.scrollIntoViewIfNeeded()
       expect(await card.evaluate((node) => {
         const bounds = node.getBoundingClientRect()
-        return Array.from(node.querySelectorAll('.post-actions .icon-btn')).every((control) => {
+        return Array.from(node.querySelectorAll('.post-actions .icon-btn, .post-actions .thread-toggle')).every((control) => {
           const box = control.getBoundingClientRect()
           return box.width >= 44 && box.height >= 34 && box.left >= bounds.left && box.right <= bounds.right
         })
@@ -100,7 +106,7 @@ test('keeps surviving replies reachable through consecutive unavailable posts', 
     await branch.getByRole('link', { name: /^View.*replies/i }).first().click()
     for (const id of [fixture.bridge, fixture.nextBridge]) {
       const unavailable = page.locator(`.thread-branch[data-thread-id="${id}"]`)
-      await expect(unavailable.locator(`#post-${id}`)).toHaveText('This post is no longer available.')
+      await expect(unavailable.locator(`#post-${id} > p`)).toHaveText('This post is no longer available.')
       await unavailable.getByRole('link', { name: /^View.*replies/i }).first().click()
     }
     await expect(page.locator(`#post-${fixture.survivor}`)).toHaveText(new RegExp(fixture.survivorText))
@@ -128,6 +134,11 @@ test('newest first, your new reply shows at the top and once, as more replies lo
     await expect(page.locator('article', { hasText: 'Thread reply ' })).toHaveCount(25)
     await expect(page.locator('article', { hasText: text })).toHaveCount(1)
     await expect(rows.last()).toContainText('Thread reply 01 ')
+    // Under a reply, a back-and-forth reads down the page: oldest first, whatever the order above.
+    await page.locator(`.thread-branch[data-thread-id="${fixture.first}"] > .thread-row a.thread-toggle`).click()
+    await expect(page.locator(`#post-${fixture.nested[1]}`)).toBeVisible()
+    expect(await page.locator(`#replies-${fixture.first} > .thread-list > li > .thread-branch`)
+      .evaluateAll((branches) => branches.map((row) => (row as HTMLElement).dataset.threadId))).toEqual(fixture.nested)
   } finally {
     await context.close()
   }
@@ -252,7 +263,7 @@ test('replies open in place three levels deep; below that a post continues as it
       )
       ids.push(post!.id)
     }
-    const expand = (id: string) => page.locator(`.thread-branch[data-thread-id="${id}"] > .thread-controls > a.thread-toggle`)
+    const expand = (id: string) => page.locator(`.thread-branch[data-thread-id="${id}"] > .thread-row a.thread-toggle`)
 
     await page.goto(`/p/${ids[0]}`)
     await expect(page.locator(`#post-${ids[1]}`)).toBeVisible()

@@ -7,6 +7,7 @@ import { createThreadReply, loadThreadReplies } from '@/app/thread-actions'
 import {
   appendReplyPage,
   type BranchCache,
+  branchOrder,
   canRenderThreadChildren,
   emptyBranch,
   insertConfirmedReply,
@@ -36,6 +37,9 @@ type ConversationContext = {
 }
 const Conversation = createContext<ConversationContext | null>(null)
 const BranchAncestry = createContext<readonly string[]>([])
+/** What a reply's own row needs to open, hide or continue its branch. */
+type BranchControl = { id: string; inPlace: boolean; expanded: boolean; shown: boolean; busy: boolean; toggle?: () => void }
+const BranchToggle = createContext<BranchControl | null>(null)
 
 const plainClick = (event: MouseEvent<HTMLAnchorElement>) =>
   !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
@@ -54,7 +58,7 @@ export function ThreadConversation({
   member: { handle: string; avatar: string | null } | null
   initialRows: ThreadRow[]
   cursor: string | null
-  /** Every list of replies on the page, the focus's and each branch's, is in this order. */
+  /** The focus's replies are in this order; each branch's read oldest first (`branchOrder`). */
   order: ReplyOrder
   version: number
   children: ReactNode
@@ -143,7 +147,7 @@ export function ThreadConversation({
       [position.id]: { ...(all[position.id] ?? current), open: true, status: 'loading', error: undefined, touched: Date.now() },
     }))
     startTransition(async () => {
-      const result = await loadThreadReplies(position.id, next, position.depth + 1, position.handle, order)
+      const result = await loadThreadReplies(position.id, next, position.depth + 1, position.handle, branchOrder(order, position.id === focus.id))
         .catch(() => ({ error: 'Replies could not be loaded. Check your connection and try again.' }))
       busy.current.delete(request)
       if (!mounted.current || gen !== generation.current) return
@@ -168,10 +172,10 @@ export function ThreadConversation({
       const parent = current[parentId] ?? emptyBranch(selected.current.id === parentId ? selected.current.parentId : null)
       return {
         ...current,
-        [parentId]: { ...insertConfirmedReply(parent, row, order), touched: Date.now() },
+        [parentId]: { ...insertConfirmedReply(parent, row, branchOrder(order, parentId === focus.id)), touched: Date.now() },
       }
     })
-  }, [order])
+  }, [focus.id, order])
 
   const editor = member ? (
     <Composer
@@ -220,18 +224,46 @@ export function ThreadReplyAction({ id, parentId, handle, depth, count }: ReplyT
   )
 }
 
+/**
+ * Opens or hides a reply's branch from the reply's own action row, so it takes no
+ * line of its own between a reply and its answers. Past the depth limit it opens
+ * the reply as its own conversation.
+ */
+export function ThreadToggle() {
+  const branch = useContext(BranchToggle)
+  if (!branch) return null
+  if (!branch.inPlace) {
+    return <Link prefetch={false} href={`/p/${branch.id}`} className="thread-toggle is-wide">Continue conversation</Link>
+  }
+  return (
+    <Link
+      href={`/p/${branch.id}#replies-${branch.id}`}
+      prefetch={false}
+      className="thread-toggle"
+      aria-controls={`replies-${branch.id}`}
+      aria-expanded={branch.expanded}
+      aria-busy={branch.busy || undefined}
+      onClick={(event) => {
+        if (!plainClick(event) || !branch.toggle) return
+        event.preventDefault()
+        branch.toggle()
+      }}
+    >
+      {branch.busy ? 'Loading…' : branch.shown ? 'Hide replies' : 'View replies'}
+    </Link>
+  )
+}
+
 export function ThreadBranch({
   id,
   parentId,
   handle,
-  parentHandle,
   replyCount,
   hasReplies,
   depth,
   root = false,
   children,
 }: Position & {
-  parentHandle: string | null
   replyCount: number | null
   hasReplies: boolean
   root?: boolean
@@ -258,50 +290,30 @@ export function ThreadBranch({
   const expandable = !empty && (hasReplies || total > 0 || items.length > 0 || recent.length > 0)
   const open = root || state?.open === true
   const position = { id, parentId, handle, depth }
-  const order = context?.order ?? 'newest'
+  const order = branchOrder(context?.order ?? 'newest', root)
+  const control: BranchControl | null = !root && expandable ? {
+    id,
+    inPlace: renderChildren,
+    expanded: open,
+    shown: open && state?.loaded === true,
+    busy,
+    toggle: context ? () => {
+      if (busy) return
+      if (open && state?.loaded) context.collapse(id)
+      else context.load(position)
+    } : undefined,
+  } : null
 
   return (
     <BranchAncestry.Provider value={path}>
     <div className={`thread-branch ${root ? 'is-root' : ''}`} data-thread-id={id} data-parent-id={parentId ?? ''} data-depth={depth}>
-      {depth > 1 && parentId && (!handle || !parentHandle || handle !== parentHandle) ? (
-        <p className="thread-recipient">
-          <Link href={`/p/${parentId}#post-${parentId}`} prefetch={false}>
-            {parentHandle ? `Replying to @${parentHandle}` : 'Replying to an earlier post'}
-          </Link>
-        </p>
-      ) : null}
-      <div className="thread-row">{children}</div>
+      {/* The indent and the line show whom a reply answers, so it needs no label. */}
+      <div className="thread-row"><BranchToggle.Provider value={control}>{children}</BranchToggle.Provider></div>
       {/* The editor stays in the focused branch's tree, so it keeps its text
           and uploads wherever it is shown. Nothing moves it to an unavailable
           post, so that host has no id. */}
       {handle || root ? (
         <div id={handle ? `thread-editor-${id}` : undefined} className="thread-editor-host">{root ? context?.editor : null}</div>
-      ) : null}
-
-      {!root && expandable ? (
-        <div className="thread-controls">
-          {!renderChildren ? (
-            <Link prefetch={false} href={`/p/${id}`} className="thread-toggle">Continue conversation</Link>
-          ) : (
-            <Link
-              href={`/p/${id}#replies-${id}`}
-              prefetch={false}
-              className="thread-toggle"
-              aria-controls={`replies-${id}`}
-              aria-expanded={open}
-              aria-busy={busy || undefined}
-              onClick={(event) => {
-                if (!plainClick(event) || !context) return
-                event.preventDefault()
-                if (busy) return
-                if (open && state?.loaded) context.collapse(id)
-                else context.load(position)
-              }}
-            >
-              {busy ? 'Loading replies…' : open && state?.loaded ? 'Hide replies' : 'View replies'}
-            </Link>
-          )}
-        </div>
       ) : null}
 
       {renderChildren && (root || state) ? (
@@ -370,7 +382,8 @@ function RepliesHeading({ id, handle, order, ordered }: { id: string; handle: st
           <p className="thread-order-rule">
             <strong>Author replies first.</strong>{' '}
             {handle ? `@${handle}'s` : "The author's"} own replies come first, then everyone else's, {order} first.
-            Under each reply, its author's replies come first the same way. Nothing is ranked by likes or reach.
+            Under each reply, its author's replies come first, then everyone else's, oldest first, so a
+            back-and-forth reads down the page. Nothing is ranked by likes or reach.
           </p>
         </Menu>
       ) : null}
