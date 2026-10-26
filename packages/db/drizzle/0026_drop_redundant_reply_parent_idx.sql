@@ -1,0 +1,1 @@
+DROP INDEX "posts_reply_parent_idx";

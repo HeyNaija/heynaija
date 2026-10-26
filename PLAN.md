@@ -229,8 +229,8 @@ Everything visual comes from tokens in `apps/web/app/globals.css`; the full syst
 - **Cards on a tinted ground** (changed 14 October 2026, replacing "rows, not
   cards"). The page is a pale sage-grey ground with no framing sheet; posts,
   notifications, the composer, profile and community headers, forms and each
-  right-rail section are flat white cards (1px border, no shadow) with 10–12px
-  gaps. The sidebar sits on the ground; the current page is a white pill. Same on
+  right-rail section are flat white cards (1px border, no shadow), with 14px feed
+  gaps and an 8px compact-reply rhythm. The sidebar sits on the ground; the current page is a sage pill. Same on
   phones, with 12px side gutters.
 - **One bold element:** the bubbly wordmark. Everything around it stays quiet.
 - **Shared primitives** for every control: `.btn` (primary, secondary, ghost,

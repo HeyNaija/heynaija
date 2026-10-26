@@ -4,6 +4,7 @@
 #   ./deploy.sh <commit>    deploy (or go back to) that commit
 #   ./deploy.sh             the latest commit on DEPLOY_BRANCH (staging or main)
 #   BUILD=1 ./deploy.sh     build the images here instead of pulling them
+# A failed pull is tried again up to PULL_ATTEMPTS (4) times, waiting longer each time.
 # Images are tagged with the commit. The last five releases stay on the server,
 # so going back to one of them needs no registry. Database migrations only ever
 # add, so older code keeps working after a rollback; never write a migration that
@@ -40,8 +41,20 @@ elif [[ ${BUILD:-0} == 1 ]]; then
   echo "Building $RELEASE here"
   docker compose build
 else
-  docker compose pull --quiet api web kratos \
-    || { echo "No images for $RELEASE in $prefix. Did the build job finish? (BUILD=1 builds here instead.)"; exit 1; }
+  # A pull fails for two reasons: the build job has not pushed this release yet, or
+  # the registry could not be reached (a dropped connection, a brief outage). Only
+  # waiting tells them apart, so try a few times before giving up.
+  attempts=${PULL_ATTEMPTS:-4}
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    docker compose pull --quiet api web kratos && break
+    if ((attempt == attempts)); then
+      echo "Could not pull the images for $RELEASE from $prefix after $attempts tries."
+      echo "Either the build job has not finished, or the registry could not be reached. (BUILD=1 builds here instead.)"
+      exit 1
+    fi
+    echo "Pulling the images for $RELEASE failed (try $attempt of $attempts); trying again in $((attempt * ${PULL_RETRY_SECONDS:-15}))s"
+    sleep $((attempt * ${PULL_RETRY_SECONDS:-15}))
+  done
 fi
 
 # Compose recreates a container only when its service definition changes. Kratos

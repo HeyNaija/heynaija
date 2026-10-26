@@ -44,6 +44,8 @@ type SidebarLink = {
   unread?: number
   /** Drawn empty, for its room only (see `sidebarLinks`). */
   placeholder?: boolean
+  /** Always lives in More, however tall the window is. */
+  secondary?: boolean
 }
 
 /** The member as far as the sidebar can tell: undefined until it is known who is looking. */
@@ -54,8 +56,9 @@ type Looking = Extract<Viewer, { state: 'member' }>['me'] | null | undefined
  * "The sidebar" in globals.css), so it is right on the first paint and with
  * JavaScript off. Each link is also listed in the More menu; the stylesheet shows
  * those copies, and hides the ones in the list, a tier at a time as space runs out.
- * The two least wanted links share the last tier: a More button takes the room of
- * one link, so hiding a single link would gain nothing.
+ * Links marked `secondary` (Progress, Settings, Moderation) always stay in More,
+ * leaving the main list for everyday reading. Tier zero is their permanent home
+ * in that menu.
  */
 export function Sidebar() {
   return (
@@ -115,12 +118,12 @@ function sidebarLinks(me: Looking): SidebarLink[] {
       ? [{ href: '/notifications', label: 'Notifications', icon: BellIcon, keep: 3, unread: me?.unreadNotifications, placeholder: me === undefined }]
       : []),
     { href: '/about', label: 'About HeyNaija', icon: InfoIcon, keep: 9 },
-    { href: '/progress', label: 'Progress', icon: HistoryIcon, keep: 8 },
+    { href: '/progress', label: 'Progress', icon: HistoryIcon, keep: 8, secondary: true },
     { href: '/governance', label: 'Governance', icon: GovernanceIcon, keep: 7 },
     { href: '/bookmarks', label: 'Bookmarks', icon: BookmarkIcon, keep: 5 },
-    { href: '/settings', label: 'Settings', icon: GearIcon, keep: 6 },
+    { href: '/settings', label: 'Settings', icon: GearIcon, keep: 6, secondary: true },
     // Only moderators see this; the API checks the role again on every request.
-    ...(me?.moderates ? [{ href: '/mod', label: 'Moderation', icon: ShieldIcon, keep: 4 }] : []),
+    ...(me?.moderates ? [{ href: '/mod', label: 'Moderation', icon: ShieldIcon, keep: 4, secondary: true }] : []),
   ]
 }
 
@@ -148,9 +151,9 @@ function SidebarLinkItem({ link, known, className, size }: { link: SidebarLink; 
 }
 
 function SidebarLinks({ links, known }: { links: SidebarLink[]; known: boolean }) {
-  const lastTier = links.length - 1
+  const primary = links.filter((link) => !link.secondary).sort((a, b) => a.keep - b.keep)
   const tiers = new Map(
-    [...links].sort((a, b) => a.keep - b.keep).map((link, i) => [link.href, Math.min(i + 1, lastTier)]),
+    links.map((link) => [link.href, link.secondary ? 0 : primary.indexOf(link) + 1]),
   )
   const notifications = links.find((link) => link.unread)
 
@@ -163,7 +166,7 @@ function SidebarLinks({ links, known }: { links: SidebarLink[]; known: boolean }
             <SidebarLinkItem link={link} known={known} className="sidebar-nav-item" size={20} />
           </li>
         ))}
-        <li className="sidebar-more" data-more-tier={lastTier}>
+        <li className="sidebar-more">
           <Menu
             label="More"
             triggerClassName="sidebar-nav-item"
@@ -360,7 +363,7 @@ async function PopularCommunities() {
   if (popular.length === 0) return null
 
   return (
-    <section className="rail-section">
+    <section className="rail-section rail-communities">
       <div className="flex items-baseline justify-between">
         <h2 className="section-title">Find your community</h2>
         <Link href="/c" className="text-[13px] font-semibold text-accent-strong hover:underline">
@@ -394,7 +397,7 @@ async function TrendingTopics() {
   const { topics, rules } = trending
 
   return (
-    <section className="rail-section">
+    <section className="rail-section rail-topics">
       <div className="flex items-baseline justify-between">
         <h2 className="section-title flex items-center gap-2">
           <span className="text-accent-strong">
@@ -416,7 +419,7 @@ async function Trending() {
   if (trending.length === 0) return null
 
   return (
-    <section className="rail-section">
+    <section className="rail-section rail-trending">
       <h2 className="section-title flex items-center gap-2">
         <span className="text-warm">
           <FlameIcon size={18} />
@@ -484,12 +487,12 @@ async function NotificationsTab() {
     )
   }
   return (
-    <NavLink href="/notifications" className="bottom-tab">
+    <NavLink href="/notifications" className="bottom-tab" label="Alerts (Notifications)">
       <span className="relative">
         <BellIcon size={22} />
         <UnreadBadge count={viewer.me.unreadNotifications} dot />
       </span>
-      Notifications
+      Alerts
     </NavLink>
   )
 }

@@ -9,6 +9,7 @@ import { getReplies, getThread, getViewer } from '@/lib/api'
 import { defaultPreviewImage, excerpt, siteOpenGraph } from '@/lib/previews'
 import type { ReplyOrder } from '@/lib/thread-state'
 import { ChevronIcon } from '@/app/ui/icons'
+import { ThreadAuthorProvider } from '@/app/ui/thread-author'
 
 type Props = PageProps<'/p/[id]'>
 
@@ -66,8 +67,12 @@ async function ThreadView({ params, searchParams }: Props) {
   const cursor = page ? page.cursor : thread.replyCursor
   const parent = thread.ancestors.find((post) => post.id === thread.post.replyParentId)
   const older = thread.ancestors.filter((post) => post.id !== parent?.id)
+  // A truncated or unavailable root must not make the focused reply's author
+  // look like the original poster. Only identify a visible top-level post.
+  const original = [...thread.ancestors, thread.post].find((post) => !post.replyParentId && !post.deleted)
 
   return (
+    <ThreadAuthorProvider authorId={original?.authorId ?? null}>
     <div className="thread-view flex flex-col">
       <Link prefetch={false} href="/" className="self-start text-sm font-medium text-muted hover:text-ink hover:underline">
         Back to the feed
@@ -124,5 +129,6 @@ async function ThreadView({ params, searchParams }: Props) {
         </p>
       ) : null}
     </div>
+    </ThreadAuthorProvider>
   )
 }

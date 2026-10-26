@@ -4,7 +4,7 @@ import { ArrowUpRightIcon, TreasuryIcon } from './icons'
 /** An informational preview, not a balance or an invitation to send money. */
 export function TreasuryPreview() {
   return (
-    <section className="rail-section" aria-labelledby="treasury-preview-heading">
+    <section className="rail-section rail-treasury" aria-labelledby="treasury-preview-heading">
       <p className="page-eyebrow mb-4">Our shared future</p>
       <div className="flex flex-wrap items-center gap-2">
         <span className="treasury-symbol"><TreasuryIcon size={18} /></span>

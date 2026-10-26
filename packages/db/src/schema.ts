@@ -207,7 +207,6 @@ export const posts = pgTable(
   (t) => [
     index('posts_created_idx').on(t.createdAt, t.id),
     index('posts_author_created_idx').on(t.authorId, t.createdAt),
-    index('posts_reply_parent_idx').on(t.replyParentId),
     index('posts_reply_parent_created_idx').on(t.replyParentId, t.createdAt, t.id),
     index('posts_community_created_idx').on(t.communityId, t.createdAt),
     index('posts_quote_idx').on(t.quotePostId).where(sql`quote_post_id is not null`),

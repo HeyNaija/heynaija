@@ -20,15 +20,27 @@ export type BranchState = {
   touched: number
 }
 export type BranchCache = Record<string, BranchState>
-export const THREAD_MAX_DEPTH = 6
+/**
+ * Replies opened in place stop here, counting from the post in focus: its replies are
+ * level 1. A reply at the limit has no replies drawn under it; "Continue conversation"
+ * opens it as the focus instead. More levels only narrow the column on a phone.
+ */
+export const THREAD_MAX_DEPTH = 3
+/**
+ * A post that is gone has no page to continue to, so one at the limit would strand
+ * the replies behind it. These may open a few levels further, the way they always
+ * could, but not without end: a malformed chain must not grow forever.
+ */
+export const THREAD_MAX_GAPS = 6
 
 /** Scope cycle detection to the rendered ancestry, never to unrelated branches. */
 export function nextThreadPath(ancestors: readonly string[], id: string): readonly string[] | null {
   return ancestors.includes(id) ? null : [...ancestors, id]
 }
 
-export function canRenderThreadChildren(depth: number, pathLength: number): boolean {
-  return depth < THREAD_MAX_DEPTH && pathLength <= THREAD_MAX_DEPTH
+export function canRenderThreadChildren(depth: number, pathLength: number, unavailable = false): boolean {
+  const limit = unavailable ? THREAD_MAX_DEPTH + THREAD_MAX_GAPS : THREAD_MAX_DEPTH
+  return depth < limit && pathLength <= limit
 }
 
 export function emptyBranch(parentId: string | null): BranchState {

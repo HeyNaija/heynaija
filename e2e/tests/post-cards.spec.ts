@@ -65,9 +65,11 @@ test('reply card controls keep their actions without opening the card @mobile', 
     await expect(card.getByRole('button', { name: 'Unlike (1 like)', exact: true })).toBeVisible()
     await expect(page).toHaveURL(url)
 
+    await card.getByLabel('Post options', { exact: true }).click()
     await card.getByRole('button', { name: 'Bookmark', exact: true }).click()
-    await expect(card.getByRole('button', { name: 'Remove bookmark', exact: true })).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Remove bookmark', exact: true, includeHidden: true })).toHaveCount(1)
     await expect(page).toHaveURL(url)
+    await page.keyboard.press('Escape')
 
     await card.getByLabel('Post options', { exact: true }).click()
     await expect(card.getByRole('button', { name: 'Delete post', exact: true })).toBeVisible()

@@ -24,7 +24,9 @@ set -euo pipefail
 printf 'docker %s\n' "$*" >> "$DEPLOY_TEST_EVENTS"
 case "$*" in
   'image inspect '*) exit 1 ;;
-  'compose pull --quiet api web kratos') ;;
+  'compose pull --quiet api web kratos')
+    # Fail the first DEPLOY_TEST_PULL_FAILURES pulls, as a dropped connection would.
+    (( $(grep -c '^docker compose pull ' "$DEPLOY_TEST_EVENTS") > ${DEPLOY_TEST_PULL_FAILURES:-0} )) ;;
   'compose config kratos') printf 'kratos config\n' ;;
   'compose up -d --remove-orphans --wait')
     [[ "$KRATOS_INPUTS" == "$DEPLOY_TEST_EXPECTED_HASH" && "$KRATOS_RELEASE" == "$DEPLOY_TEST_KRATOS_TREE" ]] ;;
@@ -67,6 +69,7 @@ older_ref=$("$DEPLOY_TEST_GIT" -C "$seed" rev-parse HEAD~1)
 "$DEPLOY_TEST_GIT" --git-dir="$test_dir/origin.git" symbolic-ref HEAD refs/heads/main
 
 export PATH="$test_dir/bin:$PATH"
+export PULL_RETRY_SECONDS=0
 export DEPLOY_TEST_EXPECTED_HASH
 DEPLOY_TEST_EXPECTED_HASH=$(printf 'kratos config\n{}\n{}\n' | sha256sum | cut -c1-16)
 
@@ -116,3 +119,18 @@ run_case production-bootstrap "$legacy_ref" "$newer_ref" newer deploy-production
 run_case manual-upgrade "$older_ref" "$newer_ref" newer
 run_case manual-rollback "$newer_ref" "$older_ref" older
 run_case unchanged-script "$newer_ref" "$newer_ref" newer
+
+# A dropped connection while pulling is tried again; a registry that stays down is
+# reported after PULL_ATTEMPTS tries, saying why it may have failed.
+DEPLOY_TEST_PULL_FAILURES=2 run_case pull-retried "$newer_ref" "$newer_ref" newer
+[[ $(grep -c '^docker compose pull ' "$test_dir/pull-retried/events") == 3 ]]
+grep -Fq 'try 1 of 4' "$test_dir/pull-retried/output"
+echo "PASS: pull-retried-count"
+
+if DEPLOY_TEST_PULL_FAILURES=99 run_case pull-gives-up "$newer_ref" "$newer_ref" newer > "$test_dir/gives-up.out" 2>&1; then
+  echo 'FAIL: deploy succeeded though every pull failed' >&2; exit 1
+fi
+[[ $(grep -c '^docker compose pull ' "$test_dir/pull-gives-up/events") == 4 ]]
+grep -Fq 'after 4 tries' "$test_dir/gives-up.out"
+! grep -Fxq 'docker compose up -d --remove-orphans --wait' "$test_dir/pull-gives-up/events"
+echo "PASS: pull-gives-up"
