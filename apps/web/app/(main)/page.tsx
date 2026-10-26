@@ -61,8 +61,10 @@ function HeaderSpace() {
 function MemberHeader({ following }: { following: boolean }) {
   return (
     <>
-      <header className="home-intro member-intro">
+      <header className="home-intro">
+        <p className="page-eyebrow">Made for us</p>
         <h1 className="page-title">Your town square<span className="text-accent">.</span></h1>
+        <p className="page-description">A little closer to home. One conversation at a time.</p>
       </header>
       <nav aria-label="Feeds" className="feed-tabs">
         <Tab href="/" active={!following}>

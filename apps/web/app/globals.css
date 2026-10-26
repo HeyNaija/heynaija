@@ -1075,8 +1075,6 @@ summary.menu::-webkit-details-marker {
 .home-intro { padding: 2px 0 5px; }
 .home-intro .page-title { margin-top: 8px; }
 .home-intro .page-description { margin-top: 8px; }
-.member-intro { padding-block: 0; }
-.member-intro .page-title { margin-top: 0; font-size: 22px; }
 .welcome-intro { padding-block: 4px 12px; }
 .welcome-intro h1 { margin-top: 12px; font-size: clamp(28px, 3vw, 38px); font-weight: 700; letter-spacing: -0.055em; line-height: 1.25; }
 .welcome-intro .page-description { max-width: 420px; line-height: 1.8; }

@@ -266,7 +266,7 @@ The Replies heading has one options menu containing Newest first, Oldest first, 
 
 Post actions use 44px targets in a left-aligned row beneath a hairline divider. Gaps and control widths adapt to the available space, with sharing at the far edge. Compact replies keep bookmarking in Post options; standalone feed and focused cards retain its toolbar button. Long counts truncate visually while accessible labels retain the full count. The spacing and reading roles are tokens in `globals.css` (`--post-text-size`, `--post-text-leading`, `--post-meta-size`, `--reply-padding`, `--reply-gap`, `--touch-target`).
 
-Returning members get a compact 22px town-square heading above the feed tabs; the public introduction retains the welcome message and invitation.
+Returning members get the town-square introduction above the feed tabs: the "Made for us" eyebrow, the title and its one-line description. The public introduction keeps the welcome message and invitation.
 
 ### App icons
 
