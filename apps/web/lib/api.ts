@@ -373,7 +373,8 @@ export type QueueItem = {
   reason: string
   details: string
   createdAt: string
-  reporterHandle: string
+  /** Null when the upload scanner filed it. */
+  reporterHandle: string | null
   reportCount: number
   post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null

@@ -113,7 +113,7 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
           {REASONS[item.reason] ?? item.reason}
         </span>
         <span className="text-muted">
-          {isAppeal ? 'from' : 'reported by'} @{item.reporterHandle} · {timeAgo(item.createdAt, now)}
+          {item.reporterHandle ? `${isAppeal ? 'from' : 'reported by'} @${item.reporterHandle}` : 'flagged by the upload scanner'} · {timeAgo(item.createdAt, now)}
           {item.reportCount > 1 ? ` · ${item.reportCount} reports` : ''}
         </span>
       </p>
@@ -150,7 +150,7 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
 
       {item.details ? (
         <p className="text-sm">
-          <span className="text-muted">{isAppeal ? 'They say: ' : 'Reporter says: '}</span>
+          {item.reporterHandle ? <span className="text-muted">{isAppeal ? 'They say: ' : 'Reporter says: '}</span> : null}
           {item.details}
         </p>
       ) : null}

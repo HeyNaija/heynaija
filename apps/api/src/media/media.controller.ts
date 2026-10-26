@@ -10,6 +10,7 @@ import {
   Param,
   Post,
   Req,
+  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common'
 import { z } from 'zod'
@@ -36,6 +37,7 @@ async function answer<T>(work: () => Promise<T>): Promise<T> {
   } catch (err) {
     if (err instanceof MediaError) {
       if (err.code === 'not_found') throw new NotFoundException()
+      if (err.code === 'scan_unavailable') throw new ServiceUnavailableException({ code: err.code, message: err.message })
       throw new BadRequestException({ code: err.code, message: err.message })
     }
     throw err

@@ -46,8 +46,12 @@ class MemoryStore implements ObjectStore {
 // The queue is faked too: tests run the job themselves, as the worker would.
 class RecordingJobs implements MediaJobs {
   readonly queued: string[] = []
+  readonly purged: string[][] = []
   async processPostImage(mediaId: string) {
     this.queued.push(mediaId)
+  }
+  async purgeCdn(keys: string[]) {
+    this.purged.push(keys)
   }
 }
 
@@ -419,6 +423,8 @@ test("a moderator's removal moves a post's images out of public view, and a rest
     `uploads/quarantine/posts/${image}/1600.webp`,
     `uploads/quarantine/posts/${image}/640.webp`,
   ])
+  // And dropped from Cloudflare's cache, which would otherwise serve it for a year.
+  assert.deepEqual(jobs.purged, [[`posts/${image}/640.webp`, `posts/${image}/1600.webp`, `posts/${image}/still.webp`]])
 
   await moderation.restorePost(sam, post)
   assert.equal(await statusOf(image), 'ready')
@@ -494,7 +500,8 @@ class MatchEverything implements ContentScanner {
 }
 
 test('an upload the scanner matches is never published, and the original is kept privately', async () => {
-  service = new MediaService(db, store, jobs, new MatchEverything())
+  const alerts: string[] = []
+  service = new MediaService(db, store, jobs, new MatchEverything(), { alert: async (subject) => void alerts.push(subject) })
   const mediaId = await uploadPostImage(ada, await picture(800, 600))
   await service.processPostImage(mediaId)
 
@@ -514,6 +521,49 @@ test('an upload the scanner matches is never published, and the original is kept
   await assert.rejects(service.finishAvatarUpload(ada, avatar), (e: MediaError) => e.code === 'blocked')
   assert.equal(await avatarOf(ada), null)
   assert.equal(await statusOf(avatar), 'blocked')
+
+  // Each match puts the account in front of site moderators and alerts a person.
+  const filed = await db.select().from(reports)
+  assert.deepEqual(filed.map((r) => [r.reporterId, r.memberId, r.postId, r.reason]), [
+    [null, ada, null, 'illegal'],
+    [null, ada, null, 'illegal'],
+  ])
+  assert.match(filed[0]!.details, new RegExp(mediaId))
+  assert.equal(alerts.length, 2)
+  const moderation = await withModerator()
+  const queue = await moderation.queue(sam)
+  assert.deepEqual(queue.map((i) => [i.reporterHandle, i.member?.handle]), [[null, 'ada'], [null, 'ada']])
+})
+
+// A scanner whose service is down.
+class Unreachable implements ContentScanner {
+  async scan(): Promise<'clear'> {
+    throw new Error('connect ETIMEDOUT')
+  }
+}
+
+test('when the scanner cannot answer, nothing is published and the upload can be tried again', async () => {
+  service = new MediaService(db, store, jobs, new Unreachable())
+  const mediaId = await uploadPostImage(ada, await picture(800, 600))
+  // The job throws, so the queue retries it later.
+  await assert.rejects(service.processPostImage(mediaId), (e: MediaError) => e.code === 'scan_unavailable')
+  assert.equal(await statusOf(mediaId), 'processing')
+  assert.deepEqual(store.keys('media'), [])
+  assert.deepEqual(store.keys('uploads'), [`uploads/posts/${mediaId}`])
+
+  const original = await photo()
+  const { mediaId: avatar } = await service.startAvatarUpload(ada, 'image/jpeg', original.length)
+  store.upload(avatar, original)
+  await assert.rejects(service.finishAvatarUpload(ada, avatar), (e: MediaError) => e.code === 'scan_unavailable')
+  assert.equal(await avatarOf(ada), null)
+  assert.deepEqual(store.keys('media'), [])
+
+  // Back up: the same uploads go through.
+  service = new MediaService(db, store, jobs)
+  await service.processPostImage(mediaId)
+  assert.equal(await statusOf(mediaId), 'ready')
+  assert.equal(await service.finishAvatarUpload(ada, avatar), `/media/avatars/${avatar}`)
+  assert.equal(await db.select().from(reports).then((r) => r.length), 0)
 })
 
 test('deleting a reported post keeps its images privately for the moderator', async () => {

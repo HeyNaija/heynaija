@@ -7,8 +7,12 @@ import { CommunitiesService } from '../communities/communities.service.js'
 import { PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { ModerationService, ModerationTargetError, NotAModeratorError } from './moderation.service.js'
+import type { SafetyAlerts } from './safety-alerts.js'
 
-const service = new ModerationService(db)
+// Alerts are recorded rather than emailed.
+const alerts: { subject: string; lines: string[] }[] = []
+const recordingAlerts: SafetyAlerts = { alert: async (subject, lines) => void alerts.push({ subject, lines }) }
+const service = new ModerationService(db, undefined, recordingAlerts)
 const postsService = new PostsService(db)
 const communitiesService = new CommunitiesService(db)
 
@@ -20,6 +24,7 @@ const lola = randomUUID() // moderator of the Lagos community only
 before(migrate)
 beforeEach(async () => {
   await reset()
+  alerts.length = 0
   await db.insert(members).values([
     { id: ada, handle: 'ada' },
     { id: bayo, handle: 'bayo' },
@@ -258,4 +263,31 @@ test('only site moderators assign roles, and never to a suspended account', asyn
 
   await service.setSuspended(sam, 'bayo', true)
   await assert.rejects(service.assignCommunityModerator(sam, 'bayo', 'lagos', true), /suspended/)
+})
+
+test('reports of illegal content come first in the queue, and alert whoever handles safety', async () => {
+  const spam = await postsService.create(bayo, 'buy followers')
+  const other = await postsService.create(bayo, 'something odd')
+  const illegal = await postsService.create(bayo, 'something illegal')
+  await service.report(ada, { postId: spam.id }, 'spam')
+  await service.report(ada, { postId: other.id }, 'other')
+  assert.equal(alerts.length, 0)
+  await service.report(ada, { postId: illegal.id }, 'illegal')
+
+  assert.deepEqual((await service.queue(sam)).map((i) => i.post!.text), ['something illegal', 'buy followers', 'something odd'])
+  assert.equal(alerts.length, 1)
+  assert.match(alerts[0]!.lines.join(' '), new RegExp(illegal.id))
+  // The alert names what to look at, never the content.
+  assert.doesNotMatch(alerts[0]!.lines.join(' '), /something illegal/)
+})
+
+test('a report the upload scanner filed has no reporter, and closing it tells nobody', async () => {
+  await db.insert(reports).values({ reporterId: null, memberId: bayo, reason: 'illegal', details: 'matched' })
+  const [item] = await service.queue(sam)
+  assert.equal(item!.reporterHandle, null)
+  assert.equal(item!.member!.handle, 'bayo')
+
+  await service.resolve(sam, item!.id, 'suspend_member')
+  assert.equal((await db.select().from(members).where(eq(members.id, bayo)))[0]!.active, false)
+  assert.deepEqual(await db.select().from(notifications), [])
 })

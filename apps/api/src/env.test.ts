@@ -89,3 +89,18 @@ test('the stand-in push service on this machine is only allowed while the site i
   assert.throws(() => loadEnv({ ...base, PUSH_ALLOW_LOOPBACK: 'true', WEB_PUBLIC_URL: 'https://staging.heynaija.ng' }), /only for a WEB_PUBLIC_URL on 127\.0\.0\.1/)
   assert.throws(() => loadEnv({ ...base, PUSH_ALLOW_LOOPBACK: 'yes' }))
 })
+
+test('the safety settings are optional, also when given empty, and the Cloudflare purge needs both halves', () => {
+  const off = loadEnv({ ...base, SAFETY_ALERT_EMAIL: '', PHOTODNA_SUBSCRIPTION_KEY: '', CLOUDFLARE_ZONE_ID: '', CLOUDFLARE_PURGE_TOKEN: '', MEDIA_ORIGIN: '' })
+  assert.deepEqual(
+    [off.SAFETY_ALERT_EMAIL, off.PHOTODNA_SUBSCRIPTION_KEY, off.CLOUDFLARE_ZONE_ID, off.CLOUDFLARE_PURGE_TOKEN, off.MEDIA_ORIGIN],
+    [undefined, undefined, undefined, undefined, undefined],
+  )
+  const zone = '0123456789abcdef0123456789abcdef'
+  assert.throws(() => loadEnv({ ...base, CLOUDFLARE_ZONE_ID: zone }), /set both CLOUDFLARE_ZONE_ID and CLOUDFLARE_PURGE_TOKEN/)
+  assert.throws(() => loadEnv({ ...base, CLOUDFLARE_ZONE_ID: 'heynaija.ng', CLOUDFLARE_PURGE_TOKEN: 't' }), /a Cloudflare zone ID/)
+  const on = loadEnv({ ...base, CLOUDFLARE_ZONE_ID: zone, CLOUDFLARE_PURGE_TOKEN: 't', MEDIA_ORIGIN: 'https://media.heynaija.ng/' })
+  assert.equal(on.MEDIA_ORIGIN, 'https://media.heynaija.ng')
+  // An alert address alone would send nothing, so it is refused rather than silently ignored.
+  assert.throws(() => loadEnv({ ...base, SAFETY_ALERT_EMAIL: 'contact@heynaija.ng' }), /needs SMTP_CONNECTION_URI/)
+})

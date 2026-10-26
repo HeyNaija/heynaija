@@ -8,8 +8,11 @@ export type Mail = {
   subject: string
   text: string
   html: string
-  /** Where the List-Unsubscribe header points: one request turns the emails off. */
-  unsubscribeUrl: string
+  /**
+   * Where the List-Unsubscribe header points: one request turns the emails off.
+   * Left out for messages to the people running the service, which are not optional.
+   */
+  unsubscribeUrl?: string
 }
 
 /** Somewhere to send a message. */
@@ -41,8 +44,9 @@ export class SmtpMailer implements Mailer {
         headers: {
           // RFC 8058: the address is a link a mail program may POST to without
           // showing anything, which is how "Unsubscribe" buttons in inboxes work.
-          'List-Unsubscribe': `<${mail.unsubscribeUrl}>`,
-          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          ...(mail.unsubscribeUrl
+            ? { 'List-Unsubscribe': `<${mail.unsubscribeUrl}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' }
+            : {}),
           // Nobody reads replies, so out-of-office programs should not send any.
           'Auto-Submitted': 'auto-generated',
         },

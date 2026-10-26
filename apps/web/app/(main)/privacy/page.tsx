@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Placeholder, PolicyPage } from '@/app/ui/policy-page'
+import { ContactEmail, Placeholder, PolicyPage } from '@/app/ui/policy-page'
 
 export const metadata: Metadata = { title: 'Privacy' }
 
@@ -10,7 +10,7 @@ export default function PrivacyPage() {
       eyebrow="Your data"
       title="Privacy policy"
       summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, and how you get your data or have it deleted. No ads, no selling data, no trackers."
-      updated="18 October 2026"
+      updated="26 October 2026"
       sections={[
         {
           id: 'who',
@@ -19,7 +19,7 @@ export default function PrivacyPage() {
             <p>
               HeyNaija is run by <Placeholder>operator name and address</Placeholder>, the “data controller”
               under the Nigeria Data Protection Act 2023. For anything about your data, write to{' '}
-              <Placeholder>privacy contact email</Placeholder>.
+              <ContactEmail />.
             </p>
           ),
         },
@@ -160,7 +160,7 @@ export default function PrivacyPage() {
               <li><strong>Correct it:</strong> change your name, bio, photo, email or handle in Settings.</li>
               <li>
                 <strong>Delete your account:</strong> not in the app yet; write to{' '}
-                <Placeholder>privacy contact email</Placeholder> and we will delete it within{' '}
+                <ContactEmail /> and we will delete it within{' '}
                 <Placeholder>period</Placeholder>.
               </li>
               <li>

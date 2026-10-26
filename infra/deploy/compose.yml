@@ -34,6 +34,15 @@ x-api-env: &api-env
   PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
   PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
   WEB_PUBLIC_URL: ${SITE_URL:?}
+  # Safety (docs/safety/abuse-material-scanning.md): where alerts are emailed, the
+  # PhotoDNA key once approved, and what purging Cloudflare's cache needs. Each
+  # is optional; without them alerts are only logged, nothing is scanned and
+  # nothing is purged.
+  SAFETY_ALERT_EMAIL: ${SAFETY_ALERT_EMAIL:-}
+  PHOTODNA_SUBSCRIPTION_KEY: ${PHOTODNA_SUBSCRIPTION_KEY:-}
+  CLOUDFLARE_ZONE_ID: ${CLOUDFLARE_ZONE_ID:-}
+  CLOUDFLARE_PURGE_TOKEN: ${CLOUDFLARE_PURGE_TOKEN:-}
+  MEDIA_ORIGIN: ${MEDIA_ORIGIN:-}
   API_HOST: 0.0.0.0
   S3_ENDPOINT: ${S3_ENDPOINT:?}
   S3_REGION: ${S3_REGION:-auto}

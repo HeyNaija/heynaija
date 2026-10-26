@@ -431,10 +431,12 @@
         "apps/api/src/app.module.ts",
         "apps/api/src/media/media.service.ts",
         "apps/api/src/media/media.service.test.ts",
+        "apps/api/src/media/photodna.ts",
+        "apps/api/src/media/photodna.test.ts",
         "docs/safety/abuse-material-scanning.md"
       ],
-      "caveat": "Provider approval, a working integration and reviewed response procedures are still required.",
-      "notes": "NoScanner is the current binding. Matching/quarantine paths have tests; documented Cloudflare edge scanning is a separate second layer."
+      "caveat": "Waiting for PhotoDNA approval; the scanner is written but untried against the real service, and response procedures still need review.",
+      "notes": "NoScanner stays bound until PHOTODNA_SUBSCRIPTION_KEY is set. The PhotoDNA client, GIF frame sampling, fail-closed handling and match reporting have tests against stand-ins; documented Cloudflare edge scanning is a separate second layer."
     },
     {
       "id": "abuse-response",
@@ -448,11 +450,13 @@
         "apps/api/src/moderation/moderation.service.ts",
         "apps/api/src/moderation/moderation.controller.ts",
         "apps/api/src/moderation/moderation.service.test.ts",
+        "apps/api/src/moderation/safety-alerts.ts",
+        "apps/api/src/media/cdn-purge.ts",
         "e2e/tests/moderation.spec.ts",
         "docs/safety/abuse-material-scanning.md"
       ],
-      "caveat": "Reporting and takedown work; escalation contacts, retention decisions and a rehearsed response still need confirmation.",
-      "notes": "CDN purge and operational checklist items remain open."
+      "caveat": "Reporting, takedown, CDN purge and safety alerts work; counsel's answers, retention decisions and a rehearsed response are still outstanding.",
+      "notes": "Illegal-content reports sort first and are emailed to the safety address; CDN purge needs its Cloudflare token set on each server."
     },
     {
       "id": "deployment",

@@ -84,6 +84,22 @@ const schema = z.object({
   PUSH_CONTACT: optional(z.string().regex(/^(mailto:|https:\/\/)\S+$/, 'a mailto: or https:// address')),
   // How often the job that pushes new notifications runs, in seconds.
   PUSH_SWEEP_EVERY_S: z.coerce.number().int().min(1).max(600).default(10),
+  // Safety (docs/safety/abuse-material-scanning.md). Where alerts about matched
+  // uploads and reports of illegal content are emailed; without it they are only
+  // logged. Needs the SMTP settings above.
+  SAFETY_ALERT_EMAIL: optional(z.email()),
+  // PhotoDNA's key, once Microsoft has approved us: with it every upload is
+  // hash-matched before it is published; without it every image passes.
+  PHOTODNA_SUBSCRIPTION_KEY: optional(z.string().min(1)),
+  // Only if Microsoft's documentation gives a different Match address.
+  PHOTODNA_MATCH_URL: optional(z.url()),
+  // Purging taken-down images from Cloudflare's cache: the heynaija.ng zone and an
+  // API token allowed only Zone → Cache Purge. Without them nothing is purged.
+  CLOUDFLARE_ZONE_ID: optional(z.string().regex(/^[0-9a-f]{32}$/, 'a Cloudflare zone ID')),
+  CLOUDFLARE_PURGE_TOKEN: optional(z.string().min(1)),
+  // The media bucket's public custom domain (nginx serves it under /media too), so
+  // a purge also clears copies cached under that address.
+  MEDIA_ORIGIN: optional(z.url().transform((u) => u.replace(/\/$/, ''))),
   // Lets browsers subscribe with an http://127.0.0.1 address, for the end-to-end
   // tests' stand-in push service. Only allowed while WEB_PUBLIC_URL is on this machine.
   PUSH_ALLOW_LOOPBACK: z
@@ -103,6 +119,12 @@ const checked = schema.superRefine((env, ctx) => {
   }
   if (env.PUSH_VAPID_PUBLIC_KEY && !env.PUSH_CONTACT && !env.WEB_PUBLIC_URL.startsWith('https://')) {
     ctx.addIssue({ code: 'custom', path: ['PUSH_CONTACT'], message: 'PUSH_CONTACT is required when WEB_PUBLIC_URL is not https' })
+  }
+  if (Boolean(env.CLOUDFLARE_ZONE_ID) !== Boolean(env.CLOUDFLARE_PURGE_TOKEN)) {
+    ctx.addIssue({ code: 'custom', path: ['CLOUDFLARE_PURGE_TOKEN'], message: 'set both CLOUDFLARE_ZONE_ID and CLOUDFLARE_PURGE_TOKEN, or neither' })
+  }
+  if (env.SAFETY_ALERT_EMAIL && !env.SMTP_CONNECTION_URI) {
+    ctx.addIssue({ code: 'custom', path: ['SAFETY_ALERT_EMAIL'], message: 'SAFETY_ALERT_EMAIL needs SMTP_CONNECTION_URI to send anything' })
   }
   if (env.PUSH_ALLOW_LOOPBACK && new URL(env.WEB_PUBLIC_URL).hostname !== '127.0.0.1') {
     ctx.addIssue({ code: 'custom', path: ['PUSH_ALLOW_LOOPBACK'], message: 'PUSH_ALLOW_LOOPBACK is only for a WEB_PUBLIC_URL on 127.0.0.1' })

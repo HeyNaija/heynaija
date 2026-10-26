@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnModuleD
 import { type ConnectionOptions, Queue, Worker } from 'bullmq'
 import type { Env } from '../env.js'
 import { ENV } from '../tokens.js'
+import { CDN_PURGER, type CdnPurger } from './cdn-purge.js'
 import { MEDIA_JOBS, type MediaJobs, MediaService } from './media.service.js'
 
 const QUEUE = 'media'
@@ -9,7 +10,14 @@ const SWEEP_EVERY_MS = 60 * 60 * 1000
 // Re-encoding is CPU work in the API process; two at a time leaves room for requests.
 const CONCURRENCY = 2
 
-type Job = { name: 'post-image'; data: { mediaId: string } } | { name: 'sweep'; data: Record<string, never> }
+// A taken-down image can stay in Cloudflare's cache for a year, so a purge keeps
+// trying for over an hour (5s, 10s, 20s, … between attempts).
+const PURGE_ATTEMPTS = 11
+
+type Job =
+  | { name: 'post-image'; data: { mediaId: string } }
+  | { name: 'purge-cdn'; data: { keys: string[] } }
+  | { name: 'sweep'; data: Record<string, never> }
 
 const connection = (env: Env): ConnectionOptions => ({
   url: env.REDIS_URL,
@@ -39,15 +47,19 @@ export class BullMediaJobs implements MediaJobs, OnModuleDestroy {
     await this.queue.add('post-image', { mediaId }, { jobId: `post-image-${mediaId}` })
   }
 
+  async purgeCdn(keys: string[]): Promise<void> {
+    await this.queue.add('purge-cdn', { keys }, { attempts: PURGE_ATTEMPTS, backoff: { type: 'exponential', delay: 5000 } })
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.queue.close()
   }
 }
 
 /**
- * The consumer side, in the API process for now: processes post images and,
- * hourly, clears uploads nobody finished or used. It can move to its own process
- * later without changing the producer.
+ * The consumer side, in the API process for now: processes post images, purges
+ * taken-down images from the CDN and, hourly, clears uploads nobody finished or
+ * used. It can move to its own process later without changing the producer.
  */
 @Injectable()
 export class MediaWorker implements OnApplicationBootstrap, OnModuleDestroy {
@@ -58,6 +70,7 @@ export class MediaWorker implements OnApplicationBootstrap, OnModuleDestroy {
     @Inject(ENV) private readonly env: Env,
     @Inject(MediaService) private readonly media: MediaService,
     @Inject(MEDIA_JOBS) private readonly jobs: BullMediaJobs,
+    @Inject(CDN_PURGER) private readonly purger: CdnPurger,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -67,11 +80,19 @@ export class MediaWorker implements OnApplicationBootstrap, OnModuleDestroy {
       async (job) => {
         const { name, data } = job as unknown as Job
         if (name === 'post-image') await this.media.processPostImage(data.mediaId)
+        else if (name === 'purge-cdn') await this.purger.purge(data.keys)
         else if (name === 'sweep') await this.media.sweepAbandoned()
       },
       { connection: connection(this.env), concurrency: CONCURRENCY },
     )
-    this.worker.on('failed', (job, err) => this.log.warn(`${job?.name} ${job?.id} failed: ${err.message}`))
+    this.worker.on('failed', (job, err) => {
+      if (job?.name === 'purge-cdn' && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+        const keys = (job.data as { keys: string[] }).keys
+        this.log.error(`gave up purging taken-down media from the CDN; purge these by hand in Cloudflare: ${keys.join(', ')} (${err.message})`)
+      } else {
+        this.log.warn(`${job?.name} ${job?.id} failed: ${err.message}`)
+      }
+    })
   }
 
   async onModuleDestroy(): Promise<void> {

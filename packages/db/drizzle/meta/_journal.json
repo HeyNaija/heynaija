@@ -176,6 +176,13 @@
       "when": 1792883939931,
       "tag": "0024_pins",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793013300558,
+      "tag": "0025_reports_from_scanner",
+      "breakpoints": true
     }
   ]
 }
