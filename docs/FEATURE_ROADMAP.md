@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 37 | 10 | 19 | 14 | 80 |
+| 41 | 10 | 20 | 14 | 85 |
 
 ## Priority order
 
@@ -219,6 +219,14 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Ask moderators to review an account suspension and receive the outcome.
 - **Inspected evidence:** `apps/api/src/moderation/moderation.service.ts`, `apps/api/src/moderation/moderation.controller.ts`, `apps/api/src/moderation/moderation.service.test.ts`, `e2e/tests/moderation.spec.ts`
 
+#### Moderator tools for profiles and communities
+
+- **ID:** `moderator-tools`
+- **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
+- **Description:** Moderators can remove a profile photo or clear a name and bio without suspending the account, and site moderators appoint community moderators in the app.
+- **Inspected evidence:** `apps/api/src/moderation/moderation.service.ts`, `apps/api/src/media/media.service.ts`, `apps/web/app/ui/moderator-roster.tsx`, `apps/api/src/moderation/moderation.service.test.ts`, `apps/api/src/media/media.service.test.ts`
+- **Audit notes:** Profile reports resolve as remove_avatar or clear_profile; only moderators can, and both are logged. Appointing community moderators is logged and the member is told; site-wide roles are still assigned from the command line (apps/api/src/cli/moderator.ts). Images taken down move out of public view and are kept privately as evidence, so a decision can be undone.
+
 #### Action rate limits
 
 - **ID:** `rate-limits`
@@ -258,10 +266,10 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `account-deletion`
 - **Priority:** P0 · **Status:** Blocked · **Availability:** Not live
 - **Description:** Provide a usable route to delete an account and handle privacy requests.
-- **Remaining work / caveat:** The privacy contact is still a placeholder and self-service account deletion is absent.
+- **Remaining work / caveat:** Members can ask for deletion through the contact address, but the time it takes is still to be set and self-service account deletion is absent.
 - **Dependencies:** `operator-disclosure`
 - **Inspected evidence:** `apps/web/app/(main)/privacy/page.tsx`, `apps/web/app/(main)/settings/page.tsx`, `docs/governance/open-items.md`
-- **Audit notes:** Promoted from the initial P2 proposal: a working privacy-rights route is a public-beta prerequisite.
+- **Audit notes:** Promoted from the initial P2 proposal: a working privacy-rights route is a public-beta prerequisite. The privacy contact is contact@heynaija.ng (apps/web/app/ui/policy-page.tsx); the deletion period is a placeholder on /privacy, and there is no tool for an operator to delete an account.
 
 ### Reliability and access
 
@@ -288,8 +296,9 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `monitoring-alerts`
 - **Priority:** P0 · **Status:** Partial · **Availability:** Availability not verified
 - **Description:** Detect service and backup failures and alert a responsible person.
-- **Remaining work / caveat:** Health checks and a backup-monitoring hook exist; configured alert delivery and response ownership need verification.
+- **Remaining work / caveat:** Health checks, a backup-monitoring hook and external uptime checks of the live sites exist; alerts for errors and failed backups, and who responds, need confirming.
 - **Inspected evidence:** `infra/deploy/backup.sh`, `docs/deployment/staging.md`, `docs/safety/abuse-material-scanning.md`
+- **Audit notes:** The owner set up UptimeRobot monitors on 25 Oct 2026, after the 23 Oct nginx outage: heynaija.ng, its /login and /search, and staging.heynaija.ng, with a public status page. The repository does not record them.
 
 #### Constrained mobile performance
 
@@ -364,6 +373,14 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Choose which activity should create notifications.
 - **Inspected evidence:** `packages/db/drizzle/0018_notification_preferences.sql`, `apps/api/src/notifications/notifications.service.ts`, `apps/api/src/notifications/notifications.controller.ts`, `apps/api/src/export/export.service.ts`, `apps/web/app/(main)/settings/page.tsx`, `apps/web/app/ui/notification-preferences-form.tsx`, `apps/api/src/notifications/notifications.service.test.ts`, `apps/api/src/export/export.service.test.ts`, `apps/web/tests/notification-preferences.test.mjs`, `e2e/tests/notification-preferences.spec.ts`
 - **Audit notes:** Settings has one box each for replies, mentions, likes, reposts, quotes and follows; all are on until turned off, and only what is off is stored (notification_opt_outs). A database check keeps moderation and account notices out, so they are always sent. Turning a kind off stops new notifications of that kind and keeps those already received. The kinds decide what notifies a member at all, so they decide what is emailed too; email itself is one switch beside them (email-notifications). The data export (format 7) includes the choices.
+
+#### Change your handle or email
+
+- **ID:** `handle-email-changes`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Availability not verified
+- **Description:** Rename your handle or move your account to a new email address from Settings.
+- **Inspected evidence:** `apps/api/src/members/members.service.ts`, `infra/kratos/policy/profile_email_confirmation.go`, `infra/kratos/policy/courier_email_change.go`, `docs/adr/0004-handles-held-after-rename.md`, `apps/api/src/members/members.service.test.ts`, `e2e/tests/handles.spec.ts`, `e2e/tests/email-change.spec.ts`
+- **Audit notes:** A handle someone has is refused at signup and on rename. A handle given up by renaming is held for its owner for 30 days, and its old profile link leads to the new one (ADR 0004). A new email takes over only once a code sent to it is confirmed, after recent sign-in; until then the old one keeps working, and an address another account signs in with is refused before any code is sent.
 
 ### Conversations and feeds
 
@@ -486,6 +503,22 @@ This tracks product development, not formal governance decisions. Priority means
 - **Remaining work / caveat:** Keyboard controls, image descriptions and responsive layouts exist; a full accessibility conformance audit is still needed.
 - **Inspected evidence:** `apps/web/app/globals.css`, `apps/web/app/ui/menu.tsx`, `e2e/tests/menus.spec.ts`, `e2e/tests/images.spec.ts`
 
+#### Light and dark themes
+
+- **ID:** `light-dark-themes`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Availability not verified
+- **Description:** Follow your device's light or dark setting, or choose one in Settings.
+- **Inspected evidence:** `apps/web/lib/theme.ts`, `apps/web/app/ui/theme-switch.tsx`, `apps/web/app/globals.css`, `e2e/tests/information.spec.ts`, `e2e/tests/sharing.spec.ts`
+- **Audit notes:** The theme is set on <html> before the first paint, so pages do not flash. information.spec.ts checks the device's dark setting is followed and sharing.spec.ts checks the share popup in both themes; the Settings switch itself has no automated test.
+
+#### Install HeyNaija as an app
+
+- **ID:** `installable-app`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Availability not verified
+- **Description:** Add HeyNaija to your home screen or desktop from the welcome steps or Settings, where your browser offers it.
+- **Inspected evidence:** `apps/web/app/manifest.ts`, `apps/web/lib/install.ts`, `apps/web/app/ui/install-app.tsx`, `apps/web/tests/push.test.mjs`, `e2e/tests/push-notifications.spec.ts`
+- **Audit notes:** The installable web app, not native-apps. Chrome, Edge and Samsung Internet offer installation through the Install button; Safari and Firefox do not, and iPhones install from the Share menu. Tests cover the installed app's push offer and iPhone install detection, not the browser's own install prompt.
+
 #### Low-data and media controls
 
 - **ID:** `low-data-controls`
@@ -493,6 +526,17 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Let members choose how much media loads on limited connections.
 - **Inspected evidence:** `apps/web/app/ui/post-images.tsx`, `apps/web/app/ui/shrink-image.ts`, `apps/web/app/(main)/settings/page.tsx`
 - **Audit notes:** Upload resizing is implemented; member low-data settings are not. GIFs play unless the device asks for less motion and can be paused. Video is not supported.
+
+### Transparency and governance
+
+#### Ideas and problem reports from members
+
+- **ID:** `member-ideas`
+- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Description:** Suggest a feature or report a problem from inside HeyNaija, add your vote to other ideas, and follow each one from review to release.
+- **Dependencies:** `communities`, `in-app-notifications`
+- **Inspected evidence:** `packages/db/src/seed.ts`, `apps/web/app/(main)/c/[slug]/page.tsx`, `apps/api/src/notifications/notifications.service.ts`, `apps/web/app/(main)/progress/page.tsx`
+- **Audit notes:** Proposed 26 Oct 2026; the owner will build it. An idea or problem is a post in Building HeyNaija with a kind and a status (under review, planned, in progress, shipped, not now, duplicate; not now and duplicate give a public reason, and a duplicate's votes move to the original). One vote per member, separate from likes; a board page by votes, newest and status; similar ideas shown while the title is typed; problem reports attach the page, browser and app version. Building HeyNaija's moderators set statuses, and each change notifies the author and voters. Later: a GitHub App opens an issue when an idea is planned, and a webhook brings status back (assigned, closed, then live after a production deploy). Comments are not synced, so members' words are not copied to GitHub. Separate from governance-feedback, which it could carry later.
 
 ## P2 — Growth and community
 

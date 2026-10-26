@@ -154,7 +154,7 @@ Browser ──> Next.js web app
 - [x] Five seeded communities: Tech & Careers, Universities, Lagos, Abuja, Entertainment
 - [x] Building HeyNaija: the founding developers work in the open there; feedback and bug reports welcome (public like every community)
 - [x] Join, leave, post into; rules; moderators shown
-- [ ] Pinned welcome post
+- [x] Pinned welcome post: a community's moderators keep one post at the top of it (25 October 2026)
 - [ ] Community photos
 - [ ] Private communities (possible now, not planned for Phase 1)
 
@@ -175,17 +175,17 @@ Browser ──> Next.js web app
 - [x] Governance overview rebuilt from draft constitution v0.2 (16 October 2026): founding-stage notice, participation types, proposed structure and thresholds, ownership milestones with truthful statuses, empty states. `/governance/constitution`, `/governance/membership`, `/governance/verification`; Settings shows each member's status
 - [ ] Optional NIN verification (NINAuth) and voting membership: data model, rules and tests built behind switches the API refuses to turn on; verification, opt-in and ballots wait for the approvals in [docs/governance/open-items.md](docs/governance/open-items.md)
 - [ ] A working feedback channel for the governance drafts
-- [ ] Licence, charter, policies, roadmap, published source. Draft pages live at /rules, /privacy, /charter and /licence (15 October 2026), marked as drafts with placeholders for the operator's details; licence chosen: AGPL-3.0-or-later. Still to do: legal review, the `LICENSE` file, filling in the placeholders, publishing the source
+- [ ] Licence, charter, policies, roadmap, published source. Draft pages live at /rules, /privacy, /charter and /licence (15 October 2026), marked as drafts with placeholders for the operator's details; licence chosen: AGPL-3.0-or-later. The `LICENSE` file is in place. Still to do: legal review, filling in the placeholders, publishing the source
 - [ ] Disclosure of the provisional custodians and the plan for community ownership (the charter sets out the plan; the custodians' names are a placeholder)
 - [ ] Community voting and treasury records (information pages are built; voting and transactions are not live)
 
 ### Operations
-- [x] CI: build, typecheck, tests, dependency audit (never run: no GitHub remote yet)
+- [x] CI: build, typecheck, tests, dependency audit, on every pull request and before every deploy
 - [x] Staging and production environments; TLS; real domains (staging live at staging.heynaija.ng behind Cloudflare, 15 October 2026; production at heynaija.ng on netcup, confirmed 18 October 2026: [production guide](docs/deployment/production.md))
 - [x] Production Kratos config and an email provider (Resend)
 - [ ] Backups and a rehearsed restore (Postgres, Kratos database, media bucket): scripts built, backup and restore rehearsed locally; media not copied outside R2
-- [ ] Logging, metrics, uptime alerts (logs capped per service; uptime check and backup ping described in the guide; no error alerts yet)
-- [ ] Browser end-to-end tests (Playwright suite passing locally, 15 October 2026, and added to CI; first GitHub run still to confirm: [docs/e2e.md](docs/e2e.md)); load test (kit built: [docs/loadtest.md](docs/loadtest.md))
+- [ ] Logging, metrics, uptime alerts (logs capped per service; uptime checks of production and staging with a public status page since 25 October 2026; backup ping described in the guide; no error alerts yet)
+- [ ] Browser end-to-end tests (Playwright suite in CI on every pull request, and staging deploys only after it passes: [docs/e2e.md](docs/e2e.md)); load test (kit built: [docs/loadtest.md](docs/loadtest.md))
 - [ ] Privacy-respecting product metrics (signup → first follow → first post → week-1 return)
 
 ---
