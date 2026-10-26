@@ -232,18 +232,18 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `upload-scanning`
 - **Priority:** P0 · **Status:** Blocked · **Availability:** Not live
 - **Description:** Screen image uploads before publication through an approved scanning service.
-- **Remaining work / caveat:** Provider approval, a working integration and reviewed response procedures are still required.
-- **Inspected evidence:** `apps/api/src/app.module.ts`, `apps/api/src/media/media.service.ts`, `apps/api/src/media/media.service.test.ts`, `docs/safety/abuse-material-scanning.md`
-- **Audit notes:** NoScanner is the current binding. Matching/quarantine paths have tests; documented Cloudflare edge scanning is a separate second layer.
+- **Remaining work / caveat:** Waiting for PhotoDNA approval; the scanner is written but untried against the real service, and response procedures still need review.
+- **Inspected evidence:** `apps/api/src/app.module.ts`, `apps/api/src/media/media.service.ts`, `apps/api/src/media/media.service.test.ts`, `apps/api/src/media/photodna.ts`, `apps/api/src/media/photodna.test.ts`, `docs/safety/abuse-material-scanning.md`
+- **Audit notes:** NoScanner stays bound until PHOTODNA_SUBSCRIPTION_KEY is set. The PhotoDNA client, GIF frame sampling, fail-closed handling and match reporting have tests against stand-ins; documented Cloudflare edge scanning is a separate second layer.
 
 #### Operational abuse response
 
 - **ID:** `abuse-response`
 - **Priority:** P0 · **Status:** Partial · **Availability:** Availability not verified
 - **Description:** Make takedown, preservation, escalation and safety-contact procedures operational.
-- **Remaining work / caveat:** Reporting and takedown work; escalation contacts, retention decisions and a rehearsed response still need confirmation.
-- **Inspected evidence:** `apps/api/src/moderation/moderation.service.ts`, `apps/api/src/moderation/moderation.controller.ts`, `apps/api/src/moderation/moderation.service.test.ts`, `e2e/tests/moderation.spec.ts`, `docs/safety/abuse-material-scanning.md`
-- **Audit notes:** CDN purge and operational checklist items remain open.
+- **Remaining work / caveat:** Reporting, takedown, CDN purge and safety alerts work; counsel's answers, retention decisions and a rehearsed response are still outstanding.
+- **Inspected evidence:** `apps/api/src/moderation/moderation.service.ts`, `apps/api/src/moderation/moderation.controller.ts`, `apps/api/src/moderation/moderation.service.test.ts`, `apps/api/src/moderation/safety-alerts.ts`, `apps/api/src/media/cdn-purge.ts`, `e2e/tests/moderation.spec.ts`, `docs/safety/abuse-material-scanning.md`
+- **Audit notes:** Illegal-content reports sort first and are emailed to the safety address; CDN purge needs its Cloudflare token set on each server.
 
 #### Download your data
 

@@ -3,7 +3,7 @@
 import { createPost, type ComposeState } from '@/app/actions'
 import { renderThreadRow } from '@/app/ui/thread-row'
 import { getPost, getReplies, getViewer } from '@/lib/api'
-import type { ReplyOrder, ThreadRow } from '@/lib/thread-state'
+import { type ReplyOrder, type ThreadRow, THREAD_MAX_DEPTH, THREAD_MAX_GAPS } from '@/lib/thread-state'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -19,7 +19,7 @@ export async function loadThreadReplies(
 ): Promise<LoadedReplies> {
   if (!uuid.test(id) || (cursor !== null && (typeof cursor !== 'string' || cursor.length > 500)) ||
     (order !== 'newest' && order !== 'oldest') ||
-    !Number.isInteger(depth) || depth < 1 || depth > 6 ||
+    !Number.isInteger(depth) || depth < 1 || depth > THREAD_MAX_DEPTH + THREAD_MAX_GAPS ||
     (parentHandle !== null && (typeof parentHandle !== 'string' || parentHandle.length > 100))) {
     return { error: 'These replies could not be loaded. Open the conversation and try again.' }
   }
@@ -38,7 +38,7 @@ export async function loadThreadReplies(
 export async function createThreadReply(previous: ComposeState, formData: FormData): Promise<ComposeState> {
   const parentId = String(formData.get('replyTo') ?? '')
   const depth = Number(formData.get('threadDepth'))
-  if (!uuid.test(parentId) || !Number.isInteger(depth) || depth < 1 || depth > 7) {
+  if (!uuid.test(parentId) || !Number.isInteger(depth) || depth < 1 || depth > THREAD_MAX_DEPTH) {
     return { error: 'Choose the post you want to reply to and try again.' }
   }
   const result = await createPost(previous, formData, false)

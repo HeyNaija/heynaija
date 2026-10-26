@@ -108,9 +108,9 @@ test('a reply is emailed once it has waited, to that member and nobody else, and
   assert.equal(mail!.subject, '@bayo replied to your post')
   assert.match(mail!.text, /“Jollof, obviously”/)
   assert.ok(mail!.text.includes(`https://heynaija.test/p/${reply}`))
-  assert.match(mail!.unsubscribeUrl, /^https:\/\/heynaija\.test\/api\/v1\/email\/unsubscribe\/[0-9a-f-]{36}\.[\w-]+$/)
-  assert.ok(mail!.text.includes(mail!.unsubscribeUrl))
-  assert.ok(mail!.html.includes(mail!.unsubscribeUrl))
+  assert.match(mail!.unsubscribeUrl!, /^https:\/\/heynaija\.test\/api\/v1\/email\/unsubscribe\/[0-9a-f-]{36}\.[\w-]+$/)
+  assert.ok(mail!.text.includes(mail!.unsubscribeUrl!))
+  assert.ok(mail!.html.includes(mail!.unsubscribeUrl!))
   // Nobody else has anything waiting, so nobody else is written to.
   assert.deepEqual(jobs.queued, [ada])
 

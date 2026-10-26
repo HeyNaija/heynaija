@@ -41,6 +41,14 @@
   --r-panel: 12px;
   --r-frame: 14px;
 
+  /* Reading and conversation rhythm. Space comes from fewer repeated blocks. */
+  --post-text-size: 15px;
+  --post-text-leading: 1.6;
+  --post-meta-size: 12px;
+  --reply-padding: 12px 14px 3px;
+  --reply-gap: 8px;
+  --touch-target: 44px;
+
   /* Avatar backgrounds, one per hash bucket. */
   --tone-0: #dcece2;
   --tone-1: #e8eee5;
@@ -557,7 +565,9 @@ summary.menu::-webkit-details-marker {
 /* More: the links that no longer fit, in a menu that opens above the button. Each
    link is in the list and in the menu; a tier's copy is shown exactly when its
    list item is hidden (the rules at the end of this block). */
-.sidebar-more, .sidebar-more-dot { display: none; }
+.sidebar-more-dot { display: none; }
+.sidebar-nav-list > [data-tier="0"] { display: none; }
+.sidebar-more { display: block; }
 .sidebar-more summary { cursor: pointer; }
 .sidebar-more details[open] > summary { background: var(--surface); color: var(--ink); }
 .sidebar-more-panel {
@@ -569,6 +579,8 @@ summary.menu::-webkit-details-marker {
   margin: 0 0 6px;
 }
 .sidebar-more-panel > * { display: none; }
+.sidebar-more-panel > [data-tier="0"] { display: block; }
+.sidebar-more details:has(.sidebar-more-panel > [data-tier="0"] [aria-current="page"]) > summary { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; }
 .sidebar-more-panel [aria-current="page"] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; }
 .sidebar-more-panel .unread-badge { margin-left: auto; }
 
@@ -1063,7 +1075,9 @@ summary.menu::-webkit-details-marker {
 .home-intro { padding: 2px 0 5px; }
 .home-intro .page-title { margin-top: 8px; }
 .home-intro .page-description { margin-top: 8px; }
-.welcome-intro { padding-block: 10px 24px; }
+.member-intro { padding-block: 0; }
+.member-intro .page-title { margin-top: 0; font-size: 22px; }
+.welcome-intro { padding-block: 4px 12px; }
 .welcome-intro h1 { margin-top: 12px; font-size: clamp(28px, 3vw, 38px); font-weight: 700; letter-spacing: -0.055em; line-height: 1.25; }
 .welcome-intro .page-description { max-width: 420px; line-height: 1.8; }
 .feed-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 6px; }
@@ -1143,6 +1157,9 @@ summary.menu::-webkit-details-marker {
 .reply-composer .composer-toolbar .icon-btn, .reply-composer .composer-submit { min-height: 40px; }
 .reply-composer .composer-privacy, .reply-composer > [role="alert"], .reply-composer .composer-posted { margin-left: 44px; }
 .reply-composer .composer-privacy { margin-top: 2px; }
+/* Reading starts with one line. Writing reveals the recipient, tools and notice;
+   an existing draft or attachment keeps them open when focus moves away. */
+.reply-composer:not(.is-expanded):not(:focus-within) :is(.composer-recipient, .composer-toolbar, .composer-privacy) { display: none; }
 .community-discovery { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--accent-soft); padding: 14px 16px; color: var(--brand-deep); transition: border-color 0.15s; }
 .community-discovery:hover { border-color: var(--accent); }
 .community-discovery > span:nth-child(2) { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
@@ -1196,11 +1213,16 @@ summary.menu::-webkit-details-marker {
 .post-list > li > .post-card:has(details[open]) { content-visibility: visible; }
 .post-context { margin-bottom: 14px; color: var(--muted); font-size: 10px; font-weight: 500; }
 .post-author { letter-spacing: -0.02em; }
-.post-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 18px; }
-.post-actions { display: flex; align-items: center; gap: 24px; margin-top: 14px; border-top: 1px solid var(--line); padding-top: 5px; }
-.post-actions .icon-btn { min-height: 36px; min-width: 36px; font-size: 11px; }
-.post-actions > .icon-btn:first-child { margin-left: -8px; }
-.post-actions-end { display: flex; align-items: center; gap: 4px; margin-left: auto; margin-right: -8px; }
+.post-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; color: var(--muted); font-size: var(--post-meta-size); line-height: 18px; }
+.post-actions { display: flex; align-items: center; gap: clamp(4px, 2vw, 24px); margin-top: 12px; border-top: 1px solid var(--line); padding-top: 5px; }
+.post-actions > :not(.post-actions-end) { flex: 0 1 auto; min-width: var(--touch-target); max-width: 76px; }
+.post-actions .icon-btn { min-height: var(--touch-target); min-width: var(--touch-target); max-width: 100%; gap: 4px; padding-inline: 6px; font-size: 12px; }
+.post-actions > form > .icon-btn, .post-actions > .dropdown-menu > .icon-btn { width: 100%; }
+.post-actions > .icon-btn:first-child { margin-left: -6px; }
+.post-actions .icon-btn svg { flex-shrink: 0; }
+.post-actions .tabular-nums { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.post-actions-end { display: flex; flex-shrink: 0; align-items: center; margin-left: auto; margin-right: -6px; }
+.post-actions-end .icon-btn { width: var(--touch-target); }
 /* Rendered outside the feed: card containment and permalink overlays cannot clip it. */
 html:has(.share-dialog[open]) { overflow: hidden; }
 .share-dialog { position: fixed; inset: 0; width: min(460px, calc(100% - 32px)); max-width: none; max-height: calc(100dvh - 48px); margin: auto; border: 1px solid var(--line); border-radius: var(--r-frame); background: var(--surface); padding: 0; color: var(--ink); box-shadow: var(--shadow-pop); overflow-y: auto; overscroll-behavior: contain; }
@@ -1251,32 +1273,48 @@ a.quoted-post:hover { border-color: var(--accent-strong); }
 .quoted-post-images[data-count="3"] > img:first-child { grid-row: span 2; }
 .quoted-post-images img { min-width: 0; min-height: 0; width: 100%; height: 100%; object-fit: cover; }
 .composer-quote { margin-top: 12px; }
-.post-body { font-size: 14px; line-height: 1.8; }
+.post-body { font-size: var(--post-text-size); line-height: var(--post-text-leading); }
 ol.post-list { margin-inline: 0; }
 ol.post-list .post-card { padding-inline: 18px; }
 .post-card.is-focused { padding: 24px 24px 12px; }
+.post-card.is-reply { padding: var(--reply-padding); }
+.post-card.is-reply .post-header { gap: 10px; align-items: center; }
+.post-card.is-reply .post-identity { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.post-card.is-reply .post-author { min-width: 0; max-width: 100%; }
+.post-card.is-reply .post-meta { margin-top: 0; }
+.post-card.is-reply > .mt-3 { margin-top: var(--reply-gap); }
+/* Replies are read in a run, so their action row is lighter: no divider, buttons 34px tall
+   (44px wide, so neighbours stay apart), close under the text and the card's edge. */
+.post-card.is-reply .post-actions { margin-top: 4px; border-top: 0; padding-top: 0; }
+.post-card.is-reply .post-actions .icon-btn { min-height: 34px; }
+.thread-author-label { color: var(--accent-strong); font-size: var(--post-meta-size); font-weight: 600; line-height: 18px; }
 .thread-view { gap: 14px; }
 .thread-context { border-bottom: 1px solid var(--line); }
 .thread-context summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
 .thread-context[open] summary > svg { transform: rotate(180deg); }
 .thread-context .post-list { margin-block: 10px 16px; }
-.thread-replies-heading { padding: 4px 0 10px; font-size: 13px; font-weight: 600; }
-/* The order of replies, said in words beside its switch, as feeds say "Newest first, not ranked". */
-.thread-replies-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
-.thread-replies-head .thread-replies-heading { padding-bottom: 4px; }
-.thread-order { display: inline-flex; gap: 2px; border: 1px solid var(--line-strong); border-radius: var(--r-control); padding: 2px; }
-.thread-order a { display: inline-flex; min-height: 32px; align-items: center; border-radius: 5px; padding: 4px 10px; color: var(--muted); font-size: 12px; font-weight: 600; }
-.thread-order a:hover { color: var(--ink); }
+.thread-replies-heading { font-size: 13px; font-weight: 600; }
+.thread-replies-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--touch-target); margin-bottom: 4px; }
+.thread-replies-head > .dropdown-menu > summary { min-width: var(--touch-target); min-height: var(--touch-target); }
+.thread-options-panel { width: min(280px, calc(100vw - 24px)); }
+.thread-options-label { padding: 6px 12px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .thread-order a[aria-current="true"] { background: var(--accent-soft); color: var(--accent-strong); }
-.thread-order-rule { margin: 6px 0 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.thread-list { display: flex; flex-direction: column; gap: 14px; }
-.thread-children { margin-top: 12px; margin-left: 16px; border-left: 2px solid var(--line-strong); padding-left: 16px; }
+.thread-order-rule { margin: 6px 8px 4px; border-top: 1px solid var(--line); padding: 10px 4px 4px; color: var(--muted); font-size: var(--post-meta-size); line-height: 1.6; }
+.thread-list { display: flex; flex-direction: column; gap: var(--reply-gap); }
+.thread-branch { position: relative; }
+.thread-row { position: relative; }
+.thread-children { margin-top: var(--reply-gap); margin-left: 30px; border-left: 2px solid var(--line-strong); padding-left: 12px; }
+.thread-branch.is-root > .thread-children { margin-left: 0; border-left: 0; padding-left: 0; }
+.thread-children > .thread-list > li > .thread-branch > .thread-row::before { content: ''; position: absolute; top: 28px; left: -14px; width: 14px; border-top: 2px solid var(--line-strong); }
+.thread-branch.is-root > .thread-children > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
 .thread-children[hidden] { display: none; }
-/* Two visual steps are enough to show relationships; deeper replies keep their width. */
-.thread-branch .thread-branch .thread-branch > .thread-children { margin-left: 0; border-left: 0; padding-left: 0; }
+/* Replies stop at THREAD_MAX_DEPTH (3): two indents on a desktop, one on a phone (below).
+   Only the replies behind a deleted post go further, and keep the width they have. */
+.thread-branch .thread-branch .thread-branch .thread-branch > .thread-children { margin-left: 0; border-left: 0; padding-left: 0; }
+.thread-branch .thread-branch .thread-branch .thread-branch > .thread-children > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
 .thread-controls { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 4px 12px 0; }
 .thread-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
-.thread-toggle { display: inline-flex; min-height: 40px; align-items: center; color: var(--accent-strong); font-size: 12px; font-weight: 600; }
+.thread-toggle { display: inline-flex; min-height: var(--touch-target); align-items: center; color: var(--accent-strong); font-size: 12px; font-weight: 600; }
 .thread-toggle:hover { text-decoration: underline; }
 .thread-toggle[aria-busy="true"], .thread-more[aria-disabled="true"] { cursor: wait; opacity: 0.65; }
 .thread-more { margin-top: 14px; }
@@ -1290,7 +1328,7 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-editor-host:not(:empty) { margin-top: 14px; }
 .thread-editor-host:empty { display: none; }
 .composer-posted { margin-top: 6px; color: var(--muted); font-size: 12px; }
-.thread-list > li > .thread-branch > .thread-row > .post-card { content-visibility: auto; contain-intrinsic-size: auto 180px; }
+.thread-list > li > .thread-branch > .thread-row > .post-card { content-visibility: auto; contain-intrinsic-size: auto 140px; }
 .thread-list > li > .thread-branch > .thread-row > .post-card:has(details[open]) { content-visibility: visible; }
 
 /* Avatars and identity share a header; the content below uses the full card. */
@@ -1328,6 +1366,22 @@ a.notification-row:hover {
   padding-top: 4px;
   color: var(--muted);
 }
+/* The icon rides on the avatar's lower corner. */
+.notification-avatar { position: relative; display: inline-flex; flex-shrink: 0; margin-right: 4px; }
+.notification-icon.is-badge {
+  position: absolute;
+  right: -5px;
+  bottom: -4px;
+  align-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  padding-top: 0;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.notification-icon.is-badge svg { width: 12px; height: 12px; }
 .notification-destination {
   display: inline-block;
   margin-top: 3px;
@@ -1808,7 +1862,7 @@ a.result-row:hover { color: var(--accent-strong); }
 .constitution-promise { border-left: 2px solid var(--accent); padding-left: 14px; color: var(--brand-deep); font-weight: 500; }
 .policy-body .constitution-versions { list-style: none; padding-left: 0; }
 .square-bottom-nav { background: var(--surface); }
-.bottom-tab { display: flex; min-width: 0; min-height: 62px; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.bottom-tab { display: flex; min-width: 0; min-height: 62px; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 500; white-space: nowrap; }
 .bottom-tab[aria-current="page"] { color: var(--accent-strong); font-weight: 700; }
 .mobile-compose { display: flex; width: 44px; height: 44px; flex-shrink: 0; align-items: center; justify-content: center; margin-inline: 8px; border-radius: var(--r-control); background: var(--accent); color: var(--accent-ink); transition: transform 0.1s; }
 .mobile-compose:active { transform: scale(0.95); }
@@ -1825,10 +1879,12 @@ a.result-row:hover { color: var(--accent-strong); }
   .page-title { font-size: 26px; }
   .square-composer { padding: 16px; }
   .post-card, .post-list .post-card { padding: 18px 16px 8px; }
-  .post-actions .icon-btn { min-height: 40px; min-width: 40px; }
   .post-card.is-focused { padding: 20px 18px 10px; }
-  .thread-children { margin-left: 6px; padding-left: 10px; }
-  .thread-branch .thread-branch > .thread-children { margin-left: 0; border-left: 0; padding-left: 0; }
+  /* One narrow indent: the second level lines up with the first, and says whom it answers. */
+  .thread-children { margin-left: 4px; padding-left: 10px; }
+  .thread-children > .thread-list > li > .thread-branch > .thread-row::before { left: -11px; width: 11px; }
+  .thread-branch .thread-branch .thread-branch > .thread-children { margin-left: 0; border-left: 0; padding-left: 0; }
+  .thread-branch .thread-branch .thread-branch > .thread-children > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
   .notification-row { padding: 16px; }
   .page-header, .content-panel, .community-card, .governance-section { padding: 20px; }
 }
@@ -1852,8 +1908,6 @@ a.result-row:hover { color: var(--accent-strong); }
   .composer-submit { min-width: 54px; padding-inline: 12px; font-size: 12px; }
   .post-card, .post-list .post-card { padding: 16px 14px 6px; }
   .post-card > .flex { gap: 10px; }
-  .post-body { font-size: 13px; line-height: 1.8; }
-  .post-actions { gap: 16px; }
   .page-header, .content-panel, .community-card, .governance-section { padding: 18px; }
   .bottom-tab { font-size: 11px; letter-spacing: -0.025em; }
 }

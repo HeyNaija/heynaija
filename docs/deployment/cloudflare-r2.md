@@ -143,8 +143,9 @@ and refuses to run against any other address.
   `docs/safety/abuse-material-scanning.md`: a hash-matching scanner in the API, and
   Cloudflare's CSAM Scanning Tool on the hostname that serves `/media`. This is a
   legal and safety obligation, not an optional extra.
-- **Purge Cloudflare's cache when a moderator takes an image down.** Removal moves
-  the files out of the public bucket at once, but a cached copy can be served for
-  up to a year. Not automated yet.
+- **Let the API purge Cloudflare's cache when a moderator takes an image down.**
+  Removal moves the files out of the public bucket at once, but a cached copy can
+  be served for up to a year. The API purges it when `CLOUDFLARE_ZONE_ID` and
+  `CLOUDFLARE_PURGE_TOKEN` are set; see `docs/safety/abuse-material-scanning.md`.
 - Decide how long deleted media is kept (today: deleted immediately on replace,
   remove, or when an author deletes a post) and write it into the privacy policy.

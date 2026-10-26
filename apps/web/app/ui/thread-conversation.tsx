@@ -18,7 +18,8 @@ import {
   THREAD_MAX_DEPTH,
 } from '@/lib/thread-state'
 import { Composer } from './composer'
-import { BubbleIcon } from './icons'
+import { BubbleIcon, DotsIcon } from './icons'
+import { Menu } from './menu'
 
 type Position = { id: string; parentId: string | null; handle: string | null; depth: number }
 type ConversationContext = {
@@ -179,7 +180,7 @@ export function ThreadConversation({
       replyTo={target.id}
       replyHandle={target.handle}
       replyDepth={target.depth + 1}
-      placeholder={`Reply to @${target.handle}`}
+      placeholder="Write a reply…"
       submitAction={createThreadReply}
       onPosted={onPosted}
       onPendingChange={setPosting}
@@ -207,7 +208,8 @@ export function ThreadReplyAction({ id, parentId, handle, depth, count }: ReplyT
       aria-label={`Reply (${total === 1 ? '1 reply' : `${total} replies`})`}
       aria-disabled={context?.posting || undefined}
       onClick={(event) => {
-        if (!plainClick(event) || !context?.canReply || depth > THREAD_MAX_DEPTH) return
+        // A reply at the limit would not be drawn in this view, so open the post to answer it.
+        if (!plainClick(event) || !context?.canReply || depth >= THREAD_MAX_DEPTH) return
         event.preventDefault()
         context.select({ id, parentId, handle, depth })
       }}
@@ -246,7 +248,7 @@ export function ThreadBranch({
       </p>
     )
   }
-  const renderChildren = canRenderThreadChildren(depth, path.length)
+  const renderChildren = canRenderThreadChildren(depth, path.length, !handle)
   const state = context?.branches[id]
   const busy = state?.status === 'loading'
   const items = state?.items ?? []
@@ -261,7 +263,7 @@ export function ThreadBranch({
   return (
     <BranchAncestry.Provider value={path}>
     <div className={`thread-branch ${root ? 'is-root' : ''}`} data-thread-id={id} data-parent-id={parentId ?? ''} data-depth={depth}>
-      {depth > 1 && parentId ? (
+      {depth > 1 && parentId && (!handle || !parentHandle || handle !== parentHandle) ? (
         <p className="thread-recipient">
           <Link href={`/p/${parentId}#post-${parentId}`} prefetch={false}>
             {parentHandle ? `Replying to @${parentHandle}` : 'Replying to an earlier post'}
@@ -344,36 +346,34 @@ function replyQuery(order: ReplyOrder, cursor: string | null) {
   return query.size ? `?${query}` : ''
 }
 
-/**
- * The order of replies, stated where they are read, with the switch between
- * its two directions. Plain links, so it works before JavaScript loads.
- */
+/** Keep reading controls together, out of the way until the reader asks for them. */
 function RepliesHeading({ id, handle, order, ordered }: { id: string; handle: string | null; order: ReplyOrder; ordered: boolean }) {
   return (
-    <>
-      <div className="thread-replies-head">
-        <h2 className="thread-replies-heading">Replies</h2>
-        {ordered ? (
+    <div className="thread-replies-head">
+      <h2 className="thread-replies-heading">Replies</h2>
+      {ordered ? (
+        <Menu label="Reply options" trigger={<DotsIcon size={18} />} panelClassName="thread-options-panel">
           <nav aria-label="Order of replies" className="thread-order">
+            <p className="thread-options-label">Order replies</p>
             {(['newest', 'oldest'] as const).map((value) => (
               <Link
                 key={value}
                 href={`/p/${id}${replyQuery(value, null)}#replies-${id}`}
                 prefetch={false}
                 aria-current={value === order ? 'true' : undefined}
+                className="menu-item"
               >
                 {value === 'newest' ? 'Newest first' : 'Oldest first'}
               </Link>
             ))}
           </nav>
-        ) : null}
-      </div>
-      {ordered ? (
-        <p className="thread-order-rule">
-          {handle ? `@${handle}'s` : "The author's"} own replies come first, then everyone else's, {order} first.
-          Under each reply, its author's replies come first the same way. Nothing is ranked by likes or reach.
-        </p>
+          <p className="thread-order-rule">
+            <strong>Author replies first.</strong>{' '}
+            {handle ? `@${handle}'s` : "The author's"} own replies come first, then everyone else's, {order} first.
+            Under each reply, its author's replies come first the same way. Nothing is ranked by likes or reach.
+          </p>
+        </Menu>
       ) : null}
-    </>
+    </div>
   )
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Placeholder, PolicyPage } from '@/app/ui/policy-page'
+import { ContactEmail, PolicyPage } from '@/app/ui/policy-page'
 
 export const metadata: Metadata = { title: 'Rules' }
 
@@ -10,7 +10,7 @@ export default function RulesPage() {
       eyebrow="How we treat each other"
       title="HeyNaija rules"
       summary="HeyNaija is for real conversations between Nigerians, at home and abroad. These rules apply everywhere on the site. Every post is public, so write as you would in a town square."
-      updated="16 October 2026"
+      updated="26 October 2026"
       sections={[
         {
           id: 'rules',
@@ -95,6 +95,11 @@ export default function RulesPage() {
                 <strong>Report</strong> a post or an account from its menu when it breaks these rules. Only
                 moderators see who reported it.
               </li>
+              <li>
+                <strong>Not a member, or reporting for an authority?</strong> Write to <ContactEmail />{' '}
+                with a link to the post or account. Never send the image itself, and never send any image
+                of a child: the link is enough for us to find it.
+              </li>
             </ul>
           ),
         },
@@ -124,7 +129,7 @@ export default function RulesPage() {
               If your account is suspended, you can appeal from the home page: say why the decision
               should be looked at again, and a moderator will review it. Removed posts can be restored
               when a removal was a mistake. If you think a decision is unfair and an appeal did not help,
-              write to <Placeholder>safety contact email</Placeholder>.
+              write to <ContactEmail />.
             </p>
           ),
         },

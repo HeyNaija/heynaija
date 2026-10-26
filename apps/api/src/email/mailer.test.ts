@@ -35,6 +35,17 @@ test('every email goes out with the one-click unsubscribe headers, a text part a
   assert.match(raw, /Content-Type: text\/html/)
 })
 
+test('an alert to the people running the service carries no unsubscribe headers', async () => {
+  const transport = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: 'unix' })
+  let raw = ''
+  await new SmtpMailer(
+    { sendMail: async (message: Parameters<typeof transport.sendMail>[0]) => void (raw = (await transport.sendMail(message)).message.toString()) } as never,
+    from,
+  ).send({ ...mail, unsubscribeUrl: undefined })
+  assert.doesNotMatch(raw, /^List-Unsubscribe/m)
+  assert.match(raw, /^Auto-Submitted: auto-generated$/m)
+})
+
 const failing = (error: unknown) => ({ sendMail: async () => Promise.reject(error) }) as never
 const smtp = (code: number) => Object.assign(new Error(`${code} refused`), { responseCode: code })
 

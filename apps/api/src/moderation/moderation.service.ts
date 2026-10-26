@@ -14,6 +14,7 @@ import { avatarPath, MediaService } from '../media/media.service.js'
 import { type NewNotification, notify } from '../notifications/notifications.service.js'
 import { imagesOf, type PostImage, toPostImages } from '../posts/posts.service.js'
 import { DB } from '../tokens.js'
+import { SAFETY_ALERTS, type SafetyAlerts } from './safety-alerts.js'
 
 export type ReportReason = Exclude<(typeof REPORT_REASONS)[number], 'appeal'>
 export const RESOLUTIONS = [
@@ -37,7 +38,8 @@ export type QueueItem = {
   reason: (typeof REPORT_REASONS)[number]
   details: string
   createdAt: Date
-  reporterHandle: string
+  /** Null when the upload scanner filed it. */
+  reporterHandle: string | null
   /** How many open reports there are about the same post or account. */
   reportCount: number
   post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
@@ -69,6 +71,7 @@ export class ModerationService {
     // Moves taken-down images out of public view. Optional so tests about
     // decisions alone need no storage.
     @Optional() @Inject(MediaService) private readonly media?: MediaService,
+    @Optional() @Inject(SAFETY_ALERTS) private readonly alerts?: SafetyAlerts,
   ) {}
 
   /**
@@ -153,6 +156,14 @@ export class ModerationService {
       )
     if (existing) return
     await this.db.insert(reports).values({ reporterId, postId, memberId, reason, details })
+    // Illegal content may need taking down and reporting quickly, so a person
+    // hears about it rather than waiting for a moderator to open the queue.
+    if (reason === 'illegal') {
+      await this.alerts?.alert('A member reported illegal content', [
+        postId ? `A post (${postId}) was reported as illegal.` : `An account (${memberId}) was reported as illegal.`,
+        'Illegal-content reports are at the top of the moderation queue.',
+      ])
+    }
   }
 
   /**
@@ -183,7 +194,7 @@ export class ModerationService {
     await this.db.insert(reports).values({ reporterId: memberId, memberId, reason: 'appeal', details: message })
   }
 
-  /** Open reports this moderator may act on, oldest first. */
+  /** Open reports this moderator may act on: illegal content first, then oldest first. */
   async queue(moderatorId: string): Promise<QueueItem[]> {
     const scope = await this.requireModerator(moderatorId)
     const rows = await this.db.execute<{
@@ -191,7 +202,7 @@ export class ModerationService {
       reason: QueueItem['reason']
       details: string
       created_at: Date
-      reporter_handle: string
+      reporter_handle: string | null
       report_count: number
       post_id: string | null
       post_text: string | null
@@ -212,14 +223,14 @@ export class ModerationService {
         tm.handle as member_handle, tm.active as member_active, tm.display_name as member_name,
         tm.bio as member_bio, tm.avatar_media_id as member_avatar
       from reports r
-      join members rep on rep.id = r.reporter_id
+      left join members rep on rep.id = r.reporter_id
       left join posts p on p.id = r.post_id
       left join members pa on pa.id = p.author_id
       left join communities c on c.id = p.community_id
       left join members tm on tm.id = r.member_id
       where r.status = 'open'
         and (${scope.siteWide} or p.community_id in ${scope.communityIds.length ? sql`(${sql.join(scope.communityIds.map((id) => sql`${id}`), sql`, `)})` : sql`(null)`})
-      order by r.created_at asc
+      order by r.reason = 'illegal' desc, r.created_at asc
       limit 200`)
 
     return rows.rows.map((r) => ({
@@ -335,7 +346,9 @@ export class ModerationService {
       if ((action === 'remove_avatar' || action === 'clear_profile') && targetMemberId) {
         told.push({ recipientId: targetMemberId, kind: action === 'remove_avatar' ? 'avatar_removed' : 'profile_cleared' })
       }
-      const reporters = new Set(closed.filter((r) => r.reason !== 'appeal').map((r) => r.reporterId))
+      const reporters = new Set(
+        closed.flatMap((r) => (r.reason !== 'appeal' && r.reporterId ? [r.reporterId] : [])),
+      )
       for (const reporterId of reporters) {
         told.push({
           recipientId: reporterId,

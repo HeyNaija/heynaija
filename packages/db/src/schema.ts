@@ -207,7 +207,6 @@ export const posts = pgTable(
   (t) => [
     index('posts_created_idx').on(t.createdAt, t.id),
     index('posts_author_created_idx').on(t.authorId, t.createdAt),
-    index('posts_reply_parent_idx').on(t.replyParentId),
     index('posts_reply_parent_created_idx').on(t.replyParentId, t.createdAt, t.id),
     index('posts_community_created_idx').on(t.communityId, t.createdAt),
     index('posts_quote_idx').on(t.quotePostId).where(sql`quote_post_id is not null`),
@@ -362,14 +361,13 @@ export const mutes = pgTable(
 export const REPORT_REASONS = ['spam', 'harassment', 'hate', 'scam', 'illegal', 'other', 'appeal'] as const
 
 // A report about a post or an account. An appeal is a report a suspended member
-// files about themselves (reason 'appeal'), so it lands in the same queue.
+// files about themselves (reason 'appeal'), so it lands in the same queue. A
+// report with no reporter was filed by the upload scanner, not by a person.
 export const reports = pgTable(
   'reports',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    reporterId: uuid('reporter_id')
-      .notNull()
-      .references(() => members.id),
+    reporterId: uuid('reporter_id').references(() => members.id),
     postId: uuid('post_id').references(() => posts.id),
     memberId: uuid('member_id').references(() => members.id),
     reason: text('reason', { enum: REPORT_REASONS }).notNull(),

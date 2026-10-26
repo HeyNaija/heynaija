@@ -6,7 +6,22 @@ test('expands, reuses and pages branches, and replies to the selected post @mobi
   const { page, handle, context } = await newMember(browser, 'threads')
   try {
     const fixture = await seedThread(handle)
+    const counts = pool()
+    try {
+      await counts.query('update posts set like_count = 123456789, repost_count = 123456789 where id = $1', [fixture.first])
+    } finally {
+      await counts.end()
+    }
     await page.goto(`/p/${fixture.root}?replies=oldest`)
+    const composer = page.locator('form#compose')
+    const photo = composer.getByRole('button', { name: 'Add images (up to 4)', exact: true })
+    await expect(photo).toBeHidden()
+    await expect(composer.locator('.composer-privacy')).toBeHidden()
+    expect(await composer.evaluate((node) => node.getBoundingClientRect().height)).toBeLessThanOrEqual(64)
+    await (await replyBox(page, fixture.root)).click()
+    await expect(photo).toBeVisible()
+    await page.getByRole('heading', { name: 'Replies', exact: true }).click()
+    await expect(photo).toBeHidden()
     await expect(page.locator('article', { hasText: `Thread reply ` })).toHaveCount(20)
     await expect(page.locator(`#post-${fixture.nested[0]}`)).toHaveCount(0)
     const url = page.url()
@@ -59,6 +74,18 @@ test('expands, reuses and pages branches, and replies to the selected post @mobi
     }
     await page.setViewportSize({ width: 320, height: 740 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    for (const id of [fixture.first, fixture.nested[0]]) {
+      const card = page.locator(`#post-${id}`)
+      await card.scrollIntoViewIfNeeded()
+      expect(await card.evaluate((node) => {
+        const bounds = node.getBoundingClientRect()
+        return Array.from(node.querySelectorAll('.post-actions .icon-btn')).every((control) => {
+          const box = control.getBoundingClientRect()
+          return box.width >= 44 && box.height >= 34 && box.left >= bounds.left && box.right <= bounds.right
+        })
+      })).toBe(true)
+    }
+    await expect(page.locator('.square-bottom-nav').getByRole('link', { name: 'Alerts (Notifications)', exact: true })).toHaveText('Alerts')
   } finally {
     await context.close()
   }
@@ -175,12 +202,19 @@ test("the author's own replies come first, then everyone else's newest first, an
       .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.threadId))
 
     await page.goto(`/p/${root!.id}`)
+    const options = page.getByLabel('Reply options', { exact: true })
+    await expect(page.locator('.thread-order-rule')).toBeHidden()
+    await expect(page.getByRole('link', { name: 'Oldest first', exact: true })).toBeHidden()
+    await options.click()
     await expect(page.getByText(`@${handle}'s own replies come first, then everyone else's, newest first.`)).toBeVisible()
+    await expect(page.locator(`#post-${replies[4]}`).getByText('Author', { exact: true })).toBeVisible()
+    await expect(page.locator(`#post-${replies[3]}`).getByText('Author', { exact: true })).toHaveCount(0)
     await expect(page.getByRole('link', { name: 'Newest first', exact: true })).toHaveAttribute('aria-current', 'true')
     expect(await order()).toEqual([replies[4], replies[2], replies[3], replies[1]])
 
     await page.getByRole('link', { name: 'Oldest first', exact: true }).click()
     await expect(page).toHaveURL(/[?&]replies=oldest/)
+    await options.click()
     await expect(page.getByText(`@${handle}'s own replies come first, then everyone else's, oldest first.`)).toBeVisible()
     await expect(page.getByRole('link', { name: 'Oldest first', exact: true })).toHaveAttribute('aria-current', 'true')
     expect(await order()).toEqual([replies[2], replies[4], replies[1], replies[3]])
@@ -190,11 +224,58 @@ test("the author's own replies come first, then everyone else's newest first, an
     await (await replyBox(page, root!.id)).fill(text)
     await page.getByRole('button', { name: 'Reply', exact: true }).click()
     await expect(page.locator(`#replies-${root!.id} > .thread-list > li`).nth(2)).toContainText(text)
+    await expect(page.locator('article', { hasText: text }).getByText('Author', { exact: true })).toBeVisible()
 
+    await options.click()
     await page.getByRole('link', { name: 'Newest first', exact: true }).click()
     await expect(page).not.toHaveURL(/replies=oldest/)
     await expect(page.locator(`#replies-${root!.id} > .thread-list > li`).first()).toContainText(text)
     expect((await order()).slice(1)).toEqual([replies[4], replies[2], replies[3], replies[1]])
+  } finally {
+    await db.end()
+    await context.close()
+  }
+})
+
+test('replies open in place three levels deep; below that a post continues as its own conversation @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'depth')
+  const db = pool()
+  try {
+    // A post and a chain of replies under it, one level each: level 4 is out of reach in place.
+    const { rows: [member] } = await db.query<{ id: string }>('select id from members where handle = $1', [handle])
+    const ids: string[] = []
+    for (let level = 0; level <= 4; level++) {
+      const { rows: [post] } = await db.query<{ id: string }>(
+        `insert into posts (author_id, text, reply_parent_id, root_id, created_at)
+         values ($1, $2, $3, $4, now() - interval '1 hour' + make_interval(secs => $5)) returning id`,
+        [member!.id, `Level ${level} post`, ids[level - 1] ?? null, level ? ids[0] : null, level],
+      )
+      ids.push(post!.id)
+    }
+    const expand = (id: string) => page.locator(`.thread-branch[data-thread-id="${id}"] > .thread-controls > a.thread-toggle`)
+
+    await page.goto(`/p/${ids[0]}`)
+    await expect(page.locator(`#post-${ids[1]}`)).toBeVisible()
+    await expand(ids[1]!).click()
+    await expect(page.locator(`#post-${ids[2]}`)).toBeVisible()
+    await expand(ids[2]!).click()
+    await expect(page.locator(`#post-${ids[3]}`)).toBeVisible()
+    // The third level offers the conversation, not another level.
+    await expect(expand(ids[3]!)).toHaveText('Continue conversation')
+    await expect(page.locator(`#post-${ids[4]}`)).toHaveCount(0)
+
+    // Answering the second level adds its reply in place.
+    const url = page.url()
+    await page.locator(`#post-${ids[2]} .post-actions a[aria-label^="Reply"]`).click()
+    await (await replyBox(page, ids[2])).fill('An answer one level down')
+    await page.getByRole('button', { name: 'Reply', exact: true }).click()
+    await expect(page.locator('article', { hasText: 'An answer one level down' })).toBeVisible()
+    expect(page.url()).toBe(url)
+
+    // Answering the third opens it, since a reply there would not be shown on this page.
+    await page.locator(`#post-${ids[3]} .post-actions a[aria-label^="Reply"]`).click()
+    await expect(page).toHaveURL(new RegExp(`/p/${ids[3]}#compose$`))
+    await expect(page.locator(`#post-${ids[4]}`)).toBeVisible()
   } finally {
     await db.end()
     await context.close()

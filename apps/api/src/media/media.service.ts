@@ -2,6 +2,7 @@ import { type Db, media, members, posts, reports } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, eq, inArray, isNotNull, isNull, lt, type SQL, sql } from 'drizzle-orm'
 import sharp from 'sharp'
+import { SAFETY_ALERTS, type SafetyAlerts } from '../moderation/safety-alerts.js'
 import { DB } from '../tokens.js'
 import type { ObjectStore } from './object-store.js'
 
@@ -12,16 +13,19 @@ export const MEDIA_JOBS = Symbol('MEDIA_JOBS')
 export interface MediaJobs {
   /** Queues an uploaded post image for checking and re-encoding. Safe to repeat. */
   processPostImage(mediaId: string): Promise<void>
+  /** Queues dropping these media-bucket files from the CDN's cache, retried until it works. */
+  purgeCdn(keys: string[]): Promise<void>
 }
 
 export const CONTENT_SCANNER = Symbol('CONTENT_SCANNER')
 
 /**
  * Checks an upload against known child sexual abuse material before anything is
- * published. See docs/safety/abuse-material-scanning.md for the plan to plug in
- * a real one (PhotoDNA); until then every image passes.
+ * published. See docs/safety/abuse-material-scanning.md: PhotoDNA once it is
+ * approved (./photodna.ts); until then every image passes.
  */
 export interface ContentScanner {
+  /** Throws when it cannot tell, and then the image is not published. */
   scan(image: Buffer): Promise<'clear' | 'match'>
 }
 
@@ -61,7 +65,7 @@ const ABANDONED_AFTER_MS = 60 * 60 * 1000
 
 export class MediaError extends Error {
   constructor(
-    readonly code: 'not_found' | 'not_uploaded' | 'too_large' | 'not_an_image' | 'blocked',
+    readonly code: 'not_found' | 'not_uploaded' | 'too_large' | 'not_an_image' | 'blocked' | 'scan_unavailable',
     message: string,
   ) {
     super(message)
@@ -178,20 +182,43 @@ export class MediaService {
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     @Inject(MEDIA_JOBS) private readonly jobs: MediaJobs,
     @Optional() @Inject(CONTENT_SCANNER) private readonly scanner: ContentScanner = new NoScanner(),
+    @Optional() @Inject(SAFETY_ALERTS) private readonly alerts?: SafetyAlerts,
   ) {}
 
   /**
    * Runs the scanner on an upload. On a match the original is kept privately,
-   * the row is marked blocked, and operators are alerted through the log; the
-   * uploader is told only that the image cannot be used.
+   * the row is marked blocked, the account goes into the moderation queue and
+   * whoever handles safety is alerted; the uploader is told only that the image
+   * cannot be used. A scanner that cannot answer fails closed: nothing is
+   * published, and the upload can be tried again.
    */
   private async screen(kind: Kind, mediaId: string, ownerId: string, original: Buffer): Promise<boolean> {
-    if ((await this.scanner.scan(original)) === 'clear') return true
+    let verdict: 'clear' | 'match'
+    try {
+      verdict = await this.scanner.scan(original)
+    } catch (err) {
+      this.log.warn(`content scanner could not check upload ${mediaId}: ${(err as Error).message}`)
+      throw new MediaError('scan_unavailable', 'images cannot be checked right now; try again in a few minutes')
+    }
+    if (verdict === 'clear') return true
+
     const key = uploadKey(kind, mediaId)
     await this.store.write('uploads', quarantineKey(`originals/${key}`), original, 'application/octet-stream')
     await this.store.remove('uploads', key)
     await this.db.update(media).set({ status: 'blocked' }).where(eq(media.id, mediaId))
-    this.log.error(`content scanner matched upload ${mediaId} from member ${ownerId}; follow docs/safety/abuse-material-scanning.md`)
+    const what = kind === 'avatar' ? 'profile photo' : 'post image'
+    await this.db.insert(reports).values({
+      reporterId: null,
+      memberId: ownerId,
+      reason: 'illegal',
+      details:
+        `The upload scanner matched a ${what} this account uploaded (media ${mediaId}) with known child sexual abuse material. ` +
+        'It was never published, and the original is kept privately. Do not try to view it: suspend the account and follow the safety runbook.',
+    })
+    await this.alerts?.alert('An upload matched known abuse material', [
+      `The scanner blocked a ${what} (media ${mediaId}) uploaded by member ${ownerId}. It was not published.`,
+      'The account is waiting in the moderation queue.',
+    ])
     return false
   }
 
@@ -415,6 +442,8 @@ export class MediaService {
   private async quarantine(kind: Kind, mediaIds: string[]): Promise<void> {
     for (const id of mediaIds) {
       await this.moveVariants(kind, id, 'quarantine')
+      // Out of the bucket, but Cloudflare may still hold a cached copy for a year.
+      await this.jobs.purgeCdn(publishedKeys(kind, id))
       await this.db.update(media).set({ status: 'quarantined' }).where(eq(media.id, id))
     }
   }

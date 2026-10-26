@@ -20,6 +20,7 @@ import { QuotedPostCard } from './quoted-post'
 import { RepostButton } from './repost-button'
 import { ShareButton } from './share-button'
 import { SubmitButton } from './submit-button'
+import { ThreadAuthorLabel } from './thread-author'
 import { timeAgo } from './time'
 
 /** The shared surface for forms, cases and other distinct objects. */
@@ -58,6 +59,7 @@ export function PostItem({
   }
 
   const href = `/p/${post.id}`
+  const compact = inThread && !focused
   const openLabel = `Open ${post.replyParentId ? 'reply' : 'post'} by @${post.authorHandle}`
   const parts = textParts(post.text, post.mentions, post.links, post.hashtags)
   // Text with links of its own cannot sit inside the post's permalink.
@@ -110,27 +112,28 @@ export function PostItem({
       </form>
     ) : null
   // The reason line already links the community when it names it; a chip would say it twice.
-  const showChip = post.community && !hideCommunity && !(why && post.reason !== 'following' && !reposter)
+  const showChip = post.community && !hideCommunity && !compact && !(why && post.reason !== 'following' && !reposter)
 
   return (
-    <article id={`post-${post.id}`} className={`post-card ${focused ? 'is-focused' : 'is-clickable'}`}>
+    <article id={`post-${post.id}`} className={`post-card ${focused ? 'is-focused' : 'is-clickable'}${compact ? ' is-reply' : ''}`}>
       {why ? <p className="post-context">{why}</p> : null}
 
       <div className="post-header flex gap-3">
         <Link prefetch={false} href={`/u/${post.authorHandle}`} tabIndex={-1} aria-hidden="true" className="h-fit rounded-full">
-          <Avatar handle={post.authorHandle} src={post.authorAvatar} size={42} />
+          <Avatar handle={post.authorHandle} src={post.authorAvatar} size={compact ? 32 : 42} />
         </Link>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
+            <div className="post-identity min-w-0">
               <p className="post-author text-[14px] leading-5">
                 <Link prefetch={false} href={`/u/${post.authorHandle}`} className="block max-w-full truncate hover:underline">
                   <span className="truncate font-semibold">{post.authorName ?? `@${post.authorHandle}`}</span>
                 </Link>
               </p>
+              {compact ? <ThreadAuthorLabel authorId={post.authorId} /> : null}
               <p className="post-meta">
-                {post.authorName ? <><span className="truncate">@{post.authorHandle}</span><span aria-hidden="true">·</span></> : null}
+                {post.authorName && !compact ? <><span className="truncate">@{post.authorHandle}</span><span aria-hidden="true">·</span></> : null}
                 <Link prefetch={false} href={href} className="shrink-0 hover:underline">
                   <time dateTime={post.createdAt} title={new Date(post.createdAt).toUTCString()}>
                     {timeAgo(post.createdAt, now)}
@@ -146,6 +149,16 @@ export function PostItem({
 
             {viewerId ? (
               <Menu label="Post options" trigger={<DotsIcon />} className="-mr-2 -mt-1.5">
+                {compact ? (
+                  <form action={setBookmark}>
+                    <input type="hidden" name="id" value={post.id} />
+                    <input type="hidden" name="on" value={post.viewerBookmarked ? '0' : '1'} />
+                    <SubmitButton className="menu-item" pressed={post.viewerBookmarked}>
+                      <BookmarkIcon size={18} />
+                      {post.viewerBookmarked ? 'Remove bookmark' : 'Bookmark'}
+                    </SubmitButton>
+                  </form>
+                ) : null}
                 {post.authorId === viewerId ? (
                   <>
                     {post.replyParentId ? null : (
@@ -260,7 +273,7 @@ export function PostItem({
         )}
 
         <div className="post-actions-end">
-          {viewerId ? (
+          {viewerId && !compact ? (
             <form action={setBookmark}>
               <input type="hidden" name="id" value={post.id} />
               <input type="hidden" name="on" value={post.viewerBookmarked ? '0' : '1'} />

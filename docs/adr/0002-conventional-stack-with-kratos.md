@@ -144,9 +144,9 @@ handling, verification and recovery are security-critical and already solved.
   evidence and so a restore can bring them back. If the move fails, the decision
   still stands and the hourly sweep finishes it. When an author deletes their own
   post its images are deleted, unless the post has an open report, in which case
-  they are quarantined too. Nothing yet purges Cloudflare's cache, so a copy
-  cached before removal can still be served; that, and how long quarantine is
-  kept, are open items in `docs/safety/abuse-material-scanning.md`.
+  they are quarantined too. Each quarantine also queues a purge of the files from
+  Cloudflare's cache, retried until it works. How long quarantine is kept is an
+  open item in `docs/safety/abuse-material-scanning.md`.
 - **Abandoned images** (uploads never finished, and post images never posted) are
   cleared an hour later: for one member whenever they start an upload, and for
   everyone by an hourly job. A composer left open over an hour loses its images

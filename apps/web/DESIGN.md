@@ -40,9 +40,9 @@ typography:
     letterSpacing: "-0.01em"
   body:
     fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
-    fontSize: "14px"
+    fontSize: "15px"
     fontWeight: 400
-    lineHeight: 1.8
+    lineHeight: 1.6
   body-small:
     fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
     fontSize: "13px"
@@ -64,6 +64,8 @@ spacing:
   card-padding: "22px"
   card-padding-mobile: "18px"
   gutter-mobile: "12px"
+  reply-padding: "12px 14px 8px"
+  reply-gap: "8px"
   feed-padding: "28px 0 48px"
 components:
   button-primary:
@@ -168,7 +170,7 @@ Same roles, set on `:root[data-theme="dark"]`: ground-dark for the ground, card-
 
 - **Headline** (700, 28px, 1.25, -0.045em): page titles, profile and community names; 26px below 1024px and 25px below 420px. Governance uses 30px, the public feed welcome uses 28–38px, and the desktop account welcome uses 42px.
 - **Title** (700, 15px, -0.01em): card and section headings. Rail card headings use 13px, under an 18px discovery heading.
-- **Body** (400, 14px, 1.8): feed post text; 13px below 420px. Bios use 15px, while focused thread text and fields use 16px. Fields retain 16px to avoid iOS zoom.
+- **Body** (400, 15px, 1.6): feed and reply text at every width. Bios use 15px, while focused thread text and fields use 16px. Fields retain 16px to avoid iOS zoom. Post metadata uses 12px.
 - **Body small** (400, 13px): helper text and supporting copy. Metadata and rail details use restrained 10–12px steps, usually in Slate Muted.
 - **Label** (600, 12px): chips and counters. Page eyebrows use 10px uppercase with 0.12em tracking, and bottom tabs use 11px.
 
@@ -177,18 +179,19 @@ Same roles, set on `:root[data-theme="dark"]`: ground-dark for the ground, card-
 ## Layout
 
 - **Desktop (1024px and up):** an open shell inside a 1320px container with 32px side padding, with no frame or sheet.
-  - **Left sidebar (210px, sticky, as tall as the window):** approved wordmark, navigation, a 44px "Create a post" action and the existing community illustration card. A 28px margin separates it from the content. It never scrolls: as the window gets shorter the card gives way first (its picture shrinks to 56px, then goes, then the card goes), and after that the least needed links move into a **More** menu that opens above its button, a few at a time. The choice is made in CSS from the window's height, so it holds on the first paint and without JavaScript.
+  - **Left sidebar (210px, sticky, as tall as the window):** approved wordmark, primary navigation, a 44px "Create a post" action and the existing community illustration card. About, Progress and Governance always live in **More**; Home, Communities, Notifications, Bookmarks, Settings and moderator access take priority in the main list. A 28px margin separates it from the content. It never scrolls: as the window gets shorter the card gives way first (its picture shrinks to 56px, then goes, then the card goes), and after that primary links move into More a few at a time. The choice is made in CSS from the window's height, so it holds on the first paint and without JavaScript.
   - **Centre feed:** fluid width, with 28px top and 48px bottom padding. The gap between feed and discovery rail is 24px.
   - **Right rail (282px, from 1200px up):** a calmer discovery heading and a stack of cards 16px apart, sticky beneath the header with independent scrolling when needed.
 - **Desktop header:** an 80px sticky bar with a search field up to 480px wide and a compact account menu. A hairline separates it from the content. The sidebar post action focuses the composer on the feed or takes the member there from another page.
 - **Feed tabs:** sticky at 80px on desktop and 64px on mobile, with Latest, Following and a small "Newest first, not ranked" label.
 - **Cards:** posts stack 14px apart; the home page uses a 16px rhythm, while shared discovery, profile and settings pages use 20px between sections.
+- **Conversations:** compact reply cards stack 8px apart. Nested connectors start at the parent's avatar axis, with one visual indentation step on phones and two on desktop. The reading rail reduces to three community suggestions and the footer on thread pages.
 - **Narrower desktops:** the sidebar remains 210px; the rail is hidden between 1024px and 1199px.
 - **Phones and small tablets (under 1024px):**
   - Only the centre column shows, inside a shell up to 720px wide.
   - The 64px top bar shows the wordmark, governance, search and account.
   - Feed gutters are 20px, reducing to 12px below 420px. Page cards use 20px padding, reducing to 18px on small phones; posts and the composer have their own tighter padding.
-  - A fixed bottom bar holds Home, Explore, a green "+" (new post), Notifications and Profile for members. Tabs are at least 62px tall; the centre action is 44px square. Visitors get the available account actions instead of a post button.
+  - A fixed bottom bar holds Home, Explore, a green "+" (new post), Alerts and Profile for members. Its accessible name is "Alerts (Notifications)", retaining the visible label for voice navigation. Tabs are at least 62px tall and labels stay on one line; the centre action is 44px square. Visitors get the available account actions instead of a post button.
   - The feed reserves 100px plus the device safe area at the bottom, reducing to 96px below 420px. The community directory uses two columns from 640px to 1023px, and one column elsewhere.
 
 **The No Sheet Rule.** Nothing frames the columns. Structure comes from the cards; there are no rules between columns.
@@ -235,7 +238,7 @@ Image drafts use the control radius; published post galleries use the 12px card 
 - **Border:** 1px Hairline. Feed cards go to Hairline Strong on hover.
 - **Behavior:** a post card opens its conversation from anywhere on the card (a reply opens its own conversation). Avatars, names, timestamps, community links, images, menus and actions keep their own targets, and post text stays selectable by dragging. The focused post on its own page is not a link.
 - **Shadow Strategy:** none; cards are flush (see Elevation & Depth).
-- **Internal Padding:** posts use 20px 20px 10px; below 1024px they use 18px 16px 8px, and below 420px, 16px 14px 6px. Rail sections use 20px, shared content panels 22px and profile/community headers 24px. Shared page cards reduce to 20px on mobile and 18px on small phones. Focused thread posts use 24px 24px 12px on desktop.
+- **Internal Padding:** feed posts use 20px 20px 10px; below 1024px they use 18px 16px 8px, and below 420px, 16px 14px 6px. Compact replies use 12px 14px 8px at every width. Rail sections use 20px, shared content panels 22px and profile/community headers 24px. Shared page cards reduce to 20px on mobile and 18px on small phones. Focused thread posts use 24px 24px 12px on desktop.
 - **Applies to:** posts, notifications (unread ones take Sage Wash with a green-tinted border), the new-post composer, profile and community headers, forms and moderation cases, and each right-rail section, Public Treasury included. Reply composers use an inline field instead of a card.
 - **Content alignment:** avatars stay in the header row. Post text, images and actions, and notification excerpts and destination links, use the full card width beneath the header without an empty avatar column.
 
@@ -253,7 +256,17 @@ Image drafts use the control radius; published post galleries use the 12px card 
 ### Composer
 The first card beneath the feed tabs. An avatar sits beside a quiet one-line field, "Start a conversation…"; choosing a community changes the prompt to name it. Focusing expands the writing area to three lines (two for replies). Photo, audience and Post actions remain visible in a full-width toolbar below a hairline, and the public-post note stays visible. The remaining character count appears while writing and says "left" or "over" explicitly. Compact labels below 420px keep the controls together down to 320px.
 
-In a thread, the reply composer is a borderless inline editor. A 32px avatar sits beside an 8px-radius field on Inset Sage, with a small “Replying to @handle” label above it. The attachment, audience, count and Reply actions align under the field, as do the public-reply note and feedback. The field itself gains a green border and focus halo; the editor has no post-card frame. Image drafts stay below the field, and text remains 16px on phones.
+In a thread, the reply composer starts as one line beside a 32px avatar. Focusing the field reveals the recipient, attachment controls, audience, count, Reply action and public-reply note. An empty editor collapses when focus moves away; written text and attachments keep it expanded. The field uses Inset Sage, an 8px radius, and a green border and halo on focus. The editor has no post-card frame. Image drafts stay below the field, and text remains 16px on phones.
+
+### Conversation replies
+
+Published replies have their own compact card variant: a 32px avatar, name and time in a wrapping header, 8px content gaps, and the same divided, left-aligned action row as feed posts. Body text remains full width. The visible conversation root's author receives an "Author" label on their replies, including expanded branches and new replies. A hidden, deleted or truncated root never assigns that label to another person. Community context is shown on the focused post rather than repeated on every reply.
+
+The Replies heading has one options menu containing Newest first, Oldest first, and the complete author-first ordering explanation. These controls stay hidden until requested. Branches still load only on demand, preserve their visibility checks, and keep the existing indentation limits. Repeated same-author recipient labels are omitted, while changed and unavailable parents retain their context links.
+
+Post actions use 44px targets in a left-aligned row beneath a hairline divider. Gaps and control widths adapt to the available space, with sharing at the far edge. Compact replies keep bookmarking in Post options; standalone feed and focused cards retain its toolbar button. Long counts truncate visually while accessible labels retain the full count. The spacing and reading roles are tokens in `globals.css` (`--post-text-size`, `--post-text-leading`, `--post-meta-size`, `--reply-padding`, `--reply-gap`, `--touch-target`).
+
+Returning members get a compact 22px town-square heading above the feed tabs; the public introduction retains the welcome message and invitation.
 
 ### App icons
 

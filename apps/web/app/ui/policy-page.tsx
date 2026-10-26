@@ -86,6 +86,13 @@ export function PolicyPage({
 }
 
 /** A fact the operators still have to supply. Visible on purpose. */
+/** Where people write to whoever runs HeyNaija: safety, privacy and everything else. */
+export const CONTACT_EMAIL = 'contact@heynaija.ng'
+
+export function ContactEmail() {
+  return <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+}
+
 export function Placeholder({ children }: { children: ReactNode }) {
   return <mark className="policy-placeholder">[{children}]</mark>
 }

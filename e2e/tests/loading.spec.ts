@@ -64,8 +64,8 @@ test('nothing in the sidebar moves when a member’s page fills in', async ({ br
     const { page } = member
     await page.setViewportSize({ width: 1440, height: 1000 })
     const places = await watchPlaces(page, {
-      progress: '.sidebar-nav-list a[href="/progress"]',
-      settings: '.sidebar-nav-list a[href="/settings"]',
+      more: '.sidebar-more summary',
+      bookmarks: '.sidebar-nav-list a[href="/bookmarks"]',
       compose: '.sidebar-compose',
     })
     await page.goto('/')
@@ -74,7 +74,7 @@ test('nothing in the sidebar moves when a member’s page fills in', async ({ br
     await expect(page.locator('.sidebar-compose')).toHaveAttribute('href', '/#compose')
     await page.waitForTimeout(300)
     const seen = await places()
-    for (const name of ['progress', 'settings', 'compose']) expect(seen[name], name).toHaveLength(1)
+    for (const name of ['more', 'bookmarks', 'compose']) expect(seen[name], name).toHaveLength(1)
   } finally {
     await member.context.close()
   }

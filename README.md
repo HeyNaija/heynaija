@@ -169,7 +169,7 @@ open beyond invited testers, follow
 ## Design
 
 Tokens, primitives and the layout live in `apps/web/app/globals.css`; the rules
-(palette, radius by role, rows rather than cards, no gradients) are in
+(palette, radius by role, cards on a sage ground, no gradients) are in
 [PLAN.md §6](PLAN.md#6-design-system). Icons come only from `apps/web/app/ui/icons.tsx`.
 
 If the dev site suddenly looks unstyled after a CSS change, restart `pnpm dev:web`;
