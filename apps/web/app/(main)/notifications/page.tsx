@@ -142,8 +142,15 @@ function NotificationRow({ notification: n, now }: { notification: Notification;
   const body = (
     <>
       <div className="notification-header">
-        <span className={`notification-icon is-${n.kind}`}>{icon}</span>
-        {n.actor ? <Avatar handle={n.actor.handle} src={n.actor.avatar} size={36} /> : null}
+        {n.actor ? (
+          // What happened rides on the corner of who did it.
+          <span className="notification-avatar">
+            <Avatar handle={n.actor.handle} src={n.actor.avatar} size={36} />
+            <span className={`notification-icon is-badge is-${n.kind}`}>{icon}</span>
+          </span>
+        ) : (
+          <span className={`notification-icon is-${n.kind}`}>{icon}</span>
+        )}
         <div className="min-w-0 flex-1">
           <p className="break-words text-sm leading-6">{text}</p>
           <time dateTime={n.createdAt} className="mt-0.5 block text-xs text-muted">

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { appendReplyPage, canRenderThreadChildren, emptyBranch, insertConfirmedReply, nextThreadPath, pruneCollapsedBranches } from '../lib/thread-state.ts'
+import { appendReplyPage, canRenderThreadChildren, emptyBranch, insertConfirmedReply, nextThreadPath, pruneCollapsedBranches, THREAD_MAX_DEPTH, THREAD_MAX_GAPS } from '../lib/thread-state.ts'
 
 const row = (id) => ({ id, node: id, lead: id.startsWith('lead') })
 const loaded = (items = [], cursor = null) => ({ ...emptyBranch('root'), items: items.map(row), cursor, loaded: true, open: true })
@@ -17,11 +17,19 @@ test('a corrupt branch cycle stops at the repeated ancestor without suppressing 
 })
 
 test('cached children cannot bypass the rendered depth cap even if their saved depth is shallow', () => {
+  assert.equal(THREAD_MAX_DEPTH, 3)
   assert.equal(canRenderThreadChildren(0, 1), true)
-  assert.equal(canRenderThreadChildren(5, 6), true)
-  assert.equal(canRenderThreadChildren(6, 7), false)
-  assert.equal(canRenderThreadChildren(3, 7), false)
+  assert.equal(canRenderThreadChildren(2, 3), true)
+  assert.equal(canRenderThreadChildren(3, 4), false)
+  assert.equal(canRenderThreadChildren(1, 5), false)
   assert.equal(canRenderThreadChildren(7, 2), false)
+})
+
+test('a deleted post may open past the cap, up to a bound, so the replies behind it stay reachable', () => {
+  assert.equal(canRenderThreadChildren(3, 4, true), true)
+  assert.equal(canRenderThreadChildren(THREAD_MAX_DEPTH + THREAD_MAX_GAPS - 1, THREAD_MAX_DEPTH + THREAD_MAX_GAPS, true), true)
+  assert.equal(canRenderThreadChildren(THREAD_MAX_DEPTH + THREAD_MAX_GAPS, THREAD_MAX_DEPTH + THREAD_MAX_GAPS + 1, true), false)
+  assert.equal(canRenderThreadChildren(1, THREAD_MAX_DEPTH + THREAD_MAX_GAPS + 1, true), false)
 })
 
 test('a confirmed reply stays separate from an incomplete oldest-first page and cannot move its cursor', () => {
