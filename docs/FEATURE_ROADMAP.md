@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 41 | 10 | 20 | 14 | 85 |
+| 42 | 10 | 20 | 14 | 86 |
 
 ## Priority order
 
@@ -493,6 +493,15 @@ This tracks product development, not formal governance decisions. Priority means
 - **Inspected evidence:** `packages/db/drizzle/0022_push_notifications.sql`, `apps/api/src/push/push-notifications.service.ts`, `apps/api/src/push/push-queue.ts`, `apps/api/src/push/push.controller.ts`, `apps/api/src/push/push-sender.ts`, `apps/api/src/push/push-message.ts`, `apps/web/public/sw.js`, `apps/web/app/ui/push-switch.tsx`, `apps/web/app/ui/push-check.tsx`, `apps/web/app/logout/route.ts`, `apps/api/src/push/push-notifications.service.test.ts`, `apps/api/src/push/push-sender.test.ts`, `apps/web/tests/push.test.mjs`, `apps/web/tests/service-worker.test.mjs`, `e2e/tests/push-notifications.spec.ts`, `docs/adr/0011-push-notifications.md`
 - **Audit notes:** Web Push with VAPID keys of our own (no Firebase account): Settings has a per-browser button that asks the browser's permission and subscribes it; the service worker (public/sw.js) only shows notifications and opens what they are about. A BullMQ job looks every 10 seconds and pushes what is waiting to each of the member's browsers, in the same words as the email digest: replies, mentions and quotes quote the post briefly, likes, reposts and follows are counted in with ones already pushed and replace them on the device (one tag per post), more than three things at once are one push that says how many, and moderation notices are in general words. What is pushed is decided when it is sent, with the same rules as email: nothing read, opted out of, blocked, muted, taken down, for suspended members, or over ten minutes old. Email waits until the push side has dealt with a notification and leaves out what a browser took (notifications.pushed_at). A browser has one subscription; it moves to whoever turns push on in it, a page load stops one that belongs to another member, and signing out removes it. Subscriptions may only point at Google's, Mozilla's, Apple's or Microsoft's push services. iPhones and iPads get it only from the Home Screen (iOS 16.4+), and Settings says so. The data export (format 8) lists the browsers, without their addresses. The end-to-end tests use a stand-in push service; delivery through the real push services, and how the notifications look on Android, iOS and desktop, have not been checked on staging.
 
+#### Discover: a feed ranked by published rules
+
+- **ID:** `recommendations`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Availability not verified
+- **Description:** Open Home on Discover: recent posts ranked by rules published on the site, from public activity only, with a reason on every post.
+- **Dependencies:** `chronological-feeds`, `basic-trending`
+- **Inspected evidence:** `apps/api/src/posts/discover.ts`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/(main)/page.tsx`, `apps/web/app/(main)/about/discover/page.tsx`, `apps/web/app/ui/post-item.tsx`, `apps/api/src/posts/discover.test.ts`, `e2e/tests/discover.spec.ts`, `docs/adr/0014-discover-and-top-replies.md`
+- **Audit notes:** Built 28 Oct 2026 (ADR 0014, amended the same day). Discover is the first tab and what Home opens on, for members and signed-out visitors; Latest and Following stay in time order, and Home remembers the tab last chosen (hn_feed cookie). It ranks top-level posts from the last 72 hours: every post starts with 1 point, 2 more for each member who replied in the conversation or quoted it, 1 for each like and repost, 3 more for each person you follow among those who replied, quoted or reposted, 2 if you follow the author, 1 if it is in a community you joined, divided by (hours old + 2)^1.5, with each author’s later posts halved. Your own posts from the last hour come first, unranked. Who liked a post is not public, so likes count only as totals. Posts with open reports from two or more members, or one from the image scanner, wait out of it, and it ends after 100 posts. Pages are ranked as of the moment it was opened, kept in the address (at=). Visitors get the points that are the same for everyone, worked out once a minute and shared. It runs in the API and stores nothing about reading; the rules are sent with every page and shown on /about/discover. Not yet measured on the 20,000-member load-test seed (k6 journeys include it). The charter, privacy policy, About and draft constitution v0.3.1 say what it uses. No learned model.
+
 ### Reliability and access
 
 #### Accessibility improvements
@@ -539,6 +548,17 @@ This tracks product development, not formal governance decisions. Priority means
 - **Audit notes:** Proposed 26 Oct 2026; the owner will build it. An idea or problem is a post in Building HeyNaija with a kind and a status (under review, planned, in progress, shipped, not now, duplicate; not now and duplicate give a public reason, and a duplicate's votes move to the original). One vote per member, separate from likes; a board page by votes, newest and status; similar ideas shown while the title is typed; problem reports attach the page, browser and app version. Building HeyNaija's moderators set statuses, and each change notifies the author and voters. Later: a GitHub App opens an issue when an idea is planned, and a webhook brings status back (assigned, closed, then live after a production deploy). Comments are not synced, so members' words are not copied to GitHub. Separate from governance-feedback, which it could carry later.
 
 ## P2 — Growth and community
+
+### Conversations and feeds
+
+#### Top reply order
+
+- **ID:** `top-replies`
+- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
+- **Description:** Choose to read a post’s replies with the ones more people answered and liked recently first.
+- **Dependencies:** `threaded-replies`
+- **Inspected evidence:** `docs/adr/0014-discover-and-top-replies.md`, `docs/adr/0013-reply-order.md`, `apps/api/src/posts/reply-cursor.ts`
+- **Audit notes:** Decided 28 Oct 2026 (ADR 0014). A third choice beside Newest (still the default) and Oldest, for the replies to the post in focus; branches stay oldest first. The post author’s replies still come first, then everyone else’s by (2 × members who answered the reply + its likes) / (hours old + 2)^1.5, worked out as of the first page. Nothing depends on who the reader follows or on payment. Offered on posts with up to 2,000 direct replies until wide threads are measured.
 
 ### People and discovery
 
@@ -745,14 +765,6 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P3 · **Status:** Planned · **Availability:** Not live
 - **Description:** Explore crowdsourced context that complements professional moderation.
 - **Inspected evidence:** `packages/db/src/schema.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`
-
-#### Advanced recommendations
-
-- **ID:** `recommendations`
-- **Priority:** P3 · **Status:** Planned · **Availability:** Not live
-- **Description:** Explore explainable recommendations only after evidence supports a need.
-- **Inspected evidence:** `apps/api/src/posts/posts.service.ts`, `PRODUCT.md`
-- **Audit notes:** Chronological Latest/Following and basic trending are not a personalised recommendation engine.
 
 #### Federation and interoperability
 

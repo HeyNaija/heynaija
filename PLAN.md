@@ -74,10 +74,10 @@ than attempting a national launch on day one.
 2. Planned public source under the existing AGPL licence, accountable moderation, and public governance proposals. The repository is currently private.
 3. Members can download their data from Settings (export format 3). Public source publication and wider interoperability remain separate work.
 4. Low-bandwidth, accessible, Android-first web experience.
-5. Chronological feeds that say why a post is there, rather than opaque engagement ranking.
+5. Feeds that say why a post is there, rather than opaque engagement ranking: Latest and Following in time order, and Discover, ranked by published rules from public activity ([ADR 0014](docs/adr/0014-discover-and-top-replies.md)).
 
 **Non-goals in Phase 1:** native apps; DMs; video; payments or creator revenue; AI
-recommendations; algorithmic ranking; federation; Kafka; Kubernetes.
+recommendations; ranking by predicted engagement; federation; Kafka; Kubernetes.
 
 **Privacy:** communities are public groupings, not private groups. Every post is
 public; the composer says so.

@@ -113,10 +113,15 @@ export type Post = {
   community: { slug: string; name: string } | null
   /** A quote post's quoted post; null for other posts. */
   quote: QuotedPost | null
-  /** Why the post is in the Following feed, or 'repost' on a profile; null elsewhere. */
-  reason: 'own' | 'following' | 'community' | 'repost' | null
+  /**
+   * Why the post is in the Following feed or Discover, or 'repost' on a profile;
+   * null elsewhere. 'network', 'active' and 'recent' are Discover's.
+   */
+  reason: 'own' | 'following' | 'community' | 'repost' | 'network' | 'active' | 'recent' | null
   /** Who reposted it, when `reason` is 'repost'. */
   repostedBy: { id: string; handle: string; displayName: string | null } | null
+  /** In Discover, when `reason` is 'network': who the viewer follows that took part, and how many others did. */
+  via?: { id: string; handle: string; displayName: string | null; action: 'replied' | 'quoted' | 'reposted'; others: number }
 }
 
 /**
@@ -235,6 +240,47 @@ export async function getFollowingFeed(cursor?: string): Promise<Feed | null> {
   } catch {
     return null
   }
+}
+
+/** The rules Discover ranks by, as the API applies them (ADR 0014). */
+export type DiscoverRules = {
+  windowHours: number
+  startingPoints: number
+  conversationPoints: number
+  likePoints: number
+  repostPoints: number
+  followedPoints: number
+  followsAuthorPoints: number
+  joinedCommunityPoints: number
+  ageOffsetHours: number
+  gravity: number
+  authorDecay: number
+  maxPosts: number
+  reportsToHold: number
+  ownPostsMinutes: number
+  visitorRefreshSeconds: number
+}
+
+/** A page of Discover, ranked as of `asOf`. */
+export type DiscoverFeed = Feed & { asOf: string; rules: DiscoverRules }
+
+/**
+ * A page of Discover. A first page asks to be ranked as of `at`, the moment the
+ * reader opened it, so loading it again does not reorder it. Visitors who are not
+ * signed in get the ranking every visitor gets. Null when it cannot be had.
+ */
+export async function getDiscoverFeed(cursor?: string, at?: string): Promise<DiscoverFeed | null> {
+  try {
+    return (await getPage(at && !cursor ? `/v1/feed/discover?at=${encodeURIComponent(at)}` : '/v1/feed/discover', cursor)) as DiscoverFeed
+  } catch {
+    return null
+  }
+}
+
+export async function getDiscoverRules(): Promise<DiscoverRules> {
+  const res = await api('/v1/feed/discover/rules')
+  if (!res.ok) throw new Error(`API /v1/feed/discover/rules responded ${res.status}`)
+  return res.json()
 }
 
 export const getMemberPosts = (handle: string, filter: ProfileFilter, cursor?: string) =>

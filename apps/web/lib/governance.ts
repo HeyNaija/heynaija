@@ -8,13 +8,14 @@
 
 /** The draft constitution published at /governance/constitution. */
 export const CONSTITUTION = {
-  version: '0.3',
-  label: 'Draft v0.3',
-  updated: '19 October 2026',
+  version: '0.3.1',
+  label: 'Draft v0.3.1',
+  updated: '28 October 2026',
   status: 'Proposed for public consultation. Not yet adopted or legally operative.',
   changelog: [
     { version: '0.2', date: '16 October 2026', summary: 'First version published on HeyNaija, for public consultation.' },
     { version: '0.3', date: '19 October 2026', summary: 'Proposes Incorporated Trustees; separates legal membership from voluntary voting; appoints three founding trustees for initial three-year terms with no immediate re-election at activation; opens all three trustee seats together at founding-term expiry and every three years thereafter, without staggering; adds two annual representative seats, legal succession and compensation controls, and separate incorporation, representation, elected-trustee and asset-transfer milestones. All subject to Nigerian legal review.' },
+    { version: '0.3.1', date: '28 October 2026', summary: 'Restates the feed commitment in Article 1: Latest and Following stay in time order, and any ranked feed, such as Discover, follows rules published on the site. Nothing else changes.' },
   ],
 } as const
 

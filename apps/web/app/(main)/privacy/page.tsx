@@ -10,7 +10,7 @@ export default function PrivacyPage() {
       eyebrow="Your data"
       title="Privacy policy"
       summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, and how you get your data or have it deleted. No ads, no selling data, no trackers."
-      updated="26 October 2026"
+      updated="28 October 2026"
       sections={[
         {
           id: 'who',
@@ -88,8 +88,10 @@ export default function PrivacyPage() {
                 <li>If you turn on push notifications in a browser, to show your notifications there as they happen. What reaches you that way is not emailed as well.</li>
               </ul>
               <p>
-                Feeds are in time order. We do not rank posts by guessing what you will engage with, show
-                advertising, or sell or rent your data to anyone.
+                Latest and Following are in time order. <Link href="/about/discover">Discover</Link> ranks recent
+                posts by published rules, using only public activity (replies, quotes, reposts and like counts), who
+                you follow and which communities you joined. We do not record what you read, rank posts by guessing
+                what you will engage with, show advertising, or sell or rent your data to anyone.
               </p>
             </>
           ),
@@ -124,6 +126,7 @@ export default function PrivacyPage() {
               <li><code>hn_invite</code>: holds your invite code while you sign up, for up to an hour.</li>
               <li><code>hn_age</code>: records that you confirmed you are 18 or older while you sign up, for up to an hour.</li>
               <li>A security cookie from our sign-in service, which stops other sites submitting forms as you.</li>
+              <li><code>hn_feed</code>: which tab you last chose on Home (Discover, Latest or Following), so Home opens on it, for up to a year.</li>
               <li>Your light or dark theme is saved in your browser, not sent to us.</li>
             </ul>
           ),

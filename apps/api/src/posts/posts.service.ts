@@ -20,6 +20,14 @@ import { notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { Refreshing } from '../refreshing.js'
 import { DB } from '../tokens.js'
+import {
+  DISCOVER_RULES,
+  type DiscoverPosition,
+  type DiscoverRules,
+  decodeDiscoverCursor,
+  discoverMoment,
+  encodeDiscoverCursor,
+} from './discover.js'
 import { hashtagsOf, type PostHashtag, recordHashtags } from './hashtags.js'
 import { MENTIONS_NOTIFIED_MAX, mentionsOf, type PostMention, recordMentions } from './mentions.js'
 import { decodeReplyCursor, encodeReplyCursor, type ReplyOrder } from './reply-cursor.js'
@@ -150,21 +158,62 @@ export type PostView = {
   /** A quote post's quoted post. Null for other posts, and when `deleted`. */
   quote: QuotedPost | null
   /**
-   * Why it is in the viewer's Following feed. On a profile, 'repost' marks the
-   * member's reposts. Null everywhere else.
+   * Why it is in the viewer's Following feed or Discover. On a profile, 'repost'
+   * marks the member's reposts. Null everywhere else.
    */
   reason: FeedReason | null
   /** Who reposted it, when `reason` is 'repost'. */
   repostedBy: { id: string; handle: string; displayName: string | null } | null
+  /**
+   * In Discover, when `reason` is 'network': the person the viewer follows who
+   * last replied to, quoted or reposted it, and how many others they follow did.
+   */
+  via?: DiscoverVia
 }
 
-export type FeedReason = 'own' | 'following' | 'community' | 'repost'
+/**
+ * 'own', 'network', 'following', 'community', 'active' and 'recent' are
+ * Discover's, in the order they are chosen; 'own', 'following', 'community' and
+ * 'repost' are Following's.
+ */
+export type FeedReason = 'own' | 'following' | 'community' | 'repost' | 'network' | 'active' | 'recent'
+
+export type DiscoverVia = {
+  id: string
+  handle: string
+  displayName: string | null
+  action: 'replied' | 'quoted' | 'reposted'
+  others: number
+}
 
 /** The lists on a member's profile: top-level posts, replies, and posts with images. */
 export const PROFILE_FILTERS = ['posts', 'replies', 'media'] as const
 export type ProfileFilter = (typeof PROFILE_FILTERS)[number]
 
 export type PostPage = { posts: PostView[]; cursor: string | null }
+
+/** A page of Discover: ranked as of `asOf`, by `rules`. */
+export type DiscoverPage = PostPage & { asOf: string; rules: DiscoverRules }
+
+/** One post in Discover's ranking, with what its reason line needs. */
+type DiscoverRow = {
+  id: string
+  score: string
+  follows_author: boolean
+  in_joined: boolean
+  took_part: boolean
+  followed: number
+  via_id: string | null
+  via_handle: string | null
+  via_name: string | null
+  via_action: DiscoverVia['action'] | null
+}
+
+/** Whether `row` comes after `position` in Discover's order: score, highest first, then ID. */
+const ranksAfter = (row: DiscoverRow, position: DiscoverPosition) => {
+  const [score, last] = [Number(row.score), Number(position.score)]
+  return score < last || (score === last && row.id < position.id)
+}
 
 export type UnavailableReply = {
   unavailable: true
@@ -527,6 +576,204 @@ export class PostsService {
       }),
       cursor: rows.length > limit && last ? encodeExactCursor(last.cursor_at, last.post_id) : null,
     }
+  }
+
+  /**
+   * The visitors' Discover: the same for everyone who is not signed in, so it is
+   * ranked once a minute, as of that moment, and shared.
+   */
+  private readonly visitorDiscover = new Refreshing(DISCOVER_RULES.visitorRefreshSeconds * 1000, async () => {
+    const asOf = new Date().toISOString()
+    return { asOf, rows: await this.rankDiscover(null, asOf, DISCOVER_RULES.maxPosts, null) }
+  })
+
+  /**
+   * Discover (ADR 0014): recent top-level posts ranked by published rules
+   * (`DISCOVER_RULES`), from public activity and the viewer's own follows and
+   * communities. Every page of one visit is ranked as of the same moment, so
+   * what happens meanwhile does not move the list. Each post says why it is
+   * there: someone the viewer follows replied, quoted or reposted ('network'),
+   * the viewer follows its author ('following'), it is in a community they
+   * joined ('community'), people took part in it ('active'), or none of those
+   * ('recent': every post starts with a point, so a new one can be seen).
+   *
+   * Above the first page, a member's own posts from the last hour, newest first
+   * ('own'), as of now rather than the ranking's moment, so a post just written
+   * shows at once. A visitor (`viewerId` null) gets the ranking every visitor
+   * gets, worked out once a minute.
+   *
+   * Likes count only as each post's total, the number anyone can see: who liked
+   * a post is not public, so Discover never names or counts the people the
+   * viewer follows who liked it.
+   */
+  async discover(viewerId: string | null, limit: number, { cursor, at }: { cursor?: string; at?: string } = {}): Promise<DiscoverPage> {
+    const after = cursor ? decodeDiscoverCursor(cursor) : null
+    let asOf: string
+    let rows: DiscoverRow[]
+    const shared = viewerId ? null : await this.visitorDiscover.get()
+    if (shared && (!after || after.asOf === shared.asOf)) {
+      asOf = shared.asOf
+      rows = (after ? shared.rows.filter((row) => ranksAfter(row, after)) : shared.rows).slice(0, limit + 1)
+    } else {
+      // A visitor's later page from a ranking since replaced is ranked again as of its moment.
+      asOf = after?.asOf ?? (shared ? shared.asOf : discoverMoment(at))
+      rows = await this.rankDiscover(viewerId, asOf, limit + 1, after)
+    }
+
+    const page = rows.slice(0, limit)
+    const [found, own] = await Promise.all([
+      page.length ? this.select(viewerId, inArray(posts.id, page.map((row) => row.id)), { limit: page.length }) : [],
+      viewerId && !after
+        ? this.select(
+            viewerId,
+            and(
+              topLevel,
+              eq(posts.authorId, viewerId),
+              sql`${posts.createdAt} > now() - make_interval(mins => ${DISCOVER_RULES.ownPostsMinutes}::int)`,
+            ),
+            { order: [desc(posts.createdAt), desc(posts.id)], limit: 20 },
+          )
+        : [],
+    ])
+    const byId = new Map(found.map((post) => [post.id, post]))
+    const last = page.at(-1)
+    return {
+      posts: [
+        ...own.map((post): PostView => ({ ...post, reason: 'own' })),
+        // A post that went out of sight between the two reads is simply left out.
+        ...page.flatMap((row): PostView[] => {
+          const post = byId.get(row.id)
+          if (!post) return []
+          if (row.via_id) {
+            const via: DiscoverVia = {
+              id: row.via_id,
+              handle: row.via_handle!,
+              displayName: row.via_name,
+              action: row.via_action!,
+              others: Math.max(0, row.followed - 1),
+            }
+            return [{ ...post, reason: 'network', via }]
+          }
+          const reason = row.follows_author ? 'following' : row.in_joined ? 'community' : row.took_part ? 'active' : 'recent'
+          return [{ ...post, reason }]
+        }),
+      ],
+      cursor: rows.length > limit && last ? encodeDiscoverCursor({ asOf, score: last.score, id: last.id }) : null,
+      asOf,
+      rules: DISCOVER_RULES,
+    }
+  }
+
+  /**
+   * Discover's ranking as of `asOf`, after `after` if given: at most `limit`
+   * rows, each with what its reason line needs. With no viewer, only the
+   * points that are the same for everyone count.
+   */
+  private async rankDiscover(viewerId: string | null, asOf: string, limit: number, after: DiscoverPosition | null): Promise<DiscoverRow[]> {
+    const rules = DISCOVER_RULES
+    const until = sql`${asOf}::timestamptz`
+    const since = sql`(${asOf}::timestamptz - make_interval(hours => ${rules.windowHours}::int))`
+    const { rows } = await this.db.execute<DiscoverRow>(sql`
+      -- The people the viewer follows and can see.
+      with followed as materialized (
+        ${viewerId
+          ? sql`select f.followee_id as id from follows f join members m on m.id = f.followee_id
+            where f.follower_id = ${viewerId} and ${visibleAuthor(viewerId, sql`f.followee_id`, sql`m.active`)}`
+          : sql`select null::uuid as id where false`}
+      ),
+      -- Reported by enough members, or by the image scanner, and not yet decided.
+      held as materialized (
+        select r.post_id from reports r
+        where r.status = 'open' and r.post_id is not null
+        group by r.post_id
+        having count(distinct r.reporter_id) >= ${rules.reportsToHold}::int or bool_or(r.reporter_id is null)
+      ),
+      candidates as materialized (
+        select p.id, p.author_id, p.created_at,
+          p.author_id in (select id from followed) as follows_author,
+          ${viewerId
+            ? sql`exists(select 1 from community_memberships cm join communities c on c.id = cm.community_id and c.active
+              where cm.member_id = ${viewerId} and cm.community_id = p.community_id)`
+            : sql`false`} as in_joined
+        from posts p join members a on a.id = p.author_id
+        where p.reply_parent_id is null and p.created_at > ${since} and p.created_at <= ${until}
+          and p.deleted_at is null and p.removed_at is null
+          ${viewerId ? sql`and p.author_id <> ${viewerId}` : sql``}
+          and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)}
+          and not exists(select 1 from held h where h.post_id = p.id)
+      ),
+      -- Who replied (anywhere in the conversation), quoted or reposted, up to the
+      -- moment. A reply or quote comes after its post, so all of them are in the
+      -- window too, and are read from it rather than by root_id, which has no index.
+      acts as materialized (
+        select r.root_id as post_id, r.author_id as member_id, r.created_at as at, 'replied' as action
+        from posts r join members m on m.id = r.author_id and m.active
+        where r.created_at > ${since} and r.created_at <= ${until} and r.root_id in (select id from candidates)
+          and r.deleted_at is null and r.removed_at is null
+        union all
+        select q.quote_post_id, q.author_id, q.created_at, 'quoted'
+        from posts q join members m on m.id = q.author_id and m.active
+        where q.created_at > ${since} and q.created_at <= ${until} and q.quote_post_id in (select id from candidates)
+          and q.deleted_at is null and q.removed_at is null
+        union all
+        select rp.post_id, rp.member_id, rp.created_at, 'reposted'
+        from reposts rp join members m on m.id = rp.member_id and m.active
+        where rp.post_id in (select id from candidates) and rp.created_at <= ${until}
+      ),
+      tallies as (
+        select a.post_id,
+          count(distinct a.member_id) filter (where a.action <> 'reposted' and a.member_id <> c.author_id) as conversation,
+          count(*) filter (where a.action = 'reposted') as reposts,
+          count(distinct a.member_id) filter (where a.member_id <> c.author_id and f.id is not null) as followed
+        from acts a join candidates c on c.id = a.post_id left join followed f on f.id = a.member_id
+        group by a.post_id
+      ),
+      liked as (
+        select l.post_id, count(*) as likes
+        from likes l join members m on m.id = l.member_id and m.active
+        where l.post_id in (select id from candidates) and l.created_at <= ${until}
+        group by l.post_id
+      ),
+      scored as (
+        select c.id, c.author_id, c.follows_author, c.in_joined, coalesce(t.followed, 0) as followed,
+          coalesce(t.conversation, 0) + coalesce(l.likes, 0) + coalesce(t.reposts, 0) > 0 as took_part,
+          ${rules.startingPoints}::int
+            + ${rules.conversationPoints}::int * coalesce(t.conversation, 0)
+            + ${rules.likePoints}::int * coalesce(l.likes, 0)
+            + ${rules.repostPoints}::int * coalesce(t.reposts, 0)
+            + ${rules.followedPoints}::int * coalesce(t.followed, 0)
+            + case when c.follows_author then ${rules.followsAuthorPoints}::int else 0 end
+            + case when c.in_joined then ${rules.joinedCommunityPoints}::int else 0 end as points,
+          extract(epoch from (${until} - c.created_at))::float8 / 3600 as hours
+        from candidates c left join tallies t on t.post_id = c.id left join liked l on l.post_id = c.id
+      ),
+      ranked as (
+        select s.*, s.points / power(s.hours + ${rules.ageOffsetHours}::float8, ${rules.gravity}::float8) as score
+        from scored s
+      ),
+      spread as (
+        select r.*, r.score * power(${rules.authorDecay}::float8,
+          (row_number() over (partition by r.author_id order by r.score desc, r.id desc) - 1)::float8) as adjusted
+        from ranked r
+      ),
+      listed as (
+        select s.*, row_number() over (order by s.adjusted desc, s.id desc) as position from spread s
+      ),
+      -- The person the viewer follows who acted last, to name.
+      named as (
+        select distinct on (a.post_id) a.post_id, a.member_id, a.action
+        from acts a join candidates c on c.id = a.post_id join followed f on f.id = a.member_id
+        where a.member_id <> c.author_id
+        order by a.post_id, a.at desc, a.member_id
+      )
+      select l.id, l.adjusted::text as score, l.follows_author, l.in_joined, l.took_part, l.followed::int as followed,
+        n.member_id as via_id, vm.handle as via_handle, vm.display_name as via_name, n.action as via_action
+      from listed l left join named n on n.post_id = l.id left join members vm on vm.id = n.member_id
+      where l.position <= ${rules.maxPosts}::int
+        ${after ? sql`and (l.adjusted, l.id) < (${after.score}::float8, ${after.id}::uuid)` : sql``}
+      order by l.adjusted desc, l.id desc
+      limit ${limit}`)
+    return rows
   }
 
   /** Top-level posts in one community. */

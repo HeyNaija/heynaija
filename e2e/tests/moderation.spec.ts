@@ -12,7 +12,7 @@ test('a reported post is removed by a moderator and its author is told', async (
   await post(author.page, text)
 
   // Report it.
-  await reporter.page.goto('/')
+  await reporter.page.goto('/?feed=latest')
   const article = reporter.page.locator('article', { hasText: text })
   await article.getByLabel('Post options').click()
   await article.getByRole('link', { name: 'Report post' }).click()
@@ -28,7 +28,7 @@ test('a reported post is removed by a moderator and its author is told', async (
   await expect(moderator.page.locator('form', { hasText: text })).toHaveCount(0)
 
   // The post has left the feed, and its author has a notification saying why.
-  await author.page.goto('/')
+  await author.page.goto('/?feed=latest')
   await expect(author.page.locator('article', { hasText: text })).toHaveCount(0)
   await author.page.goto('/notifications')
   await expect(author.page.getByText('A moderator removed your post for spam')).toBeVisible()
@@ -45,7 +45,7 @@ test('a suspended member appeals and the moderator sees the appeal', async ({ br
   const text = `Harassing post from ${author.handle}`
   await post(author.page, text)
 
-  await reporter.page.goto('/')
+  await reporter.page.goto('/?feed=latest')
   const article = reporter.page.locator('article', { hasText: text })
   await article.getByLabel('Post options').click()
   await article.getByRole('link', { name: 'Report post' }).click()

@@ -16,7 +16,7 @@ test('a repost reaches the reposter’s followers and profile; a quote embeds th
   await post(author.page, text)
 
   // Repost from Latest: the control changes at once and stays changed after a reload.
-  await sharer.page.goto('/')
+  await sharer.page.goto('/?feed=latest')
   const card = sharer.page.locator('article', { hasText: text })
   await card.getByLabel('Repost or quote (0 reposts)').click()
   await card.getByRole('button', { name: 'Repost', exact: true }).click()
@@ -35,7 +35,7 @@ test('a repost reaches the reposter’s followers and profile; a quote embeds th
   await expect(sharer.page.locator('article', { hasText: text })).toContainText('You reposted')
 
   // Quote it: the composer shows the post being quoted, and posting opens the quote.
-  await sharer.page.goto('/')
+  await sharer.page.goto('/?feed=latest')
   await sharer.page.locator('article', { hasText: text }).getByLabel(/^Reposted\. Undo or quote/).click()
   await sharer.page.locator('article', { hasText: text }).getByRole('link', { name: 'Quote' }).click()
   await sharer.page.waitForURL(/\/p\/[^/]+\/quote/)
@@ -52,7 +52,7 @@ test('a repost reaches the reposter’s followers and profile; a quote embeds th
   await expect(quote.locator('.quoted-post')).toContainText(text)
   await expect(quote.locator('.quoted-post')).toContainText(`@${author.handle}`)
   await expectQuoteFrame(quote.locator('.quoted-post'))
-  await sharer.page.goto('/')
+  await sharer.page.goto('/?feed=latest')
   await expectQuoteFrame(sharer.page.locator('article', { hasText: take }).locator('.quoted-post'))
 
   // The author hears about both.

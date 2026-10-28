@@ -1078,7 +1078,6 @@ summary.menu::-webkit-details-marker {
 .welcome-intro { padding-block: 4px 12px; }
 .welcome-intro h1 { margin-top: 12px; font-size: clamp(28px, 3vw, 38px); font-weight: 700; letter-spacing: -0.055em; line-height: 1.25; }
 .welcome-intro .page-description { max-width: 420px; line-height: 1.8; }
-.feed-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 6px; }
 .feed-tabs {
   position: sticky;
   top: 80px;
@@ -1096,9 +1095,11 @@ summary.menu::-webkit-details-marker {
   min-height: 48px;
   align-items: center;
   padding: 12px 2px;
+  flex-shrink: 0;
   color: var(--muted);
   font-size: 13px;
   font-weight: 500;
+  white-space: nowrap;
   transition: color 0.15s;
 }
 .feed-tab:hover { color: var(--ink); }
@@ -1110,8 +1111,9 @@ summary.menu::-webkit-details-marker {
   height: 2px;
   background: var(--accent);
 }
-.feed-order { display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; margin-left: auto; color: var(--muted); font-size: 10px; }
-.feed-order > span { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.feed-order { display: inline-flex; min-width: 0; align-items: center; gap: 6px; margin-left: auto; color: var(--muted); font-size: 10px; line-height: 1.35; text-align: right; }
+/* Three tabs leave a phone little room: the label folds onto two lines rather than squeezing the tabs. */
+.feed-order > span { width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: var(--accent); }
 .square-composer { padding: 20px; transition: border-color 0.15s; }
 .square-composer:focus-within { border-color: var(--accent); }
 .composer-writing-row { display: flex; min-height: 44px; align-items: center; }
@@ -1929,6 +1931,7 @@ a.result-row:hover { color: var(--accent-strong); }
   .square-topbar .icon-btn { min-width: 30px; padding-inline: 5px; }
   .feed-tabs { gap: 18px; }
   .feed-order { font-size: 9px; }
+  .feed-order > span { display: none; }
   .composer-audience select { max-width: 92px; }
   .composer-submit { min-width: 48px; padding-inline: 10px; }
 }

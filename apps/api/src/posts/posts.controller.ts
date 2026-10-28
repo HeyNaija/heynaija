@@ -36,6 +36,7 @@ import {
   PostsService,
   QuotedPostNotFoundError,
 } from './posts.service.js'
+import { DISCOVER_RULES, discoverPageQuery } from './discover.js'
 import { parseHashtag } from './hashtags.js'
 import { replyOrderQuery, replyPageQuery } from './reply-cursor.js'
 
@@ -78,6 +79,20 @@ export class PostsController {
   following(@Req() req: AuthedRequest, @Query() query: unknown) {
     const { limit, cursor } = parse(pageQuery, query)
     return paged(() => this.posts.followingFeed(req.member.id, limit, cursor))
+  }
+
+  /** Discover: recent posts ranked by published rules (ADR 0014). Visitors get the ranking every visitor gets. */
+  @Get('feed/discover')
+  @UseGuards(OptionalSessionGuard)
+  discover(@Req() req: MaybeAuthedRequest, @Query() query: unknown) {
+    const { limit, cursor, at } = parse(discoverPageQuery, query)
+    return paged(() => this.posts.discover(req.member?.id ?? null, limit, { cursor, at }))
+  }
+
+  /** The rules Discover ranks by, for the page that explains them. The same for everyone, so it needs no session. */
+  @Get('feed/discover/rules')
+  discoverRules() {
+    return DISCOVER_RULES
   }
 
   @Get('bookmarks')
