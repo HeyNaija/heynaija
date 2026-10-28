@@ -21,6 +21,7 @@ import {
 import { Composer } from './composer'
 import { BubbleIcon, DotsIcon } from './icons'
 import { Menu } from './menu'
+import { remember } from './my-activity'
 
 type Position = { id: string; parentId: string | null; handle: string | null; depth: number }
 type ConversationContext = {
@@ -203,7 +204,12 @@ export function ThreadConversation({
 /** The normal anchor remains usable without JavaScript and with modifier keys. */
 export function ThreadReplyAction({ id, parentId, handle, depth, count }: ReplyTarget & { count: number }) {
   const context = useContext(Conversation)
-  const total = count + (context?.increments[id] ?? 0)
+  const added = context?.increments[id] ?? 0
+  const total = count + added
+  // So the post's other copies, such as its card on a feed the reader goes Back to, count the reply.
+  useEffect(() => {
+    if (added > 0) remember(id, { replies: { count: total, base: count } })
+  }, [id, added, total, count])
   return (
     <Link
       href={`/p/${id}#compose`}

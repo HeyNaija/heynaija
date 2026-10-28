@@ -12,11 +12,11 @@ import { LikeButton } from './like-button'
 import { LinkCard } from './link-card'
 import { Menu } from './menu'
 import { MorePosts } from './more-posts'
-import { ComposeLink } from './new-post-link'
 import { PostImages } from './post-images'
 import { PostPermalink } from './post-permalink'
 import { PostText } from './post-text'
 import { QuotedPostCard } from './quoted-post'
+import { ReplyLink } from './reply-link'
 import { RepostButton } from './repost-button'
 import { ShareButton } from './share-button'
 import { SubmitButton } from './submit-button'
@@ -75,7 +75,6 @@ export function PostItem({
   // Text with links of its own cannot sit inside the post's permalink.
   const rich = parts.some((part) => part.handle || part.tag || part.href)
   const likes = post.likeCount === 1 ? '1 like' : `${post.likeCount} likes`
-  const replies = post.replyCount === 1 ? '1 reply' : `${post.replyCount} replies`
   const reposts = post.repostCount === 1 ? '1 repost' : `${post.repostCount} reposts`
   const community = post.community ? (
     <Link prefetch={false} href={`/c/${post.community.slug}`} className="font-semibold text-accent-strong hover:underline">
@@ -272,10 +271,7 @@ export function PostItem({
       ) : null}
 
       <div className="post-actions">
-        {replyAction ?? <ComposeLink href={`${href}#compose`} prefetch={false} className="icon-btn" label={`Reply (${replies})`}>
-          <BubbleIcon size={18} />
-          <span className="tabular-nums">{post.replyCount}</span>
-        </ComposeLink>}
+        {replyAction ?? <ReplyLink id={post.id} href={`${href}#compose`} count={post.replyCount} />}
 
         {viewerId ? (
           <RepostButton id={post.id} reposted={post.viewerReposted} count={post.repostCount} />
