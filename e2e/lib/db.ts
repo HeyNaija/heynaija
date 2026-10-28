@@ -59,6 +59,11 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['community memberships', `delete from community_memberships where member_id in (select id from e2e_m)`],
         ['media', `delete from media where owner_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         // Replies by others to these posts would be orphaned; tests only reply among themselves.
+        ['idea votes', `delete from idea_votes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
+        ['idea history', `delete from idea_status_changes where post_id in (select id from e2e_p) or moderator_id in (select id from e2e_m)`],
+        ['problem details', `delete from problem_details where post_id in (select id from e2e_p)`],
+        ['duplicates reopened', `update ideas set status = 'under_review', duplicate_of = null where duplicate_of in (select id from e2e_p) and post_id not in (select id from e2e_p)`],
+        ['ideas', `delete from ideas where post_id in (select id from e2e_p)`],
         ['posts', `delete from posts where id in (select id from e2e_p)`],
         ['invite redemptions', `delete from invite_redemptions where identity_id in (select id from e2e_m)
            or code_hash in (select code_hash from invites where note = $1)`],

@@ -66,7 +66,7 @@ review exist, the product must not claim ownership that members do not yet have.
 Built: invite-only signup and passwordless sign-in; text posts (300 characters) with
 up to four images or GIFs with alt text, links with preview cards; threaded replies, likes, reposts and quote posts,
 private bookmarks; profiles with photo, display name (50 characters) and bio (160);
-follow, mute, block; Latest, Following, community and trending feeds, and Discover, ranked by rules published at /about/discover; search across
+follow, mute, block; Latest, Following, community and trending feeds, and Discover, ranked by rules published at /about/discover; an ideas and problems board (/ideas) with votes and statuses set by Building HeyNaija's moderators; search across
 members, communities and posts; notifications in the app and by email (grouped, with a one-click unsubscribe); reporting, moderation queue,
 appeals, moderator-only decision log, rate limits; light, dark and system themes;
 data export (format 7); a welcome flow for newcomers (choose communities, then

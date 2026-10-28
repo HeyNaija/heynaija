@@ -71,6 +71,8 @@ services:
       # the rest to Postgres, the API and Kratos. The default stays 1 so a server
       # whose cores are shared (staging) never gets more without being asked.
       WEB_WORKERS: ${WEB_WORKERS:-1}
+      # Which release is running: a problem report on the ideas board says so.
+      RELEASE: ${RELEASE:-latest}
     depends_on:
       api:
         condition: service_healthy

@@ -7,6 +7,8 @@ import {
   type Db,
   follows,
   governanceMemberships,
+  ideas,
+  ideaVotes,
   identityVerifications,
   likes,
   media,
@@ -17,6 +19,7 @@ import {
   notifications,
   postMentions,
   posts,
+  problemDetails,
   pushSubscriptions,
   reports,
   reposts,
@@ -28,7 +31,7 @@ import { preferencesWithout } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/9'
+export const EXPORT_FORMAT = 'heynaija-export/10'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -55,6 +58,8 @@ export class ExportService {
       liked,
       reposted,
       saved,
+      sentIdeas,
+      votedFor,
       following,
       followers,
       muted,
@@ -99,6 +104,22 @@ export class ExportService {
       db.select({ postId: likes.postId, at: likes.createdAt }).from(likes).where(eq(likes.memberId, memberId)).orderBy(asc(likes.createdAt)),
       db.select({ postId: reposts.postId, at: reposts.createdAt }).from(reposts).where(eq(reposts.memberId, memberId)).orderBy(asc(reposts.createdAt)),
       db.select({ postId: bookmarks.postId, at: bookmarks.createdAt }).from(bookmarks).where(eq(bookmarks.memberId, memberId)).orderBy(asc(bookmarks.createdAt)),
+      db
+        .select({
+          postId: ideas.postId,
+          kind: ideas.kind,
+          title: ideas.title,
+          status: ideas.status,
+          page: problemDetails.page,
+          browser: problemDetails.browser,
+          appVersion: problemDetails.appVersion,
+        })
+        .from(ideas)
+        .innerJoin(posts, eq(posts.id, ideas.postId))
+        .leftJoin(problemDetails, eq(problemDetails.postId, ideas.postId))
+        .where(eq(posts.authorId, memberId))
+        .orderBy(asc(ideas.createdAt)),
+      db.select({ postId: ideaVotes.postId, at: ideaVotes.createdAt }).from(ideaVotes).where(eq(ideaVotes.memberId, memberId)).orderBy(asc(ideaVotes.createdAt)),
       db
         .select({ handle: other.handle, since: follows.createdAt })
         .from(follows)
@@ -244,6 +265,10 @@ export class ExportService {
       likes: liked,
       reposts: reposted,
       bookmarks: saved,
+      // Ideas and problems you sent to the board (each is also among your posts), with
+      // where a problem happened as your browser said: only you and the board's moderators see that.
+      ideas: sentIdeas,
+      ideaVotes: votedFor,
       following,
       followers,
       muted,

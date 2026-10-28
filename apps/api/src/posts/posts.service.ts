@@ -192,6 +192,9 @@ export type ProfileFilter = (typeof PROFILE_FILTERS)[number]
 
 export type PostPage = { posts: PostView[]; cursor: string | null }
 
+/** The transaction a post is written in. */
+export type Transaction = Parameters<Parameters<Db['transaction']>[0]>[0]
+
 /** A page of Discover: ranked as of `asOf`, by `rules`. */
 export type DiscoverPage = PostPage & { asOf: string; rules: DiscoverRules }
 
@@ -266,7 +269,7 @@ const live = and(isNull(posts.deletedAt), isNull(posts.removedAt))
  * and reposters. `unmuted` is a member shown even if the viewer muted them: the
  * one whose profile they opened.
  */
-const visibleAuthor = (viewerId: string | null, authorId: SQL, active: SQL, unmuted?: string) =>
+export const visibleAuthor = (viewerId: string | null, authorId: SQL, active: SQL, unmuted?: string) =>
   and(
     active,
     viewerId ? sql`not ${blockedEitherWay(viewerId, authorId)}` : undefined,
@@ -1153,7 +1156,18 @@ export class PostsService {
       communitySlug,
       images = [],
       quote,
-    }: { replyTo?: string; communitySlug?: string; images?: PostImageInput[]; quote?: string } = {},
+      anyMember = false,
+      alongside,
+    }: {
+      replyTo?: string
+      communitySlug?: string
+      images?: PostImageInput[]
+      quote?: string
+      /** Any member may post in the community, joined or not (the ideas board). */
+      anyMember?: boolean
+      /** More to write in the same transaction, once the post has its ID. */
+      alongside?: (tx: Transaction, id: string) => Promise<void>
+    } = {},
   ): Promise<{ id: string; linkUrl: string | null }> {
     let parent: { id: string; authorId: string; rootId: string | null; communityId: string | null } | undefined
     let communityId: string | null = null
@@ -1201,7 +1215,7 @@ export class PostsService {
         .from(communities)
         .where(and(eq(communities.slug, communitySlug), eq(communities.active, true)))
       if (!community) throw new CommunityNotFoundError('no such community')
-      if (!community.joined) throw new NotACommunityMemberError('join the community to post in it')
+      if (!community.joined && !anyMember) throw new NotACommunityMemberError('join the community to post in it')
       communityId = community.id
     }
 
@@ -1251,6 +1265,7 @@ export class PostsService {
           : []),
         ...mentioned.map((recipientId) => ({ recipientId, kind: 'mention' as const, actorId: authorId, postId: row!.id })),
       ])
+      await alongside?.(tx, row!.id)
       return { id: row!.id, linkUrl }
     })
   }

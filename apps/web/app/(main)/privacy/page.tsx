@@ -62,7 +62,13 @@ export default function PrivacyPage() {
                 location and camera data stored inside the file.
               </dd>
               <dt>What you do</dt>
-              <dd>Likes, bookmarks, follows, mutes, blocks, communities you join, reports and appeals.</dd>
+              <dd>Likes, bookmarks, follows, mutes, blocks, communities you join, reports and appeals, and your votes on the ideas board.</dd>
+              <dt>Problem reports</dt>
+              <dd>
+                When you report a problem on the ideas board: the page you reported it from, your browser’s description of
+                itself and the version of HeyNaija that was running. Only you and Building HeyNaija’s moderators see these;
+                the report itself is a public post.
+              </dd>
               <dt>Push notifications</dt>
               <dd>
                 If you turn them on in a browser: the address its push service gave it, the keys that encrypt what is

@@ -283,6 +283,44 @@ export async function getDiscoverRules(): Promise<DiscoverRules> {
   return res.json()
 }
 
+export type IdeaKind = 'idea' | 'problem'
+export type IdeaStatus = 'under_review' | 'planned' | 'in_progress' | 'shipped' | 'not_now' | 'duplicate'
+export type IdeaGroup = 'open' | 'shipped' | 'closed'
+
+/** An idea or problem on the board (/ideas). It is also a post, with this ID. */
+export type IdeaSummary = {
+  id: string
+  kind: IdeaKind
+  title: string
+  status: IdeaStatus
+  votes: number
+  viewerVoted: boolean
+  replyCount: number
+  createdAt: string
+  author: { handle: string; displayName: string | null }
+}
+
+export type IdeaDetail = IdeaSummary & {
+  statusReason: string | null
+  duplicateOf: { id: string; title: string } | null
+  timeline: { status: IdeaStatus; reason: string | null; at: string }[]
+  viewerCanModerate: boolean
+  /** Where a problem happened: only for its reporter and the board's moderators. */
+  problem: { page: string | null; browser: string | null; appVersion: string | null } | null
+}
+
+export async function getIdeas(query: { group: IdeaGroup; kind?: IdeaKind; sort: 'top' | 'new'; cursor?: number }): Promise<{ ideas: IdeaSummary[]; cursor: number | null }> {
+  const params = new URLSearchParams({ group: query.group, sort: query.sort })
+  if (query.kind) params.set('kind', query.kind)
+  if (query.cursor) params.set('cursor', String(query.cursor))
+  const res = await api(`/v1/ideas?${params}`)
+  if (!res.ok) throw new Error(`API /v1/ideas responded ${res.status}`)
+  return res.json()
+}
+
+/** Null when the post is not an idea the visitor may see. */
+export const getIdea = (id: string) => getOrNull<IdeaDetail>(`/v1/ideas/${encodeURIComponent(id)}`)
+
 export const getMemberPosts = (handle: string, filter: ProfileFilter, cursor?: string) =>
   getPage(`/v1/members/${encodeURIComponent(handle)}/posts?filter=${filter}`, cursor)
 
@@ -468,6 +506,7 @@ export type NotificationKind =
   | 'profile_cleared'
   | 'moderator_granted'
   | 'moderator_revoked'
+  | 'idea_status'
 
 export type Notification = {
   id: string
@@ -479,8 +518,10 @@ export type Notification = {
   post: { id: string; excerpt: string } | null
   subjectHandle: string | null
   community: { slug: string; name: string } | null
-  /** report_resolved: 'actioned' or 'dismissed'. post_removed: the report reason. */
+  /** report_resolved: 'actioned' or 'dismissed'. post_removed: the report reason. idea_status: the new status. */
   detail: string | null
+  /** idea_status: an idea or a problem, and whether the reader sent it (or only voted for it). */
+  idea?: { kind: IdeaKind; yours: boolean } | null
 }
 
 /** Null when the visitor is not a signed-in member. */

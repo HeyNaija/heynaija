@@ -240,12 +240,15 @@ export class PushNotificationsService {
       post_id: string | null
       post_text: string | null
       community_name: string | null
+      detail: string | null
+      idea_kind: string | null
+      idea_yours: boolean
       pending: boolean
     }>(sql`
       select n.id, n.kind, a.handle as actor_handle, n.post_id,
         -- The text of a post is read only for the kinds that quote it.
         case when n.kind in (${excerptKinds}) then p.text end as post_text,
-        c.name as community_name, n.push_settled_at is null as pending
+        c.name as community_name, n.detail, i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, n.push_settled_at is null as pending
       ${joins}
       where ${visible(memberId)} and n.read_at is null
         and (n.kind not in (${optional})
@@ -263,6 +266,7 @@ export class PushNotificationsService {
       postId: r.post_id,
       excerpt: r.post_text ? excerpt(r.post_text, EXCERPT_MAX) : null,
       community: r.community_name,
+      idea: r.idea_kind ? { status: r.detail, kind: r.idea_kind, yours: r.idea_yours } : null,
     }))
   }
 }

@@ -20,6 +20,8 @@ import { ExportController } from './export/export.controller.js'
 import { ExportService } from './export/export.service.js'
 import { GovernanceController } from './governance/governance.controller.js'
 import { GovernanceService } from './governance/governance.service.js'
+import { IdeasController } from './ideas/ideas.controller.js'
+import { IdeasService } from './ideas/ideas.service.js'
 import { InvitesService } from './invites/invites.service.js'
 import { BullLinkJobs, LinkWorker } from './links/link-queue.js'
 import { LINK_JOBS, LinksService, PAGE_FETCHER } from './links/links.service.js'
@@ -61,7 +63,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -112,6 +114,7 @@ class HealthController {
     InvitesService,
     PostsService,
     TopicsService,
+    IdeasService,
     NotificationsService,
     { provide: EMAIL_JOBS, useClass: BullEmailJobs },
     // Without an SMTP account (SMTP_CONNECTION_URI) these are null and no email is sent.

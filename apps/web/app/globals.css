@@ -1838,6 +1838,36 @@ a.result-row:hover { color: var(--accent-strong); }
 .progress-status { font-size: 11px; }
 .progress-status.is-implemented { background: var(--accent-soft); color: var(--accent-strong); }
 .progress-status.is-partial, .progress-status.is-planned, .progress-status.is-blocked { background: var(--panel); color: var(--ink); }
+
+/* The ideas board (/ideas) and an idea's panel on its post. */
+.idea-list { display: flex; flex-direction: column; gap: 10px; }
+.idea-row { display: flex; align-items: flex-start; gap: 14px; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); padding: 14px 16px; }
+.idea-title { color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+.idea-title:hover { text-decoration: underline; }
+.idea-heading { margin-top: 6px; color: var(--ink); font-size: 20px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+.idea-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 6px; color: var(--muted); font-size: 12px; }
+.idea-row .idea-meta { margin-top: 8px; }
+.idea-vote { display: inline-flex; min-width: 48px; min-height: 52px; flex-shrink: 0; flex-direction: column; align-items: center; justify-content: center; gap: 1px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); color: var(--muted); font-size: 13px; font-weight: 700; transition: color 0.15s, border-color 0.15s; }
+.idea-vote:hover { border-color: var(--accent); color: var(--accent-strong); }
+.idea-vote[aria-pressed="true"] { border-color: transparent; background: var(--accent-soft); color: var(--accent-strong); }
+.idea-vote.is-closed, .idea-vote.is-closed:hover { border-style: dashed; color: var(--faint); }
+.status-chip.idea-status.is-planned, .status-chip.idea-status.is-in-progress, .status-chip.idea-status.is-shipped { border-color: transparent; background: var(--accent-soft); color: var(--accent-strong); }
+.status-chip.idea-status.is-not-now, .status-chip.idea-status.is-duplicate { border-style: dashed; }
+.status-chip.idea-kind { background: var(--panel); border-color: transparent; color: var(--ink); }
+.idea-reason { margin-top: 8px; color: var(--ink); font-size: 14px; line-height: 1.6; white-space: pre-line; }
+.idea-timeline { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; border-left: 2px solid var(--line-strong); padding-left: 12px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.idea-private { border: 1px dashed var(--line-strong); border-radius: var(--r-control); padding: 12px 14px; font-size: 13px; line-height: 1.6; }
+.idea-panel .idea-private, .idea-moderation { margin-top: 16px; }
+.idea-moderation { border-top: 1px solid var(--line); padding-top: 16px; }
+.idea-similar { border-radius: var(--r-control); background: var(--panel); padding: 12px 14px; font-size: 13px; line-height: 1.6; }
+.idea-similar ul { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+.board-filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.board-filter-group { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.board-filter, .board-choice { display: inline-flex; min-height: 32px; align-items: center; gap: 6px; border-radius: var(--r-chip); padding: 4px 10px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.board-filter:hover { color: var(--ink); }
+.board-filter[aria-current="page"] { background: var(--accent-soft); color: var(--accent-strong); }
+.board-choice { border: 1px solid var(--line-strong); cursor: pointer; font-size: 13px; }
+.board-choice:has(input:checked) { border-color: transparent; background: var(--accent-soft); color: var(--accent-strong); }
 .progress-description { margin-top: 7px; color: var(--muted); font-size: 14px; line-height: 1.75; }
 .progress-caveat { margin-top: 9px; border-left: 2px solid var(--line-strong); padding-left: 10px; color: var(--ink); font-size: 13px; line-height: 1.7; }
 .progress-feature-meta { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: 9px; color: var(--muted); font-size: 11px; line-height: 1.7; }

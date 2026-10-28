@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 42 | 10 | 20 | 14 | 86 |
+| 43 | 10 | 19 | 14 | 86 |
 
 ## Priority order
 
@@ -259,7 +259,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Download your own profile, posts, social choices and account-status records as JSON.
 - **Inspected evidence:** `apps/api/src/export/export.service.ts`, `apps/api/src/export/export.controller.ts`, `apps/web/app/(main)/settings/export/route.ts`, `apps/api/src/export/export.service.test.ts`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** Format 9: since format 3 it includes reposts and quoteOf, and since format 9 the post pinned to the profile; restricted person keys and reports about someone stay excluded.
+- **Audit notes:** Format 10: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, and since format 10 the ideas you sent (with a problem report's private details) and your votes on the board; restricted person keys and reports about someone stay excluded.
 
 #### Account deletion and privacy requests
 
@@ -541,11 +541,11 @@ This tracks product development, not formal governance decisions. Priority means
 #### Ideas and problem reports from members
 
 - **ID:** `member-ideas`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Suggest a feature or report a problem from inside HeyNaija, add your vote to other ideas, and follow each one from review to release.
 - **Dependencies:** `communities`, `in-app-notifications`
-- **Inspected evidence:** `packages/db/src/seed.ts`, `apps/web/app/(main)/c/[slug]/page.tsx`, `apps/api/src/notifications/notifications.service.ts`, `apps/web/app/(main)/progress/page.tsx`
-- **Audit notes:** Proposed 26 Oct 2026; the owner will build it. An idea or problem is a post in Building HeyNaija with a kind and a status (under review, planned, in progress, shipped, not now, duplicate; not now and duplicate give a public reason, and a duplicate's votes move to the original). One vote per member, separate from likes; a board page by votes, newest and status; similar ideas shown while the title is typed; problem reports attach the page, browser and app version. Building HeyNaija's moderators set statuses, and each change notifies the author and voters. Later: a GitHub App opens an issue when an idea is planned, and a webhook brings status back (assigned, closed, then live after a production deploy). Comments are not synced, so members' words are not copied to GitHub. Separate from governance-feedback, which it could carry later.
+- **Inspected evidence:** `apps/api/src/ideas/ideas.service.ts`, `apps/api/src/ideas/ideas.controller.ts`, `packages/db/drizzle/0027_ideas.sql`, `apps/web/app/(main)/ideas/page.tsx`, `apps/web/app/(main)/ideas/new/page.tsx`, `apps/web/app/ui/idea-panel.tsx`, `apps/api/src/ideas/ideas.service.test.ts`, `e2e/tests/ideas.spec.ts`, `docs/adr/0015-ideas-board.md`
+- **Audit notes:** Built 28 Oct 2026 (ADR 0015). An idea or problem is a post in Building HeyNaija (open to every member, joined or not) whose first line is its title (80 characters), with a kind and a status: under review, planned, in progress, shipped, not now or duplicate. Not now and duplicate need a public reason, and a duplicate's votes move to its original. One vote per member, separate from likes, counted from active members; closed ideas take no new votes. The board (/ideas) lists open, shipped and closed ideas, ideas or problems, by votes or newest; similar ideas show while the title is typed. Problem reports keep the page they came from, the browser and the app version (RELEASE) private to the reporter and the board's moderators. Building HeyNaija's moderators, and site-wide ones, set statuses on the idea's page; each change is on its timeline and notifies the author and voters (idea_status, always on). Reached from the account menu (Ideas and problems; Report a problem, which carries the current page), Building HeyNaija and Progress. The data export (format 10) includes ideas sent and votes. Not built yet: the GitHub App that opens an issue when an idea is planned and brings status back.
 
 ## P2 — Growth and community
 
