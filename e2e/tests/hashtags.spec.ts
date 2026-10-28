@@ -24,7 +24,7 @@ test('a hashtag opens a page of every post and reply with it, however it is spel
   await expect(replier.page.locator('article', { hasText: reply })).toBeVisible()
 
   // The tag in the post opens the page, which has both, newest first.
-  await author.page.goto('/')
+  await author.page.goto('/?feed=latest')
   await author.page.locator('article', { hasText: text }).first().getByRole('link', { name: `#${tag}`, exact: true }).click()
   await author.page.waitForURL((url) => url.pathname === `/hashtag/${tag}`)
   await expect(author.page.getByRole('heading', { level: 1, name: `#${tag}` })).toBeVisible()

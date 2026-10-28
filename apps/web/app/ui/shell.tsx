@@ -11,12 +11,14 @@ import {
   BookmarkIcon,
   ChevronIcon,
   DotsIcon,
+  FlagIcon,
   FlameIcon,
   GovernanceIcon,
   GearIcon,
   HashIcon,
   HomeIcon,
   HistoryIcon,
+  IdeaIcon,
   InfoIcon,
   PeopleIcon,
   SearchIcon,
@@ -24,6 +26,7 @@ import {
   UserIcon,
 } from './icons'
 import { JoinButton } from './join-button'
+import { ProblemLink } from './problem-link'
 import { Logo } from './logo'
 import { Menu } from './menu'
 import { NavLink } from './nav-link'
@@ -326,6 +329,14 @@ async function UserMenu() {
         <HistoryIcon size={18} />
         What we’re building
       </Link>
+      <Link href="/ideas" className="menu-item">
+        <IdeaIcon size={18} />
+        Ideas and problems
+      </Link>
+      <ProblemLink className="menu-item">
+        <FlagIcon size={18} />
+        Report a problem
+      </ProblemLink>
       {/* A plain link, not a router navigation: Kratos ends the session on this
           request and must receive it exactly once, straight from the browser.
           /logout drops the API's cached session first, then redirects there. */}

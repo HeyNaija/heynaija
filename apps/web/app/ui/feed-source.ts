@@ -5,6 +5,7 @@ import { hashtagHref } from '@/lib/hashtags'
 export type FeedSource =
   | { kind: 'latest' }
   | { kind: 'following' }
+  | { kind: 'discover' }
   | { kind: 'community'; slug: string }
   | { kind: 'hashtag'; tag: string }
   | { kind: 'member'; handle: string; filter: ProfileFilter }
@@ -15,9 +16,11 @@ export function olderHref(source: FeedSource, cursor: string) {
   const c = `cursor=${encodeURIComponent(cursor)}`
   switch (source.kind) {
     case 'latest':
-      return `/?${c}`
+      return `/?feed=latest&${c}`
     case 'following':
       return `/?feed=following&${c}`
+    case 'discover':
+      return `/?feed=discover&${c}`
     case 'community':
       return `/c/${encodeURIComponent(source.slug)}?${c}`
     case 'hashtag':

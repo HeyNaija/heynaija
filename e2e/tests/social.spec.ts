@@ -27,7 +27,7 @@ test('muting hides a member’s posts from Latest', async ({ browser }) => {
   const text = `Loud take from ${noisy.handle}`
   await post(noisy.page, text)
 
-  await reader.page.goto('/')
+  await reader.page.goto('/?feed=latest')
   const article = reader.page.locator('article', { hasText: text })
   await article.getByLabel('Post options').click()
   await article.getByRole('button', { name: `Mute @${noisy.handle}` }).click()
@@ -47,7 +47,7 @@ test('blocking hides posts both ways', async ({ browser }) => {
   await post(rude.page, rudeText)
   await post(victim.page, victimText)
 
-  await victim.page.goto('/')
+  await victim.page.goto('/?feed=latest')
   victim.page.once('dialog', (dialog) => dialog.accept())
   const article = victim.page.locator('article', { hasText: rudeText })
   await article.getByLabel('Post options').click()
@@ -55,7 +55,7 @@ test('blocking hides posts both ways', async ({ browser }) => {
   await expect(victim.page.locator('article', { hasText: rudeText })).toHaveCount(0)
 
   // The blocked member no longer sees the blocker's posts either.
-  await rude.page.goto('/')
+  await rude.page.goto('/?feed=latest')
   await expect(rude.page.locator('article', { hasText: victimText })).toHaveCount(0)
 
   await rude.context.close()

@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CircleCheck,
   CircleDashed,
   CircleDot,
@@ -25,6 +26,7 @@ import {
   Info,
   KeyRound,
   Landmark,
+  Lightbulb,
   Link,
   type LucideIcon,
   MessageCircle,
@@ -83,6 +85,7 @@ export const PlusIcon = icon(Plus)
 export const UserIcon = icon(User)
 export const DotsIcon = icon(Ellipsis)
 export const ChevronIcon = icon(ChevronDown)
+export const UpvoteIcon = icon(ChevronUp)
 export const FlameIcon = icon(Flame)
 export const HashIcon = icon(Hash)
 export const PinIcon = icon(Pin)
@@ -98,6 +101,7 @@ export const ArrowUpRightIcon = icon(ArrowUpRight)
 export const GovernanceIcon = icon(Landmark)
 export const TreasuryIcon = icon(Wallet)
 export const HistoryIcon = icon(History)
+export const IdeaIcon = icon(Lightbulb)
 export const BellIcon = icon(Bell)
 export const FollowIcon = icon(UserPlus)
 export const FlagIcon = icon(Flag)

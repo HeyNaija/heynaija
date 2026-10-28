@@ -12,11 +12,11 @@ import { LikeButton } from './like-button'
 import { LinkCard } from './link-card'
 import { Menu } from './menu'
 import { MorePosts } from './more-posts'
-import { ComposeLink } from './new-post-link'
 import { PostImages } from './post-images'
 import { PostPermalink } from './post-permalink'
 import { PostText } from './post-text'
 import { QuotedPostCard } from './quoted-post'
+import { ReplyLink } from './reply-link'
 import { RepostButton } from './repost-button'
 import { ShareButton } from './share-button'
 import { SubmitButton } from './submit-button'
@@ -25,6 +25,13 @@ import { exactTime, postedAt, timeAgo } from './time'
 
 /** The shared surface for forms, cases and other distinct objects. */
 export const card = 'square-card'
+
+/** What someone the reader follows did, in Discover's reason line. */
+const VIA_ACTION: Record<NonNullable<Post['via']>['action'], string> = {
+  replied: 'replied',
+  quoted: 'quoted this',
+  reposted: 'reposted',
+}
 
 export function PostItem({
   post,
@@ -68,7 +75,6 @@ export function PostItem({
   // Text with links of its own cannot sit inside the post's permalink.
   const rich = parts.some((part) => part.handle || part.tag || part.href)
   const likes = post.likeCount === 1 ? '1 like' : `${post.likeCount} likes`
-  const replies = post.replyCount === 1 ? '1 reply' : `${post.replyCount} replies`
   const reposts = post.repostCount === 1 ? '1 repost' : `${post.repostCount} reposts`
   const community = post.community ? (
     <Link prefetch={false} href={`/c/${post.community.slug}`} className="font-semibold text-accent-strong hover:underline">
@@ -96,6 +102,20 @@ export function PostItem({
           </span>
         )}
       </span>
+    ) : post.reason === 'network' && post.via ? (
+      <span>
+        <Link prefetch={false} href={`/u/${post.via.handle}`} className="font-semibold text-accent-strong hover:underline">
+          @{post.via.handle}
+        </Link>{' '}
+        {VIA_ACTION[post.via.action]}
+        {post.via.others ? `, and ${post.via.others === 1 ? '1 other' : `${post.via.others} others`} you follow joined in` : null}
+      </span>
+    ) : post.reason === 'own' && explain ? (
+      <>Your post</>
+    ) : post.reason === 'active' ? (
+      <>Active on HeyNaija</>
+    ) : post.reason === 'recent' ? (
+      <>New on HeyNaija</>
     ) : post.reason === 'following' ? (
       <>You follow @{post.authorHandle}</>
     ) : post.reason === 'community' && community ? (
@@ -115,7 +135,8 @@ export function PostItem({
       </form>
     ) : null
   // The reason line already links the community when it names it; a chip would say it twice.
-  const showChip = post.community && !hideCommunity && !compact && !(why && post.reason !== 'following' && !reposter)
+  const namesOther = post.reason !== null && post.reason !== 'community'
+  const showChip = post.community && !hideCommunity && !compact && !(why && !namesOther && !reposter)
 
   return (
     <article id={`post-${post.id}`} className={`post-card ${focused ? 'is-focused' : 'is-clickable'}${compact ? ' is-reply' : ''}`}>
@@ -250,10 +271,7 @@ export function PostItem({
       ) : null}
 
       <div className="post-actions">
-        {replyAction ?? <ComposeLink href={`${href}#compose`} prefetch={false} className="icon-btn" label={`Reply (${replies})`}>
-          <BubbleIcon size={18} />
-          <span className="tabular-nums">{post.replyCount}</span>
-        </ComposeLink>}
+        {replyAction ?? <ReplyLink id={post.id} href={`${href}#compose`} count={post.replyCount} />}
 
         {viewerId ? (
           <RepostButton id={post.id} reposted={post.viewerReposted} count={post.repostCount} />
@@ -306,6 +324,7 @@ export function PostList({
   more,
   hideCommunity,
   explain,
+  end,
 }: {
   posts: Post[]
   viewerId: string | null
@@ -316,6 +335,8 @@ export function PostList({
   more?: { source: FeedSource; cursor: string | null }
   hideCommunity?: boolean
   explain?: boolean
+  /** Said where the list ends, in place of "No older posts". */
+  end?: ReactNode
 }) {
   if (posts.length === 0) {
     return (
@@ -333,7 +354,9 @@ export function PostList({
           </li>
         ))}
       </ul>
-      {more ? <MorePosts source={more.source} cursor={more.cursor} version={now} /> : null}
+      {more ? (
+        <MorePosts source={more.source} cursor={more.cursor} version={now} shown={posts.map((post) => post.id)} end={end} />
+      ) : null}
     </>
   )
 }

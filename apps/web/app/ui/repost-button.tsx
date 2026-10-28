@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useTransition } from 'react'
+import { useTransition } from 'react'
 import { setRepost, toggleRepost } from '@/app/actions'
 import { QuoteIcon, RepostIcon } from './icons'
 import { Menu } from './menu'
+import { remember, useMine, withChoice } from './my-activity'
 
 /**
  * Repost a post as it is, or quote it with your own words, from a small menu.
@@ -12,27 +13,23 @@ import { Menu } from './menu'
  * as a like does; without it the menu still opens (it is a <details>) and the
  * form posts to setRepost.
  */
-export function RepostButton({ id, reposted, count }: { id: string; reposted: boolean; count: number }) {
-  const [state, setState] = useState({ reposted, count })
-  // Follow the server when it re-renders this post with newer numbers.
-  const [from, setFrom] = useState({ reposted, count })
-  if (from.reposted !== reposted || from.count !== count) {
-    setFrom({ reposted, count })
-    setState({ reposted, count })
-  }
+export function RepostButton({ id, reposted: drawn, count: drawnCount }: { id: string; reposted: boolean; count: number }) {
+  // The server's numbers, with the reader's latest choice in this tab, if any (see LikeButton).
+  const reposted = useMine(id)?.reposted ?? drawn
+  const count = withChoice(drawnCount, drawn, reposted)
   const [pending, startTransition] = useTransition()
-  const reposts = state.count === 1 ? '1 repost' : `${state.count} reposts`
+  const reposts = count === 1 ? '1 repost' : `${count} reposts`
 
   return (
     <Menu
-      label={state.reposted ? `Reposted. Undo or quote (${reposts})` : `Repost or quote (${reposts})`}
+      label={reposted ? `Reposted. Undo or quote (${reposts})` : `Repost or quote (${reposts})`}
       trigger={
         <>
           <RepostIcon size={18} />
-          <span className="tabular-nums">{state.count}</span>
+          <span className="tabular-nums">{count}</span>
         </>
       }
-      triggerClassName={`icon-btn ${state.reposted ? 'is-reposted' : ''}`}
+      triggerClassName={`icon-btn ${reposted ? 'is-reposted' : ''}`}
       className="repost-menu"
     >
       <form
@@ -41,20 +38,19 @@ export function RepostButton({ id, reposted, count }: { id: string; reposted: bo
           e.preventDefault()
           e.currentTarget.closest('details')?.removeAttribute('open')
           if (pending) return
-          const before = state
-          const on = !state.reposted
-          setState({ reposted: on, count: Math.max(0, state.count + (on ? 1 : -1)) })
+          const on = !reposted
+          remember(id, { reposted: on })
           startTransition(async () => {
             const result = await toggleRepost(id, on).catch(() => ({ ok: false }))
-            if (!result.ok) setState(before)
+            if (!result.ok) remember(id, { reposted: !on })
           })
         }}
       >
         <input type="hidden" name="id" value={id} />
-        <input type="hidden" name="on" value={state.reposted ? '0' : '1'} />
+        <input type="hidden" name="on" value={reposted ? '0' : '1'} />
         <button type="submit" className="menu-item">
           <RepostIcon size={18} />
-          {state.reposted ? 'Undo repost' : 'Repost'}
+          {reposted ? 'Undo repost' : 'Repost'}
         </button>
       </form>
       <Link prefetch={false} href={`/p/${id}/quote#compose`} className="menu-item">

@@ -19,6 +19,7 @@ export function WelcomeNotifications({ publicKey, next }: { publicKey: string; n
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const onward = useRef<HTMLAnchorElement>(null)
+  const focusOnward = useRef(false)
 
   useEffect(() => {
     let live = true
@@ -28,15 +29,22 @@ export function WelcomeNotifications({ publicKey, next }: { publicKey: string; n
     }
   }, [publicKey])
 
+  useEffect(() => {
+    // Wait for Continue to mount, and only move focus after an explicit turn-on.
+    if (state === 'on' && focusOnward.current) {
+      focusOnward.current = false
+      onward.current?.focus()
+    }
+  }, [state])
+
   async function turnOn() {
     setPending(true)
     setError('')
     const result = await turnOnPush(publicKey)
+    focusOnward.current = result.state === 'on'
     setState(result.state)
     setError(result.error ?? '')
     setPending(false)
-    // The button is gone once push is on; the way on is the next thing to do.
-    if (result.state === 'on') requestAnimationFrame(() => onward.current?.focus())
   }
 
   return (

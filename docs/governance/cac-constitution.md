@@ -1,6 +1,6 @@
 # HeyNaija nonprofit constitution — CAC review copy
 
-**Draft v0.3 · 19 October 2026**
+**Draft v0.3.1 · 28 October 2026**
 
 Proposed for public consultation. Not yet adopted or legally operative.
 
@@ -24,7 +24,7 @@ Proposed for public consultation. Not yet adopted or legally operative.
 
 4. No founder has a permanent, hereditary or lifetime office, special voting weight, veto, preferred nomination or guaranteed renewal. No donor, sponsor or private organisation may buy voting power or exclusive control. Essential assets shall be protected against improper private appropriation.
 
-5. Preserve the current charter commitments: chronological feeds, no advertising or data sales during the pilot, published moderation rules and appeals, data export, accessibility on low-cost phones and open-source development under the existing AGPL licence. Material changes require explicit disclosure and the applicable lawful approval process.
+5. Preserve the current charter commitments: time-ordered Latest and Following feeds and published rules for any ranked feed, no advertising or data sales during the pilot, published moderation rules and appeals, data export, accessibility on low-cost phones and open-source development under the existing AGPL licence. Material changes require explicit disclosure and the applicable lawful approval process.
 
 ## Article 2 — Platform users, legal members and active voting members
 
@@ -268,3 +268,4 @@ Sources checked 19 October 2026; confirm current law and CAC practice before fil
 
 - **v0.2, 16 October 2026:** First version published on HeyNaija, for public consultation.
 - **v0.3, 19 October 2026:** Proposes Incorporated Trustees; separates legal membership from voluntary voting; appoints three founding trustees for initial three-year terms with no immediate re-election at activation; opens all three trustee seats together at founding-term expiry and every three years thereafter, without staggering; adds two annual representative seats, legal succession and compensation controls, and separate incorporation, representation, elected-trustee and asset-transfer milestones. All subject to Nigerian legal review.
+- **v0.3.1, 28 October 2026:** Restates the feed commitment in Article 1: Latest and Following stay in time order, and any ranked feed, such as Discover, follows rules published on the site. Nothing else changes.

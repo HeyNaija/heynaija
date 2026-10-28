@@ -83,4 +83,5 @@ and a just-posted answer in a branch goes where oldest first puts it.
   On a post with many thousands of replies and few by its author this reads past
   everyone else's; an index on `(reply_parent_id, author_id, created_at, id)`
   would make it a seek. Measure with the load-test kit before adding it.
-- No "Most liked" or other ranked order.
+- No "Most liked" order. A Top order, offered beside these and not the default,
+  is planned in [ADR 0014](0014-discover-and-top-replies.md).

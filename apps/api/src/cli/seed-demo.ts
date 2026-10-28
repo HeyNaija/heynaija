@@ -97,6 +97,11 @@ async function clean() {
       ['voting memberships', 'delete from restricted.governance_memberships where member_id in (select id from d_m)'],
       ['age records', 'delete from restricted.age_assurances where member_id in (select id from d_m)'],
       ['media', 'delete from media where owner_id in (select id from d_m) or post_id in (select id from d_p)'],
+      ['idea votes', `delete from idea_votes where member_id in (select id from d_m) or post_id in (select id from d_p)`],
+      ['idea history', `delete from idea_status_changes where post_id in (select id from d_p) or moderator_id in (select id from d_m)`],
+      ['problem details', `delete from problem_details where post_id in (select id from d_p)`],
+      ['duplicates reopened', `update ideas set status = 'under_review', duplicate_of = null where duplicate_of in (select id from d_p) and post_id not in (select id from d_p)`],
+      ['ideas', `delete from ideas where post_id in (select id from d_p)`],
       // The counter triggers lower reply counts on the real posts demo members answered.
       ['posts', 'delete from posts where id in (select id from d_p)'],
       ['members', 'delete from members where id in (select id from d_m)'],

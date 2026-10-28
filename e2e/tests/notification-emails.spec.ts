@@ -202,7 +202,7 @@ test('a moderator’s decision is emailed in general words, with nothing from th
 
   const text = `Buy followers cheap, from ${author.handle}`
   await post(author.page, text)
-  await reporter.page.goto('/')
+  await reporter.page.goto('/?feed=latest')
   const article = reporter.page.locator('article', { hasText: text })
   await article.getByLabel('Post options').click()
   await article.getByRole('link', { name: 'Report post' }).click()

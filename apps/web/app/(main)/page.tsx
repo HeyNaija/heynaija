@@ -1,12 +1,26 @@
+import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { AppPushCard } from '@/app/ui/app-push-card'
 import { AppealForm } from '@/app/ui/appeal-form'
 import { Composer } from '@/app/ui/composer'
+import { DiscoverMoment } from '@/app/ui/discover-moment'
+import { FeedTab } from '@/app/ui/feed-tab'
 import { ArrowUpRightIcon, PeopleIcon } from '@/app/ui/icons'
 import { card, PostList, PostsSkeleton } from '@/app/ui/post-item'
-import { getCommunities, getFeed, getFollowingFeed, getLatestAppeal, getPushKey, getViewer } from '@/lib/api'
+import {
+  type Feed,
+  getCommunities,
+  getDiscoverFeed,
+  getFeed,
+  getFollowingFeed,
+  getLatestAppeal,
+  getPushKey,
+  getViewer,
+} from '@/lib/api'
+import { discoverPeriod } from '@/lib/discover'
+import { FEED_COOKIE, type HomeFeed, homeFeed } from '@/lib/home-feed'
 
 export default function HomePage({ searchParams }: PageProps<'/'>) {
   // Everything that depends on the visitor streams in; the shell renders at once.
@@ -29,6 +43,7 @@ const one = (value: string | string[] | undefined) => (typeof value === 'string'
 /** Who is looking, and which feed they asked for: all the heading and tabs depend on. */
 async function whoIsLooking({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
   const params = await searchParams
+  const remembered = (await cookies()).get(FEED_COOKIE)?.value
   const viewer = await getViewer()
   const me = viewer.state === 'member' ? viewer.me : null
   // Newcomers go through the welcome flow first, until they finish or skip it.
@@ -37,15 +52,15 @@ async function whoIsLooking({ searchParams }: Pick<PageProps<'/'>, 'searchParams
     params,
     viewer,
     me,
-    // "Following" only exists for members; anyone else gets the public feed.
-    following: !!me && one(params.feed) === 'following',
+    // The feed in the address, else the tab last chosen, else Discover. Following is for members.
+    feed: homeFeed(one(params.feed), remembered, !!me),
     // Its last step: having joined and followed, a nudge to say hello.
     welcomed: !!me && one(params.welcome) === '1',
   }
 }
 
 /**
- * The heading and, for a member, the Latest and Following tabs. It sits there while
+ * The heading and, for a member, the Discover, Latest and Following tabs. It sits there while
  * the page loads, invisible, so that a member's page does not jump when the real
  * thing arrives and no placeholder is drawn where text will be. (A visitor's welcome
  * is taller; theirs is the one page that does shift.)
@@ -53,12 +68,12 @@ async function whoIsLooking({ searchParams }: Pick<PageProps<'/'>, 'searchParams
 function HeaderSpace() {
   return (
     <div className="home-feed invisible" aria-hidden="true" inert>
-      <MemberHeader following={false} />
+      <MemberHeader feed="discover" />
     </div>
   )
 }
 
-function MemberHeader({ following }: { following: boolean }) {
+function MemberHeader({ feed }: { feed: HomeFeed }) {
   return (
     <>
       <header className="home-intro">
@@ -66,26 +81,42 @@ function MemberHeader({ following }: { following: boolean }) {
         <h1 className="page-title">Your town square<span className="text-accent">.</span></h1>
         <p className="page-description">A little closer to home. One conversation at a time.</p>
       </header>
-      <nav aria-label="Feeds" className="feed-tabs">
-        <Tab href="/" active={!following}>
-          Latest
-        </Tab>
-        <Tab href="/?feed=following" active={following}>
-          Following
-        </Tab>
-        <span className="feed-order"><span aria-hidden="true" /> Newest first, not ranked</span>
-      </nav>
+      <FeedTabs feed={feed} member />
     </>
   )
 }
 
+/** Discover first, then Latest, and Following for members; beside them, how the one shown is ordered. */
+function FeedTabs({ feed, member = false }: { feed: HomeFeed; member?: boolean }) {
+  return (
+    <nav aria-label="Feeds" className="feed-tabs">
+      <FeedTab feed="discover" active={feed === 'discover'}>
+        Discover
+      </FeedTab>
+      <FeedTab feed="latest" active={feed === 'latest'}>
+        Latest
+      </FeedTab>
+      {member ? (
+        <FeedTab feed="following" active={feed === 'following'}>
+          Following
+        </FeedTab>
+      ) : null}
+      {feed === 'discover' ? (
+        <Link href="/about/discover" className="feed-order hover:underline"><span aria-hidden="true" /> Ranked by published rules</Link>
+      ) : (
+        <span className="feed-order"><span aria-hidden="true" /> Newest first, not ranked</span>
+      )}
+    </nav>
+  )
+}
+
 async function HomeHeader({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
-  const { viewer, me, following, welcomed } = await whoIsLooking({ searchParams })
+  const { viewer, me, feed, welcomed } = await whoIsLooking({ searchParams })
 
   if (me) {
     return (
       <>
-        <MemberHeader following={following} />
+        <MemberHeader feed={feed} />
         {welcomed ? (
           <section className="welcome-nudge" aria-labelledby="welcome-nudge-title">
             <p className="page-eyebrow">You are in</p>
@@ -93,7 +124,7 @@ async function HomeHeader({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
             <p className="field-hint">
               Write a first post to introduce yourself. It is how people here find you, and follow you back.
             </p>
-            <Link href={following ? '/?feed=following' : '/'} className="welcome-back self-start">Not now</Link>
+            <Link href={`/?feed=${feed}`} className="welcome-back self-start">Not now</Link>
           </section>
         ) : null}
         <Suspense fallback={null}>
@@ -136,7 +167,7 @@ async function HomeHeader({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
           <Link href="/about" className="font-semibold text-accent-strong hover:underline">About HeyNaija</Link>
         </p>
       </header>
-      <div className="feed-section-heading"><h2 className="section-title">From the town square</h2><span className="feed-order"><span aria-hidden="true" /> Newest first, not ranked</span></div>
+      <FeedTabs feed={feed} />
     </>
   )
 }
@@ -151,14 +182,16 @@ async function AppPush() {
 }
 
 async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
-  const { params, me, following: asked, welcomed } = await whoIsLooking({ searchParams })
+  const { params, me, feed: asked, welcomed } = await whoIsLooking({ searchParams })
   const cursor = one(params.cursor)
 
-  // If the Following feed cannot be had, the public one stands in for it.
-  const followed = asked ? await getFollowingFeed(cursor) : null
-  const following = followed !== null
-  const [feed, communities] = await Promise.all([followed ?? getFeed(cursor), me ? getCommunities() : []])
+  // If Discover or the Following feed cannot be had, Latest stands in for it.
+  const discovered = asked === 'discover' ? await getDiscoverFeed(cursor, one(params.at)) : null
+  const chosen: Feed | null = asked === 'following' ? await getFollowingFeed(cursor) : discovered
+  const shown: HomeFeed = chosen ? asked : 'latest'
+  const [feed, communities] = await Promise.all([chosen ?? getFeed(cursor), me ? getCommunities() : []])
   const joined = communities.filter((c) => c.viewerIsMember)
+  const period = discovered ? discoverPeriod(discovered.rules.windowHours) : ''
 
   return (
     <>
@@ -173,39 +206,60 @@ async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) 
 
       {me && joined.length === 0 ? <Link href="/c" className="community-discovery"><span className="community-mark"><PeopleIcon size={19} /></span><span><strong>Find a place that feels like you</strong><span>Explore communities and join the conversation.</span></span><ArrowUpRightIcon size={18} /></Link> : null}
 
-      <section aria-label={following ? 'Posts from people and communities you follow' : 'Latest posts'}>
+      {discovered && !cursor ? <DiscoverMoment at={discovered.asOf} /> : null}
+
+      <section
+        aria-label={
+          shown === 'following'
+            ? 'Posts from people and communities you follow'
+            : shown === 'discover'
+              ? 'Discover: recent posts ranked by published rules'
+              : 'Latest posts'
+        }
+      >
         <PostList
           posts={feed.posts}
           viewerId={me?.id ?? null}
           now={Date.now()}
           explain
-          empty={
-            cursor
-              ? { title: 'No older posts' }
-              : following
-                ? {
-                    title: 'Your Following feed is empty',
-                    detail: 'Follow a few people or join a community, and their posts and reposts will show up here.',
-                    action: (
-                      <Link href="/c" className="btn btn-secondary">
-                        Browse communities
-                      </Link>
-                    ),
-                  }
-                : { title: 'No posts yet', detail: 'Be the first to say something.' }
+          end={
+            shown === 'discover' ? (
+              <>
+                That&apos;s Discover for the last {period}.{' '}
+                <Link href="/?feed=latest" className="font-semibold text-accent-strong hover:underline">Latest</Link> has every post,
+                newest first.
+              </>
+            ) : undefined
           }
-          more={{ source: { kind: following ? 'following' : 'latest' }, cursor: feed.cursor }}
+          empty={
+            shown === 'discover'
+              ? {
+                  title: cursor ? 'That is everything in Discover' : 'Nothing in Discover yet',
+                  detail: `Discover shows posts from the last ${period} that people are replying to, liking and sharing, and posts from the people and communities you follow. Latest has every post, newest first.`,
+                  action: (
+                    <Link href="/?feed=latest" className="btn btn-secondary">
+                      Read Latest
+                    </Link>
+                  ),
+                }
+              : cursor
+                ? { title: 'No older posts' }
+                : shown === 'following'
+                  ? {
+                      title: 'Your Following feed is empty',
+                      detail: 'Follow a few people or join a community, and their posts and reposts will show up here.',
+                      action: (
+                        <Link href="/c" className="btn btn-secondary">
+                          Browse communities
+                        </Link>
+                      ),
+                    }
+                  : { title: 'No posts yet', detail: 'Be the first to say something.' }
+          }
+          more={{ source: { kind: shown }, cursor: feed.cursor }}
         />
       </section>
     </>
-  )
-}
-
-function Tab({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
-  return (
-    <Link href={href} aria-current={active ? 'page' : undefined} className="feed-tab">
-      {children}
-    </Link>
   )
 }
 

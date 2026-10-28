@@ -4,11 +4,12 @@ import { redirect } from 'next/navigation'
 import { type ReactNode, Suspense } from 'react'
 import { Avatar } from '@/app/ui/avatar'
 import { EmptyState } from '@/app/ui/empty-state'
-import { BellIcon, BubbleIcon, FlagIcon, FollowIcon, HeartIcon, MentionIcon, QuoteIcon, RepostIcon, ShieldIcon } from '@/app/ui/icons'
+import { BellIcon, BubbleIcon, FlagIcon, FollowIcon, HeartIcon, IdeaIcon, MentionIcon, QuoteIcon, RepostIcon, ShieldIcon } from '@/app/ui/icons'
 import { MarkRead } from '@/app/ui/mark-read'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { timeAgo } from '@/app/ui/time'
 import { getNotifications, getViewer, type Notification } from '@/lib/api'
+import { ideaNews } from '@/lib/ideas'
 import { notificationTarget } from '@/lib/notification-target'
 
 export const metadata: Metadata = { title: 'Notifications' }
@@ -133,6 +134,8 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
       }
     case 'account_reinstated':
       return { icon: <ShieldIcon size={18} />, text: 'Your account is active again. A moderator lifted the suspension.' }
+    case 'idea_status':
+      return { icon: <IdeaIcon size={18} />, text: <>{ideaNews(n.idea ?? { kind: 'idea', yours: false }, n.detail)}.</> }
   }
 }
 

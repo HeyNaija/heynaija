@@ -7,6 +7,7 @@ import {
   type Feed,
   getBookmarks,
   getCommunityPosts,
+  getDiscoverFeed,
   getFeed,
   getFollowingFeed,
   getHashtagPosts,
@@ -30,6 +31,8 @@ function fetchPage(source: FeedSource, cursor: string): Promise<Feed | null> {
       return getFeed(cursor)
     case 'following':
       return getFollowingFeed(cursor)
+    case 'discover':
+      return getDiscoverFeed(cursor)
     case 'community':
       return getCommunityPosts(source.slug, cursor)
     case 'hashtag':
@@ -49,7 +52,7 @@ const isSource = (s: unknown): s is FeedSource => {
   if (kind === 'member') {
     return typeof handle === 'string' && handle.length <= 100 && PROFILE_FILTERS.includes(filter as never)
   }
-  return kind === 'latest' || kind === 'following' || kind === 'bookmarks'
+  return kind === 'latest' || kind === 'following' || kind === 'discover' || kind === 'bookmarks'
 }
 
 /**
@@ -86,7 +89,7 @@ export async function loadOlderPosts(source: FeedSource, cursor: string, batches
           viewerId={viewerId}
           now={now}
           hideCommunity={source.kind === 'community'}
-          explain={source.kind === 'latest' || source.kind === 'following'}
+          explain={source.kind === 'latest' || source.kind === 'following' || source.kind === 'discover'}
         />
       </li>
     )),

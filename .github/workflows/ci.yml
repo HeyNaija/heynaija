@@ -76,7 +76,9 @@ jobs:
     # Not on a pull request from staging into main: staging has already run the suite
     # on that code. If main has changes staging lacks, the merged code is not
     # running on staging, and the production deploy runs the suite on it first.
-    if: inputs.e2e != false && !(github.event_name == 'pull_request' && github.head_ref == 'staging' && github.base_ref == 'main')
+    # A pull request has no inputs, and `inputs.e2e != false` is false for it: an
+    # empty input and false both count as 0 in the comparison. So the event is named.
+    if: (github.event_name == 'pull_request' || inputs.e2e) && !(github.event_name == 'pull_request' && github.head_ref == 'staging' && github.base_ref == 'main')
     runs-on: ubuntu-latest
     # Setting up the stack and the build take several minutes, and the suite (about 150
     # tests, every one signing up its own members) runs on one worker, so it sat close

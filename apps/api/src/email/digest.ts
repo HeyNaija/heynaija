@@ -1,3 +1,4 @@
+import { ideaHeadline } from '../ideas/status-words.js'
 import type { NotificationKind } from '../notifications/notifications.service.js'
 
 /** What the email says about one notification. Moderation notices carry no post text at all. */
@@ -10,12 +11,14 @@ export type DigestItem = {
   excerpt: string | null
   /** moderator_granted / moderator_revoked: the community's name. */
   community: string | null
+  /** idea_status: the new status, whether it was an idea or a problem, and whether the recipient sent it. */
+  idea?: { status: string | null; kind: string; yours: boolean } | null
 }
 
 export type Digest = { subject: string; text: string; html: string }
 
 /** The kinds whose email shows a piece of a post. Moderation notices never do. */
-export const KINDS_WITH_EXCERPT: readonly NotificationKind[] = ['reply', 'like', 'repost', 'quote', 'mention']
+export const KINDS_WITH_EXCERPT: readonly NotificationKind[] = ['reply', 'like', 'repost', 'quote', 'mention', 'idea_status']
 
 /** Longest piece of a post an email shows, in characters. */
 export const EXCERPT_MAX = 80
@@ -45,6 +48,7 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
     switch (item.kind) {
       case 'like':
       case 'repost':
+      case 'idea_status':
         return `${item.kind}:${item.postId}`
       case 'follow':
         return 'follow'
@@ -106,6 +110,9 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
         return { headline: `You are now a moderator of ${item.community ?? 'a community'}`, quote: null, href: inApp }
       case 'moderator_revoked':
         return { headline: `You are no longer a moderator of ${item.community ?? 'a community'}`, quote: null, href: inApp }
+      case 'idea_status':
+        // Newest first, so this is the latest status.
+        return { headline: ideaHeadline(item.idea ?? { kind: 'idea', yours: false }, item.idea?.status ?? null), quote, href: post(item.postId) }
     }
   }
 }

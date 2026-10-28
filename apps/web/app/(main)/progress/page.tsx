@@ -26,6 +26,7 @@ export default function ProgressPage() {
         <nav aria-label="More about HeyNaija" className="policy-links">
           <Link href="/about">Why HeyNaija exists</Link>
           <Link href="/governance">Governance</Link>
+          <Link href="/ideas">Suggest an idea or report a problem</Link>
         </nav>
       </header>
 

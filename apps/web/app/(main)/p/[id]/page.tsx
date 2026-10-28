@@ -5,7 +5,8 @@ import { Suspense } from 'react'
 import { PostItem, PostsSkeleton } from '@/app/ui/post-item'
 import { ThreadConversation } from '@/app/ui/thread-conversation'
 import { renderThreadRow } from '@/app/ui/thread-row'
-import { getReplies, getThread, getViewer } from '@/lib/api'
+import { IdeaPanel } from '@/app/ui/idea-panel'
+import { getIdea, getReplies, getThread, getViewer } from '@/lib/api'
 import { defaultPreviewImage, excerpt, siteOpenGraph } from '@/lib/previews'
 import type { ReplyOrder } from '@/lib/thread-state'
 import { ChevronIcon } from '@/app/ui/icons'
@@ -54,7 +55,7 @@ export default function ThreadPage(props: Props) {
 async function ThreadView({ params, searchParams }: Props) {
   const [{ id }, query] = await Promise.all([params, searchParams])
   const order: ReplyOrder = query.replies === 'oldest' ? 'oldest' : 'newest'
-  const [thread, viewer] = await Promise.all([getThread(id, order), getViewer()])
+  const [thread, viewer, idea] = await Promise.all([getThread(id, order), getViewer(), getIdea(id).catch(() => null)])
   if (!thread) notFound()
 
   const viewerId = viewer.state === 'member' ? viewer.me.id : null
@@ -77,6 +78,8 @@ async function ThreadView({ params, searchParams }: Props) {
       <Link prefetch={false} href="/" className="self-start text-sm font-medium text-muted hover:text-ink hover:underline">
         Back to the feed
       </Link>
+
+      {idea ? <IdeaPanel idea={idea} member={viewer.state === 'member'} /> : null}
 
       {/* The conversation so far, each post leading down to the one in focus. */}
       {older.length || thread.ancestorsTruncated ? (
