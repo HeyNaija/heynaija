@@ -14,6 +14,9 @@ import { ThreadAuthorProvider } from '@/app/ui/thread-author'
 
 type Props = PageProps<'/p/[id]'>
 
+/** How many posts above the parent stay open before the rest fold into one disclosure. */
+const CHAIN_OPEN = 12
+
 /**
  * What a link to the post shows when pasted into WhatsApp or X. It asks the API
  * exactly as the page does (the fetch is shared), so a post the visitor cannot
@@ -68,47 +71,70 @@ async function ThreadView({ params, searchParams }: Props) {
   const cursor = page ? page.cursor : thread.replyCursor
   const parent = thread.ancestors.find((post) => post.id === thread.post.replyParentId)
   const older = thread.ancestors.filter((post) => post.id !== parent?.id)
+  // Older posts are shown in full, down to the parent; a very long chain (the API
+  // sends up to 50) keeps its nearest posts open and folds the rest away.
+  const folded = older.slice(0, Math.max(0, older.length - CHAIN_OPEN))
+  const shown = older.slice(folded.length)
+  const chain = older.length > 0 || parent !== undefined || thread.ancestorsTruncated || !!thread.post.replyParentId
   // A truncated or unavailable root must not make the focused reply's author
   // look like the original poster. Only identify a visible top-level post.
   const original = [...thread.ancestors, thread.post].find((post) => !post.replyParentId && !post.deleted)
 
   return (
     <ThreadAuthorProvider authorId={original?.authorId ?? null}>
-    <div className="thread-view flex flex-col">
+    <div className={`thread-view flex flex-col${parent || older.length ? ' has-chain' : ''}`}>
       <Link prefetch={false} href="/" className="self-start text-sm font-medium text-muted hover:text-ink hover:underline">
         Back to the feed
       </Link>
 
       {idea ? <IdeaPanel idea={idea} member={viewer.state === 'member'} /> : null}
 
-      {/* The conversation so far, each post leading down to the one in focus. */}
-      {older.length || thread.ancestorsTruncated ? (
-        <details className="thread-context">
-          <summary className="menu">
-            <span>Earlier conversation</span>
-            <ChevronIcon size={16} />
-          </summary>
-          <ol aria-label="Earlier in this conversation" className="post-list border-l-2 border-line-strong pl-3">
-            {older.map((post) => (
-              <li key={post.id}>
-                <PostItem post={post} viewerId={viewerId} now={now} inThread />
-              </li>
-            ))}
-          </ol>
+      {/* The conversation so far, each post leading down to the one in focus. A
+          vertical line down the avatar column joins them (decorative: the order
+          and the "Replying to" line say the same in words). */}
+      {chain ? (
+        <div className="thread-lineage">
           {thread.ancestorsTruncated ? (
             <p className="thread-context-note">
               Earlier posts are outside this view.
               {thread.earlierAncestorId ? <> <Link prefetch={false} href={`/p/${thread.earlierAncestorId}`}>Continue earlier conversation</Link></> : null}
             </p>
           ) : null}
-        </details>
-      ) : null}
-
-      {parent ? <div className="thread-immediate-parent"><PostItem post={parent} viewerId={viewerId} now={now} inThread /></div> : null}
-      {thread.post.replyParentId ? (
-        <p className="thread-recipient">
-          {parent && !parent.deleted ? `Replying to @${parent.authorHandle}` : 'Replying to an earlier post'}
-        </p>
+          {folded.length ? (
+            <details className="thread-context">
+              <summary className="menu">
+                <span>Show {folded.length} earlier {folded.length === 1 ? 'post' : 'posts'}</span>
+                <ChevronIcon size={16} />
+              </summary>
+              <ol aria-label="Earlier in this conversation" className="thread-chain">
+                {folded.map((post) => (
+                  <li key={post.id}>
+                    <PostItem post={post} viewerId={viewerId} now={now} inThread />
+                  </li>
+                ))}
+              </ol>
+            </details>
+          ) : null}
+          {shown.length || parent ? (
+            <ol aria-label={folded.length ? 'Recent posts in this conversation' : 'Earlier in this conversation'} className="thread-chain">
+              {shown.map((post) => (
+                <li key={post.id}>
+                  <PostItem post={post} viewerId={viewerId} now={now} inThread />
+                </li>
+              ))}
+              {parent ? (
+                <li key={parent.id} className="is-parent">
+                  <PostItem post={parent} viewerId={viewerId} now={now} inThread />
+                </li>
+              ) : null}
+            </ol>
+          ) : null}
+          {thread.post.replyParentId ? (
+            <p className="thread-recipient">
+              {parent && !parent.deleted ? `Replying to @${parent.authorHandle}` : 'Replying to an earlier post'}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       <ThreadConversation
@@ -123,17 +149,6 @@ async function ThreadView({ params, searchParams }: Props) {
       >
         {renderThreadRow(thread.post, viewerId, now, 0, parent && !parent.deleted ? parent.authorHandle : null, true).node}
       </ThreadConversation>
-
-      {viewer.state !== 'member' ? (
-        <p className="notice">
-          <Link href="/login" className="font-semibold underline underline-offset-2">
-            Sign in
-          </Link>{' '}
-          to reply.
-        </p>
-      ) : !thread.post.viewerCanReply ? (
-        <p className="notice">The conversation author has limited who can reply.</p>
-      ) : null}
     </div>
     </ThreadAuthorProvider>
   )

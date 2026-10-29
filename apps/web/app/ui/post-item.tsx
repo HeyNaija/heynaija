@@ -171,7 +171,7 @@ export function PostItem({
                 </Link>
                 {post.authorFounder ? <FounderBadge /> : null}
               </p>
-              {compact ? <ThreadAuthorLabel authorId={post.authorId} /> : null}
+              {inThread ? <ThreadAuthorLabel authorId={post.authorId} /> : null}
               <p className="post-meta">
                 {post.authorName && !compact ? <><span className="truncate">@{post.authorHandle}</span><span aria-hidden="true">·</span></> : null}
                 <Link prefetch={false} href={href} className="shrink-0 hover:underline">

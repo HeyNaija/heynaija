@@ -190,14 +190,23 @@ export function ThreadConversation({
       replyTo={target.id}
       replyHandle={target.handle}
       replyDepth={target.depth + 1}
-      placeholder="Write a reply…"
+      placeholder="Post your reply"
       submitAction={createThreadReply}
       onPosted={onPosted}
       onPendingChange={setPosting}
       portalTarget={portalTarget}
       focusRequest={focusRequest}
     />
-  ) : null
+  ) : limited ? (
+    // A member the conversation's author has not allowed to reply: told so, in the bar's place.
+    <p className="reply-signin reply-limited">The conversation author has limited who can reply.</p>
+  ) : (
+    // Visitors get the same place, with the way in. Plain link, so it works without JavaScript.
+    <Link href="/login" prefetch={false} className="reply-signin">
+      <span className="reply-signin-avatar" aria-hidden="true" />
+      <span>Sign in to reply</span>
+    </Link>
+  )
 
   return (
     <Conversation.Provider value={{ order, branches, increments, canReply: member !== null, limited, posting, select, load, collapse, editor }}>
@@ -323,7 +332,7 @@ export function ThreadBranch({
 
   return (
     <BranchAncestry.Provider value={path}>
-    <div className={`thread-branch ${root ? 'is-root' : ''}`} data-thread-id={id} data-parent-id={parentId ?? ''} data-depth={depth}>
+    <div className={`thread-branch ${root ? 'is-root' : ''}${!root && renderChildren && open && items.length + recent.length > 0 ? ' has-children' : ''}`} data-thread-id={id} data-parent-id={parentId ?? ''} data-depth={depth}>
       {/* The indent and the line show whom a reply answers, so it needs no label. */}
       <div className="thread-row"><BranchToggle.Provider value={control}>{children}</BranchToggle.Provider></div>
       {/* The editor stays in the focused branch's tree, so it keeps its text
