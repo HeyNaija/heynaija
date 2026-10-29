@@ -403,6 +403,14 @@ needs no registry. For an older one, `deploy.sh` pulls from GitHub's registry,
 which needs `docker login ghcr.io` with a token that can read packages. Database
 migrations only ever add, so older code keeps working; a migration that removes or
 renames something needs its own plan. CI enforces this for every migration after
-0027: one that is not additive fails `pnpm migrations:check` unless it carries a
-`-- allow-breaking: <reason>` comment saying why. The migrate step of a deploy
-fails, rather than waiting forever, if a migration cannot get its table lock.
+0027: one that is not additive (a drop, rename, type change, constraint without
+`NOT VALID`, `TRUNCATE`, backfill, volatile default, or an index on an existing
+table) fails `pnpm migrations:check` unless the line before that statement (or its
+own line) carries `-- allow-breaking: <reason>` saying why. The waiver covers that
+one statement. `CREATE INDEX CONCURRENTLY` is not an alternative: Drizzle runs all
+pending migrations in one transaction and Postgres refuses it there, so an index
+on a busy table needs the waiver and a plan. The migrate step takes a lock so
+overlapping deploys queue, and fails, rather than waiting forever, if a migration
+cannot get its table lock within `MIGRATE_LOCK_TIMEOUT_MS` (default 5000, `0`
+disables; set it in the server's `.env`). It retries the whole run a few times
+first, so one long query at the wrong moment does not fail the deploy.
