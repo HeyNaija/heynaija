@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { QuotedPost } from '@/lib/api'
 import { Avatar } from './avatar'
+import { FounderBadge } from './founder-badge'
 import { timeAgo } from './time'
 
 /**
@@ -17,7 +18,10 @@ export function QuotedPostCard({ quote, now }: { quote: QuotedPost; now: number 
       <span className="quoted-post-meta">
         <Avatar handle={quote.authorHandle} src={quote.authorAvatar} size={28} />
         <span className="quoted-post-identity">
-          <span className="truncate font-semibold text-ink">{quote.authorName ?? `@${quote.authorHandle}`}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate font-semibold text-ink">{quote.authorName ?? `@${quote.authorHandle}`}</span>
+            {quote.authorFounder ? <FounderBadge plain /> : null}
+          </span>
           {quote.authorName ? <span className="truncate">@{quote.authorHandle}</span> : null}
         </span>
         <time dateTime={quote.createdAt} className="shrink-0">

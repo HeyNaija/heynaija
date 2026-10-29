@@ -5,7 +5,7 @@ import { follows, members, releasedHandles } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
-import { CannotFollowSelfError, MembersService, profileInput } from './members.service.js'
+import { CannotFollowSelfError, MembersService, NoSuchMemberError, profileInput } from './members.service.js'
 
 const service = new MembersService(db)
 const postsService = new PostsService(db)
@@ -233,5 +233,42 @@ test('search finds members by name as well as handle, handles first', async () =
   // "%" and "_" are matched literally, not as wildcards.
   assert.deepEqual(await found('100%'), ['chi'])
   assert.deepEqual(await found('%'), ['chi'])
-  assert.deepEqual((await service.search('adebayo', 1))[0], { handle: 'bayo', displayName: 'Adebayo Ade', avatar: null })
+  assert.deepEqual((await service.search('adebayo', 1))[0], { handle: 'bayo', displayName: 'Adebayo Ade', avatar: null, founder: false })
+})
+
+test('the Founder badge is given and taken away by handle, and shows on the profile, posts and search', async () => {
+  const post = await postsService.create(ada, 'from a founder')
+  await postsService.create(bayo, 'quoting', { quote: post.id })
+  const question = await postsService.create(chi, 'a question')
+  const answer = await postsService.create(ada, 'an answer', { replyTo: question.id })
+
+  assert.equal((await service.profile(null, 'ada'))!.founderBadge, false)
+  assert.equal(await service.setFounder('ada', true), true)
+  assert.equal(await service.setFounder('ada', true), false, 'granting twice changes nothing')
+
+  assert.equal((await service.profile(null, 'ada'))!.founderBadge, true)
+  assert.equal((await service.profile(null, 'bayo'))!.founderBadge, false)
+  assert.deepEqual(
+    (await service.search('ada', 10)).map((m) => [m.handle, m.founder]),
+    [['ada', true]],
+  )
+  const feed = (await postsService.feed(null, 10)).posts
+  const byHandle = (handle: string) => feed.find((p) => p.authorHandle === handle && !p.replyParentId)!
+  assert.equal(byHandle('ada').authorFounder, true)
+  assert.equal(byHandle('bayo').authorFounder, false)
+  const quoted = byHandle('bayo').quote
+  assert.ok(quoted && !quoted.unavailable)
+  assert.equal(quoted.authorFounder, true)
+  const replies = (await postsService.replies(null, question.id, 10))!.replies
+  assert.deepEqual(
+    replies.map((r) => (r.unavailable ? null : [r.id, r.authorFounder])),
+    [[answer.id, true]],
+  )
+
+  assert.equal(await service.setFounder('ada', false), true)
+  assert.equal(await service.setFounder('ada', false), false, 'revoking twice changes nothing')
+  assert.equal((await service.profile(null, 'ada'))!.founderBadge, false)
+  assert.equal((await postsService.feed(null, 10)).posts.find((p) => p.id === post.id)!.authorFounder, false)
+
+  await assert.rejects(service.setFounder('nobody', true), NoSuchMemberError)
 })

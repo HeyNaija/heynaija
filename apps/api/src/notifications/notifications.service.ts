@@ -3,6 +3,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { decodeCursor, encodeCursor } from '../cursor.js'
 import { avatarPath } from '../media/media.service.js'
+import { isFounder } from '../members/badges.js'
 import { DB } from '../tokens.js'
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]
@@ -67,8 +68,8 @@ export type NotificationView = {
   kind: NotificationKind
   createdAt: Date
   read: boolean
-  /** Null for moderation decisions. */
-  actor: { handle: string; displayName: string | null; avatar: string | null } | null
+  /** Null for moderation decisions. `founder`: one of the people who founded HeyNaija. */
+  actor: { handle: string; displayName: string | null; avatar: string | null; founder: boolean } | null
   /** The post concerned, with its text shortened. */
   post: { id: string; excerpt: string } | null
   /** report_resolved about an account: whose. */
@@ -130,6 +131,7 @@ export class NotificationsService {
       actor_handle: string | null
       actor_name: string | null
       actor_avatar: string | null
+      actor_founder: boolean
       post_id: string | null
       post_text: string | null
       subject_handle: string | null
@@ -140,6 +142,7 @@ export class NotificationsService {
     }>(sql`
       select n.id, n.kind, n.created_at, n.read_at, n.detail,
         a.handle as actor_handle, a.display_name as actor_name, a.avatar_media_id as actor_avatar,
+        ${isFounder(sql`a.id`)} as actor_founder,
         p.id as post_id, p.text as post_text, s.handle as subject_handle,
         c.slug as community_slug, c.name as community_name,
         i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours
@@ -155,7 +158,7 @@ export class NotificationsService {
         createdAt: new Date(r.created_at),
         read: r.read_at !== null,
         actor: r.actor_handle
-          ? { handle: r.actor_handle, displayName: r.actor_name, avatar: avatarPath(r.actor_avatar) }
+          ? { handle: r.actor_handle, displayName: r.actor_name, avatar: avatarPath(r.actor_avatar), founder: r.actor_founder }
           : null,
         post: r.post_id ? { id: r.post_id, excerpt: excerpt(r.post_text ?? '') } : null,
         subjectHandle: r.subject_handle,

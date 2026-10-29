@@ -1,4 +1,4 @@
-import { blocks, type Db, follows, members, mutes, releasedHandles } from '@heynaija/db'
+import { blocks, type Db, follows, members, mutes, profileBadges, releasedHandles } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
 import { and, asc, eq, ilike, like, ne, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -7,6 +7,7 @@ import { avatarPath } from '../media/media.service.js'
 import { notify } from '../notifications/notifications.service.js'
 import { cleanLine, cleanLines, graphemes } from '../text.js'
 import { DB, ENV } from '../tokens.js'
+import { isFounder } from './badges.js'
 
 export const DISPLAY_NAME_MAX = 50
 export const BIO_MAX = 160
@@ -49,7 +50,13 @@ export const profileInput = z.object({
   bio: z.string().transform(cleanLines).refine(atMost(BIO_MAX), `bio is longer than ${BIO_MAX} characters`),
 })
 
-export type MemberSummary = { handle: string; displayName: string | null; avatar: string | null }
+export type MemberSummary = {
+  handle: string
+  displayName: string | null
+  avatar: string | null
+  /** One of the people who founded HeyNaija. */
+  founder: boolean
+}
 
 export type Profile = {
   id: string
@@ -69,9 +76,12 @@ export type Profile = {
   viewerMutes: boolean
   /** Whether to show the green "NIN identity verified" tick. */
   identityBadge: boolean
+  /** One of the people who founded HeyNaija (`pnpm founder:grant`), for good. */
+  founderBadge: boolean
 }
 
 export class CannotFollowSelfError extends Error {}
+export class NoSuchMemberError extends Error {}
 
 // Written out because Drizzle drops the table name from `${members.id}` in a query
 // without joins, and inside a subquery a bare "id" would bind to the inner table.
@@ -133,6 +143,7 @@ export class MembersService {
         identityBadge: this.env.NIN_VERIFICATION_ENABLED
           ? sql<boolean>`exists(select 1 from profile_badges pb where pb.member_id = ${outerId} and pb.kind = 'nin_identity_verified' and (pb.expires_at is null or pb.expires_at > now()))`
           : sql<boolean>`false`,
+        founderBadge: isFounder(outerId),
       })
       .from(members)
       .where(eq(members.id, id))
@@ -293,11 +304,38 @@ export class MembersService {
     const byHandle = handlePrefix ? like(members.handle, `${escape(handlePrefix)}%`) : undefined
     const byName = name ? ilike(members.displayName, `%${escape(name)}%`) : undefined
     const rows = await this.db
-      .select({ handle: members.handle, displayName: members.displayName, avatarMediaId: members.avatarMediaId })
+      .select({
+        handle: members.handle,
+        displayName: members.displayName,
+        avatarMediaId: members.avatarMediaId,
+        founder: isFounder(outerId),
+      })
       .from(members)
       .where(and(or(byHandle, byName), eq(members.active, true)))
       .orderBy(...(byHandle ? [sql`${byHandle} desc`] : []), asc(members.handle))
       .limit(limit)
-    return rows.map((r) => ({ handle: r.handle, displayName: r.displayName, avatar: avatarPath(r.avatarMediaId) }))
+    return rows.map(({ avatarMediaId, ...r }) => ({ ...r, avatar: avatarPath(avatarMediaId) }))
+  }
+
+  /**
+   * Gives `handle` the Founder badge, or takes it away (the founder:grant and
+   * founder:revoke commands; there is no UI for this). Returns whether anything
+   * changed.
+   */
+  async setFounder(handle: string, on: boolean): Promise<boolean> {
+    const [member] = await this.db
+      .select({ id: members.id })
+      .from(members)
+      .where(eq(members.handle, handle))
+      .orderBy(sql`${members.lastSeenAt} desc nulls last`)
+      .limit(1)
+    if (!member) throw new NoSuchMemberError(`no member @${handle} (they must have signed in at least once)`)
+    const changed = on
+      ? await this.db.insert(profileBadges).values({ memberId: member.id, kind: 'founder' }).onConflictDoNothing().returning()
+      : await this.db
+          .delete(profileBadges)
+          .where(and(eq(profileBadges.memberId, member.id), eq(profileBadges.kind, 'founder')))
+          .returning()
+    return changed.length > 0
   }
 }

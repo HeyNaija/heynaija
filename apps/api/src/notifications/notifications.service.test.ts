@@ -47,12 +47,20 @@ test('replies, likes and follows notify the person they are about, newest first'
     ['follow', 'reply', 'like'],
   )
   const [follow, replied, liked] = page.notifications
-  assert.deepEqual(follow!.actor, { handle: 'chi', displayName: null, avatar: null })
+  assert.deepEqual(follow!.actor, { handle: 'chi', displayName: null, avatar: null, founder: false })
   assert.deepEqual(replied!.post, { id: reply, excerpt: 'Jollof, obviously' })
   assert.deepEqual(liked!.post, { id: post, excerpt: 'Jollof or fried rice?' })
   assert.equal(await service.unreadCount(ada), 3)
   // Nothing for the people who acted.
   assert.equal(await service.unreadCount(bayo), 0)
+})
+
+test('a notification says when the member who acted has the Founder badge', async () => {
+  await membersService.setFounder('chi', true)
+  await membersService.follow(chi, 'ada')
+  await membersService.follow(bayo, 'ada')
+  const actors = (await service.list(ada, 50)).notifications.map((n) => [n.actor!.handle, n.actor!.founder])
+  assert.deepEqual(actors, [['bayo', false], ['chi', true]])
 })
 
 test('nobody is notified about their own likes and replies', async () => {
@@ -223,7 +231,7 @@ test('a mention notifies the person mentioned once, with the post that mentions 
   const { id } = await postsService.create(ada, 'Ask @bayo, @bayo knows suya')
   const [mention] = (await service.list(bayo, 50)).notifications
   assert.equal(mention!.kind, 'mention')
-  assert.deepEqual(mention!.actor, { handle: 'ada', displayName: 'Ada Obi', avatar: null })
+  assert.deepEqual(mention!.actor, { handle: 'ada', displayName: 'Ada Obi', avatar: null, founder: false })
   assert.deepEqual(mention!.post, { id, excerpt: 'Ask @bayo, @bayo knows suya' })
   assert.deepEqual(await kinds(bayo), ['mention:ada'])
   assert.equal(await service.unreadCount(bayo), 1)

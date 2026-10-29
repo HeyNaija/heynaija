@@ -42,6 +42,7 @@ export type QuotedPost =
       authorHandle: string
       authorName: string | null
       authorAvatar: string | null
+      authorFounder: boolean
       text: string
       images: PostImage[]
       createdAt: string
@@ -83,6 +84,8 @@ export type Post = {
   /** The author's chosen name; show the handle alone when null. */
   authorName: string | null
   authorAvatar: string | null
+  /** The author has the Founder badge: one of the people who founded HeyNaija. */
+  authorFounder: boolean
   text: string
   images: PostImage[]
   /** Mentions of members the viewer can see, in order. Other @text stays plain. */
@@ -182,6 +185,8 @@ export type Profile = {
    * reviewed, current verification the member chose to show; never inferred here.
    */
   identityBadge: boolean
+  /** Show the Founder badge: one of the people who founded HeyNaija, granted by hand. */
+  founderBadge: boolean
 }
 
 /**
@@ -439,7 +444,7 @@ export async function getOnboardingSuggestions(communities: string[]): Promise<S
 }
 
 export type SearchResults = {
-  members: { handle: string; displayName: string | null; avatar: string | null }[]
+  members: { handle: string; displayName: string | null; avatar: string | null; founder: boolean }[]
   communities: Community[]
   posts: Post[]
 }
@@ -514,7 +519,7 @@ export type Notification = {
   createdAt: string
   read: boolean
   /** Null for moderation decisions. */
-  actor: { handle: string; displayName: string | null; avatar: string | null } | null
+  actor: { handle: string; displayName: string | null; avatar: string | null; founder: boolean } | null
   post: { id: string; excerpt: string } | null
   subjectHandle: string | null
   community: { slug: string; name: string } | null

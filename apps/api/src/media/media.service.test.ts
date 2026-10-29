@@ -119,7 +119,7 @@ test('the avatar shows up on the profile, in search and on posts', async () => {
 
   assert.equal((await membersService.profile(null, 'ada'))!.avatar, expected)
   assert.equal((await membersService.profile(null, 'bayo'))!.avatar, null)
-  assert.deepEqual(await membersService.search('ada', 5), [{ handle: 'ada', displayName: null, avatar: expected }])
+  assert.deepEqual(await membersService.search('ada', 5), [{ handle: 'ada', displayName: null, avatar: expected, founder: false }])
   const feed = (await postsService.feed(null, 10)).posts
   assert.deepEqual(feed.map((p) => [p.authorHandle, p.authorAvatar]), [
     ['bayo', null],
