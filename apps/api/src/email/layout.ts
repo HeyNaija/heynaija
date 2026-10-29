@@ -4,7 +4,9 @@
  * of apps/web/DESIGN.md. Mail programs ignore web fonts and most CSS, so this is
  * tables and inline styles in the system font stack. The dark-mode block is only
  * a hint for programs that honour it; the inline light colours are what the rest show.
- * infra/kratos/policy/courier_email_change.go draws the same frame for the emails Kratos sends.
+ * The frame is drawn in four places that must stay in step: here, `heynaijaHTML` in
+ * infra/kratos/policy/courier_email_change.go, and infra/kratos/courier-templates/login_code/valid/email.body.gotmpl
+ * and registration_code/valid/email.body.gotmpl (the emails Kratos sends).
  */
 
 export const escapeHtml = (text: string) =>
@@ -37,7 +39,7 @@ const DARK_MODE = `
 
 /** A green link-button. `href` is escaped here. */
 export const button = (label: string, href: string) =>
-  `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:20px 0 0"><tr><td style="background:${COLOR.green};border-radius:8px">` +
+  `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:20px 0 0"><tr><td style="background:${COLOR.green};border-radius:8px;padding:12px 20px">` +
   `<a href="${escapeHtml(href)}" style="display:inline-block;padding:12px 20px;font-family:${FONT};font-size:15px;font-weight:600;line-height:1.2;color:#ffffff;text-decoration:none">${escapeHtml(label)}</a>` +
   `</td></tr></table>`
 
@@ -66,6 +68,7 @@ export function emailFrame(input: { title: string; preheader: string; body: stri
 <body class="hn-ground" style="margin:0;padding:0;background:${COLOR.ground}">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all">${escapeHtml(preheader)}${'&nbsp;&zwnj;'.repeat(40)}</div>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="hn-ground" style="background:${COLOR.ground}"><tr><td align="center" style="padding:24px 12px">
+  <!--[if mso]><table role="presentation" width="560" align="center"><tr><td><![endif]-->
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px">
     <tr><td style="padding:0 4px 14px;font-family:${FONT};font-size:22px;font-weight:800;letter-spacing:-0.03em;color:${COLOR.green}" class="hn-link">HeyNaija</td></tr>
     <tr><td class="hn-card" style="background:${COLOR.card};border:1px solid ${COLOR.hairline};border-radius:12px;padding:24px;font-family:${FONT};font-size:15px;line-height:1.6;color:${COLOR.ink}">
@@ -77,6 +80,7 @@ ${body}
         : ''
     }
   </table>
+  <!--[if mso]></td></tr></table><![endif]-->
 </td></tr></table>
 </body>
 </html>
