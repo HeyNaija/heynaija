@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { setFounder } from '../lib/cli.ts'
 import { newMember, post } from '../lib/members.ts'
 
-test('a founder’s gold badge shows on their profile, posts, notifications and in search, until it is taken away', async ({ browser }) => {
+test('a founder’s badge shows on their profile, posts, notifications and in search, until it is taken away', async ({ browser }) => {
   const founder = await newMember(browser, 'builder')
   const reader = await newMember(browser, 'reader')
   const founderText = `An update from ${founder.handle}`

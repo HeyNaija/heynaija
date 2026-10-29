@@ -21,7 +21,6 @@
   --danger: #b3261e;
   --danger-soft: #fbedec;
   --warm: #e8590c;
-  --founder: #9a6200; /* the Founder badge: a gold award, apart from the green tick */
   --selection: #cfe8da;
   --focus-ring: var(--accent); /* solid, 4.8:1 on white, so the focused control is never lost */
   --field-ring: rgb(37 129 83 / 16%);
@@ -80,7 +79,6 @@
   --danger: #ff8f85;
   --danger-soft: #3a1c1a;
   --warm: #ff9b5c;
-  --founder: #f2b84b;
   --selection: #1f4d38;
   --focus-ring: var(--accent-strong);
   --field-ring: rgb(125 217 170 / 20%);
@@ -1026,10 +1024,10 @@ summary.menu::-webkit-details-marker {
   text-align: left;
 }
 .identity-badge-tip[data-open] { display: block; }
-/* The Founder badge: only the gold award. As a link it is a 24px target
-   without growing the line it sits on. */
+/* The Founder badge: only the award, in the colour of the name beside it.
+   As a link it is a 24px target without growing the line it sits on. */
 .founder-badge { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; vertical-align: middle; }
-.founder-badge-mark { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; color: var(--founder); }
+.founder-badge-mark { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; }
 .founder-badge-mark.is-link { min-width: 24px; min-height: 24px; margin: -3px -2px; border-radius: var(--r-chip); }
 
 .verification-glance { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }

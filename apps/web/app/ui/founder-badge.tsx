@@ -11,9 +11,9 @@ export const FOUNDER_TOOLTIP = 'One of the people who founded HeyNaija. Their po
  * The Founder badge: one of the people who founded HeyNaija, given by hand with
  * `pnpm founder:grant` and kept for good. Render it only where the API says so
  * (`founderBadge` on a profile, `authorFounder` on a post, `founder` on a
- * member). A gold award, not a tick, so it is never read as the green identity
- * tick; it stands beside that tick rather than combining with it, and says
- * nothing about identity checks.
+ * member). An award in the colour of the name, not a tick, so it is never read
+ * as the green identity tick; it stands beside that tick rather than combining
+ * with it, and says nothing about identity checks.
  *
  * Like the tick, it links to what it means (the idea behind HeyNaija, on the
  * About page) and names itself in a tooltip on hover and keyboard focus that closes
