@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common'
+import { escapeHtml } from '../email/layout.js'
 import type { Mailer } from '../email/mailer.js'
 
 export const SAFETY_ALERTS = Symbol('SAFETY_ALERTS')
@@ -37,5 +38,3 @@ export class EmailSafetyAlerts implements SafetyAlerts {
     }
   }
 }
-
-const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
