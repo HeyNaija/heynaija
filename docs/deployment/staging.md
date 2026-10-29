@@ -134,6 +134,11 @@ restore rehearsal, and the uptime check. Work through step 7.
   A `.env` made before these settings existed does not have them, and would get
   production's sizes: **add these lines to `/srv/heynaija/infra/deploy/.env`
   before deploying a commit that includes them.**
+
+  One more is optional: `MIGRATE_LOCK_TIMEOUT_MS` (milliseconds, default 5000, `0`
+  waits forever) is how long a migration waits for a table lock before the migrate
+  step retries and then fails the deploy. Add it to `.env` if a necessary `ALTER`
+  on a busy table keeps timing out; left out or empty, the default applies.
 - **One Docker daemon.** Any user in the `docker` group can manage every container
   on the server, Koinovera's included. Fine while both projects are yours.
 

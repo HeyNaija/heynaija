@@ -107,6 +107,8 @@ services:
     command: ["node", "node_modules/@heynaija/db/dist/migrate.js"]
     environment:
       DATABASE_URL: postgres://heynaija:${POSTGRES_PASSWORD}@postgres:5432/heynaija
+      # Empty (unset in .env) means the default of 5000; 0 disables.
+      MIGRATE_LOCK_TIMEOUT_MS: ${MIGRATE_LOCK_TIMEOUT_MS:-}
     depends_on:
       postgres:
         condition: service_healthy
