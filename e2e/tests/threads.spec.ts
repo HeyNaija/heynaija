@@ -399,6 +399,15 @@ test('on a phone the reply bar stays above the bottom tabs while the replies scr
       page.locator('.square-bottom-nav').evaluate((node) => node.getBoundingClientRect().top),
     ])
     expect(form).toBeLessThanOrEqual(nav + 1)
+    // At the end of the page the last reply is not left under the bar.
+    const bottoms = await page.evaluate(() => {
+      const articles = document.querySelectorAll('.thread-branch.is-root > .thread-children article')
+      return {
+        reply: articles[articles.length - 1]!.getBoundingClientRect().bottom,
+        bar: document.querySelector('.thread-editor-host')!.getBoundingClientRect().top,
+      }
+    })
+    expect(bottoms.reply).toBeLessThanOrEqual(bottoms.bar + 1)
   } finally {
     await context.close()
   }
@@ -435,7 +444,7 @@ test('a signed-out visitor is asked to sign in to reply, right under the post, a
   }
 })
 
-test('an answer is joined to its parent by a line on the parent avatar, with the parent text beside it', async ({ browser }) => {
+test('an answer is joined to its parent by a line on the parent avatar, with the parent text beside it @mobile', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'branch')
   try {
     const fixture = await seedThread(handle)

@@ -1071,7 +1071,7 @@ summary.menu::-webkit-details-marker {
   .governance-actions .btn { width: 100%; }
 }
 @media print {
-  .square-sidebar, .square-rail, .square-topbar, .square-bottom-nav, .governance-tabs, .policy-contents, .policy-footer, .no-print { display: none !important; }
+  .square-sidebar, .square-rail, .square-topbar, .square-bottom-nav, .thread-editor-host, .governance-tabs, .policy-contents, .policy-footer, .no-print { display: none !important; }
   .square-feed { padding: 0 !important; }
   .policy-section, .governance-section { break-inside: avoid-page; border: 0; padding: 12px 0; }
 }
@@ -1191,9 +1191,13 @@ summary.menu::-webkit-details-marker {
    the page opts into viewport-fit=cover, as the tabs' own padding is. */
 @media (max-width: 1023px) {
   .thread-branch.is-root > .thread-editor-host { position: fixed; z-index: 4; inset-inline: 0; bottom: calc(63px + env(safe-area-inset-bottom)); box-sizing: border-box; width: 100%; max-width: 720px; margin: 0 auto; padding: 4px 20px 6px; border-top: 1px solid var(--line); background: var(--bg); }
+  /* Expanded, it stays below the 64px top bar and above the tabs, and scrolls inside itself. */
+  .thread-branch.is-root > .thread-editor-host { max-height: calc(100dvh - 64px - 63px - env(safe-area-inset-bottom) - 8px); overflow-y: auto; overscroll-behavior: contain; }
+  .thread-branch.is-root > .thread-editor-host .composer-input { max-height: min(40dvh, 20rem); }
   .thread-view:has(> .thread-branch.is-root > .thread-editor-host:not(:empty)) { padding-bottom: 76px; }
 }
 @media (max-width: 419px) { .thread-branch.is-root > .thread-editor-host { padding-inline: 12px; } }
+@media (max-width: 1023px) and (max-height: 520px) { .thread-branch.is-root > .thread-editor-host .composer-privacy { display: none; } }
 /* Reading starts with one line. Writing reveals the recipient, tools and notice;
    an existing draft or attachment keeps them open when focus moves away. */
 .reply-composer:not(.is-expanded):not(:focus-within) :is(.composer-recipient, .composer-privacy) { display: none; }
