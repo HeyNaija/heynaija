@@ -1,5 +1,6 @@
 import { ideaHeadline } from '../ideas/status-words.js'
 import type { NotificationKind } from '../notifications/notifications.service.js'
+import { button, COLOR, emailFrame, escapeHtml, link, paragraph } from './layout.js'
 
 /** What the email says about one notification. Moderation notices carry no post text at all. */
 export type DigestItem = {
@@ -117,9 +118,6 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
   }
 }
 
-const escapeHtml = (text: string) =>
-  text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
-
 /**
  * The email for a member's waiting notifications, newest first. Written to be
  * read in a notification on a lock screen or in an inbox other people may see:
@@ -164,37 +162,23 @@ export function renderDigest(input: {
 
   const rows = shown
     .map(
-      (line) => `
-      <tr><td style="padding:12px 0;border-bottom:1px solid #dfe7e2">
-        <a href="${escapeHtml(line.href)}" style="color:#176541;font-weight:600;text-decoration:none">${escapeHtml(line.headline)}</a>${
-          line.quote ? `<br><span style="color:#44565f">“${escapeHtml(line.quote)}”</span>` : ''
+      (line, i) => `
+      <tr><td${i < shown.length - 1 ? ` class="hn-rule" style="padding:12px 0;border-bottom:1px solid ${COLOR.hairline}"` : ' style="padding:12px 0 0"'}>
+        <a class="hn-link" href="${escapeHtml(line.href)}" style="color:${COLOR.greenDeep};font-weight:600;text-decoration:none">${escapeHtml(line.headline)}</a>${
+          line.quote ? `<br><span class="hn-muted" style="color:${COLOR.muted}">“${escapeHtml(line.quote)}”</span>` : ''
         }
       </td></tr>`,
     )
     .join('')
-  const html = `<!doctype html>
-<html lang="en">
-<body style="margin:0;padding:0;background:#f1f4f2">
-  <div style="max-width:560px;margin:0 auto;padding:24px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#10212b">
-    <div style="background:#ffffff;border-radius:12px;padding:24px">
-      <p style="margin:0 0 4px;font-size:20px;font-weight:700;color:#176541">HeyNaija</p>
-      <p style="margin:0 0 8px">Here is what happened, @${escapeHtml(handle)}.</p>
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">${rows}
-      </table>${
-        more
-          ? `
-      <p style="margin:12px 0 0;color:#44565f">...and ${hidden} more.</p>`
-          : ''
-      }
-      <p style="margin:20px 0 0"><a href="${escapeHtml(notificationsUrl)}" style="display:inline-block;background:#258153;color:#ffffff;padding:12px 18px;border-radius:8px;font-weight:600;text-decoration:none">Open your notifications</a></p>
-    </div>
-    <p style="margin:16px 4px 0;font-size:13px;line-height:1.5;color:#44565f">${escapeHtml(why)}
-      <a href="${escapeHtml(settingsUrl)}" style="color:#176541">Choose what we email you</a>, or
-      <a href="${escapeHtml(unsubscribeUrl)}" style="color:#176541">stop these emails with one click</a>.
-      You will still see your notifications in HeyNaija.</p>
-  </div>
-</body>
-</html>
-`
+  const body = [
+    paragraph(`Here is what happened, @${escapeHtml(handle)}.`, 'font-size:17px;font-weight:600'),
+    `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;border-top:1px solid ${COLOR.hairline}" class="hn-rule">${rows}
+      </table>`,
+    more ? `<p class="hn-muted" style="margin:12px 0 0;color:${COLOR.muted}">...and ${hidden} more.</p>` : '',
+    button('Open your notifications', notificationsUrl),
+  ].join('\n')
+  const footer = `${escapeHtml(why)} ${link('Choose what we email you', settingsUrl)}, or ${link('stop these emails with one click', unsubscribeUrl)}. You will still see your notifications in HeyNaija.`
+  const html = emailFrame({ title: subject, // The subject already says it when there is one notification; the preview must add to it, and never quotes a post (ADR 0009).
+    preheader: total === 1 ? `Here is what happened, @${handle}.` : lines[0] ? lines[0].headline : subject, body, footer })
   return { subject, text, html }
 }
