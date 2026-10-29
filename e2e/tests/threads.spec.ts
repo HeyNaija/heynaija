@@ -335,13 +335,29 @@ test('the conversation above a reply is open and joined by a line, and the reply
     for (const id of [ids[0], ids[1], ids[2], ids[3], ids[4]]) {
       await expect(page.locator(`#post-${id}`).getByText('Author', { exact: true })).toBeVisible()
     }
-    // The line is decoration: a pseudo-element, so nothing for assistive technology to read.
-    const line = await page.locator('.thread-chain > li').first().evaluate((node) => {
-      const style = getComputedStyle(node, '::before')
-      return { content: style.content, width: style.width }
-    })
-    expect(line.content).not.toBe('none')
-    expect(line.width).toBe('2px')
+    // The line is decoration (a pseudo-element, nothing to read) and sits where it should: on
+    // the avatars' centre, from the ancestor down to the next post and the post in focus, with
+    // the post's text beside it rather than under it.
+    const placed = await page.evaluate(([first, focus]) => {
+      const li = document.getElementById(`post-${first}`)!.closest('li')!
+      const style = getComputedStyle(li, '::before')
+      const lineLeft = li.getBoundingClientRect().left + parseFloat(style.left)
+      const centre = (el: Element) => { const r = el.getBoundingClientRect(); return r.left + r.width / 2 }
+      return {
+        content: style.content,
+        width: parseFloat(style.width),
+        line: lineLeft + parseFloat(style.width) / 2,
+        avatar: centre(li.querySelector('.post-header a')!),
+        focusAvatar: centre(document.querySelector(`#post-${focus} .post-header a`)!),
+        textLeft: li.querySelector('.post-body')!.getBoundingClientRect().left,
+        lineRight: lineLeft + parseFloat(style.width),
+      }
+    }, [ids[0]!, ids[3]!])
+    expect(placed.content).not.toBe('none')
+    expect(placed.width).toBe(2)
+    expect(Math.abs(placed.line - placed.avatar)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.avatar - placed.focusAvatar)).toBeLessThanOrEqual(1)
+    expect(placed.textLeft).toBeGreaterThan(placed.lineRight)
 
     // Chain, focused post, reply bar, replies: in that order down the page.
     const top = (selector: string) => page.locator(selector).first().evaluate((node) => node.getBoundingClientRect().top)
@@ -371,8 +387,12 @@ test('on a phone the reply bar stays above the bottom tabs while the replies scr
     const fixture = await seedThread(handle)
     await page.setViewportSize({ width: 390, height: 740 })
     await page.goto(`/p/${fixture.root}`)
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2))
     const bar = page.locator('form#compose')
+    // In view at the top of the page, half way down and at the very end.
+    await expect(bar).toBeInViewport()
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2))
+    await expect(bar).toBeInViewport()
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
     await expect(bar).toBeInViewport()
     const [form, nav] = await Promise.all([
       bar.evaluate((node) => node.getBoundingClientRect().bottom),
@@ -384,7 +404,7 @@ test('on a phone the reply bar stays above the bottom tabs while the replies scr
   }
 })
 
-test('a signed-out visitor is asked to sign in to reply, right under the post', async ({ browser }) => {
+test('a signed-out visitor is asked to sign in to reply, right under the post, and on a phone above the tabs @mobile', async ({ browser }) => {
   const author = await newMember(browser, 'ask')
   const ids = await seedChain(author.handle, 2)
   await author.context.close()
@@ -396,15 +416,62 @@ test('a signed-out visitor is asked to sign in to reply, right under the post', 
     await expect(prompt).toBeVisible()
     await expect(prompt).toHaveAttribute('href', '/login')
     await expect(page.locator('form#compose')).toHaveCount(0)
-    // Not a notice at the foot of the page any more.
-    await expect(page.locator('.notice')).toHaveCount(0)
     const top = (selector: string) => page.locator(selector).first().evaluate((node) => node.getBoundingClientRect().top)
     const focused = await top(`#post-${ids[1]}`)
     const asked = await prompt.evaluate((node) => node.getBoundingClientRect().top)
     const reply = await top(`#post-${ids[2]}`)
-    expect(focused).toBeLessThan(asked)
-    expect(asked).toBeLessThan(reply)
+    // On a desktop it is the first thing under the post; on a phone it is pinned above the tabs,
+    // so wherever the page is scrolled to it is in view and clear of them.
+    const nav = page.locator('.square-bottom-nav')
+    if (await nav.isVisible()) {
+      await expect(prompt).toBeInViewport()
+      expect(await prompt.evaluate((node) => node.getBoundingClientRect().bottom)).toBeLessThanOrEqual(await nav.evaluate((node) => node.getBoundingClientRect().top) + 1)
+    } else {
+      expect(focused).toBeLessThan(asked)
+      expect(asked).toBeLessThan(reply)
+    }
   } finally {
     await visitor.close()
+  }
+})
+
+test('an answer is joined to its parent by a line on the parent avatar, with the parent text beside it', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'branch')
+  try {
+    const fixture = await seedThread(handle)
+    await page.goto(`/p/${fixture.root}?replies=oldest`)
+    const branch = page.locator(`.thread-branch[data-thread-id="${fixture.first}"]`)
+    await branch.getByRole('link', { name: /^View.*replies/i }).first().click()
+    await expect(page.locator(`#post-${fixture.nested[1]}`)).toBeVisible()
+    const placed = await page.evaluate(([parent, last]) => {
+      const row = document.querySelector(`.thread-branch[data-thread-id="${parent}"] > .thread-row`)!
+      const after = getComputedStyle(row, '::after')
+      const card = row.querySelector('.post-card')!
+      const avatar = card.querySelector('.post-header a')!.getBoundingClientRect()
+      const line = row.getBoundingClientRect().left + parseFloat(after.left) + parseFloat(after.width) / 2
+      const li = document.getElementById(`post-${last}`)!.closest('li')!
+      const stub = getComputedStyle(li, '::after')
+      const lastAvatar = document.querySelector(`#post-${last} .post-header a`)!.getBoundingClientRect()
+      return {
+        line,
+        avatarCentre: avatar.left + avatar.width / 2,
+        textLeft: card.querySelector('.post-body')!.getBoundingClientRect().left,
+        cardLeft: card.getBoundingClientRect().left,
+        stubY: li.getBoundingClientRect().top + parseFloat(stub.top) + parseFloat(stub.borderTopWidth) / 2,
+        avatarY: lastAvatar.top + lastAvatar.height / 2,
+        phone: window.innerWidth < 1024,
+      }
+    }, [fixture.first, fixture.nested[1]!])
+    // The stub meets the answer's avatar however the header wraps.
+    expect(Math.abs(placed.stubY - placed.avatarY)).toBeLessThanOrEqual(1)
+    if (placed.phone) {
+      // Too narrow an indent to reach the avatar: the line stays in the gutter, outside the card.
+      expect(placed.line).toBeLessThan(placed.cardLeft + 12)
+    } else {
+      expect(Math.abs(placed.line - placed.avatarCentre)).toBeLessThanOrEqual(1)
+      expect(placed.textLeft).toBeGreaterThan(placed.line + 1)
+    }
+  } finally {
+    await context.close()
   }
 })
