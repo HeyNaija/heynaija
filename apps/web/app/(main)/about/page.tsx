@@ -27,7 +27,7 @@ const principles = [
   {
     Icon: DocumentIcon,
     title: 'Development you can follow',
-    detail: <>We want to be clear about what works and what is missing. Our <Link href="/progress">public roadmap</Link> records both. The project has an AGPL licence and aims to publish its source, but the repository is still private. The <Link href="/licence">licence page</Link> explains that distinction.</>,
+    detail: <>We want to be clear about what works and what is missing. Our <Link href="/progress">public roadmap</Link> records both. The code is public under the AGPL licence; the <Link href="/licence">licence page</Link> says where it is and what the licence covers.</>,
   },
   {
     Icon: ShieldIcon,

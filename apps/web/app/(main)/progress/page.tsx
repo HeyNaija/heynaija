@@ -95,15 +95,16 @@ export default function ProgressPage() {
         <p className="about-copy">
           Priorities can change as we learn from members. There are no promised delivery dates here.
           Tests support the implementation record; they do not guarantee production readiness.
-          This readable roadmap and the developer Markdown document are generated from the same
-          feature registry. The source repository is not public yet; this page is the public view.
+          This readable roadmap and the{' '}
+          <a href="https://github.com/HeyNaija/heynaija/blob/main/docs/FEATURE_ROADMAP.md">developer version</a>{' '}
+          are generated from the same feature registry, in HeyNaija’s public source code.
         </p>
         <FeedbackNotice />
         <nav aria-label="Keep exploring" className="policy-links">
           <Link href="/about">About HeyNaija</Link>
           <Link href="/governance">How governance would work</Link>
           <Link href="/charter">Founding charter</Link>
-          <Link href="/licence">Licence and source status</Link>
+          <Link href="/licence">Licence and source code</Link>
         </nav>
       </footer>
     </article>

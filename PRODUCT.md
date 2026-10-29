@@ -39,8 +39,8 @@ the core flow works on a throttled mobile connection.
 A discussion network built around Nigerian topics and communities, with feeds that
 say why each post is there, rather than opaque engagement ranking: Latest and
 Following in time order, and Discover, ranked by published rules from public
-activity (ADR 0014). Source publication under the existing AGPL licence is planned; the
-repository is currently private. Moderation decisions go into a moderator-only
+activity (ADR 0014). The source is public under the existing AGPL licence, at
+github.com/HeyNaija/heynaija. Moderation decisions go into a moderator-only
 log, governance proposals are published, and members can download their data from
 Settings. Public governance decision records are separate future work.
 

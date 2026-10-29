@@ -71,8 +71,8 @@ than attempting a national launch on day one.
 
 **Differentiators:**
 1. Nigeria-first topics, communities and discovery.
-2. Planned public source under the existing AGPL licence, accountable moderation, and public governance proposals. The repository is currently private.
-3. Members can download their data from Settings (export format 3). Public source publication and wider interoperability remain separate work.
+2. Public source under the existing AGPL licence ([github.com/HeyNaija/heynaija](https://github.com/HeyNaija/heynaija)), accountable moderation, and public governance proposals.
+3. Members can download their data from Settings (export format 3). Wider interoperability remains separate work.
 4. Low-bandwidth, accessible, Android-first web experience.
 5. Feeds that say why a post is there, rather than opaque engagement ranking: Latest and Following in time order, and Discover, ranked by published rules from public activity ([ADR 0014](docs/adr/0014-discover-and-top-replies.md)).
 
@@ -175,7 +175,7 @@ Browser ──> Next.js web app
 - [x] Governance overview rebuilt from draft constitution v0.2 (16 October 2026): founding-stage notice, participation types, proposed structure and thresholds, ownership milestones with truthful statuses, empty states. `/governance/constitution`, `/governance/membership`, `/governance/verification`; Settings shows each member's status
 - [ ] Optional NIN verification (NINAuth) and voting membership: data model, rules and tests built behind switches the API refuses to turn on; verification, opt-in and ballots wait for the approvals in [docs/governance/open-items.md](docs/governance/open-items.md)
 - [ ] A working feedback channel for the governance drafts
-- [ ] Licence, charter, policies, roadmap, published source. Draft pages live at /rules, /privacy, /charter and /licence (15 October 2026), marked as drafts with placeholders for the operator's details; licence chosen: AGPL-3.0-or-later. The `LICENSE` file is in place. Still to do: legal review, filling in the placeholders, publishing the source
+- [ ] Licence, charter, policies, roadmap, published source. Draft pages live at /rules, /privacy, /charter and /licence (15 October 2026), marked as drafts with placeholders for the operator's details; licence chosen: AGPL-3.0-or-later. The `LICENSE` file is in place, and the source is public (29 October 2026). Still to do: legal review, filling in the placeholders, the review of code ownership and third-party rights
 - [ ] Disclosure of the provisional custodians and the plan for community ownership (the charter sets out the plan; the custodians' names are a placeholder)
 - [ ] Community voting and treasury records (information pages are built; voting and transactions are not live)
 

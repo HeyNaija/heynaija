@@ -635,18 +635,18 @@
     {
       "id": "source-publication",
       "name": "Public source publication",
-      "description": "Make the source available under the existing AGPL licence after publication review.",
+      "description": "Publish the source under the existing AGPL licence, and review code ownership and third-party rights.",
       "category": "governance",
       "priority": "P0",
-      "status": "blocked",
-      "availability": "not_live",
+      "status": "partial",
+      "availability": "production",
       "evidence": [
         "LICENSE",
         "apps/web/app/(main)/licence/page.tsx",
         "docs/governance/open-items.md"
       ],
-      "caveat": "Publication and release review require the repository owner’s decision.",
-      "notes": "GitHub repository metadata confirmed private on 17 October 2026. The AGPL file does not make the repository publicly accessible."
+      "caveat": "The source code is public. The review of code ownership and third-party rights, release notes and security disclosure guidance are still to come.",
+      "notes": "Made public on GitHub (github.com/HeyNaija/heynaija) on 29 October 2026, after deploys moved off the self-hosted runners (docs/deployment/staging.md). Confirmed private on 17 October 2026 before that. Constitution Article 12 (v0.3.2) records the remaining ownership and rights review."
     },
     {
       "id": "data-export",

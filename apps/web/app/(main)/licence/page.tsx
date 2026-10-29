@@ -10,7 +10,7 @@ export default function LicencePage() {
       eyebrow="Open source"
       title="Licence"
       summary="HeyNaija’s code is free software under the GNU Affero General Public License, version 3 or later (AGPL-3.0-or-later). This page explains what that means, and what it does not cover."
-      updated="15 October 2026"
+      updated="29 October 2026"
       sections={[
         {
           id: 'code',
@@ -38,8 +38,9 @@ export default function LicencePage() {
           title: 'Where the source is',
           body: (
             <p>
-              The source code is not public yet. It will be published at github.com/HeyNaija/heynaija, and
-              this page will link to it when it is.
+              The source code is public at{' '}
+              <a href="https://github.com/HeyNaija/heynaija">github.com/HeyNaija/heynaija</a>. HeyNaija runs
+              the code on its <code>main</code> branch, and changes are proposed there as pull requests.
             </p>
           ),
         },

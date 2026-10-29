@@ -74,7 +74,7 @@ test('the governance page says plainly what is and is not live @mobile', async (
 test('the draft constitution is complete, versioned and marked as a draft', async ({ page }) => {
   await page.goto('/governance/constitution')
   await expect(page.getByRole('heading', { level: 1, name: 'HeyNaija nonprofit constitution' })).toBeVisible()
-  await expect(page.getByText(/Draft v0\.3\.1 · Last updated 28 October 2026/)).toBeVisible()
+  await expect(page.getByText(/Draft v0\.3\.2 · Last updated 29 October 2026/)).toBeVisible()
   await expect(page.getByRole('note').first()).toContainText('Not yet adopted or legally operative')
 
   const contents = page.getByRole('navigation', { name: 'On this page' })

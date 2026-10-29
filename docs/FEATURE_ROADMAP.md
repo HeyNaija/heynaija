@@ -5,7 +5,7 @@
 
 Audit scope: the local staging working tree and its inspected code, tests and operational documentation. Staging and production are deployed, but this audit does not verify their live revisions or individual feature availability there, except where a feature is recorded in an environment. Unknown availability is intentional, even when implementation is tested.
 
-This tracks product development, not formal governance decisions. Priority means importance, not completion. No delivery dates or launch-readiness percentages are implied. The public readable counterpart is `/progress`; the repository is private, so the website does not link to it.
+This tracks product development, not formal governance decisions. Priority means importance, not completion. No delivery dates or launch-readiness percentages are implied. The public readable counterpart is `/progress`, which links to this document.
 
 ## Status and availability
 
@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 43 | 10 | 19 | 14 | 86 |
+| 43 | 11 | 19 | 13 | 86 |
 
 ## Priority order
 
@@ -348,11 +348,11 @@ This tracks product development, not formal governance decisions. Priority means
 #### Public source publication
 
 - **ID:** `source-publication`
-- **Priority:** P0 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Make the source available under the existing AGPL licence after publication review.
-- **Remaining work / caveat:** Publication and release review require the repository owner’s decision.
+- **Priority:** P0 · **Status:** Partial · **Availability:** Recorded in production
+- **Description:** Publish the source under the existing AGPL licence, and review code ownership and third-party rights.
+- **Remaining work / caveat:** The source code is public. The review of code ownership and third-party rights, release notes and security disclosure guidance are still to come.
 - **Inspected evidence:** `LICENSE`, `apps/web/app/(main)/licence/page.tsx`, `docs/governance/open-items.md`
-- **Audit notes:** GitHub repository metadata confirmed private on 17 October 2026. The AGPL file does not make the repository publicly accessible.
+- **Audit notes:** Made public on GitHub (github.com/HeyNaija/heynaija) on 29 October 2026, after deploys moved off the self-hosted runners (docs/deployment/staging.md). Confirmed private on 17 October 2026 before that. Constitution Article 12 (v0.3.2) records the remaining ownership and rights review.
 
 ## P1 — Core engagement
 
@@ -778,6 +778,6 @@ This tracks product development, not formal governance decisions. Priority means
 
 Schema version 1 is validated in `apps/web/lib/roadmap.ts`, shared by the generator and server-rendered page. Every feature requires a stable kebab-case ID, name, one-sentence description, known category, P0–P3 priority, lifecycle status, availability and inspected evidence paths. Partial and blocked entries require a separate public caveat. Implemented entries require both application and test evidence; a migration or placeholder alone does not qualify. Dependencies must refer to other feature IDs and must not form cycles.
 
-Evidence paths and operator notes appear only in this developer document. Public caveats must be safe to publish and must not reveal internal security details. Do not add private repository URLs to the public page. Record a verification date only with an actual verification record; do not manufacture a latest-update date when generating.
+Evidence paths and operator notes appear only in this developer document. Public caveats must be safe to publish and must not reveal internal security details. Record a verification date only with an actual verification record; do not manufacture a latest-update date when generating.
 
 The local audit does not attest to the live staging revision, production launch, provider approval, legal adoption or completion of an operational rehearsal. Confirm those independently before changing availability or removing a caveat.
