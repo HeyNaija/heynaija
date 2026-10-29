@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { setBlock, setFollow, setMute } from '@/app/actions'
 import { Avatar } from '@/app/ui/avatar'
+import { FounderBadge } from '@/app/ui/founder-badge'
 import { IdentityBadge } from '@/app/ui/identity-badge'
 import { DotsIcon } from '@/app/ui/icons'
 import { Menu } from '@/app/ui/menu'
@@ -83,6 +84,7 @@ async function ProfileView({ params, searchParams }: Props) {
               <h1 className="page-title break-words">
                 {profile.displayName ?? `@${profile.handle}`}
                 {profile.identityBadge ? <> <IdentityBadge /></> : null}
+                {profile.founderBadge ? <> <FounderBadge size={18} /></> : null}
               </h1>
               {profile.displayName ? <p className="mt-1 break-words text-sm text-muted">@{profile.handle}</p> : null}
             </div>

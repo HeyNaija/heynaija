@@ -1,6 +1,7 @@
 import {
   ArrowUpRight,
   AtSign,
+  Award,
   BadgeCheck,
   Bell,
   Bookmark,
@@ -106,6 +107,8 @@ export const BellIcon = icon(Bell)
 export const FollowIcon = icon(UserPlus)
 export const FlagIcon = icon(Flag)
 export const VerifiedIcon = icon(BadgeCheck)
+
+export const AwardIcon = icon(Award)
 export const IdentityIcon = icon(IdCard)
 export const DocumentIcon = icon(FileText)
 export const DoneIcon = icon(CircleCheck)

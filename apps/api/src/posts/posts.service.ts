@@ -15,6 +15,7 @@ import { z } from 'zod'
 import { findLinks, type FoundLink, previewUrlOf } from '../links/link-text.js'
 import { type LinkPreview, type LinkPreviewRow, linkPreviewOf, toLinkPreview } from '../links/links.service.js'
 import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/media.service.js'
+import { isFounder } from '../members/badges.js'
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
 import { notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
@@ -90,6 +91,7 @@ export type QuotedPost =
       authorHandle: string
       authorName: string | null
       authorAvatar: string | null
+      authorFounder: boolean
       text: string
       images: PostImage[]
       createdAt: Date
@@ -110,6 +112,8 @@ export type PostView = {
   authorName: string | null
   /** Path of the author's profile photo without the size suffix, or null. */
   authorAvatar: string | null
+  /** The author has the Founder badge: one of the people who founded HeyNaija. */
+  authorFounder: boolean
   /** Empty when `deleted`. */
   text: string
   /** Up to four, in order. Empty when `deleted`. */
@@ -320,7 +324,7 @@ type QuoteRow =
  */
 const quoteOf = (viewerId: string | null, quotePostId: SQL) => sql<QuoteRow | null>`case when ${quotePostId} is null then null else coalesce((
   select json_build_object('id', q.id, 'authorId', q.author_id, 'authorHandle', qa.handle, 'authorName', qa.display_name,
-    'authorAvatarId', qa.avatar_media_id, 'text', q.text, 'images', ${imagesOf(sql`q.id`)},
+    'authorAvatarId', qa.avatar_media_id, 'authorFounder', ${isFounder(sql`q.author_id`)}, 'text', q.text, 'images', ${imagesOf(sql`q.id`)},
     'createdAt', q.created_at, 'replyParentId', q.reply_parent_id)
   from posts q join members qa on qa.id = q.author_id
   where q.id = ${quotePostId} and q.deleted_at is null and q.removed_at is null
@@ -362,6 +366,7 @@ export class PostsService {
         authorHandle: members.handle,
         authorName: members.displayName,
         authorAvatarId: members.avatarMediaId,
+        authorFounder: isFounder(sql`${posts.authorId}`),
         text: sql<string>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${posts.text} else '' end`,
         images: sql<
           ImageRow[]
@@ -1091,7 +1096,7 @@ export class PostsService {
         to_char(page.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp,
         case when page.unavailable then null else json_build_object(
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
-          'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id,
+          'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id, 'authorFounder', ${isFounder(sql`p.author_id`)},
           'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
           'hashtags', ${hashtagsOf(sql`p.id`)},
           'linkPreview', ${linkPreviewOf(sql`p.link_url`)},

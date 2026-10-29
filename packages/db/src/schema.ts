@@ -745,11 +745,14 @@ export const governanceAuditLog = restricted.table(
   (t) => [index('governance_audit_log_subject_idx').on(t.subjectId, t.createdAt)],
 )
 
-export const PROFILE_BADGES = ['nin_identity_verified'] as const
+// The green identity tick, and Founder: one of the people who founded HeyNaija,
+// given by hand with `pnpm founder:grant` and kept for good (it says nothing about identity).
+export const PROFILE_BADGES = ['nin_identity_verified', 'founder'] as const
 
-// Badges shown on public profiles. A row exists only while the badge may be
-// shown and its owner chose to show it; the API also hides every badge while
-// NIN verification is switched off. Profiles read this table, never `restricted`.
+// Badges shown on public profiles and next to authors' names. A tick row exists
+// only while the tick may be shown and its owner chose to show it; the API also
+// hides the tick while NIN verification is switched off. Profiles read this
+// table, never `restricted`.
 export const profileBadges = pgTable(
   'profile_badges',
   {

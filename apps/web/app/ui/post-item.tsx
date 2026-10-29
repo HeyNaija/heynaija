@@ -7,6 +7,7 @@ import { excerpt } from '@/lib/previews'
 import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
 import type { FeedSource } from './feed-source'
+import { FounderBadge } from './founder-badge'
 import { BookmarkIcon, BubbleIcon, DotsIcon, HeartIcon, PinIcon, RepostIcon } from './icons'
 import { LikeButton } from './like-button'
 import { LinkCard } from './link-card'
@@ -150,10 +151,11 @@ export function PostItem({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="post-identity min-w-0">
-              <p className="post-author text-[14px] leading-5">
-                <Link prefetch={false} href={`/u/${post.authorHandle}`} className="block max-w-full truncate hover:underline">
+              <p className="post-author flex items-center gap-1 text-[14px] leading-5">
+                <Link prefetch={false} href={`/u/${post.authorHandle}`} className="block min-w-0 max-w-full truncate hover:underline">
                   <span className="truncate font-semibold">{post.authorName ?? `@${post.authorHandle}`}</span>
                 </Link>
+                {post.authorFounder ? <FounderBadge /> : null}
               </p>
               {compact ? <ThreadAuthorLabel authorId={post.authorId} /> : null}
               <p className="post-meta">

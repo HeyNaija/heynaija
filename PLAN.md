@@ -207,7 +207,7 @@ All tables are in `packages/db/src/schema.ts`; migrations in `packages/db/drizzl
 | `notification_opt_outs` | The kinds of other members' activity a member turned off; everything is on until then. Whether notifications are also emailed is `members.email_notifications` |
 | `media` | Uploaded files: owner, kind, status, type, size, dimensions; for post images also the post, position, description and whether it is an animated GIF |
 | `link_previews` | What a web address leads to, shared by every post that links there: status, title, description, thumbnail. `posts.link_url` names the one a post shows |
-| `profile_badges` | Public badges (the green identity tick); a row only while it may be shown and its owner chose to show it |
+| `profile_badges` | Public badges. The green identity tick: a row only while it may be shown and its owner chose to show it. Founder: given by hand with `pnpm founder:grant`, shown on profiles, posts, notifications and search |
 | `restricted.*` | Kept apart from ordinary reads (ADR 0005): `age_assurances` (age-band statements and how each was made; ADR 0006), `identity_verifications`, `governance_memberships`, `governance_audit_log` |
 
 Like, reply and repost counts are kept on each post by triggers (migrations 0011

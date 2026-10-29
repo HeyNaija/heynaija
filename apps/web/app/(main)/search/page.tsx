@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import { Avatar } from '@/app/ui/avatar'
 import { CommunityMark } from '@/app/ui/community-mark'
 import { EmptyState } from '@/app/ui/empty-state'
+import { FounderBadge } from '@/app/ui/founder-badge'
 import { ArrowUpRightIcon, HashIcon, SearchIcon } from '@/app/ui/icons'
 import { JoinButton } from '@/app/ui/join-button'
 import { PostList, PostsSkeleton } from '@/app/ui/post-item'
@@ -134,7 +135,10 @@ async function Results({ searchParams }: Pick<PageProps<'/search'>, 'searchParam
                     <Link href={`/u/${m.handle}`} className="result-row group">
                       <Avatar handle={m.handle} src={m.avatar} size={40} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate font-semibold group-hover:underline">{m.displayName ?? `@${m.handle}`}</span>
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate font-semibold group-hover:underline">{m.displayName ?? `@${m.handle}`}</span>
+                          {m.founder ? <FounderBadge plain /> : null}
+                        </span>
                         {m.displayName ? <span className="block truncate text-[13px] text-muted">@{m.handle}</span> : null}
                       </span>
                       <span className="text-muted"><ArrowUpRightIcon size={16} /></span>
