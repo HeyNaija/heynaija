@@ -1,8 +1,8 @@
 # Deploying staging: staging.heynaija.ng
 
 Staging runs on the **Contabo server that already hosts Koinovera staging**. The
-two share the server and nothing else: separate GitHub repositories and runners,
-separate containers, networks, volumes and databases, and separate nginx sites.
+two share the server and nothing else: separate GitHub repositories, separate
+containers, networks, volumes and databases, and separate nginx sites.
 Production is on its own netcup server: [production.md](production.md).
 
 ```text
@@ -16,8 +16,12 @@ Browser ── Cloudflare (TLS, cache, CSAM scanning) ──> Contabo server :44
 
 **How a deploy happens:** a push to the `staging` branch runs CI; if it passes,
 GitHub's machines build the API, web and authentication images and push them to GitHub's container
-registry, tagged with the commit; then HeyNaija's runner on the server pulls them
-and restarts HeyNaija with `infra/deploy/deploy.sh`. The server never builds
+registry, tagged with the commit; then a job on GitHub's machines connects to the
+server over SSH with a key that can do one thing there: deploy a commit that is on
+`staging` (`infra/deploy/ssh-deploy.sh`), which pulls the images and restarts
+HeyNaija with `infra/deploy/deploy.sh`. There is no GitHub runner on the server:
+the repository is public, and anyone's pull request could run code on a runner
+registered to it. The server never builds
 anything, so Koinovera never competes with a build for memory. Kratos uses the
 version-pinned HeyNaija image that enforces the Google account policy. That image
 is tagged with the contents of `infra/kratos` rather than the commit, so Kratos
@@ -31,7 +35,7 @@ into `main` makes a new commit with the same tree, so production finds those tag
 and deploys the images staging is running, without testing or building that code
 again ([production.md](production.md)).
 
-The deploy job checks out the requested commit before starting its deploy script.
+`ssh-deploy.sh` checks out the requested commit before starting its deploy script.
 Manual deployments also restart the script if checkout changes it, so upgrades
 and rollbacks use the instructions from the requested release.
 
@@ -101,6 +105,48 @@ restore rehearsal, and the uptime check. Work through step 7.
 | Deploy: `cat: ../kratos/policy: Is a directory` | The previous deploy script kept running after checking out a release with the new policy directory | Rerun the failed deploy job: checkout already installed the corrected script. Updated workflows now check out the release before starting it. |
 | Browser: `400 Bad Request — No required SSL certificate was sent` | Authenticated Origin Pulls was still off in Cloudflare | Step 1.4 |
 | Entering a valid invite code just reloads `/join` | A bug in the web app (fixed in `e88f28a`) | Deploy that commit or later |
+
+## Moving off the self-hosted runner (October 2026)
+
+Until October 2026 a GitHub runner on each server ran the deploy job. A public
+repository cannot have one: anyone's pull request can add a workflow that runs on
+it, and on this server that is as good as root, with every secret in `.env` and
+Koinovera beside it. Deploys now come over SSH (step 4.4). On a server that
+already runs HeyNaija, in this order:
+
+1. **Before the repository is made public,** stop the runner and remove it, as
+   your admin user. Koinovera's runner is separate; leave it alone.
+
+   ```bash
+   sudo bash -c 'cd /home/heynaija/actions-runner && ./svc.sh stop && ./svc.sh uninstall'
+   ```
+
+   ```bash
+   gh api -X DELETE repos/HeyNaija/heynaija/actions/runners/$(gh api repos/HeyNaija/heynaija/actions/runners --jq '.runners[] | select(.name == "heynaija-staging") | .id')
+   ```
+
+   (That one from your computer.) Then, on the server:
+
+   ```bash
+   sudo rm -rf /home/heynaija/actions-runner
+   ```
+
+2. The deploy job's key and the `staging` environment's secrets: step 4.4.
+3. The script, as `heynaija`. The checkout is on a release from before it existed,
+   so take it from the `staging` branch:
+
+   ```bash
+   git -C /srv/heynaija fetch --quiet origin && git -C /srv/heynaija show origin/staging:infra/deploy/ssh-deploy.sh > ~/ssh-deploy.sh && chmod 700 ~/ssh-deploy.sh
+   ```
+
+4. The check and clean-up at the start of step 5 (`ssh … whoami`, then delete the
+   key files).
+5. Once the change is on `staging` and the repository is public, **Actions →
+   Deploy staging → Run workflow** on `staging`.
+
+Production is the same, with `heynaija-production` and the `production`
+environment ([production.md](production.md), step 4). For the script, take it
+from `origin/staging` there too until a release has brought it to `main`.
 
 ## How HeyNaija stays out of Koinovera's way
 
@@ -236,24 +282,74 @@ sudo install -m 600 heynaija-origin-key.pem /etc/ssl/cloudflare/
    sudo -u heynaija ssh -T git@github.com
    ```
 
-4. **The runner:** **Settings → Actions → Runners → New self-hosted runner**, Linux
-   x64. Run GitHub's download commands as `heynaija` in `/home/heynaija/actions-runner`,
-   and when configuring it give the label and name `heynaija-staging`:
+4. **The deploy job's SSH key.** The deploy job logs in as `heynaija` with a key
+   that can run one thing: `ssh-deploy.sh`, which deploys a commit on `staging` and
+   refuses anything else, whatever the key asks for. Make it on your own computer,
+   one per server:
 
    ```bash
-   ./config.sh --url https://github.com/<you>/heynaija --token <token from GitHub> --labels heynaija-staging --name heynaija-staging --unattended
+   ssh-keygen -t ed25519 -N "" -C deploy-job-staging -f deploy-job-staging
    ```
 
-   Then `exit` back to your admin user (`heynaija` has no password and no sudo) and
-   install it as a service that runs as `heynaija`:
+   On the server, as your admin user, let it in with that one command forced. Put
+   the whole line of `deploy-job-staging.pub` in place of `<public key>`:
 
    ```bash
-   sudo bash -c 'cd /home/heynaija/actions-runner && ./svc.sh install heynaija && ./svc.sh start'
+   printf 'restrict,command="/home/heynaija/ssh-deploy.sh" %s\n' '<public key>' | sudo -u heynaija tee -a /home/heynaija/.ssh/authorized_keys >/dev/null && sudo -u heynaija chmod 600 /home/heynaija/.ssh/authorized_keys
    ```
 
-   It should show as **Idle** under **Settings → Actions → Runners**.
+   (The script is put in place in step 5, once the code is on the server.) If the
+   server's SSH settings list who may log in, add `heynaija` to that list. This prints
+   nothing when there is no such list:
 
-   It sits beside Koinovera's runner without affecting it.
+   ```bash
+   sudo grep -rE '^\s*(AllowUsers|AllowGroups)' /etc/ssh/
+   ```
+
+   Give GitHub's `staging` environment the key and the server's address, with the
+   GitHub CLI from this repository's folder. The address is the server's own IP,
+   not `staging.heynaija.ng`, which Cloudflare answers for web traffic only. It is a
+   secret so it stays out of the workflow logs, which anyone can read.
+
+   ```bash
+   gh secret set DEPLOY_SSH_KEY --env staging < deploy-job-staging
+   ```
+
+   ```bash
+   gh secret set DEPLOY_HOST --env staging --body '<server-ip>'
+   ```
+
+   ```bash
+   ssh-keyscan -t ed25519 <server-ip> | gh secret set DEPLOY_KNOWN_HOSTS --env staging
+   ```
+
+   Check that last one is the server's own key: these two print the same
+   fingerprint, the first on your computer and the second on the server.
+
+   ```bash
+   ssh-keyscan -t ed25519 <server-ip> | ssh-keygen -lf -
+   ```
+
+   ```bash
+   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+   ```
+
+   If SSH is not on port 22, give `ssh-keyscan` `-p <port>` too, and
+   `gh secret set DEPLOY_SSH_PORT --env staging --body '<port>'`.
+
+   Then let only the `staging` branch use the environment and its secrets:
+
+   ```bash
+   gh api -X PUT repos/HeyNaija/heynaija/environments/staging -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
+   ```
+
+   ```bash
+   gh api repos/HeyNaija/heynaija/environments/staging/deployment-branch-policies -f name=staging -f type=branch
+   ```
+
+   To roll back by running the workflow on a tag, allow tags too
+   (`-f name='*' -f type=tag`). `ssh-deploy.sh` still deploys only commits on
+   `staging`.
 
 ## 5. First deploy
 
@@ -262,6 +358,24 @@ As `heynaija` (`sudo -iu heynaija`):
 ```bash
 git clone git@github.com:<you>/heynaija.git /srv/heynaija
 ```
+
+Put the deploy job's script where its key's forced command points, outside the
+checkout so that checking out a release never changes it mid-run. Each deploy then
+replaces it with the release's copy:
+
+```bash
+install -m 700 /srv/heynaija/infra/deploy/ssh-deploy.sh ~/ssh-deploy.sh
+```
+
+Check the key can do nothing else. From your computer, this must print
+`This key can only run: deploy <full commit hash>`:
+
+```bash
+ssh -i deploy-job-staging heynaija@<server-ip> whoami
+```
+
+Then delete both `deploy-job-staging` files: GitHub has the private key and the
+server the public one, and a new pair is quick to make.
 
 ```bash
 cd /srv/heynaija/infra/deploy && ./gen-env.sh
@@ -392,7 +506,7 @@ existing account.
 | Task                  | How                                                                                                                                          |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Deploy                | Push or merge to `staging`                                                                                                                   |
-| Roll back             | **Actions → Deploy staging → Run workflow** on an earlier commit's branch or tag, or on the server: `./deploy.sh <commit from releases.log>` |
+| Roll back             | **Actions → Deploy staging → Run workflow** on a tag of an earlier `staging` commit, or on the server: `./deploy.sh <commit from releases.log>` |
 | Status                | `docker compose ps` in `/srv/heynaija/infra/deploy`                                                                                          |
 | Logs                  | `docker compose logs -f --tail 100 api` (or `web`, `kratos`)                                                                                 |
 | Invite people         | `docker compose exec api node dist/cli/create-invite.js --uses 5 --days 14`                                                              |

@@ -33,7 +33,7 @@ moderation outcomes), in the app and by email; rate limits; light, dark and syst
 | [Feature roadmap](docs/FEATURE_ROADMAP.md) | Generated feature status, priorities, availability and inspected evidence |
 | [Roadmap audit](docs/roadmap-audit.md) | Audit limits, documentation corrections and founder confirmations |
 | [ADR 0002](docs/adr/0002-conventional-stack-with-kratos.md) | Why the stack is what it is, and every known limitation |
-| [docs/deployment/staging.md](docs/deployment/staging.md) | Deploying staging on the shared Contabo server: Cloudflare, nginx, GitHub runner, backups |
+| [docs/deployment/staging.md](docs/deployment/staging.md) | Deploying staging on the shared Contabo server: Cloudflare, nginx, the deploy job's SSH key, backups |
 | [docs/deployment/production.md](docs/deployment/production.md) | Deploying production on netcup |
 | [docs/deployment/cloudflare-r2.md](docs/deployment/cloudflare-r2.md) | Setting up media storage in production |
 | [docs/safety/abuse-material-scanning.md](docs/safety/abuse-material-scanning.md) | Scanning uploads for abuse material: plan, runbook, legal questions |
@@ -257,7 +257,7 @@ the files are in `infra/deploy/` and `.github/workflows/`.
 | Media | Cloudflare R2: two buckets per environment, served at `/media` by nginx | [R2 guide](docs/deployment/cloudflare-r2.md) |
 | Email | Resend over SMTP, from `no-reply@mail.heynaija.ng` | SPF, DKIM, DMARC on the sending domain |
 | Backups | Nightly `pg_dump` of both databases, encrypted with age, copied to an R2 backups bucket, 30 days kept | Restore rehearsed on a laptop; rehearse again on staging |
-| Deploys | **GitHub Actions:** a push to `staging` or `main` runs CI, builds the images on GitHub's machines into GitHub's registry, then HeyNaija's own self-hosted runner on that server runs `deploy.sh` | Servers never build; rollback reruns the workflow on an earlier commit, or `deploy.sh <commit>` |
+| Deploys | **GitHub Actions:** a push to `staging` or `main` runs CI, builds the images on GitHub's machines into GitHub's registry, then a job connects to that server over SSH with a key that can only deploy a commit on that branch (`ssh-deploy.sh`, which runs `deploy.sh`) | Servers never build; rollback reruns the workflow on an earlier commit, or `deploy.sh <commit>` |
 
 Still to do: the owner's accounts and server (the guide), media copies outside R2,
 error alerting from logs.

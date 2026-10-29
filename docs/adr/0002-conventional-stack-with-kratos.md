@@ -76,8 +76,10 @@ handling, verification and recovery are security-critical and already solved.
   level.** Production must run at `warning` or otherwise keep those logs private.
 - **Deployment** (`infra/deploy/`, guides in `docs/deployment/`): Docker Compose
   behind the host's nginx and Cloudflare; staging shares a server with Koinovera
-  staging, production has its own. GitHub Actions builds the images and a
-  self-hosted runner per server deploys them. nginx rather than Caddy because the
+  staging, production has its own. GitHub Actions builds the images and deploys
+  them over SSH, with a key per server that can only run `infra/deploy/ssh-deploy.sh`
+  (no runner on the servers: in a public repository, anyone's pull request could
+  run code on one). nginx rather than Caddy because the
   staging server's nginx already owns ports 80 and 443, and Caddy's main advantage
   (obtaining certificates) does not apply behind Cloudflare's origin certificate. Kratos runs without `--dev`, over
   https, at log level `warning`, with its webhooks on the private Docker network and

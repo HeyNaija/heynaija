@@ -1,5 +1,0 @@
-# Labels of HeyNaija's self-hosted runners (docs/deployment/), for actionlint.
-self-hosted-runner:
-  labels:
-    - heynaija-staging
-    - heynaija-production
