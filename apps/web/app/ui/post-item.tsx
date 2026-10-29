@@ -171,12 +171,13 @@ export function PostItem({
                 </Link>
                 {post.authorFounder ? <FounderBadge /> : null}
               </p>
-              {inThread ? <ThreadAuthorLabel authorId={post.authorId} /> : null}
+              {compact ? <ThreadAuthorLabel authorId={post.authorId} /> : null}
               <p className="post-meta">
                 {post.authorName && !compact ? <><span className="truncate">@{post.authorHandle}</span><span aria-hidden="true">·</span></> : null}
                 <Link prefetch={false} href={href} className="shrink-0 hover:underline">
                   {focused ? <LocalTime at={post.createdAt} as="posted" title /> : <LocalTime at={post.createdAt} now={now} title />}
                 </Link>
+                {focused && inThread ? <ThreadAuthorLabel authorId={post.authorId} separator /> : null}
               </p>
               {showChip ? (
                 <Link prefetch={false} href={`/c/${post.community!.slug}`} className="chip mt-1.5">

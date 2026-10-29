@@ -1177,7 +1177,7 @@ summary.menu::-webkit-details-marker {
    post in focus; focusing (or a draft) opens the rest. The button stays visible, so
    the way to reply is never hidden. */
 .reply-composer { position: relative; }
-.reply-composer:not(.is-expanded):not(:focus-within) .composer-toolbar { position: absolute; top: 14px; right: 6px; margin: 0; }
+.reply-composer:not(.is-expanded):not(:focus-within) .composer-toolbar { position: absolute; top: 14px; right: 6px; margin: 0; pointer-events: none; }
 .reply-composer:not(.is-expanded):not(:focus-within) .composer-toolbar > :not(.composer-submit) { display: none; }
 .reply-composer:not(.is-expanded):not(:focus-within) .composer-toolbar .composer-submit { min-height: 32px; margin: 0; }
 .reply-composer:not(.is-expanded):not(:focus-within) .composer-input { padding-right: 84px; }
@@ -1185,12 +1185,15 @@ summary.menu::-webkit-details-marker {
 .reply-limited { color: var(--muted); font-size: 13px; font-weight: 500; }
 .reply-signin:hover span:last-child { text-decoration: underline; }
 .reply-signin-avatar { width: 32px; height: 32px; flex: none; border-radius: 9999px; background: var(--panel); border: 1px solid var(--line-strong); }
-/* On a phone the reply bar stays above the bottom tabs (62px and their border) while the
-   replies scroll under it; on a desktop it is simply the first thing under the post. */
+/* On a phone the reply bar is fixed above the bottom tabs (62px and a 1px border), so the
+   replies scroll under it wherever the reader is, and a #compose link needs no scrolling.
+   It is as wide as the 720px shell; the page keeps room beneath for it. env() is 0 unless
+   the page opts into viewport-fit=cover, as the tabs' own padding is. */
 @media (max-width: 1023px) {
-  .thread-branch.is-root > .thread-editor-host { position: sticky; z-index: 10; bottom: calc(63px + env(safe-area-inset-bottom)); margin-inline: -20px; padding-inline: 20px; border-top: 1px solid var(--line); background: var(--bg); }
+  .thread-branch.is-root > .thread-editor-host { position: fixed; z-index: 4; inset-inline: 0; bottom: calc(63px + env(safe-area-inset-bottom)); box-sizing: border-box; width: 100%; max-width: 720px; margin: 0 auto; padding: 4px 20px 6px; border-top: 1px solid var(--line); background: var(--bg); }
+  .thread-view:has(> .thread-branch.is-root > .thread-editor-host:not(:empty)) { padding-bottom: 76px; }
 }
-@media (max-width: 419px) { .thread-branch.is-root > .thread-editor-host { margin-inline: -12px; padding-inline: 12px; } }
+@media (max-width: 419px) { .thread-branch.is-root > .thread-editor-host { padding-inline: 12px; } }
 /* Reading starts with one line. Writing reveals the recipient, tools and notice;
    an existing draft or attachment keeps them open when focus moves away. */
 .reply-composer:not(.is-expanded):not(:focus-within) :is(.composer-recipient, .composer-privacy) { display: none; }
@@ -1326,8 +1329,8 @@ ol.post-list { margin-inline: 0; }
 ol.post-list .post-card { padding-inline: 18px; }
 .post-card.is-focused { padding: 24px 24px 12px; }
 .post-card.is-reply { padding: var(--reply-padding); }
-.post-card.is-reply .post-header { gap: 10px; align-items: center; }
-.post-card.is-reply .post-identity { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.post-card.is-reply .post-header { gap: 10px; align-items: flex-start; }
+.post-card.is-reply .post-identity { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 2px 8px; min-height: 32px; }
 .post-card.is-reply .post-author { min-width: 0; max-width: 100%; }
 .post-card.is-reply .post-meta { margin-top: 0; }
 .post-card.is-reply > .mt-3 { margin-top: var(--reply-gap); }
@@ -1345,17 +1348,20 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-chain { display: flex; flex-direction: column; gap: var(--reply-gap); }
 .thread-chain > li { position: relative; }
 .thread-chain .post-card.is-reply { padding-left: calc(var(--lineage-x) - 16px); }
-.thread-chain > li:has(.post-header)::before { content: ''; position: absolute; z-index: 1; top: 48px; bottom: -16px; left: calc(var(--lineage-x) - 1px); width: 2px; background: var(--line-strong); pointer-events: none; }
+/* Beside the line, never across it: a post's text, pictures and actions start in the
+   text column, past its avatar (32px and a 12px gap), as on X. */
+.thread-chain .post-card.is-reply > :not(.post-header) { margin-left: 44px; }
+.thread-chain > li:has(.post-header)::before { content: ''; position: absolute; z-index: 1; top: 49px; bottom: -17px; left: var(--lineage-x); width: 2px; background: var(--line-strong); pointer-events: none; }
 .thread-chain > li.is-parent:has(.post-header)::before { bottom: -14px; }
 .thread-context { border-bottom: 1px solid var(--line); }
 .thread-context summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
 .thread-context[open] summary > svg { transform: rotate(180deg); }
 .thread-context .thread-chain { margin-block: 10px 16px; }
-.thread-context .thread-chain > li:last-child::before { bottom: -16px; }
+.thread-context .thread-chain > li:last-child::before { bottom: -17px; }
 /* "Replying to" sits in the text column of the focused post's header, so the line passes it. */
 .thread-view.has-chain .thread-recipient { position: relative; margin: 0; padding-left: calc(var(--lineage-x) + 33px); }
-.thread-view.has-chain .thread-recipient::before { content: ''; position: absolute; z-index: 1; top: 0; bottom: -14px; left: calc(var(--lineage-x) - 1px); width: 2px; background: var(--line-strong); pointer-events: none; }
-.thread-view.has-chain .thread-branch.is-root > .thread-row > .post-card.is-focused::before { content: ''; position: absolute; z-index: 1; top: 0; height: calc(var(--focus-top) - 4px); left: calc(var(--lineage-x) - 1px); width: 2px; background: var(--line-strong); pointer-events: none; }
+.thread-view.has-chain .thread-recipient::before { content: ''; position: absolute; z-index: 1; top: 0; bottom: -14px; left: var(--lineage-x); width: 2px; background: var(--line-strong); pointer-events: none; }
+.thread-view.has-chain .thread-branch.is-root > .thread-row > .post-card.is-focused::before { content: ''; position: absolute; z-index: 1; top: -1px; height: calc(var(--focus-top) - 3px); left: calc(var(--lineage-x) - 1px); width: 2px; background: var(--line-strong); pointer-events: none; }
 .thread-replies-heading { font-size: 13px; font-weight: 600; }
 .thread-replies-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--touch-target); margin-bottom: 4px; }
 .thread-replies-head > .dropdown-menu > summary { min-width: var(--touch-target); min-height: var(--touch-target); }
@@ -1376,14 +1382,21 @@ ol.post-list .post-card { padding-inline: 18px; }
    --branch-line is the line's x from an answer's left edge: 44px on a desktop puts it
    under the parent's avatar (14px padding + half of 32px); a phone's 12px indent
    cannot reach the avatar, so the line stays in the gutter. */
-.thread-branch { --branch-indent: 44px; --branch-line: -15px; --branch-axis: 29px; }
+.thread-branch { --branch-indent: 44px; --branch-line: -14px; --branch-axis: 30px; }
 .thread-children { margin-left: var(--branch-indent); padding: var(--reply-gap) 0 0; }
 .thread-branch.is-root > .thread-children { margin: var(--reply-gap) 0 0; padding: 0; }
-.thread-branch.has-children > .thread-row::after { content: ''; position: absolute; z-index: 1; top: 48px; bottom: calc(-1 * var(--reply-gap)); left: var(--branch-axis); width: 2px; background: var(--line-strong); pointer-events: none; }
-.thread-branch:not(.is-root) > .thread-children > .thread-list > li { position: relative; }
-.thread-branch:not(.is-root) > .thread-children > .thread-list > li::before { content: ''; position: absolute; top: calc(-1 * var(--reply-gap)); bottom: calc(-1 * var(--reply-gap)); left: var(--branch-line); width: 2px; background: var(--line-strong); pointer-events: none; }
-.thread-branch:not(.is-root) > .thread-children > .thread-list > li:last-child::before { bottom: calc(100% - 29px); }
-.thread-branch:not(.is-root) > .thread-children > .thread-list > li::after { content: ''; position: absolute; top: 28px; left: var(--branch-line); width: calc(10px - var(--branch-line)); border-top: 2px solid var(--line-strong); pointer-events: none; }
+/* The numbers are the card's 1px border, its padding and half an avatar: an avatar's centre
+   is 31px from its card's left edge (1 + 14 + 16) and 29px from its top (1 + 12 + 16). The
+   avatar stays at the top of the header however the name and time wrap. */
+.thread-branch.has-children > .thread-row::after { content: ''; position: absolute; z-index: 1; top: 49px; bottom: calc(-1 * var(--reply-gap)); left: var(--branch-axis); width: 2px; background: var(--line-strong); pointer-events: none; }
+.thread-branch:not(.is-root) > .thread-children > .thread-list > li, .thread-branch:not(.is-root) > .thread-children > .thread-recent > .thread-list > li { position: relative; }
+.thread-branch:not(.is-root) > .thread-children > .thread-list > li::before, .thread-branch:not(.is-root) > .thread-children > .thread-recent > .thread-list > li::before { content: ''; position: absolute; top: calc(-1 * var(--reply-gap)); bottom: calc(-1 * var(--reply-gap)); left: var(--branch-line); width: 2px; background: var(--line-strong); pointer-events: none; }
+.thread-branch:not(.is-root) > .thread-children > .thread-list > li:last-child::before, .thread-branch:not(.is-root) > .thread-children > .thread-recent > .thread-list > li:last-child::before { bottom: calc(100% - 29px); }
+.thread-branch:not(.is-root) > .thread-children > .thread-recent > .thread-list > li:first-child::before { top: 0; }
+.thread-branch:not(.is-root) > .thread-children > .thread-list > li::after, .thread-branch:not(.is-root) > .thread-children > .thread-recent > .thread-list > li::after { content: ''; position: absolute; top: 28px; left: var(--branch-line); width: calc(10px - var(--branch-line)); border-top: 2px solid var(--line-strong); pointer-events: none; }
+@media (min-width: 1024px) {
+  .thread-list .post-card.is-reply > :not(.post-header) { margin-left: 44px; }
+}
 /* Nothing to show yet while a branch loads, so no space either: the next reply stays put. */
 .thread-children[hidden], .thread-children:empty { display: none; }
 /* Replies stop at THREAD_MAX_DEPTH (5), and every level indents: 44px on a desktop,
@@ -1393,10 +1406,10 @@ ol.post-list .post-card { padding-inline: 18px; }
    line does not reach them. */
 .thread-branch:has(> .thread-children.is-beyond) > .thread-row::after { display: none; }
 .thread-children.is-beyond { margin-left: 0; }
-.thread-branch:not(.is-root) > .thread-children.is-beyond > .thread-list > li { --branch-line: -7px; }
-.thread-branch:not(.is-root) > .thread-children.is-beyond > .thread-list > li::after { display: none; }
-.thread-branch:not(.is-root) > .thread-children.is-beyond > .thread-list > li::before { top: 0; bottom: 0; }
-.thread-branch:not(.is-root) > .thread-children.is-beyond > .thread-list > li:last-child::before { bottom: 0; }
+.thread-branch:not(.is-root) > .thread-children.is-beyond > .thread-list > li, .thread-branch:not(.is-root) > .thread-children.is-beyond > .thread-recent > .thread-list > li { --branch-line: -7px; }
+.thread-branch:not(.is-root) > .thread-children.is-beyond > .thread-list > li::after, .thread-branch:not(.is-root) > .thread-children.is-beyond > .thread-recent > .thread-list > li::after { display: none; }
+.thread-branch:not(.is-root) > .thread-children.is-beyond > .thread-list > li::before, .thread-branch:not(.is-root) > .thread-children.is-beyond > .thread-recent > .thread-list > li::before { top: 0; bottom: 0; }
+.thread-branch:not(.is-root) > .thread-children.is-beyond > .thread-list > li:last-child::before, .thread-branch:not(.is-root) > .thread-children.is-beyond > .thread-recent > .thread-list > li:last-child::before { bottom: 0; }
 .thread-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
 /* In a reply's action row, as tall as its buttons, so a reply with answers is no taller. */
 .thread-toggle { display: inline-flex; min-height: var(--touch-target); align-items: center; padding-inline: 6px; color: var(--accent-strong); font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -2008,7 +2021,6 @@ a.result-row:hover { color: var(--accent-strong); }
      stays clear of the card's rounded corner, so it starts a gap below it. */
   .thread-branch { --branch-indent: 12px; --branch-line: -7px; --branch-axis: 5px; }
   .thread-branch.has-children > .thread-row::after { top: 100%; }
-  .thread-children { margin-top: var(--reply-gap); }
   .notification-row { padding: 16px; }
   .page-header, .content-panel, .community-card, .governance-section { padding: 20px; }
 }

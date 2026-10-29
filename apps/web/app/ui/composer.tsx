@@ -54,6 +54,9 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
   const [pollExpiry, setPollExpiry] = useState('7_days')
   const prompt = placeholder ?? (audience ? `Start a conversation in ${choices?.find((c) => c.slug === audience)?.name ?? 'your community'}…` : 'Start a conversation…')
   const [expanded, setExpanded] = useState(false)
+  // Disabled for an empty box only once the page is alive; before that (or without JavaScript) the button works.
+  const [live, setLive] = useState(false)
+  useEffect(() => setLive(true), [])
   const images = useImageDrafts()
   const { clear } = images
   const picker = useRef<HTMLInputElement>(null)
@@ -340,7 +343,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
         ) : null}
         <button
           type="submit"
-          disabled={pending || left < 0 || empty || waiting || !pollReady}
+          disabled={pending || left < 0 || (live && empty) || waiting || !pollReady}
           className="btn btn-primary btn-sm composer-submit"
         >
           {pending ? 'Posting…' : replyTo ? 'Reply' : 'Post'}

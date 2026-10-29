@@ -82,7 +82,7 @@ async function ThreadView({ params, searchParams }: Props) {
 
   return (
     <ThreadAuthorProvider authorId={original?.authorId ?? null}>
-    <div className={`thread-view flex flex-col${parent || older.length ? ' has-chain' : ''}`}>
+    <div className={`thread-view flex flex-col${parent && !parent.deleted ? ' has-chain' : ''}`}>
       <Link prefetch={false} href="/" className="self-start text-sm font-medium text-muted hover:text-ink hover:underline">
         Back to the feed
       </Link>
