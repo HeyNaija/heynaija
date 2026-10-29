@@ -17,7 +17,8 @@
 //    it is safe. The waiver covers that one statement only.
 //
 //    Drizzle runs all pending migrations in one transaction, so statements that
-//    cannot run in a transaction (CREATE INDEX CONCURRENTLY) are not an option.
+//    cannot run in a transaction (CREATE or DROP INDEX CONCURRENTLY, VACUUM) are
+//    refused outright: no waiver makes them run.
 
 import { readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
@@ -31,9 +32,10 @@ const MARKER = /--[ \t]*allow-breaking:[ \t]*\S+/i
 
 /**
  * The statements of one migration: comments removed, `$$ ... $$` bodies and
- * string literals blanked (their `;` and words are not statements), whitespace
- * collapsed. `waived` is true when a `-- allow-breaking: <reason>` sits on a
- * line of its own right before the statement (it covers the first statement
+ * string literals blanked (their `;` and words are not statements), quoted
+ * names kept whole, whitespace collapsed. `waived` is true when a
+ * `-- allow-breaking: <reason>` sits on a line of its own right before the
+ * statement (it covers the first statement
  * starting on the next line), or directly after the statement's end on the
  * same line (`DROP ...; -- allow-breaking: why`), or inside it. It never
  * covers a second statement.
@@ -107,7 +109,16 @@ function statementsOf(sql) {
       } while (depth > 0 && j < sql.length)
       text += ' '
       i = j
-    } else if ((m = /^\$([A-Za-z_]\w*)?\$/.exec(rest))) {
+    } else if (sql[i] === '"') {
+      // A quoted name is kept as it is, and a ', -- or $x$ inside it starts nothing ("" is a quote in the name).
+      let j = i + 1
+      while (j < sql.length && !(sql[j] === '"' && sql[j + 1] !== '"')) j += sql[j] === '"' ? 2 : 1
+      const name = sql.slice(i, j + 1)
+      add(name.replace(/\n/g, ' '))
+      for (const ch of name) if (ch === '\n') newline()
+      i = j + 1
+    } else if (!/[\w$]/.test(sql[i - 1] ?? '') && (m = /^\$([A-Za-z_]\w*)?\$/.exec(rest))) {
+      // Right after a name's letters, `$` is part of the name (foo$bar$), not a dollar quote.
       const close = sql.indexOf(m[0], i + m[0].length)
       const stop = close < 0 ? sql.length : close + m[0].length
       add(' $$ $$ ')
@@ -151,6 +162,40 @@ const REWRITES = /\bGENERATED (?:ALWAYS|BY DEFAULT) AS IDENTITY\b|\bGENERATED AL
 
 const WAIVER = 'if it is intended, waive it with "-- allow-breaking: <why this is safe>" on the line before'
 
+/** The index's own name, without schema or quotes: index names are what `DROP INDEX` and `CREATE UNIQUE INDEX` share. */
+const indexName = (name) => normalise(name).split('.').pop()
+const CREATE_UNIQUE_INDEX = new RegExp(`^CREATE UNIQUE INDEX (?:CONCURRENTLY )?(?:IF NOT EXISTS )?(${IDENT}) ON\\b`, 'i')
+const DROP_INDEX = /^DROP INDEX (?:CONCURRENTLY )?(?:IF EXISTS )?(.+?)(?: CASCADE| RESTRICT)?$/i
+
+/** The names a `DROP INDEX` statement removes, or [] for any other statement. */
+function droppedIndexes(s) {
+  const m = DROP_INDEX.exec(s)
+  return m ? m[1].split(',').map((name) => indexName(name.trim())) : []
+}
+
+/** Records in `unique` the unique indexes `sql` creates, and forgets the ones it drops. */
+function trackUniqueIndexes(sql, unique) {
+  for (const { text } of statementsOf(sql)) {
+    const created = CREATE_UNIQUE_INDEX.exec(text)
+    if (created) unique.add(indexName(created[1]))
+    for (const name of droppedIndexes(text)) unique.delete(name)
+  }
+}
+
+// Postgres refuses these inside a transaction block, and every pending migration runs in one.
+const NO_TRANSACTION =
+  /^(?:CREATE (?:UNIQUE )?INDEX|DROP INDEX|REINDEX)\b.*\bCONCURRENTLY\b|\bDETACH PARTITION\b.*\bCONCURRENTLY\b|^(?:VACUUM|CREATE DATABASE|DROP DATABASE|ALTER SYSTEM|CREATE TABLESPACE|DROP TABLESPACE|REINDEX (?:SCHEMA|DATABASE|SYSTEM))\b/i
+
+/** Why statement `s` cannot run in a migration at all, or undefined if it can. */
+function cannotRun(s) {
+  if (!NO_TRANSACTION.test(s)) return undefined
+  const head = s.slice(0, 70)
+  const index = new RegExp(`^CREATE (?:UNIQUE )?INDEX CONCURRENTLY (?:IF NOT EXISTS )?(?:${IDENT} )?ON (?:ONLY )?(${IDENT})`, 'i').exec(s)
+  if (index)
+    return `CREATE INDEX CONCURRENTLY cannot run: migrations run in one transaction and Postgres refuses it there. A plain CREATE INDEX works but blocks writes to ${normalise(index[1])} while it builds; ${WAIVER}: ${head}`
+  return `cannot run inside a transaction, and Drizzle runs every pending migration in one, so the deploy's migrate step would fail (a waiver cannot change that): ${head}`
+}
+
 /** `ALTER TABLE t a, b` as one piece per action: `ALTER TABLE t a`, `ALTER TABLE t b`. Other statements are one piece. */
 function piecesOf(s) {
   const alter = new RegExp(`^(ALTER TABLE (?:ONLY )?(?:IF EXISTS )?(${IDENT})) (.*)$`, 'i').exec(s)
@@ -171,8 +216,12 @@ function piecesOf(s) {
   return actions.map((a) => ({ text: `${alter[1]} ${a.trim()}`, table: normalise(alter[2]) }))
 }
 
-/** Why each statement in `sql` that has no waiver is not safe to run beside the previous release's code, or [] if all are. */
-export function risks(sql) {
+/**
+ * Why each statement in `sql` that has no waiver is not safe to run beside the previous release's code, or [] if all
+ * are. Statements that cannot run in a migration at all are reported waiver or not. `uniqueIndexes` names the unique
+ * indexes earlier migrations left in place: the previous release's ON CONFLICT clauses may rely on them.
+ */
+export function risks(sql, uniqueIndexes = new Set()) {
   const statements = statementsOf(sql)
   // Tables this same migration creates: nobody reads or writes them yet.
   const created = new Set(
@@ -183,19 +232,21 @@ export function risks(sql) {
   )
   const found = []
   for (const { text: whole, waived } of statements) {
+    const impossible = cannotRun(whole)
+    if (impossible) {
+      found.push(impossible)
+      continue
+    }
     if (waived) continue
     for (const { text: s, table } of piecesOf(whole)) {
       const head = s.slice(0, 70)
       const fresh = table !== undefined && created.has(table)
-      const index = new RegExp(`^CREATE (?:UNIQUE )?INDEX (CONCURRENTLY )?(?:IF NOT EXISTS )?(?:${IDENT} )?ON (?:ONLY )?(${IDENT})`, 'i').exec(s)
-      if (index && !created.has(normalise(index[2]))) {
-        const on = normalise(index[2])
-        found.push(
-          index[1]
-            ? `CREATE INDEX CONCURRENTLY cannot run: migrations run in one transaction and Postgres refuses it there. A plain index blocks writes to ${on} while it builds; ${WAIVER}: ${head}`
-            : `CREATE INDEX blocks writes to ${on} while it builds (CONCURRENTLY cannot be used inside the migration transaction); ${WAIVER}: ${head}`,
-        )
-      }
+      const index = new RegExp(`^CREATE (?:UNIQUE )?INDEX (?:IF NOT EXISTS )?(?:${IDENT} )?ON (?:ONLY )?(${IDENT})`, 'i').exec(s)
+      if (index && !created.has(normalise(index[1])))
+        found.push(`CREATE INDEX blocks writes to ${normalise(index[1])} while it builds (CONCURRENTLY cannot be used inside the migration transaction); ${WAIVER}: ${head}`)
+      for (const name of droppedIndexes(s))
+        if (uniqueIndexes.has(name))
+          found.push(`drops the unique index ${name}: the previous release's ON CONFLICT on it fails, and duplicates it kept out can get in; ${WAIVER}: ${head}`)
       const constraint = /\bADD (?:CONSTRAINT \S+ )?(UNIQUE|CHECK|FOREIGN KEY|PRIMARY KEY|EXCLUDE)\b/i.exec(s)
       if (table !== undefined && constraint && !fresh) {
         const kind = constraint[1].toUpperCase()
@@ -215,6 +266,8 @@ export function risks(sql) {
         found.push(`removes something the previous release may still use: ${head}`)
       if (/\bRENAME\b/i.test(s)) found.push(`renames something the previous release may still use: ${head}`)
       if (/\bALTER COLUMN\b.*\b(TYPE|SET DATA TYPE|SET NOT NULL|DROP NOT NULL)\b/i.test(s)) found.push(`changes a column the previous release writes to: ${head}`)
+      if (/\bALTER COLUMN\b.*\bDROP (DEFAULT|IDENTITY|EXPRESSION)\b/i.test(s))
+        found.push(`removes the value the previous release's inserts leave to the database (a default, identity or generated expression): ${head}`)
       if (/\bADD COLUMN\b/i.test(s)) {
         if (!fresh && (VOLATILE_DEFAULT.test(s) || SERIAL_COLUMN.test(s) || REWRITES.test(s)))
           found.push(`a volatile, serial, identity or stored-generated column rewrites the whole table under an exclusive lock: ${head}`)
@@ -248,11 +301,13 @@ export function check(dir, baseline = BASELINE) {
       problems.push(`${entry.tag} has a timestamp not after ${journal[i - 1].tag}'s. Drizzle would skip it on any database that already ran the later one; regenerate it.`)
   })
 
+  // Every file is read, the old ones too, for the unique indexes in place when each newer one runs.
+  const uniqueIndexes = new Set()
   for (const file of files) {
     const number = Number(/^(\d+)_/.exec(file)?.[1])
-    if (!(number > baseline)) continue
     const sql = readFileSync(join(dir, file), 'utf8')
-    for (const why of risks(sql)) problems.push(`${file}: ${why}`)
+    if (number > baseline) for (const why of risks(sql, uniqueIndexes)) problems.push(`${file}: ${why}`)
+    trackUniqueIndexes(sql, uniqueIndexes)
   }
   return problems
 }
