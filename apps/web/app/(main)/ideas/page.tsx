@@ -5,8 +5,8 @@ import { EmptyState } from '@/app/ui/empty-state'
 import { IdeaKindChip, IdeaStatusChip } from '@/app/ui/idea-chips'
 import { IdeaVote } from '@/app/ui/idea-vote'
 import { IdeaIcon } from '@/app/ui/icons'
+import { LocalTime } from '@/app/ui/local-time'
 import { PostsSkeleton } from '@/app/ui/post-item'
-import { timeAgo } from '@/app/ui/time'
 import { getIdeas, getViewer, type IdeaGroup, type IdeaKind } from '@/lib/api'
 import { type BoardChoice, boardHref, GROUP_LABELS, OPEN_STATUSES } from '@/lib/ideas'
 
@@ -117,7 +117,7 @@ async function Board({ searchParams }: Pick<PageProps<'/ideas'>, 'searchParams'>
                   <span aria-hidden="true">·</span>
                   <span>{idea.replyCount === 1 ? '1 reply' : `${idea.replyCount} replies`}</span>
                   <span aria-hidden="true">·</span>
-                  <time dateTime={idea.createdAt}>{timeAgo(idea.createdAt, now)}</time>
+                  <LocalTime at={idea.createdAt} now={now} />
                 </p>
               </div>
             </li>

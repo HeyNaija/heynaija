@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { QuotedPost } from '@/lib/api'
 import { Avatar } from './avatar'
 import { FounderBadge } from './founder-badge'
-import { timeAgo } from './time'
+import { LocalTime } from './local-time'
 
 /**
  * The post a quote post quotes, shown inside it as one link to that post. Its
@@ -24,9 +24,7 @@ export function QuotedPostCard({ quote, now }: { quote: QuotedPost; now: number 
           </span>
           {quote.authorName ? <span className="truncate">@{quote.authorHandle}</span> : null}
         </span>
-        <time dateTime={quote.createdAt} className="shrink-0">
-          {timeAgo(quote.createdAt, now)}
-        </time>
+        <LocalTime at={quote.createdAt} now={now} className="shrink-0" />
       </span>
       {quote.replyParentId ? <span className="quoted-post-note">Replying to a post</span> : null}
       {quote.text ? <span className="quoted-post-text">{quote.text}</span> : null}
