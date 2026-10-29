@@ -117,7 +117,7 @@ func heynaijaHTML(title string, paragraphs []string, code int) string {
 	fmt.Fprintf(&b, "<title>%s</title>", html.EscapeString(title))
 	b.WriteString(`<style>:root{color-scheme:light dark;supported-color-schemes:light dark}` +
 		`@media (prefers-color-scheme:dark){.hn-ground{background:#0b1210!important}.hn-card{background:#111a17!important;border-color:#212d28!important}` +
-		`.hn-ink{color:#e6efe9!important}.hn-link{color:#7dd9aa!important}.hn-inset{background:#18231f!important}}</style></head>`)
+		`.hn-ink{color:#e6efe9!important}.hn-muted{color:#9dafa5!important}.hn-link{color:#7dd9aa!important}.hn-inset{background:#18231f!important}}</style></head>`)
 	b.WriteString(`<body class="hn-ground" style="margin:0;padding:0;background:#f1f4f2">`)
 	// The grey preview line a mail list shows: the first paragraph, hidden in the body.
 	fmt.Fprintf(&b, `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all">%s%s</div>`, html.EscapeString(paragraphs[0]), strings.Repeat("&nbsp;&zwnj;", 40))
@@ -129,6 +129,8 @@ func heynaijaHTML(title string, paragraphs []string, code int) string {
 	for n, p := range paragraphs {
 		if n == code {
 			fmt.Fprintf(&b, `<p class="hn-ink hn-inset" style="margin:0 0 14px;padding:14px 16px;background:#f3f6f4;border-radius:8px;text-align:center;font-size:30px;font-weight:700;letter-spacing:6px;color:#10212b">%s</p>`, html.EscapeString(p))
+		} else if n == len(paragraphs)-1 {
+			fmt.Fprintf(&b, `<p class="hn-muted" style="margin:0;font-size:13px;color:#5c6b76">%s</p>`, html.EscapeString(p))
 		} else {
 			fmt.Fprintf(&b, `<p class="hn-ink" style="margin:0 0 14px;color:#10212b">%s</p>`, html.EscapeString(p))
 		}
