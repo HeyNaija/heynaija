@@ -33,8 +33,8 @@ governance feedback channel to link yet.
   The new static information pages are tested independently; their readability
   does not fix social feeds or posting.
 - The earlier About copy and positioning could imply publicly available source.
-  An AGPL file exists, but the repository is private. Source publication remains
-  blocked on owner review and publication.
+  An AGPL file existed, but the repository was private until the owner made it
+  public on 29 October 2026.
 - Governance information is available; voting, verification, membership activation
   and treasury operations are not. Information pages and disabled groundwork do
   not make those features operational.
@@ -72,7 +72,8 @@ Later ideas remain proposals, without delivery dates or invented completion scor
 
 - Names and roles of custodians, legal operator, funding disclosure and a real
   privacy/safety contact; decide and operate the governance feedback channel.
-- Authority and readiness to publish source; the repository remains private.
+- The review of code ownership and third-party rights that the constitution asks
+  for now that the source is public (Article 12).
 - Which local revision is actually deployed on staging and production. Individual
   feature availability remains unknown without a live check.
 - Recovery acceptance, monitored alerts, backup and media recovery, response

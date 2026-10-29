@@ -1,5 +1,22 @@
 # Governance draft history
 
+## v0.3.2 — 29 October 2026 — proposed; not adopted
+
+- Article 12 said the repository was private and source publication planned.
+  The source code is now public at github.com/HeyNaija/heynaija under the same
+  AGPL-3.0-or-later licence, so the article says so. The review of code
+  ownership and third-party rights it made a condition of publishing is still
+  to be done, and stays an obligation. Nothing else changes.
+
+## v0.3.1 — 28 October 2026 — proposed; not adopted
+
+- Restate the charter commitment on feeds in Article 1: Latest and Following
+  stay in time order, and any ranked feed follows rules published on the site.
+  It replaces "chronological feeds" now that Discover, a ranked feed members
+  choose, is built ([ADR 0014](../adr/0014-discover-and-top-replies.md)). The
+  founding charter's "Promises we keep today" says the same. Nothing else
+  changes.
+
 ## v0.3 — 19 October 2026 — proposed; not adopted
 
 - Select nonprofit Incorporated Trustees under Part F of CAMA 2020 as the

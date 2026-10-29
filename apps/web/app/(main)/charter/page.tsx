@@ -52,7 +52,7 @@ export default function CharterPage() {
           title: 'Promises we keep today',
           body: (
             <ul>
-              <li><strong>Feeds in time order.</strong> Posts are not ranked by what keeps you scrolling, and feeds say why a post is there.</li>
+              <li><strong>Feeds you can check.</strong> Latest and Following are in time order. <Link href="/about/discover">Discover</Link> ranks recent posts by rules published on the site, using only what anyone can see here, and says why each post is there. Nothing is ranked by what keeps you scrolling, and nothing is paid for.</li>
               <li><strong>No ads, no selling data.</strong> See the <Link href="/privacy">privacy policy</Link>.</li>
               <li><strong>Your data is yours to take.</strong> Download everything about you from Settings, any time.</li>
               <li><strong>Open source.</strong> The code is licensed under the AGPL; see the <Link href="/licence">licence</Link>.</li>

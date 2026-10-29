@@ -31,12 +31,25 @@ case "$*" in
   'compose up -d --remove-orphans --wait')
     [[ "$KRATOS_INPUTS" == "$DEPLOY_TEST_EXPECTED_HASH" && "$KRATOS_RELEASE" == "$DEPLOY_TEST_KRATOS_TREE" ]] ;;
   'image ls '*|'image prune -f') ;;
+  'login '*) read -r password; printf 'docker password %s\n' "$password" >> "$DEPLOY_TEST_EVENTS" ;;
+  'logout '*) ;;
   *) echo "Unexpected Docker call: $*" >&2; exit 1 ;;
 esac
 SH
 cat > "$test_dir/bin/curl" <<'SH'
 #!/usr/bin/env bash
 printf 'curl %s\n' "$*" >> "$DEPLOY_TEST_EVENTS"
+SH
+# Stands in for the server's sshd, which runs the deploy key's forced command with
+# what the client asked for in SSH_ORIGINAL_COMMAND.
+cat > "$test_dir/bin/ssh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'ssh %s\n' "$*" >> "$DEPLOY_TEST_EVENTS"
+while [[ $1 == -* ]]; do shift 2; done
+[[ $1 == heynaija@test-host ]] || { echo "Unexpected host: $1" >&2; exit 1; }
+shift
+SSH_ORIGINAL_COMMAND="$*" exec bash "$DEPLOY_TEST_WRAPPER"
 SH
 chmod +x "$test_dir/bin/"*
 
@@ -60,6 +73,8 @@ legacy_ref=$("$DEPLOY_TEST_GIT" -C "$seed" rev-parse HEAD)
 for version in older newer; do
   cp "$repo_root/infra/deploy/deploy.sh" "$seed/infra/deploy/deploy.sh"
   printf '\nprintf "%s\\n" >> "$DEPLOY_TEST_EVENTS"\n' "$version" >> "$seed/infra/deploy/deploy.sh"
+  cp "$repo_root/infra/deploy/ssh-deploy.sh" "$seed/infra/deploy/ssh-deploy.sh"
+  printf '# %s\n' "$version" >> "$seed/infra/deploy/ssh-deploy.sh"
   "$DEPLOY_TEST_GIT" -C "$seed" add .
   "$DEPLOY_TEST_GIT" -C "$seed" commit --quiet -m "$version"
 done
@@ -68,41 +83,74 @@ older_ref=$("$DEPLOY_TEST_GIT" -C "$seed" rev-parse HEAD~1)
 "$DEPLOY_TEST_GIT" -C "$seed" push --quiet origin main
 "$DEPLOY_TEST_GIT" --git-dir="$test_dir/origin.git" symbolic-ref HEAD refs/heads/main
 
+# A commit on another branch, which the deploy key must not deploy.
+"$DEPLOY_TEST_GIT" -C "$seed" switch --quiet -c other
+printf 'Not on main\n' > "$seed/other.txt"
+"$DEPLOY_TEST_GIT" -C "$seed" add .
+"$DEPLOY_TEST_GIT" -C "$seed" commit --quiet -m other
+other_ref=$("$DEPLOY_TEST_GIT" -C "$seed" rev-parse HEAD)
+"$DEPLOY_TEST_GIT" -C "$seed" push --quiet origin other
+"$DEPLOY_TEST_GIT" -C "$seed" switch --quiet main
+
 export PATH="$test_dir/bin:$PATH"
 export PULL_RETRY_SECONDS=0
 export DEPLOY_TEST_EXPECTED_HASH
 DEPLOY_TEST_EXPECTED_HASH=$(printf 'kratos config\n{}\n{}\n' | sha256sum | cut -c1-16)
 
-run_case() {
-  local name=$1 start_ref=$2 target_ref=$3 expected_version=$4 workflow=${5:-}
-  local case_dir="$test_dir/$name"
-  mkdir -p "$case_dir"
+prepare_case() {
+  local name=$1 start_ref=$2
+  case_dir="$test_dir/$name"
+  mkdir -p "$case_dir/home"
   export DEPLOY_TEST_REPO="$case_dir/repo" DEPLOY_TEST_EVENTS="$case_dir/events"
-  # Kratos's image is tagged with the contents of infra/kratos, not the commit.
-  export DEPLOY_TEST_KRATOS_TREE
-  DEPLOY_TEST_KRATOS_TREE=$("$DEPLOY_TEST_GIT" -C "$seed" rev-parse "$target_ref:infra/kratos")
   : > "$DEPLOY_TEST_EVENTS"
   "$DEPLOY_TEST_GIT" clone --quiet "$test_dir/origin.git" "$DEPLOY_TEST_REPO"
   "$DEPLOY_TEST_GIT" -C "$DEPLOY_TEST_REPO" -c advice.detachedHead=false checkout --quiet --detach "$start_ref"
-  printf 'IMAGE_PREFIX=ghcr.io/HeyNaija/heynaija\nBUILD=0\n' > "$DEPLOY_TEST_REPO/infra/deploy/.env"
+  printf 'IMAGE_PREFIX=ghcr.io/HeyNaija/heynaija\nDEPLOY_BRANCH=main\nBUILD=0\n' > "$DEPLOY_TEST_REPO/infra/deploy/.env"
+  # The deploy key's forced command: a copy installed outside the checkout.
+  export DEPLOY_TEST_WRAPPER="$case_dir/ssh-deploy.sh" DEPLOY_CHECKOUT="$DEPLOY_TEST_REPO"
+  install -m 700 "$repo_root/infra/deploy/ssh-deploy.sh" "$DEPLOY_TEST_WRAPPER"
+}
 
-  if [[ -n "$workflow" ]]; then
-    # Run the actual workflow body, substituting only its server checkout path. The
-    # body ends at its first line indented less, where later jobs may follow.
+# how: empty runs deploy.sh by hand; `ssh` runs the deploy key's forced command as
+# sshd would; a workflow file runs that workflow's deploy step, whose ssh reaches
+# the forced command through the stand-in above.
+run_case() {
+  local name=$1 start_ref=$2 target_ref=$3 expected_version=$4 how=${5:-}
+  local case_dir
+  prepare_case "$name" "$start_ref"
+  # Kratos's image is tagged with the contents of infra/kratos, not the commit.
+  export DEPLOY_TEST_KRATOS_TREE
+  DEPLOY_TEST_KRATOS_TREE=$("$DEPLOY_TEST_GIT" -C "$seed" rev-parse "$target_ref:infra/kratos")
+
+  if [[ $how == ssh ]]; then
+    printf 'deployer\nregistry-token\n' | SSH_ORIGINAL_COMMAND="deploy $target_ref" bash "$DEPLOY_TEST_WRAPPER" \
+      > "$case_dir/output" 2>&1 || { cat "$case_dir/output"; return 1; }
+  elif [[ -n $how ]]; then
+    # The actual workflow step, with stand-in secrets. The body ends at its first
+    # line indented less, where later jobs may follow.
     awk '
       /^      - name: Deploy / { deploy = 1 }
       deploy && /^        run: \|$/ { body = 1; next }
       body && $0 != "" && !/^          / { exit }
-      body && /^          / {
-        if ($0 == "          cd /srv/heynaija") print "cd \"$DEPLOY_TEST_REPO\""
-        else { sub(/^          /, ""); print }
-      }
-    ' "$repo_root/.github/workflows/$workflow" > "$case_dir/run.sh"
-    DEPLOY_REF="$target_ref" bash "$case_dir/run.sh" > "$case_dir/output" 2>&1 \
-      || { cat "$case_dir/output"; return 1; }
+      body && /^          / { sub(/^          /, ""); print }
+    ' "$repo_root/.github/workflows/$how" > "$case_dir/run.sh"
+    HOME="$case_dir/home" GITHUB_SHA="$target_ref" GITHUB_ACTOR=deployer REGISTRY_TOKEN=registry-token \
+      DEPLOY_SSH_KEY='test key' DEPLOY_KNOWN_HOSTS='test-host ssh-ed25519 test' DEPLOY_HOST=test-host DEPLOY_SSH_PORT='' \
+      bash "$case_dir/run.sh" > "$case_dir/output" 2>&1 || { cat "$case_dir/output"; return 1; }
+    grep -Eq "^ssh -i .*/home/\.ssh/deploy -p 22 .*-o StrictHostKeyChecking=yes .*heynaija@test-host deploy $target_ref\$" "$DEPLOY_TEST_EVENTS"
+    [[ $(cat "$case_dir/home/.ssh/deploy") == 'test key' ]]
   else
     bash "$DEPLOY_TEST_REPO/infra/deploy/deploy.sh" "$target_ref" > "$case_dir/output" 2>&1 \
       || { cat "$case_dir/output"; return 1; }
+  fi
+
+  if [[ -n $how ]]; then
+    # Logged in with the token from standard input, for this deploy only; and the
+    # installed forced command is now the release's.
+    grep -Fxq 'docker login ghcr.io --username deployer --password-stdin' "$DEPLOY_TEST_EVENTS"
+    grep -Fxq 'docker password registry-token' "$DEPLOY_TEST_EVENTS"
+    grep -Fxq 'docker logout ghcr.io' "$DEPLOY_TEST_EVENTS"
+    grep -Fxq "# $expected_version" "$DEPLOY_TEST_WRAPPER"
   fi
 
   grep -Fxq "$expected_version" "$DEPLOY_TEST_EVENTS"
@@ -114,8 +162,10 @@ run_case() {
   echo "PASS: $name"
 }
 
+# From a release whose deploy.sh cannot update itself, the requested release's runs.
 run_case staging-bootstrap "$legacy_ref" "$newer_ref" newer deploy-staging.yml
 run_case production-bootstrap "$legacy_ref" "$newer_ref" newer deploy-production.yml
+run_case ssh-rollback "$newer_ref" "$older_ref" older ssh
 run_case manual-upgrade "$older_ref" "$newer_ref" newer
 run_case manual-rollback "$newer_ref" "$older_ref" older
 run_case unchanged-script "$newer_ref" "$newer_ref" newer
@@ -134,3 +184,26 @@ fi
 grep -Fq 'after 4 tries' "$test_dir/gives-up.out"
 ! grep -Fxq 'docker compose up -d --remove-orphans --wait' "$test_dir/pull-gives-up/events"
 echo "PASS: pull-gives-up"
+
+# The deploy key runs nothing but a deploy of a full commit hash on DEPLOY_BRANCH:
+# anything else is refused before Git or Docker are touched.
+refused() {
+  local name=$1 command=$2
+  local case_dir
+  prepare_case "$name" "$older_ref"
+  if printf 'deployer\nregistry-token\n' | SSH_ORIGINAL_COMMAND="$command" bash "$DEPLOY_TEST_WRAPPER" \
+    > "$case_dir/output" 2>&1; then
+    echo "FAIL: $name: the deploy key ran \"$command\"" >&2; exit 1
+  fi
+  ! grep -Eq '^(git .*checkout |docker )' "$DEPLOY_TEST_EVENTS"
+  [[ $("$DEPLOY_TEST_GIT" -C "$DEPLOY_TEST_REPO" rev-parse HEAD) == "$older_ref" ]]
+  echo "PASS: $name"
+}
+
+refused ssh-refuses-a-shell 'bash -i'
+refused ssh-refuses-no-command ''
+refused ssh-refuses-a-short-hash "deploy ${newer_ref:0:12}"
+refused ssh-refuses-extra-words "deploy $newer_ref; rm -rf /srv/heynaija"
+refused ssh-refuses-another-branch "deploy $other_ref"
+grep -Fq "is not on main" "$test_dir/ssh-refuses-another-branch/output"
+echo "PASS: ssh-refuses-another-branch-says-why"

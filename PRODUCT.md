@@ -37,9 +37,10 @@ the core flow works on a throttled mobile connection.
 ## Positioning
 
 A discussion network built around Nigerian topics and communities, with feeds that
-are chronological and say why each post is there, rather than opaque engagement
-ranking. Source publication under the existing AGPL licence is planned; the
-repository is currently private. Moderation decisions go into a moderator-only
+say why each post is there, rather than opaque engagement ranking: Latest and
+Following in time order, and Discover, ranked by published rules from public
+activity (ADR 0014). The source is public under the existing AGPL licence, at
+github.com/HeyNaija/heynaija. Moderation decisions go into a moderator-only
 log, governance proposals are published, and members can download their data from
 Settings. Public governance decision records are separate future work.
 
@@ -65,7 +66,7 @@ review exist, the product must not claim ownership that members do not yet have.
 Built: invite-only signup and passwordless sign-in; text posts (300 characters) with
 up to four images or GIFs with alt text, links with preview cards; threaded replies, likes, reposts and quote posts,
 private bookmarks; profiles with photo, display name (50 characters) and bio (160);
-follow, mute, block; Latest, Following, community and trending feeds; search across
+follow, mute, block; Latest, Following, community and trending feeds, and Discover, ranked by rules published at /about/discover; an ideas and problems board (/ideas) with votes and statuses set by Building HeyNaija's moderators; search across
 members, communities and posts; notifications in the app and by email (grouped, with a one-click unsubscribe); reporting, moderation queue,
 appeals, moderator-only decision log, rate limits; light, dark and system themes;
 data export (format 7); a welcome flow for newcomers (choose communities, then
@@ -74,17 +75,18 @@ About and Progress pages. Voting, verification and the Public Treasury are not l
 
 Not built (do not design them as if they work): interests or topics to follow
 (communities stand in for them), pinned welcome posts, community photos,
-push notifications, community voting, treasury transactions.
+push notifications, community voting, treasury transactions, the Top reply order
+(planned, ADR 0014).
 
 Phase 1 non-goals: native apps, DMs, video, payments or creator revenue, AI
-recommendations, algorithmic ranking, federation.
+recommendations, ranking by predicted engagement, federation.
 
 The canonical, prioritised inventory is [docs/FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md),
 generated from `docs/feature-roadmap.json` and also rendered at `/progress`.
 See [docs/roadmap-audit.md](docs/roadmap-audit.md) for audit scope and unresolved confirmations.
 
 Terminology: "members" (not users), "communities", "invite", "moderator",
-"decision log", "appeal", "Following" and "Latest" feeds.
+"decision log", "appeal", "Discover", "Latest" and "Following" feeds.
 
 ## Brand Commitments
 

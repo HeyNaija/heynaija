@@ -77,10 +77,14 @@ sudo install -d /etc/systemd/system/nginx.service.d && printf '[Unit]\nStartLimi
 
 Same as staging step 4, with:
 
-- the `production` environment (consider requiring a reviewer, if your GitHub plan
-  allows it for private repositories);
-- a runner on the netcup server, label and name **`heynaija-production`**, running
-  as `heynaija`;
+- the `production` environment, usable only from `main` (staging step 4.4, with
+  `production` and `main`). A public repository can also require a reviewer before
+  each deploy: **Settings → Environments → production → Required reviewers**;
+- the deploy job's SSH key of its own (`deploy-job-production`), and the
+  `production` environment's `DEPLOY_SSH_KEY`, `DEPLOY_HOST` and
+  `DEPLOY_KNOWN_HOSTS`, as in staging step 4.4. Here `heynaija` is also the admin
+  account: the forced-command line goes beside your own key in its
+  `authorized_keys`, and your key stays as it is;
 - the netcup server's own deploy key (deploy keys are already allowed for the
   organization once staging is set up).
 
@@ -89,7 +93,8 @@ there; each fix is in the steps, so follow them exactly.
 
 ## 5. First deploy
 
-As `heynaija`, clone to `/srv/heynaija`, run `./gen-env.sh`, and edit `.env`:
+As `heynaija`, clone to `/srv/heynaija`, put the deploy job's script in place and
+check its key (staging step 5), run `./gen-env.sh`, and edit `.env`:
 
 | Setting | Production |
 |---|---|

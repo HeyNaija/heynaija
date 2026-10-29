@@ -74,7 +74,7 @@ test('the governance page says plainly what is and is not live @mobile', async (
 test('the draft constitution is complete, versioned and marked as a draft', async ({ page }) => {
   await page.goto('/governance/constitution')
   await expect(page.getByRole('heading', { level: 1, name: 'HeyNaija nonprofit constitution' })).toBeVisible()
-  await expect(page.getByText(/Draft v0\.3 · Last updated 19 October 2026/)).toBeVisible()
+  await expect(page.getByText(/Draft v0\.3\.2 · Last updated 29 October 2026/)).toBeVisible()
   await expect(page.getByRole('note').first()).toContainText('Not yet adopted or legally operative')
 
   const contents = page.getByRole('navigation', { name: 'On this page' })
@@ -165,7 +165,7 @@ test('a member downloads their data as JSON', async ({ browser }) => {
   ])
   expect(download.suggestedFilename()).toMatch(new RegExp(`^heynaija-${handle}-\\d{4}-\\d{2}-\\d{2}\\.json$`))
   const data = JSON.parse(await readFile((await download.path())!, 'utf8'))
-  expect(data.format).toBe('heynaija-export/9')
+  expect(data.format).toBe('heynaija-export/10')
   expect(data.account).toMatchObject({ handle, email })
   // They skipped the welcome flow on joining (newMember does), and the export says when.
   expect(Date.parse(data.account.onboardedAt)).not.toBeNaN()

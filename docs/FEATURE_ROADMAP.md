@@ -5,7 +5,7 @@
 
 Audit scope: the local staging working tree and its inspected code, tests and operational documentation. Staging and production are deployed, but this audit does not verify their live revisions or individual feature availability there, except where a feature is recorded in an environment. Unknown availability is intentional, even when implementation is tested.
 
-This tracks product development, not formal governance decisions. Priority means importance, not completion. No delivery dates or launch-readiness percentages are implied. The public readable counterpart is `/progress`; the repository is private, so the website does not link to it.
+This tracks product development, not formal governance decisions. Priority means importance, not completion. No delivery dates or launch-readiness percentages are implied. The public readable counterpart is `/progress`, which links to this document.
 
 ## Status and availability
 
@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 41 | 10 | 20 | 14 | 85 |
+| 43 | 11 | 19 | 13 | 86 |
 
 ## Priority order
 
@@ -259,7 +259,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Download your own profile, posts, social choices and account-status records as JSON.
 - **Inspected evidence:** `apps/api/src/export/export.service.ts`, `apps/api/src/export/export.controller.ts`, `apps/web/app/(main)/settings/export/route.ts`, `apps/api/src/export/export.service.test.ts`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** Format 9: since format 3 it includes reposts and quoteOf, and since format 9 the post pinned to the profile; restricted person keys and reports about someone stay excluded.
+- **Audit notes:** Format 10: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, and since format 10 the ideas you sent (with a problem report's private details) and your votes on the board; restricted person keys and reports about someone stay excluded.
 
 #### Account deletion and privacy requests
 
@@ -348,11 +348,11 @@ This tracks product development, not formal governance decisions. Priority means
 #### Public source publication
 
 - **ID:** `source-publication`
-- **Priority:** P0 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Make the source available under the existing AGPL licence after publication review.
-- **Remaining work / caveat:** Publication and release review require the repository owner’s decision.
+- **Priority:** P0 · **Status:** Partial · **Availability:** Recorded in production
+- **Description:** Publish the source under the existing AGPL licence, and review code ownership and third-party rights.
+- **Remaining work / caveat:** The source code is public. The review of code ownership and third-party rights, release notes and security disclosure guidance are still to come.
 - **Inspected evidence:** `LICENSE`, `apps/web/app/(main)/licence/page.tsx`, `docs/governance/open-items.md`
-- **Audit notes:** GitHub repository metadata confirmed private on 17 October 2026. The AGPL file does not make the repository publicly accessible.
+- **Audit notes:** Made public on GitHub (github.com/HeyNaija/heynaija) on 29 October 2026, after deploys moved off the self-hosted runners (docs/deployment/staging.md). Confirmed private on 17 October 2026 before that. Constitution Article 12 (v0.3.2) records the remaining ownership and rights review.
 
 ## P1 — Core engagement
 
@@ -493,6 +493,15 @@ This tracks product development, not formal governance decisions. Priority means
 - **Inspected evidence:** `packages/db/drizzle/0022_push_notifications.sql`, `apps/api/src/push/push-notifications.service.ts`, `apps/api/src/push/push-queue.ts`, `apps/api/src/push/push.controller.ts`, `apps/api/src/push/push-sender.ts`, `apps/api/src/push/push-message.ts`, `apps/web/public/sw.js`, `apps/web/app/ui/push-switch.tsx`, `apps/web/app/ui/push-check.tsx`, `apps/web/app/logout/route.ts`, `apps/api/src/push/push-notifications.service.test.ts`, `apps/api/src/push/push-sender.test.ts`, `apps/web/tests/push.test.mjs`, `apps/web/tests/service-worker.test.mjs`, `e2e/tests/push-notifications.spec.ts`, `docs/adr/0011-push-notifications.md`
 - **Audit notes:** Web Push with VAPID keys of our own (no Firebase account): Settings has a per-browser button that asks the browser's permission and subscribes it; the service worker (public/sw.js) only shows notifications and opens what they are about. A BullMQ job looks every 10 seconds and pushes what is waiting to each of the member's browsers, in the same words as the email digest: replies, mentions and quotes quote the post briefly, likes, reposts and follows are counted in with ones already pushed and replace them on the device (one tag per post), more than three things at once are one push that says how many, and moderation notices are in general words. What is pushed is decided when it is sent, with the same rules as email: nothing read, opted out of, blocked, muted, taken down, for suspended members, or over ten minutes old. Email waits until the push side has dealt with a notification and leaves out what a browser took (notifications.pushed_at). A browser has one subscription; it moves to whoever turns push on in it, a page load stops one that belongs to another member, and signing out removes it. Subscriptions may only point at Google's, Mozilla's, Apple's or Microsoft's push services. iPhones and iPads get it only from the Home Screen (iOS 16.4+), and Settings says so. The data export (format 8) lists the browsers, without their addresses. The end-to-end tests use a stand-in push service; delivery through the real push services, and how the notifications look on Android, iOS and desktop, have not been checked on staging.
 
+#### Discover: a feed ranked by published rules
+
+- **ID:** `recommendations`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Availability not verified
+- **Description:** Open Home on Discover: recent posts ranked by rules published on the site, from public activity only, with a reason on every post.
+- **Dependencies:** `chronological-feeds`, `basic-trending`
+- **Inspected evidence:** `apps/api/src/posts/discover.ts`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/(main)/page.tsx`, `apps/web/app/(main)/about/discover/page.tsx`, `apps/web/app/ui/post-item.tsx`, `apps/api/src/posts/discover.test.ts`, `e2e/tests/discover.spec.ts`, `docs/adr/0014-discover-and-top-replies.md`
+- **Audit notes:** Built 28 Oct 2026 (ADR 0014, amended the same day). Discover is the first tab and what Home opens on, for members and signed-out visitors; Latest and Following stay in time order, and Home remembers the tab last chosen (hn_feed cookie). It ranks top-level posts from the last 72 hours: every post starts with 1 point, 2 more for each member who replied in the conversation or quoted it, 1 for each like and repost, 3 more for each person you follow among those who replied, quoted or reposted, 2 if you follow the author, 1 if it is in a community you joined, divided by (hours old + 2)^1.5, with each author’s later posts halved. Your own posts from the last hour come first, unranked. Who liked a post is not public, so likes count only as totals. Posts with open reports from two or more members, or one from the image scanner, wait out of it, and it ends after 100 posts. Pages are ranked as of the moment it was opened, kept in the address (at=). Visitors get the points that are the same for everyone, worked out once a minute and shared. It runs in the API and stores nothing about reading; the rules are sent with every page and shown on /about/discover. Not yet measured on the 20,000-member load-test seed (k6 journeys include it). The charter, privacy policy, About and draft constitution v0.3.1 say what it uses. No learned model.
+
 ### Reliability and access
 
 #### Accessibility improvements
@@ -532,13 +541,24 @@ This tracks product development, not formal governance decisions. Priority means
 #### Ideas and problem reports from members
 
 - **ID:** `member-ideas`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Suggest a feature or report a problem from inside HeyNaija, add your vote to other ideas, and follow each one from review to release.
 - **Dependencies:** `communities`, `in-app-notifications`
-- **Inspected evidence:** `packages/db/src/seed.ts`, `apps/web/app/(main)/c/[slug]/page.tsx`, `apps/api/src/notifications/notifications.service.ts`, `apps/web/app/(main)/progress/page.tsx`
-- **Audit notes:** Proposed 26 Oct 2026; the owner will build it. An idea or problem is a post in Building HeyNaija with a kind and a status (under review, planned, in progress, shipped, not now, duplicate; not now and duplicate give a public reason, and a duplicate's votes move to the original). One vote per member, separate from likes; a board page by votes, newest and status; similar ideas shown while the title is typed; problem reports attach the page, browser and app version. Building HeyNaija's moderators set statuses, and each change notifies the author and voters. Later: a GitHub App opens an issue when an idea is planned, and a webhook brings status back (assigned, closed, then live after a production deploy). Comments are not synced, so members' words are not copied to GitHub. Separate from governance-feedback, which it could carry later.
+- **Inspected evidence:** `apps/api/src/ideas/ideas.service.ts`, `apps/api/src/ideas/ideas.controller.ts`, `packages/db/drizzle/0027_ideas.sql`, `apps/web/app/(main)/ideas/page.tsx`, `apps/web/app/(main)/ideas/new/page.tsx`, `apps/web/app/ui/idea-panel.tsx`, `apps/api/src/ideas/ideas.service.test.ts`, `e2e/tests/ideas.spec.ts`, `docs/adr/0015-ideas-board.md`
+- **Audit notes:** Built 28 Oct 2026 (ADR 0015). An idea or problem is a post in Building HeyNaija (open to every member, joined or not) whose first line is its title (80 characters), with a kind and a status: under review, planned, in progress, shipped, not now or duplicate. Not now and duplicate need a public reason, and a duplicate's votes move to its original. One vote per member, separate from likes, counted from active members; closed ideas take no new votes. The board (/ideas) lists open, shipped and closed ideas, ideas or problems, by votes or newest; similar ideas show while the title is typed. Problem reports keep the page they came from, the browser and the app version (RELEASE) private to the reporter and the board's moderators. Building HeyNaija's moderators, and site-wide ones, set statuses on the idea's page; each change is on its timeline and notifies the author and voters (idea_status, always on). Reached from the account menu (Ideas and problems; Report a problem, which carries the current page), Building HeyNaija and Progress. The data export (format 10) includes ideas sent and votes. Not built yet: the GitHub App that opens an issue when an idea is planned and brings status back.
 
 ## P2 — Growth and community
+
+### Conversations and feeds
+
+#### Top reply order
+
+- **ID:** `top-replies`
+- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
+- **Description:** Choose to read a post’s replies with the ones more people answered and liked recently first.
+- **Dependencies:** `threaded-replies`
+- **Inspected evidence:** `docs/adr/0014-discover-and-top-replies.md`, `docs/adr/0013-reply-order.md`, `apps/api/src/posts/reply-cursor.ts`
+- **Audit notes:** Decided 28 Oct 2026 (ADR 0014). A third choice beside Newest (still the default) and Oldest, for the replies to the post in focus; branches stay oldest first. The post author’s replies still come first, then everyone else’s by (2 × members who answered the reply + its likes) / (hours old + 2)^1.5, worked out as of the first page. Nothing depends on who the reader follows or on payment. Offered on posts with up to 2,000 direct replies until wide threads are measured.
 
 ### People and discovery
 
@@ -746,14 +766,6 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Explore crowdsourced context that complements professional moderation.
 - **Inspected evidence:** `packages/db/src/schema.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`
 
-#### Advanced recommendations
-
-- **ID:** `recommendations`
-- **Priority:** P3 · **Status:** Planned · **Availability:** Not live
-- **Description:** Explore explainable recommendations only after evidence supports a need.
-- **Inspected evidence:** `apps/api/src/posts/posts.service.ts`, `PRODUCT.md`
-- **Audit notes:** Chronological Latest/Following and basic trending are not a personalised recommendation engine.
-
 #### Federation and interoperability
 
 - **ID:** `interoperability`
@@ -766,6 +778,6 @@ This tracks product development, not formal governance decisions. Priority means
 
 Schema version 1 is validated in `apps/web/lib/roadmap.ts`, shared by the generator and server-rendered page. Every feature requires a stable kebab-case ID, name, one-sentence description, known category, P0–P3 priority, lifecycle status, availability and inspected evidence paths. Partial and blocked entries require a separate public caveat. Implemented entries require both application and test evidence; a migration or placeholder alone does not qualify. Dependencies must refer to other feature IDs and must not form cycles.
 
-Evidence paths and operator notes appear only in this developer document. Public caveats must be safe to publish and must not reveal internal security details. Do not add private repository URLs to the public page. Record a verification date only with an actual verification record; do not manufacture a latest-update date when generating.
+Evidence paths and operator notes appear only in this developer document. Public caveats must be safe to publish and must not reveal internal security details. Record a verification date only with an actual verification record; do not manufacture a latest-update date when generating.
 
 The local audit does not attest to the live staging revision, production launch, provider approval, legal adoption or completion of an operational rehearsal. Confirm those independently before changing availability or removing a caveat.

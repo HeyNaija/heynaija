@@ -66,17 +66,22 @@ ramp runs to 1,000 req/s to show how much headroom is left above that.
 
 ### The request mix
 
-Reads dominate, as on any social site. Weights in `ACTIONS` in `journeys.js`:
+Reads dominate, as on any social site. Weights in `ACTIONS` in `journeys.js`
+(since 28 October 2026 the home page opens on Discover, and 3 more Discover
+API reads are taken from scrolling Latest; runs before then are not directly
+comparable):
 
 | % | Request | Kind |
 | --: | --- | --- |
-| 25 | `GET /` (home feed page) | page |
+| 22 | `GET /` (home page: Discover, ranked afresh) | page |
 | 5 | `GET /?feed=following` | page |
+| 3 | `GET /?feed=latest` | page |
 | 15 | `GET /p/:id` (open a post) | page |
 | 5 | `GET /u/:handle` | page |
 | 7 | `GET /notifications` | page |
-| 12 | `GET /api/v1/feed` (scroll, with a cursor 70% of the time) | api-read |
+| 9 | `GET /api/v1/feed` (scroll, with a cursor 70% of the time) | api-read |
 | 8 | `GET /api/v1/feed/following` | api-read |
+| 3 | `GET /api/v1/feed/discover` (first page, ranked afresh) | api-read |
 | 8 | `GET /api/v1/me` | api-read |
 | 2 | `GET /api/v1/notifications` | api-read |
 | 2 | `GET /api/v1/trending` | api-read |

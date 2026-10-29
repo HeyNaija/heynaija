@@ -75,7 +75,10 @@ export type NotificationView = {
   subjectHandle: string | null
   /** moderator_granted / moderator_revoked: which community. */
   community: { slug: string; name: string } | null
+  /** idea_status: the new status. */
   detail: string | null
+  /** idea_status: an idea or a problem, and whether the recipient sent it (or voted for it). */
+  idea: { kind: 'idea' | 'problem'; yours: boolean } | null
 }
 
 export type NotificationPage = { notifications: NotificationView[]; cursor: string | null }
@@ -94,7 +97,7 @@ export const visible = (viewerId: string) => sql`
     a.active
     and not exists(select 1 from blocks b where (b.blocker_id = ${viewerId} and b.blocked_id = n.actor_id) or (b.blocker_id = n.actor_id and b.blocked_id = ${viewerId}))
     and not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = n.actor_id)))
-  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored') or (p.deleted_at is null and p.removed_at is null))
+  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'idea_status') or (p.deleted_at is null and p.removed_at is null))
   and (n.kind <> 'like' or exists(select 1 from likes l where l.post_id = n.post_id and l.member_id = n.actor_id))
   and (n.kind <> 'repost' or exists(select 1 from reposts r where r.post_id = n.post_id and r.member_id = n.actor_id))
   and (n.kind <> 'follow' or exists(select 1 from follows f where f.follower_id = n.actor_id and f.followee_id = ${viewerId}))`
@@ -104,7 +107,8 @@ export const joins = sql`
   left join members a on a.id = n.actor_id
   left join posts p on p.id = n.post_id
   left join members s on s.id = n.subject_id
-  left join communities c on c.id = n.community_id`
+  left join communities c on c.id = n.community_id
+  left join ideas i on i.post_id = n.post_id`
 
 @Injectable()
 export class NotificationsService {
@@ -131,11 +135,14 @@ export class NotificationsService {
       subject_handle: string | null
       community_slug: string | null
       community_name: string | null
+      idea_kind: 'idea' | 'problem' | null
+      idea_yours: boolean
     }>(sql`
       select n.id, n.kind, n.created_at, n.read_at, n.detail,
         a.handle as actor_handle, a.display_name as actor_name, a.avatar_media_id as actor_avatar,
         p.id as post_id, p.text as post_text, s.handle as subject_handle,
-        c.slug as community_slug, c.name as community_name
+        c.slug as community_slug, c.name as community_name,
+        i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours
       ${joins}
       where ${visible(viewerId)} and ${before}
       order by n.created_at desc, n.id desc
@@ -154,6 +161,7 @@ export class NotificationsService {
         subjectHandle: r.subject_handle,
         community: r.community_slug ? { slug: r.community_slug, name: r.community_name! } : null,
         detail: r.detail,
+        idea: r.kind === 'idea_status' && r.idea_kind ? { kind: r.idea_kind, yours: r.idea_yours } : null,
       }),
     )
     const last = page.at(-1)

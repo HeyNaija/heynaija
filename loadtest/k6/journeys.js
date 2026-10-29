@@ -141,7 +141,7 @@ export function setup() {
   if (!postIds.length) throw new Error('the feed is empty; run seed.mjs first')
 
   // First hits compile pages under `next dev` and fill caches; keep them out of the numbers.
-  for (const path of ['/', '/?feed=following', `/p/${postIds[0]}`, `/u/${s.handle}`, '/notifications']) {
+  for (const path of ['/', '/?feed=following', '/?feed=latest', `/p/${postIds[0]}`, `/u/${s.handle}`, '/notifications']) {
     http.get(`${BASE_URL}${path}`, params(s, 'setup', 'setup'))
   }
   return { postIds, authors: [...authors], cursors }
@@ -149,13 +149,14 @@ export function setup() {
 
 // The mix of things members do, by weight. Reads dominate, as on any social site.
 const ACTIONS = [
-  [25, 'home', (s) => http.get(`${BASE_URL}/`, params(s, 'GET /', 'page'))],
+  [22, 'home', (s) => http.get(`${BASE_URL}/`, params(s, 'GET /', 'page'))],
   [5, 'home following', (s) => http.get(`${BASE_URL}/?feed=following`, params(s, 'GET /?feed=following', 'page'))],
+  [3, 'home latest', (s) => http.get(`${BASE_URL}/?feed=latest`, params(s, 'GET /?feed=latest', 'page'))],
   [15, 'open post', (s, d) => http.get(`${BASE_URL}/p/${pick(d.postIds)}`, params(s, 'GET /p/:id', 'page'))],
   [5, 'profile', (s, d) => http.get(`${BASE_URL}/u/${pick(d.authors)}`, params(s, 'GET /u/:handle', 'page'))],
   [7, 'notifications page', (s) => http.get(`${BASE_URL}/notifications`, params(s, 'GET /notifications', 'page'))],
   [
-    12,
+    9,
     'scroll feed',
     (s, d) => {
       const cursor = d.cursors.length && Math.random() < 0.7 ? `&cursor=${encodeURIComponent(pick(d.cursors))}` : ''
@@ -163,6 +164,7 @@ const ACTIONS = [
     },
   ],
   [8, 'scroll following', (s) => http.get(`${BASE_URL}/api/v1/feed/following?limit=30`, params(s, 'GET /api/v1/feed/following', 'api-read'))],
+  [3, 'scroll discover', (s) => http.get(`${BASE_URL}/api/v1/feed/discover?limit=30`, params(s, 'GET /api/v1/feed/discover', 'api-read'))],
   [8, 'me', (s) => http.get(`${BASE_URL}/api/v1/me`, params(s, 'GET /api/v1/me', 'api-read'))],
   [2, 'notifications', (s) => http.get(`${BASE_URL}/api/v1/notifications?limit=30`, params(s, 'GET /api/v1/notifications', 'api-read'))],
   [2, 'trending', (s) => http.get(`${BASE_URL}/api/v1/trending`, params(s, 'GET /api/v1/trending', 'api-read'))],

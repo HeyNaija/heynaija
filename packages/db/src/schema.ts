@@ -427,6 +427,8 @@ export const NOTIFICATION_KINDS = [
   'profile_cleared',
   'moderator_granted',
   'moderator_revoked',
+  // An idea you sent or voted for changed status; detail is the new status.
+  'idea_status',
 ] as const
 
 // Something that happened to a member: a reply, like, repost, quote, mention or follow by
@@ -761,3 +763,78 @@ export const profileBadges = pgTable(
   },
   (t) => [primaryKey({ columns: [t.memberId, t.kind] })],
 )
+
+export const IDEA_KINDS = ['idea', 'problem'] as const
+// Under review until Building HeyNaija's moderators decide. Not now and duplicate
+// close an idea with a public reason; shipped closes it as done.
+export const IDEA_STATUSES = ['under_review', 'planned', 'in_progress', 'shipped', 'not_now', 'duplicate'] as const
+
+// An idea for HeyNaija, or a problem with it, sent to the board (/ideas, ADR
+// 0015). It is an ordinary post in Building HeyNaija, whose first line is the
+// title; this row holds what the board adds to it.
+export const ideas = pgTable(
+  'ideas',
+  {
+    postId: uuid('post_id')
+      .primaryKey()
+      .references(() => posts.id),
+    kind: text('kind', { enum: IDEA_KINDS }).notNull(),
+    title: text('title').notNull(),
+    status: text('status', { enum: IDEA_STATUSES }).notNull().default('under_review'),
+    // Said in public: why it is not now, or a note with any other status.
+    statusReason: text('status_reason'),
+    // A duplicate's original. Its votes moved there when it was marked.
+    duplicateOf: uuid('duplicate_of').references(() => posts.id),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('ideas_status_created_idx').on(t.status, t.createdAt),
+    check('ideas_kind_check', sql.raw(`kind in (${IDEA_KINDS.map((k) => `'${k}'`).join(', ')})`)),
+    check('ideas_status_check', sql.raw(`status in (${IDEA_STATUSES.map((s) => `'${s}'`).join(', ')})`)),
+    check('ideas_duplicate_check', sql`(status = 'duplicate') = (duplicate_of is not null) and duplicate_of is distinct from post_id`),
+  ],
+)
+
+// A member's vote for an idea: one each, and separate from likes. Counted when
+// read, from active members only.
+export const ideaVotes = pgTable(
+  'idea_votes',
+  {
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => ideas.postId),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.postId, t.memberId] }), index('idea_votes_member_idx').on(t.memberId)],
+)
+
+// Every status an idea has had, and which moderator set it: the timeline on its
+// page. The first row is its sending, with no moderator.
+export const ideaStatusChanges = pgTable(
+  'idea_status_changes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => ideas.postId),
+    status: text('status', { enum: IDEA_STATUSES }).notNull(),
+    reason: text('reason'),
+    moderatorId: uuid('moderator_id').references(() => members.id),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('idea_status_changes_post_idx').on(t.postId, t.createdAt)],
+)
+
+// Where a problem happened, as the reporter's browser said when they sent it.
+// Private: only the reporter and Building HeyNaija's moderators see it.
+export const problemDetails = pgTable('problem_details', {
+  postId: uuid('post_id')
+    .primaryKey()
+    .references(() => ideas.postId),
+  page: text('page'),
+  browser: text('browser'),
+  appVersion: text('app_version'),
+})

@@ -33,7 +33,7 @@ moderation outcomes), in the app and by email; rate limits; light, dark and syst
 | [Feature roadmap](docs/FEATURE_ROADMAP.md) | Generated feature status, priorities, availability and inspected evidence |
 | [Roadmap audit](docs/roadmap-audit.md) | Audit limits, documentation corrections and founder confirmations |
 | [ADR 0002](docs/adr/0002-conventional-stack-with-kratos.md) | Why the stack is what it is, and every known limitation |
-| [docs/deployment/staging.md](docs/deployment/staging.md) | Deploying staging on the shared Contabo server: Cloudflare, nginx, GitHub runner, backups |
+| [docs/deployment/staging.md](docs/deployment/staging.md) | Deploying staging on the shared Contabo server: Cloudflare, nginx, the deploy job's SSH key, backups |
 | [docs/deployment/production.md](docs/deployment/production.md) | Deploying production on netcup |
 | [docs/deployment/cloudflare-r2.md](docs/deployment/cloudflare-r2.md) | Setting up media storage in production |
 | [docs/safety/abuse-material-scanning.md](docs/safety/abuse-material-scanning.md) | Scanning uploads for abuse material: plan, runbook, legal questions |
@@ -71,13 +71,13 @@ than attempting a national launch on day one.
 
 **Differentiators:**
 1. Nigeria-first topics, communities and discovery.
-2. Planned public source under the existing AGPL licence, accountable moderation, and public governance proposals. The repository is currently private.
-3. Members can download their data from Settings (export format 3). Public source publication and wider interoperability remain separate work.
+2. Public source under the existing AGPL licence ([github.com/HeyNaija/heynaija](https://github.com/HeyNaija/heynaija)), accountable moderation, and public governance proposals.
+3. Members can download their data from Settings (export format 3). Wider interoperability remains separate work.
 4. Low-bandwidth, accessible, Android-first web experience.
-5. Chronological feeds that say why a post is there, rather than opaque engagement ranking.
+5. Feeds that say why a post is there, rather than opaque engagement ranking: Latest and Following in time order, and Discover, ranked by published rules from public activity ([ADR 0014](docs/adr/0014-discover-and-top-replies.md)).
 
 **Non-goals in Phase 1:** native apps; DMs; video; payments or creator revenue; AI
-recommendations; algorithmic ranking; federation; Kafka; Kubernetes.
+recommendations; ranking by predicted engagement; federation; Kafka; Kubernetes.
 
 **Privacy:** communities are public groupings, not private groups. Every post is
 public; the composer says so.
@@ -175,7 +175,7 @@ Browser ──> Next.js web app
 - [x] Governance overview rebuilt from draft constitution v0.2 (16 October 2026): founding-stage notice, participation types, proposed structure and thresholds, ownership milestones with truthful statuses, empty states. `/governance/constitution`, `/governance/membership`, `/governance/verification`; Settings shows each member's status
 - [ ] Optional NIN verification (NINAuth) and voting membership: data model, rules and tests built behind switches the API refuses to turn on; verification, opt-in and ballots wait for the approvals in [docs/governance/open-items.md](docs/governance/open-items.md)
 - [ ] A working feedback channel for the governance drafts
-- [ ] Licence, charter, policies, roadmap, published source. Draft pages live at /rules, /privacy, /charter and /licence (15 October 2026), marked as drafts with placeholders for the operator's details; licence chosen: AGPL-3.0-or-later. The `LICENSE` file is in place. Still to do: legal review, filling in the placeholders, publishing the source
+- [ ] Licence, charter, policies, roadmap, published source. Draft pages live at /rules, /privacy, /charter and /licence (15 October 2026), marked as drafts with placeholders for the operator's details; licence chosen: AGPL-3.0-or-later. The `LICENSE` file is in place, and the source is public (29 October 2026). Still to do: legal review, filling in the placeholders, the review of code ownership and third-party rights
 - [ ] Disclosure of the provisional custodians and the plan for community ownership (the charter sets out the plan; the custodians' names are a placeholder)
 - [ ] Community voting and treasury records (information pages are built; voting and transactions are not live)
 
@@ -257,7 +257,7 @@ the files are in `infra/deploy/` and `.github/workflows/`.
 | Media | Cloudflare R2: two buckets per environment, served at `/media` by nginx | [R2 guide](docs/deployment/cloudflare-r2.md) |
 | Email | Resend over SMTP, from `no-reply@mail.heynaija.ng` | SPF, DKIM, DMARC on the sending domain |
 | Backups | Nightly `pg_dump` of both databases, encrypted with age, copied to an R2 backups bucket, 30 days kept | Restore rehearsed on a laptop; rehearse again on staging |
-| Deploys | **GitHub Actions:** a push to `staging` or `main` runs CI, builds the images on GitHub's machines into GitHub's registry, then HeyNaija's own self-hosted runner on that server runs `deploy.sh` | Servers never build; rollback reruns the workflow on an earlier commit, or `deploy.sh <commit>` |
+| Deploys | **GitHub Actions:** a push to `staging` or `main` runs CI, builds the images on GitHub's machines into GitHub's registry, then a job connects to that server over SSH with a key that can only deploy a commit on that branch (`ssh-deploy.sh`, which runs `deploy.sh`) | Servers never build; rollback reruns the workflow on an earlier commit, or `deploy.sh <commit>` |
 
 Still to do: the owner's accounts and server (the guide), media copies outside R2,
 error alerting from logs.

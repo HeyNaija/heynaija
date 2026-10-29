@@ -9,7 +9,8 @@
 #
 # Read it before running it. It:
 #   - installs Docker (from Docker's own apt repository), nginx, git, age and rclone
-#   - creates a `heynaija` user who runs the deployment and the GitHub runner
+#   - creates a `heynaija` user who runs the deployment (GitHub's deploy job logs
+#     in as it with a key that can only run ssh-deploy.sh: docs/deployment/staging.md, step 4)
 #   - turns off SSH password logins and direct root login
 #   - lets in only SSH, HTTP and HTTPS (ufw), and turns on automatic security updates
 #   - has systemd keep restarting nginx if it ever fails to start

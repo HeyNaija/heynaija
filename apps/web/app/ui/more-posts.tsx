@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { type ReactNode, useCallback, useEffect, useRef, useState, useTransition } from 'react'
+import { isValidElement, type ReactNode, useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { loadOlderPosts } from '@/app/feed-actions'
 import { type FeedSource, olderHref } from './feed-source'
 
@@ -12,6 +12,23 @@ import { type FeedSource, olderHref } from './feed-source'
  */
 const AUTO_BATCHES = 4
 
+const keyOf = (item: ReactNode) => (isValidElement(item) ? item.key : null)
+
+/**
+ * `items` without the posts already on the page: in `shown` or `current`. Only
+ * Discover repeats one: a post whose score fell after the first page was ranked
+ * can come round again further down.
+ */
+function unseen(items: ReactNode[], shown: string[], current: ReactNode[] = []) {
+  const on = new Set([...shown, ...current.map(keyOf)])
+  return items.filter((item) => {
+    const key = keyOf(item)
+    if (key !== null && on.has(key)) return false
+    on.add(key)
+    return true
+  })
+}
+
 /**
  * The rest of a feed, added under the server-rendered first page. Without
  * JavaScript, "Older posts" is a plain link to the next page; with it, the same
@@ -21,12 +38,18 @@ export function MorePosts({
   source,
   cursor,
   version,
+  shown,
+  end,
 }: {
   source: FeedSource
   /** Where the server-rendered page ends; null when there is nothing older. */
   cursor: string | null
   /** Changes whenever the server re-renders the page (after a like, mute, delete…). */
   version: number
+  /** The posts on the server-rendered page, so a repeat is not added below them. */
+  shown: string[]
+  /** Said where the list ends, in place of "No older posts", even when that is the first page. */
+  end?: ReactNode
 }) {
   const [items, setItems] = useState<ReactNode[]>([])
   const [loaded, setLoaded] = useState(0)
@@ -58,14 +81,14 @@ export function MorePosts({
           setMessage('Older posts could not be loaded.')
           return
         }
-        setItems((current) => [...current, ...result.items])
+        setItems((current) => [...current, ...unseen(result.items, shown, current)])
         setLoaded((n) => n + 1)
         setNext(result.cursor)
         setStatus('idle')
         setMessage(result.count === 1 ? '1 more post loaded' : `${result.count} more posts loaded`)
       })
     })
-  }, [source, next])
+  }, [source, next, shown])
 
   // A refresh re-renders the first page, which may now end somewhere else (new
   // posts arrived, one was deleted, someone was muted). Rebuild what was appended
@@ -91,12 +114,12 @@ export function MorePosts({
         busy.current = false
         // On failure the old posts stay up; they are only stale until the next refresh.
         if ('error' in result) return
-        setItems(result.items)
+        setItems(unseen(result.items, shown))
         setNext(result.cursor)
         setStatus('idle')
       })
     })
-  }, [version, cursor, loaded, source])
+  }, [version, cursor, loaded, source, shown])
 
   // Start the next batch about a screen before the reader gets to the end.
   const auto = loaded < AUTO_BATCHES && status === 'idle' && next !== null
@@ -138,8 +161,8 @@ export function MorePosts({
         >
           {status === 'loading' ? 'Loading older posts…' : 'Older posts'}
         </Link>
-      ) : loaded > 0 ? (
-        <p className="mt-6 text-center text-sm text-muted">No older posts.</p>
+      ) : loaded > 0 || end ? (
+        <p className="mt-6 text-center text-sm text-muted">{end ?? 'No older posts.'}</p>
       ) : null}
     </>
   )

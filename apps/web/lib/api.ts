@@ -113,10 +113,15 @@ export type Post = {
   community: { slug: string; name: string } | null
   /** A quote post's quoted post; null for other posts. */
   quote: QuotedPost | null
-  /** Why the post is in the Following feed, or 'repost' on a profile; null elsewhere. */
-  reason: 'own' | 'following' | 'community' | 'repost' | null
+  /**
+   * Why the post is in the Following feed or Discover, or 'repost' on a profile;
+   * null elsewhere. 'network', 'active' and 'recent' are Discover's.
+   */
+  reason: 'own' | 'following' | 'community' | 'repost' | 'network' | 'active' | 'recent' | null
   /** Who reposted it, when `reason` is 'repost'. */
   repostedBy: { id: string; handle: string; displayName: string | null } | null
+  /** In Discover, when `reason` is 'network': who the viewer follows that took part, and how many others did. */
+  via?: { id: string; handle: string; displayName: string | null; action: 'replied' | 'quoted' | 'reposted'; others: number }
 }
 
 /**
@@ -236,6 +241,85 @@ export async function getFollowingFeed(cursor?: string): Promise<Feed | null> {
     return null
   }
 }
+
+/** The rules Discover ranks by, as the API applies them (ADR 0014). */
+export type DiscoverRules = {
+  windowHours: number
+  startingPoints: number
+  conversationPoints: number
+  likePoints: number
+  repostPoints: number
+  followedPoints: number
+  followsAuthorPoints: number
+  joinedCommunityPoints: number
+  ageOffsetHours: number
+  gravity: number
+  authorDecay: number
+  maxPosts: number
+  reportsToHold: number
+  ownPostsMinutes: number
+  visitorRefreshSeconds: number
+}
+
+/** A page of Discover, ranked as of `asOf`. */
+export type DiscoverFeed = Feed & { asOf: string; rules: DiscoverRules }
+
+/**
+ * A page of Discover. A first page asks to be ranked as of `at`, the moment the
+ * reader opened it, so loading it again does not reorder it. Visitors who are not
+ * signed in get the ranking every visitor gets. Null when it cannot be had.
+ */
+export async function getDiscoverFeed(cursor?: string, at?: string): Promise<DiscoverFeed | null> {
+  try {
+    return (await getPage(at && !cursor ? `/v1/feed/discover?at=${encodeURIComponent(at)}` : '/v1/feed/discover', cursor)) as DiscoverFeed
+  } catch {
+    return null
+  }
+}
+
+export async function getDiscoverRules(): Promise<DiscoverRules> {
+  const res = await api('/v1/feed/discover/rules')
+  if (!res.ok) throw new Error(`API /v1/feed/discover/rules responded ${res.status}`)
+  return res.json()
+}
+
+export type IdeaKind = 'idea' | 'problem'
+export type IdeaStatus = 'under_review' | 'planned' | 'in_progress' | 'shipped' | 'not_now' | 'duplicate'
+export type IdeaGroup = 'open' | 'shipped' | 'closed'
+
+/** An idea or problem on the board (/ideas). It is also a post, with this ID. */
+export type IdeaSummary = {
+  id: string
+  kind: IdeaKind
+  title: string
+  status: IdeaStatus
+  votes: number
+  viewerVoted: boolean
+  replyCount: number
+  createdAt: string
+  author: { handle: string; displayName: string | null }
+}
+
+export type IdeaDetail = IdeaSummary & {
+  statusReason: string | null
+  duplicateOf: { id: string; title: string } | null
+  timeline: { status: IdeaStatus; reason: string | null; at: string }[]
+  viewerCanModerate: boolean
+  /** Where a problem happened: only for its reporter and the board's moderators. */
+  problem: { page: string | null; browser: string | null; appVersion: string | null } | null
+}
+
+export async function getIdeas(query: { group: IdeaGroup; kind?: IdeaKind; sort: 'top' | 'new'; cursor?: number }): Promise<{ ideas: IdeaSummary[]; cursor: number | null }> {
+  const params = new URLSearchParams({ group: query.group, sort: query.sort })
+  if (query.kind) params.set('kind', query.kind)
+  if (query.cursor) params.set('cursor', String(query.cursor))
+  const res = await api(`/v1/ideas?${params}`)
+  if (!res.ok) throw new Error(`API /v1/ideas responded ${res.status}`)
+  return res.json()
+}
+
+/** Null when the post is not an idea the visitor may see. */
+export const getIdea = (id: string) => getOrNull<IdeaDetail>(`/v1/ideas/${encodeURIComponent(id)}`)
 
 export const getMemberPosts = (handle: string, filter: ProfileFilter, cursor?: string) =>
   getPage(`/v1/members/${encodeURIComponent(handle)}/posts?filter=${filter}`, cursor)
@@ -422,6 +506,7 @@ export type NotificationKind =
   | 'profile_cleared'
   | 'moderator_granted'
   | 'moderator_revoked'
+  | 'idea_status'
 
 export type Notification = {
   id: string
@@ -433,8 +518,10 @@ export type Notification = {
   post: { id: string; excerpt: string } | null
   subjectHandle: string | null
   community: { slug: string; name: string } | null
-  /** report_resolved: 'actioned' or 'dismissed'. post_removed: the report reason. */
+  /** report_resolved: 'actioned' or 'dismissed'. post_removed: the report reason. idea_status: the new status. */
   detail: string | null
+  /** idea_status: an idea or a problem, and whether the reader sent it (or only voted for it). */
+  idea?: { kind: IdeaKind; yours: boolean } | null
 }
 
 /** Null when the visitor is not a signed-in member. */

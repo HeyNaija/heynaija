@@ -34,31 +34,32 @@ jobs:
   deploy:
     name: Deploy to staging
     needs: images
-    # HeyNaija's own runner on the staging server (docs/deployment/staging.md).
-    runs-on: [self-hosted, heynaija-staging]
+    # On GitHub's machines, over SSH to the staging server with a key that can only
+    # run infra/deploy/ssh-deploy.sh there (docs/deployment/staging.md, step 4). No
+    # runner on the server: in a public repository, anyone's pull request could run
+    # code on one.
+    runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 15
     permissions:
       contents: read
       packages: read
     steps:
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Deploy ${{ github.sha }}
         env:
-          IMAGE_PREFIX: ${{ needs.images.outputs.image_prefix }}
-          DEPLOY_REF: ${{ github.sha }}
-        # Load this release's script, including on the first deploy of a change
-        # to deploy.sh. A running Bash script cannot update its own instructions.
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # The server pulls the images with this job's token, sent on standard input.
         run: |
-          cd /srv/heynaija
-          git fetch --quiet origin
-          git -c advice.detachedHead=false checkout --quiet --detach "$DEPLOY_REF"
-          exec bash infra/deploy/deploy.sh "$DEPLOY_REF"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n%s\n' "$GITHUB_ACTOR" "$REGISTRY_TOKEN" | ssh -i ~/.ssh/deploy -p "${DEPLOY_SSH_PORT:-22}" \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=30 -o ServerAliveInterval=30 \
+            "heynaija@$DEPLOY_HOST" deploy "$GITHUB_SHA"
 
   # Tags the images staged-<tree>, with the tree of the code rather than the commit:
   # a merge from staging into main makes a new commit with the same tree, so

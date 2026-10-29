@@ -27,7 +27,7 @@ const principles = [
   {
     Icon: DocumentIcon,
     title: 'Development you can follow',
-    detail: <>We want to be clear about what works and what is missing. Our <Link href="/progress">public roadmap</Link> records both. The project has an AGPL licence and aims to publish its source, but the repository is still private. The <Link href="/licence">licence page</Link> explains that distinction.</>,
+    detail: <>We want to be clear about what works and what is missing. Our <Link href="/progress">public roadmap</Link> records both. The code is public under the AGPL licence; the <Link href="/licence">licence page</Link> says where it is and what the licence covers.</>,
   },
   {
     Icon: ShieldIcon,
@@ -102,13 +102,16 @@ export default function AboutPage() {
         <div className="about-copy">
           <p>
             You can post short text and photos, reply in a thread, like, repost, quote, and follow
-            people or join communities. Latest and Following are chronological: newest entries first,
-            with explanations of why Following entries appear. Under a post, its author&apos;s own
+            people or join communities. Home opens on <Link href="/about/discover">Discover</Link>, which
+            ranks the last few days&apos; posts by rules published on its own page, from replies, quotes,
+            reposts and like counts, who you follow and the communities you joined, and says why each
+            post is there. Latest and Following are chronological: newest entries first, with
+            explanations of why Following entries appear, and Home remembers the tab you chose. Under a post, its author&apos;s own
             replies come first, then everyone else&apos;s, newest first, or oldest first if you
             choose. Basic trending highlights recent
             active conversations, and <Link href="/topics">trending topics</Link> are the hashtags most
-            members are using, by rules published on that page. Neither is a personalised
-            recommendation engine.
+            members are using, by rules published on that page. None of them guesses what you will
+            engage with.
           </p>
           <p>
             <strong>Every post and reply is public, including posts in communities.</strong> Your

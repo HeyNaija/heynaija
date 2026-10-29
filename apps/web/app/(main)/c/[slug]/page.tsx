@@ -66,6 +66,14 @@ async function CommunityView({ params, searchParams }: Props) {
           ) : null}
         </p>
 
+        {community.slug === 'building-heynaija' ? (
+          <p className="mt-4 text-sm leading-6">
+            Ideas and problem reports have their own{' '}
+            <Link href="/ideas" className="font-semibold text-accent-strong hover:underline">board</Link>, where you can vote
+            for them and follow each one from review to release.
+          </p>
+        ) : null}
+
         {rules.length ? (
           <details className="community-rules mt-4 rounded-lg bg-panel px-4 py-3 text-sm">
             <summary className="min-h-6 cursor-pointer font-semibold">Community rules</summary>
