@@ -367,12 +367,18 @@ replaces it with the release's copy:
 install -m 700 /srv/heynaija/infra/deploy/ssh-deploy.sh ~/ssh-deploy.sh
 ```
 
-Check the key can do nothing else. From your computer, this must print
-`This key can only run: deploy <full commit hash>`:
+Check the key can do nothing else. From your computer, in the folder with the key
+files, this must print `This key can only run: deploy <full commit hash>`.
+`IdentitiesOnly` makes ssh offer only that key: without it, a key of your own
+that also logs in as `heynaija` (production's admin key) would answer instead.
 
 ```bash
-ssh -i deploy-job-staging heynaija@<server-ip> whoami
+ssh -o IdentitiesOnly=yes -i deploy-job-staging heynaija@<server-ip> whoami
 ```
+
+If it prints `heynaija`, the key got in without its forced command: its line in
+`authorized_keys` lacks `restrict,command=…`. `Permission denied (publickey)`
+means the line is missing, or the SSH settings do not let `heynaija` log in.
 
 Then delete both `deploy-job-staging` files: GitHub has the private key and the
 server the public one, and a new pair is quick to make.
