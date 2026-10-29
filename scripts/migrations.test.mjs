@@ -160,3 +160,66 @@ test('the command line checks the repository when started through a symlink', (t
   assert.equal(run.status, 0, run.stderr)
   assert.match(run.stdout, /migrations ok/)
 })
+
+test('NOT VALID only excuses CHECK and FOREIGN KEY; UNIQUE, PRIMARY KEY and EXCLUDE cannot be NOT VALID', () => {
+  for (const sql of [
+    'ALTER TABLE "p" ADD CONSTRAINT "u" UNIQUE ("a") NOT VALID;',
+    'ALTER TABLE "p" ADD CONSTRAINT "u" UNIQUE ("a");',
+    'ALTER TABLE "p" ADD PRIMARY KEY ("a");',
+    'ALTER TABLE "p" ADD CONSTRAINT "e" EXCLUDE USING gist ("a" WITH =);',
+  ]) {
+    const [why] = risks(sql)
+    assert.ok(why, sql)
+    assert.doesNotMatch(why, /then VALIDATE/, sql)
+    assert.match(why, /allow-breaking/, sql)
+  }
+  const [fk] = risks('ALTER TABLE "p" ADD CONSTRAINT "f" FOREIGN KEY ("a") REFERENCES "m"("id");')
+  assert.match(fk, /NOT VALID/)
+  assert.deepEqual(risks('ALTER TABLE "p" ADD CONSTRAINT "c" CHECK ("a" > 0) NOT VALID;'), [])
+  assert.deepEqual(risks('ALTER TABLE "p" ADD CONSTRAINT "u" UNIQUE USING INDEX "u_idx";'), [])
+})
+
+test('comments, DO blocks, escaped strings and CTE-led writes cannot hide a statement', () => {
+  for (const sql of [
+    '/* x; */ DROP TABLE posts;',
+    '/* multi\nline; */\nDROP TABLE posts;',
+    'DO $$ BEGIN DROP TABLE posts; END $$;',
+    "SELECT E'it\\'s'; DROP TABLE posts;",
+    'WITH x AS (SELECT 1) UPDATE a SET b = 1;',
+    'WITH x AS (SELECT 1) DELETE FROM a;',
+    'WITH x AS (SELECT 1) INSERT INTO a SELECT * FROM x;',
+  ])
+    assert.equal(risks(sql).length, 1, sql)
+  assert.deepEqual(risks('/* DROP TABLE posts; */ SELECT 1;'), [])
+  assert.deepEqual(risks('WITH x AS (SELECT 1) SELECT * FROM x;'), [])
+})
+
+test('every action of an ALTER TABLE is judged, not just the first', () => {
+  const found = risks('ALTER TABLE "p" ADD CONSTRAINT c CHECK (x > 0) NOT VALID, DROP COLUMN b;')
+  assert.equal(found.length, 1)
+  assert.match(found[0], /removes/)
+  assert.equal(risks('ALTER TABLE "p" DROP COLUMN a, DROP COLUMN b;').length, 2)
+  assert.deepEqual(risks('ALTER TABLE "p" ADD COLUMN "a" numeric(10,2), ADD COLUMN "b" text;'), [])
+})
+
+test('a waiver at the end of a line covers only the statement it follows', () => {
+  const found = risks('UPDATE a SET x = 1; DROP TABLE posts; -- allow-breaking: x')
+  assert.equal(found.length, 1)
+  assert.match(found[0], /backfill/)
+  assert.deepEqual(risks('UPDATE a SET x = 1 -- allow-breaking: x\n;'), [])
+  assert.equal(risks('-- allow-breaking: x\nUPDATE a SET x = 1; DROP TABLE posts;').length, 1)
+})
+
+test('only the serial TYPE is volatile; generated and inline UNIQUE columns are flagged', () => {
+  assert.deepEqual(risks('ALTER TABLE "p" ADD COLUMN "serial" text;'), [])
+  assert.deepEqual(risks("ALTER TABLE \"p\" ADD COLUMN \"note\" text DEFAULT 'serial';"), [])
+  for (const sql of [
+    'ALTER TABLE "p" ADD COLUMN "x" serial;',
+    'ALTER TABLE "p" ADD COLUMN "x" smallserial;',
+    'ALTER TABLE "p" ADD COLUMN x int GENERATED ALWAYS AS (1 + 1) STORED;',
+    'ALTER TABLE "p" ADD COLUMN x int GENERATED ALWAYS AS IDENTITY;',
+    'ALTER TABLE "p" ADD COLUMN x int UNIQUE;',
+    'ALTER TABLE "p" ADD COLUMN x int PRIMARY KEY;',
+  ])
+    assert.equal(risks(sql).length, 1, sql)
+})
