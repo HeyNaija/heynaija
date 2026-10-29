@@ -6,7 +6,8 @@
  * a hint for programs that honour it; the inline light colours are what the rest show.
  * The frame is drawn in four places that must stay in step: here, `heynaijaHTML` in
  * infra/kratos/policy/courier_email_change.go, and infra/kratos/courier-templates/login_code/valid/email.body.gotmpl
- * and registration_code/valid/email.body.gotmpl (the emails Kratos sends).
+ * and registration_code/valid/email.body.gotmpl (the emails Kratos sends). Only layout.ts and the Go frame carry
+ * the Outlook-only wrapper: Kratos parses its HTML templates with html/template, which strips comments.
  */
 
 export const escapeHtml = (text: string) =>
@@ -39,7 +40,7 @@ const DARK_MODE = `
 
 /** A green link-button. `href` is escaped here. */
 export const button = (label: string, href: string) =>
-  `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:20px 0 0"><tr><td style="background:${COLOR.green};border-radius:8px;padding:12px 20px">` +
+  `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:20px 0 0"><tr><td style="background:${COLOR.green};border-radius:8px;mso-padding-alt:12px 20px">` +
   `<a href="${escapeHtml(href)}" style="display:inline-block;padding:12px 20px;font-family:${FONT};font-size:15px;font-weight:600;line-height:1.2;color:#ffffff;text-decoration:none">${escapeHtml(label)}</a>` +
   `</td></tr></table>`
 
