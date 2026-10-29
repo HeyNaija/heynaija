@@ -125,6 +125,7 @@ services:
       - ../kratos/invite-check.jsonnet:/etc/config/kratos/invite-check.jsonnet:ro
       - ../kratos/handle-change.jsonnet:/etc/config/kratos/handle-change.jsonnet:ro
       - ../kratos/google.jsonnet:/etc/config/kratos/google.jsonnet:ro
+      - ../kratos/courier-templates:/etc/config/kratos/courier-templates:ro
     configs: &kratos-configs
       - source: kratos
         target: /etc/config/kratos/kratos.yml
@@ -341,6 +342,7 @@ configs:
             url: file:///etc/config/kratos/identity.schema.json
 
       courier:
+        template_override_path: /etc/config/kratos/courier-templates
         smtp:
           # The connection URI (with the Resend API key) comes from the environment.
           from_address: ${SMTP_FROM_ADDRESS:?}
