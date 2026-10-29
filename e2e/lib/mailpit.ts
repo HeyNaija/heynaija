@@ -1,6 +1,6 @@
 import { env } from './env.ts'
 
-type Message = { ID: string; Created: string; Snippet: string; Subject: string; To: { Address: string }[] }
+type Message = { ID: string; Created: string; Subject: string; To: { Address: string }[] }
 
 /**
  * The newest six-digit code mailed to `email` since `since`. Kratos sends
@@ -10,8 +10,12 @@ export async function codeFor(email: string, since: Date, timeoutMs = 30_000): P
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     const message = (await messagesFor(email, since))[0]
-    const code = message && (message.Snippet.match(/\b(\d{6})\b/)?.[1] ?? message.Subject.match(/\b(\d{6})\b/)?.[1])
-    if (code) return code
+    if (message) {
+      // The code is in the plaintext body, never the subject or preview, and Mailpit's Snippet is cut short.
+      const { Text } = (await (await fetch(`${env.mailpitUrl}/api/v1/message/${message.ID}`)).json()) as { Text: string }
+      const code = Text.match(/\b(\d{6})\b/)?.[1]
+      if (code) return code
+    }
     await new Promise((r) => setTimeout(r, 400))
   }
   throw new Error(`no code for ${email} in Mailpit after ${timeoutMs / 1000}s`)

@@ -50,7 +50,9 @@ test('the old email stays active until the new email code is confirmed @mobile',
     await expect(member.page.getByText('stays active until you confirm the change.', { exact: false })).toBeVisible()
     expect((await identity(original.id)).traits.email).toBe(member.email)
     // The new address is asked to confirm an email change, not to "verify your account".
-    expect((await messagesFor(next, asked)).map((m) => m.Subject)).toContain(`Your HeyNaija email change code: ${code}`)
+    const subjects = (await messagesFor(next, asked)).map((m) => m.Subject)
+    expect(subjects).toContain('Confirm your new HeyNaija email address')
+    expect(subjects.join('\n')).not.toContain(code)
     await member.page.reload()
     await expect(member.page.getByLabel('Code sent to your new email', { exact: true })).toBeVisible()
     await confirm(member.page, code === '000000' ? '111111' : '000000')
