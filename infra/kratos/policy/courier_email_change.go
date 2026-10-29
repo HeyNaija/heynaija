@@ -52,7 +52,7 @@ func (t *HeyNaijaEmailChangeCode) TemplateType() template.TemplateType {
 func (t *HeyNaijaEmailChangeCode) MarshalJSON() ([]byte, error) { return json.Marshal(t.m) }
 
 func (t *HeyNaijaEmailChangeCode) EmailSubject(context.Context) (string, error) {
-	return "Your HeyNaija email change code: " + t.m.Code, nil
+	return "Confirm your new HeyNaija email address", nil
 }
 
 func (t *HeyNaijaEmailChangeCode) paragraphs() []string {
@@ -105,8 +105,9 @@ func (t *HeyNaijaEmailChanged) EmailBody(context.Context) (string, error) {
 
 func heynaijaPlaintext(paragraphs []string) string { return strings.Join(paragraphs, "\n\n") + "\n" }
 
-// The same frame as apps/api/src/email/layout.ts, in the colours of apps/web/DESIGN.md:
-// a white card on the sage ground under the wordmark. Every value is escaped; the
+// The same frame as apps/api/src/email/layout.ts, in the colours of apps/web/DESIGN.md. It is
+// also drawn by courier-templates/login_code and registration_code; keep all four in step.
+// A white card on the sage ground under the wordmark. Every value is escaped; the
 // paragraph at index code is shown large, in an inset panel.
 func heynaijaHTML(title string, paragraphs []string, code int) string {
 	const font = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans',Helvetica,Arial,sans-serif`
@@ -118,7 +119,10 @@ func heynaijaHTML(title string, paragraphs []string, code int) string {
 		`@media (prefers-color-scheme:dark){.hn-ground{background:#0b1210!important}.hn-card{background:#111a17!important;border-color:#212d28!important}` +
 		`.hn-ink{color:#e6efe9!important}.hn-link{color:#7dd9aa!important}.hn-inset{background:#18231f!important}}</style></head>`)
 	b.WriteString(`<body class="hn-ground" style="margin:0;padding:0;background:#f1f4f2">`)
+	// The grey preview line a mail list shows: the first paragraph, hidden in the body.
+	fmt.Fprintf(&b, `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all">%s%s</div>`, html.EscapeString(paragraphs[0]), strings.Repeat("&nbsp;&zwnj;", 40))
 	b.WriteString(`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="hn-ground" style="background:#f1f4f2"><tr><td align="center" style="padding:24px 12px">`)
+	b.WriteString(`<!--[if mso]><table role="presentation" width="560" align="center"><tr><td><![endif]-->`)
 	b.WriteString(`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px">`)
 	fmt.Fprintf(&b, `<tr><td class="hn-link" style="padding:0 4px 14px;font-family:%s;font-size:22px;font-weight:800;letter-spacing:-0.03em;color:#258153">HeyNaija</td></tr>`, font)
 	fmt.Fprintf(&b, `<tr><td class="hn-card" style="background:#ffffff;border:1px solid #e3e9e5;border-radius:12px;padding:24px;font-family:%s;font-size:15px;line-height:1.6;color:#10212b">`, font)
@@ -129,6 +133,6 @@ func heynaijaHTML(title string, paragraphs []string, code int) string {
 			fmt.Fprintf(&b, `<p class="hn-ink" style="margin:0 0 14px;color:#10212b">%s</p>`, html.EscapeString(p))
 		}
 	}
-	b.WriteString("</td></tr></table></td></tr></table></body></html>")
+	b.WriteString("</td></tr></table><!--[if mso]></td></tr></table><![endif]--></td></tr></table></body></html>")
 	return b.String()
 }
