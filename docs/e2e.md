@@ -138,7 +138,7 @@ workflow** (pushing a branch alone does not run CI):
 2. builds everything, migrates, seeds the communities and creates the buckets;
 3. starts a production build of the API and the web app (`start`, not `dev`), with
    `API_HOST=0.0.0.0` so Kratos's container can reach the invite webhooks on Linux;
-4. installs Chromium and runs `pnpm e2e` with `CI=true`: one worker, one retry.
+4. installs Chromium and runs `pnpm e2e` with `CI=true`: three workers (`E2E_WORKERS` overrides), one retry.
 
 On failure it uploads the Playwright report, traces, screenshots and the API, web
 and Compose logs as the `e2e-report` artifact, kept 7 days.

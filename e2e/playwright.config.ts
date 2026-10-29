@@ -8,10 +8,12 @@ const GOOGLE = /google-auth\.spec\.ts/
 export default defineConfig({
   testDir: './tests',
   globalSetup: './global-setup.ts',
-  // Every test makes its own members, so tests can run side by side. Two workers:
-  // more than that overloads `next dev` and sign-ups start timing out.
+  // Every test makes its own members, so tests can run side by side. Two workers
+  // locally: more than that overloads `next dev` and sign-ups start timing out. CI
+  // runs the built app (`next start`), which has no such limit, so it uses three.
+  // E2E_WORKERS overrides either, to try another number.
   fullyParallel: true,
-  workers: process.env.CI ? 1 : 2,
+  workers: Number(process.env.E2E_WORKERS) || (process.env.CI ? 3 : 2),
   timeout: 90_000,
   expect: { timeout: 15_000 },
   retries: process.env.CI ? 1 : 0,
