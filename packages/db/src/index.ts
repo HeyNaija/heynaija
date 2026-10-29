@@ -108,9 +108,18 @@ async function runOnce(
   migrationsFolder: string | undefined,
   log: (message: string) => void,
 ): Promise<void> {
-  const client = new pg.Client({ connectionString: url, options: `-c lock_timeout=${lockTimeoutMs}` })
+  if (!Number.isInteger(lockTimeoutMs) || lockTimeoutMs < 0) throw new Error(`lockTimeoutMs must be a non-negative integer, got ${lockTimeoutMs}`)
+  const client = new pg.Client({ connectionString: url })
+  // An idle connection that drops emits 'error'; with no listener that would be an uncaught exception.
+  // Remember it, and the run fails through the finally below (the lock went with the session).
+  let lost: Error | undefined
+  client.on('error', (err) => {
+    lost = err
+  })
   await client.connect()
   try {
+    // SET, not the startup `options` parameter: a DATABASE_URL with its own ?options= would override that.
+    await client.query(`set lock_timeout = ${lockTimeoutMs}`)
     const deadline = Date.now() + lockWaitMs
     let announced = false
     for (;;) {
@@ -124,6 +133,7 @@ async function runOnce(
     await migrate(drizzle(client, { schema }), {
       migrationsFolder: migrationsFolder ?? fileURLToPath(new URL('../drizzle', import.meta.url)),
     })
+    if (lost) throw new Error(`the migration connection dropped during the run: ${lost.message}`)
   } finally {
     await client.query('select pg_advisory_unlock($1)', [MIGRATE_LOCK_KEY]).catch(() => {})
     await client.end().catch(() => {})

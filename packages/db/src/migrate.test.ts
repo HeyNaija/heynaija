@@ -89,6 +89,28 @@ const freshDb = () =>
 const lockIsFree = () =>
   admin(async (c) => (await c.query('select pg_try_advisory_lock($1) as ok', [MIGRATE_LOCK_KEY])).rows[0].ok as boolean, scratchUrl)
 
+/** Polls until `condition` holds, instead of sleeping for a guessed time. */
+async function waitFor(condition: () => Promise<boolean>, what: string, timeoutMs = 20_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!(await condition())) {
+    if (Date.now() > deadline) throw new Error(`gave up waiting for ${what}`)
+    await new Promise((r) => setTimeout(r, 25))
+  }
+}
+
+/** True when some other session in the scratch database is waiting for a lock in a query that mentions `table`. */
+const blockedOnLock = (table: string) =>
+  admin(
+    async (c) =>
+      (
+        await c.query(
+          `select 1 from pg_stat_activity where datname = $1 and pid <> pg_backend_pid() and wait_event_type = 'Lock' and query like $2`,
+          [scratchName, `%${table}%`],
+        )
+      ).rowCount === 1,
+    scratchUrl,
+  )
+
 /** A second connection holding an ACCESS EXCLUSIVE lock on `busy` until it rolls back. */
 async function holdBusy(t: T): Promise<pg.Client> {
   await admin((c) => c.query('create table busy (id int)'), scratchUrl)
@@ -104,14 +126,20 @@ if (testUrl) {
 
   test('two runs at once: the second waits, then finds nothing left to do', async (t) => {
     await freshDb()
-    const dir = folder(t, ['select pg_sleep(1.5);--> statement-breakpoint\ncreate table once (id int);'])
+    // The first run is parked on a table lock the test holds, so it stays inside its migration
+    // (and holds the migration lock) for exactly as long as the test wants: no sleeps to race.
+    const holder = await holdBusy(t)
+    const dir = folder(t, ['select count(*) from busy;--> statement-breakpoint\ncreate table once (id int);'])
     const logs: string[] = []
-    const first = runMigrations(scratchUrl, { migrationsFolder: dir, log: noLog })
-    await new Promise((r) => setTimeout(r, 400))
-    const started = Date.now()
-    const second = runMigrations(scratchUrl, { migrationsFolder: dir, log: (m) => logs.push(m) })
+    const order: string[] = []
+    const first = runMigrations(scratchUrl, { migrationsFolder: dir, lockTimeoutMs: 0, log: noLog }).then(() => order.push('first'))
+    await waitFor(() => blockedOnLock('busy'), 'the first run to block on the table lock')
+    const second = runMigrations(scratchUrl, { migrationsFolder: dir, log: (m) => logs.push(m) }).then(() => order.push('second'))
+    await waitFor(async () => logs.length > 0, 'the second run to report that it is waiting')
+    assert.deepEqual(order, [], 'neither run can have finished while the first is blocked')
+    await holder.query('rollback')
     await Promise.all([first, second])
-    assert.ok(Date.now() - started > 800, 'the second run should have waited for the first')
+    assert.deepEqual(order, ['first', 'second'])
     assert.deepEqual(logs, ['waiting for another migration run to finish'])
     // Had they raced, the second `create table once` would have failed.
     await admin(async (c) => assert.equal((await c.query('select count(*)::int as n from drizzle.__drizzle_migrations')).rows[0].n, 1), scratchUrl)
@@ -131,6 +159,27 @@ if (testUrl) {
     const dir = folder(t, ["create table seen as select current_setting('lock_timeout') as v;"])
     await runMigrations(scratchUrl, { migrationsFolder: dir, lockTimeoutMs: 1234, log: noLog })
     await admin(async (c) => assert.equal((await c.query('select v from seen')).rows[0].v, '1234ms'), scratchUrl)
+  })
+
+  test('lock_timeout wins over an ?options= in DATABASE_URL', async (t) => {
+    await freshDb()
+    const dir = folder(t, ["create table seen as select current_setting('lock_timeout') as v;"])
+    const u = new URL(scratchUrl)
+    u.searchParams.set('options', '-c lock_timeout=1')
+    await runMigrations(u.toString(), { migrationsFolder: dir, lockTimeoutMs: 4321, log: noLog })
+    await admin(async (c) => assert.equal((await c.query('select v from seen')).rows[0].v, '4321ms'), scratchUrl)
+  })
+
+  test('a connection that is killed mid-run rejects the run instead of crashing the process', async (t) => {
+    await freshDb()
+    const holder = await holdBusy(t)
+    const dir = folder(t, ['select count(*) from busy;'])
+    const run = runMigrations(scratchUrl, { migrationsFolder: dir, lockTimeoutMs: 0, attempts: 1, log: noLog })
+    await waitFor(() => blockedOnLock('busy'), 'the run to block on the table lock')
+    await admin((c) => c.query(`select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid() and wait_event_type = 'Lock'`, [scratchName]), scratchUrl)
+    await assert.rejects(run)
+    await holder.query('rollback')
+    assert.equal(await lockIsFree(), true)
   })
 
   test('an empty MIGRATE_LOCK_TIMEOUT_MS gives the 5s default on the connection', async (t) => {
@@ -165,10 +214,19 @@ if (testUrl) {
     const holder = await holdBusy(t)
     const dir = folder(t, ['alter table busy add column x int;'])
     const logs: string[] = []
-    // Released while the run pauses between tries (the first try ends at ~200ms, the pause lasts 600ms).
-    setTimeout(() => void holder.query('rollback'), 500)
-    await runMigrations(scratchUrl, { migrationsFolder: dir, lockTimeoutMs: 200, attempts: 3, retryPauseMs: 600, log: (m) => logs.push(m) })
-    assert.equal(logs.filter((m) => m.includes('trying again')).length, 1, logs.join('\n'))
+    // The lock is released the moment the run reports its first failed try, i.e. while it pauses
+    // holding nothing. Later tries, if the release is slow, simply time out again and retry.
+    await runMigrations(scratchUrl, {
+      migrationsFolder: dir,
+      lockTimeoutMs: 200,
+      attempts: 5,
+      retryPauseMs: 300,
+      log: (m) => {
+        logs.push(m)
+        if (m.includes('trying again')) void holder.query('rollback')
+      },
+    })
+    assert.ok(logs.some((m) => m.includes('trying again')), logs.join('\n'))
     await admin(
       async (c) => assert.equal((await c.query(`select count(*)::int as n from information_schema.columns where table_name = 'busy' and column_name = 'x'`)).rows[0].n, 1),
       scratchUrl,
