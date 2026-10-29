@@ -6,9 +6,9 @@ import { Avatar } from '@/app/ui/avatar'
 import { EmptyState } from '@/app/ui/empty-state'
 import { FounderBadge } from '@/app/ui/founder-badge'
 import { BellIcon, BubbleIcon, FlagIcon, FollowIcon, HeartIcon, IdeaIcon, MentionIcon, QuoteIcon, RepostIcon, ShieldIcon } from '@/app/ui/icons'
+import { LocalTime } from '@/app/ui/local-time'
 import { MarkRead } from '@/app/ui/mark-read'
 import { PostsSkeleton } from '@/app/ui/post-item'
-import { timeAgo } from '@/app/ui/time'
 import { getNotifications, getViewer, type Notification } from '@/lib/api'
 import { ideaNews } from '@/lib/ideas'
 import { notificationTarget } from '@/lib/notification-target'
@@ -162,9 +162,7 @@ function NotificationRow({ notification: n, now }: { notification: Notification;
         )}
         <div className="min-w-0 flex-1">
           <p className="break-words text-sm leading-6">{text}</p>
-          <time dateTime={n.createdAt} className="mt-0.5 block text-xs text-muted">
-            {timeAgo(n.createdAt, now)}
-          </time>
+          <LocalTime at={n.createdAt} now={now} className="mt-0.5 block text-xs text-muted" />
         </div>
         {n.read ? null : (
           <span className="notification-dot">

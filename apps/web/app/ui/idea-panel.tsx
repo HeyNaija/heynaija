@@ -4,8 +4,7 @@ import { OPEN_STATUSES, STATUS_LABELS } from '@/lib/ideas'
 import { IdeaKindChip, IdeaStatusChip } from './idea-chips'
 import { IdeaModeration } from './idea-moderation'
 import { IdeaVote } from './idea-vote'
-
-const day = (at: string) => new Date(at).toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' })
+import { LocalTime } from './local-time'
 
 /** Above an idea's post: its status and votes, what happened to it so far, and, for moderators, the controls. */
 export function IdeaPanel({ idea, member }: { idea: IdeaDetail; member: boolean }) {
@@ -35,7 +34,7 @@ export function IdeaPanel({ idea, member }: { idea: IdeaDetail; member: boolean 
         {idea.timeline.map((step, i) => (
           <li key={`${step.at}-${i}`}>
             <span className="font-semibold text-ink">{i === 0 ? (idea.kind === 'idea' ? 'Suggested' : 'Reported') : STATUS_LABELS[step.status]}</span>
-            <span> · {day(step.at)}</span>
+            <span> · <LocalTime at={step.at} as="date" /></span>
             {i > 0 && step.reason ? <span>: {step.reason}</span> : null}
           </li>
         ))}
