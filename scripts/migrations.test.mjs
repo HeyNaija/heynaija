@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -222,4 +222,82 @@ test('only the serial TYPE is volatile; generated and inline UNIQUE columns are 
     'ALTER TABLE "p" ADD COLUMN x int PRIMARY KEY;',
   ])
     assert.equal(risks(sql).length, 1, sql)
+})
+
+test('dropping a unique index an earlier migration made is flagged; a plain one is not', (t) => {
+  const made = {
+    '0000_a': 'CREATE TABLE "s" ("e" text, "m" uuid);--> statement-breakpoint\nCREATE UNIQUE INDEX "s_e_idx" ON "s" USING btree ("e");--> statement-breakpoint\nCREATE INDEX "s_m_idx" ON "s" ("m");',
+  }
+  const [why, ...more] = check(folder(t, { ...made, '0001_b': 'DROP INDEX "s_e_idx";' }, [1, 2]), 0)
+  assert.match(why, /0001_b\.sql: drops the unique index s_e_idx/)
+  assert.deepEqual(more, [])
+  assert.deepEqual(check(folder(t, { ...made, '0001_b': 'DROP INDEX "s_m_idx";' }, [1, 2]), 0), [])
+  assert.deepEqual(check(folder(t, { ...made, '0001_b': '-- allow-breaking: nothing upserts on it\nDROP INDEX "s_e_idx";' }, [1, 2]), 0), [])
+  // Once dropped, a later migration dropping the same name again (IF EXISTS) has nothing left to break.
+  assert.deepEqual(check(folder(t, { ...made, '0001_b': '-- allow-breaking: x\nDROP INDEX "s_e_idx";', '0002_c': 'DROP INDEX IF EXISTS "s_e_idx";' }, [1, 2, 3]), 0), [])
+
+  const unique = new Set(['push_subscriptions_endpoint_idx', 'identity_verifications_person_idx'])
+  for (const sql of [
+    'DROP INDEX "push_subscriptions_endpoint_idx";',
+    'DROP INDEX IF EXISTS "restricted"."identity_verifications_person_idx" CASCADE;',
+    'DROP INDEX "other_idx", "push_subscriptions_endpoint_idx";',
+  ])
+    assert.equal(risks(sql, unique).length, 1, sql)
+})
+
+test('a new migration dropping one of the repository’s unique indexes is flagged', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'migrations-repo-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  cpSync(fileURLToPath(new URL('../packages/db/drizzle', import.meta.url)), dir, { recursive: true })
+  const journalFile = join(dir, 'meta', '_journal.json')
+  const journal = JSON.parse(readFileSync(journalFile, 'utf8'))
+  const last = journal.entries.at(-1)
+  const tag = `${String(journal.entries.length).padStart(4, '0')}_drop_endpoint`
+  journal.entries.push({ ...last, idx: journal.entries.length, when: last.when + 1, tag })
+  writeFileSync(journalFile, JSON.stringify(journal))
+  // The push upsert's ON CONFLICT (endpoint) relies on it.
+  writeFileSync(join(dir, `${tag}.sql`), 'DROP INDEX "push_subscriptions_endpoint_idx";')
+  assert.match(check(dir).join('\n'), /drops the unique index push_subscriptions_endpoint_idx/)
+})
+
+test('removing what fills a column on insert is flagged; changing it is not', () => {
+  for (const sql of [
+    'ALTER TABLE "members" ALTER COLUMN "bio" DROP DEFAULT;',
+    'ALTER TABLE "p" ALTER COLUMN "id" DROP IDENTITY IF EXISTS;',
+    'ALTER TABLE "p" ALTER COLUMN "total" DROP EXPRESSION;',
+  ])
+    assert.equal(risks(sql).length, 1, sql)
+  assert.deepEqual(risks(`ALTER TABLE "members" ALTER COLUMN "bio" SET DEFAULT 'x';`), [])
+})
+
+test('statements that cannot run in the migration transaction are refused, waiver or not', () => {
+  for (const sql of [
+    'DROP INDEX CONCURRENTLY "posts_reply_parent_idx";',
+    'REINDEX INDEX CONCURRENTLY "posts_pkey";',
+    'VACUUM ANALYZE "posts";',
+    'ALTER TABLE "p" DETACH PARTITION "p_2026" CONCURRENTLY;',
+    'CREATE INDEX CONCURRENTLY "i" ON "posts" ("id");',
+    'CREATE TABLE "n" ("id" uuid);\nCREATE INDEX CONCURRENTLY "i" ON "n" ("id");',
+  ]) {
+    const found = risks(sql)
+    assert.equal(found.length, 1, sql)
+    assert.match(found[0], /cannot run/, sql)
+  }
+  assert.equal(risks('-- allow-breaking: we know\nCREATE INDEX CONCURRENTLY "i" ON "posts" ("id");').length, 1)
+  assert.equal(risks('DROP INDEX CONCURRENTLY "i"; -- allow-breaking: we know').length, 1)
+  assert.deepEqual(risks('REFRESH MATERIALIZED VIEW CONCURRENTLY "v";'), [])
+})
+
+test('quoted and $-bearing names start no string, comment or dollar quote', () => {
+  for (const sql of [
+    'ALTER TABLE "a$x$b" ADD COLUMN "c" text;\nDROP TABLE "posts";',
+    'ALTER TABLE "it\'s" ADD COLUMN "c" text;\nDROP TABLE "posts";\nCOMMENT ON TABLE "a" IS \'x\';',
+    'ALTER TABLE "a--b" ADD COLUMN "c" text; DROP TABLE "posts";',
+    'ALTER TABLE "a/*b" ADD COLUMN "c" text; DROP TABLE "posts";',
+    'ALTER TABLE foo$x$ ADD COLUMN c text;\nDROP TABLE posts;',
+    'ALTER TABLE "say ""hi""" ADD COLUMN c text;\nDROP TABLE posts;',
+  ])
+    assert.deepEqual(risks(sql).map((why) => why.split(':')[0]), ['removes something the previous release may still use'], sql)
+  assert.equal(risks('ALTER TABLE "a;b" DROP COLUMN "x";').length, 1)
+  assert.deepEqual(risks('CREATE TABLE "a;b" ("id" uuid);\nCREATE INDEX "i" ON "a;b" ("id");'), [])
 })
