@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import pg from 'pg'
 import { ageSignIn } from '../lib/db.ts'
 import { assertLocal, env, MARK } from '../lib/env.ts'
-import { codeFor, messagesFor } from '../lib/mailpit.ts'
+import { codeFor, emailWhere, messagesFor } from '../lib/mailpit.ts'
 import { newMember, signIn } from '../lib/members.ts'
 
 async function identity(id: string) {
@@ -67,8 +67,8 @@ test('the old email stays active until the new email code is confirmed @mobile',
     expect(updated.verifiable_addresses.find((address) => address.value === next)?.verified).toBe(true)
     await expect.poll(async () => (await messagesFor(member.email, asked)).map((m) => m.Subject), { timeout: 30_000 })
       .toContain('Your HeyNaija email address was changed')
-    const notice = (await messagesFor(member.email, asked)).find((m) => m.Subject === 'Your HeyNaija email address was changed')!
-    expect(notice.Snippet).toContain(`@${member.handle} was changed from ${member.email} to ${next}`)
+    const notice = await emailWhere(member.email, asked, /^Your HeyNaija email address was changed$/)
+    expect(notice.text).toContain(`@${member.handle} was changed from ${member.email} to ${next}`)
     await signOut(member.page)
     await signIn(member.page, next)
     expect((await (await member.context.request.get('/api/v1/me')).json()).id).toBe(original.id)
