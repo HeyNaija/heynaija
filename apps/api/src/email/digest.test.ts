@@ -71,6 +71,13 @@ test('moderator decisions are stated plainly, with no post text and no reason', 
   assert.ok(!single.text.includes('buy my coin'))
 })
 
+test('with one notification the preview adds to the subject instead of repeating it', () => {
+  const single = render([item({ kind: 'follow', postId: null })])
+  const preheader = /mso-hide:all">([^<]*?)(?:&nbsp;&zwnj;)+<\/div>/.exec(single.html)?.[1]
+  assert.equal(preheader, 'Here is what happened, @ada.')
+  assert.notEqual(preheader, single.subject)
+})
+
 test('the footer says why, how to choose and how to stop, in both parts', () => {
   const mail = render([item({ kind: 'follow', postId: null })])
   for (const part of [mail.text, mail.html]) {
