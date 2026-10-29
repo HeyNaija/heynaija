@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { type ReactNode, Suspense } from 'react'
 import { Avatar } from '@/app/ui/avatar'
 import { EmptyState } from '@/app/ui/empty-state'
+import { FounderBadge } from '@/app/ui/founder-badge'
 import { BellIcon, BubbleIcon, FlagIcon, FollowIcon, HeartIcon, IdeaIcon, MentionIcon, QuoteIcon, RepostIcon, ShieldIcon } from '@/app/ui/icons'
 import { MarkRead } from '@/app/ui/mark-read'
 import { PostsSkeleton } from '@/app/ui/post-item'
@@ -81,7 +82,12 @@ const REASONS: Record<string, string> = {
 }
 
 function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
-  const who = <strong className="font-semibold">{n.actor ? n.actor.displayName ?? `@${n.actor.handle}` : 'A member'}</strong>
+  const who = (
+    <>
+      <strong className="font-semibold">{n.actor ? n.actor.displayName ?? `@${n.actor.handle}` : 'A member'}</strong>
+      {n.actor?.founder ? <> <FounderBadge plain /></> : null}
+    </>
+  )
   switch (n.kind) {
     case 'reply':
       return { icon: <BubbleIcon size={18} />, text: <>{who} replied to your post</> }

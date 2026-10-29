@@ -13,7 +13,7 @@ preparation; it does not build legal registration or activate governance.
 | `restricted.governance_memberships` | Voluntary online participation only. Existing `resigned` status means online deactivation, not legal resignation. No live opt-in/out endpoint exists. |
 | `restricted.identity_verifications` | Private provider verification history; reviewed current result, stable pseudonymous key and separate age facts required. NINAuth implementation remains absent. |
 | `restricted.age_assurances` | Separate age bands and assurance; declaration supports current beta account policy, not voting. Unknown age never adult. |
-| `public.profile_badges` | Optional public tick only, hidden while verification disabled. No private identity joins in public profile queries. |
+| `public.profile_badges` | Optional public tick, hidden while verification disabled; also the Founder badge, granted by hand and unrelated to identity, which governance writes never touch. No private identity joins in public profile queries. |
 | `LegalMembershipFacts` in API rules | Preparatory facts for a future lawful association register. No admission database or service exists. Omitted/non-admitted/suspended/ended/future admission fails voting eligibility. |
 | `COUNCIL_PROPOSAL` in web metadata | Three trustees, three years, common cycle; two representatives, one year; founding first election at term expiry; quorums two/three. Descriptive proposal only, no scheduler or appointments. |
 

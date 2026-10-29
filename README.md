@@ -160,6 +160,19 @@ pnpm mod:grant ada --community lagos    # only reports about posts in that commu
 `pnpm mod:revoke` takes the same arguments. Moderators get a Moderation link in the
 app.
 
+## Founder badge
+
+The people who founded HeyNaija carry a **Founder** badge for good, shown next
+to their name on their profile, their posts and replies, quoted posts,
+notifications and search results. It links to the idea behind HeyNaija
+(`/about#about-origin`) and is not an identity check. Like moderator roles, it
+is given only from the command line, to a member who has signed in at least once:
+
+```bash
+pnpm founder:grant ada
+pnpm founder:revoke ada
+```
+
 Images that moderators take down are kept privately, not deleted. Before uploads
 open beyond invited testers, follow
 [docs/safety/abuse-material-scanning.md](docs/safety/abuse-material-scanning.md).

@@ -150,6 +150,25 @@ test('revoking a verification removes the badge at once and is recorded', async 
   assert.equal(await verify(bayo, 'ada-on-bayo'), 'verified')
 })
 
+test('hiding, replacing or revoking the green tick leaves a Founder badge alone', async () => {
+  const profiles = new MembersService(db, { NIN_VERIFICATION_ENABLED: true })
+  await profiles.setFounder('ada', true)
+  await verify(ada, 'ada-code')
+  await approved.reviewVerification(ada, reviewer)
+  await approved.setBadgeVisible(ada, true)
+  assert.equal(await approved.setBadgeVisible(ada, false), false)
+  await approved.setBadgeVisible(ada, true)
+  await verify(ada, 'ada-again')
+  await approved.reviewVerification(ada, reviewer)
+  await approved.setBadgeVisible(ada, true)
+  await approved.revokeVerification(ada, reviewer, 'fraud')
+
+  const profile = (await profiles.profile(null, 'ada'))!
+  assert.equal(profile.identityBadge, false)
+  assert.equal(profile.founderBadge, true)
+  assert.deepEqual((await db.select({ kind: profileBadges.kind }).from(profileBadges)).map((b) => b.kind), ['founder'])
+})
+
 test('an expired verification shows as expired and hides the badge without a sweep', async () => {
   await verify(ada, 'ada-code')
   await approved.reviewVerification(ada, reviewer)

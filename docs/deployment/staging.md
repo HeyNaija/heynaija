@@ -434,6 +434,13 @@ After signing up, make yourself a site moderator:
 docker compose exec api node dist/cli/moderator.js grant <your-handle>
 ```
 
+If you are one of the founding team, give yourself the Founder badge too
+(`revoke` takes it away):
+
+```bash
+docker compose exec api node dist/cli/founder.js grant <your-handle>
+```
+
 ## 6. Backups
 
 On **your own computer**, make the key that can read the backups. Keep the file in

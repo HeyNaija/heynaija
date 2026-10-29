@@ -6,7 +6,7 @@ import { MARK, root } from './env.ts'
 const cli = (name: string) => `${root}apps/api/dist/cli/${name}.js`
 
 export function apiCliBuilt() {
-  return existsSync(cli('create-invite')) && existsSync(cli('moderator'))
+  return existsSync(cli('create-invite')) && existsSync(cli('moderator')) && existsSync(cli('founder'))
 }
 
 function run(name: string, args: string[]) {
@@ -29,4 +29,9 @@ export function createInvite(uses = 1): string {
 /** Makes `handle` a site-wide moderator, or with `community` (a slug) a moderator of that community. */
 export function grantModerator(handle: string, community?: string) {
   run('moderator', ['grant', handle, ...(community ? ['--community', community] : [])])
+}
+
+/** Gives `handle` the Founder badge, or with `on` false takes it away. */
+export function setFounder(handle: string, on = true) {
+  run('founder', [on ? 'grant' : 'revoke', handle])
 }

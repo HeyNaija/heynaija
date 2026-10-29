@@ -50,6 +50,10 @@ export type RevocationReason = 'member_withdrew' | 'provider_revoked' | 'fraud' 
 
 const LIVE = ['pending', 'verified'] as const
 
+// The member's green tick row. Their other badges (Founder) are not this service's.
+const identityTick = (memberId: string) =>
+  and(eq(profileBadges.memberId, memberId), eq(profileBadges.kind, 'nin_identity_verified'))
+
 /**
  * Reads and writes the restricted age, identity and governance tables. Only
  * statusFor() and recordAgeDeclaration() are reachable from requests today;
@@ -117,7 +121,7 @@ export class GovernanceService {
       this.db
         .select({ expiresAt: profileBadges.expiresAt })
         .from(profileBadges)
-        .where(and(eq(profileBadges.memberId, memberId), eq(profileBadges.kind, 'nin_identity_verified'))),
+        .where(identityTick(memberId)),
     ])
     const facts = verification ?? null
     return {
@@ -167,7 +171,7 @@ export class GovernanceService {
         .set({ status: 'expired', outcome: 'superseded' })
         .where(and(eq(identityVerifications.memberId, memberId), inArray(identityVerifications.status, LIVE)))
         .returning({ id: identityVerifications.id })
-      if (superseded.length) await tx.delete(profileBadges).where(eq(profileBadges.memberId, memberId))
+      if (superseded.length) await tx.delete(profileBadges).where(identityTick(memberId))
 
       const row = {
         memberId,
@@ -234,7 +238,7 @@ export class GovernanceService {
         .where(and(eq(identityVerifications.memberId, memberId), inArray(identityVerifications.status, LIVE)))
         .returning({ id: identityVerifications.id })
       if (!revoked.length) return false
-      await tx.delete(profileBadges).where(eq(profileBadges.memberId, memberId))
+      await tx.delete(profileBadges).where(identityTick(memberId))
       await tx.insert(governanceAuditLog).values({ subjectId: memberId, actorId, event: 'verification_revoked', reason, createdAt: now })
       const withdrawn = await tx
         .update(ageAssurances)
@@ -261,7 +265,7 @@ export class GovernanceService {
     if (!visible) {
       const hidden = await this.db
         .delete(profileBadges)
-        .where(eq(profileBadges.memberId, memberId))
+        .where(identityTick(memberId))
         .returning({ memberId: profileBadges.memberId })
       if (hidden.length) {
         await this.db.insert(governanceAuditLog).values({ subjectId: memberId, actorId: memberId, event: 'badge_hidden', createdAt: now })
