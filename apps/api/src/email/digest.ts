@@ -178,6 +178,7 @@ export function renderDigest(input: {
     button('Open your notifications', notificationsUrl),
   ].join('\n')
   const footer = `${escapeHtml(why)} ${link('Choose what we email you', settingsUrl)}, or ${link('stop these emails with one click', unsubscribeUrl)}. You will still see your notifications in HeyNaija.`
-  const html = emailFrame({ title: subject, preheader: lines[0] ? lines[0].headline : subject, body, footer })
+  const html = emailFrame({ title: subject, // The subject already says it when there is one notification; the preview must add to it, and never quotes a post (ADR 0009).
+    preheader: total === 1 ? `Here is what happened, @${handle}.` : lines[0] ? lines[0].headline : subject, body, footer })
   return { subject, text, html }
 }
