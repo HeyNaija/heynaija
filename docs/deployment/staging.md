@@ -402,4 +402,7 @@ The server keeps the last five releases' images, so a rollback to one of them
 needs no registry. For an older one, `deploy.sh` pulls from GitHub's registry,
 which needs `docker login ghcr.io` with a token that can read packages. Database
 migrations only ever add, so older code keeps working; a migration that removes or
-renames something needs its own plan.
+renames something needs its own plan. CI enforces this for every migration after
+0027: one that is not additive fails `pnpm migrations:check` unless it carries a
+`-- allow-breaking: <reason>` comment saying why. The migrate step of a deploy
+fails, rather than waiting forever, if a migration cannot get its table lock.
