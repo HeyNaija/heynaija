@@ -219,6 +219,8 @@ test("the author's own replies come first, then everyone else's newest first, an
     await options.click()
     await expect(page.getByText(`@${handle}'s own replies come first, then everyone else's, newest first.`)).toBeVisible()
     await expect(page.locator(`#post-${replies[4]}`).getByText('Author', { exact: true })).toBeVisible()
+    // The post in focus carries it too.
+    await expect(page.locator(`#post-${root!.id}`).getByText('Author', { exact: true })).toBeVisible()
     await expect(page.locator(`#post-${replies[3]}`).getByText('Author', { exact: true })).toHaveCount(0)
     await expect(page.getByRole('link', { name: 'Newest first', exact: true })).toHaveAttribute('aria-current', 'true')
     expect(await order()).toEqual([replies[4], replies[2], replies[3], replies[1]])
@@ -297,5 +299,112 @@ test('replies open in place five levels deep; below that a post continues as its
   } finally {
     await db.end()
     await context.close()
+  }
+})
+
+/** A post and a chain of replies under it, one level each, all by `handle`. */
+async function seedChain(handle: string, levels: number) {
+  const db = pool()
+  try {
+    const { rows: [member] } = await db.query<{ id: string }>('select id from members where handle = $1', [handle])
+    const ids: string[] = []
+    for (let level = 0; level <= levels; level++) {
+      const { rows: [post] } = await db.query<{ id: string }>(
+        `insert into posts (author_id, text, reply_parent_id, root_id, created_at)
+         values ($1, $2, $3, $4, now() - interval '1 hour' + make_interval(secs => $5)) returning id`,
+        [member!.id, `Chain level ${level} post`, ids[level - 1] ?? null, level ? ids[0] : null, level],
+      )
+      ids.push(post!.id)
+    }
+    return ids
+  } finally {
+    await db.end()
+  }
+}
+
+test('the conversation above a reply is open and joined by a line, and the reply bar sits under the focused post @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'lineage')
+  try {
+    const ids = await seedChain(handle, 4)
+    await page.goto(`/p/${ids[3]}`)
+    // Older posts are on the page, not behind a disclosure.
+    await expect(page.locator('details.thread-context')).toHaveCount(0)
+    for (const id of [ids[0], ids[1], ids[2]]) await expect(page.locator(`#post-${id}`)).toBeVisible()
+    await expect(page.getByRole('list', { name: 'Earlier in this conversation' }).locator('> li')).toHaveCount(3)
+    // The author is named on every post of theirs: ancestors, the focused post and its reply.
+    for (const id of [ids[0], ids[1], ids[2], ids[3], ids[4]]) {
+      await expect(page.locator(`#post-${id}`).getByText('Author', { exact: true })).toBeVisible()
+    }
+    // The line is decoration: a pseudo-element, so nothing for assistive technology to read.
+    const line = await page.locator('.thread-chain > li').first().evaluate((node) => {
+      const style = getComputedStyle(node, '::before')
+      return { content: style.content, width: style.width }
+    })
+    expect(line.content).not.toBe('none')
+    expect(line.width).toBe('2px')
+
+    // Chain, focused post, reply bar, replies: in that order down the page.
+    const top = (selector: string) => page.locator(selector).first().evaluate((node) => node.getBoundingClientRect().top)
+    const order = [await top(`#post-${ids[2]}`), await top(`#post-${ids[3]}`), await top('form#compose'), await top(`#post-${ids[4]}`)]
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+
+    // The bar is one line, with its Reply button in view and waiting for words.
+    const reply = page.locator('form#compose').getByRole('button', { name: 'Reply', exact: true })
+    await expect(page.locator('form#compose').getByRole('textbox', { name: 'Your reply' })).toHaveAttribute('placeholder', 'Post your reply')
+    await expect(reply).toBeVisible()
+    await expect(reply).toBeDisabled()
+    await expect(page.locator('form#compose .composer-privacy')).toBeHidden()
+    await (await replyBox(page, ids[3])).fill('Typed into the bar')
+    await expect(reply).toBeEnabled()
+
+    // No sideways scroll, even at the narrowest width.
+    await page.setViewportSize({ width: 320, height: 740 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  } finally {
+    await context.close()
+  }
+})
+
+test('on a phone the reply bar stays above the bottom tabs while the replies scroll @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'sticky')
+  try {
+    const fixture = await seedThread(handle)
+    await page.setViewportSize({ width: 390, height: 740 })
+    await page.goto(`/p/${fixture.root}`)
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2))
+    const bar = page.locator('form#compose')
+    await expect(bar).toBeInViewport()
+    const [form, nav] = await Promise.all([
+      bar.evaluate((node) => node.getBoundingClientRect().bottom),
+      page.locator('.square-bottom-nav').evaluate((node) => node.getBoundingClientRect().top),
+    ])
+    expect(form).toBeLessThanOrEqual(nav + 1)
+  } finally {
+    await context.close()
+  }
+})
+
+test('a signed-out visitor is asked to sign in to reply, right under the post', async ({ browser }) => {
+  const author = await newMember(browser, 'ask')
+  const ids = await seedChain(author.handle, 2)
+  await author.context.close()
+  const visitor = await browser.newContext({ baseURL: test.info().project.use.baseURL })
+  const page = await visitor.newPage()
+  try {
+    await page.goto(`/p/${ids[1]}`)
+    const prompt = page.getByRole('link', { name: 'Sign in to reply', exact: true })
+    await expect(prompt).toBeVisible()
+    await expect(prompt).toHaveAttribute('href', '/login')
+    await expect(page.locator('form#compose')).toHaveCount(0)
+    // Not a notice at the foot of the page any more.
+    await expect(page.locator('.notice')).toHaveCount(0)
+    const top = (selector: string) => page.locator(selector).first().evaluate((node) => node.getBoundingClientRect().top)
+    const focused = await top(`#post-${ids[1]}`)
+    const asked = await prompt.evaluate((node) => node.getBoundingClientRect().top)
+    const reply = await top(`#post-${ids[2]}`)
+    expect(focused).toBeLessThan(asked)
+    expect(asked).toBeLessThan(reply)
+  } finally {
+    await visitor.close()
   }
 })
