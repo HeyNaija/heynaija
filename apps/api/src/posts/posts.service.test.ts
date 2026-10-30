@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, mock, test } from 'node:test'
-import { blocks, communities, communityMemberships, follows, likes, media, members, mutes, notifications, postMentions, posts, releasedHandles } from '@heynaija/db'
+import { setTimeout as sleep } from 'node:timers/promises'
+import { blocks, communities, communityMemberships, follows, likes, media, members, mutes, notifications, pollVotes, postMentions, postPolls, posts, releasedHandles } from '@heynaija/db'
 import { eq, sql } from 'drizzle-orm'
 import { MembersService } from '../members/members.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { findMentions } from './mentions.js'
-import { InvalidCursorError, ParentNotFoundError, PostsService, postText, type ProfileFilter, type ReplyPage, TRENDING_TTL_MS } from './posts.service.js'
+import { InvalidCursorError, ParentNotFoundError, pollInput, PollAlreadyVotedError, PollClosedError, PollNotFoundError, PollOptionsError, PostsService, postText, ReplyNotAllowedError, type ProfileFilter, type ReplyPage, TRENDING_TTL_MS } from './posts.service.js'
 import { decodeReplyCursor, encodeReplyCursor, replyPageQuery } from './reply-cursor.js'
 
 const service = new PostsService(db)
@@ -26,6 +27,18 @@ beforeEach(async () => {
 after(() => pool.end())
 
 const texts = async () => (await service.feed(null, 100)).posts.map((p) => p.text)
+
+test('poll input defaults to one choice and seven days, with two to ten distinct options', () => {
+  assert.deepEqual(pollInput.parse({ options: ['Yes', 'No'] }), {
+    multiple: false,
+    options: ['Yes', 'No'],
+    expiresIn: '7_days',
+  })
+  assert.equal(pollInput.safeParse({ options: ['Only one'] }).success, false)
+  assert.equal(pollInput.safeParse({ options: Array.from({ length: 11 }, (_, index) => `Option ${index}`) }).success, false)
+  assert.equal(pollInput.safeParse({ options: ['Same', ' same '] }).success, false)
+  assert.equal(pollInput.safeParse({ options: ['Yes', 'No'], expiresIn: 'never' }).success, true)
+})
 
 test('a post appears in the feed with its author handle', async () => {
   const { id } = await service.create(ada, 'hello')
@@ -111,6 +124,140 @@ test('a reply joins its thread and stays out of the main feed', async () => {
   assert.equal(row(reply.id).rootId, root.id)
   assert.equal(row(nested.id).replyParentId, reply.id)
   assert.equal(row(nested.id).rootId, root.id)
+})
+
+test('root reply controls apply to direct and nested replies, with mentions included in the audience', async () => {
+  const root = await service.create(ada, 'A question for @bayo', { replyAudience: 'mentioned' })
+  assert.equal((await service.post(bayo, root.id))!.viewerCanReply, true)
+  assert.equal((await service.post(chi, root.id))!.viewerCanReply, false)
+  assert.equal((await service.post(null, root.id))!.viewerCanReply, false)
+
+  const invited = await service.create(bayo, 'My answer', { replyTo: root.id })
+  await assert.rejects(service.create(chi, 'Not invited', { replyTo: root.id }), ReplyNotAllowedError)
+  await assert.rejects(service.create(chi, 'Still not invited', { replyTo: invited.id }), ReplyNotAllowedError)
+  await service.create(ada, 'The author may continue the branch', { replyTo: invited.id })
+
+  await db.insert(follows).values({ followerId: ada, followeeId: chi })
+  assert.equal(await service.setReplyAudience(ada, root.id, 'following'), true)
+  assert.equal((await service.post(chi, invited.id))!.replyAudience, 'following')
+  assert.equal((await service.post(chi, invited.id))!.viewerCanReply, true)
+  await service.create(chi, 'Now followed', { replyTo: invited.id })
+  assert.equal(await service.setReplyAudience(bayo, root.id, 'everyone'), false)
+})
+
+test('polls support single and multiple choice, immutable public ballots and optional expiry', async () => {
+  const single = await service.create(ada, 'Jollof or fried rice?', {
+    poll: { multiple: false, options: ['Jollof', 'Fried rice'], expiresIn: 'never' },
+  })
+  const first = (await service.post(bayo, single.id))!.poll!
+  assert.equal(first.multiple, false)
+  assert.equal(first.expiresAt, null)
+  assert.equal(first.totalVotes, 0)
+  assert.deepEqual(first.options.map((option) => option.text), ['Jollof', 'Fried rice'])
+
+  await assert.rejects(service.votePoll(bayo, single.id, first.options.map((option) => option.id)), PollOptionsError)
+  await service.votePoll(bayo, single.id, [first.options[0]!.id])
+  await assert.rejects(service.votePoll(bayo, single.id, [first.options[1]!.id]), PollAlreadyVotedError)
+  const voted = (await service.post(bayo, single.id))!.poll!
+  assert.equal(voted.viewerVoted, true)
+  assert.equal(voted.totalVotes, 1)
+  assert.equal(voted.options[0]!.viewerVoted, true)
+
+  const multiple = await service.create(ada, 'Pick your soups', {
+    poll: { multiple: true, options: ['Egusi', 'Ogbono', 'Afang'], expiresIn: '7_days' },
+  })
+  const choices = (await service.post(chi, multiple.id))!.poll!.options
+  await service.votePoll(chi, multiple.id, [choices[0]!.id, choices[2]!.id])
+  const ballots = (await service.pollVoters(null, multiple.id, 10))!
+  assert.deepEqual(ballots.voters.map((vote) => [vote.member.handle, vote.optionIds]), [
+    ['chi', [choices[0]!.id, choices[2]!.id]],
+  ])
+  assert.equal((await db.select().from(pollVotes)).length, 3)
+
+  await db.update(postPolls).set({
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    expiresAt: new Date('2026-01-02T00:00:00Z'),
+  }).where(eq(postPolls.postId, multiple.id))
+  await assert.rejects(service.votePoll(bayo, multiple.id, [choices[1]!.id]), PollClosedError)
+  assert.equal((await service.post(bayo, multiple.id))!.poll!.closed, true)
+
+  const hidden = await service.create(ada, 'A muted poll', {
+    poll: { multiple: false, options: ['One', 'Two'], expiresIn: '7_days' },
+  })
+  await db.insert(mutes).values({ muterId: bayo, mutedId: ada })
+  const hiddenOption = (await service.post(chi, hidden.id))!.poll!.options[0]!.id
+  await assert.rejects(service.votePoll(bayo, hidden.id, [hiddenOption]), PollNotFoundError)
+})
+
+test('poll counts follow suspensions and removed ballots, and voters page newest first', async () => {
+  const { id } = await service.create(ada, 'Best city?', {
+    poll: { multiple: true, options: ['Lagos', 'Abuja', 'Enugu'], expiresIn: 'never' },
+  })
+  const [lagos, , enugu] = (await service.post(null, id))!.poll!.options
+  await service.votePoll(bayo, id, [enugu!.id, lagos!.id])
+  await service.votePoll(chi, id, [lagos!.id])
+  // Voters, then each option's votes.
+  const counts = async () => {
+    const poll = (await service.post(ada, id))!.poll!
+    return [poll.totalVotes, ...poll.options.map((option) => option.voteCount)]
+  }
+  assert.deepEqual(await counts(), [2, 2, 0, 1])
+
+  await db.update(members).set({ active: false }).where(eq(members.id, bayo))
+  assert.deepEqual(await counts(), [1, 1, 0, 0])
+  assert.deepEqual((await service.pollVoters(null, id, 10))!.voters.map((vote) => vote.member.handle), ['chi'])
+  await db.update(members).set({ active: true }).where(eq(members.id, bayo))
+  assert.deepEqual(await counts(), [2, 2, 0, 1])
+
+  // One ballot a page; each lists its choices in the poll's order, not the order picked.
+  const first = (await service.pollVoters(null, id, 1))!
+  assert.deepEqual(first.voters.map((vote) => vote.member.handle), ['chi'])
+  const second = (await service.pollVoters(null, id, 1, first.cursor!))!
+  assert.deepEqual(second.voters.map((vote) => [vote.member.handle, vote.optionIds]), [['bayo', [lagos!.id, enugu!.id]]])
+  assert.equal(second.cursor, null)
+
+  await db.delete(pollVotes).where(eq(pollVotes.memberId, chi))
+  assert.deepEqual(await counts(), [1, 1, 0, 1])
+})
+
+test('options the database takes for the same are refused as such', async () => {
+  // `pollInput` refuses these first; this is the database's own check behind it,
+  // which folds some letters differently ('İ' and 'i').
+  await assert.rejects(
+    service.create(ada, 'Which?', { poll: { multiple: false, options: ['Yes', 'yes'], expiresIn: 'never' } }),
+    PollOptionsError,
+  )
+  assert.deepEqual(await texts(), [])
+})
+
+test('voting and replying do not wait on writes that refer to the post author', async () => {
+  const { id } = await service.create(ada, 'Tea or coffee?', {
+    poll: { multiple: false, options: ['Tea', 'Coffee'], expiresIn: 'never' },
+  })
+  const option = (await service.post(bayo, id))!.poll!.options[1]!.id
+  // True when the work is still waiting after two seconds.
+  const waits = (work: Promise<unknown>) => Promise.race([work.then(() => false), sleep(2000).then(() => true)])
+  // Another transaction holds the lock a write naming ada takes, as her own like would.
+  const other = await pool.connect()
+  try {
+    await other.query('begin')
+    await other.query('select 1 from members where id = $1 for key share', [ada])
+    assert.equal(await waits(service.votePoll(bayo, id, [option])), false)
+    assert.equal(await waits(service.create(bayo, 'Coffee, always', { replyTo: id })), false)
+  } finally {
+    await other.query('rollback')
+    other.release()
+  }
+})
+
+test('a conversation whose first post is gone no longer limits its replies', async () => {
+  const root = await service.create(ada, 'Only for the invited', { replyAudience: 'mentioned' })
+  const reply = await service.create(ada, 'Adding to it', { replyTo: root.id })
+  await db.delete(posts).where(eq(posts.id, root.id))
+  const view = (await service.post(chi, reply.id))!
+  assert.equal(view.replyAudience, 'everyone')
+  assert.equal(view.viewerCanReply, true)
+  await service.create(chi, 'Joining in', { replyTo: reply.id })
 })
 
 test('you cannot reply to a post that is missing, deleted or by a suspended member', async () => {

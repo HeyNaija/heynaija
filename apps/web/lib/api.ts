@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 import { cache } from 'react'
 import { getApiAuthHeaders, hasSessionCredentials } from './auth/server'
 import type { NotificationPreferences } from './notification-preferences'
+import type { ReplyAudience } from './reply-audience'
 import type { ReplyOrder } from './thread-state'
 
 // Server-to-server address of the NestJS API. Browsers never use this; they go
@@ -65,6 +66,16 @@ export type PostHashtag = { start: number; length: number; tag: string }
 
 /** A web address in the text: where it is (UTF-16 code units) and where it leads. Always http or https. */
 export type PostLink = { start: number; length: number; url: string }
+export type { ReplyAudience }
+
+export type Poll = {
+  multiple: boolean
+  expiresAt: string | null
+  closed: boolean
+  totalVotes: number
+  viewerVoted: boolean
+  options: { id: string; text: string; position: number; voteCount: number; viewerVoted: boolean }[]
+}
 
 /** What the first web address in a post leads to, read by the server. */
 export type LinkPreview = {
@@ -98,6 +109,9 @@ export type Post = {
   linkPreview: LinkPreview | null
   createdAt: string
   replyParentId: string | null
+  replyAudience: ReplyAudience
+  viewerCanReply: boolean
+  poll: Poll | null
   likeCount: number
   replyCount: number
   repostCount: number
@@ -362,6 +376,19 @@ export const getThread = (id: string, order: ReplyOrder = 'newest') =>
 
 /** Hydrate one confirmed post without fetching its ancestors or replies. */
 export const getPost = (id: string) => getOrNull<Post>(`/v1/posts/${encodeURIComponent(id)}/post`)
+
+export type PollVoterPage = {
+  voters: {
+    member: { id: string; handle: string; displayName: string | null; avatar: string | null }
+    optionIds: string[]
+    createdAt: string
+  }[]
+  cursor: string | null
+}
+
+export const getPollVoters = (id: string, cursor?: string) => getOrNull<PollVoterPage>(
+  `/v1/posts/${encodeURIComponent(id)}/poll/votes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+)
 
 /** A branch is always an explicit, bounded page; it never fetches descendants. */
 export async function getReplies(id: string, cursor?: string, order: ReplyOrder = 'newest'): Promise<ReplyPage | null> {

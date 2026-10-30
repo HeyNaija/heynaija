@@ -177,6 +177,9 @@ test('on a very short window every link is still in reach through More', async (
     await page.setViewportSize({ width: 1280, height: 420 })
     await page.goto('/')
     const sidebar = page.locator('.square-sidebar')
+    // The links are drawn at once and replaced when the member is known (shell.tsx);
+    // a More menu opened before that goes away with the links it was drawn with.
+    await expect(sidebar.getByRole('link', { name: 'Home', exact: true })).toHaveAttribute('aria-current', 'page')
     const more = sidebar.getByLabel('More', { exact: true })
     await more.click()
     const links = sidebar.locator('.sidebar-more-panel').getByRole('link')

@@ -1,5 +1,5 @@
 {
-  "id": "5943ff8a-3b2a-4f6b-816d-103d47fc8704",
+  "id": "b8cfcaf5-6bd7-4bf9-8edf-10295efd994c",
   "prevId": "8855c738-bb45-4029-99f0-3c43176f0ce9",
   "version": "7",
   "dialect": "postgresql",
@@ -1720,38 +1720,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "members_handle_prefix_idx": {
-          "name": "members_handle_prefix_idx",
-          "columns": [
-            {
-              "expression": "handle collate \"C\"",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "active",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "members_name_prefix_idx": {
-          "name": "members_name_prefix_idx",
-          "columns": [
-            {
-              "expression": "lower(display_name) collate \"C\"",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "active and display_name is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -2442,6 +2410,272 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.poll_options": {
+      "name": "poll_options",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "post_id": {
+          "name": "post_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vote_count": {
+          "name": "vote_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "poll_options_post_position_idx": {
+          "name": "poll_options_post_position_idx",
+          "columns": [
+            {
+              "expression": "post_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "poll_options_post_text_idx": {
+          "name": "poll_options_post_text_idx",
+          "columns": [
+            {
+              "expression": "post_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"text\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "poll_options_post_id_post_polls_post_id_fk": {
+          "name": "poll_options_post_id_post_polls_post_id_fk",
+          "tableFrom": "poll_options",
+          "tableTo": "post_polls",
+          "columnsFrom": [
+            "post_id"
+          ],
+          "columnsTo": [
+            "post_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "poll_options_post_id_unique": {
+          "name": "poll_options_post_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "post_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "poll_options_position_check": {
+          "name": "poll_options_position_check",
+          "value": "\"poll_options\".\"position\" between 0 and 9"
+        },
+        "poll_options_text_check": {
+          "name": "poll_options_text_check",
+          "value": "char_length(\"poll_options\".\"text\") between 1 and 1280"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.poll_votes": {
+      "name": "poll_votes",
+      "schema": "",
+      "columns": {
+        "post_id": {
+          "name": "post_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "option_id": {
+          "name": "option_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "poll_votes_option_idx": {
+          "name": "poll_votes_option_idx",
+          "columns": [
+            {
+              "expression": "post_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "option_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "poll_votes_member_idx": {
+          "name": "poll_votes_member_idx",
+          "columns": [
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "poll_votes_ballot_idx": {
+          "name": "poll_votes_ballot_idx",
+          "columns": [
+            {
+              "expression": "post_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "poll_votes_member_id_members_id_fk": {
+          "name": "poll_votes_member_id_members_id_fk",
+          "tableFrom": "poll_votes",
+          "tableTo": "members",
+          "columnsFrom": [
+            "member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "poll_votes_post_id_option_id_poll_options_post_id_id_fk": {
+          "name": "poll_votes_post_id_option_id_poll_options_post_id_id_fk",
+          "tableFrom": "poll_votes",
+          "tableTo": "poll_options",
+          "columnsFrom": [
+            "post_id",
+            "option_id"
+          ],
+          "columnsTo": [
+            "post_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "poll_votes_post_id_member_id_option_id_pk": {
+          "name": "poll_votes_post_id_member_id_option_id_pk",
+          "columns": [
+            "post_id",
+            "member_id",
+            "option_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.post_hashtags": {
       "name": "post_hashtags",
       "schema": "",
@@ -2611,6 +2845,71 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.post_polls": {
+      "name": "post_polls",
+      "schema": "",
+      "columns": {
+        "post_id": {
+          "name": "post_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "multiple": {
+          "name": "multiple",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "voter_count": {
+          "name": "voter_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "post_polls_post_id_posts_id_fk": {
+          "name": "post_polls_post_id_posts_id_fk",
+          "tableFrom": "post_polls",
+          "tableTo": "posts",
+          "columnsFrom": [
+            "post_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "post_polls_expiry_check": {
+          "name": "post_polls_expiry_check",
+          "value": "\"post_polls\".\"expires_at\" is null or \"post_polls\".\"expires_at\" > \"post_polls\".\"created_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.posts": {
       "name": "posts",
       "schema": "",
@@ -2651,6 +2950,13 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "reply_audience": {
+          "name": "reply_audience",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'everyone'"
         },
         "link_url": {
           "name": "link_url",
@@ -2859,7 +3165,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "posts_reply_audience_check": {
+          "name": "posts_reply_audience_check",
+          "value": "reply_audience in ('everyone', 'following', 'mentioned')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.problem_details": {

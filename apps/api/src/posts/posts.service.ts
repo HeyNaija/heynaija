@@ -2,11 +2,17 @@ import {
   bookmarks,
   communities,
   type Db,
+  follows,
   likes,
   media,
   members,
+  pollOptions,
+  pollVotes,
+  postMentions,
+  postPolls,
   postHashtags,
   posts,
+  REPLY_AUDIENCES,
   reposts,
 } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
@@ -34,6 +40,10 @@ import { MENTIONS_NOTIFIED_MAX, mentionsOf, type PostMention, recordMentions } f
 import { decodeReplyCursor, encodeReplyCursor, type ReplyOrder } from './reply-cursor.js'
 
 export const POST_MAX_GRAPHEMES = 300
+export const POLL_OPTION_MAX_GRAPHEMES = 80
+export const POLL_OPTIONS_MAX = 10
+export const POLL_EXPIRIES = ['1_day', '3_days', '7_days', '30_days', 'never'] as const
+export type ReplyAudience = (typeof REPLY_AUDIENCES)[number]
 
 // Counted in graphemes so an emoji or an accented letter is one character, as
 // the person typing sees it. May be empty: a post can be just images.
@@ -55,6 +65,24 @@ export const postImagesInput = z
 
 export type PostImageInput = z.infer<typeof postImagesInput>[number]
 
+const pollOption = z.string().trim().min(1, 'poll options cannot be empty').refine(
+  (option) => option.length <= POLL_OPTION_MAX_GRAPHEMES * 16 && graphemes(option) <= POLL_OPTION_MAX_GRAPHEMES,
+  `poll options can have at most ${POLL_OPTION_MAX_GRAPHEMES} characters`,
+)
+
+export const pollInput = z
+  .object({
+    multiple: z.boolean().default(false),
+    options: z.array(pollOption).min(2, 'a poll needs at least two options').max(POLL_OPTIONS_MAX),
+    expiresIn: z.enum(POLL_EXPIRIES).default('7_days'),
+  })
+  .refine((poll) => new Set(poll.options.map((option) => option.toLocaleLowerCase())).size === poll.options.length, {
+    message: 'poll options must be different',
+    path: ['options'],
+  })
+
+export type PollInput = z.infer<typeof pollInput>
+
 /** A new post or reply as the API receives it: text, images, or both. */
 export const newPost = (slug: z.ZodType<string>) =>
   z
@@ -65,8 +93,12 @@ export const newPost = (slug: z.ZodType<string>) =>
       quote: z.uuid().optional(),
       community: slug.optional(),
       images: postImagesInput,
+      poll: pollInput.optional(),
+      replyAudience: z.enum(REPLY_AUDIENCES).default('everyone'),
     })
     .refine((p) => p.text.length > 0 || p.images.length > 0, { message: 'post is empty', path: ['text'] })
+    .refine((p) => !p.poll || p.text.length > 0, { message: 'a poll needs a question', path: ['text'] })
+    .refine((p) => !p.poll || !p.replyTo, { message: 'a poll cannot be added to a reply', path: ['poll'] })
 
 export type PostLink = FoundLink
 
@@ -78,6 +110,24 @@ export type PostImage = {
   height: number
   /** A GIF: the sizes are animated, and `still.webp` beside them is its first frame. */
   animated: boolean
+}
+
+export type PollView = {
+  multiple: boolean
+  expiresAt: Date | null
+  closed: boolean
+  totalVotes: number
+  viewerVoted: boolean
+  options: { id: string; text: string; position: number; voteCount: number; viewerVoted: boolean }[]
+}
+
+export type PollVoterPage = {
+  voters: {
+    member: { id: string; handle: string; displayName: string | null; avatar: string | null }
+    optionIds: string[]
+    createdAt: Date
+  }[]
+  cursor: string | null
 }
 
 type ImageRow = { id: string; alt: string; width: number; height: number; animated: boolean }
@@ -134,6 +184,11 @@ export type PostView = {
   linkPreview: LinkPreview | null
   createdAt: Date
   replyParentId: string | null
+  /** The root post's effective conversation boundary. */
+  replyAudience: ReplyAudience
+  /** False for signed-out readers and members outside that boundary. */
+  viewerCanReply: boolean
+  poll: PollView | null
   likeCount: number
   replyCount: number
   repostCount: number
@@ -241,6 +296,11 @@ export type Thread = {
 }
 
 export class ParentNotFoundError extends Error {}
+export class ReplyNotAllowedError extends Error {}
+export class PollNotFoundError extends Error {}
+export class PollClosedError extends Error {}
+export class PollAlreadyVotedError extends Error {}
+export class PollOptionsError extends Error {}
 export class CommunityNotFoundError extends Error {}
 export { InvalidCursorError }
 export class NotACommunityMemberError extends Error {}
@@ -262,6 +322,12 @@ const TRENDING_CANDIDATES = 50
 // on 1.5M reposts: by index is quicker at 200, by hash at 1,000 and far quicker
 // at 5,000.
 const HASHED_MEMBERS_FROM = 500
+
+const pollExpiresAt = (expiresIn: PollInput['expiresIn']): Date | null => {
+  if (expiresIn === 'never') return null
+  const days = Number(expiresIn.split('_')[0])
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000)
+}
 
 const topLevel = isNull(posts.replyParentId)
 
@@ -338,6 +404,77 @@ const toQuote = (row: QuoteRow | null): QuotedPost | null => {
   return { ...quote, images: toPostImages(images), createdAt: new Date(createdAt), authorAvatar: avatarPath(authorAvatarId) }
 }
 
+type PollRow = Omit<PollView, 'expiresAt'> & { expiresAt: string | null }
+
+/**
+ * One bounded JSON object per post; voters themselves are fetched on their
+ * paginated public page. The counts are kept by triggers (migration 0028), so a
+ * popular poll costs a feed no more than any other.
+ */
+const pollOf = (viewerId: string | null, postId: SQL) => sql<PollRow | null>`(
+  select json_build_object(
+    'multiple', pp.multiple,
+    'expiresAt', pp.expires_at,
+    'closed', pp.expires_at is not null and pp.expires_at <= now(),
+    'totalVotes', pp.voter_count,
+    'viewerVoted', ${viewerId ? sql`exists(select 1 from poll_votes pv where pv.post_id = pp.post_id and pv.member_id = ${viewerId})` : sql`false`},
+    'options', coalesce((
+      select json_agg(json_build_object(
+        'id', po.id,
+        'text', po.text,
+        'position', po.position,
+        'voteCount', po.vote_count,
+        'viewerVoted', ${viewerId ? sql`exists(select 1 from poll_votes pv where pv.post_id = pp.post_id and pv.option_id = po.id and pv.member_id = ${viewerId})` : sql`false`}
+      ) order by po.position)
+      from poll_options po where po.post_id = pp.post_id
+    ), '[]'::json)
+  ) from post_polls pp where pp.post_id = ${postId}
+)`
+
+const toPoll = (row: PollRow | null): PollView | null => row
+  ? { ...row, expiresAt: row.expiresAt ? new Date(row.expiresAt) : null }
+  : null
+
+/** A reply inherits the root post's setting; a deleted root no longer restricts its surviving conversation. */
+const replyAudienceOf = (postId: SQL, rootId: SQL) => sql<ReplyAudience>`coalesce((
+  select case when r.deleted_at is not null or r.removed_at is not null or not ra.active then 'everyone' else r.reply_audience end
+  from posts r join members ra on ra.id = r.author_id
+  where r.id = coalesce(${rootId}, ${postId})
+), 'everyone')`
+
+/**
+ * Whether the conversation's root lets the viewer reply: the one rule, used for
+ * the reply buttons and, under a lock, when a reply is written. Like
+ * `replyAudienceOf`, a root that is deleted, taken down, by an inactive member or
+ * gone altogether restricts no one, though a block with its author still does.
+ */
+const canReplyTo = (viewerId: string | null, postId: SQL, rootId: SQL) => viewerId
+  ? sql<boolean>`not exists(
+      select 1 from posts r join members ra on ra.id = r.author_id
+      where r.id = coalesce(${rootId}, ${postId})
+        and (
+          ${blockedEitherWay(viewerId, sql`r.author_id`)}
+          or (
+            r.deleted_at is null and r.removed_at is null and ra.active
+            and r.author_id <> ${viewerId}
+            and r.reply_audience <> 'everyone'
+            and not exists(select 1 from post_mentions pm where pm.post_id = r.id and pm.member_id = ${viewerId})
+            and not (r.reply_audience = 'following' and exists(
+              select 1 from follows f where f.follower_id = r.author_id and f.followee_id = ${viewerId}
+            ))
+          )
+        )
+    )`
+  : sql<boolean>`false`
+
+/**
+ * A poll is open to whoever could read its post (`post`): live, by an active
+ * member, with no block either way and not muted by the viewer. For queries
+ * joining post_polls to posts and the author in members.
+ */
+const pollReadableBy = (viewerId: string | null) =>
+  and(live, visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`))
+
 @Injectable()
 export class PostsService {
   constructor(@Inject(DB) private readonly db: Db) {}
@@ -376,6 +513,9 @@ export class PostsService {
         linkPreview: sql<LinkPreviewRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${linkPreviewOf(sql`"posts"."link_url"`)} end`,
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
+        replyAudience: replyAudienceOf(outerId, sql`"posts"."root_id"`),
+        viewerCanReply: canReplyTo(viewerId, outerId, sql`"posts"."root_id"`),
+        poll: sql<PollRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${pollOf(viewerId, outerId)} end`,
         // Kept on the row by triggers (see the posts schema): only active
         // members' likes and live replies count, as a reader would see them.
         likeCount: posts.likeCount,
@@ -414,7 +554,7 @@ export class PostsService {
       .orderBy(...(opts.order ?? []))
       .limit(opts.limit ?? 1000)
 
-    return rows.map(({ communitySlug, communityName, authorAvatarId, images, quote, linkPreview, ...row }) => ({
+    return rows.map(({ communitySlug, communityName, authorAvatarId, images, quote, linkPreview, poll, ...row }) => ({
       ...row,
       images: toPostImages(images),
       links: findLinks(row.text),
@@ -422,6 +562,7 @@ export class PostsService {
       authorAvatar: avatarPath(authorAvatarId),
       community: communitySlug && communityName ? { slug: communitySlug, name: communityName } : null,
       quote: toQuote(quote),
+      poll: toPoll(poll),
       repostedBy: null,
     }))
   }
@@ -1057,11 +1198,12 @@ export class PostsService {
       created_at: Date
       grp: 0 | 1
       cursor_timestamp: string
-      view: (Omit<PostView, 'images' | 'createdAt' | 'authorAvatar' | 'quote' | 'links' | 'linkPreview'> & {
+      view: (Omit<PostView, 'images' | 'createdAt' | 'authorAvatar' | 'quote' | 'poll' | 'links' | 'linkPreview'> & {
         images: ImageRow[]
         createdAt: string
         authorAvatarId: string | null
         quote: QuoteRow | null
+        poll: PollRow | null
         linkPreview: LinkPreviewRow | null
       }) | null
     }
@@ -1101,6 +1243,9 @@ export class PostsService {
           'hashtags', ${hashtagsOf(sql`p.id`)},
           'linkPreview', ${linkPreviewOf(sql`p.link_url`)},
           'createdAt', p.created_at, 'replyParentId', p.reply_parent_id,
+          'replyAudience', ${replyAudienceOf(sql`p.id`, sql`p.root_id`)},
+          'viewerCanReply', ${canReplyTo(viewerId, sql`p.id`, sql`p.root_id`)},
+          'poll', ${pollOf(viewerId, sql`p.id`)},
           'likeCount', p.like_count, 'replyCount', p.reply_count, 'repostCount', p.repost_count,
           'hasReplies', p.reply_count > 0 or exists(select 1 from posts child where child.reply_parent_id = p.id),
           'viewerLiked', ${viewerId ? sql`exists(select 1 from likes l where l.post_id = p.id and l.member_id = ${viewerId})` : sql`false`},
@@ -1128,7 +1273,7 @@ export class PostsService {
             hasReplies: true,
           }
         }
-        const { images, createdAt, authorAvatarId, quote, linkPreview, ...post } = row.view
+        const { images, createdAt, authorAvatarId, quote, poll, linkPreview, ...post } = row.view
         return {
           ...post,
           images: toPostImages(images),
@@ -1137,6 +1282,7 @@ export class PostsService {
           createdAt: new Date(createdAt),
           authorAvatar: avatarPath(authorAvatarId),
           quote: toQuote(quote),
+          poll: toPoll(poll),
         }
       }),
       cursor: rows.length > limit && last
@@ -1161,6 +1307,8 @@ export class PostsService {
       communitySlug,
       images = [],
       quote,
+      poll,
+      replyAudience = 'everyone',
       anyMember = false,
       alongside,
     }: {
@@ -1168,6 +1316,8 @@ export class PostsService {
       communitySlug?: string
       images?: PostImageInput[]
       quote?: string
+      poll?: PollInput
+      replyAudience?: ReplyAudience
       /** Any member may post in the community, joined or not (the ideas board). */
       anyMember?: boolean
       /** More to write in the same transaction, once the post has its ID. */
@@ -1228,6 +1378,19 @@ export class PostsService {
     // once the post exists (see `LinksService.request`).
     const linkUrl = previewUrlOf(text)
     return this.db.transaction(async (tx) => {
+      if (parent) {
+        // Locking the root waits out a change to its reply audience, so a reply
+        // already in flight cannot slip past a new restriction. Only the root
+        // post's row is locked: locking its author's member row too would block
+        // every write that refers to them, and deadlock two members replying in
+        // each other's conversations. A root that is gone restricts no one.
+        const [root] = await tx
+          .select({ allowed: canReplyTo(authorId, sql`${posts.id}`, sql`null`) })
+          .from(posts)
+          .where(eq(posts.id, parent.rootId ?? parent.id))
+          .for('no key update')
+        if (root && !root.allowed) throw new ReplyNotAllowedError('the conversation author limited who can reply')
+      }
       const [row] = await tx
         .insert(posts)
         .values({
@@ -1238,8 +1401,20 @@ export class PostsService {
           replyParentId: parent?.id ?? null,
           rootId: parent ? (parent.rootId ?? parent.id) : null,
           quotePostId: quoted?.id ?? null,
+          replyAudience: parent ? 'everyone' : replyAudience,
         })
         .returning({ id: posts.id })
+      if (poll) {
+        await tx.insert(postPolls).values({ postId: row!.id, multiple: poll.multiple, expiresAt: pollExpiresAt(poll.expiresIn) })
+        // `pollInput` already refused options that differ only in case, but the
+        // database folds case its own way (to it 'İ' and 'i' are the same letter).
+        const added = await tx
+          .insert(pollOptions)
+          .values(poll.options.map((option, position) => ({ postId: row!.id, position, text: option })))
+          .onConflictDoNothing()
+          .returning({ id: pollOptions.id })
+        if (added.length !== poll.options.length) throw new PollOptionsError('poll options must be different')
+      }
       for (const [position, image] of images.entries()) {
         const attached = await tx
           .update(media)
@@ -1273,6 +1448,117 @@ export class PostsService {
       await alongside?.(tx, row!.id)
       return { id: row!.id, linkUrl }
     })
+  }
+
+  /** Changes only future replies. Existing replies remain in the conversation. */
+  async setReplyAudience(authorId: string, postId: string, audience: ReplyAudience): Promise<boolean> {
+    const changed = await this.db
+      .update(posts)
+      .set({ replyAudience: audience })
+      .where(and(
+        eq(posts.id, postId),
+        eq(posts.authorId, authorId),
+        isNull(posts.replyParentId),
+        live,
+      ))
+      .returning({ id: posts.id })
+    return changed.length > 0
+  }
+
+  /** Records one immutable ballot. A multiple-choice ballot creates several option rows atomically. */
+  async votePoll(memberId: string, postId: string, requestedOptionIds: string[]): Promise<void> {
+    const optionIds = [...new Set(requestedOptionIds)]
+    if (optionIds.length === 0 || optionIds.length > POLL_OPTIONS_MAX) throw new PollOptionsError('choose at least one poll option')
+    await this.db.transaction(async (tx) => {
+      // Locking the poll's row makes a member's two ballots sent at once take
+      // turns, so the second sees the first below. Only that row: locking the
+      // post or its author's member row as well would hold up every write that
+      // refers to them, and deadlock two members voting on each other's polls.
+      const [poll] = await tx
+        .select({ multiple: postPolls.multiple, expiresAt: postPolls.expiresAt })
+        .from(postPolls)
+        .innerJoin(posts, eq(posts.id, postPolls.postId))
+        .innerJoin(members, eq(members.id, posts.authorId))
+        .where(and(eq(postPolls.postId, postId), pollReadableBy(memberId)))
+        .for('update', { of: postPolls })
+      if (!poll) throw new PollNotFoundError('the poll is no longer available')
+      if (poll.expiresAt && poll.expiresAt <= new Date()) throw new PollClosedError('the poll has ended')
+      if (!poll.multiple && optionIds.length !== 1) throw new PollOptionsError('choose one poll option')
+
+      const valid = await tx
+        .select({ id: pollOptions.id })
+        .from(pollOptions)
+        .where(and(eq(pollOptions.postId, postId), inArray(pollOptions.id, optionIds)))
+      if (valid.length !== optionIds.length) throw new PollOptionsError('one of those poll options does not exist')
+
+      const [existing] = await tx
+        .select({ optionId: pollVotes.optionId })
+        .from(pollVotes)
+        .where(and(eq(pollVotes.postId, postId), eq(pollVotes.memberId, memberId)))
+        .limit(1)
+      if (existing) throw new PollAlreadyVotedError('your vote has already been recorded')
+      await tx.insert(pollVotes).values(optionIds.map((optionId) => ({ postId, optionId, memberId })))
+    })
+  }
+
+  /** Public ballots, one member per row, newest first. */
+  async pollVoters(viewerId: string | null, postId: string, limit: number, cursor?: string): Promise<PollVoterPage | null> {
+    const [visible] = await this.db
+      .select({ postId: postPolls.postId })
+      .from(postPolls)
+      .innerJoin(posts, eq(posts.id, postPolls.postId))
+      .innerJoin(members, eq(members.id, posts.authorId))
+      .where(and(eq(postPolls.postId, postId), pollReadableBy(viewerId)))
+    if (!visible) return null
+    let before = sql`true`
+    if (cursor) {
+      const [createdAt, memberId] = decodeExactCursor(cursor)
+      before = sql`(pv.created_at, pv.member_id) < (${createdAt}::timestamptz, ${memberId}::uuid)`
+    }
+    type BallotRow = {
+      member_id: string
+      handle: string
+      display_name: string | null
+      avatar_media_id: string | null
+      option_ids: string[]
+      created_at: Date
+      cursor_timestamp: string
+    }
+    // A ballot's votes are written together and share created_at, so walking
+    // poll_votes_ballot_idx newest first finds one page of ballots without
+    // reading the rest of the poll; only that page's choices are gathered.
+    const { rows } = await this.db.execute<BallotRow>(sql`
+      with page as (
+        select pv.member_id, pv.created_at
+        from poll_votes pv
+        where pv.post_id = ${postId} and ${before}
+          and exists(select 1 from members voter where voter.id = pv.member_id and voter.active)
+        group by pv.created_at, pv.member_id
+        order by pv.created_at desc, pv.member_id desc
+        limit ${limit + 1}
+      )
+      select page.member_id, m.handle, m.display_name, m.avatar_media_id, page.created_at,
+        (select json_agg(v.option_id order by po.position)
+          from poll_votes v join poll_options po on po.post_id = v.post_id and po.id = v.option_id
+          where v.post_id = ${postId} and v.member_id = page.member_id) as option_ids,
+        to_char(page.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp
+      from page join members m on m.id = page.member_id
+      order by page.created_at desc, page.member_id desc`)
+    const page = rows.slice(0, limit)
+    const last = page.at(-1)
+    return {
+      voters: page.map((row) => ({
+        member: {
+          id: row.member_id,
+          handle: row.handle,
+          displayName: row.display_name,
+          avatar: avatarPath(row.avatar_media_id),
+        },
+        optionIds: row.option_ids,
+        createdAt: row.created_at,
+      })),
+      cursor: rows.length > limit && last ? encodeExactCursor(last.cursor_timestamp, last.member_id) : null,
+    }
   }
 
   /** Soft-deletes the post only if it belongs to `authorId`. */
