@@ -50,6 +50,7 @@ function rig({ join, createAudio, holdScreen } = {}) {
       playbackBlocked: () => {},
       speaking: () => {},
       micOff: () => {},
+      mics: () => {},
     },
   }
   const session = new SpaceSession(deps)

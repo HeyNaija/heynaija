@@ -28,6 +28,8 @@ export type AudioEvents = {
   onPlaybackBlocked: (blocked: boolean) => void
   onSpeaking: (ids: string[]) => void
   onMicOff: () => void
+  /** Who has a live microphone: member id to true when they are publishing and unmuted. */
+  onMics: (mics: Record<string, boolean>) => void
 }
 
 export type SessionDeps = {
@@ -50,6 +52,7 @@ export type SessionDeps = {
     playbackBlocked: (blocked: boolean) => void
     speaking: (ids: string[]) => void
     micOff: () => void
+    mics: (mics: Record<string, boolean>) => void
   }
 }
 
@@ -151,6 +154,7 @@ export class SpaceSession {
       onPlaybackBlocked: ui.playbackBlocked,
       onSpeaking: ui.speaking,
       onMicOff: ui.micOff,
+      onMics: ui.mics,
     }
   }
 
