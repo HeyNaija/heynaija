@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 11 | 18 | 14 | 88 |
+| 45 | 12 | 17 | 14 | 88 |
 
 ## Priority order
 
@@ -531,10 +531,10 @@ This tracks product development, not formal governance decisions. Priority means
 #### Low-data and media controls
 
 - **ID:** `low-data-controls`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Partial · **Availability:** Not live
 - **Description:** Let members choose how much media loads on limited connections.
-- **Inspected evidence:** `apps/web/app/ui/post-images.tsx`, `apps/web/app/ui/shrink-image.ts`, `apps/web/app/(main)/settings/page.tsx`
-- **Audit notes:** Upload resizing is implemented; member low-data settings are not. GIFs play unless the device asks for less motion and can be paused. Video is not supported.
+- **Remaining work / caveat:** Settings has a data-use choice (Automatic follows the browser's Save-Data hint, Save data, Always load) that holds back post pictures, link pictures and GIF autoplay until tapped. Avatars still load, the moderator queue is unchanged, video is not supported, and savings on real constrained networks are not measured.
+- **Inspected evidence:** `apps/web/lib/low-data.ts`, `apps/web/lib/low-data-server.ts`, `apps/web/tests/low-data.test.mjs`, `e2e/tests/low-data.spec.ts`, `apps/web/app/ui/post-images.tsx`, `apps/web/app/ui/link-card.tsx`, `apps/web/app/ui/shrink-image.ts`, `apps/web/app/(main)/settings/page.tsx`
 
 ### Transparency and governance
 
