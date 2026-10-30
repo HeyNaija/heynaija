@@ -28,8 +28,14 @@ import {
   KeyRound,
   Landmark,
   Lightbulb,
+  Hand,
   Link,
+  Lock,
+  LogOut,
   type LucideIcon,
+  Mic,
+  MicOff,
+  Radio,
   MessageCircle,
   Pause,
   Play,
@@ -107,6 +113,12 @@ export const BellIcon = icon(Bell)
 export const FollowIcon = icon(UserPlus)
 export const FlagIcon = icon(Flag)
 export const VerifiedIcon = icon(BadgeCheck)
+export const MicIcon = icon(Mic)
+export const MicOffIcon = icon(MicOff)
+export const LiveIcon = icon(Radio)
+export const LockIcon = icon(Lock)
+export const LeaveIcon = icon(LogOut)
+export const HandIcon = icon(Hand)
 
 export const AwardIcon = icon(Award)
 export const IdentityIcon = icon(IdCard)

@@ -2011,3 +2011,20 @@ a.result-row:hover { color: var(--accent-strong); }
 .governance-documents a { color: var(--accent-strong); font-size: 14px; font-weight: 600; }
 .governance-documents a:hover { text-decoration: underline; }
 .governance-documents span { color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+/* Spaces (DESIGN.md, "Spaces"). Existing tokens only; every control is 44px. */
+.space-section { padding: 22px; }
+.space-btn { min-height: var(--touch-target); }
+.space-live { display: flex; align-items: center; gap: 6px; color: var(--danger); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.space-locked { display: inline-flex; align-items: center; gap: 4px; }
+.space-subhead { margin-top: 18px; margin-bottom: 8px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.space-people { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.space-person { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 52px; padding: 4px 8px; border-radius: var(--r-control); }
+.space-person-name { min-width: 0; flex: 1 1 8rem; overflow-wrap: anywhere; font-size: 15px; font-weight: 600; }
+.space-person-name > .text-muted { font-size: 13px; font-weight: 400; }
+.space-speaking { outline: 2px solid var(--accent); outline-offset: -2px; }
+.space-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.space-note { color: var(--muted); font-size: 13px; }
+.space-bar { position: sticky; bottom: calc(62px + env(safe-area-inset-bottom, 0px) + 8px); z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; background: var(--surface); }
+@media (min-width: 1024px) { .space-bar { bottom: 12px; } }
+@media (max-width: 1023px) { .space-section { padding: 18px; } }
