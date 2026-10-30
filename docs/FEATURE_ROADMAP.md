@@ -751,11 +751,11 @@ This tracks product development, not formal governance decisions. Priority means
 - **Dependencies:** `abuse-response`
 - **Inspected evidence:** `PRODUCT.md`, `packages/db/src/schema.ts`
 
-#### Calls, meetings, Spaces and screen sharing
+#### Calls, meetings, Gists and screen sharing
 
 - **ID:** `calls-and-meetings`
 - **Priority:** P3 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Voice and video calls between age-verified adults, then small group meetings, screen sharing and Spaces (live audio rooms with a few speakers and a large audience), on a self-hosted LiveKit server.
+- **Description:** Voice and video calls between age-verified adults, then small group meetings, screen sharing and Gists (live audio rooms with a few speakers and a large audience), on a self-hosted LiveKit server.
 - **Remaining work / caveat:** Design only. Needs direct messages and age verification first; recording, moderator access and retention need counsel and governance.
 - **Dependencies:** `minor-safeguards`
 - **Inspected evidence:** `docs/adr/0017-calls-and-meetings.md`, `docs/governance/under-18-rollout.md`
