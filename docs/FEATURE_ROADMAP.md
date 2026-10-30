@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 43 | 11 | 19 | 13 | 86 |
+| 43 | 12 | 19 | 12 | 86 |
 
 ## Priority order
 
@@ -264,12 +264,12 @@ This tracks product development, not formal governance decisions. Priority means
 #### Account deletion and privacy requests
 
 - **ID:** `account-deletion`
-- **Priority:** P0 · **Status:** Blocked · **Availability:** Not live
+- **Priority:** P0 · **Status:** Partial · **Availability:** Not live
 - **Description:** Provide a usable route to delete an account and handle privacy requests.
-- **Remaining work / caveat:** Members can ask for deletion through the contact address, but the time it takes is still to be set and self-service account deletion is absent.
+- **Remaining work / caveat:** Members can delete their account in Settings, and requests by email are recorded and answered. The operator's name and address, and how long deletion records and moderation evidence are kept, are still placeholders for the operator and counsel.
 - **Dependencies:** `operator-disclosure`
-- **Inspected evidence:** `apps/web/app/(main)/privacy/page.tsx`, `apps/web/app/(main)/settings/page.tsx`, `docs/governance/open-items.md`
-- **Audit notes:** Promoted from the initial P2 proposal: a working privacy-rights route is a public-beta prerequisite. The privacy contact is contact@heynaija.ng (apps/web/app/ui/policy-page.tsx); the deletion period is a placeholder on /privacy, and there is no tool for an operator to delete an account.
+- **Inspected evidence:** `apps/web/app/(main)/settings/delete/page.tsx`, `apps/web/app/(main)/privacy/page.tsx`, `apps/api/src/account/account-deletion.service.ts`, `apps/api/src/account/account-deletion.service.test.ts`, `apps/api/src/account/account.controller.ts`, `apps/api/src/account/account-queue.ts`, `apps/api/src/cli/privacy-request.ts`, `e2e/tests/account-deletion.spec.ts`, `docs/adr/0016-account-deletion.md`, `docs/governance/privacy-requests.md`
+- **Audit notes:** Built on 30 October 2026 (ADR 0016): an account leaves the site at once and is erased after 14 days unless its owner keeps it; an hourly job erases due accounts; members are emailed at both steps; `pnpm privacy-request` records and closes requests made by email. Waiting on counsel's retention periods (counsel log C-01 to C-15) and on operator-disclosure.
 
 ### Reliability and access
 

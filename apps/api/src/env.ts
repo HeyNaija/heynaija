@@ -123,11 +123,18 @@ const schema = z.object({
     .transform((value) => value === 'true'),
 })
 
-const checked = schema.superRefine((env, ctx) => {
-  // A deletion is a privacy request too: erasing after its answer is due would be late every time.
+// A deletion is a privacy request too: erasing after its answer is due would be late every time.
+const graceWithinDue = (
+  env: { ACCOUNT_DELETION_GRACE_DAYS: number; PRIVACY_REQUEST_DUE_DAYS: number },
+  ctx: z.RefinementCtx,
+) => {
   if (env.ACCOUNT_DELETION_GRACE_DAYS > env.PRIVACY_REQUEST_DUE_DAYS) {
     ctx.addIssue({ code: 'custom', path: ['ACCOUNT_DELETION_GRACE_DAYS'], message: 'ACCOUNT_DELETION_GRACE_DAYS must not be more than PRIVACY_REQUEST_DUE_DAYS' })
   }
+}
+
+const checked = schema.superRefine((env, ctx) => {
+  graceWithinDue(env, ctx)
   if (env.SMTP_CONNECTION_URI && !env.SMTP_FROM_ADDRESS) {
     ctx.addIssue({ code: 'custom', path: ['SMTP_FROM_ADDRESS'], message: 'SMTP_FROM_ADDRESS is required when SMTP_CONNECTION_URI is set' })
   }
@@ -151,3 +158,26 @@ const checked = schema.superRefine((env, ctx) => {
 export type Env = z.infer<typeof schema>
 
 export const loadEnv = (source: Record<string, string | undefined> = process.env): Env => checked.parse(source)
+
+const privacyTool = schema
+  .pick({
+    DATABASE_URL: true,
+    REDIS_URL: true,
+    KRATOS_ADMIN_URL: true,
+    WEB_PUBLIC_URL: true,
+    ACCOUNT_DELETION_GRACE_DAYS: true,
+    PRIVACY_REQUEST_DUE_DAYS: true,
+    SMTP_CONNECTION_URI: true,
+    SMTP_FROM_ADDRESS: true,
+    SMTP_FROM_NAME: true,
+  })
+  .superRefine(graceWithinDue)
+
+export type PrivacyToolEnv = z.infer<typeof privacyTool>
+
+/**
+ * What the privacy-request command (src/cli/privacy-request.ts) needs. It asks for
+ * erasures but never does one, so it has no storage or CDN keys to be given.
+ */
+export const loadPrivacyToolEnv = (source: Record<string, string | undefined> = process.env): PrivacyToolEnv =>
+  privacyTool.parse(source)

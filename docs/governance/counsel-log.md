@@ -34,6 +34,7 @@ proposal is not a decision until counsel has answered.
 | C-12 | Pausing an erasure (legal holds) | 29 Oct 2026 | Open |
 | C-13 | Service providers that hold copies | 29 Oct 2026 | Open |
 | C-14 | Holding a deleted member's handle for 30 days | 29 Oct 2026 | Open |
+| C-15 | What a member is told when they delete their account | 30 Oct 2026 | Open |
 
 ## Account deletion and privacy requests
 
@@ -78,8 +79,9 @@ correction, deletion, objection) made by email, and when does it start: on
 receipt, or once the person is confirmed as the account holder (C-03)?
 
 **Facts.** Each request is recorded with the date received and a due date,
-30 days later by default (`PRIVACY_REQUEST_DUE_DAYS`). Overdue requests are
-flagged to the operator. `/privacy#rights` currently says "[period]".
+30 days later by default (`PRIVACY_REQUEST_DUE_DAYS`). Requests still open
+after their due date are listed in a warning in the server log once a day.
+`/privacy#rights` currently says "[period]".
 
 **What we propose.** 30 days from receipt, stated on `/privacy`.
 
@@ -121,14 +123,19 @@ time ("evidence posts"). Those stay, out of public view, so moderation decisions
 can be checked, and are blanked after a retention period
 (`DELETED_CONTENT_RETENTION_DAYS`), which is not set: until it is, they are kept.
 The same period covers posts members delete themselves; `/privacy#keep` already
-says these are kept for "[period]".
+says these are kept for "[period]". Once it is set, a check every hour blanks
+each post deleted longer ago than that, except one with a report about it still
+open, which waits until the report is decided.
 
 **What we propose.** The evidence posts as defined above, for a period counsel
 sets, after which their text is blanked.
 
 **Needed from counsel.** The lawful basis; the period; whether "reported at any
 time" is too wide (for example, a report dismissed as unfounded); whether the
-period differs for posts members delete themselves.
+period differs for posts members delete themselves; and how long to keep posts a
+moderator took down from a member who is still on HeyNaija. No period covers
+those yet, so their text is kept with no end date, and a moderator can still
+restore one after a successful appeal.
 
 **Answer.** —
 
@@ -329,6 +336,38 @@ days. During that time nobody, the former member included, can take it.
 **What we propose.** As described.
 
 **Needed from counsel.** Confirmation, and whether `/privacy` should mention it.
+
+**Answer.** —
+
+### C-15 What a member is told when they delete their account
+
+**Question.** Is what HeyNaija tells a member before and after they ask for
+their account's deletion enough, and accurate?
+
+**Facts.** Settings leads to a page (`/settings/delete`) that says, before the
+member confirms: the account leaves the site at once and they are signed out
+everywhere; for 14 days nothing is erased and they can keep the account by
+signing in; then it is erased, which cannot be undone. It lists what is erased
+(name, bio, photo, email address and sign-in methods, the text and images of
+posts and replies, likes, reposts, bookmarks, idea votes, follows, blocks,
+mutes, community memberships, notifications and their settings, the age
+record) and what is kept and why (a blank placeholder in place of the account,
+with the handle held 30 days; other people's replies; posts that were reported
+or taken down, kept privately and blanked later, with the reports and
+decisions; a record of the request; backups for up to 30 days; copies of
+sign-in emails for 7 days). It links to the data download and to `/privacy`.
+The member types their handle to confirm, and must have signed in within the
+last 15 minutes. Afterwards a page gives the erase date and says how to cancel.
+The wording is in `apps/web/app/(main)/settings/delete/page.tsx`. Emails at the
+request and at the erase are still to come.
+
+**What we propose.** The wording as it stands, kept in step with `/privacy`.
+
+**Needed from counsel.** Whether anything required is missing (for example, who
+to contact with questions, or the right to complain to the Nigeria Data
+Protection Commission); whether "reported at any time" should be described
+differently once C-04 is answered; whether the request needs to be acknowledged
+in writing, by email, as well as on screen.
 
 **Answer.** —
 

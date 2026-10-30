@@ -3,9 +3,17 @@
 import { refresh } from 'next/cache'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import {
+  cancelAnswer,
+  DELETION_COOKIE,
+  DELETION_REAUTHED_PATH,
+  DELETION_SCHEDULED_PATH,
+  deletionAnswer,
+} from '@/lib/account-deletion'
 import { api } from '@/lib/api'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
-import { startAuthUrl } from '@/lib/auth/server'
+import { forgetEndedSession, reauthUrl, startAuthUrl } from '@/lib/auth/server'
+import { siteOrigin } from '@/lib/previews'
 import { preferencesFromForm } from '@/lib/notification-preferences'
 import { PUSH_COOKIE } from '@/lib/push'
 import { choicesFromForm, welcomePath } from '@/lib/onboarding'
@@ -495,4 +503,62 @@ export async function acceptInvite(_prev: JoinState, formData: FormData): Promis
   // rendered without the invite cookie, which sends the visitor back to /join.
   // The form navigates the browser itself instead.
   return { next: startAuthUrl('registration') }
+}
+
+/**
+ * What the account deletion form shows: an error, or Kratos's sign-in to confirm
+ * it is them (`next`), which the form opens itself and, without JavaScript,
+ * offers as a link. Not redirect(), as in acceptInvite: Kratos must set its
+ * cookies in the browser itself.
+ */
+export type DeletionFormState = { error?: string; next?: { href: string; label: string } }
+
+/**
+ * Asks for the member's account to be deleted (docs/adr/0016), then lands on a
+ * page with the date. The API ends every session, this one too, and Kratos's
+ * logout (and so /logout) refuses a session that has ended, so this browser just
+ * forgets its cookie. Its push subscription goes too: nothing is pushed to an
+ * account waiting for deletion, and the erase deletes the subscriptions.
+ */
+export async function requestAccountDeletion(_prev: DeletionFormState, formData: FormData): Promise<DeletionFormState> {
+  const res = await api('/v1/me/deletion', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ confirmHandle: String(formData.get('confirmHandle') ?? '') }),
+    cache: 'no-store',
+  }).catch(() => null)
+  if (!res) return { error: 'Your account could not be deleted just now. Check your connection and try again.' }
+
+  const answer = deletionAnswer(res.status, await res.json().catch(() => ({})))
+  if (answer.kind === 'signed_out') redirect('/login')
+  if (answer.kind === 'error') return { error: answer.message }
+  if (answer.kind === 'reauth') {
+    return { next: { href: reauthUrl(new URL(DELETION_REAUTHED_PATH, siteOrigin).href), label: 'Sign in again' } }
+  }
+
+  await forgetEndedSession()
+  const jar = await cookies()
+  jar.delete(PUSH_COOKIE)
+  jar.set(DELETION_COOKIE, answer.scheduledFor, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: DELETION_SCHEDULED_PATH,
+    maxAge: 60 * 60,
+  })
+  redirect(DELETION_SCHEDULED_PATH)
+}
+
+/**
+ * Calls off the deletion of a member who signed in again during the grace period.
+ * The page is drawn again, as the member it is now: home shows the feed.
+ */
+export async function cancelAccountDeletion(_prev: FormState, _formData: FormData): Promise<FormState> {
+  const res = await api('/v1/me/deletion', { method: 'DELETE', cache: 'no-store' }).catch(() => null)
+  if (!res) return { error: 'The deletion could not be cancelled just now. Check your connection and try again.' }
+  const answer = cancelAnswer(res.status, await res.json().catch(() => ({})))
+  if (answer?.kind === 'signed_out') redirect('/login')
+  if (answer) return { error: answer.message }
+  refresh()
+  return { done: true }
 }

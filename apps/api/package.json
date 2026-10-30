@@ -13,6 +13,7 @@
     "invite:create": "node --env-file=../../.env dist/cli/create-invite.js",
     "moderator": "node --env-file=../../.env dist/cli/moderator.js",
     "founder": "node --env-file=../../.env dist/cli/founder.js",
+    "privacy-request": "node --env-file=../../.env dist/cli/privacy-request.js",
     "media:init": "node --env-file=../../.env dist/cli/media-init.js",
     "demo:seed": "node --env-file=../../.env dist/cli/seed-demo.js",
     "demo:clean": "node --env-file=../../.env dist/cli/seed-demo.js --clean"

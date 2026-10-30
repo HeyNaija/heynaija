@@ -1,23 +1,15 @@
-import {
-  ageAssurances,
-  type Db,
-  governanceAuditLog,
-  identityVerifications,
-  members,
-  privacyRequests,
-  PRIVACY_REQUEST_STATUSES,
-} from '@heynaija/db'
+import { ageAssurances, type Db, governanceAuditLog, identityVerifications, members, privacyRequests } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
-import { and, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, lte, or, type SQL, sql } from 'drizzle-orm'
 import { AuthService } from '../auth/auth.service.js'
 import { EMAIL_ADDRESSES, type EmailAddresses } from '../email/addresses.js'
 import type { Env } from '../env.js'
 import { MediaService } from '../media/media.service.js'
 import { HANDLE_HOLD_DAYS, MembersService } from '../members/members.service.js'
 import { DB, ENV } from '../tokens.js'
+import { OPEN_REQUEST } from './privacy-requests.service.js'
 
 const DAY_MS = 24 * 60 * 60 * 1000
-const OPEN_REQUEST = ['received', 'verifying', 'in_progress'] as const satisfies readonly (typeof PRIVACY_REQUEST_STATUSES)[number][]
 
 /**
  * What an erased account's handle becomes. Never a real handle: Kratos allows
@@ -25,7 +17,7 @@ const OPEN_REQUEST = ['received', 'verifying', 'in_progress'] as const satisfies
  */
 export const tombstoneHandle = (memberId: string) => `deleted-${memberId.slice(0, 8).toLowerCase()}`
 
-export type DeletionErrorCode = 'no_member' | 'site_moderator' | 'erased' | 'too_late' | 'not_due'
+export type DeletionErrorCode = 'no_member' | 'site_moderator' | 'erased' | 'too_late' | 'not_due' | 'still_active' | 'no_request'
 
 export class AccountDeletionError extends Error {
   constructor(
@@ -77,16 +69,32 @@ export class AccountDeletionService {
     return member?.scheduledFor ? { state: 'scheduled', scheduledFor: member.scheduledFor } : { state: 'none' }
   }
 
+  /** The accounts whose erase is due and not yet done, longest waiting first. */
+  async due(now = new Date()): Promise<string[]> {
+    const rows = await this.db
+      .select({ id: members.id })
+      .from(members)
+      .where(and(lte(members.deletionScheduledFor, now), isNull(members.deletedAt)))
+      .orderBy(asc(members.deletionScheduledFor))
+    return rows.map((r) => r.id)
+  }
+
   /**
    * Takes the account off the site and schedules its erase, recorded as a
-   * privacy request. `immediate` (operators only) erases it within the hour.
-   * Asking again changes nothing, except that `immediate` brings the erase
-   * forward. A site moderator cannot ask for themselves: they are demoted first
-   * (`pnpm mod:revoke`), as before a suspension.
+   * privacy request: a new one, or `requestId`, a deletion request recorded when
+   * it arrived by email (so its due date runs from then). `immediate` (operators
+   * only) erases it within the hour. Asking again changes nothing, except that
+   * `immediate` brings the erase forward. A site moderator cannot ask for
+   * themselves: they are demoted first (`pnpm mod:revoke`), as before a suspension.
    */
   async request(
     memberId: string,
-    { channel, handledBy = null, immediate = false }: { channel: 'self_service' | 'email'; handledBy?: string | null; immediate?: boolean },
+    {
+      channel,
+      handledBy = null,
+      immediate = false,
+      requestId,
+    }: { channel: 'self_service' | 'email'; handledBy?: string | null; immediate?: boolean; requestId?: string },
     now = new Date(),
   ): Promise<{ scheduledFor: Date; alreadyRequested: boolean }> {
     const result = await this.db.transaction(async (tx) => {
@@ -120,15 +128,31 @@ export class AccountDeletionService {
         .update(members)
         .set({ active: false, deletionRequestedAt: now, deletionScheduledFor: scheduledFor })
         .where(eq(members.id, memberId))
-      await tx.insert(privacyRequests).values({
-        memberId,
-        kind: 'deletion',
-        channel,
-        status: 'in_progress',
-        receivedAt: now,
-        dueBy: new Date(now.getTime() + this.env.PRIVACY_REQUEST_DUE_DAYS * DAY_MS),
-        handledBy,
-      })
+      if (requestId) {
+        const linked = await tx
+          .update(privacyRequests)
+          .set({ memberId, status: 'in_progress', handledBy })
+          .where(
+            and(
+              eq(privacyRequests.id, requestId),
+              eq(privacyRequests.kind, 'deletion'),
+              inArray(privacyRequests.status, OPEN_REQUEST),
+              or(isNull(privacyRequests.memberId), eq(privacyRequests.memberId, memberId)),
+            ),
+          )
+          .returning({ id: privacyRequests.id })
+        if (!linked.length) throw new AccountDeletionError('no_request', 'no open deletion request with that ID for this account')
+      } else {
+        await tx.insert(privacyRequests).values({
+          memberId,
+          kind: 'deletion',
+          channel,
+          status: 'in_progress',
+          receivedAt: now,
+          dueBy: new Date(now.getTime() + this.env.PRIVACY_REQUEST_DUE_DAYS * DAY_MS),
+          handledBy,
+        })
+      }
       return { scheduledFor, alreadyRequested: false }
     })
 
@@ -144,7 +168,8 @@ export class AccountDeletionService {
       try {
         await this.notices.scheduled(memberId, result.scheduledFor)
       } catch (err) {
-        this.logger.warn(`could not email member ${memberId} that their deletion is scheduled: ${(err as Error).message}`)
+        // Not the message: a mail server's can name the address it refused.
+        this.logger.warn(`could not email member ${memberId} that their deletion is scheduled: ${(err as Error).name}`)
       }
     }
     return result
@@ -251,7 +276,7 @@ export class AccountDeletionService {
       // The counters were settled when the account went inactive, and the
       // triggers below count active members only. Erasing an active account
       // would leave its likes and replies counted for good.
-      if (member.active) throw new Error(`member ${memberId} is active; it cannot be erased`)
+      if (member.active) throw new AccountDeletionError('still_active', `member ${memberId} is active; it cannot be erased`)
 
       const run = (query: SQL) => tx.execute(query)
       // Posts kept as evidence: taken down by a moderator, or reported at any time.

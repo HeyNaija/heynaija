@@ -121,8 +121,10 @@ export class OptionalSessionGuard extends SessionGuard {
 }
 
 /**
- * Lets a suspended member through. Only for the one thing they are still allowed
- * to do: appeal.
+ * Lets an inactive member through: one who is suspended, or waiting for their
+ * account's deletion. Only for what they may still do: appeal, download their
+ * data, stop push on a device, and ask for or cancel the deletion. An erased
+ * account is still refused.
  */
 @Injectable()
 export class SuspendedAllowedGuard extends SessionGuard {

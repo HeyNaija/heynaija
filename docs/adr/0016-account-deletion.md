@@ -1,7 +1,7 @@
 # ADR 0016 — Deleting an account: off the site at once, erased after 14 days
 
-**Date:** 29 October 2026 · **Status:** Accepted 29 October 2026, not built yet ·
-**Roadmap:** `account-deletion` · **For counsel:** entries C-01 to C-14 in
+**Date:** 29 October 2026 · **Status:** Accepted 29 October 2026; built 30 October 2026, not yet deployed ·
+**Roadmap:** `account-deletion` · **For counsel:** entries C-01 to C-15 in
 [the counsel log](../governance/counsel-log.md)
 
 ## Decision
@@ -198,11 +198,70 @@ processed; `quarantine/…` for what is kept.
 | Kratos's sent mail (`courier_messages`) | every email Kratos sent: the address, the subject (with the sign-in code), the identity as it was (email, handle) and the browser's User-Agent | — | not deleted with the identity, and Kratos never cleans them up (checked 29 October 2026). `infra/deploy/kratos-cleanup.sh` deletes everyone's once older than `KRATOS_SENT_MAIL_KEEP_DAYS` (7), every night before the backup, so an erased member's are gone within a week and never reach a backup older than that |
 | R2 media bucket | their published images | still there, unlinked | deleted |
 | Cloudflare's cache | copies of published images, for up to a year | — | purge queued for every deleted image |
-| Redis | whoami cache (a hash of the cookie, to the ID and handle; 30 s), rate limits (`hn:limit:*:<ID>`; an hour at most), `digest-<ID>` and `push-<ID>` jobs (removed when done; failures kept an hour at most) | all run out on their own | nothing left by then to delete |
+| Redis | whoami cache (a hash of the cookie, to the ID and handle; 30 s), rate limits (`hn:limit:*:<ID>`; an hour at most), `digest-<ID>` and `push-<ID>` jobs (removed when done; failures kept an hour at most) | all run out on their own | nothing left by then to delete; the `erase-<ID>` job holds only the ID, and a failed one, kept a day, a reason with nothing personal in it |
 | Backups | both databases, nightly, encrypted, kept 30 days | cannot be edited | age out within 30 days of the erase; `/privacy` says so |
 | Logs | API logs (member IDs, never emails or handles), nginx and Cloudflare (IP addresses) | — | age out after [period] |
 | The SMTP provider | its own record of mail sent | outside HeyNaija's control | — |
-| The member's browser | `hn_session` (cleared by `/logout`), `hn_push`, choices remembered on the device | signing out clears the session and stops push there | — |
+| The member's browser | `hn_session`, `hn_push`, choices remembered on the device | asking in Settings clears both cookies in that browser; on other devices the session is already ended in Kratos, and the cookie left behind opens nothing | — |
+
+## Asking, from Settings
+
+`v1/me/deletion` (`AccountController`), never cached:
+
+- `GET`: `{ state: 'none', graceDays }`, or `{ state: 'scheduled', scheduledFor }`.
+- `POST { confirmHandle }`: the member types their handle (an `@` and capitals
+  are ignored) and must have signed in within the last 15 minutes, read from
+  Kratos's `authenticated_at` uncached, so a session left open on a shared
+  computer cannot delete the account. A wrong handle is a 400
+  (`handle_mismatch`), an older sign-in a 403 (`reauth_required`). Signing in
+  again with `refresh=true` keeps the session and moves that time forward. A
+  site moderator gets a 403 (`site_moderator`). Asking again returns the same
+  date.
+- `DELETE`: cancels. With nothing to cancel it is a 204 too; once the erase is
+  due, a 409 (`too_late`).
+
+Asking and cancelling share a limit of five an hour (`accountDeletion`), since
+each request ends every session and sends an email. The endpoints use
+`SuspendedAllowedGuard`, which lets in a member who is inactive but not erased:
+a suspended member may ask for deletion, and one waiting for deletion is
+inactive until they cancel. What else it guards stays open to both: appeals
+(which refuse a member waiting for deletion), the data export, and stopping
+push on a device.
+
+In the web app, Settings links to `/settings/delete`: what is erased and what is
+kept, the grace period, the data download, and the form. The form is outside
+every `<Suspense>`, so it works without JavaScript. Asking ends every session,
+this one too, and Kratos's logout refuses a session that has ended
+(`session_inactive`, checked 30 October 2026), so neither it nor `/logout` can
+follow. The server action instead drops the dead session cookie and the push
+cookie (nothing is pushed to an inactive member), and redirects to
+`/settings/delete/scheduled`. The date travels in an hour-long cookie
+(`hn_deletion`, on that path only), since that page is signed out. A
+`reauth_required` answer sends the browser through Kratos's refresh sign-in
+(`/self-service/login/browser?refresh=true`, the same one Settings uses before
+an email change) and back to the form, where the member confirms once more. The
+browser opens that itself, as for joining, so Kratos's cookies reach it; without
+JavaScript it is a link to follow.
+
+Signing in during the grace period, `GET v1/me` answers `account_inactive`, so
+the web app asks `GET v1/me/deletion`: a scheduled deletion shows the date, Keep
+my account and Sign out instead of the feed. Otherwise the member is suspended
+and sees what they always did, now with a link to delete the account instead.
+
+## Asking by email
+
+An operator records the request the day it arrives (`pnpm privacy-request
+record`), so its due date runs from then, and once the person has confirmed it
+from the account's own address runs `delete-account --request <id>`. That calls
+the same `AccountDeletionService.request` as Settings, on the `email` channel,
+and puts the recorded request in progress instead of adding another; `--now`
+also queues the erase at once. The command only asks: it needs the database,
+Redis and Kratos's admin API, never storage or CDN keys (`loadPrivacyToolEnv`).
+The runbook is [docs/governance/privacy-requests.md](../governance/privacy-requests.md).
+
+Either way, the member is emailed "Your HeyNaija account will be deleted on
+[date]", with how to keep it, at their own address (`EmailDeletionNotices`), if
+SMTP is configured. A failure there is logged by member ID and changes nothing.
 
 ## Erasing, step by step
 
@@ -217,7 +276,10 @@ every step; a step already done changes nothing.
    the handle holds. Every statement can run twice.
 4. **Storage:** delete the files of every media row the transaction marked
    deleted, quarantine evidence images, and queue CDN purges.
-5. **Email** the address from step 1, if SMTP is configured.
+5. **Email** the address from step 1, if SMTP is configured: "Your HeyNaija
+   account has been deleted". A mail server that refuses it for good (a dead
+   address) does not hold the erase up; one that is away does, so the email gets
+   the erase's retries.
 6. **Delete the Kratos identity.** A 404 counts as done.
 7. **Finish:** set `deleted_at` and mark the privacy request completed, in one
    transaction.
@@ -225,12 +287,41 @@ every step; a step already done changes nothing.
 `deleted_at` means the whole erase is done, so it is set last. The hourly scan
 picks members whose deletion is due and whose `deleted_at` is still null
 (`members_deletion_due_idx`), so an erase that gave up part-way is tried again
-the next hour instead of leaving a Kratos identity behind. A retry between
-steps 5 and 6 can send the email twice; that is accepted.
+instead of leaving a Kratos identity behind. A retry between steps 5 and 6 can
+send the email twice; that is accepted.
 
 Cancelling is possible only before `deletion_scheduled_for`. The cancel and the
 erase each lock the member's row first, so a cancel at the last moment and the
 erase cannot both happen.
+
+### On a schedule
+
+The account worker (`apps/api/src/account/account-queue.ts`) runs in the API
+process, on its own BullMQ queue, one job at a time:
+
+- **Every hour, the erases due.** One `erase` job per account, with the member's
+  ID as its job ID, so an account is never queued twice. An erase that fails is
+  tried eight times over about two hours (1, 2, 4 … 64 minutes apart). If every
+  try fails, an error names the member, and the failed job is kept for a day,
+  which keeps the scan from queueing it again; then it has another round. The
+  account stays off the site all the while. A finished job is removed at once,
+  so a deletion asked for again after a cancel can be queued.
+- **Every hour, what is kept only for a while.** Handles held for an erased
+  account are deleted once their 30 days are over: a running hold is all that
+  needed them. If `DELETED_CONTENT_RETENTION_DAYS` is set, every post deleted
+  longer ago than that (the ones members delete and the evidence posts of erased
+  accounts) is blanked as an ordinary post is at erase: text, link, quote,
+  mentions, hashtags, idea title and problem details. A post with a report about
+  it still open is kept until it is decided. Unset, nothing is blanked (counsel
+  log, C-04).
+- **Every day, overdue requests.** A warning lists the privacy requests still
+  open past `due_by`, by ID, kind and due date.
+
+The worker logs counts and IDs only. A failed job's reason is the error's kind
+and code, never its message, both in the log and in the failed job Redis keeps:
+Drizzle's message holds the query's parameters (a handle, in the erase), and a
+mail server's can name the address it refused. Messages written in this code
+(the deletion's own errors, Kratos being unavailable) are kept as they are.
 
 ## Edge cases
 
@@ -294,14 +385,45 @@ erase cannot both happen.
   account is hidden like a suspended one, since it may come back.
 - The API refuses to start with `ACCOUNT_DELETION_GRACE_DAYS` above
   `PRIVACY_REQUEST_DUE_DAYS`: every deletion would be late.
+- `LIMITS` gains `accountDeletion` (five an hour).
+
+## Release
+
+- **API and web app in one deploy.** The web app's deletion pages call
+  endpoints only the new API has. `migrate` (0028) runs before `api` starts
+  (compose: `depends_on: migrate: condition: service_completed_successfully`),
+  and the new API needs it: the session guard reads the new columns.
+- **Settings: none to add.** `ACCOUNT_DELETION_GRACE_DAYS` (14) and
+  `PRIVACY_REQUEST_DUE_DAYS` (30) default when empty, and the API refuses to
+  start if the first is larger. Leave `DELETED_CONTENT_RETENTION_DAYS` empty
+  until counsel sets the period (C-04): nothing is blanked meanwhile.
+  `KRATOS_ADMIN_URL` comes from compose. The emails use the notification SMTP
+  settings, and are not sent without them. The nightly backup reads
+  `KRATOS_SENT_MAIL_KEEP_DAYS` (7).
+- **Nothing to install on the server.** `backup.sh` and `kratos-cleanup.sh`
+  come with the checkout, and the existing cron runs the clean-up before the
+  next backup.
+- **After deploying, check:**
+  - The API log shows no `AccountWorker` errors.
+  - With a test account: Settings → Delete your account signs it out onto
+    "Your account will be deleted" with the date, and the email arrives.
+    Signing back in shows "Your account is being deleted"; Keep my account
+    brings the feed back.
+  - `docker compose exec api node dist/cli/privacy-request.js list` leaves
+    nothing open from that test.
+  - The next morning, `backup.log` has "deleted N of Kratos's sent emails older
+    than 7 days" before the backup line.
 
 ## Rollback
 
 - Migration 0028 only adds columns and a table. Older code ignores them.
 - Rolling the API back pauses erasure, since the job is new code. Accounts
   waiting for deletion stay inactive (older code reads `active`) and are erased
-  once the new code is back. Older code's reinstatement would reactivate a
+  once the new code is back. The account queue's scheduled jobs wait in Redis
+  meanwhile; nothing else reads them. Older code's reinstatement would reactivate a
   member waiting for deletion, so nobody should be reinstated while rolled back.
+  Older code also shows such a member the suspended page instead of the choice to
+  keep their account, and nobody can ask for deletion in Settings meanwhile.
 - Cancelling is the undo for a request. An erase cannot be undone. Restoring a
   backup from before it brings the account back: if the app's database is
   restored, the scan erases it again on its own (its deletion is due and its
@@ -326,7 +448,8 @@ erase cannot both happen.
 - A snapshot of a reported profile kept as evidence.
 - A retention sweep for quarantined images (it has its own placeholder on
   `/privacy`); the sweep here blanks post text only.
-- A page for operators; requests by email are handled from the command line.
+- A page for operators. Requests by email are recorded, acted on and closed with
+  `pnpm privacy-request` ([the runbook](../governance/privacy-requests.md)).
 
 ## Settled while writing this
 

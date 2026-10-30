@@ -1,10 +1,19 @@
 import 'server-only'
 import { linkClass } from '@/lib/auth/link-class'
 import type { AuthFormProps, FrontendAuthProvider } from '../../types'
-import { getApiAuthHeaders, getFlow, getFlowError, getLogoutUrl, getSessionEmail, hasSessionCredentials, startFlowUrl } from './client'
+import {
+  forgetEndedSession,
+  getApiAuthHeaders,
+  getFlow,
+  getFlowError,
+  getLogoutUrl,
+  getSessionEmail,
+  hasSessionCredentials,
+  startFlowUrl,
+} from './client'
 import { FlowForm } from './flow-form'
 import { ForgetFlowParam } from './forget-flow'
-import { isLogoutUrl } from './urls'
+import { isLogoutUrl, reauthUrl } from './urls'
 
 async function Form({ kind, flowId }: AuthFormProps) {
   const flow = await getFlow(kind, flowId)
@@ -47,6 +56,8 @@ export const kratosAuth: FrontendAuthProvider = {
   startUrl: startFlowUrl,
   getLogoutUrl,
   isLogoutUrl,
+  forgetEndedSession,
+  reauthUrl,
   getFlowError,
   getApiAuthHeaders,
   hasSessionCredentials,

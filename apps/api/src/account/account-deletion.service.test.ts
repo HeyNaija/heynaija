@@ -257,6 +257,44 @@ test('a cancelled deletion is never erased', async () => {
   assert.equal(kratos.deleted.size, 0)
 })
 
+test('a deletion asked for by email completes the request recorded when it arrived', async () => {
+  const [recorded] = await db
+    .insert(privacyRequests)
+    .values({ memberId: null, kind: 'deletion', channel: 'email', status: 'received', receivedAt: days(-3), dueBy: days(27) })
+    .returning()
+  await deletion.request(xena, { channel: 'email', handledBy: sam, requestId: recorded!.id }, now)
+  const linked = await requestsOf(xena)
+  assert.deepEqual(
+    linked.map((r) => [r.id, r.status, r.receivedAt, r.dueBy, r.handledBy]),
+    [[recorded!.id, 'in_progress', days(-3), days(27), sam]],
+    'one request, still due from when it arrived',
+  )
+  await deletion.erase(xena, days(14))
+  assert.equal((await requestsOf(xena))[0]!.status, 'completed')
+
+  // Another member's request is not this account's to complete, and nothing changes.
+  const [yemis] = await db
+    .insert(privacyRequests)
+    .values({ memberId: yemi, kind: 'deletion', channel: 'email', status: 'received', receivedAt: now, dueBy: days(30) })
+    .returning()
+  await assert.rejects(
+    deletion.request(zara, { channel: 'email', requestId: yemis!.id }, now),
+    (err: unknown) => err instanceof AccountDeletionError && err.code === 'no_request',
+  )
+  assert.equal((await member(zara)).active, true)
+})
+
+test('the erases due are the accounts past their time and not yet erased, longest waiting first', async () => {
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.request(yemi, { channel: 'email', immediate: true, handledBy: sam }, days(1))
+  await deletion.request(zara, { channel: 'self_service' }, now)
+  await deletion.cancel(zara, days(1))
+  assert.deepEqual(await deletion.due(days(13)), [yemi])
+  assert.deepEqual(await deletion.due(days(14)), [yemi, xena])
+  await deletion.erase(yemi, days(14))
+  assert.deepEqual(await deletion.due(days(14)), [xena])
+})
+
 test('reinstating a member waiting for deletion lifts the suspension but keeps them off the site', async () => {
   // Both ways of reinstating: a decided appeal, and directly.
   await moderation.setSuspended(sam, 'xena', true)

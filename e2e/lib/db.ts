@@ -12,7 +12,9 @@ export function pool() {
  * Removes every member these tests created, everything they did and everything
  * done to them, their invites and their Kratos identities. A member counts only
  * if their handle starts with e2e_ and their Kratos email ends in @e2e.test, so a
- * real member who picked an e2e_ handle is left alone.
+ * real member who picked an e2e_ handle is left alone. An erased member has
+ * neither any more, so the privacy request that erased them, marked as ours, is
+ * what finds them; tombstones are never picked out by their handle.
  */
 export async function cleanTestData(log = (_: string) => {}) {
   const db = pool()
@@ -21,7 +23,14 @@ export async function cleanTestData(log = (_: string) => {}) {
       `${MARK.handlePrefix.replace('_', '\\_')}%`,
     ])
     const ids: string[] = []
+    // Erased through our mark, and Kratos has forgotten them: ours without asking it.
+    const { rows: erased } = await db.query<{ id: string }>(
+      `select distinct member_id as id from privacy_requests where notes = $1 and member_id is not null`,
+      [MARK.inviteNote],
+    )
+    for (const { id } of erased) ids.push(id)
     for (const { id } of rows) {
+      if (ids.includes(id)) continue
       const res = await fetch(`${env.kratosAdminUrl}/admin/identities/${id}`)
       if (res.status === 404) {
         ids.push(id) // Kratos already forgot it; the app rows are still ours to remove.
@@ -74,6 +83,7 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['voting memberships', `delete from restricted.governance_memberships where member_id in (select id from e2e_m)`],
         ['age records', `delete from restricted.age_assurances where member_id in (select id from e2e_m)`],
         ['governance audit', `delete from restricted.governance_audit_log where subject_id in (select id from e2e_m)`],
+        ['privacy requests', `delete from privacy_requests where member_id in (select id from e2e_m) or handled_by in (select id from e2e_m)`],
         ['members', `delete from members where id in (select id from e2e_m)`],
         ['invites', `delete from invites where note = $1`],
       ]

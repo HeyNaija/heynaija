@@ -1,5 +1,11 @@
 import { createDb } from '@heynaija/db'
 import { Controller, Get, Module } from '@nestjs/common'
+import { AccountController } from './account/account.controller.js'
+import { AccountDeletionService, DELETION_NOTICES } from './account/account-deletion.service.js'
+import { AccountWorker, BullAccountJobs } from './account/account-queue.js'
+import { EmailDeletionNotices } from './account/deletion-notices.js'
+import { PrivacyRequestsService } from './account/privacy-requests.service.js'
+import { RetentionService } from './account/retention.service.js'
 import { AuthController } from './auth/auth.controller.js'
 import { AuthService } from './auth/auth.service.js'
 import { AUTH_SESSION_PROVIDER } from './auth/auth-session.provider.js'
@@ -10,7 +16,7 @@ import { RedisSessionCache, SESSION_CACHE } from './auth/session-cache.js'
 import { OptionalSessionGuard, SessionGuard, SuspendedAllowedGuard } from './auth/session.guard.js'
 import { CommunitiesController } from './communities/communities.controller.js'
 import { CommunitiesService } from './communities/communities.service.js'
-import { EMAIL_ADDRESSES, KratosAddresses } from './email/addresses.js'
+import { EMAIL_ADDRESSES, type EmailAddresses, KratosAddresses } from './email/addresses.js'
 import { EmailController } from './email/email.controller.js'
 import { BullEmailJobs, EmailWorker } from './email/email-queue.js'
 import { EMAIL_JOBS, EMAIL_SETTINGS, EmailNotificationsService } from './email/email-notifications.service.js'
@@ -64,7 +70,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, AccountController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -144,6 +150,17 @@ class HealthController {
     ExportService,
     GovernanceService,
     OnboardingService,
+    // Account deletion (docs/adr/0016). Its emails go through the notification mailer, so none without SMTP.
+    {
+      provide: DELETION_NOTICES,
+      useFactory: (env: Env, mailer: Mailer | null, addresses: EmailAddresses) => new EmailDeletionNotices(mailer, addresses, env.WEB_PUBLIC_URL),
+      inject: [ENV, MAILER, EMAIL_ADDRESSES],
+    },
+    AccountDeletionService,
+    PrivacyRequestsService,
+    RetentionService,
+    BullAccountJobs,
+    AccountWorker,
   ],
 })
 export class AppModule {}

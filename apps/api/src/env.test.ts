@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { loadEnv } from './env.js'
+import { loadEnv, loadPrivacyToolEnv } from './env.js'
 
 const base = {
   DATABASE_URL: 'postgres://localhost/heynaija',
@@ -140,4 +140,13 @@ test('the safety settings are optional, also when given empty, and the Cloudflar
   assert.equal(on.MEDIA_ORIGIN, 'https://media.heynaija.ng')
   // An alert address alone would send nothing, so it is refused rather than silently ignored.
   assert.throws(() => loadEnv({ ...base, SAFETY_ALERT_EMAIL: 'contact@heynaija.ng' }), /needs SMTP_CONNECTION_URI/)
+})
+
+test('the privacy-request command needs no storage keys, and checks the deletion days as the API does', () => {
+  const tool = { DATABASE_URL: base.DATABASE_URL, REDIS_URL: base.REDIS_URL, KRATOS_ADMIN_URL: base.KRATOS_ADMIN_URL }
+  const env = loadPrivacyToolEnv(tool)
+  assert.deepEqual([env.ACCOUNT_DELETION_GRACE_DAYS, env.PRIVACY_REQUEST_DUE_DAYS, env.SMTP_CONNECTION_URI], [14, 30, undefined])
+  assert.equal('S3_SECRET_ACCESS_KEY' in env, false)
+  assert.throws(() => loadPrivacyToolEnv({ ...tool, ACCOUNT_DELETION_GRACE_DAYS: '20', PRIVACY_REQUEST_DUE_DAYS: '10' }), /must not be more than/)
+  assert.throws(() => loadPrivacyToolEnv({ DATABASE_URL: base.DATABASE_URL, REDIS_URL: base.REDIS_URL }), /KRATOS_ADMIN_URL/)
 })
