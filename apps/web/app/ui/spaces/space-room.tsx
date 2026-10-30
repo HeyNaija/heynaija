@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Avatar } from '@/app/ui/avatar'
 import { HandIcon, LeaveIcon, LiveIcon, LockIcon, MicIcon, MicOffIcon } from '@/app/ui/icons'
+import { SpaceSession, type Phase } from '@/lib/space-session'
 import {
   applyView,
   controlsFor,
+  createLatest,
   CURRENT_SPACE_KEY,
   dataUseHint,
-  joinFailure,
   listenerLabel,
   nextPollDelay,
   personName,
@@ -20,13 +21,11 @@ import {
   type SpaceView,
   type SpeakRequest,
 } from '@/lib/spaces'
-import { spaceCall, type Reply } from './api'
+import { spaceCall } from './api'
 import type { SpaceAudio } from './audio'
 import { HostPanel } from './host-panel'
 
-type Phase = 'prejoin' | 'connecting' | 'live' | 'reconnecting' | 'ended' | 'full' | 'locked' | 'failed'
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 const MIC_BLOCKED =
   'The browser did not allow the microphone, so you are still listening. To speak, allow the microphone for this site in your browser settings, then tap again.'
 const MIC_BUSY = 'The microphone did not start. Another app may be using it. You are still listening.'
@@ -49,9 +48,9 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
   const container = useRef<HTMLDivElement>(null)
   const snapshot = useRef<Snapshot>({ role: initial.viewer.role, status: initial.status })
   const micRef = useRef(false)
-  const leaving = useRef(false)
-  const reconnecting = useRef(false)
   const wake = useRef<WakeLockSentinel | null>(null)
+  const latest = useRef(createLatest())
+  const session = useRef<SpaceSession | null>(null)
 
   const announce = useCallback((text: string) => setAnnouncement(text), [])
   const role = view.viewer.role
@@ -68,101 +67,70 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
     setMicOn(on)
   }
 
-  // ---- keeping the screen on, where the browser lets us ---------------------
-
-  const holdScreen = useCallback(async () => {
-    try {
-      if (!wake.current || wake.current.released) wake.current = (await navigator.wakeLock?.request('screen')) ?? null
-    } catch {
-      // Denied (low battery, or no support): the "keep this screen open" note is the fallback.
+  /** The join / reconnect / leave state machine (lib/space-session.ts), wired to this page. */
+  function getSession(): SpaceSession {
+    if (!session.current) {
+      session.current = new SpaceSession({
+        join: () => spaceCall<JoinResult>('POST', `/${id}/join`),
+        // The server grants the microphone to a speaker only after this; the poll repeats it if it is lost.
+        sync: () => void spaceCall('POST', `/${id}/sync`),
+        // keepalive lets it finish while the page is closing.
+        leave: () => void fetch(`/api/v1/spaces/${id}/leave`, { method: 'POST', keepalive: true }).catch(() => undefined),
+        createAudio: async (events) => {
+          // The one place the SDK is fetched: a separate chunk, only after a tap.
+          const { createAudio } = await import('./audio')
+          const into = container.current
+          if (!into) throw new Error('the room is gone')
+          const made = createAudio(into, events)
+          audio.current = made
+          return made
+        },
+        rememberSpace: (on) => (on ? sessionStorage.setItem(CURRENT_SPACE_KEY, id) : sessionStorage.removeItem(CURRENT_SPACE_KEY)),
+        holdScreen: async () => {
+          try {
+            wake.current = (await navigator.wakeLock?.request('screen')) ?? null
+          } catch {
+            // Denied (low battery, or no support): the "keep this screen open" note is the fallback.
+          }
+          return () => {
+            void wake.current?.release().catch(() => undefined)
+            wake.current = null
+          }
+        },
+        sleep,
+        reloadPage: () => window.location.reload(),
+        ui: {
+          phase: (next) => {
+            setPhase(next)
+            if (next !== 'live' && next !== 'reconnecting') setMic(false)
+          },
+          problem: setProblem,
+          joined: (result) => {
+            setView(result.space)
+            snapshot.current = { role: result.role, status: result.space.status }
+          },
+          announce,
+          playbackBlocked: setBlocked,
+          speaking: setSpeaking,
+          micOff: () => setMic(false),
+        },
+      })
     }
-  }, [])
-  const releaseScreen = useCallback(() => {
-    void wake.current?.release().catch(() => undefined)
-    wake.current = null
-  }, [])
+    return session.current
+  }
 
-  // ---- ending ------------------------------------------------------------------
-
-  const finish = useCallback(async () => {
-    leaving.current = true
-    setMic(false)
-    releaseScreen()
-    sessionStorage.removeItem(CURRENT_SPACE_KEY)
-    await audio.current?.disconnect().catch(() => undefined)
-    setPhase('ended')
-  }, [releaseScreen])
-
-  // ---- joining and reconnecting --------------------------------------------------
-
-  /** One join: a token from the API, then the media connection. 'retry' leaves the choice to the caller. */
-  const connect = useCallback(async (): Promise<'ok' | 'retry' | 'stop'> => {
-    const res = (await spaceCall<JoinResult>('POST', `/${id}/join`)) as Reply<JoinResult>
-    if (!res.ok) {
-      const why = joinFailure(res.status, res.code)
-      if (why === 'notfound') {
-        // Removed, or no longer visible: let the server answer with the normal not-found page.
-        window.location.reload()
-        return 'stop'
-      }
-      if (why === 'full' || why === 'locked') {
-        setPhase(why)
-        return 'stop'
-      }
-      if (why === 'ended') {
-        await finish()
-        return 'stop'
-      }
-      setProblem(res.message ?? 'Could not reach the Space. Check your connection.')
-      return 'retry'
+  useEffect(() => {
+    const s = getSession()
+    s.open()
+    const onHide = () => s.pageHide()
+    window.addEventListener('pagehide', onHide)
+    return () => {
+      window.removeEventListener('pagehide', onHide)
+      // Leaving by any route (a link, Back) drops the connection, the screen lock and the presence.
+      s.dispose()
     }
-    setView(res.data.space)
-    snapshot.current = { role: res.data.role, status: res.data.space.status }
-    try {
-      if (!audio.current) {
-        // The one place the SDK is fetched: a separate chunk, only after a tap.
-        const { createAudio } = await import('./audio')
-        audio.current = createAudio(container.current as HTMLElement, {
-          onReconnecting: () => setPhase((p) => (p === 'live' ? 'reconnecting' : p)),
-          onReconnected: () => setPhase((p) => (p === 'reconnecting' ? 'live' : p)),
-          onLost: () => void reconnect(),
-          onPlaybackBlocked: setBlocked,
-          onSpeaking: setSpeaking,
-          onMicOff: () => setMic(false),
-        })
-      }
-      await audio.current.connect(res.data.url, res.data.token)
-    } catch {
-      setProblem('Could not connect the audio. Check your connection and try again.')
-      return 'retry'
-    }
-    // The server grants the microphone to a speaker only after this; failing is harmless (the poll repeats it).
-    void spaceCall('POST', `/${id}/sync`)
-    return 'ok'
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, finish])
-
-  const reconnect = useCallback(async () => {
-    if (reconnecting.current || leaving.current) return
-    reconnecting.current = true
-    setPhase('reconnecting')
-    announce('Reconnecting.')
-    for (let attempt = 0; !leaving.current; attempt++) {
-      await sleep(Math.min(1000 * 2 ** attempt, 15_000))
-      if (leaving.current) break
-      // Every reconnect asks the API again: a new token, and the role as it is now.
-      const result = await connect()
-      if (result === 'ok') {
-        setProblem(null)
-        setPhase('live')
-        announce('Reconnected.')
-        break
-      }
-      if (result === 'stop') break
-    }
-    reconnecting.current = false
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connect, announce])
+  }, [])
 
   async function join() {
     if (typeof RTCPeerConnection === 'undefined') {
@@ -170,43 +138,31 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
       setProblem('This browser cannot play Spaces. Try a recent Chrome, Firefox, Safari or Edge.')
       return
     }
-    setProblem(null)
-    setPhase('connecting')
-    leaving.current = false
-    const result = await connect()
-    if (result === 'ok') {
-      sessionStorage.setItem(CURRENT_SPACE_KEY, id)
-      setPhase('live')
-      announce('You are in the Space. Keep this screen open to keep listening.')
-      void holdScreen()
-    } else if (result === 'retry') {
-      setPhase('failed')
-    }
+    await getSession().join()
   }
 
   async function leave() {
-    leaving.current = true
-    releaseScreen()
-    sessionStorage.removeItem(CURRENT_SPACE_KEY)
-    await audio.current?.disconnect().catch(() => undefined)
-    await spaceCall('POST', `/${id}/leave`)
+    await getSession().leave()
     router.push('/')
   }
 
   // ---- polling (there is no realtime channel) ------------------------------------
 
   const poll = useCallback(async (): Promise<boolean> => {
+    const ticket = latest.current.begin()
     const res = await spaceCall<SpaceView>('GET', `/${id}`)
     if (!res.ok) {
       if (res.status === 404) window.location.reload()
       return false
     }
+    // An older response, or one fetched before the member's last action, must not overwrite a newer view.
+    if (!latest.current.accept(ticket)) return true
     const next = applyView(snapshot.current, res.data)
     snapshot.current = { role: next.role, status: next.status }
     setView(res.data)
     if (next.announcement) announce(next.announcement)
     if (next.ended) {
-      await finish()
+      await getSession().finish()
       return true
     }
     if (next.resync) {
@@ -225,9 +181,16 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
       setRequests([])
     }
     return true
-  }, [id, announce, finish])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, announce])
   const pollRef = useRef(poll)
   pollRef.current = poll
+
+  /** After something the member did: views requested before now are out of date, so fetch a fresh one. */
+  const refreshAfterAction = useCallback(async () => {
+    latest.current.noteAction()
+    await pollRef.current()
+  }, [])
 
   useEffect(() => {
     if (!polling) return
@@ -246,7 +209,8 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
     const onVisibility = () => {
       clearTimeout(timer)
       if (document.hidden) return
-      void holdScreen()
+      // The browser releases a wake lock when the tab is hidden; take it again.
+      if (wake.current?.released) void navigator.wakeLock?.request('screen').then((l) => (wake.current = l)).catch(() => undefined)
       void tick()
     }
     document.addEventListener('visibilitychange', onVisibility)
@@ -256,16 +220,7 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
       clearTimeout(timer)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [polling, holdScreen])
-
-  // Leaving the page by any route (a link, Back) drops the connection and the screen lock.
-  useEffect(() => {
-    return () => {
-      leaving.current = true
-      void audio.current?.disconnect().catch(() => undefined)
-      void wake.current?.release().catch(() => undefined)
-    }
-  }, [])
+  }, [polling])
 
   useEffect(() => {
     if (phase !== 'live' || !('mediaSession' in navigator)) return
@@ -292,7 +247,7 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
     const res = await spaceCall(on ? 'PUT' : 'DELETE', `/${id}/speak-request`)
     if (!res.ok) setProblem(res.message ?? 'That did not work. Try again.')
     else announce(on ? 'Request sent. The host will see it.' : 'Request withdrawn.')
-    await poll()
+    await refreshAfterAction()
   }
 
   // ---- drawing -----------------------------------------------------------------------
@@ -390,6 +345,25 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
         </section>
       ) : null}
 
+      {phase === 'elsewhere' ? (
+        <section className="square-card space-section" role="alert">
+          <h2 className="section-title">This Space is open in another tab or device</h2>
+          <p className="mt-2 text-sm text-muted">You can only listen in one place at a time. The sound is playing there. To move it here, tap the button.</p>
+          <button type="button" className="btn btn-primary space-btn mt-4" onClick={join}>
+            Use it here
+          </button>
+        </section>
+      ) : null}
+
+      {phase === 'gone' ? (
+        <section className="square-card space-section" role="alert">
+          <h2 className="section-title">You are no longer in this Space</h2>
+          <Link href="/" className="btn btn-primary space-btn mt-4">
+            Back to Home
+          </Link>
+        </section>
+      ) : null}
+
       {phase === 'ended' ? (
         <section className="square-card space-section" role="status">
           <h2 className="section-title">This Space has ended</h2>
@@ -437,7 +411,7 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
             </ul>
           </section>
 
-          {role === 'host' || role === 'cohost' ? <HostPanel view={view} role={role} requests={requests} refresh={async () => void (await poll())} announce={announce} /> : null}
+          {role === 'host' || role === 'cohost' ? <HostPanel view={view} role={role} requests={requests} refresh={refreshAfterAction} announce={announce} /> : null}
 
           {micProblem ? (
             <p role="alert" className="notice notice-danger">

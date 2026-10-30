@@ -1,22 +1,18 @@
 // The only file that imports livekit-client. space-room.tsx loads it with a dynamic
 // import() when someone taps Join, so the SDK is a separate chunk that the feed,
 // the profile and every other page never download (ADR 0017 section 6).
-import { ConnectionState, Room, RoomEvent, Track } from 'livekit-client'
+import { ConnectionState, DisconnectReason, Room, RoomEvent, Track } from 'livekit-client'
+import type { AudioEvents, LostReason } from '@/lib/space-session'
 
-export type AudioHandlers = {
-  /** The SDK is retrying on its own with the token it has. */
-  onReconnecting: () => void
-  onReconnected: () => void
-  /** The connection is gone and the SDK gave up (or the server closed it); the room asks the API for a new token. */
-  onLost: () => void
-  /** The browser is blocking playback until a tap. */
-  onPlaybackBlocked: (blocked: boolean) => void
-  /** Member ids of whoever is talking now. Drawn as an outline only; never announced. */
-  onSpeaking: (ids: string[]) => void
-  onMicOff: () => void
+/** Why LiveKit ended the connection, in the terms the room acts on: only a network drop is worth retrying. */
+export function lostReason(reason: DisconnectReason | undefined): LostReason {
+  if (reason === DisconnectReason.DUPLICATE_IDENTITY) return 'duplicate'
+  if (reason === DisconnectReason.PARTICIPANT_REMOVED) return 'removed'
+  if (reason === DisconnectReason.ROOM_DELETED) return 'room_deleted'
+  return 'network'
 }
 
-export function createAudio(container: HTMLElement, on: AudioHandlers) {
+export function createAudio(container: HTMLElement, on: AudioEvents) {
   const room = new Room({ audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, publishDefaults: { dtx: true } })
   let closing = false
 
@@ -31,8 +27,8 @@ export function createAudio(container: HTMLElement, on: AudioHandlers) {
     })
     .on(RoomEvent.Reconnecting, () => on.onReconnecting())
     .on(RoomEvent.Reconnected, () => on.onReconnected())
-    .on(RoomEvent.Disconnected, () => {
-      if (!closing) on.onLost()
+    .on(RoomEvent.Disconnected, (reason) => {
+      if (!closing) on.onLost(lostReason(reason))
     })
     .on(RoomEvent.AudioPlaybackStatusChanged, () => on.onPlaybackBlocked(!room.canPlaybackAudio))
     // The server took the microphone (a host muted or demoted us): the button must not keep saying "on".

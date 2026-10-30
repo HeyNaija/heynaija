@@ -127,11 +127,36 @@ export function dataUseHint(connection: Connection): string {
 /** Where the Home card finds "your Space" again: the API has no list of live Spaces yet. */
 export const CURRENT_SPACE_KEY = 'hn-space-current'
 
-export const TITLE_MAX = 200
+/** What the API accepts (SpacesService.create); its controller's schema is looser. */
+export const TITLE_MAX = 120
 
 export function titleProblem(title: string): string | null {
   const t = title.trim()
   if (!t) return 'Give your Space a title.'
-  if (t.length > TITLE_MAX) return `Keep the title under ${TITLE_MAX} characters.`
+  if (t.length > TITLE_MAX) return `Keep the title to ${TITLE_MAX} characters or fewer.`
   return null
+}
+
+/**
+ * Orders polled views. Responses arrive in any order, so each request takes a
+ * ticket when it starts; a response applies only if it started after the last one
+ * applied and after the member's last action (a view fetched before the action
+ * may predate it, and must not undo it, least of all as a role downgrade).
+ */
+export function createLatest() {
+  let issued = 0
+  let applied = 0
+  let floor = 0
+  return {
+    begin: () => ++issued,
+    accept(ticket: number) {
+      if (ticket <= applied || ticket <= floor) return false
+      applied = ticket
+      return true
+    },
+    /** Call when an action of the member's has finished: views requested before now are out of date. */
+    noteAction() {
+      floor = issued
+    },
+  }
 }

@@ -110,9 +110,9 @@ test('the data hint appears on mobile data or when the browser asks to save data
   assert.match(dataUseHint({ type: 'wifi' }), /43 MB/)
 })
 
-test('a title is required and at most 200 characters', () => {
+test('a title is required and at most 120 characters, the most the API takes', () => {
   assert.ok(titleProblem('   '))
   assert.equal(titleProblem(' Jollof debate '), null)
-  assert.ok(titleProblem('x'.repeat(201)))
-  assert.equal(titleProblem('x'.repeat(200)), null)
+  assert.ok(titleProblem('x'.repeat(121)))
+  assert.equal(titleProblem('x'.repeat(120)), null)
 })
