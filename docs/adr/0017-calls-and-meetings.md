@@ -504,6 +504,69 @@ when this is built. On a phone the room is a bottom sheet that stays when the
 reader leaves the page, with a mini bar to return; mute and leave are always in
 reach, and the page works with a mic denied (listen only).
 
+## 4b. Gaps in the first design, and what stage 5 does about each
+
+These came out of a review of 4a against X Spaces and against how our members
+use the web. Each has a recommendation; none is built.
+
+1. **Phone audio.** A web page can lose its audio when the screen locks or the
+   member switches apps, most of all on iOS Safari. Spaces are listened to with
+   the phone in a pocket, so this is the largest product risk. Stage 5 on the
+   web is **listen with the screen on**, said plainly in the room ("keep this
+   screen open"). A Media Session entry and a wake lock are used where the
+   browser allows it **(verify per browser)**. Reliable background listening
+   needs the native apps (roadmap `native-apps`), so stage 5 is not announced as
+   "like X Spaces" on phones until it is measured. Recommend a spike on real
+   Android and iPhone before any promise.
+2. **Captions.** A live audio room with no text excludes deaf and
+   hard-of-hearing members, and X offers captions. The cost and privacy of
+   transcription are open question 8. Recommend: not in the first release of
+   stage 5, said plainly in the room, and a Space can be marked **"Captions by
+   the host"** (a speaker types key points into a pinned note) as a stopgap.
+   Revisit before widening past the allow-list.
+3. **Listener data use.** About 43 MB an hour at three speakers (section 4a).
+   Recommend a **data-saver choice** on mobile data (join muted-until-tapped, no
+   autoplay), a visible "using mobile data" hint, and the room never starting
+   video. Measure real use on a Nigerian mobile connection during the load test.
+4. **Testing.** Browsers need a real audio device to test WebRTC. Recommend
+   Chromium's fake-media flags (`--use-fake-device-for-media-stream`,
+   `--use-fake-ui-for-media-stream`) for end-to-end tests against a LiveKit
+   server in a container, with one test per role (host, speaker, listener,
+   removed member, blocked member) **(verify the flags in the pinned Playwright
+   version)**. Unit tests cover the role and eligibility functions. Real
+   network conditions (loss, jitter) are a manual test on the production server,
+   not CI.
+5. **Sharing a Space.** X lets a Space be posted as a card. Stage 5 allows
+   sharing a Space's link and a **Space card in a post** (title, host, time, and
+   "Live" or "Ended"), which obeys the same eligibility: a member who cannot
+   join sees an unavailable card, like a deleted post. The card carries no
+   listener names.
+6. **Host tools.** Beyond mute, remove and end: a **speaker queue** (requests
+   in the order made, one open request per member), **pinned links** (the host
+   pins up to three links, each checked against the existing link rules), a
+   visible muted state for each speaker, and a **host handover** prompt before
+   the host leaves. No polls or co-streaming in stage 5.
+7. **Abuse by hosts and rooms.** A per-host limit (for example one live Space at
+   a time, and a daily cap on Spaces started by an account under 30 days old), a
+   rate limit on "Notify my followers", a required title and category that are
+   checked like post text, and the lock-room, lower-cap and moderator-end tools
+   in 4a. A host whose Spaces are repeatedly ended loses hosting through the
+   standing rule. Numbers are proposals, tuned from use.
+8. **Operations.** The media server needs its own checks and a runbook before
+   anyone is told it exists: bandwidth against the provider quota with alerts at
+   60 and 80 percent, CPU and packet loss per node, live rooms and listeners as
+   metrics, an alert if the webhook endpoint stops receiving, a documented way to
+   end every live room (the flag deletes rooms, section 7), and a named person
+   on call during the first allow-listed Spaces. Section 2's monitoring list is
+   extended with these; the load test that sets the 200-listener cap also sets
+   the alert thresholds.
+9. **Cost.** Spaces are costed on bandwidth (4a): about 8.6 GB an hour at the
+   example load. Recommend a monthly cap on bandwidth in the provider account, a
+   Space-hours counter in the admin view, and a decision from the numbers after
+   the allow-listed period on whether a Space listener cap or a longer-term
+   plan is needed. No dollar figure is given here because provider pricing and
+   the server choice are open (open question 2).
+
 ## 5. Safety
 
 Calls are live and leave no text for a moderator to read, so the gate is
@@ -719,3 +782,9 @@ Each has a recommendation; the PR description repeats them.
 17. **Do listeners join `hidden` and is the listener list visible to
     co-hosts only?** Recommend yes (section 4a), subject to LiveKit supporting
     it as described **(verify)**.
+18. **Phone audio.** Is "listen with the screen on" acceptable for the first
+    release, or is Spaces held until the native apps exist? Recommend ship to
+    the allow-list with the limit stated, and measure before widening.
+19. **Captions for Spaces.** Is the "captions by the host" stopgap enough to
+    start, or must server transcription (open question 8) come first? Recommend
+    the stopgap for the allow-list, a decision before widening.
