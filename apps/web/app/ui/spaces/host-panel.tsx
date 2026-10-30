@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Avatar } from '@/app/ui/avatar'
 import { LockIcon } from '@/app/ui/icons'
-import { personName, type Person, type SpaceRole, type SpaceView, type SpeakRequest, controlsFor } from '@/lib/spaces'
+import { Sheet } from './sheet'
+import { listenerLabel, personName, type Person, type SpaceRole, type SpaceView, type SpeakRequest, controlsFor } from '@/lib/spaces'
 import { spaceCall } from './api'
 
 /** A button that must be tapped twice, for the moves that cannot be undone from here (remove, end). */
@@ -32,6 +33,8 @@ function ConfirmButton({ label, confirmLabel, onConfirm, disabled, name }: { lab
 }
 
 type Props = {
+  listenersOpen: boolean
+  onListenersClose: () => void
   view: SpaceView
   role: SpaceRole
   requests: SpeakRequest[]
@@ -40,12 +43,11 @@ type Props = {
   announce: (message: string) => void
 }
 
-export function HostPanel({ view, role, requests, refresh, announce }: Props) {
+export function HostPanel({ view, role, requests, refresh, announce, listenersOpen, onListenersClose }: Props) {
   const controls = controlsFor({ status: view.status, requestsOpen: view.requestsOpen, viewer: { role, requestedToSpeak: false } })
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const [listeners, setListeners] = useState<Person[] | null>(null)
-  const [showListeners, setShowListeners] = useState(false)
   const alive = useRef(true)
   useEffect(() => {
     alive.current = true
@@ -63,8 +65,13 @@ export function HostPanel({ view, role, requests, refresh, announce }: Props) {
     if (res.ok) announce(done)
     else setProblem(res.message ?? 'That did not work. Try again.')
     await refresh()
-    if (showListeners) void loadListeners()
+    if (listenersOpen) void loadListeners()
   }
+
+  useEffect(() => {
+    if (listenersOpen) void loadListeners()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listenersOpen])
 
   async function loadListeners() {
     const res = await spaceCall<{ items: Person[] }>('GET', `/${view.id}/listeners`)
@@ -153,42 +160,6 @@ export function HostPanel({ view, role, requests, refresh, announce }: Props) {
         </>
       ) : null}
 
-      <h3 className="space-subhead">Listeners ({view.listenerCount})</h3>
-      <button
-        type="button"
-        className="btn btn-ghost space-btn"
-        aria-expanded={showListeners}
-        onClick={() => {
-          const next = !showListeners
-          setShowListeners(next)
-          if (next) void loadListeners()
-        }}
-      >
-        {showListeners ? 'Hide listeners' : 'Show listeners'}
-      </button>
-      {showListeners ? (
-        listeners === null ? (
-          <p className="text-sm text-muted">Loading…</p>
-        ) : listeners.length === 0 ? (
-          <p className="text-sm text-muted">Nobody is listening yet.</p>
-        ) : (
-          <ul className="space-people">
-            {listeners.map((p) => (
-              <li key={p.id} className="space-person">
-                <Avatar handle={p.handle} size={36} />
-                <span className="space-person-name">{personName(p)}</span>
-                <span className="space-actions">
-                  <button type="button" disabled={busy} className="btn btn-secondary space-btn" onClick={() => act.approve(p)}>
-                    Invite to speak<span className="sr-only">: {personName(p)}</span>
-                  </button>
-                  <ConfirmButton label="Remove" name={personName(p)} confirmLabel={`Tap again to remove ${personName(p)}`} disabled={busy} onConfirm={() => act.remove(p)} />
-                </span>
-              </li>
-            ))}
-          </ul>
-        )
-      ) : null}
-
       {controls.settings ? (
         <>
           <h3 className="space-subhead">Room</h3>
@@ -221,6 +192,32 @@ export function HostPanel({ view, role, requests, refresh, announce }: Props) {
           </div>
         </>
       ) : null}
+
+      <Sheet open={listenersOpen} onClose={onListenersClose} title="Listeners">
+        <p className="text-sm text-muted">
+          {listenerLabel(view.listenerCount)}. Only hosts and co-hosts can see who is listening.
+        </p>
+      {listeners === null ? (
+          <p className="text-sm text-muted">Loading…</p>
+        ) : listeners.length === 0 ? (
+          <p className="text-sm text-muted">Nobody is listening yet.</p>
+        ) : (
+          <ul className="space-people">
+            {listeners.map((p) => (
+              <li key={p.id} className="space-person">
+                <Avatar handle={p.handle} size={36} />
+                <span className="space-person-name">{personName(p)}</span>
+                <span className="space-actions">
+                  <button type="button" disabled={busy} className="btn btn-secondary space-btn" onClick={() => act.approve(p)}>
+                    Invite to speak<span className="sr-only">: {personName(p)}</span>
+                  </button>
+                  <ConfirmButton label="Remove" name={personName(p)} confirmLabel={`Tap again to remove ${personName(p)}`} disabled={busy} onConfirm={() => act.remove(p)} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Sheet>
     </section>
   )
 }

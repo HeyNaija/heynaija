@@ -3,8 +3,20 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Avatar } from '@/app/ui/avatar'
-import { HandIcon, LeaveIcon, LiveIcon, LockIcon, MicIcon, MicOffIcon } from '@/app/ui/icons'
+import { GearIcon, HandIcon, LeaveIcon, LockIcon, MicIcon, MicOffIcon, PeopleIcon } from '@/app/ui/icons'
+import {
+  chooseDevice,
+  createSpeakingAnnouncer,
+  DEFAULT_MIC,
+  MIC_SETTINGS_KEY,
+  micFailure,
+  readMicSettings,
+  smoothLevel,
+  writeMicSettings,
+  type InputDevice,
+  type MicFailure,
+  type MicSettings,
+} from '@/lib/space-mic'
 import { SpaceSession, type Phase } from '@/lib/space-session'
 import {
   applyView,
@@ -16,7 +28,6 @@ import {
   nextPollDelay,
   personName,
   type JoinResult,
-  type Person,
   type Snapshot,
   type SpaceView,
   type SpeakRequest,
@@ -24,11 +35,11 @@ import {
 import { spaceCall } from './api'
 import type { SpaceAudio } from './audio'
 import { HostPanel } from './host-panel'
+import { MicPanel } from './mic-panel'
+import { Sheet } from './sheet'
+import { Elapsed, StageGrid, type StagePerson } from './stage'
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-const MIC_BLOCKED =
-  'The browser did not allow the microphone, so you are still listening. To speak, allow the microphone for this site in your browser settings, then tap again.'
-const MIC_BUSY = 'The microphone did not start. Another app may be using it. You are still listening.'
 
 export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string }) {
   const router = useRouter()
@@ -37,12 +48,20 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
   const [phase, setPhase] = useState<Phase>(initial.status === 'ended' ? 'ended' : 'prejoin')
   const [announcement, setAnnouncement] = useState('')
   const [micOn, setMicOn] = useState(false)
-  const [micProblem, setMicProblem] = useState<string | null>(null)
+  const [micProblem, setMicProblem] = useState<MicFailure | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [blocked, setBlocked] = useState(false)
   const [speaking, setSpeaking] = useState<string[]>([])
   const [requests, setRequests] = useState<SpeakRequest[]>([])
   const [hint, setHint] = useState(() => dataUseHint(undefined))
+  const [mics, setMics] = useState<Record<string, boolean>>({})
+  const [level, setLevel] = useState(0)
+  const [micSettings, setMicSettings] = useState<MicSettings>(DEFAULT_MIC)
+  const [devices, setDevices] = useState<InputDevice[]>([])
+  const [noDevice, setNoDevice] = useState(false)
+  const [listenersOpen, setListenersOpen] = useState(false)
+  const [micSheet, setMicSheet] = useState(false)
+  const [speakingNote, setSpeakingNote] = useState('')
 
   const audio = useRef<SpaceAudio | null>(null)
   const container = useRef<HTMLDivElement>(null)
@@ -51,11 +70,19 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
   const wake = useRef<WakeLockSentinel | null>(null)
   const latest = useRef(createLatest())
   const session = useRef<SpaceSession | null>(null)
+  const announcer = useRef(createSpeakingAnnouncer())
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  /** The device and processing switches the live microphone was last started or restarted with. */
+  const applied = useRef('')
 
   const announce = useCallback((text: string) => setAnnouncement(text), [])
   const role = view.viewer.role
   const controls = controlsFor(view)
   const polling = phase === 'live' || phase === 'reconnecting'
+  // The chosen input if it is still plugged in, else the default one.
+  const choice = chooseDevice(devices, micSettings.deviceId)
+  const effective: MicSettings = { ...micSettings, deviceId: choice.deviceId }
+  const effKey = `${effective.deviceId}|${Number(effective.noiseSuppression)}${Number(effective.echoCancellation)}${Number(effective.autoGainControl)}`
 
   useEffect(() => {
     const connection = (navigator as Navigator & { connection?: { type?: string; saveData?: boolean } }).connection
@@ -113,6 +140,7 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
           playbackBlocked: setBlocked,
           speaking: setSpeaking,
           micOff: () => setMic(false),
+          mics: setMics,
         },
       })
     }
@@ -233,14 +261,110 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
     setMicProblem(null)
     const want = !micOn
     try {
-      await audio.current?.setMic(want)
+      applied.current = effKey
+      await audio.current?.setMic(want, effective)
       setMic(want)
       announce(want ? 'Microphone on.' : 'You are muted.')
+      // Device names appear once the browser has let us use the microphone.
+      if (want) void refreshDevices()
     } catch (err) {
       setMic(false)
-      setMicProblem((err as { name?: string })?.name === 'NotAllowedError' ? MIC_BLOCKED : MIC_BUSY)
+      setMicProblem(micFailure(err))
     }
   }
+
+  function changeMicSettings(next: MicSettings) {
+    setMicSettings(next)
+    try {
+      localStorage.setItem(MIC_SETTINGS_KEY, writeMicSettings(next))
+    } catch {
+      // Private mode: the choice lasts for this visit only.
+    }
+  }
+
+  const refreshDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return
+    const inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput')
+    setNoDevice(inputs.length === 0)
+    // Before the microphone is allowed, browsers list inputs without ids; they appear after the first Unmute.
+    setDevices(inputs.filter((d) => d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications').map((d) => ({ deviceId: d.deviceId, label: d.label })))
+  }, [])
+
+  // What the member chose last time on this browser.
+  useEffect(() => {
+    try {
+      setMicSettings(readMicSettings(localStorage.getItem(MIC_SETTINGS_KEY)))
+    } catch {
+      // No storage: defaults.
+    }
+  }, [])
+
+  // The list of inputs, kept current as headsets come and go.
+  useEffect(() => {
+    if (!polling || !controls.mic) return
+    void refreshDevices()
+    const media = navigator.mediaDevices
+    media?.addEventListener?.('devicechange', refreshDevices)
+    return () => media?.removeEventListener?.('devicechange', refreshDevices)
+  }, [polling, controls.mic, refreshDevices])
+
+  // A live microphone follows the settings: a new device or switch restarts it; losing every input mutes it.
+  useEffect(() => {
+    if (!micOn) return
+    if (noDevice) {
+      void audio.current?.setMic(false).catch(() => undefined)
+      setMic(false)
+      setMicProblem(micFailure({ name: 'NotFoundError' }))
+      announce('Your microphone was unplugged. You are muted.')
+      return
+    }
+    if (applied.current === effKey) return
+    applied.current = effKey
+    audio.current?.applyMic(effective).catch((err) => {
+      setMic(false)
+      setMicProblem(micFailure(err))
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [micOn, noDevice, effKey])
+
+  // The input level on the member's own tile and in the settings sheet.
+  useEffect(() => {
+    if (!micOn) {
+      setLevel(0)
+      return
+    }
+    let stop: (() => void) | undefined
+    let value = 0
+    let shown = 0
+    // A restarted track needs a moment before there is something to read.
+    const start = setTimeout(() => {
+      stop = audio.current?.watchLevel((raw) => {
+        value = smoothLevel(value, raw)
+        if (Math.abs(value - shown) > 0.03 || value === 0) {
+          shown = value
+          setLevel(value)
+        }
+      })
+    }, 250)
+    return () => {
+      clearTimeout(start)
+      stop?.()
+    }
+  }, [micOn, effKey])
+
+  // Who started speaking, for screen readers: new speakers only, throttled, never the member themselves.
+  useEffect(() => {
+    const nameOf = (who: string) => {
+      const p = who === view.host.id ? view.host : view.speakers.find((x) => x.id === who)
+      return p ? personName(p) : null
+    }
+    const note = announcer.current.next(Date.now(), speaking.filter((who) => who !== meId), nameOf)
+    if (!note) return
+    setSpeakingNote(note)
+    clearTimeout(noteTimer.current)
+    noteTimer.current = setTimeout(() => setSpeakingNote(''), 2500)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speaking])
 
   async function speakRequest(on: boolean) {
     setProblem(null)
@@ -252,47 +376,59 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
 
   // ---- drawing -----------------------------------------------------------------------
 
-  const stage: (Person & { label: string })[] = [
+  const people: StagePerson[] = [
     { ...view.host, label: 'Host' },
-    ...view.speakers.map((s) => ({ ...s, label: s.role === 'cohost' ? 'Co-host' : 'Speaker' })),
+    ...view.speakers.map((s): StagePerson => ({ ...s, label: s.role === 'cohost' ? 'Co-host' : 'Speaker' })),
   ]
+  const moderator = role === 'host' || role === 'cohost'
+  const ended = view.status === 'ended' || phase === 'ended'
 
   return (
     <div className="page-stack space-room">
       <div role="status" aria-live="polite" className="sr-only">
         {announcement}
       </div>
+      {/* Who started speaking, throttled; a second region so it never overwrites a role change. */}
+      <div role="status" aria-live="polite" className="sr-only">
+        {speakingNote}
+      </div>
       {/* The SDK attaches one <audio> per speaker here. */}
       <div ref={container} hidden />
 
-      <header className="square-card space-section">
-        <p className="space-live">
-          <LiveIcon size={16} />
-          <span>{view.status === 'ended' || phase === 'ended' ? 'Ended' : 'Live'}</span>
-          {view.community ? (
-            <span className="text-muted">
-              {' · '}
-              <Link href={`/c/${view.community.slug}`} className="hover:underline">
-                {view.community.name}
-              </Link>
+      <header className="square-card space-section space-head">
+        <div className="space-head-row">
+          <p className="space-live">
+            {ended ? null : <span className="space-live-dot" aria-hidden="true" />}
+            <span>{ended ? 'Ended' : 'Live'}</span>
+            {!ended ? <Elapsed startedAt={view.startedAt} /> : null}
+          </p>
+          {view.locked ? (
+            <span className="space-badge">
+              <LockIcon size={12} /> Room locked
             </span>
           ) : null}
-        </p>
+        </div>
         <h1 className="page-title mt-2">{view.title}</h1>
         <p className="mt-2 text-sm text-muted">
           Hosted by{' '}
           <Link href={`/u/${view.host.handle}`} className="font-semibold text-ink hover:underline">
             {personName(view.host)}
           </Link>
-          {' · '}
-          <span>{listenerLabel(view.listenerCount)}</span>
-          {view.locked ? (
-            <span className="space-locked">
-              {' · '}
-              <LockIcon size={14} /> Room locked
-            </span>
+          {view.community ? (
+            <>
+              {' in '}
+              <Link href={`/c/${view.community.slug}`} className="hover:underline">
+                {view.community.name}
+              </Link>
+            </>
           ) : null}
         </p>
+        {!ended ? (
+          <button type="button" className="btn btn-secondary space-btn space-count mt-3" aria-haspopup="dialog" onClick={() => setListenersOpen(true)}>
+            <PeopleIcon size={18} />
+            {listenerLabel(view.listenerCount)}
+          </button>
+        ) : null}
       </header>
 
       {phase === 'prejoin' ? (
@@ -397,65 +533,92 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
             <h2 id="space-stage-heading" className="section-title">
               On stage
             </h2>
-            <ul className="space-people">
-              {stage.map((p) => (
-                <li key={p.id} className={`space-person ${speaking.includes(p.id) ? 'space-speaking' : ''}`}>
-                  <Avatar handle={p.handle} size={44} />
-                  <span className="space-person-name">
-                    {personName(p)}
-                    {p.id === meId ? ' (you)' : ''}
-                    <span className="text-muted"> {p.label}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <StageGrid people={people} meId={meId} speaking={speaking} mics={mics} level={level} />
           </section>
 
-          {role === 'host' || role === 'cohost' ? <HostPanel view={view} role={role} requests={requests} refresh={refreshAfterAction} announce={announce} /> : null}
+          {moderator && role ? (
+            <HostPanel
+              view={view}
+              role={role}
+              requests={requests}
+              refresh={refreshAfterAction}
+              announce={announce}
+              listenersOpen={listenersOpen}
+              onListenersClose={() => setListenersOpen(false)}
+            />
+          ) : null}
 
-          {micProblem ? (
+          {micProblem && !micSheet ? (
             <p role="alert" className="notice notice-danger">
-              {micProblem}
+              {micProblem.message}
             </p>
+          ) : null}
+          {choice.fellBack && controls.mic && !micSheet ? <p className="notice">The microphone you chose is not plugged in. Using the default one.</p> : null}
+
+          {blocked ? (
+            <button type="button" className="btn btn-primary btn-lg space-btn" onClick={() => void audio.current?.startAudio().then(() => setBlocked(false))}>
+              Tap to hear the Space
+            </button>
           ) : null}
 
           <div className="space-bar square-card" role="group" aria-label="Your controls">
             {controls.mic ? (
-              <button
-                type="button"
-                className={`btn space-btn ${micOn ? 'btn-primary' : 'btn-secondary'}`}
-                aria-pressed={micOn}
-                aria-label={micOn ? 'Microphone, on. Tap to mute' : 'Microphone, off. Tap to turn on'}
-                onClick={toggleMic}
-              >
-                {micOn ? <MicIcon size={20} /> : <MicOffIcon size={20} />}
-                {micOn ? 'Mute' : 'Unmute'}
-              </button>
+              <>
+                <button
+                  type="button"
+                  className={`btn space-btn space-main ${micOn ? 'btn-primary' : 'btn-secondary'}`}
+                  aria-pressed={micOn}
+                  aria-label={micOn ? 'Microphone, on. Tap to mute' : 'Microphone, off. Tap to turn on'}
+                  onClick={toggleMic}
+                >
+                  {micOn ? <MicIcon size={20} /> : <MicOffIcon size={20} />}
+                  {micOn ? 'Mute' : 'Unmute'}
+                </button>
+                <button type="button" className="btn btn-secondary space-btn space-square" aria-haspopup="dialog" aria-label="Microphone settings" onClick={() => setMicSheet(true)}>
+                  <GearIcon size={20} />
+                </button>
+              </>
             ) : null}
             {controls.request ? (
-              <button type="button" className="btn btn-secondary space-btn" onClick={() => speakRequest(true)}>
+              <button type="button" className="btn btn-primary space-btn space-main" onClick={() => speakRequest(true)}>
                 <HandIcon size={20} />
                 Request to speak
               </button>
             ) : null}
             {controls.cancelRequest ? (
-              <button type="button" className="btn btn-secondary space-btn" onClick={() => speakRequest(false)}>
+              <button type="button" className="btn btn-secondary space-btn space-main" onClick={() => speakRequest(false)}>
                 Cancel request
               </button>
             ) : null}
-            {role === 'listener' && !controls.request && !controls.cancelRequest ? <span className="space-note">The host is not taking requests to speak.</span> : null}
-            {blocked ? (
-              <button type="button" className="btn btn-primary space-btn" onClick={() => void audio.current?.startAudio().then(() => setBlocked(false))}>
-                Tap to hear the Space
-              </button>
-            ) : null}
-            <button type="button" className="btn btn-secondary space-btn ml-auto" onClick={leave}>
+            {role === 'listener' && !controls.request && !controls.cancelRequest ? <span className="space-note space-main">The host is not taking requests to speak.</span> : null}
+            <button type="button" className="btn btn-secondary space-btn" onClick={leave}>
               <LeaveIcon size={20} />
               Leave
             </button>
           </div>
         </>
       ) : null}
+
+      {/* Everyone: the count. Hosts and co-hosts get the list from the host panel's sheet. */}
+      {!moderator ? (
+        <Sheet open={listenersOpen} onClose={() => setListenersOpen(false)} title="Listeners">
+          <p className="text-sm">{listenerLabel(view.listenerCount)}, out of room for {view.listenerCap.toLocaleString('en-NG')}.</p>
+          <p className="mt-2 text-sm text-muted">Only the host and co-hosts can see who is listening. Nobody can tell what you are listening to.</p>
+        </Sheet>
+      ) : null}
+
+      <Sheet open={micSheet} onClose={() => setMicSheet(false)} title="Microphone settings">
+        <MicPanel
+          settings={micSettings}
+          devices={devices}
+          noDevice={noDevice}
+          fellBack={choice.fellBack}
+          failure={micProblem}
+          live={micOn}
+          level={level}
+          onChange={changeMicSettings}
+        />
+      </Sheet>
     </div>
   )
 }
