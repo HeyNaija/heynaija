@@ -15,6 +15,9 @@ x-logging: &logging
     max-file: "5"
 
 x-api-env: &api-env
+  # development | staging | production: picks each feature flag's default
+  # (docs/feature-flags.md). Anything unset is production, the safe side.
+  APP_ENV: ${APP_ENV:-production}
   DATABASE_URL: postgres://heynaija:${POSTGRES_PASSWORD:?}@postgres:5432/heynaija
   # Connections the API keeps open to Postgres (packages/db). 20 suits one API
   # process on the production server, well under Postgres's 100.

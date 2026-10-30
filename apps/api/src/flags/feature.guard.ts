@@ -1,4 +1,5 @@
 import { type CanActivate, type ExecutionContext, Inject, Injectable, NotFoundException, SetMetadata } from '@nestjs/common'
+import 'reflect-metadata'
 import { Reflector } from '@nestjs/core'
 import type { MaybeAuthedRequest } from '../auth/session.guard.js'
 import { FeatureFlags } from './feature-flags.js'
@@ -15,6 +16,10 @@ const FEATURE = 'heynaija:feature'
  */
 export const Feature = (key: FlagKey) => SetMetadata(FEATURE, key)
 
+/** The flag a handler (or its controller) is marked with, if any. */
+export const featureOf = (handler: object, controller: object): FlagKey | undefined =>
+  Reflect.getMetadata(FEATURE, handler) ?? Reflect.getMetadata(FEATURE, controller)
+
 /** While the route's flag is off for the viewer the route does not exist: 404, as for any dark launch. */
 @Injectable()
 export class FeatureGuard implements CanActivate {
@@ -24,7 +29,7 @@ export class FeatureGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const key = this.reflector.getAllAndOverride<FlagKey | undefined>(FEATURE, [context.getHandler(), context.getClass()])
+    const key = featureOf(context.getHandler(), context.getClass())
     if (!key) return true
     const viewer = context.switchToHttp().getRequest<MaybeAuthedRequest>().member?.id ?? null
     if (await this.flags.isEnabled(key, viewer)) return true

@@ -42,17 +42,17 @@ export const FLAGS = {
     defaults: onUntilLaunched, // roadmap: member-onboarding, not live
   },
   profilePins: {
-    description: 'Pinning and unpinning a post on your own profile. Posts already pinned stay pinned.',
+    description: 'Pinning a post on your own profile. Unpinning always works, and posts already pinned stay pinned.',
     owner: 'profiles',
     defaults: onUntilLaunched, // roadmap: profile-pins, not live
   },
   communityPins: {
-    description: 'Pinning and unpinning a welcome post in a community. Posts already pinned stay pinned.',
+    description: 'Pinning a welcome post in a community. Unpinning always works, and posts already pinned stay pinned.',
     owner: 'communities',
     defaults: onUntilLaunched, // roadmap: community-welcome-pins, not live
   },
   reposts: {
-    description: 'Reposting and undoing a repost. A kill switch: reposts already made stay in feeds.',
+    description: 'Making a repost. A kill switch: undoing a repost always works, and reposts already made stay in feeds.',
     owner: 'posts',
     defaults: onEverywhere, // roadmap: reposts, implemented and not recorded as unlaunched
   },
