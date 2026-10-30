@@ -1,4 +1,4 @@
-import { createDb } from '@heynaija/db'
+import { createDb, type Db } from '@heynaija/db'
 import { Controller, Get, Module } from '@nestjs/common'
 import { AuthController } from './auth/auth.controller.js'
 import { AuthService } from './auth/auth.service.js'
@@ -16,6 +16,9 @@ import { EMAIL_JOBS, EMAIL_SETTINGS, EmailNotificationsService } from './email/e
 import { MAILER, type Mailer, smtpMailer } from './email/mailer.js'
 import { unsubscribeKey } from './email/unsubscribe-token.js'
 import { type Env, loadEnv } from './env.js'
+import { FeatureFlags } from './flags/feature-flags.js'
+import { FeatureGuard } from './flags/feature.guard.js'
+import { FlagsController } from './flags/flags.controller.js'
 import { ExportController } from './export/export.controller.js'
 import { ExportService } from './export/export.service.js'
 import { GistReconciler } from './gists/gist-queue.js'
@@ -69,7 +72,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController, FlagsController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -80,6 +83,9 @@ class HealthController {
     SessionGuard,
     OptionalSessionGuard,
     SuspendedAllowedGuard,
+    // Runtime feature flags, per APP_ENV (docs/feature-flags.md).
+    { provide: FeatureFlags, useFactory: (db: Db, env: Env) => new FeatureFlags(db, env.APP_ENV), inject: [DB, ENV] },
+    FeatureGuard,
     { provide: RateLimiter, useClass: RedisRateLimiter },
     ModerationService,
     { provide: OBJECT_STORE, useFactory: (env: Env) => new S3ObjectStore(s3Config(env)), inject: [ENV] },
