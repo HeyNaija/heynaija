@@ -1121,7 +1121,12 @@ summary.menu::-webkit-details-marker {
 .feed-order > span { width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: var(--accent); }
 .square-composer { padding: 20px; transition: border-color 0.15s; }
 .square-composer:focus-within { border-color: var(--accent); }
-.composer-writing-row { display: flex; min-height: 44px; align-items: center; }
+.composer-writing-row { position: relative; display: flex; min-height: 44px; align-items: center; }
+/* @mention suggestions, under the line being written. */
+.mention-list { position: absolute; top: 100%; left: 0; z-index: 30; width: min(320px, 100%); max-height: 320px; overflow-y: auto; overscroll-behavior: contain; margin-top: 4px; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); padding: 4px; box-shadow: var(--shadow-pop); animation: menu-in 0.12s ease-out; }
+.mention-option { display: flex; align-items: center; gap: 10px; border-radius: 6px; padding: 8px 10px; cursor: pointer; font-size: 14px; line-height: 1.3; }
+.mention-option[aria-selected="true"] { background: var(--panel); }
+.mention-loading { padding: 8px 10px; color: var(--muted); font-size: 13px; text-align: center; }
 .composer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
 .composer-toolbar .icon-btn { min-height: 36px; font-size: 11px; }
 .composer-audience { display: inline-flex; min-width: 0; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }

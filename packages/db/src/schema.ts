@@ -55,7 +55,12 @@ export const members = pgTable(
     // Shown only while it is live; a post removed for good takes the pin with it.
     pinnedPostId: uuid('pinned_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
   },
-  (t) => [index('members_handle_idx').on(t.handle)],
+  (t) => [
+    index('members_handle_idx').on(t.handle),
+    // Prefix lookups for @mention suggestions; "C" so LIKE 'ad%' can use them.
+    index('members_handle_prefix_idx').on(sql`handle collate "C"`).where(sql`active`),
+    index('members_name_prefix_idx').on(sql`lower(display_name) collate "C"`).where(sql`active and display_name is not null`),
+  ],
 )
 
 // A handle a member gave up by renaming. For a while afterwards only they can take

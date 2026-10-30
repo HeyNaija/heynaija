@@ -1,8 +1,9 @@
 import { blocks, type Db, follows, members, mutes, profileBadges, releasedHandles } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
-import { and, asc, eq, ilike, like, ne, or, sql } from 'drizzle-orm'
+import { and, asc, eq, ilike, like, ne, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Env } from '../env.js'
+import { InvalidCursorError } from '../cursor.js'
 import { avatarPath } from '../media/media.service.js'
 import { notify } from '../notifications/notifications.service.js'
 import { cleanLine, cleanLines, graphemes } from '../text.js'
@@ -56,6 +57,32 @@ export type MemberSummary = {
   avatar: string | null
   /** One of the people who founded HeyNaija. */
   founder: boolean
+}
+
+/** A member offered while typing an @mention. */
+export type MentionSuggestion = MemberSummary & {
+  /** The viewer follows them; they are listed first. */
+  following: boolean
+}
+
+/** How many @mention suggestions come in one page. */
+export const MENTION_SUGGEST_MAX = 10
+
+/** A page of @mention suggestions; `cursor` asks for the next, null at the end. */
+export type MentionPage = { members: MentionSuggestion[]; cursor: string | null }
+
+// Where a page stopped: the part of the list (followed, by handle, by name) and its sort keys there.
+const mentionCursor = z.tuple([z.number().int().min(0).max(2), z.string().max(200), z.string().max(40)])
+type MentionCursor = z.infer<typeof mentionCursor>
+
+const encodeMentionCursor = (at: MentionCursor) => Buffer.from(JSON.stringify(at)).toString('base64url')
+
+function decodeMentionCursor(cursor: string): MentionCursor {
+  try {
+    return mentionCursor.parse(JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')))
+  } catch {
+    throw new InvalidCursorError('invalid cursor')
+  }
 }
 
 export type Profile = {
@@ -315,6 +342,68 @@ export class MembersService {
       .orderBy(...(byHandle ? [sql`${byHandle} desc`] : []), asc(members.handle))
       .limit(limit)
     return rows.map(({ avatarMediaId, ...r }) => ({ ...r, avatar: avatarPath(avatarMediaId) }))
+  }
+
+  /** Members for an @mention: everyone the viewer follows, then others by handle, then by name; each part pages along its own index. */
+  async suggestMentions(viewerId: string, prefix: string, cursor?: string, limit = MENTION_SUGGEST_MAX): Promise<MentionPage> {
+    const p = prefix.toLowerCase()
+    if (!/^[a-z0-9_]{1,20}$/.test(p)) return { members: [], cursor: null }
+    const [part, key, tie] = cursor ? decodeMentionCursor(cursor) : [0, '', '']
+    // Skips parts already done, and in the current one starts after the cursor.
+    const from = (n: number, keys: SQL, k: SQL) =>
+      !cursor || n > part ? sql`true` : n < part ? sql`false` : sql`${k} >= ${key} and ${keys} > (${key}, ${tie})`
+    // "_" is a LIKE wildcard; nothing else in a handle is.
+    const starts = `${p.replace(/_/g, '\\_')}%`
+    const wordStarts = `% ${starts}`
+    const handle = sql`m.handle collate "C"`
+    const name = sql`lower(m.display_name) collate "C"`
+    const order = sql`case when m.handle = ${p} then '0' when ${handle} like ${starts} then '1' else '2' end`
+    const visible = sql`m.active and m.id <> ${viewerId}
+      and not exists(select 1 from blocks b where (b.blocker_id = m.id and b.blocked_id = ${viewerId})
+        or (b.blocker_id = ${viewerId} and b.blocked_id = m.id))`
+    const unfollowed = sql`not exists(select 1 from follows nf where nf.follower_id = ${viewerId} and nf.followee_id = m.id)`
+    const { rows } = await this.db.execute<{
+      part: number
+      key: string
+      tie: string
+      handle: string
+      display_name: string | null
+      avatar_media_id: string | null
+      founder: boolean
+    }>(sql`
+      with found as (
+        (select m.id, 0 as part, ${order} as key, m.handle as tie from follows f join members m on m.id = f.followee_id
+          where f.follower_id = ${viewerId} and ${visible}
+            and (${handle} like ${starts} or ' ' || lower(m.display_name) like ${wordStarts})
+            and ${from(0, sql`(${order} collate "C", ${handle})`, order)}
+          order by ${order} collate "C", ${handle} limit ${limit + 1})
+        union all
+        (select m.id, 1, m.handle, '' from members m
+          where ${visible} and ${unfollowed} and ${handle} like ${starts}
+            and ${from(1, sql`(${handle}, ''::text)`, handle)}
+          order by ${handle} limit ${limit + 1})
+        union all
+        (select m.id, 2, lower(m.display_name), m.handle from members m
+          where ${visible} and ${unfollowed} and m.display_name is not null and ${name} like ${starts} and ${handle} not like ${starts}
+            and ${from(2, sql`(${name}, ${handle})`, name)}
+          order by ${name}, ${handle} limit ${limit + 1})
+      )
+      select f.part, f.key, f.tie, m.handle, m.display_name, m.avatar_media_id, ${isFounder(sql`m.id`)} as founder
+      from found f join members m on m.id = f.id
+      order by f.part, f.key collate "C", f.tie collate "C"
+      limit ${limit + 1}`)
+    const page = rows.slice(0, limit)
+    const last = page.at(-1)
+    return {
+      members: page.map((r) => ({
+        handle: r.handle,
+        displayName: r.display_name,
+        avatar: avatarPath(r.avatar_media_id),
+        founder: r.founder,
+        following: r.part === 0,
+      })),
+      cursor: rows.length > limit && last ? encodeMentionCursor([last.part, last.key, last.tie]) : null,
+    }
   }
 
   /**
