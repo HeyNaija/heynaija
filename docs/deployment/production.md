@@ -111,6 +111,7 @@ check its key (staging step 5), run `./gen-env.sh`, and edit `.env`:
 | `PUSH_VAPID_*` | made by `gen-env.sh`, production's own: never staging's. Keep a copy; a new pair cuts off every browser that turned push on ([ADR 0011](../adr/0011-push-notifications.md)) |
 | `POSTGRES_*`, `DATABASE_POOL_MAX` | delete these lines: `compose.yml`'s defaults are sized for this 16 GB server |
 | `WEB_WORKERS` | `4` |
+| `MIGRATE_LOCK_TIMEOUT_MS` | optional: how long a migration waits for a table lock before the migrate step retries and then fails the deploy (default 5000, `0` waits forever). Raise it if a needed `ALTER` on a busy table keeps timing out |
 
 Then check no `<…>` placeholder is left: `grep -n '^[^#]*<' .env` prints nothing.
 

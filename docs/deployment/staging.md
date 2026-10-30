@@ -180,6 +180,11 @@ from `origin/staging` there too until a release has brought it to `main`.
   A `.env` made before these settings existed does not have them, and would get
   production's sizes: **add these lines to `/srv/heynaija/infra/deploy/.env`
   before deploying a commit that includes them.**
+
+  One more is optional: `MIGRATE_LOCK_TIMEOUT_MS` (milliseconds, default 5000, `0`
+  waits forever) is how long a migration waits for a table lock before the migrate
+  step retries and then fails the deploy. Add it to `.env` if a necessary `ALTER`
+  on a busy table keeps timing out; left out or empty, the default applies.
 - **One Docker daemon.** Any user in the `docker` group can manage every container
   on the server, Koinovera's included. Fine while both projects are yours.
 
@@ -529,4 +534,18 @@ The server keeps the last five releases' images, so a rollback to one of them
 needs no registry. For an older one, `deploy.sh` pulls from GitHub's registry,
 which needs `docker login ghcr.io` with a token that can read packages. Database
 migrations only ever add, so older code keeps working; a migration that removes or
-renames something needs its own plan.
+renames something needs its own plan. CI enforces this for every migration after
+0027: one that is not additive (a drop, including of a unique index, a rename, a
+type change, a removed default, a constraint without `NOT VALID`, `TRUNCATE`, a
+backfill, a volatile default, or an index on an existing table) fails
+`pnpm migrations:check` unless the line before that statement (or its own line)
+carries `-- allow-breaking: <reason>` saying why. The waiver covers that one
+statement. `CREATE INDEX CONCURRENTLY` is not an alternative: Drizzle runs all
+pending migrations in one transaction and Postgres refuses it there, so an index
+on a busy table needs the waiver and a plan. The check refuses it, and anything
+else that cannot run in a transaction (`DROP INDEX CONCURRENTLY`, `VACUUM`), with
+or without a waiver. The migrate step takes a lock so
+overlapping deploys queue, and fails, rather than waiting forever, if a migration
+cannot get its table lock within `MIGRATE_LOCK_TIMEOUT_MS` (default 5000, `0`
+disables; set it in the server's `.env`). It retries the whole run a few times
+first, so one long query at the wrong moment does not fail the deploy.
