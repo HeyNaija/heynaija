@@ -26,6 +26,7 @@ import { GovernanceService } from '../governance/governance.service.js'
 import { avatarPath } from '../media/media.service.js'
 import { MembersService } from '../members/members.service.js'
 import { NotificationsService } from '../notifications/notifications.service.js'
+import { spacesFeatureFor } from '../spaces/spaces-enabled.guard.js'
 import { RateLimiter, visitor } from '../rate-limit.js'
 import { DB, ENV } from '../tokens.js'
 import { AuthService, authRequest } from './auth.service.js'
@@ -116,6 +117,8 @@ export class AuthController {
       // False until the member finishes or skips the welcome flow; the web app's
       // home page sends them to /welcome until then.
       onboarded: Boolean(row?.onboardedAt),
+      // Switches the web app may show this member (docs/adr/0017); false when off.
+      features: { spaces: spacesFeatureFor(this.env, req.member) },
     }
   }
 

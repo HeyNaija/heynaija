@@ -14,6 +14,13 @@ const lockedOff = (name: string) =>
     .transform((value) => value === 'true')
     .refine((on) => !on, { error: `${name} cannot be enabled yet; see docs/governance/open-items.md` })
 
+/** A plain on/off switch: absent or "false" is off, "true" is on, anything else is refused. */
+const flag = () =>
+  z
+    .enum(['false', 'true'])
+    .default('false')
+    .transform((value) => value === 'true')
+
 /** An optional setting that may also be given empty (compose passes `${NAME:-}`), which means unset. */
 const optional = <T extends z.ZodType>(type: T) => z.preprocess((value) => (value === '' ? undefined : value), type.optional())
 
@@ -100,6 +107,30 @@ const schema = z.object({
   // The media bucket's public custom domain (nginx serves it under /media too), so
   // a purge also clears copies cached under that address.
   MEDIA_ORIGIN: optional(z.url().transform((u) => u.replace(/\/$/, ''))),
+  // Calls and Spaces (docs/adr/0017). Everything ships dark: both switches default
+  // to false, and with either off (or LiveKit not configured) every Spaces route
+  // answers 404 exactly like a route that does not exist.
+  CALLS_ENABLED: flag(),
+  CALLS_SPACES_ENABLED: flag(),
+  // Handles allowed to use calls and Spaces during the beta, comma-separated. Empty
+  // means nobody. Temporary: replaced by the real age-verified, opted-in gate (see
+  // spaces/eligibility.ts).
+  CALLS_MEMBERS: z
+    .string()
+    .default('')
+    .transform((raw) => raw.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean)),
+  // The LiveKit server. The URL is what browsers connect to (ws:// or wss://), and
+  // the key and secret sign tokens and server calls. Webhooks may be signed with a
+  // key of their own; without one the API key is used. Empty means calls are off.
+  LIVEKIT_URL: optional(z.string().regex(/^wss?:\/\/\S+$/, 'a ws:// or wss:// address').transform((u) => u.replace(/\/$/, ''))),
+  LIVEKIT_API_KEY: optional(z.string().min(1)),
+  LIVEKIT_API_SECRET: optional(z.string().min(32)),
+  LIVEKIT_WEBHOOK_KEY: optional(z.string().min(1)),
+  LIVEKIT_WEBHOOK_SECRET: optional(z.string().min(32)),
+  // Spaces limits (docs/adr/0017 section 4a); a load test sets the real numbers.
+  SPACES_MAX_COHOSTS: z.coerce.number().int().min(0).max(10).default(2),
+  SPACES_MAX_SPEAKERS: z.coerce.number().int().min(0).max(50).default(10),
+  SPACES_LISTENER_CAP: z.coerce.number().int().min(1).max(10_000).default(200),
   // Lets browsers subscribe with an http://127.0.0.1 address, for the end-to-end
   // tests' stand-in push service. Only allowed while WEB_PUBLIC_URL is on this machine.
   PUSH_ALLOW_LOOPBACK: z
@@ -125,6 +156,12 @@ const checked = schema.superRefine((env, ctx) => {
   }
   if (env.SAFETY_ALERT_EMAIL && !env.SMTP_CONNECTION_URI) {
     ctx.addIssue({ code: 'custom', path: ['SAFETY_ALERT_EMAIL'], message: 'SAFETY_ALERT_EMAIL needs SMTP_CONNECTION_URI to send anything' })
+  }
+  if (Boolean(env.LIVEKIT_WEBHOOK_KEY) !== Boolean(env.LIVEKIT_WEBHOOK_SECRET)) {
+    ctx.addIssue({ code: 'custom', path: ['LIVEKIT_WEBHOOK_SECRET'], message: 'set both LIVEKIT_WEBHOOK_KEY and LIVEKIT_WEBHOOK_SECRET, or neither' })
+  }
+  if (Boolean(env.LIVEKIT_API_KEY) !== Boolean(env.LIVEKIT_API_SECRET)) {
+    ctx.addIssue({ code: 'custom', path: ['LIVEKIT_API_SECRET'], message: 'set both LIVEKIT_API_KEY and LIVEKIT_API_SECRET, or neither' })
   }
   if (env.PUSH_ALLOW_LOOPBACK && new URL(env.WEB_PUBLIC_URL).hostname !== '127.0.0.1') {
     ctx.addIssue({ code: 'custom', path: ['PUSH_ALLOW_LOOPBACK'], message: 'PUSH_ALLOW_LOOPBACK is only for a WEB_PUBLIC_URL on 127.0.0.1' })

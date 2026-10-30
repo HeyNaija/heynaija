@@ -32,6 +32,12 @@ export const LIMITS = {
     { max: 12, windowMs: MINUTE },
     { max: 60, windowMs: HOUR },
   ],
+  // Spaces (docs/adr/0017): starting one, joining (per member, and per Space so a
+  // group cannot fill the room in a burst), asking to speak.
+  spaceCreate: [{ max: 5, windowMs: HOUR }],
+  spaceJoin: [{ max: 30, windowMs: MINUTE }],
+  spaceJoinBurst: [{ max: 120, windowMs: MINUTE }],
+  spaceRequest: [{ max: 10, windowMs: MINUTE }],
 } satisfies Record<string, { max: number; windowMs: number }[]>
 
 export type LimitKind = keyof typeof LIMITS
