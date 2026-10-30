@@ -11,6 +11,7 @@ import { defaultPreviewImage, excerpt, siteOpenGraph } from '@/lib/previews'
 import type { ReplyOrder } from '@/lib/thread-state'
 import { ChevronIcon } from '@/app/ui/icons'
 import { ThreadAuthorProvider } from '@/app/ui/thread-author'
+import { BackToFeed } from '@/app/ui/back-to-feed'
 
 type Props = PageProps<'/p/[id]'>
 
@@ -82,16 +83,14 @@ async function ThreadView({ params, searchParams }: Props) {
 
   return (
     <ThreadAuthorProvider authorId={original?.authorId ?? null}>
-    <div className={`thread-view flex flex-col${parent && !parent.deleted ? ' has-chain' : ''}`}>
-      <Link prefetch={false} href="/" className="self-start text-sm font-medium text-muted hover:text-ink hover:underline">
-        Back to the feed
-      </Link>
+    <div className={`thread-view flex flex-col${parent ? ' has-chain' : ''}`}>
+      <BackToFeed className="self-start text-sm font-medium text-muted hover:text-ink hover:underline" />
 
       {idea ? <IdeaPanel idea={idea} member={viewer.state === 'member'} /> : null}
 
-      {/* The conversation so far, each post leading down to the one in focus. A
-          vertical line down the avatar column joins them (decorative: the order
-          and the "Replying to" line say the same in words). */}
+      {/* The conversation so far, each post leading down to the one in focus. Short
+          lines between the cards join them (decorative: the order and the "Replying
+          to" line say the same in words). */}
       {chain ? (
         <div className="thread-lineage">
           {thread.ancestorsTruncated ? (

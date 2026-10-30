@@ -117,3 +117,42 @@ test('a reply in a list says whom it answers, previews the post, and says nothin
     await context.close()
   }
 })
+
+test('"Back to the feed" on a post returns to where the post was in the feed', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'backfeed')
+  try {
+    await seedPosts(handle, 40)
+    await page.goto('/?feed=latest')
+    await expect(cards(page).nth(20)).toBeVisible()
+    const first = (await ids(page))[0]!.replace('post-', '')
+
+    // Opened directly, in a new tab, there is no place in the feed to return to: it opens the feed.
+    const fresh = await context.newPage()
+    await fresh.goto(`/p/${first}`)
+    await fresh.getByRole('link', { name: 'Back to the feed', exact: true }).click()
+    await fresh.waitForURL((url) => !url.pathname.startsWith('/p/'))
+    expect(new URL(fresh.url()).pathname).toBe('/')
+    await fresh.close()
+
+    // From the feed, it goes back to it: the same posts, the same scroll position. Read down
+    // to the post as a reader would, so every card above it is drawn at its real height
+    // (cards off screen are skipped, at an estimated height, until they are first drawn).
+    const target = cards(page).nth(20)
+    const id = await target.getAttribute('id')
+    await target.evaluate(async (node) => {
+      while (node.getBoundingClientRect().top > window.innerHeight / 2) {
+        window.scrollBy(0, 300)
+        await new Promise(requestAnimationFrame)
+      }
+    })
+    const before = await page.evaluate(() => Math.round(window.scrollY))
+    await target.locator('time').click()
+    await expect(page).toHaveURL(/\/p\//)
+    await page.getByRole('link', { name: 'Back to the feed', exact: true }).click()
+    await expect(page).toHaveURL(/\/\?feed=latest$/)
+    await expect(page.locator(`#${id}`).filter({ visible: true })).toBeInViewport()
+    expect(Math.abs((await page.evaluate(() => Math.round(window.scrollY))) - before)).toBeLessThan(50)
+  } finally {
+    await context.close()
+  }
+})

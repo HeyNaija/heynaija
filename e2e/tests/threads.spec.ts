@@ -335,29 +335,44 @@ test('the conversation above a reply is open and joined by a line, and the reply
     for (const id of [ids[0], ids[1], ids[2], ids[3], ids[4]]) {
       await expect(page.locator(`#post-${id}`).getByText('Author', { exact: true })).toBeVisible()
     }
-    // The line is decoration (a pseudo-element, nothing to read) and sits where it should: on
-    // the avatars' centre, from the ancestor down to the next post and the post in focus, with
-    // the post's text beside it rather than under it.
-    const placed = await page.evaluate(([first, focus]) => {
-      const li = document.getElementById(`post-${first}`)!.closest('li')!
-      const style = getComputedStyle(li, '::before')
-      const lineLeft = li.getBoundingClientRect().left + parseFloat(style.left)
-      const centre = (el: Element) => { const r = el.getBoundingClientRect(); return r.left + r.width / 2 }
-      return {
-        content: style.content,
-        width: parseFloat(style.width),
-        line: lineLeft + parseFloat(style.width) / 2,
-        avatar: centre(li.querySelector('.post-header a')!),
-        focusAvatar: centre(document.querySelector(`#post-${focus} .post-header a`)!),
-        textLeft: li.querySelector('.post-body')!.getBoundingClientRect().left,
-        lineRight: lineLeft + parseFloat(style.width),
+    // Each earlier post is a card, with its text the card's full width. The line is decoration
+    // (a pseudo-element, nothing to read) and stays in the gaps: on the avatar's axis, from
+    // the bottom edge of one card to the top edge of the next, and from the parent past
+    // "Replying to" to the top edge of the post in focus, never on a card.
+    const placed = await page.evaluate(({ first, second, parent, focus }) => {
+      const card = (id: string) => document.getElementById(`post-${id}`)!
+      const line = (host: Element, pseudo: string) => {
+        const box = host.getBoundingClientRect()
+        const style = getComputedStyle(host, pseudo)
+        const top = box.top + parseFloat(style.top)
+        return { content: style.content, width: parseFloat(style.width), x: box.left + parseFloat(style.left) + parseFloat(style.width) / 2, top, bottom: style.height === 'auto' ? box.bottom - parseFloat(style.bottom) : top + parseFloat(style.height) }
       }
-    }, [ids[0]!, ids[3]!])
-    expect(placed.content).not.toBe('none')
-    expect(placed.width).toBe(2)
-    expect(Math.abs(placed.line - placed.avatar)).toBeLessThanOrEqual(1)
-    expect(Math.abs(placed.avatar - placed.focusAvatar)).toBeLessThanOrEqual(1)
-    expect(placed.textLeft).toBeGreaterThan(placed.lineRight)
+      const avatar = card(first).querySelector('.post-header a')!.getBoundingClientRect()
+      const recipient = document.querySelector('.thread-recipient')!
+      return {
+        line: line(card(first).closest('li')!, '::after'),
+        avatarCentre: avatar.left + avatar.width / 2,
+        avatarLeft: avatar.left,
+        border: parseFloat(getComputedStyle(card(first)).borderTopWidth),
+        textLeft: card(first).querySelector('.post-body')!.getBoundingClientRect().left,
+        cardBottom: card(first).getBoundingClientRect().bottom,
+        nextTop: card(second).getBoundingClientRect().top,
+        parentLine: line(card(parent).closest('li')!, '::after'),
+        recipientTop: recipient.getBoundingClientRect().top,
+        recipientLine: line(recipient, '::before'),
+        focusTop: card(focus).getBoundingClientRect().top,
+      }
+    }, { first: ids[0]!, second: ids[1]!, parent: ids[2]!, focus: ids[3]! })
+    expect(placed.line.content).not.toBe('none')
+    expect(placed.line.width).toBe(2)
+    expect(placed.border).toBe(1)
+    expect(Math.abs(placed.textLeft - placed.avatarLeft)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.line.x - placed.avatarCentre)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.line.top - placed.cardBottom)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.line.bottom - placed.nextTop)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.parentLine.bottom - placed.recipientTop)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.recipientLine.x - placed.avatarCentre)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.recipientLine.bottom - placed.focusTop)).toBeLessThanOrEqual(1)
 
     // Chain, focused post, reply bar, replies: in that order down the page.
     const top = (selector: string) => page.locator(selector).first().evaluate((node) => node.getBoundingClientRect().top)
@@ -370,6 +385,10 @@ test('the conversation above a reply is open and joined by a line, and the reply
     await expect(reply).toBeVisible()
     await expect(reply).toBeDisabled()
     await expect(page.locator('form#compose .composer-privacy')).toBeHidden()
+    // At rest the button sits inside the field, centred on it.
+    const middle = (node: Element) => { const box = node.getBoundingClientRect(); return box.top + box.height / 2 }
+    const [fieldMiddle, buttonMiddle] = await Promise.all([page.locator('form#compose textarea').evaluate(middle), reply.evaluate(middle)])
+    expect(Math.abs(fieldMiddle - buttonMiddle)).toBeLessThanOrEqual(1)
     await (await replyBox(page, ids[3])).fill('Typed into the bar')
     await expect(reply).toBeEnabled()
 
@@ -444,7 +463,7 @@ test('a signed-out visitor is asked to sign in to reply, right under the post, a
   }
 })
 
-test('an answer is joined to its parent by a line on the parent avatar, with the parent text beside it @mobile', async ({ browser }) => {
+test('an answer is joined to its parent by a line in the gutter that never crosses a card @mobile', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'branch')
   try {
     const fixture = await seedThread(handle)
@@ -453,32 +472,48 @@ test('an answer is joined to its parent by a line on the parent avatar, with the
     await branch.getByRole('link', { name: /^View.*replies/i }).first().click()
     await expect(page.locator(`#post-${fixture.nested[1]}`)).toBeVisible()
     const placed = await page.evaluate(([parent, last]) => {
-      const row = document.querySelector(`.thread-branch[data-thread-id="${parent}"] > .thread-row`)!
-      const after = getComputedStyle(row, '::after')
-      const card = row.querySelector('.post-card')!
+      const card = document.getElementById(`post-${parent}`)!
       const avatar = card.querySelector('.post-header a')!.getBoundingClientRect()
-      const line = row.getBoundingClientRect().left + parseFloat(after.left) + parseFloat(after.width) / 2
-      const li = document.getElementById(`post-${last}`)!.closest('li')!
-      const stub = getComputedStyle(li, '::after')
+      // The line is the answers' container's left border; the elbow is the answer row's ::before.
+      const answers = document.getElementById(`replies-${parent}`)!
+      const border = parseFloat(getComputedStyle(answers).borderLeftWidth)
+      const row = document.getElementById(`post-${last}`)!.closest('.thread-row')!
+      const elbow = getComputedStyle(row, '::before')
+      const rowBox = row.getBoundingClientRect()
+      const lastCard = document.getElementById(`post-${last}`)!.getBoundingClientRect()
       const lastAvatar = document.querySelector(`#post-${last} .post-header a`)!.getBoundingClientRect()
       return {
-        line,
+        border,
+        line: answers.getBoundingClientRect().left + border / 2,
+        lineTop: answers.getBoundingClientRect().top,
+        cardBottom: card.getBoundingClientRect().bottom,
         avatarCentre: avatar.left + avatar.width / 2,
+        avatarLeft: avatar.left,
         textLeft: card.querySelector('.post-body')!.getBoundingClientRect().left,
-        cardLeft: card.getBoundingClientRect().left,
-        stubY: li.getBoundingClientRect().top + parseFloat(stub.top) + parseFloat(stub.borderTopWidth) / 2,
-        avatarY: lastAvatar.top + lastAvatar.height / 2,
+        elbowLeft: rowBox.left + parseFloat(elbow.left),
+        elbowRight: rowBox.left + parseFloat(elbow.left) + parseFloat(elbow.width),
+        elbowY: rowBox.top + parseFloat(elbow.top) + parseFloat(elbow.borderTopWidth) / 2,
+        lastCardLeft: lastCard.left,
+        lastAvatarY: lastAvatar.top + lastAvatar.height / 2,
         phone: window.innerWidth < 1024,
       }
     }, [fixture.first, fixture.nested[1]!])
-    // The stub meets the answer's avatar however the header wraps.
-    expect(Math.abs(placed.stubY - placed.avatarY)).toBeLessThanOrEqual(1)
+    expect(placed.border).toBe(2)
+    // The line starts at or below the parent card's bottom edge, never inside it.
+    expect(placed.lineTop).toBeGreaterThanOrEqual(placed.cardBottom - 0.5)
+    // The elbow leaves the line (it starts on it) and stops at the answer card's edge, level
+    // with its avatar.
+    expect(placed.elbowLeft).toBeGreaterThanOrEqual(placed.line - placed.border / 2 - 0.5)
+    expect(placed.elbowLeft).toBeLessThanOrEqual(placed.line + placed.border / 2)
+    expect(Math.abs(placed.elbowRight - placed.lastCardLeft)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.elbowY - placed.lastAvatarY)).toBeLessThanOrEqual(1)
+    // Text uses the card's full width, starting under the avatar.
+    expect(Math.abs(placed.textLeft - placed.avatarLeft)).toBeLessThanOrEqual(1)
     if (placed.phone) {
-      // Too narrow an indent to reach the avatar: the line stays in the gutter, outside the card.
-      expect(placed.line).toBeLessThan(placed.cardLeft + 12)
+      // A 12px indent cannot reach the avatar: the line stays in the gutter, left of it.
+      expect(placed.line).toBeLessThan(placed.avatarLeft)
     } else {
       expect(Math.abs(placed.line - placed.avatarCentre)).toBeLessThanOrEqual(1)
-      expect(placed.textLeft).toBeGreaterThan(placed.line + 1)
     }
   } finally {
     await context.close()
@@ -510,24 +545,6 @@ test('on a phone, answering a reply keeps the fixed bar and names who is answere
     } finally {
       await db.end()
     }
-  } finally {
-    await context.close()
-  }
-})
-
-test('replies are indented to the text column on a phone @mobile', async ({ browser }) => {
-  const { page, handle, context } = await newMember(browser, 'indent')
-  try {
-    const fixture = await seedThread(handle)
-    await page.setViewportSize({ width: 390, height: 740 })
-    await page.goto(`/p/${fixture.root}?replies=oldest`)
-    const card = page.locator(`#post-${fixture.first}`)
-    const [name, body] = await Promise.all([
-      card.locator('.post-author').evaluate((node) => node.getBoundingClientRect().left),
-      card.locator('.post-body').evaluate((node) => node.getBoundingClientRect().left),
-    ])
-    // The text starts under the name, not under the avatar (within the 2px the column is set at).
-    expect(Math.abs(body - name)).toBeLessThanOrEqual(3)
   } finally {
     await context.close()
   }

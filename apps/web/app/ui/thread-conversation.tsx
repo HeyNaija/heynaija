@@ -348,7 +348,7 @@ export function ThreadBranch({
 
   return (
     <BranchAncestry.Provider value={path}>
-    <div className={`thread-branch ${root ? 'is-root' : ''}${!root && renderChildren && open && items.length + recent.length > 0 ? ' has-children' : ''}`} data-thread-id={id} data-parent-id={parentId ?? ''} data-depth={depth}>
+    <div className={`thread-branch ${root ? 'is-root' : ''}`} data-thread-id={id} data-parent-id={parentId ?? ''} data-depth={depth}>
       {/* The indent and the line show whom a reply answers, so it needs no label. */}
       <div className="thread-row"><BranchToggle.Provider value={control}>{children}</BranchToggle.Provider></div>
       {/* The editor stays in the focused branch's tree, so it keeps its text
