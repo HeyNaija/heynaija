@@ -8,6 +8,7 @@ import { Composer } from '@/app/ui/composer'
 import { DiscoverMoment } from '@/app/ui/discover-moment'
 import { FeedTab } from '@/app/ui/feed-tab'
 import { ArrowUpRightIcon, PeopleIcon } from '@/app/ui/icons'
+import { LocalTime } from '@/app/ui/local-time'
 import { card, PostList, PostsSkeleton } from '@/app/ui/post-item'
 import {
   type Feed,
@@ -278,9 +279,7 @@ async function AppealStatus() {
       {appeal?.status === 'dismissed' ? (
         <p className="notice mt-4">
           A moderator reviewed your appeal
-          {appeal.resolvedAt
-            ? ` on ${new Date(appeal.resolvedAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'long' })}`
-            : ''}{' '}
+          {appeal.resolvedAt ? <> on <LocalTime at={appeal.resolvedAt} as="dayMonth" /></> : null}{' '}
           and kept the suspension. You can appeal again if there is something they should know.
         </p>
       ) : null}

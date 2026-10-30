@@ -7,6 +7,7 @@ import { Avatar } from '@/app/ui/avatar'
 import { FounderBadge } from '@/app/ui/founder-badge'
 import { IdentityBadge } from '@/app/ui/identity-badge'
 import { DotsIcon } from '@/app/ui/icons'
+import { LocalTime } from '@/app/ui/local-time'
 import { Menu } from '@/app/ui/menu'
 import { PostItem, PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
@@ -143,8 +144,7 @@ async function ProfileView({ params, searchParams }: Props) {
 
         {profile.bio ? <p className="mt-5 whitespace-pre-wrap break-words text-[15px] leading-6">{profile.bio}</p> : null}
         <p className="mt-4 text-xs text-muted">
-          Joined{' '}
-          {new Date(profile.joinedAt).toLocaleDateString('en-NG', { month: 'long', year: 'numeric' })}
+          Joined <LocalTime at={profile.joinedAt} as="month" />
         </p>
         <p className="profile-stats mt-5 flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-4 text-sm text-muted">
           {count(profile.postCount, 'post', 'posts')}

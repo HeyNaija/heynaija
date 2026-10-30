@@ -6,11 +6,11 @@ import { resolveReport, restorePost } from '@/app/actions'
 import { Avatar } from '@/app/ui/avatar'
 import { EmptyState } from '@/app/ui/empty-state'
 import { ShieldIcon } from '@/app/ui/icons'
+import { LocalTime } from '@/app/ui/local-time'
 import { ModeratorRoster } from '@/app/ui/moderator-roster'
 import { PostImages } from '@/app/ui/post-images'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
-import { timeAgo } from '@/app/ui/time'
 import { getModeration, type LogEntry, type QueueItem } from '@/lib/api'
 
 export const metadata: Metadata = { title: 'Moderation' }
@@ -113,7 +113,7 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
           {REASONS[item.reason] ?? item.reason}
         </span>
         <span className="text-muted">
-          {item.reporterHandle ? `${isAppeal ? 'from' : 'reported by'} @${item.reporterHandle}` : 'flagged by the upload scanner'} · {timeAgo(item.createdAt, now)}
+          {item.reporterHandle ? `${isAppeal ? 'from' : 'reported by'} @${item.reporterHandle}` : 'flagged by the upload scanner'} · <LocalTime at={item.createdAt} now={now} />
           {item.reportCount > 1 ? ` · ${item.reportCount} reports` : ''}
         </span>
       </p>
@@ -215,7 +215,7 @@ function Decision({ entry, now }: { entry: LogEntry; now: number }) {
         ) : null}
         {entry.communityName ? ` in ${entry.communityName}` : null}
       </span>
-      <span className="text-muted">{timeAgo(entry.createdAt, now)}</span>
+      <LocalTime at={entry.createdAt} now={now} className="text-muted" />
       {entry.note ? <span className="w-full text-muted">“{entry.note}”</span> : null}
       {entry.action === 'remove_post' && entry.postId ? (
         <form action={restorePost} className="w-full">

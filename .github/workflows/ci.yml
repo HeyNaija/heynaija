@@ -65,6 +65,9 @@ jobs:
       - run: pnpm roadmap:check
       - run: pnpm governance:check
       - run: pnpm roadmap:test
+      - run: pnpm migrations:check
+      - run: pnpm migrations:test
+      - run: pnpm db:check
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test

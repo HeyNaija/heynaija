@@ -11,6 +11,7 @@ import { FounderBadge } from './founder-badge'
 import { BookmarkIcon, BubbleIcon, DotsIcon, HeartIcon, PinIcon, RepostIcon } from './icons'
 import { LikeButton } from './like-button'
 import { LinkCard } from './link-card'
+import { LocalTime } from './local-time'
 import { Menu } from './menu'
 import { MorePosts } from './more-posts'
 import { PollCard } from './poll-card'
@@ -23,7 +24,6 @@ import { RepostButton } from './repost-button'
 import { ShareButton } from './share-button'
 import { SubmitButton } from './submit-button'
 import { ThreadAuthorLabel } from './thread-author'
-import { exactTime, postedAt, timeAgo } from './time'
 
 /** The shared surface for forms, cases and other distinct objects. */
 export const card = 'square-card'
@@ -168,9 +168,7 @@ export function PostItem({
               <p className="post-meta">
                 {post.authorName && !compact ? <><span className="truncate">@{post.authorHandle}</span><span aria-hidden="true">·</span></> : null}
                 <Link prefetch={false} href={href} className="shrink-0 hover:underline">
-                  <time dateTime={post.createdAt} title={exactTime(post.createdAt)}>
-                    {focused ? postedAt(post.createdAt) : timeAgo(post.createdAt, now)}
-                  </time>
+                  {focused ? <LocalTime at={post.createdAt} as="posted" title /> : <LocalTime at={post.createdAt} now={now} title />}
                 </Link>
               </p>
               {showChip ? (
