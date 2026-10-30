@@ -2036,7 +2036,7 @@ a.result-row:hover { color: var(--accent-strong); }
 .space-count { max-width: 100%; }
 .space-stage { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px 8px; margin-top: 12px; }
 .space-tile { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 6px; padding: 8px 4px; border-radius: var(--r-control); text-align: center; }
-.space-avatar { display: inline-flex; padding: 4px; border-radius: 9999px; box-shadow: 0 0 0 3px transparent; transition: box-shadow 0.15s; }
+.space-avatar { display: inline-flex; padding: 4px; border-radius: 9999px; box-shadow: 0 0 0 3px transparent; }
 .is-speaking .space-avatar { box-shadow: 0 0 0 3px var(--accent); }
 .space-tile-name { max-width: 100%; overflow-wrap: anywhere; font-size: 14px; font-weight: 600; line-height: 1.3; }
 .space-badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
@@ -2061,6 +2061,7 @@ a.result-row:hover { color: var(--accent-strong); }
 .space-square { width: var(--touch-target); padding-inline: 0; }
 @media (max-width: 359px) { .space-bar { flex-wrap: wrap; } .space-main { flex-basis: 100%; } }
 @media (prefers-reduced-motion: no-preference) {
+  .space-avatar { transition: box-shadow 0.15s; }
   .is-speaking .space-avatar { animation: space-ring 1.4s ease-in-out infinite; }
   .space-live-dot { animation: space-blink 2s ease-in-out infinite; }
 }

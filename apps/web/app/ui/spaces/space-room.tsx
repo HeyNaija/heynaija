@@ -72,13 +72,18 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
   const session = useRef<SpaceSession | null>(null)
   const announcer = useRef(createSpeakingAnnouncer())
   const noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  /** The device and processing switches the live microphone was last started or restarted with. */
-  const applied = useRef('')
 
   const announce = useCallback((text: string) => setAnnouncement(text), [])
   const role = view.viewer.role
   const controls = controlsFor(view)
   const polling = phase === 'live' || phase === 'reconnecting'
+  const moderating = role === 'host' || role === 'cohost'
+  // A modal sheet opens only when asked. A moderator's list lives in the host panel, which exists only while
+  // live, so joining, leaving or a role change must not leave it half-open to appear by itself.
+  useEffect(() => {
+    setListenersOpen(false)
+  }, [polling, role])
+
   // The chosen input if it is still plugged in, else the default one.
   const choice = chooseDevice(devices, micSettings.deviceId)
   const effective: MicSettings = { ...micSettings, deviceId: choice.deviceId }
@@ -196,7 +201,7 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
     if (next.resync) {
       // A demotion takes the microphone: switch it off here too, then ask the server to match LiveKit to the role.
       if (res.data.viewer.role === 'listener' && micRef.current) {
-        await audio.current?.setMic(false).catch(() => undefined)
+        await audio.current?.setMic(false, effective, effKey).catch(() => undefined)
         setMic(false)
       }
       void spaceCall('POST', `/${id}/sync`)
@@ -261,8 +266,7 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
     setMicProblem(null)
     const want = !micOn
     try {
-      applied.current = effKey
-      await audio.current?.setMic(want, effective)
+      await audio.current?.setMic(want, effective, effKey)
       setMic(want)
       announce(want ? 'Microphone on.' : 'You are muted.')
       // Device names appear once the browser has let us use the microphone.
@@ -312,15 +316,14 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
   useEffect(() => {
     if (!micOn) return
     if (noDevice) {
-      void audio.current?.setMic(false).catch(() => undefined)
+      void audio.current?.setMic(false, effective, effKey).catch(() => undefined)
       setMic(false)
       setMicProblem(micFailure({ name: 'NotFoundError' }))
       announce('Your microphone was unplugged. You are muted.')
       return
     }
-    if (applied.current === effKey) return
-    applied.current = effKey
-    audio.current?.applyMic(effective).catch((err) => {
+    // A no-op unless the device or a switch differs from what the live track was started with.
+    audio.current?.applyMic(effective, effKey).catch((err) => {
       setMic(false)
       setMicProblem(micFailure(err))
     })
@@ -333,23 +336,17 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
       setLevel(0)
       return
     }
-    let stop: (() => void) | undefined
     let value = 0
     let shown = 0
-    // A restarted track needs a moment before there is something to read.
-    const start = setTimeout(() => {
-      stop = audio.current?.watchLevel((raw) => {
-        value = smoothLevel(value, raw)
-        if (Math.abs(value - shown) > 0.03 || value === 0) {
-          shown = value
-          setLevel(value)
-        }
-      })
-    }, 250)
-    return () => {
-      clearTimeout(start)
-      stop?.()
-    }
+    // Follows the track itself (a device change swaps it), and sleeps while the tab is hidden.
+    const stop = audio.current?.watchLevel((raw) => {
+      value = smoothLevel(value, raw)
+      if (Math.abs(value - shown) > 0.03 || value === 0) {
+        shown = value
+        setLevel(value)
+      }
+    })
+    return () => stop?.()
   }, [micOn, effKey])
 
   // Who started speaking, for screen readers: new speakers only, throttled, never the member themselves.
@@ -424,7 +421,14 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
           ) : null}
         </p>
         {!ended ? (
-          <button type="button" className="btn btn-secondary space-btn space-count mt-3" aria-haspopup="dialog" onClick={() => setListenersOpen(true)}>
+          <button
+            type="button"
+            className="btn btn-secondary space-btn space-count mt-3"
+            aria-haspopup="dialog"
+            // A host or co-host's list is in the host panel, which appears once they have joined.
+            disabled={moderator && !polling}
+            onClick={() => setListenersOpen(true)}
+          >
             <PeopleIcon size={18} />
             {listenerLabel(view.listenerCount)}
           </button>

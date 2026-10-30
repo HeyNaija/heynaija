@@ -6,7 +6,9 @@ import {
   DEFAULT_MIC,
   deviceLabel,
   elapsedLabel,
+  afterFailedRestart,
   micFailure,
+  micPlan,
   readMicSettings,
   rmsLevel,
   smoothLevel,
@@ -95,4 +97,24 @@ test('elapsed time reads m:ss, then h:mm:ss, and is empty before the start', () 
   assert.equal(elapsedLabel(t0, at(3723)), '1:02:03')
   assert.equal(elapsedLabel(t0, at(-50)), '0:00')
   assert.equal(elapsedLabel('garbage', at(5)), '')
+})
+
+test('a mic plan: a fresh publish uses the options; an existing one is restarted when they changed', () => {
+  const base = { appliedKey: 'k1', key: 'k1', hasPublication: true, isMuted: true, wantOn: true }
+  assert.equal(micPlan({ ...base, hasPublication: false, appliedKey: '' }), 'publish')
+  // Unmute with nothing changed: just unmute.
+  assert.equal(micPlan(base), 'unmute')
+  // Changed while muted: the unmute would ignore the options, so restart first.
+  assert.equal(micPlan({ ...base, key: 'k2' }), 'restart')
+  // Changed while live: restart.
+  assert.equal(micPlan({ ...base, key: 'k2', isMuted: false }), 'restart')
+  // Live and unchanged, or turning off: nothing to do.
+  assert.equal(micPlan({ ...base, isMuted: false }), 'none')
+  assert.equal(micPlan({ ...base, key: 'k2', wantOn: false }), 'none')
+})
+
+test('after a failed restart the publication is gone and the applied key reset, so the next Unmute publishes afresh', () => {
+  const state = afterFailedRestart()
+  assert.deepEqual(state, { appliedKey: '', hasPublication: false })
+  assert.equal(micPlan({ ...state, key: 'k2', isMuted: false, wantOn: true }), 'publish')
 })

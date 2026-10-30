@@ -52,6 +52,24 @@ export function chooseDevice(devices: InputDevice[], wanted: string | null): { d
 /** Browsers hide labels until the microphone has been allowed once. */
 export const deviceLabel = (device: InputDevice, index: number) => device.label.trim() || `Microphone ${index + 1}`
 
+export type MicPlan = 'publish' | 'unmute' | 'restart' | 'none'
+
+/**
+ * What to do with the microphone track. LiveKit keeps a publication after the first
+ * Unmute, and unmuting it ignores new capture options, so a device or switch changed
+ * while muted needs a restart before the unmute. `appliedKey` is what the live track
+ * was last started with ('' when there is none).
+ */
+export function micPlan(s: { appliedKey: string; key: string; hasPublication: boolean; isMuted: boolean; wantOn: boolean }): MicPlan {
+  if (!s.wantOn) return 'none'
+  if (!s.hasPublication) return 'publish'
+  if (s.appliedKey !== s.key) return 'restart'
+  return s.isMuted ? 'unmute' : 'none'
+}
+
+/** A restart that fails stops the old track first, so nothing usable is left: forget it, and the next Unmute starts afresh. */
+export const afterFailedRestart = () => ({ appliedKey: '', hasPublication: false })
+
 export type MicFailure = { kind: 'denied' | 'none' | 'busy' | 'other'; message: string }
 
 /** Plain words for what went wrong turning the microphone on, and what to do next. */
