@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { grantModerator } from '../lib/cli.ts'
-import { ageNotifications, waitForEmailJob } from '../lib/db.ts'
+import { ageNotifications, waitForEmailJob, waitForPushJob } from '../lib/db.ts'
 import { countFor, emailWhere } from '../lib/mailpit.ts'
 import { type Member, newMember, post, replyBox } from '../lib/members.ts'
 
@@ -120,6 +120,9 @@ test('a burst of activity is one email, and the one-click unsubscribe of mail pr
   await second.page.getByRole('main').getByRole('button', { name: 'Follow', exact: true }).click()
   await expect(second.page.getByRole('main').getByRole('button', { name: 'Following' })).toBeVisible()
 
+  // An email takes only what the push job has finished with. Aged before it reaches
+  // the follow, the likes would go out alone and the follow in a second email.
+  await waitForPushJob(author.handle)
   await ageNotifications(author.handle)
   const mail = await emailWhere(author.email, since, /new notifications/)
   expect(mail.subject).toBe('3 new notifications on HeyNaija')
