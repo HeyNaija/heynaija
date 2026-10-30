@@ -366,11 +366,11 @@ speak, and anyone eligible may listen without an invitation.
 | X Spaces | What HeyNaija does |
 |---|---|
 | Host starts a Space; up to 2 co-hosts and 11 speakers including the host (a third-party guide says 13 in all; **verify**) | Host, up to 2 co-hosts, up to 10 other speakers. Config values, set by a load test. |
-| Listeners join from a card in the timeline, a profile, or a link | Listeners join from a **Live now** card (Home, the community page, the host's profile) or a link. Audio only. |
+| Listeners join from a card in the timeline, a profile, or a link | Listeners join from a **Live now** card (Home, the community page, the host's profile) or a link, shown only to eligible members (below). Audio only. |
 | Listener taps Request, host or co-host approves | Same. The host can turn requests off. Approval changes the member's role, not a new join. |
 | Host can invite a listener to speak directly | Same. Speakers are always chosen by a host or co-host; nobody takes the mic on their own. |
-| Host and co-hosts mute, remove, report and block; blocking also blocks the account | Same. Removing ends that member's token; a removed member cannot rejoin that Space. Block uses the existing block list. |
-| Listeners react with preset emojis | Preset reactions only, no listener text and no chat (section 4). |
+| Host and co-hosts mute, remove, report and block; blocking also blocks the account | Same, enforced by revoking publish rights and removing the participant through LiveKit, not by a client-side mute. A removed member is on the Space's removed list and cannot rejoin it. Block rules are the Space rules below, not section 3's. |
+| Listeners react with preset emojis | Preset reactions only, no listener text and no chat (section 4), sent to the API and rate-limited (see Signalling). |
 | Schedule a Space and set a reminder | Host schedules; members tap "Remind me", sent through the existing push and email paths (ADR 0011, ADR 0009). |
 | Recording and replay, indefinite on newer apps | **None in stage 5.** Recording stays stage 4, blocked on counsel (open questions 5 and 6). |
 | Co-host takes over if the host leaves | Same: the first co-host added becomes host. If there is none, the Space ends after 2 minutes. |
@@ -380,38 +380,84 @@ API. LiveKit's documentation says a participant can join with publishing off and
 be upgraded during the session, and that the server API `UpdateParticipant`
 changes permissions
 ([access tokens](https://docs.livekit.io/guides/access-tokens),
-[authentication](https://docs.livekit.io/home/get-started/authentication/)).
+[authentication](https://docs.livekit.io/home/get-started/authentication/);
+**(verify)** both pages and the current URL layout at build time, since the rest
+of this ADR cites the newer layout).
 
 | Role | Token grant | Can do |
 |---|---|---|
 | Listener | `roomJoin`, `canSubscribe`; `canPublish` and `canPublishData` false | Hear, react, request to speak, leave |
-| Speaker | as above, `canPublish` true, `canPublishSources` limited to the microphone | Also speak |
+| Speaker | listener token, then `UpdateParticipant` sets `canPublish` true and `canPublishSources` to the microphone only | Also speak |
 | Co-host | speaker, plus the API (not LiveKit) lets them approve, mute, remove | Moderate |
 | Host | co-host, plus end the Space, settings, add or remove co-hosts | Everything |
 
-The grant is the whole security model: a listener's token cannot publish, and
-the host's actions go through the API, which calls LiveKit. Source limiting
-means a speaker cannot publish video or share a screen. Roles live in the
-database; LiveKit holds only what the token says, and a role change mints a new
-token and calls `UpdateParticipant`.
+**Every Space token is a listener token**, whoever holds the role, so a token
+that outlives a role change can never speak. Speaking is granted only by the
+API calling `UpdateParticipant` after it has re-checked eligibility and the role
+in the database, and is taken back the same way (demote, remove, ban). On every
+join, reconnect and `participant_joined` webhook, the API resets the
+participant's permissions to the role stored in the database, so a rejoin after
+a demotion comes back as a listener. Section 3's note that an unexpired token
+can rejoin a room still applies, which is why the token carries nothing but
+listening. Source limiting means a speaker cannot publish video or share a
+screen. Host "mute" means revoking `canPublish` (LiveKit's server-side track
+mute may not stop a publisher unmuting themselves, **verify**); a muted speaker
+asks to speak again.
+
+**Signalling.** Requests to speak, invites, approvals, reactions and role
+changes do not use LiveKit data messages: listeners have `canPublishData` false.
+They go to the API over its normal HTTP endpoints and come back over the web
+app's existing live channel or short polling (the Context section says there is
+no realtime layer, so this is a build-time choice to make, not a given).
+Reactions are rate-limited per member and batched into counts, and a listener
+can have one open speak request at a time.
+
+**Who can see whom.** Listeners join LiveKit as `hidden` where its grant allows
+(**verify**), so the 200 clients do not receive a participant list that names
+them. The room shows speakers and a listener count. The host and co-hosts see
+the listener list through the API, because they moderate; other listeners do
+not. Nobody can use presence to tell what a particular member is listening to.
 
 **Who may take part (the safety question that is new here).**
 - **Host and speakers: verified, opted-in adults**, the same gate as meetings
   (ADR 0016). Hosting also needs a clean standing: no active suspension and no
-  upheld report for abuse in a Space in the last 90 days (a proposal).
+  upheld report for abuse in a Space in the last 90 days (a proposal). The same
+  standing check applies when someone is **made a co-host** and when a co-host
+  **takes over**; a member who may not host cannot be appointed, and if the
+  next co-host fails the check the Space ends instead.
 - **Listeners: verified adults too** (open question 12). A public live room
   cannot be previewed, and **minors are never in a call or a Space.** Letting
   unverified adults listen is a governance decision, not an engineering one.
-- **Public join, not public discovery by default.** A Space can be public (any
-  eligible member) or **community-only** (members of one community). Never
-  invite-only, never guests without accounts.
+- **Who is shown a Space.** The Live now card, the join page and a shared link
+  all require an eligible member (same function as calls, section 5). A minor, an
+  unverified or opted-out member, and a logged-out visitor get nothing: no card,
+  and the link shows the same not-found page as any other missing page. A Space
+  can be public (any eligible member) or **community-only** (members of one
+  community); never invite-only, never guests without accounts. "Public" here
+  means open to any eligible member, not discoverable by strangers.
+- **Blocks in a Space are not section 3's meeting rule.** That rule refuses any
+  join that puts a blocker and a blocked member in one room, which in a
+  200-person room lets one early joiner lock others out. In a Space a block is
+  checked against the host, co-hosts and speakers only: you cannot join a Space
+  when the host or a current speaker is someone you blocked or who blocked you,
+  and a speaker is not promoted past that check. Two listeners who blocked each
+  other can share a room, and blocking never reveals itself to the other side.
 - **Moderation is live and human.** There is no text to review and no
   recording, so the tools are the host's: mute, remove, end. Any participant
   can **Report** a Space (not just a person): the report carries the Space id,
   host, time and participant list, and stage 5 stores no audio. Moderators see
-  that metadata, not the conversation (open question 4). A report from several
-  members in one session pauses the Space's "Live now" card until a moderator
-  looks (a proposal).
+  that metadata, not the conversation (open question 4). Reports do not stop a
+  Space on their own, since a group could file false ones. Instead:
+  a moderator can **end a Space** and revoke its link on the metadata alone;
+  reports from distinct, long-standing members count more than a burst from new
+  accounts; and a Space with several such reports is hidden from the Live now
+  card and queued for a moderator (a proposal, tuned by use).
+- **Raids and hosts.** The host can **lock the room** (no new listeners), set a
+  lower listener cap for that Space, and require that listeners follow the host
+  or are in the community. Joins are rate-limited per member and per Space, so a
+  group cannot fill the cap in a burst; the cap counts only eligible, joined
+  members. A host who repeatedly has Spaces ended is barred from hosting by
+  the standing rule above.
 - **No new surface for strangers.** A Space card never shows a member to someone
   who blocked them or was blocked by them, and a blocked member cannot join.
 
@@ -419,10 +465,20 @@ token and calls `UpdateParticipant`.
 subscribe to audio. Speaking is the expensive part: each active speaker's audio
 is sent to every listener. At about 32 kbps per Opus speaker stream
 (**verify**), 3 people talking at once and 200 listeners is roughly
-19 Mbps out of the server. The server is sized on outbound bandwidth, not CPU,
+19 Mbps of audio payload out of the server, plan for about 30 Mbps once
+packet overhead and a few noisy speakers are counted. The server is sized on outbound bandwidth, not CPU,
 and one node's NIC and provider bandwidth quota set the audience cap. Start
 with a configured cap of 200 listeners, measured on the real server in Lagos,
-and a hard refusal (not a degraded stream) above it. A bigger audience means a
+and a hard refusal (not a degraded stream) above it. The API sets
+`max_participants` on every Space room at creation, since the server default in
+the config sketch is 8. **Cost:** one hour at that load is about 8.6 GB out and
+about 12,000 participant-minutes (200 listeners for 60 minutes), which on its
+own is more than half the growth-stage 15 GB a month in section 7 and more than
+the Cloud Build tier's minutes. Section 7's "Cloud is free or cheap" claim holds
+for meetings and calls, not for Spaces, so Spaces are costed against the
+self-hosted server's bandwidth quota instead. Listeners download about 43 MB an
+hour; the room shows this and offers a data-saver choice (listen on Wi-Fi only
+prompts, no autoplay on mobile data). A bigger audience means a
 second node and LiveKit's distributed mode, which needs Redis (section 2); that
 is a later decision.
 
@@ -436,6 +492,11 @@ open question 13.
 notifies **no one** by default beyond the Live now card; "Notify my followers"
 is a host option limited to once per Space and rate-limited per host, so a Space
 cannot become a broadcast tool.
+
+**Feature flag.** Spaces have their own switch, `CALLS_SPACES_ENABLED`,
+separate from meetings and screen share (section 7), off by default, and stage
+5 is rolled out on its own: allow-listed adults first, then wider. Stage numbers
+are scope labels, not release order.
 
 **Web client.** The Live now card and the Space room are in
 `apps/web/DESIGN.md`, "Calls and meetings", which gets a "Spaces" subsection
@@ -558,8 +619,8 @@ only through `GET /v1/me` as `features.calls`, so a build with it off ships no
 live call route. `CALLS_MEMBERS` allow-list of handles for the beta. Settings
 `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` and the webhook key are
 optional in `infra/deploy/compose.yml` (the `:-` pattern), empty means calls are
-off. Separate stage switches `CALLS_MEETINGS_ENABLED`, `CALLS_SCREENSHARE_ENABLED`
-and `CALLS_RECORDING_ENABLED` (the last locked off in code until counsel
+off. Separate stage switches `CALLS_MEETINGS_ENABLED`, `CALLS_SCREENSHARE_ENABLED`,
+`CALLS_SPACES_ENABLED` and `CALLS_RECORDING_ENABLED` (the last locked off in code until counsel
 signs off). Flag off ends nothing in the database but refuses new calls; live
 calls are ended by deleting their rooms. A kill switch for a stuck server is
 the flag.
@@ -651,3 +712,10 @@ Each has a recommendation; the PR description repeats them.
     start, set from a load test, with a hard refusal above the cap.
 15. **Should a Space be able to notify followers when it goes live?** Recommend
     once per Space, rate-limited, host-chosen.
+16. **How do clients get live role changes, requests and reactions?** The app
+    has no realtime layer today. Recommend short polling (a few seconds) for
+    stage 5, and a decision on a push channel only if a Space proves it is
+    needed; never `canPublishData` for listeners.
+17. **Do listeners join `hidden` and is the listener list visible to
+    co-hosts only?** Recommend yes (section 4a), subject to LiveKit supporting
+    it as described **(verify)**.
