@@ -79,7 +79,8 @@ test('mentioned-only control admits the mentioned member and blocks the whole ne
   await page.locator('article', { hasText: answer }).getByRole('link', { name: /^Reply \(/ }).click()
   await expect(page).toHaveURL(new RegExp(`/p/${replyId}`))
   // The conversation's page stays mounted, hidden, after the client-side navigation.
-  await expect(page.locator('.notice', { hasText: 'to reply' }).filter({ visible: true })).toBeVisible()
+  // The ask is the reply bar's place under the post now, not a notice at the foot of the page.
+  await expect(page.getByRole('link', { name: 'Sign in to reply', exact: true }).filter({ visible: true })).toBeVisible()
 
   await creator.context.close()
   await invited.context.close()

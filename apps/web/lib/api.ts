@@ -4,6 +4,7 @@ import { cache } from 'react'
 import { getApiAuthHeaders, hasSessionCredentials } from './auth/server'
 import type { NotificationPreferences } from './notification-preferences'
 import type { ReplyAudience } from './reply-audience'
+import type { ReplyContext } from './reply-context'
 import type { ReplyOrder } from './thread-state'
 
 // Server-to-server address of the NestJS API. Browsers never use this; they go
@@ -112,6 +113,8 @@ export type Post = {
   replyAudience: ReplyAudience
   viewerCanReply: boolean
   poll: Poll | null
+  /** What a reply answers, in lists: a preview, or a placeholder. Null on other posts and in threads. */
+  replyTo?: ReplyContext | null
   likeCount: number
   replyCount: number
   repostCount: number
