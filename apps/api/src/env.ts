@@ -24,7 +24,15 @@ const flag = () =>
 /** An optional setting that may also be given empty (compose passes `${NAME:-}`), which means unset. */
 const optional = <T extends z.ZodType>(type: T) => z.preprocess((value) => (value === '' ? undefined : value), type.optional())
 
+export const APP_ENVS = ['development', 'staging', 'production'] as const
+export type AppEnv = (typeof APP_ENVS)[number]
+
 const schema = z.object({
+  // Which deployment this is; it picks each feature flag's default (docs/feature-flags.md).
+  // Unset or empty is production, so a server that forgets it can never switch on a
+  // feature that is only meant for staging. The dev scripts, CI and the staging
+  // server set their own.
+  APP_ENV: z.preprocess((value) => (value === '' ? undefined : value), z.enum(APP_ENVS).default('production')),
   DATABASE_URL: z.string().min(1),
   // Ory Kratos public API, reached server-to-server to validate sessions.
   KRATOS_PUBLIC_URL: z.url().transform((u) => u.replace(/\/$/, '')),
