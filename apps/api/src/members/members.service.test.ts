@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import { follows, members, releasedHandles } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
+import { InvalidCursorError } from '../cursor.js'
 import { PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { CannotFollowSelfError, MembersService, NoSuchMemberError, profileInput } from './members.service.js'
@@ -271,4 +272,58 @@ test('the Founder badge is given and taken away by handle, and shows on the prof
   assert.equal((await postsService.feed(null, 10)).posts.find((p) => p.id === post.id)!.authorFounder, false)
 
   await assert.rejects(service.setFounder('nobody', true), NoSuchMemberError)
+})
+
+test('mention suggestions put followed people first and match handle or name starts', async () => {
+  const [ade, adaeze, tunde, kola] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()]
+  await db.insert(members).values([
+    { id: ade, handle: 'ade_x' },
+    { id: adaeze, handle: 'zee', displayName: 'Adaeze Okafor' },
+    { id: tunde, handle: 'tunde', displayName: 'Tunde Adewale' },
+    { id: kola, handle: 'adekola', active: false },
+  ])
+  const handles = async (viewer: string, q: string) => (await service.suggestMentions(viewer, q)).members.map((m) => m.handle)
+
+  // Handle starts, then name starts; never the viewer or an inactive member.
+  assert.deepEqual(await handles(bayo, 'ad'), ['ada', 'ade_x', 'zee'])
+  assert.deepEqual(await handles(ada, 'ad'), ['ade_x', 'zee'])
+
+  // A followed member comes first, and any word of their name counts.
+  await service.follow(bayo, 'tunde')
+  const asBayo = (await service.suggestMentions(bayo, 'ad')).members
+  assert.deepEqual(asBayo.map((m) => [m.handle, m.following]), [['tunde', true], ['ada', false], ['ade_x', false], ['zee', false]])
+
+  // "_" is matched as written, not as a wildcard.
+  assert.deepEqual(await handles(bayo, 'ade_'), ['ade_x'])
+  assert.deepEqual(await handles(bayo, 'ada_'), [])
+
+  // Blocks either way hide the member.
+  await service.block(ada, 'bayo')
+  assert.deepEqual(await handles(bayo, 'ad'), ['tunde', 'ade_x', 'zee'])
+  assert.deepEqual(await handles(chi, 'AD'), ['ada', 'ade_x', 'zee'])
+  assert.deepEqual(await handles(bayo, 'a d'), [])
+})
+
+test('mention suggestions page through followed members, then others by handle, then by name', async () => {
+  const add = async (rows: { handle: string; displayName?: string }[]) =>
+    db.insert(members).values(rows.map((r) => ({ id: randomUUID(), ...r })))
+  await add(Array.from({ length: 12 }, (_, i) => ({ handle: `kaf${String(i).padStart(2, '0')}` })))
+  for (let i = 0; i < 12; i++) await service.follow(ada, `kaf${String(i).padStart(2, '0')}`)
+  await add([{ handle: 'kao' }, { handle: 'kap' }, { handle: 'zz1', displayName: 'Kayode B' }, { handle: 'zz0', displayName: 'Kayode B' }])
+
+  const pages: { handle: string; following: boolean }[][] = []
+  let cursor: string | undefined
+  do {
+    const page = await service.suggestMentions(ada, 'ka', cursor, 5)
+    pages.push(page.members.map(({ handle, following }) => ({ handle, following })))
+    cursor = page.cursor ?? undefined
+  } while (cursor)
+
+  const all = pages.flat()
+  assert.deepEqual(pages.map((p) => p.length), [5, 5, 5, 1])
+  assert.deepEqual(all.filter((m) => m.following).map((m) => m.handle), Array.from({ length: 12 }, (_, i) => `kaf${String(i).padStart(2, '0')}`))
+  assert.deepEqual(all.filter((m) => !m.following).map((m) => m.handle), ['kao', 'kap', 'zz0', 'zz1'])
+  assert.equal(all.findIndex((m) => !m.following), 12, 'everyone followed comes before anyone else')
+
+  await assert.rejects(service.suggestMentions(ada, 'ka', 'not-a-cursor'), InvalidCursorError)
 })
