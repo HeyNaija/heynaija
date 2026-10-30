@@ -12,7 +12,7 @@ export function CommunityMark({ slug, photo, large = false }: { slug: string; ph
       <span className={`community-mark has-photo ${large ? 'is-large' : ''}`}>
         {/* A plain <img>: the stored sizes (96 and 256) are already what is needed. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={`${photo}/${large ? 256 : 96}.webp`} alt="" width={size} height={size} loading="lazy" decoding="async" />
+        <img src={`${photo}/${large ? 256 : 96}.webp`} alt="" width={size} height={size} loading={large ? 'eager' : 'lazy'} decoding="async" />
       </span>
     )
   }

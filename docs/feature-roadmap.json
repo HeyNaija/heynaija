@@ -815,7 +815,7 @@
       "description": "Give communities their own uploaded visual identities.",
       "category": "discovery",
       "priority": "P1",
-      "status": "implemented",
+      "status": "partial",
       "availability": "not_live",
       "evidence": [
         "packages/db/drizzle/0029_community_photos.sql",
@@ -830,6 +830,7 @@
         "apps/api/src/media/community-photo.test.ts",
         "e2e/tests/community-photos.spec.ts"
       ],
+      "caveat": "Moderators can add, replace, remove and take down a community photo in the API, covered by API tests; the web editor and the end-to-end test have not been run yet. Members cannot report a community photo, and uploads are only as safe as upload scanning, which is still blocked.",
       "notes": "One square photo per community (communities.photo_media_id), added, replaced or removed by that community's moderators and site moderators from the community page; the control needs JavaScript, while the photo and the subject-icon fallback show to everyone without it. It goes through the profile-photo pipeline (JPEG, PNG or WebP up to 5 MB, 96px and 256px WebP, location data dropped) and the same fail-closed upload scanner, so it depends on upload-scanning being completed before launch. Site moderators take a photo down from the community page: it is quarantined privately and logged as remove_community_photo, but the community's moderators can then upload another. Members cannot report a community photo yet (follow-up)."
     },
     {
