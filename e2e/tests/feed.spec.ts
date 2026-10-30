@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
-import { seedPosts } from '../lib/db.ts'
+import { seedPosts, seedThread } from '../lib/db.ts'
 import { newMember } from '../lib/members.ts'
 
 // Next keeps recently visited pages in the DOM, hidden, so only visible posts count.
@@ -98,4 +98,22 @@ test.describe('infinite scroll on a long feed', () => {
     await expect(cards(page)).toHaveCount(40)
     await context.close()
   })
+})
+
+test('a reply in a list says whom it answers, previews the post, and says nothing of one that is gone @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'replyctx')
+  try {
+    const fixture = await seedThread(handle)
+    await page.goto(`/u/${handle}?tab=replies`)
+    const card = page.locator('article.post-card', { hasText: 'Thread reply 25 ' })
+    await expect(card).toBeVisible()
+    await expect(card.locator('.reply-to')).toHaveText(`Replying to @${handle}`)
+    await expect(card.locator('.reply-to a')).toHaveAttribute('href', `/p/${fixture.root}`)
+    await expect(card.locator('.reply-parent-excerpt')).toHaveText(`Thread fixture from ${handle}`)
+    // The deleted bridge's reply, were it listed, would say only "no longer available"; the
+    // text of a gone post never reaches the page.
+    await expect(page.locator('body')).not.toContainText('Deleted bridge content must not appear')
+  } finally {
+    await context.close()
+  }
 })

@@ -24,6 +24,8 @@ type Props = {
   replyTo?: string
   replyHandle?: string
   replyDepth?: number
+  /** The reply is to another reply rather than the post in focus: the recipient stays in view. */
+  answeringReply?: boolean
   placeholder?: string
   /** Post straight into this community (used on a community's own page). */
   community?: string
@@ -39,7 +41,7 @@ type Props = {
   focusRequest?: number
 }
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, placeholder, community, choices, quote, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0 }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0 }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -124,7 +126,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
   const pollReady = !pollOpen || (text.trim().length > 0 && pollOptions.length >= 2 && pollOptions.every((option) => option.trim().length > 0))
 
   const content = (
-    <form ref={form} id="compose" action={action} className={`${replyTo ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''} scroll-mt-32`}>
+    <form ref={form} id="compose" action={action} className={`${replyTo ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''}${answeringReply ? ' is-answering' : ''} scroll-mt-32`}>
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
       {replyDepth ? <input type="hidden" name="threadDepth" value={replyDepth} /> : null}
       {replyHandle ? <input type="hidden" name="replyHandle" value={replyHandle} /> : null}

@@ -1205,6 +1205,10 @@ summary.menu::-webkit-details-marker {
 /* Reading starts with one line. Writing reveals the recipient, tools and notice;
    an existing draft or attachment keeps them open when focus moves away. */
 .reply-composer:not(.is-expanded):not(:focus-within) :is(.composer-recipient, .composer-privacy) { display: none; }
+/* Answering a reply from the phone bar keeps the bar where it is, so the recipient stays in
+   view even when the field is at rest (the Reply button drops by the line it takes). */
+.reply-composer.is-answering:not(.is-expanded):not(:focus-within) .composer-recipient { display: block; }
+.reply-composer.is-answering:not(.is-expanded):not(:focus-within) .composer-toolbar { top: 38px; }
 .community-discovery { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--accent-soft); padding: 14px 16px; color: var(--brand-deep); transition: border-color 0.15s; }
 .community-discovery:hover { border-color: var(--accent); }
 .community-discovery > span:nth-child(2) { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
@@ -1257,6 +1261,18 @@ summary.menu::-webkit-details-marker {
 .post-card:has(details[open]) { z-index: 5; }
 .post-list > li > .post-card:has(details[open]) { content-visibility: visible; }
 .post-context { margin-bottom: 14px; color: var(--muted); font-size: 10px; font-weight: 500; }
+/* A reply in a list, as on X: the start of the post it answers sits above it in a compact row,
+   and a 2px line runs from that row's avatar down to the reply's own (the 42px avatar column is
+   shared, so the two avatars have one centre). Decoration only; "Replying to @handle" says it
+   in words. A parent the reader cannot see gets the words alone. */
+.reply-parent { display: grid; grid-template-columns: 42px minmax(0, 1fr); column-gap: 12px; position: relative; margin-bottom: 4px; padding-bottom: 14px; color: var(--muted); font-size: 13px; line-height: 18px; }
+.reply-parent:hover .reply-parent-excerpt { text-decoration: underline; }
+.reply-parent-avatar { display: flex; justify-content: center; align-self: start; }
+.reply-parent::before { content: ''; position: absolute; top: 28px; bottom: -2px; left: 20px; width: 2px; background: var(--line-strong); pointer-events: none; }
+.reply-parent-text { display: flex; min-width: 0; flex-direction: column; }
+.reply-parent-who { display: flex; min-width: 0; align-items: baseline; gap: 6px; }
+.reply-parent-excerpt { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-to { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 18px; }
 .post-author { letter-spacing: -0.02em; }
 .post-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; color: var(--muted); font-size: var(--post-meta-size); line-height: 18px; }
 .post-actions { display: flex; align-items: center; gap: clamp(4px, 2vw, 24px); margin-top: 12px; border-top: 1px solid var(--line); padding-top: 5px; }
@@ -1402,8 +1418,12 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-branch:not(.is-root) > .thread-children > .thread-list > li:last-child::before, .thread-branch:not(.is-root) > .thread-children > .thread-recent > .thread-list > li:last-child::before { bottom: calc(100% - 29px); }
 .thread-branch:not(.is-root) > .thread-children > .thread-recent > .thread-list > li:first-child::before { top: 0; }
 .thread-branch:not(.is-root) > .thread-children > .thread-list > li::after, .thread-branch:not(.is-root) > .thread-children > .thread-recent > .thread-list > li::after { content: ''; position: absolute; top: 28px; left: var(--branch-line); width: calc(10px - var(--branch-line)); border-top: 2px solid var(--line-strong); pointer-events: none; }
-@media (min-width: 1024px) {
-  .thread-list .post-card.is-reply > :not(.post-header) { margin-left: 44px; }
+/* Text, pictures and actions start in the text column on every width, as on X. On a phone the
+   fifth level gives it back where the column would be under 180px (a 320px screen: 174px),
+   so words never get squeezed into a sliver. */
+.thread-list .post-card.is-reply > :not(.post-header) { margin-left: 44px; }
+@media (max-width: 339px) {
+  .thread-branch[data-depth="5"] > .thread-row > .post-card.is-reply > :not(.post-header) { margin-left: 0; }
 }
 /* Nothing to show yet while a branch loads, so no space either: the next reply stays put. */
 .thread-children[hidden], .thread-children:empty { display: none; }
@@ -1439,6 +1459,13 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-context-note a, .composer-posted a { color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
 .thread-error { margin-top: 10px; color: var(--danger); font-size: 13px; }
 .thread-recent { margin-top: 14px; border-top: 1px dashed var(--line-strong); }
+/* One run of line through the "Your reply" marker: the last answer above it carries its line
+   to its own bottom, and the marker draws the stretch to the first answer below it (the 14px
+   margin and the border above the marker, the marker, and the 12px under it). */
+.thread-branch:not(.is-root) > .thread-children:has(> .thread-recent) > .thread-list > li:last-child::before { bottom: 0; }
+.thread-branch:not(.is-root) > .thread-children > .thread-recent > .thread-gap { position: relative; }
+.thread-branch:not(.is-root) > .thread-children > .thread-recent > .thread-gap::before { content: ''; position: absolute; top: -27px; bottom: -12px; left: var(--branch-line); width: 2px; background: var(--line-strong); pointer-events: none; }
+.thread-branch:not(.is-root) > .thread-children.is-beyond > .thread-recent > .thread-gap { --branch-line: -7px; }
 .thread-editor-host:not(:empty) { margin-top: 14px; }
 .thread-editor-host:empty { display: none; }
 .composer-posted { margin-top: 6px; color: var(--muted); font-size: 12px; }
