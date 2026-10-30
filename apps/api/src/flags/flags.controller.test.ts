@@ -48,18 +48,18 @@ test('listing is for site moderators only', async () => {
   assert.ok(view.flags.some((f) => f.key === 'polls'))
 })
 
-test('a site moderator turns a flag on, and the next read sees it, with the change audited', async () => {
-  assert.equal(await flags.isEnabled('polls'), false)
-  await controller.put(as(ada), 'polls', { enabled: true })
+test('a site moderator turns a live flag off, and the next read sees it, with the change audited', async () => {
   assert.equal(await flags.isEnabled('polls'), true)
+  await controller.put(as(ada), 'polls', { enabled: false })
+  assert.equal(await flags.isEnabled('polls'), false)
   const [change] = await db.select().from(featureFlagChanges)
   assert.equal(change?.actorHandle, 'ada')
-  assert.deepEqual(change?.after, { enabled: true, handles: [] })
+  assert.deepEqual(change?.after, { enabled: false, handles: [] })
 })
 
 test('a member who is not an admin cannot change a flag, and nothing is recorded', async () => {
-  assert.equal(await status(() => controller.put(as(bayo), 'polls', { enabled: true })), 403)
-  assert.equal(await flags.isEnabled('polls'), false)
+  assert.equal(await status(() => controller.put(as(bayo), 'polls', { enabled: false })), 403)
+  assert.equal(await flags.isEnabled('polls'), true)
   assert.equal((await db.select().from(featureFlagChanges)).length, 0)
 })
 
@@ -103,6 +103,8 @@ const contextFor = (member: { id: string } | undefined, key?: 'polls') => {
 
 test('guard: a route behind a flag that is off is 404; once it is on, it opens', async () => {
   const guard = new FeatureGuard(new Reflector(), flags)
+  assert.equal(await guard.canActivate(contextFor({ id: bayo }, 'polls')), true)
+  await flags.set(ada, 'polls', { enabled: false })
   await assert.rejects(() => guard.canActivate(contextFor({ id: bayo }, 'polls')) as Promise<boolean>, NotFoundException)
   await flags.set(ada, 'polls', { enabled: true })
   assert.equal(await guard.canActivate(contextFor({ id: bayo }, 'polls')), true)

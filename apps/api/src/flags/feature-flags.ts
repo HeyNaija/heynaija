@@ -53,6 +53,8 @@ type Options = {
   load?: () => Promise<Snapshot>
   /** Where a failed read is reported; the log by default. */
   onError?: (err: unknown) => void
+  /** Replaces the registry, for tests that need a flag whose production default is off. */
+  registry?: Record<FlagKey, FlagDefinition>
 }
 
 const log = new Logger('FeatureFlags')
@@ -71,6 +73,7 @@ export class FeatureFlags {
   private readonly now: () => number
   private readonly loader: () => Promise<Snapshot>
   private readonly onError: (err: unknown) => void
+  private readonly registry: Record<FlagKey, FlagDefinition>
 
   private snapshot: Snapshot | null = null
   private freshUntil = 0
@@ -85,6 +88,7 @@ export class FeatureFlags {
   ) {
     this.ttlMs = options.ttlMs ?? FLAG_CACHE_TTL_MS
     this.now = options.now ?? Date.now
+    this.registry = options.registry ?? FLAGS
     this.loader = options.load ?? (() => this.readDatabase())
     this.onError = options.onError ?? ((err) => log.error(`could not read feature flags; using ${this.snapshot ? 'the last good values' : 'production defaults'}`, err instanceof Error ? err.stack : String(err)))
   }
@@ -93,14 +97,14 @@ export class FeatureFlags {
   async isEnabled(key: FlagKey, viewerId?: string | null): Promise<boolean> {
     if (!isFlagKey(key)) return false
     const snapshot = await this.current()
-    return snapshot ? resolveFlag(key, this.appEnv, snapshot.get(key), viewerId) : resolveFlag(key, 'production', undefined, viewerId)
+    return snapshot ? resolveFlag(key, this.appEnv, snapshot.get(key), viewerId, this.registry) : resolveFlag(key, 'production', undefined, viewerId, this.registry)
   }
 
   /** Every flag for the viewer, keyed by registry key. */
   async all(viewerId?: string | null): Promise<Record<FlagKey, boolean>> {
     const snapshot = await this.current()
     const env: AppEnv = snapshot ? this.appEnv : 'production'
-    return Object.fromEntries(flagKeys.map((key) => [key, resolveFlag(key, env, snapshot?.get(key), viewerId)])) as Record<FlagKey, boolean>
+    return Object.fromEntries(flagKeys.map((key) => [key, resolveFlag(key, env, snapshot?.get(key), viewerId, this.registry)])) as Record<FlagKey, boolean>
   }
 
   /** Makes the next read go to the database. Called after every write. */
@@ -169,10 +173,10 @@ export class FeatureFlags {
       const set = row && (row.enabled !== null || handles.length > 0)
       return {
         key,
-        description: FLAGS[key].description,
-        owner: FLAGS[key].owner,
-        defaults: FLAGS[key].defaults,
-        default: FLAGS[key].defaults[this.appEnv],
+        description: this.registry[key].description,
+        owner: this.registry[key].owner,
+        defaults: this.registry[key].defaults,
+        default: this.registry[key].defaults[this.appEnv],
         override: set ? { enabled: row.enabled, handles } : null,
         updatedBy: row?.updatedBy ?? null,
         updatedAt: row?.updatedAt ?? null,

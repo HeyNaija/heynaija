@@ -6,6 +6,7 @@ import { CommunityMark } from '@/app/ui/community-mark'
 import { EmptyState } from '@/app/ui/empty-state'
 import { ArrowUpRightIcon, PeopleIcon } from '@/app/ui/icons'
 import { PostsSkeleton } from '@/app/ui/post-item'
+import { TopicsLink } from '@/app/ui/topics-link'
 import { getCommunities, getViewer } from '@/lib/api'
 
 export const metadata: Metadata = { title: 'Communities' }
@@ -19,9 +20,7 @@ export default function CommunitiesPage() {
         <p className="page-description">
           Join a community to post in it and bring its conversations into your Following feed. Looking for a subject
           instead? See the{' '}
-          <Link href="/topics" className="font-semibold text-accent-strong hover:underline">
-            trending topics
-          </Link>
+          <TopicsLink className="font-semibold text-accent-strong hover:underline">trending topics</TopicsLink>
           .
         </p>
       </header>

@@ -2,9 +2,10 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import { members } from '@heynaija/db'
-import { HttpException } from '@nestjs/common'
+import { type ExecutionContext, HttpException } from '@nestjs/common'
 import { AuthController } from '../auth/auth.controller.js'
-import type { AuthedRequest } from '../auth/session.guard.js'
+import { type AuthedRequest, SessionGuard } from '../auth/session.guard.js'
+import { InvitesService } from '../invites/invites.service.js'
 import { OnboardingController } from '../onboarding/onboarding.controller.js'
 import { PostsController } from '../posts/posts.controller.js'
 import { PostsService } from '../posts/posts.service.js'
@@ -78,21 +79,25 @@ test('/v1/me: `features` has one boolean per registry flag, and the rest of the 
 })
 
 test('/v1/me: features follow the environment and the viewer', async () => {
-  const off = await auth(production).me(as(bayo, 'bayo'))
-  assert.equal(off.features.polls, false)
-  assert.equal(off.features.reposts, true)
+  const live = await auth(production).me(as(bayo, 'bayo'))
+  assert.equal(live.features.polls, true, 'live in main, so on in production')
   await production.set(ada, 'polls', { enabled: null, handles: ['bayo'] })
   assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.polls, true)
   assert.equal((await auth(production).me(as(ada, 'ada'))).features.polls, false)
+  await production.set(ada, 'reposts', { enabled: false })
+  assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.reposts, false)
 })
 
 test('/v1/me: with the welcome flow off nobody is sent to it', async () => {
-  assert.equal((await auth(production).me(as(bayo, 'bayo'))).onboarded, true)
+  assert.equal((await auth(production).me(as(bayo, 'bayo'))).onboarded, false, 'on by default, bayo has not done it')
   assert.equal((await auth(development).me(as(bayo, 'bayo'))).onboarded, false)
+  await production.set(ada, 'onboarding', { enabled: false })
+  assert.equal((await auth(production).me(as(bayo, 'bayo'))).onboarded, true)
 })
 
 test('creating a post: a poll, a reply limit or a quote is refused while its flag is off, and works once on', async () => {
   const controller = posts(production)
+  for (const key of ['polls', 'replyControls'] as const) await production.set(ada, key, { enabled: false })
   const poll = { text: 'Which?', poll: { options: ['a', 'b'], multiple: false, expiresIn: '7_days' } }
   assert.equal(await status(() => controller.create(as(bayo, 'bayo'), poll)), 400)
   assert.equal(await status(() => controller.create(as(bayo, 'bayo'), { text: 'hi', replyAudience: 'following' })), 400)
@@ -137,4 +142,30 @@ test('routes: each gated route carries its flag and the guard', () => {
     const guards = (Reflect.getMetadata('__guards__', handler) ?? []) as unknown[]
     assert.ok(guards.includes(FeatureGuard), `${proto.constructor.name}.${method} uses FeatureGuard`)
   }
+})
+
+test('onboarding: a member who joins while the flow is off is not sent through it when it is switched on; one who joins after is', async () => {
+  const invites = new InvitesService(db)
+  const join = async (handle: string) => {
+    const identity = { id: randomUUID(), handle }
+    assert.equal(await invites.redeem(await invites.create(), identity.id), true)
+    const guard = new SessionGuard({ identityForRequest: async () => identity }, { WEB_PUBLIC_URL: 'http://127.0.0.1:3000' }, db, invites, production)
+    const req = { method: 'GET', headers: {}, cookies: { hn_session: 'good' } }
+    assert.equal(await guard.canActivate({ switchToHttp: () => ({ getRequest: () => req }) } as unknown as ExecutionContext), true)
+    return identity
+  }
+  await production.set(ada, 'onboarding', { enabled: false })
+  const early = await join('early')
+  assert.equal((await auth(production).me(as(early.id, 'early'))).onboarded, true)
+
+  await production.set(ada, 'onboarding', { enabled: true })
+  const late = await join('late')
+  assert.equal((await auth(production).me(as(early.id, 'early'))).onboarded, true, 'joined while off: still not sent to /welcome')
+  assert.equal((await auth(production).me(as(late.id, 'late'))).onboarded, false, 'joined after: sent to /welcome')
+
+  // Switched off and on again: whoever joined in between is not sent either.
+  await production.set(ada, 'onboarding', { enabled: false })
+  const between = await join('between')
+  await production.set(ada, 'onboarding', { enabled: true })
+  assert.equal((await auth(production).me(as(between.id, 'between'))).onboarded, true)
 })

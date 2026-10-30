@@ -6,9 +6,11 @@ import type { AppEnv } from '../env.js'
  * not in this list is ignored wherever it turns up.
  *
  * Policy: staging (and development, which follows it) is ON for everything.
- * Production is ON only for what is already live for everyone, and OFF for
- * anything new or risky until the team decides to launch it, which an admin then
- * does at runtime with no deploy.
+ * Production is ON for what is already live there (its code is in `main`, which
+ * deploys to production on every push), and OFF for a feature whose code is not in
+ * `main` yet, until the team launches it, which an admin then does at runtime.
+ * Switching a live feature off is an admin action, never a default. Changing a
+ * production default shows up in the registry test's LIVE_IN_MAIN table.
  */
 export type FlagDefinition = {
   description: string
@@ -17,54 +19,54 @@ export type FlagDefinition = {
   defaults: Record<AppEnv, boolean>
 }
 
-const onUntilLaunched = { development: true, staging: true, production: false } as const
+/** Use `{ development: true, staging: true, production: false }` for a feature not in `main` yet. */
 const onEverywhere = { development: true, staging: true, production: true } as const
 
 export const FLAGS = {
   polls: {
     description: 'Creating polls in posts, and voting in them. Polls already posted stay visible and keep their results.',
     owner: 'posts',
-    defaults: onUntilLaunched, // roadmap: social-polls, not live
+    defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
   replyControls: {
     description: 'Choosing who may reply to a new post, and changing it afterwards. A limit already set keeps being enforced.',
     owner: 'posts',
-    defaults: onUntilLaunched, // roadmap: reply-controls, not live
+    defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
   topicDiscovery: {
     description: 'The trending topics shown beside the feed.',
     owner: 'discovery',
-    defaults: onUntilLaunched, // roadmap: topic-discovery, not live
+    defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
   onboarding: {
     description: 'The welcome flow new members are sent through, and its endpoints.',
     owner: 'onboarding',
-    defaults: onUntilLaunched, // roadmap: member-onboarding, not live
+    defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
   profilePins: {
     description: 'Pinning a post on your own profile. Unpinning always works, and posts already pinned stay pinned.',
     owner: 'profiles',
-    defaults: onUntilLaunched, // roadmap: profile-pins, not live
+    defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
   communityPins: {
     description: 'Pinning a welcome post in a community. Unpinning always works, and posts already pinned stay pinned.',
     owner: 'communities',
-    defaults: onUntilLaunched, // roadmap: community-welcome-pins, not live
+    defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
   reposts: {
     description: 'Making a repost. A kill switch: undoing a repost always works, and reposts already made stay in feeds.',
     owner: 'posts',
-    defaults: onEverywhere, // roadmap: reposts, implemented and not recorded as unlaunched
+    defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
   quotePosts: {
     description: 'Writing a new quote post. A kill switch: quote posts already made stay visible.',
     owner: 'posts',
-    defaults: onEverywhere, // roadmap: quote-posts, as reposts
+    defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
   linkPreviews: {
     description: 'Fetching the linked page to build a preview card for a new post. A kill switch for the one place the API reads other websites.',
     owner: 'links',
-    defaults: onEverywhere, // roadmap: link-previews, as reposts
+    defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
 } as const satisfies Record<string, FlagDefinition>
 
@@ -83,8 +85,14 @@ export type FlagOverride = { enabled: boolean | null; allow: ReadonlySet<string>
  * only, off for everyone else, whatever the rest says), then an on/off override,
  * then the default for this environment.
  */
-export function resolveFlag(key: FlagKey, appEnv: AppEnv, override: FlagOverride | undefined, viewerId?: string | null): boolean {
+export function resolveFlag(
+  key: FlagKey,
+  appEnv: AppEnv,
+  override: FlagOverride | undefined,
+  viewerId?: string | null,
+  registry: Record<FlagKey, FlagDefinition> = FLAGS,
+): boolean {
   if (override && override.allow.size > 0) return viewerId != null && override.allow.has(viewerId)
   if (override && override.enabled !== null) return override.enabled
-  return FLAGS[key].defaults[appEnv]
+  return registry[key].defaults[appEnv]
 }

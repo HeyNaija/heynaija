@@ -451,8 +451,10 @@ export type TopicRules = { windowDays: number; minMembers: number; refreshSecond
 
 export type TrendingTopics = { topics: TrendingTopic[]; rules: TopicRules }
 
-export async function getTrendingTopics(): Promise<TrendingTopics> {
+/** Null when trending topics are switched off (the API answers 404). */
+export async function getTrendingTopics(): Promise<TrendingTopics | null> {
   const res = await api('/v1/topics/trending')
+  if (res.status === 404) return null
   if (!res.ok) throw new Error(`API /v1/topics/trending responded ${res.status}`)
   return res.json()
 }

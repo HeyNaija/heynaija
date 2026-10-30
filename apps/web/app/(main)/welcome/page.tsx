@@ -42,6 +42,8 @@ async function Welcome({ searchParams }: Pick<PageProps<'/welcome'>, 'searchPara
   const [viewer, params, communities, pushKey] = await Promise.all([getViewer(), searchParams, getCommunities(), getPushKey()])
   if (viewer.state === 'anonymous') redirect('/login')
   if (viewer.state !== 'member') redirect('/')
+  // The welcome flow is switched off (a feature flag): there is nothing to do here.
+  if (viewer.me.features && !viewer.me.features.onboarding) redirect('/')
 
   // Only communities that exist: the URL is the member's to edit.
   const asked = new Set(all(params.c))

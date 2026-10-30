@@ -23,15 +23,23 @@ row, a request), so the database can never add behaviour.
 (`.env.example`) says `production` on purpose, so an unedited copy cannot switch on
 unlaunched features.
 
-Policy: **staging and development have every flag on. Production has a flag on only if
-the feature is already live for everyone**; anything new or risky is off there until the
-team decides to launch it, and an admin then turns it on at runtime.
+Policy:
+
+- **Staging and development have every flag on.**
+- **Production is on for what is already live there**: the feature's code is in `main`,
+  which deploys to production on every push. Merging the flag system changes nothing in
+  production. The registry test keeps a `LIVE_IN_MAIN` table of exactly this, so any
+  change to a production default is a visible diff in review.
+- **Production is off for a feature whose code is not in `main` yet.** An admin turns it
+  on at runtime when the team decides to launch.
+- Switching a live feature off is an admin action, never a default.
 
 ## Adding a flag
 
 1. Add it to `FLAGS` in `apps/api/src/flags/registry.ts`: a camelCase key, a
    description, the owning area and `defaults` for all three environments. Staging and
-   development are `true`; production is `false` unless the feature is live.
+   development are `true`; production is `false` unless the feature's code is already in
+   `main`. Add the key to `LIVE_IN_MAIN` in `feature-flags.test.ts` with the same value.
 2. Gate the behaviour, keeping the default behaviour identical to before:
    - a route: `@UseGuards(SessionGuard, FeatureGuard)` and `@Feature('key')` (404 while
      off; list `FeatureGuard` after the session guard so the viewer is known);
@@ -78,6 +86,18 @@ in mind: after flipping a flag from another process, wait a few seconds.
 **Fail closed.** If the database cannot be read, the last good values keep answering.
 If there never was a good read, the **production** defaults answer (never staging's)
 until a read works. Failures are logged and retried once per TTL.
+
+## Known limits
+
+- The kill switches (`reposts`, `quotePosts`, `linkPreviews`) are on in production, so a
+  failed first read after a restart (or an allow-list whose members were all deleted,
+  leaving `enabled` null with an empty list) answers with the production default, which
+  is on, for one TTL. Fail-closed means "production default", not "off".
+- The web app does not hide the pin, community-pin, reply-audience and quote buttons
+  while their flags are off; the click does nothing (the API answers 404 or 400).
+  Composer polls and reply controls, the welcome flow and trending topics (page and
+  links) do follow the flags.
+- A flag turned off stops new use only. Content made while it was on stays.
 
 ## What is flagged today
 

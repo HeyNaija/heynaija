@@ -41,8 +41,8 @@ async function QuoteView({ params }: Props) {
         handle={viewer.me.handle}
         avatar={viewer.me.avatar}
         choices={joined}
-        polls={viewer.me.features.polls}
-        replyControls={viewer.me.features.replyControls}
+        polls={viewer.me.features?.polls ?? false}
+        replyControls={viewer.me.features?.replyControls ?? false}
         placeholder="Add your thoughts…"
         submitAction={createQuote}
         quote={{ id: post.id, preview: <QuotedPostCard quote={post} now={Date.now()} /> }}
