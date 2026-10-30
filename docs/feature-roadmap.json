@@ -815,13 +815,12 @@
       "description": "Give communities their own uploaded visual identities.",
       "category": "discovery",
       "priority": "P1",
-      "status": "implemented",
+      "status": "planned",
       "availability": "not_live",
       "evidence": [
         "packages/db/src/schema.ts",
         "apps/web/app/ui/community-mark.tsx",
-        "apps/api/src/media/media.controller.ts",
-        "apps/api/src/media/media.service.test.ts"
+        "apps/api/src/media/media.controller.ts"
       ]
     },
     {
@@ -999,11 +998,11 @@
       "description": "Ask an informal question with selectable responses in a post.",
       "category": "conversations",
       "priority": "P1",
-      "status": "planned",
+      "status": "implemented",
       "availability": "not_live",
       "evidence": [
         "packages/db/src/schema.ts",
-        "packages/db/drizzle/0028_thin_exiles.sql",
+        "packages/db/drizzle/0028_polls_reply_controls.sql",
         "apps/api/src/posts/posts.service.ts",
         "apps/api/src/posts/posts.controller.ts",
         "apps/web/app/ui/composer.tsx",
@@ -1023,7 +1022,7 @@
       "availability": "not_live",
       "evidence": [
         "packages/db/src/schema.ts",
-        "packages/db/drizzle/0028_thin_exiles.sql",
+        "packages/db/drizzle/0028_polls_reply_controls.sql",
         "apps/api/src/posts/posts.service.ts",
         "apps/api/src/posts/posts.controller.ts",
         "apps/web/app/ui/composer.tsx",

@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { Globe } from 'lucide-react'
 import { type ComposeState, createPost } from '@/app/actions'
+import { POLL_OPTION_INPUT_MAX, POLL_OPTIONS_MAX } from '@/lib/polls'
+import type { ReplyAudience } from '@/lib/reply-audience'
 import { Avatar } from './avatar'
 import { BubbleIcon, CloseIcon, GifIcon, ImageIcon, PeopleIcon, PlusIcon, VoteIcon } from './icons'
 import { IMAGE_TYPES } from './shrink-image'
@@ -12,7 +14,6 @@ import { useAutoGrow } from './use-auto-grow'
 import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
 
 const LIMIT = 300
-const POLL_OPTION_INPUT_MAX = 80 * 16
 const segmenter = new Intl.Segmenter()
 const graphemes = (text: string) => [...segmenter.segment(text)].length
 
@@ -46,7 +47,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
   const [text, setText] = useState('')
   // The prompt follows the audience picker; the toolbar keeps visibility and posting explicit.
   const [audience, setAudience] = useState('')
-  const [replyAudience, setReplyAudience] = useState('everyone')
+  const [replyAudience, setReplyAudience] = useState<ReplyAudience>('everyone')
   const [pollOpen, setPollOpen] = useState(false)
   const [pollOptions, setPollOptions] = useState(['', ''])
   const [pollMultiple, setPollMultiple] = useState(false)
@@ -81,6 +82,13 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
     return () => document.removeEventListener('pointerdown', outside)
   }, [])
   const [tooMany, setTooMany] = useState(false)
+
+  // React resets the form when an action finishes, and a <select> then shows its
+  // first option whatever its state says (text fields keep theirs). Drawing the
+  // selects afresh after each result puts the member's choices back, on screen
+  // and in the form a retry sends.
+  const [results, setResults] = useState(0)
+  useEffect(() => setResults((n) => n + 1), [state])
 
   // Clear the box once the server confirms the post.
   const lastPosted = useRef<number | undefined>(undefined)
@@ -209,7 +217,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
               </div>
             ))}
           </div>
-          {pollOptions.length < 10 ? (
+          {pollOptions.length < POLL_OPTIONS_MAX ? (
             <button type="button" className="composer-poll-add" onClick={() => setPollOptions((current) => [...current, ''])}>
               <PlusIcon size={16} /> Add choice
             </button>
@@ -217,14 +225,14 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
           <div className="composer-poll-settings">
             <label>
               <span>Voting</span>
-              <select name="pollMultiple" value={pollMultiple ? '1' : '0'} onChange={(event) => setPollMultiple(event.target.value === '1')}>
+              <select key={results} name="pollMultiple" value={pollMultiple ? '1' : '0'} onChange={(event) => setPollMultiple(event.target.value === '1')}>
                 <option value="0">Choose one</option>
                 <option value="1">Choose more than one</option>
               </select>
             </label>
             <label>
               <span>Ends</span>
-              <select name="pollExpiry" value={pollExpiry} onChange={(event) => setPollExpiry(event.target.value)}>
+              <select key={results} name="pollExpiry" value={pollExpiry} onChange={(event) => setPollExpiry(event.target.value)}>
                 <option value="1_day">In 1 day</option>
                 <option value="3_days">In 3 days</option>
                 <option value="7_days">In 7 days</option>
@@ -290,6 +298,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
             <PeopleIcon size={18} />
             <span className="sr-only">Post to</span>
             <select
+              key={results}
               name="community"
               value={audience}
               onChange={(e) => setAudience(e.target.value)}
@@ -313,7 +322,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
           <label className="composer-audience">
             <BubbleIcon size={16} />
             <span className="sr-only">Who can reply</span>
-            <select value={replyAudience} onChange={(event) => setReplyAudience(event.target.value)}>
+            <select key={results} value={replyAudience} onChange={(event) => setReplyAudience(event.target.value as ReplyAudience)}>
               <option value="everyone">Everyone can reply</option>
               <option value="following">People you follow</option>
               <option value="mentioned">Only people mentioned</option>

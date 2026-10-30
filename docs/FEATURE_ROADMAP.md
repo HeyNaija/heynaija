@@ -412,9 +412,9 @@ This tracks product development, not formal governance decisions. Priority means
 #### Conversation polls
 
 - **ID:** `social-polls`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Ask an informal question with selectable responses in a post.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `packages/db/drizzle/0028_thin_exiles.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/ui/poll-card.tsx`, `apps/api/src/posts/posts.service.test.ts`, `e2e/tests/polls-reply-controls.spec.ts`
+- **Inspected evidence:** `packages/db/src/schema.ts`, `packages/db/drizzle/0028_polls_reply_controls.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/ui/poll-card.tsx`, `apps/api/src/posts/posts.service.test.ts`, `e2e/tests/polls-reply-controls.spec.ts`
 - **Audit notes:** Ordinary social polls are separate from formal governance ballots. Creators choose one or multiple answers, 2 to 10 choices, and 1, 3, 7 or 30 days or no expiry; seven days is the default. Ballots are immutable and public by member, while feed payloads carry only counts and the current member's choices.
 
 #### More precise reply controls
@@ -422,7 +422,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `reply-controls`
 - **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Let authors set clearer boundaries around replies to their posts.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `packages/db/drizzle/0028_thin_exiles.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/ui/post-item.tsx`, `apps/api/src/posts/posts.service.test.ts`, `e2e/tests/polls-reply-controls.spec.ts`
+- **Inspected evidence:** `packages/db/src/schema.ts`, `packages/db/drizzle/0028_polls_reply_controls.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/ui/post-item.tsx`, `apps/api/src/posts/posts.service.test.ts`, `e2e/tests/polls-reply-controls.spec.ts`
 - **Audit notes:** A root post allows everyone, accounts its author follows plus mentioned accounts, or mentioned accounts only. The root setting governs direct and nested replies, can be changed for future replies, and does not restrict quotes, likes, reposts or poll votes. Deleted roots no longer restrict surviving replies.
 
 ### People and discovery
@@ -471,9 +471,9 @@ This tracks product development, not formal governance decisions. Priority means
 #### Community photos
 
 - **ID:** `community-photos`
-- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
+- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
 - **Description:** Give communities their own uploaded visual identities.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/web/app/ui/community-mark.tsx`, `apps/api/src/media/media.controller.ts`, `apps/api/src/media/media.service.test.ts`
+- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/web/app/ui/community-mark.tsx`, `apps/api/src/media/media.controller.ts`
 
 #### Email notifications
 

@@ -184,7 +184,9 @@ export class PostsController {
               ? 'not_a_member'
               : err instanceof ImagesNotReadyError
                 ? 'images_not_ready'
-                : null
+                : err instanceof PollOptionsError
+                  ? 'poll_options_invalid'
+                  : null
       if (code) throw new BadRequestException({ code, message: (err as Error).message })
       throw err
     }

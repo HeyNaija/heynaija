@@ -236,6 +236,10 @@ export const postPolls = pgTable(
     // seven-day expiry in application policy, where the requested preset lives.
     expiresAt: ts('expires_at'),
     createdAt: ts('created_at').notNull().defaultNow(),
+    // Active members who have voted, and on each option below the active members
+    // who chose it. Kept by triggers (migration 0028), in the same transaction as
+    // the ballot or suspension that changes them, like posts.like_count.
+    voterCount: integer('voter_count').notNull().default(0),
   },
   (t) => [check('post_polls_expiry_check', sql`${t.expiresAt} is null or ${t.expiresAt} > ${t.createdAt}`)],
 )
@@ -249,6 +253,7 @@ export const pollOptions = pgTable(
       .references(() => postPolls.postId, { onDelete: 'cascade' }),
     position: integer('position').notNull(),
     text: text('text').notNull(),
+    voteCount: integer('vote_count').notNull().default(0),
   },
   (t) => [
     uniqueIndex('poll_options_post_position_idx').on(t.postId, t.position),
@@ -262,8 +267,9 @@ export const pollOptions = pgTable(
 )
 
 // Votes are public. One row is one selected option; a multiple-choice ballot has
-// several rows with the same post/member. PostsService locks the poll row before
-// accepting the member's one immutable ballot.
+// several rows with the same post/member, written in one statement, so they share
+// created_at. PostsService locks the poll row before accepting the member's one
+// immutable ballot.
 export const pollVotes = pgTable(
   'poll_votes',
   {
@@ -279,6 +285,8 @@ export const pollVotes = pgTable(
     foreignKey({ columns: [t.postId, t.optionId], foreignColumns: [pollOptions.postId, pollOptions.id] }).onDelete('cascade'),
     index('poll_votes_option_idx').on(t.postId, t.optionId),
     index('poll_votes_member_idx').on(t.memberId, t.createdAt),
+    // The public voter list, newest ballot first, a page at a time.
+    index('poll_votes_ballot_idx').on(t.postId, t.createdAt, t.memberId),
   ],
 )
 

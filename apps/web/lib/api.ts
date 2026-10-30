@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 import { cache } from 'react'
 import { getApiAuthHeaders, hasSessionCredentials } from './auth/server'
 import type { NotificationPreferences } from './notification-preferences'
+import type { ReplyAudience } from './reply-audience'
 import type { ReplyOrder } from './thread-state'
 
 // Server-to-server address of the NestJS API. Browsers never use this; they go
@@ -65,7 +66,7 @@ export type PostHashtag = { start: number; length: number; tag: string }
 
 /** A web address in the text: where it is (UTF-16 code units) and where it leads. Always http or https. */
 export type PostLink = { start: number; length: number; url: string }
-export type ReplyAudience = 'everyone' | 'following' | 'mentioned'
+export type { ReplyAudience }
 
 export type Poll = {
   multiple: boolean

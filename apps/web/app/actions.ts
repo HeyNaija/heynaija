@@ -10,7 +10,8 @@ import { preferencesFromForm } from '@/lib/notification-preferences'
 import { PUSH_COOKIE } from '@/lib/push'
 import { choicesFromForm, welcomePath } from '@/lib/onboarding'
 import type { ThreadRow } from '@/lib/thread-state'
-import type { ReplyAudience } from '@/lib/api'
+import { POLL_OPTIONS_MAX } from '@/lib/polls'
+import { isReplyAudience } from '@/lib/reply-audience'
 
 // The API is the authority on who is signed in and what they may do; these
 // functions only relay the visitor's own session cookie to it.
@@ -51,7 +52,11 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
 
   if (res.status === 401) redirect('/login')
   if (res.status === 429) return { error: 'You are posting very fast. Wait a minute and try again.' }
-  if (res.status === 403) return { error: 'The author has limited who can reply to this conversation.' }
+  if (res.status === 403) {
+    // The session itself can be refused with a 403 too (a suspension, say).
+    const body = (await res.json().catch(() => ({}))) as { code?: string }
+    if (body.code === 'reply_not_allowed') return { error: 'The author has limited who can reply to this conversation.' }
+  }
   if (res.status === 400) {
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     if (body.code === 'parent_gone') return { error: 'The post you are replying to has been deleted.' }
@@ -61,7 +66,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
     if (body.code === 'images_not_ready') {
       return { error: 'One of your images is no longer available. Remove it and add it again.' }
     }
-    if (poll) return { error: 'Check the poll question and its choices. Use 2 to 10 different options.' }
+    if (poll) return { error: `Check the poll question and its choices. Use 2 to ${POLL_OPTIONS_MAX} different options.` }
     if (text.trim()) return { error: 'That post is too long, or an image description is. The post limit is 300 characters.' }
     return { error: images.length ? 'Could not post those images. Try again.' : 'Write something first.' }
   }
@@ -161,8 +166,8 @@ export async function setCommunityPin(formData: FormData): Promise<void> {
 
 export async function setReplyAudience(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '')
-  const audience = String(formData.get('audience') ?? '') as ReplyAudience
-  if (!['everyone', 'following', 'mentioned'].includes(audience)) return
+  const audience = String(formData.get('audience') ?? '')
+  if (!isReplyAudience(audience)) return
   const res = await api(`/v1/posts/${encodeURIComponent(id)}/reply-audience`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },

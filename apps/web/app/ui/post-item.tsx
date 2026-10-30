@@ -4,6 +4,7 @@ import { deletePost, setBlock, setBookmark, setCommunityPin, setMute, setProfile
 import type { Post } from '@/lib/api'
 import { textParts } from '@/lib/mentions'
 import { excerpt } from '@/lib/previews'
+import { REPLY_AUDIENCES } from '@/lib/reply-audience'
 import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
 import type { FeedSource } from './feed-source'
@@ -40,6 +41,12 @@ const REPLY_AUDIENCE_LABEL = {
   following: 'People you follow can reply',
   mentioned: 'Only people mentioned can reply',
 } satisfies Record<Post['replyAudience'], string>
+
+/** The note under a limited conversation's first post, worded for whoever reads it. */
+const replyAudienceNote = (post: Post, viewerId: string | null) =>
+  post.replyAudience === 'following' && post.authorId !== viewerId
+    ? `People @${post.authorHandle} follows can reply`
+    : REPLY_AUDIENCE_LABEL[post.replyAudience]
 
 export function PostItem({
   post,
@@ -201,7 +208,7 @@ export function PostItem({
                             {post.pinnedOnProfile ? 'Unpin from your profile' : 'Pin to your profile'}
                           </SubmitButton>
                         </form>
-                        {(['everyone', 'following', 'mentioned'] as const).map((audience) => (
+                        {REPLY_AUDIENCES.map((audience) => (
                           <form action={setReplyAudience} key={audience}>
                             <input type="hidden" name="id" value={post.id} />
                             <input type="hidden" name="audience" value={audience} />
@@ -289,7 +296,7 @@ export function PostItem({
         </div>
       ) : null}
       {!post.replyParentId && post.replyAudience !== 'everyone' ? (
-        <p className="reply-audience-note"><BubbleIcon size={14} /> {REPLY_AUDIENCE_LABEL[post.replyAudience]}</p>
+        <p className="reply-audience-note"><BubbleIcon size={14} /> {replyAudienceNote(post, viewerId)}</p>
       ) : null}
 
       <div className="post-actions">

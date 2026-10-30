@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useActionState } from 'react'
 import { castPollVote, type PollVoteState } from '@/app/actions'
 import type { Poll } from '@/lib/api'
+import { LocalTime } from './local-time'
 
 const initial: PollVoteState = {}
 
@@ -11,11 +12,10 @@ export function PollCard({ postId, poll, member }: { postId: string; poll: Poll;
   const [state, action, pending] = useActionState(castPollVote, initial)
   const voting = member && !poll.closed && !poll.viewerVoted
   const inputType = poll.multiple ? 'checkbox' : 'radio'
+  // In the reader's own time zone, like every other time on the page.
   const expiry = poll.expiresAt
-    ? poll.closed
-      ? `Ended ${new Date(poll.expiresAt).toLocaleDateString('en-NG', { dateStyle: 'medium', timeZone: 'UTC' })}`
-      : `Ends ${new Date(poll.expiresAt).toLocaleDateString('en-NG', { dateStyle: 'medium', timeZone: 'UTC' })}`
-    : 'No expiry'
+    ? <span>{poll.closed ? 'Ended' : 'Ends'} <LocalTime at={poll.expiresAt} as="date" /></span>
+    : <span>No expiry</span>
 
   const choices = poll.options.map((option) => {
     const percent = poll.totalVotes ? Math.round((option.voteCount / poll.totalVotes) * 100) : 0
@@ -58,7 +58,7 @@ export function PollCard({ postId, poll, member }: { postId: string; poll: Poll;
           {poll.totalVotes === 1 ? '1 public voter' : `${poll.totalVotes} public voters`}
         </Link>
         <span aria-hidden="true">·</span>
-        <span>{expiry}</span>
+        {expiry}
         {!member && !poll.closed ? <><span aria-hidden="true">·</span><Link href="/login">Sign in to vote</Link></> : null}
       </p>
     </section>

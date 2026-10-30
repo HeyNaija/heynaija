@@ -406,20 +406,24 @@ const toQuote = (row: QuoteRow | null): QuotedPost | null => {
 
 type PollRow = Omit<PollView, 'expiresAt'> & { expiresAt: string | null }
 
-/** One bounded JSON object per post; voters themselves are fetched on their paginated public page. */
+/**
+ * One bounded JSON object per post; voters themselves are fetched on their
+ * paginated public page. The counts are kept by triggers (migration 0028), so a
+ * popular poll costs a feed no more than any other.
+ */
 const pollOf = (viewerId: string | null, postId: SQL) => sql<PollRow | null>`(
   select json_build_object(
     'multiple', pp.multiple,
     'expiresAt', pp.expires_at,
     'closed', pp.expires_at is not null and pp.expires_at <= now(),
-    'totalVotes', (select count(distinct pv.member_id)::int from poll_votes pv join members vm on vm.id = pv.member_id and vm.active where pv.post_id = pp.post_id),
+    'totalVotes', pp.voter_count,
     'viewerVoted', ${viewerId ? sql`exists(select 1 from poll_votes pv where pv.post_id = pp.post_id and pv.member_id = ${viewerId})` : sql`false`},
     'options', coalesce((
       select json_agg(json_build_object(
         'id', po.id,
         'text', po.text,
         'position', po.position,
-        'voteCount', (select count(*)::int from poll_votes pv join members vm on vm.id = pv.member_id and vm.active where pv.post_id = pp.post_id and pv.option_id = po.id),
+        'voteCount', po.vote_count,
         'viewerVoted', ${viewerId ? sql`exists(select 1 from poll_votes pv where pv.post_id = pp.post_id and pv.option_id = po.id and pv.member_id = ${viewerId})` : sql`false`}
       ) order by po.position)
       from poll_options po where po.post_id = pp.post_id
@@ -438,22 +442,38 @@ const replyAudienceOf = (postId: SQL, rootId: SQL) => sql<ReplyAudience>`coalesc
   where r.id = coalesce(${rootId}, ${postId})
 ), 'everyone')`
 
+/**
+ * Whether the conversation's root lets the viewer reply: the one rule, used for
+ * the reply buttons and, under a lock, when a reply is written. Like
+ * `replyAudienceOf`, a root that is deleted, taken down, by an inactive member or
+ * gone altogether restricts no one, though a block with its author still does.
+ */
 const canReplyTo = (viewerId: string | null, postId: SQL, rootId: SQL) => viewerId
-  ? sql<boolean>`exists(
+  ? sql<boolean>`not exists(
       select 1 from posts r join members ra on ra.id = r.author_id
       where r.id = coalesce(${rootId}, ${postId})
-        and not ${blockedEitherWay(viewerId, sql`r.author_id`)}
         and (
-          r.author_id = ${viewerId}
-          or r.deleted_at is not null or r.removed_at is not null or not ra.active
-          or r.reply_audience = 'everyone'
-          or exists(select 1 from post_mentions pm where pm.post_id = r.id and pm.member_id = ${viewerId})
-          or (r.reply_audience = 'following' and exists(
-            select 1 from follows f where f.follower_id = r.author_id and f.followee_id = ${viewerId}
-          ))
+          ${blockedEitherWay(viewerId, sql`r.author_id`)}
+          or (
+            r.deleted_at is null and r.removed_at is null and ra.active
+            and r.author_id <> ${viewerId}
+            and r.reply_audience <> 'everyone'
+            and not exists(select 1 from post_mentions pm where pm.post_id = r.id and pm.member_id = ${viewerId})
+            and not (r.reply_audience = 'following' and exists(
+              select 1 from follows f where f.follower_id = r.author_id and f.followee_id = ${viewerId}
+            ))
+          )
         )
     )`
   : sql<boolean>`false`
+
+/**
+ * A poll is open to whoever could read its post (`post`): live, by an active
+ * member, with no block either way and not muted by the viewer. For queries
+ * joining post_polls to posts and the author in members.
+ */
+const pollReadableBy = (viewerId: string | null) =>
+  and(live, visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`))
 
 @Injectable()
 export class PostsService {
@@ -1359,29 +1379,17 @@ export class PostsService {
     const linkUrl = previewUrlOf(text)
     return this.db.transaction(async (tx) => {
       if (parent) {
-        // Serialize with changes to the root's reply audience so a concurrent
-        // restriction cannot be bypassed by a reply already in flight.
-        const rootId = parent.rootId ?? parent.id
+        // Locking the root waits out a change to its reply audience, so a reply
+        // already in flight cannot slip past a new restriction. Only the root
+        // post's row is locked: locking its author's member row too would block
+        // every write that refers to them, and deadlock two members replying in
+        // each other's conversations. A root that is gone restricts no one.
         const [root] = await tx
-          .select({
-            authorId: posts.authorId,
-            audience: posts.replyAudience,
-            deletedAt: posts.deletedAt,
-            removedAt: posts.removedAt,
-            authorActive: members.active,
-            blocked: blockedEitherWay(authorId, sql`${posts.authorId}`),
-            mentioned: sql<boolean>`exists(select 1 from post_mentions pm where pm.post_id = ${posts.id} and pm.member_id = ${authorId})`,
-            followed: sql<boolean>`exists(select 1 from follows f where f.follower_id = ${posts.authorId} and f.followee_id = ${authorId})`,
-          })
+          .select({ allowed: canReplyTo(authorId, sql`${posts.id}`, sql`null`) })
           .from(posts)
-          .innerJoin(members, eq(members.id, posts.authorId))
-          .where(eq(posts.id, rootId))
-          .for('update')
-        if (!root) throw new ParentNotFoundError('the conversation no longer exists')
-        const restrictionActive = root.deletedAt === null && root.removedAt === null && root.authorActive
-        const allowed = !root.blocked && (!restrictionActive || root.authorId === authorId || root.audience === 'everyone' ||
-          root.mentioned || (root.audience === 'following' && root.followed))
-        if (!allowed) throw new ReplyNotAllowedError('the conversation author limited who can reply')
+          .where(eq(posts.id, parent.rootId ?? parent.id))
+          .for('no key update')
+        if (root && !root.allowed) throw new ReplyNotAllowedError('the conversation author limited who can reply')
       }
       const [row] = await tx
         .insert(posts)
@@ -1398,7 +1406,14 @@ export class PostsService {
         .returning({ id: posts.id })
       if (poll) {
         await tx.insert(postPolls).values({ postId: row!.id, multiple: poll.multiple, expiresAt: pollExpiresAt(poll.expiresIn) })
-        await tx.insert(pollOptions).values(poll.options.map((option, position) => ({ postId: row!.id, position, text: option })))
+        // `pollInput` already refused options that differ only in case, but the
+        // database folds case its own way (to it 'İ' and 'i' are the same letter).
+        const added = await tx
+          .insert(pollOptions)
+          .values(poll.options.map((option, position) => ({ postId: row!.id, position, text: option })))
+          .onConflictDoNothing()
+          .returning({ id: pollOptions.id })
+        if (added.length !== poll.options.length) throw new PollOptionsError('poll options must be different')
       }
       for (const [position, image] of images.entries()) {
         const attached = await tx
@@ -1454,29 +1469,19 @@ export class PostsService {
   async votePoll(memberId: string, postId: string, requestedOptionIds: string[]): Promise<void> {
     const optionIds = [...new Set(requestedOptionIds)]
     if (optionIds.length === 0 || optionIds.length > POLL_OPTIONS_MAX) throw new PollOptionsError('choose at least one poll option')
-    // Voting follows the same personal visibility rules as liking and reposting,
-    // including blocks and the member's own mutes.
-    if (!(await this.post(memberId, postId))?.poll) throw new PollNotFoundError('the poll is no longer available')
-
     await this.db.transaction(async (tx) => {
+      // Locking the poll's row makes a member's two ballots sent at once take
+      // turns, so the second sees the first below. Only that row: locking the
+      // post or its author's member row as well would hold up every write that
+      // refers to them, and deadlock two members voting on each other's polls.
       const [poll] = await tx
-        .select({
-          multiple: postPolls.multiple,
-          expiresAt: postPolls.expiresAt,
-          deletedAt: posts.deletedAt,
-          removedAt: posts.removedAt,
-          authorId: posts.authorId,
-          authorActive: members.active,
-          blocked: blockedEitherWay(memberId, sql`${posts.authorId}`),
-        })
+        .select({ multiple: postPolls.multiple, expiresAt: postPolls.expiresAt })
         .from(postPolls)
         .innerJoin(posts, eq(posts.id, postPolls.postId))
         .innerJoin(members, eq(members.id, posts.authorId))
-        .where(eq(postPolls.postId, postId))
-        .for('update')
-      if (!poll || poll.deletedAt || poll.removedAt || !poll.authorActive || poll.blocked) {
-        throw new PollNotFoundError('the poll is no longer available')
-      }
+        .where(and(eq(postPolls.postId, postId), pollReadableBy(memberId)))
+        .for('update', { of: postPolls })
+      if (!poll) throw new PollNotFoundError('the poll is no longer available')
       if (poll.expiresAt && poll.expiresAt <= new Date()) throw new PollClosedError('the poll has ended')
       if (!poll.multiple && optionIds.length !== 1) throw new PollOptionsError('choose one poll option')
 
@@ -1498,12 +1503,17 @@ export class PostsService {
 
   /** Public ballots, one member per row, newest first. */
   async pollVoters(viewerId: string | null, postId: string, limit: number, cursor?: string): Promise<PollVoterPage | null> {
-    const visible = await this.post(viewerId, postId)
-    if (!visible?.poll) return null
+    const [visible] = await this.db
+      .select({ postId: postPolls.postId })
+      .from(postPolls)
+      .innerJoin(posts, eq(posts.id, postPolls.postId))
+      .innerJoin(members, eq(members.id, posts.authorId))
+      .where(and(eq(postPolls.postId, postId), pollReadableBy(viewerId)))
+    if (!visible) return null
     let before = sql`true`
     if (cursor) {
       const [createdAt, memberId] = decodeExactCursor(cursor)
-      before = sql`(b.created_at, b.member_id) < (${createdAt}::timestamptz, ${memberId}::uuid)`
+      before = sql`(pv.created_at, pv.member_id) < (${createdAt}::timestamptz, ${memberId}::uuid)`
     }
     type BallotRow = {
       member_id: string
@@ -1514,22 +1524,26 @@ export class PostsService {
       created_at: Date
       cursor_timestamp: string
     }
+    // A ballot's votes are written together and share created_at, so walking
+    // poll_votes_ballot_idx newest first finds one page of ballots without
+    // reading the rest of the poll; only that page's choices are gathered.
     const { rows } = await this.db.execute<BallotRow>(sql`
-      with ballots as (
-        select pv.member_id, min(pv.created_at) as created_at,
-          json_agg(pv.option_id order by po.position) as option_ids
+      with page as (
+        select pv.member_id, pv.created_at
         from poll_votes pv
-        join poll_options po on po.post_id = pv.post_id and po.id = pv.option_id
-        join members voter on voter.id = pv.member_id and voter.active
-        where pv.post_id = ${postId}
-        group by pv.member_id
+        where pv.post_id = ${postId} and ${before}
+          and exists(select 1 from members voter where voter.id = pv.member_id and voter.active)
+        group by pv.created_at, pv.member_id
+        order by pv.created_at desc, pv.member_id desc
+        limit ${limit + 1}
       )
-      select b.member_id, m.handle, m.display_name, m.avatar_media_id, b.option_ids, b.created_at,
-        to_char(b.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp
-      from ballots b join members m on m.id = b.member_id
-      where ${before}
-      order by b.created_at desc, b.member_id desc
-      limit ${limit + 1}`)
+      select page.member_id, m.handle, m.display_name, m.avatar_media_id, page.created_at,
+        (select json_agg(v.option_id order by po.position)
+          from poll_votes v join poll_options po on po.post_id = v.post_id and po.id = v.option_id
+          where v.post_id = ${postId} and v.member_id = page.member_id) as option_ids,
+        to_char(page.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp
+      from page join members m on m.id = page.member_id
+      order by page.created_at desc, page.member_id desc`)
     const page = rows.slice(0, limit)
     const last = page.at(-1)
     return {

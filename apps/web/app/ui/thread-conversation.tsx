@@ -29,6 +29,8 @@ type ConversationContext = {
   branches: BranchCache
   increments: Record<string, number>
   canReply: boolean
+  /** A member the conversation's author left out of its replies. */
+  limited: boolean
   posting: boolean
   select: (target: ReplyTarget) => void
   load: (position: Position, more?: boolean) => void
@@ -49,6 +51,7 @@ const plainClick = (event: MouseEvent<HTMLAnchorElement>) =>
 export function ThreadConversation({
   focus,
   member,
+  limited,
   initialRows,
   cursor,
   order,
@@ -56,7 +59,9 @@ export function ThreadConversation({
   children,
 }: {
   focus: ReplyTarget
+  /** Null for a visitor, and for a member who may not reply here (`limited`). */
   member: { handle: string; avatar: string | null } | null
+  limited: boolean
   initialRows: ThreadRow[]
   cursor: string | null
   /** The focus's replies are in this order; each branch's read oldest first (`branchOrder`). */
@@ -195,7 +200,7 @@ export function ThreadConversation({
   ) : null
 
   return (
-    <Conversation.Provider value={{ order, branches, increments, canReply: member !== null, posting, select, load, collapse, editor }}>
+    <Conversation.Provider value={{ order, branches, increments, canReply: member !== null, limited, posting, select, load, collapse, editor }}>
       {children}
     </Conversation.Provider>
   )
@@ -216,12 +221,16 @@ export function ThreadReplyAction({ id, parentId, handle, depth, count }: ReplyT
       prefetch={false}
       className="icon-btn"
       aria-label={`Reply (${total === 1 ? '1 reply' : `${total} replies`})`}
-      aria-disabled={context && (context.posting || !context.canReply) || undefined}
+      aria-disabled={context && (context.posting || context.limited) || undefined}
       onClick={(event) => {
-        // A reply at the limit would not be drawn in this view, so open the post to answer it.
         if (!plainClick(event)) return
-        if (context && !context.canReply) { event.preventDefault(); return }
-        if (!context || depth >= THREAD_MAX_DEPTH) return
+        // A member left out has nowhere to reply; a visitor still follows the link to sign in.
+        if (context?.limited) {
+          event.preventDefault()
+          return
+        }
+        // A reply at the limit would not be drawn in this view, so open the post to answer it.
+        if (!context?.canReply || depth >= THREAD_MAX_DEPTH) return
         event.preventDefault()
         context.select({ id, parentId, handle, depth })
       }}

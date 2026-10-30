@@ -1,5 +1,5 @@
 {
-  "id": "56c3419d-8ddc-44d0-94e5-8bb5f151ccdb",
+  "id": "b8cfcaf5-6bd7-4bf9-8edf-10295efd994c",
   "prevId": "8855c738-bb45-4029-99f0-3c43176f0ce9",
   "version": "7",
   "dialect": "postgresql",
@@ -2438,6 +2438,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "vote_count": {
+          "name": "vote_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         }
       },
       "indexes": {
@@ -2586,6 +2593,33 @@
             },
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "poll_votes_ballot_idx": {
+          "name": "poll_votes_ballot_idx",
+          "columns": [
+            {
+              "expression": "post_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "member_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2840,6 +2874,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "voter_count": {
+          "name": "voter_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         }
       },
       "indexes": {},
