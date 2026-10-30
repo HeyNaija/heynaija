@@ -484,3 +484,51 @@ test('an answer is joined to its parent by a line on the parent avatar, with the
     await context.close()
   }
 })
+
+test('on a phone, answering a reply keeps the fixed bar and names who is answered @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'barreply')
+  try {
+    const fixture = await seedThread(handle)
+    await page.setViewportSize({ width: 390, height: 740 })
+    await page.goto(`/p/${fixture.root}?replies=oldest`)
+    const bar = page.locator('.thread-branch.is-root > .thread-editor-host')
+    await expect(page.locator('form#compose .composer-recipient')).toBeHidden()
+    await page.locator(`#post-${fixture.first}`).getByRole('link', { name: /^Reply \(/ }).click()
+    await expect(page.locator('form#compose input[name="replyTo"]')).toHaveValue(fixture.first)
+    // The editor stays in the fixed bar, which says whom it answers; nothing opens inline.
+    await expect(bar.locator('form#compose')).toHaveCount(1)
+    await expect(bar.locator('.composer-recipient')).toHaveText(`Replying to @${handle}`)
+    await expect(page.locator(`#thread-editor-${fixture.first} form`)).toHaveCount(0)
+    await expect(bar).toBeInViewport()
+    expect(await bar.evaluate((node) => getComputedStyle(node).position)).toBe('fixed')
+    const answer = `Answer from the bar ${handle}`
+    await (await replyBox(page, fixture.first)).fill(answer)
+    await page.getByRole('button', { name: 'Reply', exact: true }).click()
+    const db = pool()
+    try {
+      await expect.poll(async () => (await db.query('select reply_parent_id from posts where text = $1', [answer])).rows).toEqual([{ reply_parent_id: fixture.first }])
+    } finally {
+      await db.end()
+    }
+  } finally {
+    await context.close()
+  }
+})
+
+test('replies are indented to the text column on a phone @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'indent')
+  try {
+    const fixture = await seedThread(handle)
+    await page.setViewportSize({ width: 390, height: 740 })
+    await page.goto(`/p/${fixture.root}?replies=oldest`)
+    const card = page.locator(`#post-${fixture.first}`)
+    const [name, body] = await Promise.all([
+      card.locator('.post-author').evaluate((node) => node.getBoundingClientRect().left),
+      card.locator('.post-body').evaluate((node) => node.getBoundingClientRect().left),
+    ])
+    // The text starts under the name, not under the avatar (within the 2px the column is set at).
+    expect(Math.abs(body - name)).toBeLessThanOrEqual(3)
+  } finally {
+    await context.close()
+  }
+})
