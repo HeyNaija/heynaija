@@ -4,9 +4,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useId, useState } from 'react'
 import { LiveIcon } from '@/app/ui/icons'
-import { TITLE_MAX, titleProblem, type SpaceView } from '@/lib/spaces'
+import { CURRENT_SPACE_KEY, TITLE_MAX, titleProblem, type SpaceView } from '@/lib/spaces'
 import { spaceCall } from './api'
-import { CURRENT_SPACE_KEY } from './space-room'
 
 /** "Start a Space": a title and a button. Shown on Home to members on the Spaces list, and at /spaces/new. */
 export function StartSpace({ heading = true }: { heading?: boolean }) {

@@ -124,6 +124,9 @@ export function dataUseHint(connection: Connection): string {
   return `${cost} It is more on mobile data, so Wi-Fi is kinder to your bundle.`
 }
 
+/** Where the Home card finds "your Space" again: the API has no list of live Spaces yet. */
+export const CURRENT_SPACE_KEY = 'hn-space-current'
+
 export const TITLE_MAX = 200
 
 export function titleProblem(title: string): string | null {

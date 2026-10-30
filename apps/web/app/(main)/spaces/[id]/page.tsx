@@ -7,10 +7,16 @@ import { getSpace, getViewer } from '@/lib/api'
 export const metadata: Metadata = { title: 'Space' }
 
 export default function SpacePage(props: PageProps<'/spaces/[id]'>) {
+  // The notice sits outside Suspense: without JavaScript the streamed page never replaces its fallback.
   return (
-    <Suspense fallback={<div className="square-card" aria-busy="true">Opening the Space…</div>}>
-      <SpaceView {...props} />
-    </Suspense>
+    <>
+      <noscript>
+        <p className="notice">Spaces need JavaScript to play audio. Turn it on in your browser, then reload this page.</p>
+      </noscript>
+      <Suspense fallback={<div className="square-card" aria-busy="true">Opening the Space…</div>}>
+        <SpaceView {...props} />
+      </Suspense>
+    </>
   )
 }
 
@@ -23,9 +29,6 @@ async function SpaceView({ params }: Pick<PageProps<'/spaces/[id]'>, 'params'>) 
   if (!space) notFound()
   return (
     <>
-      <noscript>
-        <p className="notice">Spaces need JavaScript to play audio. Turn it on in your browser, then reload this page.</p>
-      </noscript>
       <SpaceRoom initial={space} meId={viewer.me.id} />
     </>
   )

@@ -8,9 +8,14 @@ export const metadata: Metadata = { title: 'Start a Space' }
 
 export default function NewSpacePage() {
   return (
-    <Suspense fallback={null}>
-      <NewSpace />
-    </Suspense>
+    <>
+      <noscript>
+        <p className="notice">Spaces need JavaScript to play audio. Turn it on in your browser, then reload this page.</p>
+      </noscript>
+      <Suspense fallback={null}>
+        <NewSpace />
+      </Suspense>
+    </>
   )
 }
 
@@ -19,9 +24,6 @@ async function NewSpace() {
   if (viewer.state !== 'member' || !viewer.me.features.spaces) notFound()
   return (
     <>
-      <noscript>
-        <p className="notice">Spaces need JavaScript to play audio. Turn it on in your browser, then reload this page.</p>
-      </noscript>
       <StartSpace heading={false} />
     </>
   )

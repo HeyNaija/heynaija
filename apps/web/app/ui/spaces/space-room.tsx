@@ -8,6 +8,7 @@ import { HandIcon, LeaveIcon, LiveIcon, LockIcon, MicIcon, MicOffIcon } from '@/
 import {
   applyView,
   controlsFor,
+  CURRENT_SPACE_KEY,
   dataUseHint,
   joinFailure,
   listenerLabel,
@@ -24,9 +25,6 @@ import type { SpaceAudio } from './audio'
 import { HostPanel } from './host-panel'
 
 type Phase = 'prejoin' | 'connecting' | 'live' | 'reconnecting' | 'ended' | 'full' | 'locked' | 'failed'
-
-/** Where the Home page finds "your Space" again: the API has no list of live Spaces yet. */
-export const CURRENT_SPACE_KEY = 'hn-space-current'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const MIC_BLOCKED =
