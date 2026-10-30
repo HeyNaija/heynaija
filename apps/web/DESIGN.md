@@ -268,6 +268,10 @@ Post actions use 44px targets in a left-aligned row beneath a hairline divider. 
 
 Returning members get the town-square introduction above the feed tabs: the "Made for us" eyebrow, the title and its one-line description. The public introduction keeps the welcome message and invitation.
 
+### Calls and meetings (spec stub, not built)
+
+Proposed in [ADR 0017](../../docs/adr/0017-calls-and-meetings.md); nothing exists yet, and it follows the direct-messages gate (verified adults who opted in). Existing tokens only. A pre-join screen comes before any browser permission prompt: who is calling, "Join with audio" (Primary) and "Join with video" (Secondary), a mic meter, device pickers, and a preview that never publishes. In a call at 320px, one large speaker tile, a strip of at most four tiles above a bottom bar of 44px buttons (mic, camera, share where the browser allows, people, end); the rest sit in a "People" sheet. Calls start audio-only with the camera off. Every button names its state ("Microphone, on"), joins and leaves go to a polite live region, and motion respects reduced-motion.
+
 ### App icons
 
 The favicon uses the approved white HN monogram on a rounded deep green (`#024822`) tile, with transparent outer corners. `public/brand/heynaija-mark.svg` is the vector source, traced from the approved preview. `node apps/web/scripts/generate-icons.cjs` regenerates the 16/32/48px browser ICO, 512px app icon, 180px Apple icon and 192/512px installable-app icons from it. The full HeyNaija wordmark remains unchanged.

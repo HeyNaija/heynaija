@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 43 | 11 | 19 | 13 | 86 |
+| 43 | 11 | 19 | 14 | 87 |
 
 ## Priority order
 
@@ -742,6 +742,16 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Explore live conversations with moderation and reporting in place.
 - **Dependencies:** `abuse-response`
 - **Inspected evidence:** `PRODUCT.md`, `packages/db/src/schema.ts`
+
+#### Calls, meetings and screen sharing
+
+- **ID:** `calls-and-meetings`
+- **Priority:** P3 · **Status:** Blocked · **Availability:** Not live
+- **Description:** Voice and video calls between age-verified adults, then small group meetings and screen sharing, on a self-hosted LiveKit server.
+- **Remaining work / caveat:** Design only. Needs direct messages and age verification first; recording, moderator access and retention need counsel and governance.
+- **Dependencies:** `minor-safeguards`
+- **Inspected evidence:** `docs/adr/0017-calls-and-meetings.md`, `docs/governance/under-18-rollout.md`
+- **Audit notes:** Also depends on direct-messages and age-verification (ADR 0016, PR #42): add them to the dependencies when that PR merges. Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers).
 
 #### Native mobile apps
 
