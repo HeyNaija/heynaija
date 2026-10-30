@@ -56,7 +56,7 @@ export function StageGrid({
                 </span>
               ) : null}
             </span>
-            {self && live ? <LevelMeter level={level} label="Your microphone level" /> : null}
+            {self && live ? <LevelMeter level={level} /> : null}
           </li>
         )
       })}
@@ -64,11 +64,13 @@ export function StageGrid({
   )
 }
 
-/** A bar for the member's own input level. No transition: it follows the voice, it does not animate on its own. */
-export function LevelMeter({ level, label }: { level: number; label: string }) {
-  const pct = Math.round(level * 100)
+/**
+ * A bar for the member's own input level. Purely visual: it changes many times a second, so it is hidden from
+ * assistive technology (the settings sheet says the bar should move) and has no transition of its own.
+ */
+export function LevelMeter({ level }: { level: number }) {
   return (
-    <span className="space-meter" role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+    <span className="space-meter" aria-hidden="true">
       <span className="space-meter-fill" style={{ transform: `scaleX(${level})` }} />
     </span>
   )

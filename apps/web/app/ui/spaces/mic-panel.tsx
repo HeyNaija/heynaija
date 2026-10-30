@@ -61,7 +61,7 @@ export function MicPanel({
 
       <div className="mt-4">
         <p className="field-label">Input level</p>
-        <LevelMeter level={level} label="Microphone input level" />
+        <LevelMeter level={level} />
         <p className="field-hint mt-1">{live ? 'Say a few words. The bar should move.' : 'Tap Unmute to test your microphone. Nobody hears you until then.'}</p>
       </div>
 

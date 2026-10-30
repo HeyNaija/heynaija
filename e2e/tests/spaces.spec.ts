@@ -33,7 +33,7 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
   await host.waitForURL(/\/spaces\/[0-9a-f-]{36}$/)
   const url = host.url()
   await host.getByRole('button', { name: 'Join the Space' }).click()
-  await expect(host.getByRole('button', { name: /Microphone, off/ })).toBeVisible()
+  await expect(host.getByRole('button', { name: 'Microphone', exact: true, pressed: false })).toBeVisible()
 
   const earContext = await browser.newContext()
   const ear = await earContext.newPage()
@@ -44,7 +44,7 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
   await expect(ear.getByText('Keep this screen open.').first()).toBeVisible()
   await ear.getByRole('button', { name: 'Join the Space' }).click()
   await expect(ear.getByRole('heading', { name: 'On stage' })).toBeVisible()
-  await expect(ear.getByRole('button', { name: /^Microphone/ })).toHaveCount(0)
+  await expect(ear.getByRole('button', { name: 'Microphone', exact: true })).toHaveCount(0)
 
   await ear.getByRole('button', { name: 'Request to speak' }).click()
   await expect(ear.getByRole('button', { name: 'Cancel request' })).toBeVisible()
@@ -53,7 +53,7 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
   await expect(host.getByRole('button', { name: /Let speak/ })).toBeVisible({ timeout: 15_000 })
   await host.getByRole('button', { name: /Let speak/ }).click()
 
-  await expect(ear.getByRole('button', { name: /Microphone, off/ })).toBeVisible({ timeout: 15_000 })
+  await expect(ear.getByRole('button', { name: 'Microphone', exact: true, pressed: false })).toBeVisible({ timeout: 15_000 })
   await expect(ear.getByRole('status').filter({ hasText: 'You are now a speaker' })).toBeAttached()
 
   // The host ends it; the listener's poll finds out.

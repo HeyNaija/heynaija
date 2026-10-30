@@ -2067,3 +2067,4 @@ a.result-row:hover { color: var(--accent-strong); }
 }
 @keyframes space-ring { 0%, 100% { box-shadow: 0 0 0 3px var(--accent); } 50% { box-shadow: 0 0 0 7px var(--accent-soft); } }
 @keyframes space-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.space-mic-state { padding: 0 6px; border-radius: var(--r-chip); background: color-mix(in srgb, currentColor 14%, transparent); font-size: 12px; font-weight: 700; }

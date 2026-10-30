@@ -26,7 +26,11 @@ const capture = (m: MicSettings) => ({
 })
 
 export function createAudio(container: HTMLElement, on: AudioEvents) {
-  const room = new Room({ publishDefaults: { dtx: true } })
+  const room = new Room({
+    // stopMicTrackOnMute: muting stops the capture, so the browser's recording indicator goes off with it.
+    // Unmuting asks the browser for the microphone again (a tap, so allowed); see setMic.
+    publishDefaults: { dtx: true, stopMicTrackOnMute: true },
+  })
   let closing = false
 
   const mics = () => {
@@ -118,7 +122,14 @@ export function createAudio(container: HTMLElement, on: AudioEvents) {
         await restart(settings, key)
         await room.localParticipant.setMicrophoneEnabled(true)
       } else if (plan === 'unmute') {
-        await room.localParticipant.setMicrophoneEnabled(true)
+        // The muted track was stopped, so this asks the browser for the microphone again. If it refuses
+        // the publication stays muted (nothing is live), and the next Unmute simply tries again.
+        try {
+          await room.localParticipant.setMicrophoneEnabled(true)
+        } catch (err) {
+          emitMics()
+          throw err
+        }
       }
       emitMics()
     },

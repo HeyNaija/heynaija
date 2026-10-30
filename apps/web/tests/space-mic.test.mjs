@@ -118,3 +118,9 @@ test('after a failed restart the publication is gone and the applied key reset, 
   assert.deepEqual(state, { appliedKey: '', hasPublication: false })
   assert.equal(micPlan({ ...state, key: 'k2', isMuted: false, wantOn: true }), 'publish')
 })
+
+test('a microphone stopped by Mute is brought back by Unmute, or restarted when the device changed meanwhile', () => {
+  const stopped = { appliedKey: 'a', hasPublication: true, isMuted: true, wantOn: true }
+  assert.equal(micPlan({ ...stopped, key: 'a' }), 'unmute')
+  assert.equal(micPlan({ ...stopped, key: 'b' }), 'restart')
+})

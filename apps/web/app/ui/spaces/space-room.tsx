@@ -571,12 +571,15 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
                 <button
                   type="button"
                   className={`btn space-btn space-main ${micOn ? 'btn-primary' : 'btn-secondary'}`}
+                  // One fixed name; the pressed state says on or off, so it is never announced twice.
                   aria-pressed={micOn}
-                  aria-label={micOn ? 'Microphone, on. Tap to mute' : 'Microphone, off. Tap to turn on'}
                   onClick={toggleMic}
                 >
                   {micOn ? <MicIcon size={20} /> : <MicOffIcon size={20} />}
-                  {micOn ? 'Mute' : 'Unmute'}
+                  Microphone
+                  <span aria-hidden="true" className="space-mic-state">
+                    {micOn ? 'On' : 'Off'}
+                  </span>
                 </button>
                 <button type="button" className="btn btn-secondary space-btn space-square" aria-haspopup="dialog" aria-label="Microphone settings" onClick={() => setMicSheet(true)}>
                   <GearIcon size={20} />
