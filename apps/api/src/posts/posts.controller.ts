@@ -16,6 +16,7 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import { z } from 'zod'
+import { REPLY_AUDIENCES } from '@heynaija/db'
 import {
   type AuthedRequest,
   type MaybeAuthedRequest,
@@ -32,15 +33,22 @@ import {
   NotACommunityMemberError,
   NotACommunityModeratorError,
   ParentNotFoundError,
+  PollAlreadyVotedError,
+  PollClosedError,
+  PollNotFoundError,
+  PollOptionsError,
   newPost,
   PostsService,
   QuotedPostNotFoundError,
+  ReplyNotAllowedError,
 } from './posts.service.js'
 import { DISCOVER_RULES, discoverPageQuery } from './discover.js'
 import { parseHashtag } from './hashtags.js'
 import { replyOrderQuery, replyPageQuery } from './reply-cursor.js'
 
 const createPostBody = newPost(slugParam)
+const replyAudienceBody = z.object({ audience: z.enum(REPLY_AUDIENCES) })
+const pollVoteBody = z.object({ optionIds: z.array(z.uuid()).min(1).max(10) })
 
 // Same answer for "not yours", "deleted" and "never existed": nothing to learn by probing.
 const postId = (id: string): string => {
@@ -147,14 +155,24 @@ export class PostsController {
   @Post('posts')
   @UseGuards(SessionGuard)
   async create(@Req() req: AuthedRequest, @Body() body: unknown) {
-    const { text, replyTo, community, images, quote } = parse(createPostBody, body)
+    const { text, replyTo, community, images, quote, poll, replyAudience } = parse(createPostBody, body)
     await this.limits.hit('post', req.member.id)
     try {
-      const { id, linkUrl } = await this.posts.create(req.member.id, text, { replyTo, communitySlug: community, images, quote })
+      const { id, linkUrl } = await this.posts.create(req.member.id, text, {
+        replyTo,
+        communitySlug: community,
+        images,
+        quote,
+        poll,
+        replyAudience,
+      })
       // The card appears once the page has been read, a few seconds on; the post does not wait for it.
       if (linkUrl) await this.links.request(linkUrl)
       return { id }
     } catch (err) {
+      if (err instanceof ReplyNotAllowedError) {
+        throw new ForbiddenException({ code: 'reply_not_allowed', message: err.message })
+      }
       const code =
         err instanceof ParentNotFoundError
           ? 'parent_gone'
@@ -170,6 +188,41 @@ export class PostsController {
       if (code) throw new BadRequestException({ code, message: (err as Error).message })
       throw err
     }
+  }
+
+  @Put('posts/:id/reply-audience')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async setReplyAudience(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+    const { audience } = parse(replyAudienceBody, body)
+    await this.limits.hit('action', req.member.id)
+    if (!(await this.posts.setReplyAudience(req.member.id, postId(id), audience))) throw new NotFoundException()
+  }
+
+  @Put('posts/:id/poll/vote')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async votePoll(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+    const { optionIds } = parse(pollVoteBody, body)
+    await this.limits.hit('action', req.member.id)
+    try {
+      await this.posts.votePoll(req.member.id, postId(id), optionIds)
+    } catch (err) {
+      if (err instanceof PollNotFoundError) throw new NotFoundException()
+      if (err instanceof PollClosedError) throw new BadRequestException({ code: 'poll_closed', message: err.message })
+      if (err instanceof PollAlreadyVotedError) throw new BadRequestException({ code: 'poll_already_voted', message: err.message })
+      if (err instanceof PollOptionsError) throw new BadRequestException({ code: 'poll_options_invalid', message: err.message })
+      throw err
+    }
+  }
+
+  @Get('posts/:id/poll/votes')
+  @UseGuards(OptionalSessionGuard)
+  async pollVotes(@Req() req: MaybeAuthedRequest, @Param('id') id: string, @Query() query: unknown) {
+    const { limit, cursor } = parse(pageQuery, query)
+    const votes = await paged(() => this.posts.pollVoters(req.member?.id ?? null, postId(id), limit, cursor))
+    if (!votes) throw new NotFoundException()
+    return votes
   }
 
   @Delete('posts/:id')

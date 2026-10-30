@@ -3,6 +3,7 @@ import {
   type AnyPgColumn,
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   pgSchema,
@@ -11,10 +12,13 @@ import {
   text,
   uniqueIndex,
   timestamp,
+  unique,
   uuid,
 } from 'drizzle-orm/pg-core'
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
+
+export const REPLY_AUDIENCES = ['everyone', 'following', 'mentioned'] as const
 
 // A member of the network. `id` is the Ory Kratos identity ID: Kratos owns the
 // email, password and sessions; this table holds only what the app itself needs.
@@ -185,6 +189,9 @@ export const posts = pgTable(
     // No foreign key, like reply_parent_id: a quoted post that is gone, or that the
     // reader may not see, is shown as a placeholder.
     quotePostId: uuid('quote_post_id'),
+    // The root post owns the conversation boundary. Replies retain this column's
+    // default but inherit the root's value when policy is checked.
+    replyAudience: text('reply_audience', { enum: REPLY_AUDIENCES }).notNull().default('everyone'),
     // The first web address in the text, without its #fragment: the one that gets a
     // preview card. Matches link_previews.url; null when the text has no address.
     linkUrl: text('link_url'),
@@ -210,8 +217,68 @@ export const posts = pgTable(
     index('posts_reply_parent_created_idx').on(t.replyParentId, t.createdAt, t.id),
     index('posts_community_created_idx').on(t.communityId, t.createdAt),
     index('posts_quote_idx').on(t.quotePostId).where(sql`quote_post_id is not null`),
+    check('posts_reply_audience_check', sql.raw(`reply_audience in (${REPLY_AUDIENCES.map((value) => `'${value}'`).join(', ')})`)),
     // Full-text search. 'simple' (no stemming) suits mixed English, Pidgin and names.
     index('posts_text_search_idx').using('gin', sql`to_tsvector('simple', ${t.text})`),
+  ],
+)
+
+// An informal social poll attached to one post. This is deliberately separate
+// from governance ballots: it has no eligibility, quorum or binding effect.
+export const postPolls = pgTable(
+  'post_polls',
+  {
+    postId: uuid('post_id')
+      .primaryKey()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    multiple: boolean('multiple').notNull().default(false),
+    // Null means the creator explicitly chose "never". New polls default to a
+    // seven-day expiry in application policy, where the requested preset lives.
+    expiresAt: ts('expires_at'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [check('post_polls_expiry_check', sql`${t.expiresAt} is null or ${t.expiresAt} > ${t.createdAt}`)],
+)
+
+export const pollOptions = pgTable(
+  'poll_options',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => postPolls.postId, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    text: text('text').notNull(),
+  },
+  (t) => [
+    uniqueIndex('poll_options_post_position_idx').on(t.postId, t.position),
+    uniqueIndex('poll_options_post_text_idx').on(t.postId, sql`lower(${t.text})`),
+    unique('poll_options_post_id_unique').on(t.postId, t.id),
+    check('poll_options_position_check', sql`${t.position} between 0 and 9`),
+    // Application policy counts 80 graphemes; this wider database ceiling only
+    // guards pathological input because one visible grapheme may use many code points.
+    check('poll_options_text_check', sql`char_length(${t.text}) between 1 and 1280`),
+  ],
+)
+
+// Votes are public. One row is one selected option; a multiple-choice ballot has
+// several rows with the same post/member. PostsService locks the poll row before
+// accepting the member's one immutable ballot.
+export const pollVotes = pgTable(
+  'poll_votes',
+  {
+    postId: uuid('post_id').notNull(),
+    optionId: uuid('option_id').notNull(),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.postId, t.memberId, t.optionId] }),
+    foreignKey({ columns: [t.postId, t.optionId], foreignColumns: [pollOptions.postId, pollOptions.id] }).onDelete('cascade'),
+    index('poll_votes_option_idx').on(t.postId, t.optionId),
+    index('poll_votes_member_idx').on(t.memberId, t.createdAt),
   ],
 )
 

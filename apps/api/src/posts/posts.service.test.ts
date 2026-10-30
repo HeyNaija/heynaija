@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, mock, test } from 'node:test'
-import { blocks, communities, communityMemberships, follows, likes, media, members, mutes, notifications, postMentions, posts, releasedHandles } from '@heynaija/db'
+import { blocks, communities, communityMemberships, follows, likes, media, members, mutes, notifications, pollVotes, postMentions, postPolls, posts, releasedHandles } from '@heynaija/db'
 import { eq, sql } from 'drizzle-orm'
 import { MembersService } from '../members/members.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { findMentions } from './mentions.js'
-import { InvalidCursorError, ParentNotFoundError, PostsService, postText, type ProfileFilter, type ReplyPage, TRENDING_TTL_MS } from './posts.service.js'
+import { InvalidCursorError, ParentNotFoundError, pollInput, PollAlreadyVotedError, PollClosedError, PollNotFoundError, PollOptionsError, PostsService, postText, ReplyNotAllowedError, type ProfileFilter, type ReplyPage, TRENDING_TTL_MS } from './posts.service.js'
 import { decodeReplyCursor, encodeReplyCursor, replyPageQuery } from './reply-cursor.js'
 
 const service = new PostsService(db)
@@ -26,6 +26,18 @@ beforeEach(async () => {
 after(() => pool.end())
 
 const texts = async () => (await service.feed(null, 100)).posts.map((p) => p.text)
+
+test('poll input defaults to one choice and seven days, with two to ten distinct options', () => {
+  assert.deepEqual(pollInput.parse({ options: ['Yes', 'No'] }), {
+    multiple: false,
+    options: ['Yes', 'No'],
+    expiresIn: '7_days',
+  })
+  assert.equal(pollInput.safeParse({ options: ['Only one'] }).success, false)
+  assert.equal(pollInput.safeParse({ options: Array.from({ length: 11 }, (_, index) => `Option ${index}`) }).success, false)
+  assert.equal(pollInput.safeParse({ options: ['Same', ' same '] }).success, false)
+  assert.equal(pollInput.safeParse({ options: ['Yes', 'No'], expiresIn: 'never' }).success, true)
+})
 
 test('a post appears in the feed with its author handle', async () => {
   const { id } = await service.create(ada, 'hello')
@@ -111,6 +123,69 @@ test('a reply joins its thread and stays out of the main feed', async () => {
   assert.equal(row(reply.id).rootId, root.id)
   assert.equal(row(nested.id).replyParentId, reply.id)
   assert.equal(row(nested.id).rootId, root.id)
+})
+
+test('root reply controls apply to direct and nested replies, with mentions included in the audience', async () => {
+  const root = await service.create(ada, 'A question for @bayo', { replyAudience: 'mentioned' })
+  assert.equal((await service.post(bayo, root.id))!.viewerCanReply, true)
+  assert.equal((await service.post(chi, root.id))!.viewerCanReply, false)
+  assert.equal((await service.post(null, root.id))!.viewerCanReply, false)
+
+  const invited = await service.create(bayo, 'My answer', { replyTo: root.id })
+  await assert.rejects(service.create(chi, 'Not invited', { replyTo: root.id }), ReplyNotAllowedError)
+  await assert.rejects(service.create(chi, 'Still not invited', { replyTo: invited.id }), ReplyNotAllowedError)
+  await service.create(ada, 'The author may continue the branch', { replyTo: invited.id })
+
+  await db.insert(follows).values({ followerId: ada, followeeId: chi })
+  assert.equal(await service.setReplyAudience(ada, root.id, 'following'), true)
+  assert.equal((await service.post(chi, invited.id))!.replyAudience, 'following')
+  assert.equal((await service.post(chi, invited.id))!.viewerCanReply, true)
+  await service.create(chi, 'Now followed', { replyTo: invited.id })
+  assert.equal(await service.setReplyAudience(bayo, root.id, 'everyone'), false)
+})
+
+test('polls support single and multiple choice, immutable public ballots and optional expiry', async () => {
+  const single = await service.create(ada, 'Jollof or fried rice?', {
+    poll: { multiple: false, options: ['Jollof', 'Fried rice'], expiresIn: 'never' },
+  })
+  const first = (await service.post(bayo, single.id))!.poll!
+  assert.equal(first.multiple, false)
+  assert.equal(first.expiresAt, null)
+  assert.equal(first.totalVotes, 0)
+  assert.deepEqual(first.options.map((option) => option.text), ['Jollof', 'Fried rice'])
+
+  await assert.rejects(service.votePoll(bayo, single.id, first.options.map((option) => option.id)), PollOptionsError)
+  await service.votePoll(bayo, single.id, [first.options[0]!.id])
+  await assert.rejects(service.votePoll(bayo, single.id, [first.options[1]!.id]), PollAlreadyVotedError)
+  const voted = (await service.post(bayo, single.id))!.poll!
+  assert.equal(voted.viewerVoted, true)
+  assert.equal(voted.totalVotes, 1)
+  assert.equal(voted.options[0]!.viewerVoted, true)
+
+  const multiple = await service.create(ada, 'Pick your soups', {
+    poll: { multiple: true, options: ['Egusi', 'Ogbono', 'Afang'], expiresIn: '7_days' },
+  })
+  const choices = (await service.post(chi, multiple.id))!.poll!.options
+  await service.votePoll(chi, multiple.id, [choices[0]!.id, choices[2]!.id])
+  const ballots = (await service.pollVoters(null, multiple.id, 10))!
+  assert.deepEqual(ballots.voters.map((vote) => [vote.member.handle, vote.optionIds]), [
+    ['chi', [choices[0]!.id, choices[2]!.id]],
+  ])
+  assert.equal((await db.select().from(pollVotes)).length, 3)
+
+  await db.update(postPolls).set({
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    expiresAt: new Date('2026-01-02T00:00:00Z'),
+  }).where(eq(postPolls.postId, multiple.id))
+  await assert.rejects(service.votePoll(bayo, multiple.id, [choices[1]!.id]), PollClosedError)
+  assert.equal((await service.post(bayo, multiple.id))!.poll!.closed, true)
+
+  const hidden = await service.create(ada, 'A muted poll', {
+    poll: { multiple: false, options: ['One', 'Two'], expiresIn: '7_days' },
+  })
+  await db.insert(mutes).values({ muterId: bayo, mutedId: ada })
+  const hiddenOption = (await service.post(chi, hidden.id))!.poll!.options[0]!.id
+  await assert.rejects(service.votePoll(bayo, hidden.id, [hiddenOption]), PollNotFoundError)
 })
 
 test('you cannot reply to a post that is missing, deleted or by a suspended member', async () => {

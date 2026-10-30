@@ -50,6 +50,7 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['link previews', `delete from link_previews where url like 'https://links.e2e.test/%'`],
         ['mentions', `delete from post_mentions where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['hashtags', `delete from post_hashtags where post_id in (select id from e2e_p)`],
+        ['poll votes', `delete from poll_votes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['likes', `delete from likes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['reposts', `delete from reposts where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['bookmarks', `delete from bookmarks where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
@@ -74,6 +75,7 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['voting memberships', `delete from restricted.governance_memberships where member_id in (select id from e2e_m)`],
         ['age records', `delete from restricted.age_assurances where member_id in (select id from e2e_m)`],
         ['governance audit', `delete from restricted.governance_audit_log where subject_id in (select id from e2e_m)`],
+        ['provider identities', `delete from provider_identities where member_id in (select id from e2e_m)`],
         ['members', `delete from members where id in (select id from e2e_m)`],
         ['invites', `delete from invites where note = $1`],
       ]

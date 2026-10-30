@@ -216,10 +216,12 @@ export function ThreadReplyAction({ id, parentId, handle, depth, count }: ReplyT
       prefetch={false}
       className="icon-btn"
       aria-label={`Reply (${total === 1 ? '1 reply' : `${total} replies`})`}
-      aria-disabled={context?.posting || undefined}
+      aria-disabled={context && (context.posting || !context.canReply) || undefined}
       onClick={(event) => {
         // A reply at the limit would not be drawn in this view, so open the post to answer it.
-        if (!plainClick(event) || !context?.canReply || depth >= THREAD_MAX_DEPTH) return
+        if (!plainClick(event)) return
+        if (context && !context.canReply) { event.preventDefault(); return }
+        if (!context || depth >= THREAD_MAX_DEPTH) return
         event.preventDefault()
         context.select({ id, parentId, handle, depth })
       }}
