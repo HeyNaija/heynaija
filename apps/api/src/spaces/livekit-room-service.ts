@@ -104,8 +104,12 @@ export class LiveKitRoomService implements RoomService {
     const identity = event.participant?.identity
     switch (event.event) {
       case 'participant_joined':
+        if (room && identity) return { id: event.id, kind: 'participant_joined', room, identity, at }
+        break
+      // A connection that opened and never completed ends with this and no participant_left.
+      case 'participant_connection_aborted':
       case 'participant_left':
-        if (room && identity) return { id: event.id, kind: event.event, room, identity, at }
+        if (room && identity) return { id: event.id, kind: 'participant_left', room, identity, at }
         break
       case 'room_finished':
         if (room) return { id: event.id, kind: 'room_finished', room, at }

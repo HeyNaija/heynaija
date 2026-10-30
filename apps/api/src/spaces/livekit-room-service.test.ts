@@ -56,3 +56,10 @@ test('without a webhook key of its own the API key signs webhooks', async () => 
   const event = await plain.readWebhook(body, await signed(body, keys.apiKey, keys.apiSecret))
   assert.equal(event.kind, 'room_finished')
 })
+
+test('a connection that started and never completed counts as the participant leaving', async () => {
+  // Seen from a real LiveKit 1.13.11: a client that opens the signal socket and never finishes gets this, not participant_left.
+  const body = JSON.stringify({ event: 'participant_connection_aborted', id: 'EV_3', createdAt: '1790000000', room: { name: 'room-1' }, participant: { identity: 'member-1' } })
+  const event = await service.readWebhook(body, await signed(body, keys.webhookKey, keys.webhookSecret))
+  assert.equal(event.kind, 'participant_left')
+})
