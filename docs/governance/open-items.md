@@ -9,6 +9,7 @@ Last reviewed: 19 October 2026 (draft v0.3).
 
 Canonical framework: [README.md](README.md), [CAC review copy](cac-constitution.md),
 [policies](policies.md), [legal review](legal-review.md) and [implementation](implementation.md).
+Everything to take to counsel is gathered in the [counsel log](counsel-log.md).
 
 ## 1. Facts the public pages still need (placeholders)
 
@@ -69,6 +70,9 @@ Canonical framework: [README.md](README.md), [CAC review copy](cac-constitution.
 - [ ] Resolve s838 paid-office/benefit restrictions for trustees and representatives;
       no founder salary assumption. Approve separated operational employment,
       conflicts, bank mandate, funding, tax, audits, assets and dissolution.
+- [ ] Account deletion and privacy requests: deadlines, what is kept after an
+      account is erased and for how long, legal holds. Entries C-01 to C-14 in
+      the [counsel log](counsel-log.md).
 - [ ] Review all items in [legal-review.md](legal-review.md) and the final adopted
       charter/constitution for consistency, including required constitutional
       recognition of supporting policies.

@@ -485,6 +485,13 @@ Recommended: a free healthchecks.io check expecting a daily ping, its URL in
 Backups cover both databases (members, posts, moderation; accounts and
 sessions). Media lives only in R2.
 
+Before each backup, `backup.sh` runs `kratos-cleanup.sh`, which deletes Kratos's
+copies of the emails it sent once they are older than
+`KRATOS_SENT_MAIL_KEEP_DAYS` (7 by default). Kratos would otherwise keep every
+sign-in code email, with its address, for good, even after the account is
+deleted (docs/adr/0016). It runs from the same cron line; nothing else to set up.
+To run it by hand: `bash /srv/heynaija/infra/deploy/kratos-cleanup.sh`.
+
 **Rehearse a restore** before inviting anyone: on a laptop or spare machine with
 the same setup and the key, `./restore.sh latest ~/heynaija-backup.key`. It asks
 you to type `restore`, replaces both databases and restarts. Then sign in with an

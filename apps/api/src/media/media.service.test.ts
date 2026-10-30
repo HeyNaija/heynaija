@@ -204,6 +204,7 @@ test('removing the avatar deletes its files and is safe to repeat', async () => 
   await service.removeAvatar(ada)
   assert.equal(await avatarOf(ada), null)
   assert.deepEqual([...store.objects.keys()], [])
+  assert.deepEqual(jobs.purged, [[`avatars/${mediaId}/96.webp`, `avatars/${mediaId}/256.webp`]])
 })
 
 test('uploads that were started and abandoned are cleared when the member starts another', async () => {
@@ -360,6 +361,8 @@ test("deleting a post deletes its images; a moderator's removal only hides them"
 
   assert.equal(await statusOf(gone), 'deleted')
   assert.deepEqual(store.keys('media'), [`media/posts/${kept}/1600.webp`, `media/posts/${kept}/640.webp`])
+  // Out of Cloudflare's cache too, which would otherwise serve the files for a year.
+  assert.deepEqual(jobs.purged, [[`posts/${gone}/640.webp`, `posts/${gone}/1600.webp`, `posts/${gone}/still.webp`]])
   assert.deepEqual((await postsService.byAuthor(null, ada, 10)).posts, [])
 
   // Restoring the removed post brings its image back.

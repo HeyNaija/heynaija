@@ -54,8 +54,22 @@ export const members = pgTable(
     // The one of their own top-level posts they keep at the top of their profile.
     // Shown only while it is live; a post removed for good takes the pin with it.
     pinnedPostId: uuid('pinned_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
+    // Account deletion (docs/adr/0016). Asking for it deactivates the account at
+    // once and schedules the erase; cancelling before then clears both. Kept apart
+    // from `status`, which reinstating a suspended member clears.
+    deletionRequestedAt: ts('deletion_requested_at'),
+    deletionScheduledFor: ts('deletion_scheduled_for'),
+    // When the erase finished. From then on the row is a blank tombstone, kept so
+    // that reports, moderation records and other people's replies still point somewhere.
+    deletedAt: ts('deleted_at'),
   },
-  (t) => [index('members_handle_idx').on(t.handle)],
+  (t) => [
+    index('members_handle_idx').on(t.handle),
+    // What the erase job looks through: deletions requested and not yet finished.
+    index('members_deletion_due_idx')
+      .on(t.deletionScheduledFor)
+      .where(sql`deletion_scheduled_for is not null and deleted_at is null`),
+  ],
 )
 
 // A handle a member gave up by renaming. For a while afterwards only they can take
@@ -841,3 +855,49 @@ export const problemDetails = pgTable('problem_details', {
   browser: text('browser'),
   appVersion: text('app_version'),
 })
+
+export const PRIVACY_REQUEST_KINDS = ['deletion', 'access', 'correction', 'objection', 'other'] as const
+export const PRIVACY_REQUEST_CHANNELS = ['self_service', 'email'] as const
+// received: logged, not yet acted on. verifying: waiting for the person to show
+// the account is theirs. in_progress: being acted on, such as a deletion waiting
+// for its erase. The other three close the request.
+export const PRIVACY_REQUEST_STATUSES = ['received', 'verifying', 'in_progress', 'completed', 'cancelled', 'refused'] as const
+const CLOSED_PRIVACY_REQUEST_STATUSES = ['completed', 'cancelled', 'refused'] as const satisfies readonly (typeof PRIVACY_REQUEST_STATUSES)[number][]
+
+const inList = (values: readonly string[]) => values.map((v) => `'${v}'`).join(', ')
+
+// Every request someone makes about their data (docs/adr/0016): to delete their
+// account, see or correct what HeyNaija holds, or object to its use, from
+// Settings or by email. The record that each was answered in time. Operators only.
+export const privacyRequests = pgTable(
+  'privacy_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // Whose account it is about. Null while none is known to match, such as an
+    // email from an address nobody signs in with.
+    memberId: uuid('member_id').references(() => members.id),
+    kind: text('kind', { enum: PRIVACY_REQUEST_KINDS }).notNull(),
+    channel: text('channel', { enum: PRIVACY_REQUEST_CHANNELS }).notNull(),
+    status: text('status', { enum: PRIVACY_REQUEST_STATUSES }).notNull().default('received'),
+    receivedAt: ts('received_at').notNull().defaultNow(),
+    // When the answer is due: PRIVACY_REQUEST_DUE_DAYS after it came in.
+    dueBy: ts('due_by').notNull(),
+    // When it was closed, whichever way: set exactly when the status is one that closes it.
+    closedAt: ts('closed_at'),
+    // The operator who handled it. Null for what a member did themselves in Settings.
+    handledBy: uuid('handled_by').references(() => members.id),
+    // Private to operators, and as little as will do (docs/governance/counsel-log.md, C-09).
+    notes: text('notes').notNull().default(''),
+  },
+  (t) => [
+    // Open requests by due date, for the overdue check and the operator's list.
+    index('privacy_requests_status_due_idx').on(t.status, t.dueBy),
+    check('privacy_requests_kind_check', sql.raw(`kind in (${inList(PRIVACY_REQUEST_KINDS)})`)),
+    check('privacy_requests_channel_check', sql.raw(`channel in (${inList(PRIVACY_REQUEST_CHANNELS)})`)),
+    check('privacy_requests_status_check', sql.raw(`status in (${inList(PRIVACY_REQUEST_STATUSES)})`)),
+    check(
+      'privacy_requests_closed_check',
+      sql.raw(`(status in (${inList(CLOSED_PRIVACY_REQUEST_STATUSES)})) = (closed_at is not null)`),
+    ),
+  ],
+)

@@ -3,6 +3,7 @@ import { Controller, Get, Module } from '@nestjs/common'
 import { AuthController } from './auth/auth.controller.js'
 import { AuthService } from './auth/auth.service.js'
 import { AUTH_SESSION_PROVIDER } from './auth/auth-session.provider.js'
+import { KratosAdmin } from './auth/kratos-admin.js'
 import { KratosSessionProvider } from './auth/kratos-session.provider.js'
 import { KratosService } from './auth/kratos.service.js'
 import { RedisSessionCache, SESSION_CACHE } from './auth/session-cache.js'
@@ -69,6 +70,7 @@ class HealthController {
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
     { provide: SESSION_CACHE, useClass: RedisSessionCache },
     KratosService,
+    KratosAdmin,
     { provide: AUTH_SESSION_PROVIDER, useClass: KratosSessionProvider },
     AuthService,
     SessionGuard,
@@ -117,9 +119,9 @@ class HealthController {
     IdeasService,
     NotificationsService,
     { provide: EMAIL_JOBS, useClass: BullEmailJobs },
-    // Without an SMTP account (SMTP_CONNECTION_URI) these are null and no email is sent.
+    // Without an SMTP account (SMTP_CONNECTION_URI) this is null and no email is sent.
     { provide: MAILER, useFactory: smtpMailer, inject: [ENV] },
-    { provide: EMAIL_ADDRESSES, useFactory: (env: Env) => (env.KRATOS_ADMIN_URL ? new KratosAddresses(env.KRATOS_ADMIN_URL) : null), inject: [ENV] },
+    { provide: EMAIL_ADDRESSES, useFactory: (env: Env) => new KratosAddresses(env.KRATOS_ADMIN_URL), inject: [ENV] },
     {
       provide: EMAIL_SETTINGS,
       useFactory: (env: Env) => ({

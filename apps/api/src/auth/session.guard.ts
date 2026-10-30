@@ -50,7 +50,13 @@ export class SessionGuard implements CanActivate {
     // A plain primary-key read on every request: `active` is never cached, so a
     // suspension takes effect on the member's very next request.
     let [member] = await this.db
-      .select({ active: members.active, handle: members.handle, lastSeenAt: members.lastSeenAt })
+      .select({
+        active: members.active,
+        handle: members.handle,
+        lastSeenAt: members.lastSeenAt,
+        deletionRequestedAt: members.deletionRequestedAt,
+        deletedAt: members.deletedAt,
+      })
       .from(members)
       .where(eq(members.id, identity.id))
 
@@ -64,11 +70,21 @@ export class SessionGuard implements CanActivate {
         .insert(members)
         .values({ id: identity.id, handle: identity.handle, lastSeenAt: new Date() })
         .onConflictDoUpdate({ target: members.id, set: { lastSeenAt: new Date() } })
-        .returning({ active: members.active, handle: members.handle, lastSeenAt: members.lastSeenAt })
+        .returning({
+          active: members.active,
+          handle: members.handle,
+          lastSeenAt: members.lastSeenAt,
+          deletionRequestedAt: members.deletionRequestedAt,
+          deletedAt: members.deletedAt,
+        })
     } else if (
-      member.handle !== identity.handle ||
-      !member.lastSeenAt ||
-      Date.now() - member.lastSeenAt.getTime() >= LAST_SEEN_EVERY_MS
+      // Once deletion is asked for, the row is left alone: the erase holds the
+      // handle it has and then blanks it, and a cached session must not write
+      // the old one back (docs/adr/0016).
+      !member.deletionRequestedAt &&
+      (member.handle !== identity.handle ||
+        !member.lastSeenAt ||
+        Date.now() - member.lastSeenAt.getTime() >= LAST_SEEN_EVERY_MS)
     ) {
       // Writing last_seen_at on every call meant 3–5 row updates per page view;
       // "last seen" only needs to be right to within a few minutes.
@@ -78,6 +94,8 @@ export class SessionGuard implements CanActivate {
         .where(eq(members.id, identity.id))
     }
     if (!member) throw new ForbiddenException('account_inactive')
+    // An erased account is no account, even to a session Kratos has not yet forgotten.
+    if (member.deletedAt) throw new ForbiddenException('account_inactive')
     if (!member.active && this.requireActive) throw new ForbiddenException('account_inactive')
 
     req.member = identity

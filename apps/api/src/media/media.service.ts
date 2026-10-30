@@ -485,7 +485,30 @@ export class MediaService {
   private async discard(kind: Kind, mediaIds: string[]): Promise<void> {
     if (mediaIds.length === 0) return
     await this.db.update(media).set({ status: 'deleted' }).where(inArray(media.id, mediaIds))
-    for (const id of mediaIds) for (const key of publishedKeys(kind, id)) await this.store.remove('media', key)
+    for (const id of mediaIds) {
+      for (const key of publishedKeys(kind, id)) await this.store.remove('media', key)
+      // Gone from the bucket, but Cloudflare may still serve a cached copy for a year.
+      await this.jobs.purgeCdn(publishedKeys(kind, id))
+    }
+  }
+
+  /**
+   * After an account's rows are erased (docs/adr/0016): deletes the files of
+   * every image of theirs marked deleted, unfinished uploads included, and takes
+   * what was kept as evidence (left 'ready') out of public view. Safe to repeat:
+   * files already gone are skipped.
+   */
+  async eraseFilesOf(ownerId: string): Promise<void> {
+    const rows = await this.db
+      .select({ id: media.id, kind: media.kind, status: media.status })
+      .from(media)
+      .where(and(eq(media.ownerId, ownerId), inArray(media.status, ['deleted', 'ready'])))
+    for (const kind of ['avatar', 'post_image'] as const) {
+      const ids = (status: 'deleted' | 'ready') => rows.filter((r) => r.kind === kind && r.status === status).map((r) => r.id)
+      for (const id of ids('deleted')) await this.store.remove('uploads', uploadKey(kind, id))
+      await this.discard(kind, ids('deleted'))
+      await this.quarantine(kind, ids('ready'))
+    }
   }
 
   /**

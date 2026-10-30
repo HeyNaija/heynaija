@@ -166,15 +166,16 @@ export class MembersService {
   }
 
   /**
-   * Holds `handle` for `memberId`, who is about to rename away from it. Called
-   * before Kratos saves the rename: if the save fails they keep the handle, and a
-   * hold on a handle its owner still has changes nothing.
+   * Holds `handle` for `memberId`, who is about to rename away from it, or whose
+   * account is being erased. Called before Kratos saves the rename: if the save
+   * fails they keep the handle, and a hold on a handle its owner still has
+   * changes nothing. Runs in `db` when given a transaction (the erase).
    */
-  async holdHandle(memberId: string, handle: string): Promise<void> {
+  async holdHandle(memberId: string, handle: string, db: Queries = this.db): Promise<void> {
     // A member the API has never seen has no row to hold it for (and no links yet).
-    const [member] = await this.db.select({ id: members.id }).from(members).where(eq(members.id, memberId))
+    const [member] = await db.select({ id: members.id }).from(members).where(eq(members.id, memberId))
     if (!member) return
-    await this.db
+    await db
       .insert(releasedHandles)
       .values({ handle, memberId })
       .onConflictDoUpdate({ target: releasedHandles.handle, set: { memberId, releasedAt: sql`now()` } })

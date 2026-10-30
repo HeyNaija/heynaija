@@ -345,7 +345,7 @@ export class PostsService {
   /**
    * The one place posts are read for display. Posts by inactive members never
    * appear; deleted posts appear only when `includeDeleted`, with their text
-   * withheld.
+   * withheld, and then an erased account's (which are all deleted) appear too.
    */
   private async select(
     viewerId: string | null,
@@ -406,7 +406,14 @@ export class PostsService {
       .leftJoin(communities, and(eq(communities.id, posts.communityId), eq(communities.active, true)))
       .where(
         and(
-          visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`, opts.unmuted),
+          // Where deleted posts are shown, an erased account's are too (all of
+          // its posts are deleted), so other people's replies keep their place.
+          visibleAuthor(
+            viewerId,
+            sql`${posts.authorId}`,
+            opts.includeDeleted ? sql`(${members.active} or ${members.deletedAt} is not null)` : sql`${members.active}`,
+            opts.unmuted,
+          ),
           opts.includeDeleted ? undefined : live,
           where,
         ),
@@ -1082,7 +1089,9 @@ export class PostsService {
           from posts p join members a on a.id = p.author_id
           where p.reply_parent_id = ${parentId}
             and (p.author_id is distinct from ${parentAuthor} or p.deleted_at is not null or p.removed_at is not null)
-            and ${visible}
+            -- An erased account's replies are all deleted, so they come only as
+            -- placeholders keeping other people's replies under them in reach.
+            and (${visible} or a.deleted_at is not null)
             and ((p.deleted_at is null and p.removed_at is null)
               or exists(select 1 from posts child where child.reply_parent_id = p.id))
             ${beyond(1)}

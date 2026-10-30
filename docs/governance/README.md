@@ -11,6 +11,7 @@ legal community asset control are not claimed complete.
 | [Founding records](founding-records.md) | Schedule 1 checklist and draft resolutions for counsel and the founding association; no actual appointments recorded. |
 | [Supporting policies](policies.md) | Membership, elections, moderation independence, conflicts, finance, readiness and trustee succession. Constitutional recognition is required wherever stated. |
 | [Legal review](legal-review.md) | Primary sources, filing distinctions and unresolved legal questions. Not an opinion approving the arrangement. |
+| [Counsel log](counsel-log.md) | Every question waiting for counsel, in one place: data protection questions written out in full, and pointers to those recorded elsewhere. |
 | [Technical specification](implementation.md) | Existing groundwork, fail-closed admission boundary and future requirements; no feature activation. |
 | [Open items](open-items.md) | Release and legal gates; all existing identity, security and youth gates remain. |
 | [Identity verification](identity-verification.md) | Initial preferred NINAuth design, unavailable today. |

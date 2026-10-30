@@ -15,6 +15,17 @@ export interface AuthSessionProvider {
   invalidateSessionCache(request: AuthRequest): Promise<void>
   /** The account's email, asked of the backend afresh. Null if the session has ended. */
   emailForRequest(request: AuthRequest): Promise<string | null>
+  /**
+   * When the member last proved who they are on this session (signed in, or
+   * signed in again), asked of the backend afresh. Null if the session has ended.
+   */
+  authenticatedAtForRequest(request: AuthRequest): Promise<Date | null>
+  /** Ends every session the member has, everywhere. Safe to repeat. */
+  revokeAllSessions(memberId: string): Promise<void>
+  /** Deletes the member's sign-in account, with any session left. Safe to repeat. */
+  deleteIdentity(memberId: string): Promise<void>
+  /** The member whose account email this is, in any case, or null. For operators. */
+  identityIdByEmail(email: string): Promise<string | null>
 }
 
 export const AUTH_SESSION_PROVIDER = Symbol('AUTH_SESSION_PROVIDER')

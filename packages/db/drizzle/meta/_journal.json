@@ -197,6 +197,13 @@
       "when": 1793211316167,
       "tag": "0027_ideas",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793308882633,
+      "tag": "0028_account_deletion",
+      "breakpoints": true
     }
   ]
 }
