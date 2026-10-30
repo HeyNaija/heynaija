@@ -1406,6 +1406,24 @@
       ]
     },
     {
+      "id": "calls-and-meetings",
+      "name": "Calls, meetings and screen sharing",
+      "description": "Voice and video calls between age-verified adults, then small group meetings and screen sharing, on a self-hosted LiveKit server.",
+      "category": "expansion",
+      "priority": "P3",
+      "status": "blocked",
+      "availability": "not_live",
+      "evidence": [
+        "docs/adr/0017-calls-and-meetings.md",
+        "docs/governance/under-18-rollout.md"
+      ],
+      "caveat": "Design only. Needs direct messages and age verification first; recording, moderator access and retention need counsel and governance.",
+      "dependency": [
+        "minor-safeguards"
+      ],
+      "notes": "Also depends on direct-messages and age-verification (ADR 0016, PR #42): add them to the dependencies when that PR merges. Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers)."
+    },
+    {
       "id": "native-apps",
       "name": "Native mobile apps",
       "description": "Consider native apps if web and installable-app evidence justifies them.",
