@@ -185,11 +185,56 @@ if (testUrl) {
     const err = await outcome
     assert.ok(err instanceof Error, 'the run must reject once its connection is killed')
     // Drizzle reports the follow-on "Failed query: rollback"; the error must name the real cause and keep drizzle's as `cause`.
-    assert.match(err.message, /the migration connection dropped during the run/)
-    assert.doesNotMatch(err.message, /^Failed query/)
+    // Killed inside drizzle's transaction, the 57P01 is swallowed by drizzle's own rollback; only pg's socket error is left.
+    assert.match(err.message, /^the migration connection dropped during the run: Connection terminated unexpectedly$/)
     assert.ok(err.cause instanceof Error, 'drizzle\'s error must be kept as the cause')
+    assert.match(err.cause.message, /^Failed query/)
     await holder.query('rollback')
     assert.equal(await lockIsFree(), true)
+  })
+
+  test('a connection killed before drizzle\'s transaction names the server\'s reason', async (t) => {
+    await freshDb()
+    const first = folder(t, ['create table one (id int);'])
+    await runMigrations(scratchUrl, { migrationsFolder: first, lockTimeoutMs: 0, log: noLog })
+    // Drizzle's journal table now exists. Lock it so the select that runs BEFORE the transaction blocks.
+    const holder = await connect(scratchUrl)
+    t.after(() => holder.end())
+    await holder.query('begin')
+    await holder.query('lock table drizzle.__drizzle_migrations in access exclusive mode')
+    const next = folder(t, ['create table one (id int);', 'create table two (id int);'])
+    const outcome = runMigrations(scratchUrl, { migrationsFolder: next, lockTimeoutMs: 0, attempts: 1, log: noLog }).then(
+      () => undefined,
+      (err: unknown) => err ?? new Error('rejected with nothing'),
+    )
+    await waitFor(() => blockedOnLock('__drizzle_migrations'), 'drizzle\'s journal select to block')
+    await admin((c) => c.query(`select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid() and wait_event_type = 'Lock'`, [scratchName]), scratchUrl)
+    const err = await outcome
+    assert.ok(err instanceof Error, 'the run must reject once its connection is killed')
+    assert.match(err.message, /^the migration connection dropped during the run: terminating connection due to administrator command$/)
+    assert.ok(err.cause instanceof Error, 'drizzle\'s error must be kept as the cause')
+    assert.match(err.cause.message, /^Failed query/)
+    await holder.query('rollback')
+    assert.equal(await lockIsFree(), true)
+  })
+
+  test('a connection killed while it waits for the migration lock names the cause', async (t) => {
+    await freshDb()
+    const dir = folder(t, ['create table w (id int);'])
+    const holder = await connect(scratchUrl)
+    t.after(() => holder.end())
+    await holder.query('select pg_advisory_lock($1)', [MIGRATE_LOCK_KEY])
+    const logs: string[] = []
+    const outcome = runMigrations(scratchUrl, { migrationsFolder: dir, lockWaitMs: 30_000, log: (m) => logs.push(m) }).then(
+      () => undefined,
+      (err: unknown) => err ?? new Error('rejected with nothing'),
+    )
+    await waitFor(async () => logs.length > 0, 'the run to report that it is waiting')
+    const holderPid = (await holder.query('select pg_backend_pid() as pid')).rows[0].pid as number
+    await admin((c) => c.query(`select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid() and pid <> $2`, [scratchName, holderPid]), scratchUrl)
+    const err = await outcome
+    assert.ok(err instanceof Error, 'the run must reject once its connection is killed')
+    assert.match(err.message, /^the migration connection dropped during the run: terminating connection due to administrator command$/)
   })
 
   test('an empty MIGRATE_LOCK_TIMEOUT_MS gives the 5s default on the connection', async (t) => {

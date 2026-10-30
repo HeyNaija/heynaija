@@ -69,22 +69,24 @@ const LOCK_RETRY_MS = 500
 const LOCK_TIMEOUT_SQLSTATE = '55P03'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Drizzle wraps driver errors, so look down the `cause` chain for the SQLSTATE. */
-function isLockTimeout(err: unknown): boolean {
-  for (let e = err as { code?: unknown; cause?: unknown } | undefined, depth = 0; e && depth < 5; e = e.cause as typeof e, depth++) {
-    if (e.code === LOCK_TIMEOUT_SQLSTATE) return true
-  }
-  return false
-}
+type WithCode = { code?: unknown; cause?: unknown }
 
-/** The server ended our session (pg_terminate_backend, shutdown, crash): the error arrives as a query error before the socket's 'error'. */
-const SERVER_SHUTDOWN_SQLSTATES = new Set(['57P01', '57P02', '57P03'])
-function serverShutdown(err: unknown): Error | undefined {
-  for (let e = err as { code?: unknown; cause?: unknown } | undefined, depth = 0; e && depth < 5; e = e.cause as typeof e, depth++) {
-    if (typeof e.code === 'string' && SERVER_SHUTDOWN_SQLSTATES.has(e.code)) return e as Error
+/** Drizzle wraps driver errors, so look down the `cause` chain (up to 5 deep) for the first error that matches. */
+function findCause(err: unknown, matches: (e: WithCode) => boolean): Error | undefined {
+  for (let e = err as WithCode | undefined, depth = 0; e && depth < 5; e = e.cause as WithCode | undefined, depth++) {
+    if (matches(e)) return e as Error
   }
   return undefined
 }
+
+const isLockTimeout = (err: unknown) => findCause(err, (e) => e.code === LOCK_TIMEOUT_SQLSTATE) !== undefined
+
+/**
+ * The server ended a live session: 57P01 admin_shutdown (pg_terminate_backend, shutdown), 57P02 crash_shutdown,
+ * 57P04 database_dropped. (57P03 cannot_connect_now only happens at startup, before the try that uses this.)
+ */
+const SERVER_SHUTDOWN_SQLSTATES = new Set(['57P01', '57P02', '57P04'])
+const serverShutdown = (err: unknown) => findCause(err, (e) => typeof e.code === 'string' && SERVER_SHUTDOWN_SQLSTATES.has(e.code))
 
 /**
  * Applies the pending migrations, alone: the advisory lock and the migrations
@@ -123,34 +125,39 @@ async function runOnce(
   // Remember it, and the run fails through the finally below (the lock went with the session).
   let lost: Error | undefined
   client.on('error', (err) => {
-    lost = err
+    // Keep the first: a killed client emits the server's reason (57P01) and then "Connection terminated unexpectedly".
+    lost ??= err
   })
   await client.connect()
+  const dropped = (cause?: unknown) => {
+    // Prefer the server's own reason from the error chain, then the first connection error pg reported.
+    const reason = serverShutdown(cause) ?? lost
+    return reason ? new Error(`the migration connection dropped during the run: ${reason.message}`, { cause }) : undefined
+  }
   try {
-    // SET, not the startup `options` parameter: a DATABASE_URL with its own ?options= would override that.
-    await client.query(`set lock_timeout = ${lockTimeoutMs}`)
-    const deadline = Date.now() + lockWaitMs
-    let announced = false
-    for (;;) {
-      const { rows } = await client.query<{ locked: boolean }>('select pg_try_advisory_lock($1) as locked', [MIGRATE_LOCK_KEY])
-      if (rows[0]?.locked) break
-      if (Date.now() >= deadline) throw new Error(`another migration run still holds the migration lock after ${lockWaitMs / 1000}s`)
-      if (!announced) log('waiting for another migration run to finish')
-      announced = true
-      await sleep(LOCK_RETRY_MS)
-    }
     try {
+      // SET, not the startup `options` parameter: a DATABASE_URL with its own ?options= would override that.
+      await client.query(`set lock_timeout = ${lockTimeoutMs}`)
+      const deadline = Date.now() + lockWaitMs
+      let announced = false
+      for (;;) {
+        const { rows } = await client.query<{ locked: boolean }>('select pg_try_advisory_lock($1) as locked', [MIGRATE_LOCK_KEY])
+        if (rows[0]?.locked) break
+        if (Date.now() >= deadline) throw new Error(`another migration run still holds the migration lock after ${lockWaitMs / 1000}s`)
+        if (!announced) log('waiting for another migration run to finish')
+        announced = true
+        await sleep(LOCK_RETRY_MS)
+      }
       await migrate(drizzle(client, { schema }), {
         migrationsFolder: migrationsFolder ?? fileURLToPath(new URL('../drizzle', import.meta.url)),
       })
     } catch (err) {
-      // Drizzle reports what it saw last (e.g. "Failed query: rollback" on the dead connection). Name the real cause.
-      // The original stays as `cause`, so isLockTimeout and the retry rule see exactly what they saw before.
-      const reason = lost ?? serverShutdown(err)
-      if (reason) throw new Error(`the migration connection dropped during the run: ${reason.message}`, { cause: err })
-      throw err
+      // Whatever statement was running, the library reports what it saw last (e.g. "Failed query: rollback", or "Client has
+      // encountered a connection error"). Name the real cause; the original stays as `cause`, so isLockTimeout sees what it saw.
+      throw dropped(err) ?? err
     }
-    if (lost) throw new Error(`the migration connection dropped during the run: ${lost.message}`)
+    const gone = dropped()
+    if (gone) throw gone
   } finally {
     await client.query('select pg_advisory_unlock($1)', [MIGRATE_LOCK_KEY]).catch(() => {})
     await client.end().catch(() => {})
