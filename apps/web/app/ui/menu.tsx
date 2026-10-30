@@ -75,13 +75,16 @@ export function Menu({
       <summary className={`menu ${triggerClassName}`} aria-label={label}>
         {trigger}
       </summary>
-      {/* Following a link inside closes the menu; form buttons re-render the page anyway. */}
+      {/* Following a link or sending a form inside closes the menu. A form's page
+          re-renders, but this same <details> stays open, and an open menu can
+          cover the controls of the post beside it. */}
       <div
         ref={panel}
         className={`menu-panel ${panelClassName}`}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('a')) ref.current?.removeAttribute('open')
         }}
+        onSubmit={() => ref.current?.removeAttribute('open')}
       >
         {children}
       </div>
