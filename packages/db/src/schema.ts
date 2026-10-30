@@ -84,7 +84,7 @@ export const media = pgTable(
     ownerId: uuid('owner_id')
       .notNull()
       .references(() => members.id),
-    kind: text('kind', { enum: ['avatar', 'post_image'] }).notNull(),
+    kind: text('kind', { enum: ['avatar', 'post_image', 'community_photo'] }).notNull(),
     // pending: an upload URL was issued. processing: uploaded, waiting for the
     // background job. ready: processed and public. failed: it was not a usable
     // image. deleted: replaced or removed by its owner, or abandoned.
@@ -155,6 +155,8 @@ export const communities = pgTable('communities', {
   // A top-level post in the community its moderators keep at the top: a welcome,
   // or the guidance everyone should read. Shown only while it is live.
   pinnedPostId: uuid('pinned_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
+  // The community's square photo (a media row of kind community_photo); null shows the subject icon.
+  photoMediaId: uuid('photo_media_id'),
 })
 
 export const communityMemberships = pgTable(
@@ -463,6 +465,7 @@ export const MODERATION_ACTIONS = [
   'dismiss_report',
   'remove_avatar',
   'clear_profile',
+  'remove_community_photo',
   'grant_community_moderator',
   'revoke_community_moderator',
 ] as const
