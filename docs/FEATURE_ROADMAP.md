@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 43 | 11 | 19 | 13 | 86 |
+| 43 | 11 | 20 | 13 | 87 |
 
 ## Priority order
 
@@ -581,6 +581,14 @@ This tracks product development, not formal governance decisions. Priority means
 - **Remaining work / caveat:** Child-safety decisions, approvals and implementation must precede any change to the temporary adult-only beta.
 - **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`
 
+#### Age verification for adults
+
+- **ID:** `age-verification`
+- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
+- **Description:** Check that a member is 18 or over, separately from identity verification, for features that need a verified adult.
+- **Inspected evidence:** `docs/adr/0006-age-status-model.md`, `docs/adr/0016-direct-messages.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`
+- **Audit notes:** The model exists (restricted.age_assurances, ageStatus) but nothing can yet produce a verified assurance: NIN verification is locked off and no age-assurance provider is chosen. Direct messages need this. The provider must not require a NIN (under-18 rollout section 2).
+
 ### Transparency and governance
 
 #### Community proposals and consultation
@@ -672,11 +680,11 @@ This tracks product development, not formal governance decisions. Priority means
 
 - **ID:** `direct-messages`
 - **Priority:** P2 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Support private conversations with blocking, reporting and appropriate contact safeguards.
-- **Remaining work / caveat:** Message requests, abuse handling, retention and age-appropriate contact safeguards need approval and implementation.
-- **Dependencies:** `minor-safeguards`
-- **Inspected evidence:** `PRODUCT.md`, `packages/db/src/schema.ts`, `docs/governance/under-18-rollout.md`
-- **Audit notes:** No message model or delivery endpoint exists.
+- **Description:** Support opt-in private conversations between age-verified adults, with message requests, blocking and reporting.
+- **Remaining work / caveat:** Design only. Messages will be limited to members who are 18 or over, have completed age verification and have turned messages on. Age verification, message-request and abuse handling, retention and safeguarding approval are needed first.
+- **Dependencies:** `minor-safeguards`, `age-verification`
+- **Inspected evidence:** `docs/adr/0016-direct-messages.md`, `PRODUCT.md`, `packages/db/src/schema.ts`, `docs/governance/under-18-rollout.md`
+- **Audit notes:** No message model or delivery endpoint exists. Design in ADR 0016 (proposed 30 Oct 2026). Staged plan: 1 design (this ADR); 2 backend behind a default-off flag; 3 UI behind the flag; 4 safeguards sign-off (age verification, counsel on privacy copy and retention, moderator runbook, governance answer on emergency access); 5 enable for a named adult allow-list, then all eligible members. Minors, unverified and unknown-age members are never eligible.
 
 #### Member lists
 
