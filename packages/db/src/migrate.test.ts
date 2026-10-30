@@ -174,10 +174,15 @@ if (testUrl) {
     await freshDb()
     const holder = await holdBusy(t)
     const dir = folder(t, ['select count(*) from busy;'])
-    const run = runMigrations(scratchUrl, { migrationsFolder: dir, lockTimeoutMs: 0, attempts: 1, log: noLog })
+    // The run rejects the moment its backend is terminated, while this test is still awaiting the kill.
+    // Observe the outcome right away: a bare `run` with no handler yet is itself an unhandled rejection.
+    const outcome = runMigrations(scratchUrl, { migrationsFolder: dir, lockTimeoutMs: 0, attempts: 1, log: noLog }).then(
+      () => undefined,
+      (err: unknown) => err ?? new Error('rejected with nothing'),
+    )
     await waitFor(() => blockedOnLock('busy'), 'the run to block on the table lock')
     await admin((c) => c.query(`select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid() and wait_event_type = 'Lock'`, [scratchName]), scratchUrl)
-    await assert.rejects(run)
+    assert.ok((await outcome) instanceof Error, 'the run must reject once its connection is killed')
     await holder.query('rollback')
     assert.equal(await lockIsFree(), true)
   })
