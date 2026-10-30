@@ -323,7 +323,12 @@ the participant identity and grants (`roomJoin`, `canPublish`, `canSubscribe`,
   not guaranteed**, so a webhook is a hint: call state (ringing, active, ended,
   missed) lives in Postgres, and a job reconciles it against LiveKit's list of
   participants every minute, so a lost `room_finished` does not leave a call
-  "active". A `participant_joined` for someone who is no longer eligible gets
+  "active". **For Spaces the reconcile also compares each participant's
+  permissions with the role stored in the database**, not only who is present:
+  a failed demote, mute or remove `UpdateParticipant` call would otherwise leave
+  the database saying listener while LiveKit still allows publishing, and nothing
+  would repair it. A mismatch is corrected to the stored role (and the removed
+  list is enforced) and logged. A `participant_joined` for someone who is no longer eligible gets
   them removed at once.
 
 ## 4. Product scope, in stages
@@ -419,19 +424,30 @@ the listener list through the API, because they moderate; other listeners do
 not. Nobody can use presence to tell what a particular member is listening to.
 
 **Who may take part (the safety question that is new here).**
-- **Host and speakers: verified, opted-in adults**, the same gate as meetings
-  (ADR 0016). Hosting also needs a clean standing: no active suspension and no
+- **Spaces have their own gates, not `canCall`.** Section 5's `canCall` needs
+  DMs opted in and the separate "Allow calls" switch (default off), which suits
+  a private call and would leave almost nobody able to listen to a public room.
+  Two functions, both server-side from live data: **`canListen`** (active,
+  age-verified at `verified`, not suspended; no DM opt-in and no "Allow calls")
+  and **`canHostSpace`** (everything in `canListen`, plus the standing rule
+  below). A **speaker** needs `canListen` plus `canHostSpace`'s standing check; a
+  member's own choice to speak is still made by tapping Request.
+- **Host and speakers: verified adults in good standing** (the gate above).
+  Hosting also needs a clean standing: no active suspension and no
   upheld report for abuse in a Space in the last 90 days (a proposal). The same
   standing check applies when someone is **made a co-host** and when a co-host
   **takes over**; a member who may not host cannot be appointed, and if the
   next co-host fails the check the Space ends instead.
-- **Listeners: verified adults too** (open question 12). A public live room
+- **Listeners: `canListen`, verified adults too** (open question 12). A public live room
   cannot be previewed, and **minors are never in a call or a Space.** Letting
   unverified adults listen is a governance decision, not an engineering one.
 - **Who is shown a Space.** The Live now card, the join page and a shared link
-  all require an eligible member (same function as calls, section 5). A minor, an
+  all require `canListen` (not `canCall`). A minor, an
   unverified or opted-out member, and a logged-out visitor get nothing: no card,
-  and the link shows the same not-found page as any other missing page. A Space
+  and the link shows the same not-found page as any other missing page. A **Space
+  card inside a post** (stage 5, section 4b) shows an ineligible viewer exactly
+  the deleted-post placeholder, byte for byte, with no title, host, time or
+  Live/Ended state, so the card cannot be told apart from a deleted post. A Space
   can be public (any eligible member) or **community-only** (members of one
   community); never invite-only, never guests without accounts. "Public" here
   means open to any eligible member, not discoverable by strangers.
@@ -442,6 +458,17 @@ not. Nobody can use presence to tell what a particular member is listening to.
   when the host or a current speaker is someone you blocked or who blocked you,
   and a speaker is not promoted past that check. Two listeners who blocked each
   other can share a room, and blocking never reveals itself to the other side.
+  **Blocks that arise inside a room** (a listener's block is only checked at
+  join, so something must say what happens after): when a member is promoted, a
+  co-host takes over as host, or someone blocks the host or a speaker mid-Space,
+  the **affected listener is the one who leaves**: the next reconcile (and an
+  immediate check on promotion or takeover) disconnects any listener who has
+  blocked, or been blocked by, the host or a current speaker, and shows them
+  the neutral "This Space ended for you". Promotion is not refused on a
+  listener's account, so one listener's block cannot stop a Space from adding a
+  speaker (the lock-out this rule exists to avoid). A promoted speaker or new
+  host is still checked against the host and the other speakers, as above. A
+  proposal for governance to confirm.
 - **Moderation is live and human.** There is no text to review and no
   recording, so the tools are the host's: mute, remove, end. Any participant
   can **Report** a Space (not just a person): the report carries the Space id,
@@ -539,7 +566,8 @@ use the web. Each has a recommendation; none is built.
 5. **Sharing a Space.** X lets a Space be posted as a card. Stage 5 allows
    sharing a Space's link and a **Space card in a post** (title, host, time, and
    "Live" or "Ended"), which obeys the same eligibility: a member who cannot
-   join sees an unavailable card, like a deleted post. The card carries no
+   join sees exactly the deleted-post placeholder, with no title, host, time
+   or Live/Ended state (section 4a, "Who is shown a Space"). The card carries no
    listener names.
 6. **Host tools.** Beyond mute, remove and end: a **speaker queue** (requests
    in the order made, one open request per member), **pinned links** (the host
