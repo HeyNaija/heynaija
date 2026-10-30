@@ -80,10 +80,10 @@ jobs:
     # empty input and false both count as 0 in the comparison. So the event is named.
     if: (github.event_name == 'pull_request' || inputs.e2e) && !(github.event_name == 'pull_request' && github.head_ref == 'staging' && github.base_ref == 'main')
     runs-on: ubuntu-latest
-    # Setting up the stack and the build take several minutes, and the suite (about 150
-    # tests, every one signing up its own members) sat close to the old 30 on one
-    # worker. This is there to stop a hang, not to hold the suite to a budget.
-    timeout-minutes: 45
+    # Setting up the stack and the build take 3 to 4 minutes, and the suite (about 180
+    # tests, every one signing up its own members) 9 to 10 on three workers; on one it
+    # took 15 to 17. This is there to stop a hang, not to hold the suite to a budget.
+    timeout-minutes: 30
     env:
       # Kratos runs in a container and calls the API's invite webhooks through
       # host.docker.internal, which on Linux only reaches ports bound beyond loopback.
@@ -114,13 +114,9 @@ jobs:
           docker compose --env-file .env -f infra/compose/docker-compose.dev.yml logs
           exit 1
 
-      # Next's own cache, so an unchanged page is not compiled again. The key changes
-      # with the source; restore-keys falls back to the newest cache for the lockfile.
-      - uses: actions/cache@v4
-        with:
-          path: apps/web/.next/cache
-          key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/**/*.ts', 'apps/web/**/*.tsx', 'apps/web/**/*.css') }}
-          restore-keys: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      # Neither Next's build cache nor Playwright's browsers are cached: measured on
+      # this job, the two saved 10 seconds at most, and a Turbopack cache restored
+      # from another commit could build something other than what the images ship.
       - run: pnpm build
       - run: pnpm db:migrate
       - run: pnpm db:seed
@@ -137,13 +133,6 @@ jobs:
           cat api.log web.log
           exit 1
 
-      # The browser download is keyed on the lockfile, which pins Playwright's version.
-      # `install` still runs: it is quick when the browser is there, and --with-deps
-      # installs the system libraries, which are not part of the cache.
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium for Playwright
         run: pnpm --filter @heynaija/e2e exec playwright install --with-deps chromium
 
