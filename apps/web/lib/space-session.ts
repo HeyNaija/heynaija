@@ -165,7 +165,11 @@ export class SpaceSession {
     ui.phase('connecting')
     const result = await this.connectOnce(my)
     if (this.stale(my)) return
-    if (result === 'retry') return ui.phase('failed')
+    if (result === 'retry') {
+      // A /join may have answered 200 before the media connection failed: do not leave a ghost listener behind.
+      await this.teardown(true)
+      return ui.phase('failed')
+    }
     if (result === 'stop') return
     this.deps.rememberSpace(true)
     const release = await this.deps.holdScreen()
@@ -216,8 +220,8 @@ export class SpaceSession {
         }
         if (result === 'stop') return
       }
-      // Out of attempts: stop, and let the member decide.
-      await this.teardown(false)
+      // Out of attempts: stop, and let the member decide. Each /join that answered 200 marked them present, so say they left.
+      await this.teardown(true)
       ui.phase('failed')
     } finally {
       this.reconnecting = false

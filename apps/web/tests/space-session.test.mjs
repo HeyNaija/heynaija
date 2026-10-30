@@ -192,6 +192,53 @@ test('reconnecting gives up after a capped number of attempts', async () => {
   assert.equal(r.phases.at(-1), 'failed')
 })
 
+test('when reconnects run out after successful /join calls, the member is sent /leave once and nothing after', async () => {
+  let joins = 0
+  let connects = 0
+  // /join always answers 200 (so the server counts us present) but the media connection keeps failing after the first.
+  let captured
+  const createAudio = async (events) => {
+    captured = events
+    return {
+      connect: async () => {
+        if (++connects > 1) throw new Error('no route')
+      },
+      disconnect: async () => {},
+    }
+  }
+  const r = rig({ join: async () => (joins++, joined), createAudio })
+  await r.session.join()
+  captured.onLost('network')
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.equal(joins, 1 + RECONNECT_ATTEMPTS)
+  assert.equal(r.phases.at(-1), 'failed')
+  // Closing the page afterwards must not add a second /leave, and the one already sent must have happened.
+  r.session.pageHide()
+  r.session.dispose()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(count(r.log, 'leave'), 1)
+})
+
+test('after "failed", Try again joins cleanly and goes live', async () => {
+  let connects = 0
+  const createAudio = async () => ({
+    connect: async () => {
+      // The first two connection attempts fail: the join and the one reconnect that follows... then it works.
+      if (++connects <= 1 + RECONNECT_ATTEMPTS) throw new Error('no route')
+    },
+    disconnect: async () => {},
+  })
+  const r = rig({ createAudio })
+  await r.session.join()
+  assert.equal(r.phases.at(-1), 'failed')
+  const before = count(r.log, 'leave')
+  // Initial join fails once (retry) -> failed; a retry that now connects goes live.
+  connects = 1 + RECONNECT_ATTEMPTS
+  await r.session.join()
+  assert.equal(r.phases.at(-1), 'live')
+  assert.equal(count(r.log, 'leave') >= before, true)
+})
+
 test('leaving while a reconnect waits on /join does not reconnect the connection just closed', async () => {
   const gate = deferred()
   let first = true
