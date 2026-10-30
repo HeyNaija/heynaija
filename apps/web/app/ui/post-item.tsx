@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { deletePost, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin } from '@/app/actions'
+import { deletePost, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin, setReplyAudience } from '@/app/actions'
 import type { Post } from '@/lib/api'
 import { textParts } from '@/lib/mentions'
 import { excerpt } from '@/lib/previews'
+import { REPLY_AUDIENCES } from '@/lib/reply-audience'
 import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
 import type { FeedSource } from './feed-source'
@@ -14,6 +15,7 @@ import { LinkCard } from './link-card'
 import { LocalTime } from './local-time'
 import { Menu } from './menu'
 import { MorePosts } from './more-posts'
+import { PollCard } from './poll-card'
 import { PostImages } from './post-images'
 import { PostPermalink } from './post-permalink'
 import { PostText } from './post-text'
@@ -33,6 +35,18 @@ const VIA_ACTION: Record<NonNullable<Post['via']>['action'], string> = {
   quoted: 'quoted this',
   reposted: 'reposted',
 }
+
+const REPLY_AUDIENCE_LABEL = {
+  everyone: 'Everyone can reply',
+  following: 'People you follow can reply',
+  mentioned: 'Only people mentioned can reply',
+} satisfies Record<Post['replyAudience'], string>
+
+/** The note under a limited conversation's first post, worded for whoever reads it. */
+const replyAudienceNote = (post: Post, viewerId: string | null) =>
+  post.replyAudience === 'following' && post.authorId !== viewerId
+    ? `People @${post.authorHandle} follows can reply`
+    : REPLY_AUDIENCE_LABEL[post.replyAudience]
 
 export function PostItem({
   post,
@@ -186,13 +200,24 @@ export function PostItem({
                 {post.authorId === viewerId ? (
                   <>
                     {post.replyParentId ? null : (
-                      <form action={setProfilePin}>
-                        <input type="hidden" name="id" value={post.id} />
-                        <input type="hidden" name="on" value={post.pinnedOnProfile ? '0' : '1'} />
-                        <SubmitButton className="menu-item">
-                          {post.pinnedOnProfile ? 'Unpin from your profile' : 'Pin to your profile'}
-                        </SubmitButton>
-                      </form>
+                      <>
+                        <form action={setProfilePin}>
+                          <input type="hidden" name="id" value={post.id} />
+                          <input type="hidden" name="on" value={post.pinnedOnProfile ? '0' : '1'} />
+                          <SubmitButton className="menu-item">
+                            {post.pinnedOnProfile ? 'Unpin from your profile' : 'Pin to your profile'}
+                          </SubmitButton>
+                        </form>
+                        {REPLY_AUDIENCES.map((audience) => (
+                          <form action={setReplyAudience} key={audience}>
+                            <input type="hidden" name="id" value={post.id} />
+                            <input type="hidden" name="audience" value={audience} />
+                            <SubmitButton className="menu-item" pressed={post.replyAudience === audience}>
+                              {REPLY_AUDIENCE_LABEL[audience]}
+                            </SubmitButton>
+                          </form>
+                        ))}
+                      </>
                     )}
                     {communityPin}
                     <form action={deletePost}>
@@ -253,6 +278,7 @@ export function PostItem({
           )}
         </p>
       ) : !focused ? <PostPermalink href={href} label={openLabel}><span className="sr-only">Open conversation</span></PostPermalink> : null}
+      {post.poll ? <PollCard postId={post.id} poll={post.poll} member={viewerId !== null} /> : null}
       {post.images.length ? (
         <div className="mt-3">
           <PostImages images={post.images} />
@@ -269,9 +295,12 @@ export function PostItem({
           <LinkCard preview={post.linkPreview} />
         </div>
       ) : null}
+      {!post.replyParentId && post.replyAudience !== 'everyone' ? (
+        <p className="reply-audience-note"><BubbleIcon size={14} /> {replyAudienceNote(post, viewerId)}</p>
+      ) : null}
 
       <div className="post-actions">
-        {replyAction ?? <ReplyLink id={post.id} href={`${href}#compose`} count={post.replyCount} />}
+        {replyAction ?? <ReplyLink id={post.id} href={`${href}#compose`} count={post.replyCount} disabled={viewerId !== null && !post.viewerCanReply} />}
 
         {viewerId ? (
           <RepostButton id={post.id} reposted={post.viewerReposted} count={post.repostCount} />
