@@ -1539,6 +1539,21 @@ a.notification-row:hover {
   inset: 0;
   display: block;
 }
+.media-held {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 96px;
+  padding: 12px;
+  background: var(--panel);
+  color: var(--muted);
+  text-align: center;
+  text-decoration: none;
+}
+.media-held-label { color: var(--accent-strong); font-size: 13.5px; font-weight: 600; }
+.media-held-alt { display: -webkit-box; overflow: hidden; font-size: 12px; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .gif-toggle {
   position: absolute;
   z-index: 1;

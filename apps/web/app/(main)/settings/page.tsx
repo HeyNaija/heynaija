@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Suspense } from 'react'
+import { setDataMode } from '@/app/actions'
 import { AvatarUploader } from '@/app/ui/avatar-uploader'
 import { IdentityBadge } from '@/app/ui/identity-badge'
 import { InstallApp } from '@/app/ui/install-app'
@@ -9,6 +10,7 @@ import { ProfileForm } from '@/app/ui/profile-form'
 import { PushSwitch } from '@/app/ui/push-switch'
 import { ThemeSwitch } from '@/app/ui/theme-switch'
 import { type GovernanceStatus, getGovernanceStatus, getNotificationPreferences, getPushKey, getViewer } from '@/lib/api'
+import { currentDataMode } from '@/lib/low-data-server'
 import { AuthForm } from '@/lib/auth/server'
 
 export const metadata: Metadata = { title: 'Settings' }
@@ -43,6 +45,12 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
         <h2 id="appearance-heading" className="section-title">Appearance</h2>
         <ThemeSwitch />
         <p className="field-hint">System follows your device. This choice is saved on this device only.</p>
+      </section>
+      <section className="content-panel settings-section" aria-labelledby="data-use-heading">
+        <h2 id="data-use-heading" className="section-title">Data use</h2>
+        <Suspense fallback={<div className="skeleton h-24" />}>
+          <DataUse />
+        </Suspense>
       </section>
       <section className="content-panel settings-section" aria-labelledby="notifications-heading">
         <div>
@@ -222,4 +230,30 @@ async function ExportNotice({ searchParams }: Pick<PageProps<'/settings'>, 'sear
 
 async function SettingsForm({ searchParams }: Pick<PageProps<'/settings'>, 'searchParams'>) {
   return <AuthForm kind="settings" flowId={(await searchParams).flow} />
+}
+
+const DATA_CHOICES = [
+  { value: 'auto', label: 'Automatic' },
+  { value: 'saver', label: 'Save data' },
+  { value: 'full', label: 'Always load' },
+] as const
+
+/** Saves with a plain form post, so it works without JavaScript. */
+async function DataUse() {
+  const mode = await currentDataMode()
+  return (
+    <form action={setDataMode} className="grid gap-2">
+      <div role="group" aria-label="Data use" className="segmented">
+        {DATA_CHOICES.map(({ value, label }) => (
+          <button key={value} type="submit" name="mode" value={value} aria-pressed={mode === value}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="field-hint">
+        Save data keeps pictures, GIFs and link pictures back until you tap them, and nothing plays by itself.
+        Automatic follows your browser&apos;s data saver. This choice is saved on this device only.
+      </p>
+    </form>
+  )
 }

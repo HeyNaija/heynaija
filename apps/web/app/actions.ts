@@ -4,6 +4,7 @@ import { refresh } from 'next/cache'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { api } from '@/lib/api'
+import { DATA_COOKIE, DATA_COOKIE_MAX_AGE, dataMode } from '@/lib/low-data'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
 import { startAuthUrl } from '@/lib/auth/server'
 import { preferencesFromForm } from '@/lib/notification-preferences'
@@ -549,4 +550,16 @@ export async function acceptInvite(_prev: JoinState, formData: FormData): Promis
   // rendered without the invite cookie, which sends the visitor back to /join.
   // The form navigates the browser itself instead.
   return { next: startAuthUrl('registration') }
+}
+
+/** Saves how much media the reader wants. A plain form post, so it works without JavaScript. */
+export async function setDataMode(formData: FormData) {
+  const mode = dataMode(String(formData.get('mode') ?? ''))
+  ;(await cookies()).set(DATA_COOKIE, mode, {
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: DATA_COOKIE_MAX_AGE,
+  })
+  redirect('/settings')
 }
