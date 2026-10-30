@@ -29,6 +29,11 @@ export class FakeRoomService implements RoomService {
   readonly calls: string[] = []
   /** Make the next call of this kind fail. */
   failNext: 'createRoom' | 'setPermissions' | 'removeParticipant' | undefined
+  /**
+   * Makes the next setPermissions call wait until released before it takes effect,
+   * the way a slow request reaches the server after a later one.
+   */
+  holdNext: Promise<void> | undefined
   /** The authorization header that readWebhook accepts. */
   validAuthorization = 'valid'
 
@@ -79,6 +84,11 @@ export class FakeRoomService implements RoomService {
   async setPermissions(room: string, identity: string, permissions: RoomPermissions): Promise<void> {
     this.calls.push('setPermissions')
     this.failIf('setPermissions')
+    if (this.holdNext) {
+      const gate = this.holdNext
+      this.holdNext = undefined
+      await gate
+    }
     if (!this.connected.has(this.key(room, identity))) throw new ParticipantNotFoundError()
     this.permissions.set(this.key(room, identity), permissions)
   }
@@ -93,11 +103,12 @@ export class FakeRoomService implements RoomService {
 
   async readWebhook(rawBody: string, authorization: string | undefined): Promise<RoomEvent> {
     if (authorization !== this.validAuthorization) throw new WebhookRejectedError('bad signature')
-    const body = JSON.parse(rawBody) as { id: string; kind: RoomEvent['kind']; room?: string; identity?: string }
-    const at = new Date()
+    const body = JSON.parse(rawBody) as { id: string; kind: RoomEvent['kind']; room?: string; identity?: string; sid?: string }
+    // LiveKit stamps events in whole seconds.
+    const at = new Date(Math.floor(Date.now() / 1000) * 1000)
     if (body.kind === 'room_finished') return { id: body.id, kind: 'room_finished', room: body.room!, at }
     if (body.kind === 'participant_joined' || body.kind === 'participant_left') {
-      return { id: body.id, kind: body.kind, room: body.room!, identity: body.identity!, at }
+      return { id: body.id, kind: body.kind, room: body.room!, identity: body.identity!, sid: body.sid ?? null, at }
     }
     return { id: body.id, kind: 'other', at }
   }

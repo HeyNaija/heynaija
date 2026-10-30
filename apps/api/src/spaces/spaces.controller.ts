@@ -107,7 +107,8 @@ export class SpacesController {
   /** Once connected: reset my LiveKit permissions to my role. */
   @Post(':id/sync')
   @HttpCode(200)
-  sync(@Req() req: AuthedRequest, @Param('id') id: string) {
+  async sync(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await this.limits.hit('spaceSync', req.member.id)
     return answer(req, () => this.spaces.sync(req.member, id))
   }
 

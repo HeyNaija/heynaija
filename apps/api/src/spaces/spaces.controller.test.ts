@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { type ExecutionContext, HttpException, NotFoundException } from '@nestjs/common'
 import { GUARDS_METADATA } from '@nestjs/common/constants.js'
 import type { Env } from '../env.js'
+import { MemoryRateLimiter } from '../rate-limit.js'
 import { LiveKitWebhookController, SpacesController } from './spaces.controller.js'
 import { SpacesEnabledGuard, spacesEnabled, spacesFeatureFor } from './spaces-enabled.guard.js'
 
@@ -54,4 +55,21 @@ test('/v1/me shows the Spaces feature only to allow-listed members, and only whi
   assert.equal(spacesFeatureFor(on, { handle: 'ada' }), true)
   assert.equal(spacesFeatureFor(on, { handle: 'bayo' }), false)
   assert.equal(spacesFeatureFor(env({ CALLS_MEMBERS: ['ada'], CALLS_SPACES_ENABLED: false }), { handle: 'ada' }), false)
+})
+
+test('/sync is rate-limited', async () => {
+  let calls = 0
+  const service = { sync: async () => ({ role: 'listener', n: ++calls }) }
+  const controller = new SpacesController(service as never, new MemoryRateLimiter())
+  const req = { member: { id: 'm', handle: 'ada' } } as never
+  let refused = 0
+  for (let i = 0; i < 40; i++) {
+    try {
+      await controller.sync(req, 's')
+    } catch (err) {
+      assert.equal((err as HttpException).getStatus(), 429)
+      refused++
+    }
+  }
+  assert.ok(refused > 0 && calls < 40)
 })

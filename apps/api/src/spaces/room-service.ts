@@ -9,7 +9,7 @@ export type RoomPermissions = {
 }
 
 export type RoomEvent =
-  | { id: string; kind: 'participant_joined' | 'participant_left'; room: string; identity: string; at: Date }
+  | { id: string; kind: 'participant_joined' | 'participant_left'; room: string; identity: string; sid: string | null; at: Date }
   | { id: string; kind: 'room_finished'; room: string; at: Date }
   | { id: string; kind: 'other'; at: Date }
 

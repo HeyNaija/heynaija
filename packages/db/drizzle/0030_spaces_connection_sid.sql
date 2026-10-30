@@ -1,0 +1,1 @@
+ALTER TABLE "space_members" ADD COLUMN "connection_sid" text;

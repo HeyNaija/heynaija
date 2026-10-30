@@ -338,14 +338,87 @@ test('webhooks: a bad signature is refused, and the events keep the database in 
   await service.handleWebhook(body({ id: 'o1', kind: 'other' }), rooms.validAuthorization)
 })
 
-test('a left event from an old connection does not mark someone who has since rejoined as gone', async () => {
+const hook = (event: object) => JSON.stringify(event)
+const send = (event: object) => service.handleWebhook(hook(event), rooms.validAuthorization)
+
+test('a leave in the same second as the join still counts (LiveKit stamps whole seconds)', async () => {
   await enter('bayo', space)
-  const staleLeft = { id: 'old', kind: 'participant_left', room: space, identity: id.bayo }
-  await new Promise((r) => setTimeout(r, 20))
-  await enter('bayo', space) // joined again after the old connection ended
-  // The event time is taken as "now" by the fake, so make it older than the rejoin.
-  const real = rooms.readWebhook.bind(rooms)
-  rooms.readWebhook = async (b, a) => ({ ...(await real(b, a)), at: new Date(Date.now() - 10_000) })
-  await service.handleWebhook(JSON.stringify(staleLeft), rooms.validAuthorization)
+  await send({ id: 'l1', kind: 'participant_left', room: space, identity: id.bayo, sid: 'PA_1' })
+  assert.ok((await roleOf(space, 'bayo'))!.leftAt)
+  assert.equal((await service.get(as('ada'), space)).listenerCount, 0)
+})
+
+test('a left event from the connection a reload replaced does not mark the member as gone', async () => {
+  await enter('bayo', space)
+  await send({ id: 'j1', kind: 'participant_joined', room: space, identity: id.bayo, sid: 'PA_old' })
+  await enter('bayo', space) // reload: /join again while the old connection is still open
+  await send({ id: 'j2', kind: 'participant_joined', room: space, identity: id.bayo, sid: 'PA_new' })
+  await send({ id: 'l1', kind: 'participant_left', room: space, identity: id.bayo, sid: 'PA_old' })
+  const row = (await roleOf(space, 'bayo'))!
+  assert.equal(row.leftAt, null)
+  assert.equal((await service.get(as('ada'), space)).listenerCount, 1)
+  await service.requestToSpeak(as('bayo'), space)
+})
+
+test('the old connection leave arriving before the new join is put right by the join', async () => {
+  await enter('bayo', space)
+  await send({ id: 'j1', kind: 'participant_joined', room: space, identity: id.bayo, sid: 'PA_old' })
+  await enter('bayo', space)
+  await send({ id: 'l1', kind: 'participant_left', room: space, identity: id.bayo, sid: 'PA_old' })
+  assert.ok((await roleOf(space, 'bayo'))!.leftAt)
+  await send({ id: 'j2', kind: 'participant_joined', room: space, identity: id.bayo, sid: 'PA_new' })
   assert.equal((await roleOf(space, 'bayo'))!.leftAt, null)
+  assert.equal((await service.get(as('ada'), space)).listenerCount, 1)
+})
+
+test('syncing from a connected client marks them present, in case the join webhook was lost', async () => {
+  await enter('bayo', space)
+  await send({ id: 'l1', kind: 'participant_left', room: space, identity: id.bayo, sid: 'PA_1' })
+  await service.sync(as('bayo'), space)
+  assert.equal((await roleOf(space, 'bayo'))!.leftAt, null)
+})
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+test('a sync that read "speaker" cannot give the microphone back after a demotion', async () => {
+  await enter('bayo', space)
+  await service.setSpeaker(as('ada'), space, id.bayo)
+  let release!: () => void
+  rooms.holdNext = new Promise<void>((r) => (release = r))
+  const slow = service.sync(as('bayo'), space) // read the role, its LiveKit call is still on the way
+  await pause(50)
+  const demotion = service.demote(as('ada'), space, id.bayo)
+  await pause(50)
+  release()
+  await Promise.all([slow, demotion])
+  assert.equal((await roleOf(space, 'bayo'))!.role, 'listener')
+  assert.deepEqual(rooms.permissionsOf(space, id.bayo), { canPublish: false, hidden: true })
+})
+
+test('a promotion whose LiveKit call is slow cannot outlive a demotion that follows', async () => {
+  await enter('bayo', space)
+  let release!: () => void
+  rooms.holdNext = new Promise<void>((r) => (release = r))
+  const promotion = service.setSpeaker(as('ada'), space, id.bayo)
+  await pause(50)
+  const demotion = service.demote(as('ada'), space, id.bayo)
+  await pause(50)
+  release()
+  await Promise.all([promotion, demotion])
+  assert.equal((await roleOf(space, 'bayo'))!.role, 'listener')
+  assert.deepEqual(rooms.permissionsOf(space, id.bayo), { canPublish: false, hidden: true })
+})
+
+test('a webhook join that read "speaker" cannot give the microphone back after a mute', async () => {
+  await enter('bayo', space)
+  await service.setSpeaker(as('ada'), space, id.bayo)
+  let release!: () => void
+  rooms.holdNext = new Promise<void>((r) => (release = r))
+  const slow = send({ id: 'j1', kind: 'participant_joined', room: space, identity: id.bayo, sid: 'PA_1' })
+  await pause(50)
+  const mute = service.mute(as('ada'), space, id.bayo)
+  await pause(50)
+  release()
+  await Promise.all([slow, mute])
+  assert.deepEqual(rooms.permissionsOf(space, id.bayo), { canPublish: false, hidden: true })
 })

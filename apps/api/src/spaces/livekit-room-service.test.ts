@@ -40,7 +40,7 @@ const signed = async (body: string, key: string, secret: string) => {
 test('webhooks are read only when signed with the webhook key', async () => {
   const body = JSON.stringify({ event: 'participant_joined', id: 'EV_1', createdAt: '1790000000', room: { name: 'room-1' }, participant: { identity: 'member-1' } })
   const event = await service.readWebhook(body, await signed(body, keys.webhookKey, keys.webhookSecret))
-  assert.deepEqual({ ...event, at: undefined }, { id: 'EV_1', kind: 'participant_joined', room: 'room-1', identity: 'member-1', at: undefined })
+  assert.deepEqual({ ...event, at: undefined }, { id: 'EV_1', kind: 'participant_joined', room: 'room-1', identity: 'member-1', sid: null, at: undefined })
   assert.equal(event.at.getTime(), 1_790_000_000_000)
 
   await assert.rejects(service.readWebhook(body, undefined), WebhookRejectedError)

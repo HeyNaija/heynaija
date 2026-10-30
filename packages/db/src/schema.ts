@@ -973,6 +973,9 @@ export const spaceMembers = pgTable(
     // In the room now: set on join, cleared on leave. Listener counts come from it.
     joinedAt: ts('joined_at'),
     leftAt: ts('left_at'),
+    // LiveKit's id for the connection last reported joined. A reload makes a new
+    // connection under the same identity; a leave for an older one must not count.
+    connectionSid: text('connection_sid'),
     // An open request to speak (one per member); oldest first is the queue.
     speakRequestedAt: ts('speak_requested_at'),
     // Who last changed the role, and when.

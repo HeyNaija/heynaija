@@ -223,7 +223,7 @@ export class SpacesService {
       if (me) {
         await tx
           .update(spaceMembers)
-          .set({ joinedAt: now, leftAt: null })
+          .set({ joinedAt: now, leftAt: null, connectionSid: null })
           .where(and(eq(spaceMembers.spaceId, space.id), eq(spaceMembers.memberId, viewer.id)))
       } else {
         await tx.insert(spaceMembers).values({ spaceId: space.id, memberId: viewer.id, role: 'listener', joinedAt: now })
@@ -236,7 +236,7 @@ export class SpacesService {
     const token = await this.rooms.listenerToken(result.space.id, viewer.id, result.who.displayName ?? result.who.handle)
     // A member who is still connected from an earlier session is reset to the
     // role in the database now; a new connection is reset by the webhook or `sync`.
-    await this.applyRole(result.space.id, viewer.id, result.role, false)
+    await this.applyRole(result.space.id, viewer.id, false)
     const { space, me } = await this.open(this.db, viewer, spaceId)
     return { url: this.config.livekitUrl, token, role: result.role, space: await this.view(this.db, space, me) }
   }
@@ -257,8 +257,12 @@ export class SpacesService {
     const { space, me } = await this.open(this.db, viewer, spaceId)
     if (space.status !== 'live') throw new SpaceError('space_ended')
     if (!me) throw new SpaceError('not_in_space')
-    await this.applyRole(space.id, viewer.id, me.role, true)
-    return { role: me.role }
+    // A connected client is present, whatever a lost or reordered webhook said.
+    await this.db
+      .update(spaceMembers)
+      .set({ joinedAt: sql`coalesce(${spaceMembers.joinedAt}, now())`, leftAt: null })
+      .where(and(eq(spaceMembers.spaceId, space.id), eq(spaceMembers.memberId, viewer.id), isNull(spaceMembers.removedAt)))
+    return { role: await this.applyRole(space.id, viewer.id, true) }
   }
 
   // ---- asking to speak ------------------------------------------------------
@@ -382,7 +386,9 @@ export class SpacesService {
     }
 
     if (event.kind === 'participant_left') {
-      // An event older than the member's latest join belongs to a connection they have since replaced.
+      // A reload makes a second connection under the same identity and LiveKit drops
+      // the first. Its leave names a different sid than the one last reported
+      // joined, and must not mark the member gone. (verify against a real server)
       await this.db
         .update(spaceMembers)
         .set({ leftAt: event.at, speakRequestedAt: null })
@@ -391,7 +397,9 @@ export class SpacesService {
             eq(spaceMembers.spaceId, space.id),
             eq(spaceMembers.memberId, event.identity),
             isNull(spaceMembers.leftAt),
-            sql`${spaceMembers.joinedAt} <= ${event.at}`,
+            event.sid
+              ? or(isNull(spaceMembers.connectionSid), eq(spaceMembers.connectionSid, event.sid))
+              : undefined,
           ),
         )
       return
@@ -404,11 +412,11 @@ export class SpacesService {
       await this.rooms.removeParticipant(space.id, event.identity)
       return
     }
-    const [row] = await this.db
-      .select({ role: spaceMembers.role })
-      .from(spaceMembers)
-      .where(and(eq(spaceMembers.spaceId, space.id), eq(spaceMembers.memberId, event.identity)))
-    await this.applyRole(space.id, event.identity, row!.role, false)
+    await this.db
+      .update(spaceMembers)
+      .set({ joinedAt: sql`coalesce(${spaceMembers.joinedAt}, now())`, leftAt: null, connectionSid: event.sid })
+      .where(and(eq(spaceMembers.spaceId, space.id), eq(spaceMembers.memberId, event.identity), isNull(spaceMembers.removedAt)))
+    await this.applyRole(space.id, event.identity, false)
   }
 
   // ---- internals ----------------------------------------------------------------
@@ -544,9 +552,9 @@ export class SpacesService {
       await tx
         .update(spaceMembers)
         .set({ role: to, speakRequestedAt: null, roleChangedBy: actor.id, roleChangedAt: new Date() })
-        .where(and(eq(spaceMembers.spaceId, space.id), eq(spaceMembers.memberId, targetId)))
+        .where(and(eq(spaceMembers.spaceId, space.id), eq(spaceMembers.memberId, targetId), isNull(spaceMembers.removedAt)))
     })
-    await this.applyRole(spaceId, targetId, to, false)
+    await this.applyRole(spaceId, targetId, false)
   }
 
   private async revoke(actor: { id: string; handle: string }, spaceId: string, targetId: string): Promise<void> {
@@ -565,7 +573,7 @@ export class SpacesService {
       .set({ role: 'listener', speakRequestedAt: null, roleChangedBy: actor.id, roleChangedAt: new Date() })
       .where(and(eq(spaceMembers.spaceId, space.id), eq(spaceMembers.memberId, targetId)))
     try {
-      await this.rooms.setPermissions(space.id, targetId, permissionsFor('listener'))
+      await this.pushRole(space.id, targetId)
     } catch (err) {
       if (err instanceof ParticipantNotFoundError) return
       // If the permission cannot be taken back, the connection is: they rejoin as a listener.
@@ -580,20 +588,42 @@ export class SpacesService {
   }
 
   /**
-   * Sets a connected participant's LiveKit permissions to what `role` allows. A
-   * participant who is not connected yet is fine (their token is listener-only
-   * and the webhook or `sync` follows). `strict` makes other failures an error.
+   * Sets a participant's LiveKit permissions to what the role in the database
+   * allows, as it is at this moment. Every write of a role (join, promote, demote,
+   * mute, remove) and every reset (sync, webhook) goes through here, one at a time
+   * per member: the role is read under a lock held across the LiveKit call, so a
+   * slow call that read "speaker" can never land after a later one that read
+   * "listener". Throws ParticipantNotFoundError if they are not connected.
    */
-  private async applyRole(spaceId: string, memberId: string, role: SpaceRole, strict: boolean): Promise<void> {
-    try {
+  private async pushRole(spaceId: string, memberId: string): Promise<SpaceRole> {
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${spaceId}/${memberId}`}, 0))`)
+      const [row] = await tx
+        .select({ role: spaceMembers.role, removedAt: spaceMembers.removedAt })
+        .from(spaceMembers)
+        .where(and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.memberId, memberId)))
+      const role: SpaceRole = !row || row.removedAt ? 'listener' : row.role
       await this.rooms.setPermissions(spaceId, memberId, permissionsFor(role))
+      return role
+    })
+  }
+
+  /**
+   * `pushRole`, where a participant who is not connected yet is fine (their token
+   * is listener-only and the webhook or `sync` follows). `strict` makes other
+   * failures an error.
+   */
+  private async applyRole(spaceId: string, memberId: string, strict: boolean): Promise<SpaceRole> {
+    try {
+      return await this.pushRole(spaceId, memberId)
     } catch (err) {
       if (err instanceof ParticipantNotFoundError) {
         if (strict) throw new SpaceError('not_in_space')
-        return
+        return 'listener'
       }
       this.logger.warn(`could not set permissions for ${memberId} in Space ${spaceId}: ${String(err)}`)
       if (strict) throw new SpaceError('livekit_unavailable')
+      return 'listener'
     }
   }
 

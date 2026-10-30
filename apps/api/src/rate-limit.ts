@@ -38,6 +38,7 @@ export const LIMITS = {
   spaceJoin: [{ max: 30, windowMs: MINUTE }],
   spaceJoinBurst: [{ max: 120, windowMs: MINUTE }],
   spaceRequest: [{ max: 10, windowMs: MINUTE }],
+  spaceSync: [{ max: 20, windowMs: MINUTE }],
 } satisfies Record<string, { max: number; windowMs: number }[]>
 
 export type LimitKind = keyof typeof LIMITS
