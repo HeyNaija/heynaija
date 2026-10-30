@@ -1367,10 +1367,9 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-context[open] summary > svg { transform: rotate(180deg); }
 .thread-context .thread-chain { margin-block: 10px 16px; }
 .thread-context .thread-chain > li:last-child::before { bottom: -16px; }
-/* "Replying to" sits in the text column of the focused post's header, so the line passes it. */
+/* "Replying to" sits in the text column above the focused post, so the line passes it and ends at the top edge of the card, never inside it. */
 .thread-view.has-chain .thread-recipient { position: relative; margin: 0; padding-left: calc(var(--lineage-x) + 33px); }
 .thread-view.has-chain .thread-recipient::before { content: ''; position: absolute; z-index: 1; top: 0; bottom: -14px; left: var(--lineage-x); width: 2px; background: var(--line-strong); pointer-events: none; }
-.thread-view.has-chain .thread-branch.is-root > .thread-row > .post-card.is-focused::before { content: ''; position: absolute; z-index: 1; top: -1px; height: calc(var(--focus-top) - 3px); left: calc(var(--lineage-x) - 1px); width: 2px; background: var(--line-strong); pointer-events: none; }
 .thread-replies-heading { font-size: 13px; font-weight: 600; }
 .thread-replies-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--touch-target); margin-bottom: 4px; }
 .thread-replies-head > .dropdown-menu > summary { min-width: var(--touch-target); min-height: var(--touch-target); }
