@@ -219,6 +219,8 @@ test("the author's own replies come first, then everyone else's newest first, an
     await options.click()
     await expect(page.getByText(`@${handle}'s own replies come first, then everyone else's, newest first.`)).toBeVisible()
     await expect(page.locator(`#post-${replies[4]}`).getByText('Author', { exact: true })).toBeVisible()
+    // The post in focus carries it too.
+    await expect(page.locator(`#post-${root!.id}`).getByText('Author', { exact: true })).toBeVisible()
     await expect(page.locator(`#post-${replies[3]}`).getByText('Author', { exact: true })).toHaveCount(0)
     await expect(page.getByRole('link', { name: 'Newest first', exact: true })).toHaveAttribute('aria-current', 'true')
     expect(await order()).toEqual([replies[4], replies[2], replies[3], replies[1]])
@@ -296,6 +298,254 @@ test('replies open in place five levels deep; below that a post continues as its
     await expect(page.locator(`#post-${ids[6]}`)).toBeVisible()
   } finally {
     await db.end()
+    await context.close()
+  }
+})
+
+/** A post and a chain of replies under it, one level each, all by `handle`. */
+async function seedChain(handle: string, levels: number) {
+  const db = pool()
+  try {
+    const { rows: [member] } = await db.query<{ id: string }>('select id from members where handle = $1', [handle])
+    const ids: string[] = []
+    for (let level = 0; level <= levels; level++) {
+      const { rows: [post] } = await db.query<{ id: string }>(
+        `insert into posts (author_id, text, reply_parent_id, root_id, created_at)
+         values ($1, $2, $3, $4, now() - interval '1 hour' + make_interval(secs => $5)) returning id`,
+        [member!.id, `Chain level ${level} post`, ids[level - 1] ?? null, level ? ids[0] : null, level],
+      )
+      ids.push(post!.id)
+    }
+    return ids
+  } finally {
+    await db.end()
+  }
+}
+
+test('the conversation above a reply is open and joined by a line, and the reply bar sits under the focused post @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'lineage')
+  try {
+    const ids = await seedChain(handle, 4)
+    await page.goto(`/p/${ids[3]}`)
+    // Older posts are on the page, not behind a disclosure.
+    await expect(page.locator('details.thread-context')).toHaveCount(0)
+    for (const id of [ids[0], ids[1], ids[2]]) await expect(page.locator(`#post-${id}`)).toBeVisible()
+    await expect(page.getByRole('list', { name: 'Earlier in this conversation' }).locator('> li')).toHaveCount(3)
+    // The author is named on every post of theirs: ancestors, the focused post and its reply.
+    for (const id of [ids[0], ids[1], ids[2], ids[3], ids[4]]) {
+      await expect(page.locator(`#post-${id}`).getByText('Author', { exact: true })).toBeVisible()
+    }
+    // Each earlier post is a card, with its text the card's full width. The line is decoration
+    // (a pseudo-element, nothing to read) and stays in the gaps: on the avatar's axis, from
+    // the bottom edge of one card to the top edge of the next, and from the parent past
+    // "Replying to" to the top edge of the post in focus, never on a card.
+    const placed = await page.evaluate(({ first, second, parent, focus }) => {
+      const card = (id: string) => document.getElementById(`post-${id}`)!
+      const line = (host: Element, pseudo: string) => {
+        const box = host.getBoundingClientRect()
+        const style = getComputedStyle(host, pseudo)
+        const top = box.top + parseFloat(style.top)
+        return { content: style.content, width: parseFloat(style.width), x: box.left + parseFloat(style.left) + parseFloat(style.width) / 2, top, bottom: style.height === 'auto' ? box.bottom - parseFloat(style.bottom) : top + parseFloat(style.height) }
+      }
+      const avatar = card(first).querySelector('.post-header a')!.getBoundingClientRect()
+      const recipient = document.querySelector('.thread-recipient')!
+      return {
+        line: line(card(first).closest('li')!, '::after'),
+        avatarCentre: avatar.left + avatar.width / 2,
+        avatarLeft: avatar.left,
+        border: parseFloat(getComputedStyle(card(first)).borderTopWidth),
+        textLeft: card(first).querySelector('.post-body')!.getBoundingClientRect().left,
+        cardBottom: card(first).getBoundingClientRect().bottom,
+        nextTop: card(second).getBoundingClientRect().top,
+        parentLine: line(card(parent).closest('li')!, '::after'),
+        recipientTop: recipient.getBoundingClientRect().top,
+        recipientLine: line(recipient, '::before'),
+        focusTop: card(focus).getBoundingClientRect().top,
+      }
+    }, { first: ids[0]!, second: ids[1]!, parent: ids[2]!, focus: ids[3]! })
+    expect(placed.line.content).not.toBe('none')
+    expect(placed.line.width).toBe(2)
+    expect(placed.border).toBe(1)
+    expect(Math.abs(placed.textLeft - placed.avatarLeft)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.line.x - placed.avatarCentre)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.line.top - placed.cardBottom)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.line.bottom - placed.nextTop)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.parentLine.bottom - placed.recipientTop)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.recipientLine.x - placed.avatarCentre)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.recipientLine.bottom - placed.focusTop)).toBeLessThanOrEqual(1)
+
+    // Chain, focused post, reply bar, replies: in that order down the page.
+    const top = (selector: string) => page.locator(selector).first().evaluate((node) => node.getBoundingClientRect().top)
+    const order = [await top(`#post-${ids[2]}`), await top(`#post-${ids[3]}`), await top('form#compose'), await top(`#post-${ids[4]}`)]
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+
+    // The bar is one line, with its Reply button in view and waiting for words.
+    const reply = page.locator('form#compose').getByRole('button', { name: 'Reply', exact: true })
+    await expect(page.locator('form#compose').getByRole('textbox', { name: 'Your reply' })).toHaveAttribute('placeholder', 'Post your reply')
+    await expect(reply).toBeVisible()
+    await expect(reply).toBeDisabled()
+    await expect(page.locator('form#compose .composer-privacy')).toBeHidden()
+    // At rest the button sits inside the field, centred on it.
+    const middle = (node: Element) => { const box = node.getBoundingClientRect(); return box.top + box.height / 2 }
+    const [fieldMiddle, buttonMiddle] = await Promise.all([page.locator('form#compose textarea').evaluate(middle), reply.evaluate(middle)])
+    expect(Math.abs(fieldMiddle - buttonMiddle)).toBeLessThanOrEqual(1)
+    await (await replyBox(page, ids[3])).fill('Typed into the bar')
+    await expect(reply).toBeEnabled()
+
+    // No sideways scroll, even at the narrowest width.
+    await page.setViewportSize({ width: 320, height: 740 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  } finally {
+    await context.close()
+  }
+})
+
+test('on a phone the reply bar stays above the bottom tabs while the replies scroll @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'sticky')
+  try {
+    const fixture = await seedThread(handle)
+    await page.setViewportSize({ width: 390, height: 740 })
+    await page.goto(`/p/${fixture.root}`)
+    const bar = page.locator('form#compose')
+    // In view at the top of the page, half way down and at the very end.
+    await expect(bar).toBeInViewport()
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2))
+    await expect(bar).toBeInViewport()
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    await expect(bar).toBeInViewport()
+    const [form, nav] = await Promise.all([
+      bar.evaluate((node) => node.getBoundingClientRect().bottom),
+      page.locator('.square-bottom-nav').evaluate((node) => node.getBoundingClientRect().top),
+    ])
+    expect(form).toBeLessThanOrEqual(nav + 1)
+    // At the end of the page the last reply is not left under the bar.
+    const bottoms = await page.evaluate(() => {
+      const articles = document.querySelectorAll('.thread-branch.is-root > .thread-children article')
+      return {
+        reply: articles[articles.length - 1]!.getBoundingClientRect().bottom,
+        bar: document.querySelector('.thread-editor-host')!.getBoundingClientRect().top,
+      }
+    })
+    expect(bottoms.reply).toBeLessThanOrEqual(bottoms.bar + 1)
+  } finally {
+    await context.close()
+  }
+})
+
+test('a signed-out visitor is asked to sign in to reply, right under the post, and on a phone above the tabs @mobile', async ({ browser }) => {
+  const author = await newMember(browser, 'ask')
+  const ids = await seedChain(author.handle, 2)
+  await author.context.close()
+  const visitor = await browser.newContext({ baseURL: test.info().project.use.baseURL })
+  const page = await visitor.newPage()
+  try {
+    await page.goto(`/p/${ids[1]}`)
+    const prompt = page.getByRole('link', { name: 'Sign in to reply', exact: true })
+    await expect(prompt).toBeVisible()
+    await expect(prompt).toHaveAttribute('href', '/login')
+    await expect(page.locator('form#compose')).toHaveCount(0)
+    const top = (selector: string) => page.locator(selector).first().evaluate((node) => node.getBoundingClientRect().top)
+    const focused = await top(`#post-${ids[1]}`)
+    const asked = await prompt.evaluate((node) => node.getBoundingClientRect().top)
+    const reply = await top(`#post-${ids[2]}`)
+    // On a desktop it is the first thing under the post; on a phone it is pinned above the tabs,
+    // so wherever the page is scrolled to it is in view and clear of them.
+    const nav = page.locator('.square-bottom-nav')
+    if (await nav.isVisible()) {
+      await expect(prompt).toBeInViewport()
+      expect(await prompt.evaluate((node) => node.getBoundingClientRect().bottom)).toBeLessThanOrEqual(await nav.evaluate((node) => node.getBoundingClientRect().top) + 1)
+    } else {
+      expect(focused).toBeLessThan(asked)
+      expect(asked).toBeLessThan(reply)
+    }
+  } finally {
+    await visitor.close()
+  }
+})
+
+test('an answer is joined to its parent by a line in the gutter that never crosses a card @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'branch')
+  try {
+    const fixture = await seedThread(handle)
+    await page.goto(`/p/${fixture.root}?replies=oldest`)
+    const branch = page.locator(`.thread-branch[data-thread-id="${fixture.first}"]`)
+    await branch.getByRole('link', { name: /^View.*replies/i }).first().click()
+    await expect(page.locator(`#post-${fixture.nested[1]}`)).toBeVisible()
+    const placed = await page.evaluate(([parent, last]) => {
+      const card = document.getElementById(`post-${parent}`)!
+      const avatar = card.querySelector('.post-header a')!.getBoundingClientRect()
+      // The line is the answers' container's left border; the elbow is the answer row's ::before.
+      const answers = document.getElementById(`replies-${parent}`)!
+      const border = parseFloat(getComputedStyle(answers).borderLeftWidth)
+      const row = document.getElementById(`post-${last}`)!.closest('.thread-row')!
+      const elbow = getComputedStyle(row, '::before')
+      const rowBox = row.getBoundingClientRect()
+      const lastCard = document.getElementById(`post-${last}`)!.getBoundingClientRect()
+      const lastAvatar = document.querySelector(`#post-${last} .post-header a`)!.getBoundingClientRect()
+      return {
+        border,
+        line: answers.getBoundingClientRect().left + border / 2,
+        lineTop: answers.getBoundingClientRect().top,
+        cardBottom: card.getBoundingClientRect().bottom,
+        avatarCentre: avatar.left + avatar.width / 2,
+        avatarLeft: avatar.left,
+        textLeft: card.querySelector('.post-body')!.getBoundingClientRect().left,
+        elbowLeft: rowBox.left + parseFloat(elbow.left),
+        elbowRight: rowBox.left + parseFloat(elbow.left) + parseFloat(elbow.width),
+        elbowY: rowBox.top + parseFloat(elbow.top) + parseFloat(elbow.borderTopWidth) / 2,
+        lastCardLeft: lastCard.left,
+        lastAvatarY: lastAvatar.top + lastAvatar.height / 2,
+        phone: window.innerWidth < 1024,
+      }
+    }, [fixture.first, fixture.nested[1]!])
+    expect(placed.border).toBe(2)
+    // The line starts at or below the parent card's bottom edge, never inside it.
+    expect(placed.lineTop).toBeGreaterThanOrEqual(placed.cardBottom - 0.5)
+    // The elbow leaves the line (it starts on it) and stops at the answer card's edge, level
+    // with its avatar.
+    expect(placed.elbowLeft).toBeGreaterThanOrEqual(placed.line - placed.border / 2 - 0.5)
+    expect(placed.elbowLeft).toBeLessThanOrEqual(placed.line + placed.border / 2)
+    expect(Math.abs(placed.elbowRight - placed.lastCardLeft)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.elbowY - placed.lastAvatarY)).toBeLessThanOrEqual(1)
+    // Text uses the card's full width, starting under the avatar.
+    expect(Math.abs(placed.textLeft - placed.avatarLeft)).toBeLessThanOrEqual(1)
+    if (placed.phone) {
+      // A 12px indent cannot reach the avatar: the line stays in the gutter, left of it.
+      expect(placed.line).toBeLessThan(placed.avatarLeft)
+    } else {
+      expect(Math.abs(placed.line - placed.avatarCentre)).toBeLessThanOrEqual(1)
+    }
+  } finally {
+    await context.close()
+  }
+})
+
+test('on a phone, answering a reply keeps the fixed bar and names who is answered @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'barreply')
+  try {
+    const fixture = await seedThread(handle)
+    await page.setViewportSize({ width: 390, height: 740 })
+    await page.goto(`/p/${fixture.root}?replies=oldest`)
+    const bar = page.locator('.thread-branch.is-root > .thread-editor-host')
+    await expect(page.locator('form#compose .composer-recipient')).toBeHidden()
+    await page.locator(`#post-${fixture.first}`).getByRole('link', { name: /^Reply \(/ }).click()
+    await expect(page.locator('form#compose input[name="replyTo"]')).toHaveValue(fixture.first)
+    // The editor stays in the fixed bar, which says whom it answers; nothing opens inline.
+    await expect(bar.locator('form#compose')).toHaveCount(1)
+    await expect(bar.locator('.composer-recipient')).toHaveText(`Replying to @${handle}`)
+    await expect(page.locator(`#thread-editor-${fixture.first} form`)).toHaveCount(0)
+    await expect(bar).toBeInViewport()
+    expect(await bar.evaluate((node) => getComputedStyle(node).position)).toBe('fixed')
+    const answer = `Answer from the bar ${handle}`
+    await (await replyBox(page, fixture.first)).fill(answer)
+    await page.getByRole('button', { name: 'Reply', exact: true }).click()
+    const db = pool()
+    try {
+      await expect.poll(async () => (await db.query('select reply_parent_id from posts where text = $1', [answer])).rows).toEqual([{ reply_parent_id: fixture.first }])
+    } finally {
+      await db.end()
+    }
+  } finally {
     await context.close()
   }
 })

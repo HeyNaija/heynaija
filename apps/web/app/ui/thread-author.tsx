@@ -9,7 +9,10 @@ export function ThreadAuthorProvider({ authorId, children }: { authorId: string 
   return <ConversationAuthor.Provider value={authorId}>{children}</ConversationAuthor.Provider>
 }
 
-export function ThreadAuthorLabel({ authorId }: { authorId: string }) {
+/** `separator` puts a dot before it, for a line of details such as the focused post's. */
+export function ThreadAuthorLabel({ authorId, separator = false }: { authorId: string; separator?: boolean }) {
   const originalAuthor = useContext(ConversationAuthor)
-  return originalAuthor === authorId ? <span className="thread-author-label">Author</span> : null
+  if (originalAuthor !== authorId) return null
+  const label = <span className="thread-author-label">Author</span>
+  return separator ? <><span aria-hidden="true">·</span>{label}</> : label
 }

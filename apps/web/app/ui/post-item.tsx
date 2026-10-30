@@ -5,6 +5,7 @@ import type { Post } from '@/lib/api'
 import { textParts } from '@/lib/mentions'
 import { excerpt } from '@/lib/previews'
 import { REPLY_AUDIENCES } from '@/lib/reply-audience'
+import { replyContextView } from '@/lib/reply-context'
 import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
 import type { FeedSource } from './feed-source'
@@ -153,9 +154,39 @@ export function PostItem({
   const namesOther = post.reason !== null && post.reason !== 'community'
   const showChip = post.community && !hideCommunity && !compact && !(why && !namesOther && !reposter)
 
+  // In a list, a reply says whom it answers and shows the start of that post, joined to
+  // it by a line; a thread already shows the conversation.
+  const context = inThread || focused ? ({ kind: 'none' } as const) : replyContextView(post)
+  const replyPreview =
+    context.kind === 'parent' ? (
+      <Link prefetch={false} href={context.href} tabIndex={-1} className="reply-parent">
+        <span className="reply-parent-avatar"><Avatar handle={context.handle} src={context.avatar} size={24} /></span>
+        <span className="reply-parent-text">
+          <span className="reply-parent-who">
+            <span className="truncate font-semibold text-ink">{context.name ?? `@${context.handle}`}</span>
+            {context.name ? <span className="truncate">@{context.handle}</span> : null}
+          </span>
+          <span className="reply-parent-excerpt">{context.excerpt || 'Post with pictures'}</span>
+        </span>
+      </Link>
+    ) : null
+  const replyLabel =
+    context.kind === 'parent' ? (
+      <p className="reply-to">
+        Replying to{' '}
+        <Link prefetch={false} href={context.href} className="font-semibold text-accent-strong hover:underline">@{context.handle}</Link>
+      </p>
+    ) : context.kind === 'gone' ? (
+      <p className="reply-to">{context.label}</p>
+    ) : context.kind === 'link' ? (
+      <Link prefetch={false} href={context.href} className="reply-to block hover:underline">{context.label}</Link>
+    ) : null
+
   return (
     <article id={`post-${post.id}`} className={`post-card ${focused ? 'is-focused' : 'is-clickable'}${compact ? ' is-reply' : ''}`}>
       {why ? <p className="post-context">{why}</p> : null}
+
+      {replyPreview}
 
       <div className="post-header flex gap-3">
         <Link prefetch={false} href={`/u/${post.authorHandle}`} tabIndex={-1} aria-hidden="true" className="h-fit rounded-full">
@@ -177,6 +208,7 @@ export function PostItem({
                 <Link prefetch={false} href={href} className="shrink-0 hover:underline">
                   {focused ? <LocalTime at={post.createdAt} as="posted" title /> : <LocalTime at={post.createdAt} now={now} title />}
                 </Link>
+                {focused && inThread ? <ThreadAuthorLabel authorId={post.authorId} separator /> : null}
               </p>
               {showChip ? (
                 <Link prefetch={false} href={`/c/${post.community!.slug}`} className="chip mt-1.5">
@@ -259,11 +291,7 @@ export function PostItem({
         </div>
       </div>
 
-      {post.replyParentId && !inThread && !focused ? (
-        <Link prefetch={false} href={`/p/${post.replyParentId}`} className="mt-1 block text-xs text-muted hover:underline">
-          Replying to a post
-        </Link>
-      ) : null}
+      {replyLabel}
 
       {post.text ? (
         <p className={`mt-3 whitespace-pre-wrap break-words ${focused ? 'text-base leading-relaxed' : 'post-body'}`}>
