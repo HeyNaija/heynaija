@@ -83,10 +83,10 @@ jobs:
     # empty input and false both count as 0 in the comparison. So the event is named.
     if: (github.event_name == 'pull_request' || inputs.e2e) && !(github.event_name == 'pull_request' && github.head_ref == 'staging' && github.base_ref == 'main')
     runs-on: ubuntu-latest
-    # Setting up the stack and the build take several minutes, and the suite (about 150
-    # tests, every one signing up its own members) runs on one worker, so it sat close
-    # to the old 30. This is there to stop a hang, not to hold the suite to a budget.
-    timeout-minutes: 45
+    # Setting up the stack and the build take 3 to 4 minutes, and the suite (about 180
+    # tests, every one signing up its own members) 9 to 10 on three workers; on one it
+    # took 15 to 17. This is there to stop a hang, not to hold the suite to a budget.
+    timeout-minutes: 30
     env:
       # Kratos runs in a container and calls the API's invite webhooks through
       # host.docker.internal, which on Linux only reaches ports bound beyond loopback.
@@ -117,6 +117,9 @@ jobs:
           docker compose --env-file .env -f infra/compose/docker-compose.dev.yml logs
           exit 1
 
+      # Neither Next's build cache nor Playwright's browsers are cached: measured on
+      # this job, the two saved 10 seconds at most, and a Turbopack cache restored
+      # from another commit could build something other than what the images ship.
       - run: pnpm build
       - run: pnpm db:migrate
       - run: pnpm db:seed
