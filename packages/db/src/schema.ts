@@ -916,3 +916,74 @@ export const problemDetails = pgTable('problem_details', {
   browser: text('browser'),
   appVersion: text('app_version'),
 })
+
+export const SPACE_STATUSES = ['scheduled', 'live', 'ended'] as const
+export const SPACE_ROLES = ['host', 'cohost', 'speaker', 'listener'] as const
+
+// A live audio room (docs/adr/0017, section 4a). One LiveKit room per Space; the
+// room's name is this id. A Space with a community is community-only, one
+// without is open to any eligible member. Ended Spaces keep their row, no audio.
+export const spaces = pgTable(
+  'spaces',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    hostId: uuid('host_id')
+      .notNull()
+      .references(() => members.id),
+    communityId: uuid('community_id').references(() => communities.id),
+    title: text('title').notNull(),
+    status: text('status', { enum: SPACE_STATUSES }).notNull().default('live'),
+    scheduledFor: ts('scheduled_for'),
+    startedAt: ts('started_at'),
+    endedAt: ts('ended_at'),
+    peakListeners: integer('peak_listeners').notNull().default(0),
+    // Host controls: no new listeners, a lower listener cap for this Space, and
+    // whether listeners may ask to speak.
+    locked: boolean('locked').notNull().default(false),
+    listenerCap: integer('listener_cap'),
+    requestsOpen: boolean('requests_open').notNull().default(true),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    // One live Space per host, enforced here so two racing requests cannot make two.
+    uniqueIndex('spaces_one_live_per_host_idx')
+      .on(t.hostId)
+      .where(sql`status = 'live'`),
+    index('spaces_status_idx').on(t.status, t.startedAt),
+    check('spaces_status_check', sql.raw(`status in (${SPACE_STATUSES.map((value) => `'${value}'`).join(', ')})`)),
+    check('spaces_title_check', sql`char_length(${t.title}) between 1 and 120`),
+    check('spaces_listener_cap_check', sql`${t.listenerCap} is null or ${t.listenerCap} between 1 and 10000`),
+  ],
+)
+
+// Who is in a Space, and in what role. A row exists from the first join. The
+// role here is the truth: every LiveKit token is listener-only and speaking is
+// granted from this row. A removed member keeps the row with removed_at set,
+// which is the Space's removed list: they cannot get a token again.
+export const spaceMembers = pgTable(
+  'space_members',
+  {
+    spaceId: uuid('space_id')
+      .notNull()
+      .references(() => spaces.id),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    role: text('role', { enum: SPACE_ROLES }).notNull().default('listener'),
+    // In the room now: set on join, cleared on leave. Listener counts come from it.
+    joinedAt: ts('joined_at'),
+    leftAt: ts('left_at'),
+    // An open request to speak (one per member); oldest first is the queue.
+    speakRequestedAt: ts('speak_requested_at'),
+    // Who last changed the role, and when.
+    roleChangedBy: uuid('role_changed_by').references(() => members.id),
+    roleChangedAt: ts('role_changed_at'),
+    removedAt: ts('removed_at'),
+    removedBy: uuid('removed_by').references(() => members.id),
+  },
+  (t) => [
+    primaryKey({ columns: [t.spaceId, t.memberId] }),
+    index('space_members_member_idx').on(t.memberId),
+    check('space_members_role_check', sql.raw(`role in (${SPACE_ROLES.map((value) => `'${value}'`).join(', ')})`)),
+  ],
+)
