@@ -380,6 +380,33 @@ export class ModerationService {
     }
   }
 
+  /**
+   * Takes a community's photo out of public view, keeping the files privately.
+   * Site moderators only; the community's own moderators can replace or remove
+   * the photo themselves but a takedown is a logged decision.
+   */
+  async removeCommunityPhoto(moderatorId: string, slug: string, note = ''): Promise<void> {
+    if (!(await this.requireModerator(moderatorId)).siteWide) throw new NotAModeratorError()
+    const removed = await this.db.transaction(async (tx) => {
+      const [community] = await tx
+        .select({ id: communities.id, photoMediaId: communities.photoMediaId })
+        .from(communities)
+        .where(eq(communities.slug, slug))
+        .for('update')
+      if (!community) throw new ModerationTargetError(`no community "${slug}"`)
+      if (!community.photoMediaId) throw new ModerationTargetError('that community has no photo')
+      await tx.update(communities).set({ photoMediaId: null }).where(eq(communities.id, community.id))
+      await tx.insert(moderationActions).values({
+        actorId: moderatorId,
+        action: 'remove_community_photo',
+        communityId: community.id,
+        note,
+      })
+      return community.photoMediaId
+    })
+    await this.afterwards(`quarantining community photo ${removed}`, () => this.media!.quarantineCommunityPhoto(removed))
+  }
+
   private async assertSuspendable(tx: Pick<Db, 'select'>, moderatorId: string, targetId: string): Promise<void> {
     if (targetId === moderatorId) throw new ModerationTargetError('you cannot suspend yourself')
     const [target] = await tx.select({ role: members.role }).from(members).where(eq(members.id, targetId))
