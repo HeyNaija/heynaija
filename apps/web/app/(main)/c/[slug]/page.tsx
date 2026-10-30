@@ -91,6 +91,8 @@ async function CommunityView({ params, searchParams }: Props) {
           handle={viewer.me.handle}
           avatar={viewer.me.avatar}
           community={community.slug}
+          polls={viewer.me.features.polls}
+          replyControls={viewer.me.features.replyControls}
           placeholder={`Say something to ${community.name}`}
         />
       ) : viewerId ? (

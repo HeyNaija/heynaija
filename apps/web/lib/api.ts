@@ -24,8 +24,11 @@ export type Me = {
   moderates: boolean
   /** False until they finish or skip the welcome flow, which the home page sends them to. */
   onboarded: boolean
-  /** Switches the API turns on for this member (docs/adr/0017). All false when a feature is off or they are not on its list. */
-  features: { gists: boolean }
+  /**
+   * What is switched on for this member: the API's feature flags by key (docs/feature-flags.md) and
+   * `gists` (docs/adr/0017). A missing key counts as off.
+   */
+  features: { gists: boolean } & Record<string, boolean>
 }
 
 /** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
@@ -514,6 +517,19 @@ export type LogEntry = {
   postId: string | null
   memberHandle: string | null
   communityName: string | null
+}
+
+export type FlagOverrideView = { enabled: boolean | null; handles: string[] }
+export type FlagsAdmin = {
+  env: 'development' | 'staging' | 'production'
+  flags: { key: string; description: string; owner: string; default: boolean; override: FlagOverrideView | null; updatedBy: string | null; updatedAt: string | null }[]
+  changes: { flagKey: string; actorHandle: string; before: FlagOverrideView; after: FlagOverrideView; createdAt: string }[]
+}
+
+/** Feature flags and their latest changes; null unless the viewer is a site moderator. */
+export async function getFlags(): Promise<FlagsAdmin | null> {
+  const res = await api('/v1/admin/flags')
+  return res.ok ? res.json() : null
 }
 
 export type ModeratorRoster = { slug: string; name: string; moderators: { handle: string; displayName: string | null }[] }[]
