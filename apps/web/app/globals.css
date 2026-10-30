@@ -1129,6 +1129,17 @@ summary.menu::-webkit-details-marker {
 .composer-submit { margin-left: auto; min-width: 62px; }
 .composer-count + .composer-submit { margin-left: 4px; }
 .composer-privacy { margin-top: 8px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.composer-poll { margin: 14px 0 0 54px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.composer-poll legend { padding-inline: 5px; color: var(--ink); font-size: 13px; font-weight: 650; }
+.composer-poll-options { display: grid; gap: 8px; }
+.composer-poll-option { display: flex; align-items: center; gap: 6px; }
+.composer-poll-option input { min-width: 0; flex: 1; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel); padding: 9px 10px; color: var(--ink); font-size: 14px; }
+.composer-poll-option input:focus { border-color: var(--focus-ring); outline: none; box-shadow: 0 0 0 3px var(--field-ring); }
+.composer-poll-add { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; color: var(--accent-strong); font-size: 12px; font-weight: 650; }
+.composer-poll-settings { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.composer-poll-settings label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
+.composer-poll-settings select { min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 5px 9px; color: var(--ink); font-size: 12px; }
+.composer-poll > p { margin-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .composer-input {
   display: block;
   width: 100%;
@@ -1228,6 +1239,20 @@ summary.menu::-webkit-details-marker {
 .post-actions .tabular-nums { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .post-actions-end { display: flex; flex-shrink: 0; align-items: center; margin-left: auto; margin-right: -6px; }
 .post-actions-end .icon-btn { width: var(--touch-target); }
+.poll-card { position: relative; z-index: 2; margin-top: 14px; }
+.poll-options { display: grid; gap: 8px; }
+.poll-option { position: relative; display: grid; min-height: 42px; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 9px; padding: 8px 10px; color: var(--ink); font-size: 13px; }
+label.poll-option { cursor: pointer; }
+.poll-option:has(input:checked), .poll-option.is-selected { border-color: var(--accent); }
+.poll-result-bar { position: absolute; inset: 0 auto 0 0; z-index: -1; background: var(--accent-soft); opacity: 0.7; }
+.poll-option input { accent-color: var(--accent-strong); }
+.poll-option-text { min-width: 0; overflow-wrap: anywhere; }
+.poll-option-count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.poll-submit-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; color: var(--muted); font-size: 11px; }
+.poll-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; color: var(--muted); font-size: 11px; }
+.poll-meta a { color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
+.poll-error { margin-top: 7px; color: var(--danger); font-size: 12px; }
+.reply-audience-note { display: flex; align-items: center; gap: 5px; margin-top: 10px; color: var(--muted); font-size: 11px; }
 /* Rendered outside the feed: card containment and permalink overlays cannot clip it. */
 html:has(.share-dialog[open]) { overflow: hidden; }
 .share-dialog { position: fixed; inset: 0; width: min(460px, calc(100% - 32px)); max-width: none; max-height: calc(100dvh - 48px); margin: auto; border: 1px solid var(--line); border-radius: var(--r-frame); background: var(--surface); padding: 0; color: var(--ink); box-shadow: var(--shadow-pop); overflow-y: auto; overscroll-behavior: contain; }
