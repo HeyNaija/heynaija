@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 43 | 11 | 20 | 13 | 87 |
+| 45 | 11 | 18 | 14 | 88 |
 
 ## Priority order
 
@@ -259,7 +259,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Download your own profile, posts, social choices and account-status records as JSON.
 - **Inspected evidence:** `apps/api/src/export/export.service.ts`, `apps/api/src/export/export.controller.ts`, `apps/web/app/(main)/settings/export/route.ts`, `apps/api/src/export/export.service.test.ts`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** Format 10: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, and since format 10 the ideas you sent (with a problem report's private details) and your votes on the board; restricted person keys and reports about someone stay excluded.
+- **Audit notes:** Format 11: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, and since format 11 reply boundaries, polls you created and your public poll ballots; restricted person keys and reports about someone stay excluded.
 
 #### Account deletion and privacy requests
 
@@ -412,18 +412,18 @@ This tracks product development, not formal governance decisions. Priority means
 #### Conversation polls
 
 - **ID:** `social-polls`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Ask an informal question with selectable responses in a post.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`
-- **Audit notes:** Ordinary social polls are separate from formal governance ballots.
+- **Inspected evidence:** `packages/db/src/schema.ts`, `packages/db/drizzle/0028_polls_reply_controls.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/ui/poll-card.tsx`, `apps/api/src/posts/posts.service.test.ts`, `e2e/tests/polls-reply-controls.spec.ts`
+- **Audit notes:** Ordinary social polls are separate from formal governance ballots. Creators choose one or multiple answers, 2 to 10 choices, and 1, 3, 7 or 30 days or no expiry; seven days is the default. Ballots are immutable and public by member, while feed payloads carry only counts and the current member's choices.
 
 #### More precise reply controls
 
 - **ID:** `reply-controls`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Let authors set clearer boundaries around replies to their posts.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`
-- **Audit notes:** Nested replies work; per-post reply audience controls are absent.
+- **Inspected evidence:** `packages/db/src/schema.ts`, `packages/db/drizzle/0028_polls_reply_controls.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/ui/post-item.tsx`, `apps/api/src/posts/posts.service.test.ts`, `e2e/tests/polls-reply-controls.spec.ts`
+- **Audit notes:** A root post allows everyone, accounts its author follows plus mentioned accounts, or mentioned accounts only. The root setting governs direct and nested replies, can be changed for future replies, and does not restrict quotes, likes, reposts or poll votes. Deleted roots no longer restrict surviving replies.
 
 ### People and discovery
 
@@ -750,6 +750,16 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Explore live conversations with moderation and reporting in place.
 - **Dependencies:** `abuse-response`
 - **Inspected evidence:** `PRODUCT.md`, `packages/db/src/schema.ts`
+
+#### Calls, meetings and screen sharing
+
+- **ID:** `calls-and-meetings`
+- **Priority:** P3 · **Status:** Blocked · **Availability:** Not live
+- **Description:** Voice and video calls between age-verified adults, then small group meetings and screen sharing, on a self-hosted LiveKit server.
+- **Remaining work / caveat:** Design only. Needs direct messages and age verification first; recording, moderator access and retention need counsel and governance.
+- **Dependencies:** `minor-safeguards`
+- **Inspected evidence:** `docs/adr/0017-calls-and-meetings.md`, `docs/governance/under-18-rollout.md`
+- **Audit notes:** Also depends on direct-messages and age-verification (ADR 0016, PR #42): add them to the dependencies when that PR merges. Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers).
 
 #### Native mobile apps
 

@@ -17,7 +17,10 @@ import {
   mutes,
   notificationOptOuts,
   notifications,
+  pollOptions,
+  pollVotes,
   postMentions,
+  postPolls,
   posts,
   problemDetails,
   pushSubscriptions,
@@ -31,7 +34,7 @@ import { preferencesWithout } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/10'
+export const EXPORT_FORMAT = 'heynaija-export/11'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -55,6 +58,8 @@ export class ExportService {
       ownPosts,
       images,
       mentioned,
+      createdPollOptions,
+      pollVotesCast,
       liked,
       reposted,
       saved,
@@ -81,6 +86,7 @@ export class ExportService {
           createdAt: posts.createdAt,
           replyTo: posts.replyParentId,
           quoteOf: posts.quotePostId,
+          replyAudience: posts.replyAudience,
           community: communities.slug,
           deletedAt: posts.deletedAt,
           removedByModeratorAt: posts.removedAt,
@@ -101,6 +107,26 @@ export class ExportService {
         .innerJoin(other, eq(other.id, postMentions.memberId))
         .where(eq(posts.authorId, memberId))
         .orderBy(asc(postMentions.start)),
+      db
+        .select({
+          postId: postPolls.postId,
+          multiple: postPolls.multiple,
+          expiresAt: postPolls.expiresAt,
+          optionId: pollOptions.id,
+          option: pollOptions.text,
+          position: pollOptions.position,
+        })
+        .from(postPolls)
+        .innerJoin(posts, eq(posts.id, postPolls.postId))
+        .innerJoin(pollOptions, eq(pollOptions.postId, postPolls.postId))
+        .where(eq(posts.authorId, memberId))
+        .orderBy(asc(pollOptions.position)),
+      db
+        .select({ postId: pollVotes.postId, optionId: pollVotes.optionId, option: pollOptions.text, at: pollVotes.createdAt })
+        .from(pollVotes)
+        .innerJoin(pollOptions, eq(pollOptions.id, pollVotes.optionId))
+        .where(eq(pollVotes.memberId, memberId))
+        .orderBy(asc(pollVotes.createdAt)),
       db.select({ postId: likes.postId, at: likes.createdAt }).from(likes).where(eq(likes.memberId, memberId)).orderBy(asc(likes.createdAt)),
       db.select({ postId: reposts.postId, at: reposts.createdAt }).from(reposts).where(eq(reposts.memberId, memberId)).orderBy(asc(reposts.createdAt)),
       db.select({ postId: bookmarks.postId, at: bookmarks.createdAt }).from(bookmarks).where(eq(bookmarks.memberId, memberId)).orderBy(asc(bookmarks.createdAt)),
@@ -232,6 +258,16 @@ export class ExportService {
       if (!list.includes(handle)) list.push(handle)
       mentionsByPost.set(postId, list)
     }
+    const pollsByPost = new Map<string, {
+      multiple: boolean
+      expiresAt: Date | null
+      options: { id: string; text: string }[]
+    }>()
+    for (const row of createdPollOptions) {
+      const poll = pollsByPost.get(row.postId) ?? { multiple: row.multiple, expiresAt: row.expiresAt, options: [] }
+      poll.options.push({ id: row.optionId, text: row.option })
+      pollsByPost.set(row.postId, poll)
+    }
 
     return {
       format: EXPORT_FORMAT,
@@ -261,7 +297,13 @@ export class ExportService {
       age: ageRecords,
       identityVerifications: verifications,
       votingMembership: membership ?? null,
-      posts: ownPosts.map((p) => ({ ...p, images: imagesByPost.get(p.id) ?? [], mentions: mentionsByPost.get(p.id) ?? [] })),
+      posts: ownPosts.map((p) => ({
+        ...p,
+        images: imagesByPost.get(p.id) ?? [],
+        mentions: mentionsByPost.get(p.id) ?? [],
+        poll: pollsByPost.get(p.id) ?? null,
+      })),
+      pollVotes: pollVotesCast,
       likes: liked,
       reposts: reposted,
       bookmarks: saved,

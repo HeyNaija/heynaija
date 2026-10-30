@@ -108,6 +108,26 @@ test('each post lists the members it mentions, once each, by the handle they hav
   )
 })
 
+test('an export includes reply boundaries, polls the member created and their public ballots', async () => {
+  const created = await postsService.create(ada, 'Choose a route', {
+    replyAudience: 'following',
+    poll: { multiple: true, options: ['Bus', 'Train', 'Walk'], expiresIn: 'never' },
+  })
+  const theirs = await postsService.create(bayo, 'Choose a meal', {
+    poll: { multiple: false, options: ['Rice', 'Beans'], expiresIn: '7_days' },
+  })
+  const option = (await postsService.post(ada, theirs.id))!.poll!.options[1]!
+  await postsService.votePoll(ada, theirs.id, [option.id])
+
+  const data = (await service.export(ada, null))!
+  const post = data.posts.find((row) => row.id === created.id)!
+  assert.equal(post.replyAudience, 'following')
+  assert.deepEqual(post.poll?.options.map((choice) => choice.text), ['Bus', 'Train', 'Walk'])
+  assert.equal(post.poll?.multiple, true)
+  assert.equal(post.poll?.expiresAt, null)
+  assert.deepEqual(data.pollVotes.map((vote) => [vote.postId, vote.optionId, vote.option]), [[theirs.id, option.id, 'Beans']])
+})
+
 test('an export says which kinds of activity the member is notified about', async () => {
   const allOn = { reply: true, like: true, repost: true, quote: true, mention: true, follow: true }
   assert.deepEqual((await service.export(ada, null))!.notificationPreferences, allOn)
