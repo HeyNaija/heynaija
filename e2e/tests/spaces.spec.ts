@@ -39,7 +39,8 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
   const ear = await earContext.newPage()
   await signUpOverHttp(ear, EAR)
   await ear.goto(url)
-  // Nothing is played, and the browser asks for nothing, before the tap.
+  // Nothing is playing before the tap: no media element exists yet.
+  await expect(ear.locator('audio')).toHaveCount(0)
   await expect(ear.getByText('Keep this screen open.').first()).toBeVisible()
   await ear.getByRole('button', { name: 'Join the Space' }).click()
   await expect(ear.getByRole('heading', { name: 'On stage' })).toBeVisible()
@@ -68,8 +69,9 @@ test('a member who is not on the list gets the normal not-found page', async ({ 
   const context = await browser.newContext()
   const page = await context.newPage()
   await signUpOverHttp(page, `${MARK.handlePrefix}space_out`)
-  // Streamed pages send 200 before notFound() runs, like the rest of the app; the page itself is the not-found page.
-  await page.goto('/spaces/00000000-0000-4000-8000-000000000000')
+  // The proxy answers a member who is not on the list exactly as it answers a missing URL.
+  const res = await page.goto('/spaces/00000000-0000-4000-8000-000000000000')
+  expect(res?.status()).toBe(404)
   await expect(page.getByRole('heading', { name: 'Nothing here' })).toBeVisible()
   await context.close()
 })
