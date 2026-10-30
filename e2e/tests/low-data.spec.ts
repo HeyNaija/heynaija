@@ -35,7 +35,7 @@ test('a member saving data gets placeholders for pictures and loads one by tappi
   })
   await page.goto(`/u/${handle}`)
   const article = page.locator('article', { hasText: text }).first()
-  const held = article.getByRole('link', { name: new RegExp(`^Load image 1 of 1: ${alt}`) })
+  const held = article.getByRole('link', { name: new RegExp(`^Tap to load image 1 of 1: ${alt}`) })
   await expect(held).toBeVisible({ timeout: 30_000 })
   await expect(article.getByRole('img', { name: alt })).toHaveCount(0)
   expect(requested).toEqual([])
@@ -50,7 +50,15 @@ test('a member saving data gets placeholders for pictures and loads one by tappi
   // Without JavaScript the page itself carries no picture, only the placeholder link to the small version.
   const html = await (await page.request.get(`/u/${handle}`)).text()
   expect(html).toContain('Tap to load image')
-  expect(html).not.toMatch(/<img[^>]+\.webp/)
+  // (The logo is a .webp too, so look only for pictures from the media store.)
+  expect(html).not.toMatch(/<img[^>]+src="[^"]*\/media\//)
+
+  // Quoting the post shows the quoted post's pictures held back too.
+  const id = (await article.locator('a[href^="/p/"]').first().getAttribute('href'))!.split('/')[2]
+  const quoteHtml = await (await page.request.get(`/p/${id}/quote`)).text()
+  expect(quoteHtml).toContain('Quoted post')
+  expect(quoteHtml).toContain('not loaded')
+  expect(quoteHtml).not.toMatch(/<img[^>]+src="[^"]*\/media\/posts\//)
 
   await context.close()
 })
@@ -78,8 +86,8 @@ test('the browser Save-Data hint is the default until the member chooses @mobile
   const phone = await hinted.newPage()
   await phone.goto(`/u/${handle}`)
   const article = phone.locator('article', { hasText: text }).first()
-  await expect(article.getByRole('link', { name: /^Load image 1 of 1/ })).toBeVisible({ timeout: 30_000 })
-  await expect(article.locator('img[src$=".webp"]')).toHaveCount(0)
+  await expect(article.getByRole('link', { name: /^Tap to load image 1 of 1/ })).toBeVisible({ timeout: 30_000 })
+  await expect(article.locator('img[src*="/media/posts/"]')).toHaveCount(0)
 
   // An explicit "Always load" beats the hint.
   await phone.goto('/settings')

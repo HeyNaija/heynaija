@@ -133,6 +133,7 @@ export default function PrivacyPage() {
               <li><code>hn_age</code>: records that you confirmed you are 18 or older while you sign up, for up to an hour.</li>
               <li>A security cookie from our sign-in service, which stops other sites submitting forms as you.</li>
               <li><code>hn_feed</code>: which tab you last chose on Home (Discover, Latest or Following), so Home opens on it, for up to a year.</li>
+              <li><code>hn_data</code>: whether you chose to save data (Automatic, Save data or Always load), so pictures can be held back until you tap them, for up to a year.</li>
               <li>Your light or dark theme is saved in your browser, not sent to us.</li>
             </ul>
           ),

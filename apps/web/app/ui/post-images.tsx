@@ -82,7 +82,8 @@ function Tile({ image, label, sizes, saver, onOpen }: { image: PostImage; label:
         target="_blank"
         rel="noopener"
         className="post-image media-held"
-        aria-label={`Load ${label.replace(/^View /, '')}`}
+        // The name starts with the visible words (WCAG 2.5.3 Label in Name).
+        aria-label={`Tap to load ${label.replace(/^View /, '')}`}
         onClick={(e) => {
           if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
           e.preventDefault()
