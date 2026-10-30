@@ -23,7 +23,7 @@ import { type LinkPreview, type LinkPreviewRow, linkPreviewOf, toLinkPreview } f
 import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/media.service.js'
 import { isFounder } from '../members/badges.js'
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
-import { notify } from '../notifications/notifications.service.js'
+import { excerpt, notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { Refreshing } from '../refreshing.js'
 import { DB } from '../tokens.js'
@@ -151,6 +151,14 @@ export type QuotedPost =
   // was blocked by or muted. One placeholder for all, so it gives nothing away.
   | { unavailable: true }
 
+/** The post a reply answers: a preview, or one placeholder for every reason the viewer cannot read it. */
+export type ReplyContext =
+  | { unavailable?: false; id: string; authorHandle: string; authorName: string | null; authorAvatar: string | null; excerpt: string }
+  | { unavailable: true }
+
+/** How much of the parent a reply's preview quotes. */
+const REPLY_CONTEXT_EXCERPT = 80
+
 export type PostView = {
   unavailable?: false
   /** Thread-only structural expansion hint; direct counts exclude deleted children. */
@@ -189,6 +197,12 @@ export type PostView = {
   /** False for signed-out readers and members outside that boundary. */
   viewerCanReply: boolean
   poll: PollView | null
+  /**
+   * What a reply answers, for the lists that show replies beside other posts. Null
+   * for a post that answers nothing, and for thread reads, which show the parent
+   * themselves.
+   */
+  replyTo: ReplyContext | null
   likeCount: number
   replyCount: number
   repostCount: number
@@ -474,6 +488,30 @@ const canReplyTo = (viewerId: string | null, postId: SQL, rootId: SQL) => viewer
  */
 const pollReadableBy = (viewerId: string | null) =>
   and(live, visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`))
+type ReplyContextRow =
+  | { id: string; authorHandle: string; authorName: string | null; authorAvatarId: string | null; text: string }
+  | { unavailable: true }
+
+/**
+ * The post a reply answers, as JSON, for any query with the reply in scope: its
+ * author and the start of its text if `viewerId` may read it, otherwise a bare
+ * placeholder. Eligibility is the one quoted posts use. Only the start of the text
+ * leaves the database.
+ */
+const replyContextOf = (viewerId: string | null, parentId: SQL) => sql<ReplyContextRow | null>`case when ${parentId} is null then null else coalesce((
+  select json_build_object('id', rp.id, 'authorHandle', ra.handle, 'authorName', ra.display_name,
+    'authorAvatarId', ra.avatar_media_id, 'text', left(rp.text, 400))
+  from posts rp join members ra on ra.id = rp.author_id
+  where rp.id = ${parentId} and rp.deleted_at is null and rp.removed_at is null
+    and ${visibleAuthor(viewerId, sql`rp.author_id`, sql`ra.active`)}
+), json_build_object('unavailable', true)) end`
+
+const toReplyContext = (row: ReplyContextRow | null): ReplyContext | null => {
+  if (!row) return null
+  if ('unavailable' in row) return { unavailable: true }
+  const { authorAvatarId, text, ...parent } = row
+  return { ...parent, authorAvatar: avatarPath(authorAvatarId), excerpt: excerpt(text, REPLY_CONTEXT_EXCERPT) }
+}
 
 @Injectable()
 export class PostsService {
@@ -492,6 +530,8 @@ export class PostsService {
       /** Show this author's posts even if the viewer muted them (on the author's profile). */
       unmuted?: string
       reason?: SQL<FeedReason>
+      /** Thread reads show the parent themselves; everything else says what a reply answers. */
+      withReplyContext?: boolean
       order?: SQL[]
       limit?: number
     } = {},
@@ -516,6 +556,7 @@ export class PostsService {
         replyAudience: replyAudienceOf(outerId, sql`"posts"."root_id"`),
         viewerCanReply: canReplyTo(viewerId, outerId, sql`"posts"."root_id"`),
         poll: sql<PollRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${pollOf(viewerId, outerId)} end`,
+        replyContext: opts.withReplyContext === false ? sql<null>`null` : replyContextOf(viewerId, sql`${posts.replyParentId}`),
         // Kept on the row by triggers (see the posts schema): only active
         // members' likes and live replies count, as a reader would see them.
         likeCount: posts.likeCount,
@@ -554,8 +595,9 @@ export class PostsService {
       .orderBy(...(opts.order ?? []))
       .limit(opts.limit ?? 1000)
 
-    return rows.map(({ communitySlug, communityName, authorAvatarId, images, quote, linkPreview, poll, ...row }) => ({
+    return rows.map(({ communitySlug, communityName, authorAvatarId, images, quote, linkPreview, poll, replyContext, ...row }) => ({
       ...row,
+      replyTo: toReplyContext(replyContext),
       images: toPostImages(images),
       links: findLinks(row.text),
       linkPreview: toLinkPreview(linkPreview),
@@ -1120,7 +1162,7 @@ export class PostsService {
 
     const [ancestors, replies] = await Promise.all([
       ancestorIds.length
-        ? this.select(viewerId, inArray(posts.id, ancestorIds), { includeDeleted: true })
+        ? this.select(viewerId, inArray(posts.id, ancestorIds), { includeDeleted: true, withReplyContext: false })
         : Promise.resolve([]),
       this.replyPage(viewerId, id, REPLY_PAGE_SIZE, order),
     ])
@@ -1140,7 +1182,7 @@ export class PostsService {
 
   /** A lightweight read for confirmed inline replies; no ancestors or children. */
   async post(viewerId: string | null, id: string): Promise<PostView | null> {
-    const [post] = await this.select(viewerId, eq(posts.id, id), { limit: 1 })
+    const [post] = await this.select(viewerId, eq(posts.id, id), { limit: 1, withReplyContext: false })
     return post ?? null
   }
 
@@ -1242,7 +1284,7 @@ export class PostsService {
           'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
           'hashtags', ${hashtagsOf(sql`p.id`)},
           'linkPreview', ${linkPreviewOf(sql`p.link_url`)},
-          'createdAt', p.created_at, 'replyParentId', p.reply_parent_id,
+          'createdAt', p.created_at, 'replyParentId', p.reply_parent_id, 'replyTo', null,
           'replyAudience', ${replyAudienceOf(sql`p.id`, sql`p.root_id`)},
           'viewerCanReply', ${canReplyTo(viewerId, sql`p.id`, sql`p.root_id`)},
           'poll', ${pollOf(viewerId, sql`p.id`)},
