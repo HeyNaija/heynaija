@@ -77,6 +77,15 @@ function isLockTimeout(err: unknown): boolean {
   return false
 }
 
+/** The server ended our session (pg_terminate_backend, shutdown, crash): the error arrives as a query error before the socket's 'error'. */
+const SERVER_SHUTDOWN_SQLSTATES = new Set(['57P01', '57P02', '57P03'])
+function serverShutdown(err: unknown): Error | undefined {
+  for (let e = err as { code?: unknown; cause?: unknown } | undefined, depth = 0; e && depth < 5; e = e.cause as typeof e, depth++) {
+    if (typeof e.code === 'string' && SERVER_SHUTDOWN_SQLSTATES.has(e.code)) return e as Error
+  }
+  return undefined
+}
+
 /**
  * Applies the pending migrations, alone: the advisory lock and the migrations
  * share ONE connection, so the lock lives exactly as long as the session that
@@ -130,9 +139,17 @@ async function runOnce(
       announced = true
       await sleep(LOCK_RETRY_MS)
     }
-    await migrate(drizzle(client, { schema }), {
-      migrationsFolder: migrationsFolder ?? fileURLToPath(new URL('../drizzle', import.meta.url)),
-    })
+    try {
+      await migrate(drizzle(client, { schema }), {
+        migrationsFolder: migrationsFolder ?? fileURLToPath(new URL('../drizzle', import.meta.url)),
+      })
+    } catch (err) {
+      // Drizzle reports what it saw last (e.g. "Failed query: rollback" on the dead connection). Name the real cause.
+      // The original stays as `cause`, so isLockTimeout and the retry rule see exactly what they saw before.
+      const reason = lost ?? serverShutdown(err)
+      if (reason) throw new Error(`the migration connection dropped during the run: ${reason.message}`, { cause: err })
+      throw err
+    }
     if (lost) throw new Error(`the migration connection dropped during the run: ${lost.message}`)
   } finally {
     await client.query('select pg_advisory_unlock($1)', [MIGRATE_LOCK_KEY]).catch(() => {})

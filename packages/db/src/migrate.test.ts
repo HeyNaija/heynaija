@@ -182,7 +182,12 @@ if (testUrl) {
     )
     await waitFor(() => blockedOnLock('busy'), 'the run to block on the table lock')
     await admin((c) => c.query(`select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid() and wait_event_type = 'Lock'`, [scratchName]), scratchUrl)
-    assert.ok((await outcome) instanceof Error, 'the run must reject once its connection is killed')
+    const err = await outcome
+    assert.ok(err instanceof Error, 'the run must reject once its connection is killed')
+    // Drizzle reports the follow-on "Failed query: rollback"; the error must name the real cause and keep drizzle's as `cause`.
+    assert.match(err.message, /the migration connection dropped during the run/)
+    assert.doesNotMatch(err.message, /^Failed query/)
+    assert.ok(err.cause instanceof Error, 'drizzle\'s error must be kept as the cause')
     await holder.query('rollback')
     assert.equal(await lockIsFree(), true)
   })
