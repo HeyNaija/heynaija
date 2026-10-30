@@ -68,8 +68,8 @@ test('a member who is not on the list gets the normal not-found page', async ({ 
   const context = await browser.newContext()
   const page = await context.newPage()
   await signUpOverHttp(page, `${MARK.handlePrefix}space_out`)
-  const res = await page.goto('/spaces/00000000-0000-4000-8000-000000000000')
-  expect(res?.status()).toBe(404)
+  // Streamed pages send 200 before notFound() runs, like the rest of the app; the page itself is the not-found page.
+  await page.goto('/spaces/00000000-0000-4000-8000-000000000000')
   await expect(page.getByRole('heading', { name: 'Nothing here' })).toBeVisible()
   await context.close()
 })
