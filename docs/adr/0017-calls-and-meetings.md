@@ -547,3 +547,13 @@ Each has a recommendation; the PR description repeats them.
 11. **Dependencies on PR #42.** `direct-messages` and `age-verification` are
     added to the roadmap when ADR 0016 merges; until then the roadmap entry
     names them in its notes.
+14. **Voice effects (pitch shifting, voice changers, "voice masks") in Spaces
+    and calls.** Not built, and the audio path is a clean pass-through: the web
+    client offers only the browser's own noise suppression, echo cancellation and
+    automatic gain control. A disguised voice in a live public room is a
+    means of impersonating someone and of evading a mute, a removal or a
+    report, and a room that leaves no recording cannot be corrected afterwards.
+    Recommend: do not offer any effect that changes who a voice sounds like,
+    until governance decides; if one is ever allowed, say so in the room to
+    everyone ("this speaker is using a voice effect"), and let a host switch it
+    off for their Space. (Numbered to follow questions 12 and 13 in PR #47.)
