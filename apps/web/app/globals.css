@@ -1355,17 +1355,18 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-lineage { display: flex; flex-direction: column; gap: 14px; }
 .thread-chain { display: flex; flex-direction: column; gap: var(--reply-gap); }
 .thread-chain > li { position: relative; }
-.thread-chain .post-card.is-reply { padding-left: calc(var(--lineage-x) - 16px); }
+/* No frame: the earlier posts are flat rows on the ground, so the line is the only thing joining them. Without a border an avatar's centre is 15px short of the focused card's (which has a 1px border). */
+.thread-chain .post-card.is-reply { border: 0; border-radius: 0; background: transparent; padding-left: calc(var(--lineage-x) - 15px); }
 /* Beside the line, never across it: a post's text, pictures and actions start in the
    text column, past its avatar (32px and a 12px gap), as on X. */
 .thread-chain .post-card.is-reply > :not(.post-header) { margin-left: 44px; }
-.thread-chain > li:has(.post-header)::before { content: ''; position: absolute; z-index: 1; top: 49px; bottom: -17px; left: var(--lineage-x); width: 2px; background: var(--line-strong); pointer-events: none; }
+.thread-chain > li:has(.post-header)::before { content: ''; position: absolute; z-index: 1; top: 48px; bottom: -16px; left: var(--lineage-x); width: 2px; background: var(--line-strong); pointer-events: none; }
 .thread-chain > li.is-parent:has(.post-header)::before { bottom: -14px; }
 .thread-context { border-bottom: 1px solid var(--line); }
 .thread-context summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
 .thread-context[open] summary > svg { transform: rotate(180deg); }
 .thread-context .thread-chain { margin-block: 10px 16px; }
-.thread-context .thread-chain > li:last-child::before { bottom: -17px; }
+.thread-context .thread-chain > li:last-child::before { bottom: -16px; }
 /* "Replying to" sits in the text column of the focused post's header, so the line passes it. */
 .thread-view.has-chain .thread-recipient { position: relative; margin: 0; padding-left: calc(var(--lineage-x) + 33px); }
 .thread-view.has-chain .thread-recipient::before { content: ''; position: absolute; z-index: 1; top: 0; bottom: -14px; left: var(--lineage-x); width: 2px; background: var(--line-strong); pointer-events: none; }
