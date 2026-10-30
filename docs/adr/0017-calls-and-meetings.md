@@ -1,4 +1,4 @@
-# ADR 0017 — Calls, meetings and screen sharing on a self-hosted LiveKit server
+# ADR 0017 — Calls, meetings, Spaces and screen sharing on a self-hosted LiveKit server
 
 **Date:** 30 October 2026 · **Status:** Proposed, design only. Nothing is built:
 no schema, no migration, no endpoint, no server, no UI. · **Roadmap:**
@@ -12,7 +12,9 @@ ADR 0016 (direct messages; PR #42, not yet on `staging`),
 ## Decision
 
 Members can make one-to-one voice and video calls, later join small group
-meetings, later share their screen, and much later record. The media server is
+meetings, later share their screen, host and join **Spaces** (live audio rooms
+with a few speakers and a large audience, modelled on X Spaces), and much later
+record. The media server is
 **LiveKit, self-hosted on its own small server** (not on the staging box, which
 is memory-tight, and not LiveKit Cloud). The API decides who may join which room
 and mints short-lived tokens; LiveKit only moves media.
@@ -344,9 +346,102 @@ before widening, as in ADR 0016.
    on counsel and governance (open questions 5 and 6). Not designed in detail
    here.
 
-Out of scope: guests without accounts, public webinars, phone dial-in (SIP),
+5. **Spaces: live audio rooms.** Section 4a. Needs stage 1's server, tokens
+   and gates, not stages 2 to 4, so it can ship before them.
+
+Out of scope: guests without accounts, video webinars, phone dial-in (SIP),
 live captions in the first three stages (open question 8), virtual
 backgrounds, chat inside a call.
+
+## 4a. Spaces (stage 5), modelled on X Spaces
+
+A Space is a live audio room: a host and a few speakers talk, and a larger
+audience listens. It is not a meeting: most people in it can hear and cannot
+speak, and anyone eligible may listen without an invitation.
+
+**What X has** (from [X's Spaces help](https://help.x.com/using-x/spaces) and
+[hosting help](https://help.x.com/en/using-x/spaces-hosting), read 30 October
+2026; the sources disagree on exact limits):
+
+| X Spaces | What HeyNaija does |
+|---|---|
+| Host starts a Space; up to 2 co-hosts and 11 speakers including the host (a third-party guide says 13 in all; **verify**) | Host, up to 2 co-hosts, up to 10 other speakers. Config values, set by a load test. |
+| Listeners join from a card in the timeline, a profile, or a link | Listeners join from a **Live now** card (Home, the community page, the host's profile) or a link. Audio only. |
+| Listener taps Request, host or co-host approves | Same. The host can turn requests off. Approval changes the member's role, not a new join. |
+| Host can invite a listener to speak directly | Same. Speakers are always chosen by a host or co-host; nobody takes the mic on their own. |
+| Host and co-hosts mute, remove, report and block; blocking also blocks the account | Same. Removing ends that member's token; a removed member cannot rejoin that Space. Block uses the existing block list. |
+| Listeners react with preset emojis | Preset reactions only, no listener text and no chat (section 4). |
+| Schedule a Space and set a reminder | Host schedules; members tap "Remind me", sent through the existing push and email paths (ADR 0011, ADR 0009). |
+| Recording and replay, indefinite on newer apps | **None in stage 5.** Recording stays stage 4, blocked on counsel (open questions 5 and 6). |
+| Co-host takes over if the host leaves | Same: the first co-host added becomes host. If there is none, the Space ends after 2 minutes. |
+
+**Roles and LiveKit permissions.** One LiveKit room per Space, created by the
+API. LiveKit's documentation says a participant can join with publishing off and
+be upgraded during the session, and that the server API `UpdateParticipant`
+changes permissions
+([access tokens](https://docs.livekit.io/guides/access-tokens),
+[authentication](https://docs.livekit.io/home/get-started/authentication/)).
+
+| Role | Token grant | Can do |
+|---|---|---|
+| Listener | `roomJoin`, `canSubscribe`; `canPublish` and `canPublishData` false | Hear, react, request to speak, leave |
+| Speaker | as above, `canPublish` true, `canPublishSources` limited to the microphone | Also speak |
+| Co-host | speaker, plus the API (not LiveKit) lets them approve, mute, remove | Moderate |
+| Host | co-host, plus end the Space, settings, add or remove co-hosts | Everything |
+
+The grant is the whole security model: a listener's token cannot publish, and
+the host's actions go through the API, which calls LiveKit. Source limiting
+means a speaker cannot publish video or share a screen. Roles live in the
+database; LiveKit holds only what the token says, and a role change mints a new
+token and calls `UpdateParticipant`.
+
+**Who may take part (the safety question that is new here).**
+- **Host and speakers: verified, opted-in adults**, the same gate as meetings
+  (ADR 0016). Hosting also needs a clean standing: no active suspension and no
+  upheld report for abuse in a Space in the last 90 days (a proposal).
+- **Listeners: verified adults too** (open question 12). A public live room
+  cannot be previewed, and **minors are never in a call or a Space.** Letting
+  unverified adults listen is a governance decision, not an engineering one.
+- **Public join, not public discovery by default.** A Space can be public (any
+  eligible member) or **community-only** (members of one community). Never
+  invite-only, never guests without accounts.
+- **Moderation is live and human.** There is no text to review and no
+  recording, so the tools are the host's: mute, remove, end. Any participant
+  can **Report** a Space (not just a person): the report carries the Space id,
+  host, time and participant list, and stage 5 stores no audio. Moderators see
+  that metadata, not the conversation (open question 4). A report from several
+  members in one session pauses the Space's "Live now" card until a moderator
+  looks (a proposal).
+- **No new surface for strangers.** A Space card never shows a member to someone
+  who blocked them or was blocked by them, and a blocked member cannot join.
+
+**Capacity and cost (estimates, verify with a load test).** Listeners only
+subscribe to audio. Speaking is the expensive part: each active speaker's audio
+is sent to every listener. At about 32 kbps per Opus speaker stream
+(**verify**), 3 people talking at once and 200 listeners is roughly
+19 Mbps out of the server. The server is sized on outbound bandwidth, not CPU,
+and one node's NIC and provider bandwidth quota set the audience cap. Start
+with a configured cap of 200 listeners, measured on the real server in Lagos,
+and a hard refusal (not a degraded stream) above it. A bigger audience means a
+second node and LiveKit's distributed mode, which needs Redis (section 2); that
+is a later decision.
+
+**Data (design only, no migration).** `spaces` (id, host, optional community,
+title, `scheduled | live | ended`, scheduled and started and ended times, peak
+listeners) and `space_members` (space, member, role, joined and left times, who
+changed their role). Ended Spaces keep these rows and no audio. Retention is
+open question 13.
+
+**Notifications.** A scheduled Space reminds followers who asked. A live Space
+notifies **no one** by default beyond the Live now card; "Notify my followers"
+is a host option limited to once per Space and rate-limited per host, so a Space
+cannot become a broadcast tool.
+
+**Web client.** The Live now card and the Space room are in
+`apps/web/DESIGN.md`, "Calls and meetings", which gets a "Spaces" subsection
+when this is built. On a phone the room is a bottom sheet that stays when the
+reader leaves the page, with a mini bar to return; mute and leave are always in
+reach, and the page works with a mic denied (listen only).
 
 ## 5. Safety
 
@@ -547,3 +642,12 @@ Each has a recommendation; the PR description repeats them.
 11. **Dependencies on PR #42.** `direct-messages` and `age-verification` are
     added to the roadmap when ADR 0016 merges; until then the roadmap entry
     names them in its notes.
+12. **Who may listen?** Recommend verified adults, the same gate as calls.
+    Opening it to unverified adults or to minors is a governance decision,
+    and a public live audio room cannot be moderated beforehand.
+13. **How long are Space records kept?** Metadata only (no audio). Recommend 90
+    days, longer for a Space under a report.
+14. **Audience cap and node size.** Recommend 200 listeners and 10 speakers to
+    start, set from a load test, with a hard refusal above the cap.
+15. **Should a Space be able to notify followers when it goes live?** Recommend
+    once per Space, rate-limited, host-chosen.

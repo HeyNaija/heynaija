@@ -1425,8 +1425,8 @@
     },
     {
       "id": "calls-and-meetings",
-      "name": "Calls, meetings and screen sharing",
-      "description": "Voice and video calls between age-verified adults, then small group meetings and screen sharing, on a self-hosted LiveKit server.",
+      "name": "Calls, meetings, Spaces and screen sharing",
+      "description": "Voice and video calls between age-verified adults, then small group meetings, screen sharing and Spaces (live audio rooms with a few speakers and a large audience), on a self-hosted LiveKit server.",
       "category": "expansion",
       "priority": "P3",
       "status": "blocked",
