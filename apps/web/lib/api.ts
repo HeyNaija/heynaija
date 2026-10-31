@@ -4,6 +4,7 @@ import { cache } from 'react'
 import { getApiAuthHeaders, hasSessionCredentials } from './auth/server'
 import type { CallView } from './calls'
 import type { GistView } from './gists'
+import type { MeetingView } from './meetings'
 import type { NotificationPreferences } from './notification-preferences'
 import type { ReplyAudience } from './reply-audience'
 import type { ReplyContext } from './reply-context'
@@ -362,6 +363,9 @@ export const getGist = (id: string) => getOrNull<GistView>(`/v1/gists/${encodeUR
 
 /** A call the viewer is one of the two parties of; null for every refusal, which the API makes the same 404. */
 export const getCall = (id: string) => getOrNull<CallView>(`/v1/calls/${encodeURIComponent(id)}`)
+
+/** A meeting the viewer was invited to; null for every refusal (not invited, removed, missing), which the API makes the same 404. */
+export const getMeeting = (id: string) => getOrNull<MeetingView>(`/v1/meetings/${encodeURIComponent(id)}`)
 
 /** Whether the Call button shows for this member; false for every refusal (a plain yes or no, never why). */
 export async function getCanCall(memberId: string): Promise<boolean> {

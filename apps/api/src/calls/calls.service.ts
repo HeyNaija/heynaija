@@ -1,5 +1,5 @@
-import { CALL_STATUSES, type Db, calls, members } from '@heynaija/db'
-import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common'
+import { CALL_STATUSES, type Db, calls, meetingParticipants, meetings, members } from '@heynaija/db'
+import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit, Optional } from '@nestjs/common'
 import { and, eq, inArray, lt, or, sql } from 'drizzle-orm'
 import { ROOM_SERVICE, type RoomEvent, type RoomService } from '../gists/room-service.js'
 import { DB } from '../tokens.js'
@@ -15,6 +15,13 @@ export type CallsConfig = {
 }
 
 export const CALLS_CONFIG = Symbol('CALLS_CONFIG')
+
+/**
+ * A job that rides on this service's once-a-minute pass: meetings (docs/adr/0017 stage 2),
+ * so there is one timer and one kill switch. It reconciles with calls on and tears down with calls off.
+ */
+export type PeriodicPass = { tick(): Promise<unknown> }
+export const MEETINGS_PASS = Symbol('MEETINGS_PASS')
 
 /** How long a call rings before it is missed (docs/adr/0017 section 5 was 30s; the product decision is 45s). */
 export const RING_TIMEOUT_MS = 45_000
@@ -53,8 +60,8 @@ export type CallView = {
 type CallRow = typeof calls.$inferSelect
 
 const OPEN: CallStatus[] = ['ringing', 'active']
-const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
-const isUniqueViolation = (err: unknown): boolean => {
+export const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+export const isUniqueViolation = (err: unknown): boolean => {
   for (let e = err as { code?: unknown; cause?: unknown } | undefined, depth = 0; e && depth < 5; e = e.cause as typeof e, depth++) {
     if (e.code === '23505') return true
   }
@@ -70,6 +77,7 @@ export class CallsService implements OnModuleInit, OnModuleDestroy {
     @Inject(DB) private readonly db: Db,
     @Inject(ROOM_SERVICE) private readonly rooms: RoomService,
     @Inject(CALLS_CONFIG) private readonly config: CallsConfig,
+    @Optional() @Inject(MEETINGS_PASS) private readonly meetings?: PeriodicPass,
   ) {}
 
   /**
@@ -87,11 +95,17 @@ export class CallsService implements OnModuleInit, OnModuleDestroy {
 
   /** One pass of whichever job applies to the current flag. Returns how many calls it ended (0 when on). */
   async tick(): Promise<number> {
-    if (this.config.enabled) {
-      await this.reconcile()
-      return 0
+    let ended = 0
+    // Each job on its own: one failing must not skip the other that minute.
+    try {
+      if (this.config.enabled) await this.reconcile()
+      else ended = await this.shutdownLive()
+    } catch (err) {
+      this.logger.error(`call pass failed: ${String(err)}`)
     }
-    return this.shutdownLive()
+    // Meetings follow the same flag; a failure there must not stop the calls pass.
+    await this.meetings?.tick().catch((err) => this.logger.error(`meeting pass failed: ${String(err)}`))
+    return ended
   }
 
   /** Ends every ringing or active call and deletes its room. One indexed query; no rows in the normal case. */
@@ -141,6 +155,10 @@ export class CallsService implements OnModuleInit, OnModuleDestroy {
         await tx.select({ id: members.id }).from(members).where(inArray(members.id, [caller.id, calleeId])).orderBy(members.id).for('update')
         // The block rule lives in canCall, and its refusal is the same 404 as nobody there.
         if (!(await canCall(tx, this.config, caller.id, calleeId))) throw new CallError('not_found')
+        // One live room at a time: someone in (or hosting) a meeting is not callable and cannot call.
+        // The same missing-route 404, so nothing is learned. The members rows locked above are the
+        // ones a meeting join locks, so this check and that join cannot both pass.
+        if ((await this.inOpenMeeting(tx, caller.id)) || (await this.inOpenMeeting(tx, calleeId))) throw new CallError('not_found')
         const open = await tx
           .select({ callerId: calls.callerId, calleeId: calls.calleeId })
           .from(calls)
@@ -196,11 +214,17 @@ export class CallsService implements OnModuleInit, OnModuleDestroy {
       await this.close(call.id, 'missed', ['ringing'])
       throw new CallError('not_found')
     }
-    const [updated] = await this.db
-      .update(calls)
-      .set({ status: 'active', answeredAt: new Date() })
-      .where(and(eq(calls.id, call.id), eq(calls.status, 'ringing')))
-      .returning()
+    const updated = await this.db.transaction(async (tx) => {
+      await tx.select({ id: members.id }).from(members).where(inArray(members.id, [call.callerId, call.calleeId])).orderBy(members.id).for('update')
+      // Joined a meeting while it rang: the call cannot be answered (same locks as a meeting join).
+      if ((await this.inOpenMeeting(tx, call.calleeId)) || (await this.inOpenMeeting(tx, call.callerId))) return undefined
+      const [row] = await tx
+        .update(calls)
+        .set({ status: 'active', answeredAt: new Date() })
+        .where(and(eq(calls.id, call.id), eq(calls.status, 'ringing')))
+        .returning()
+      return row
+    })
     if (!updated) throw new CallError('not_found')
     return this.view(updated, me.id)
   }
@@ -233,6 +257,8 @@ export class CallsService implements OnModuleInit, OnModuleDestroy {
     const call = await this.mine(me, callId)
     const may = call.callerId === me.id ? call.status === 'ringing' || call.status === 'active' : call.status === 'active'
     if (!may) throw new CallError('not_found')
+    // No token for a second live room while in a meeting.
+    if (await this.inOpenMeeting(this.db, me.id)) throw new CallError('not_found')
     if (!(await canCall(this.db, this.config, call.callerId, call.calleeId))) {
       await this.close(call.id, call.status === 'ringing' ? 'missed' : 'ended', OPEN)
       throw new CallError('not_found')
@@ -343,6 +369,17 @@ export class CallsService implements OnModuleInit, OnModuleDestroy {
       // The room empties itself after its short timeout; the state here is already right.
       this.logger.error(`could not delete the room of call ${callId}: ${String(err)}`)
     }
+  }
+
+  /** Joined in (or hosting) an open meeting. The host's own row is 'joined' too. */
+  private async inOpenMeeting(q: Pick<Db, 'select'>, memberId: string): Promise<boolean> {
+    const [row] = await q
+      .select({ id: meetingParticipants.memberId })
+      .from(meetingParticipants)
+      .innerJoin(meetings, eq(meetings.id, meetingParticipants.meetingId))
+      .where(and(eq(meetingParticipants.memberId, memberId), eq(meetingParticipants.status, 'joined'), eq(meetings.status, 'open')))
+      .limit(1)
+    return Boolean(row)
   }
 
   /** The call if this member is one of its two parties, or not_found. */

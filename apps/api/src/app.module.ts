@@ -20,7 +20,9 @@ import { ExportController } from './export/export.controller.js'
 import { ExportService } from './export/export.service.js'
 import { CallsController } from './calls/calls.controller.js'
 import { CallsEnabledGuard, LiveKitWebhookGuard, callsEnabled } from './calls/calls-enabled.guard.js'
-import { CALLS_CONFIG, CallsService } from './calls/calls.service.js'
+import { CALLS_CONFIG, CallsService, MEETINGS_PASS } from './calls/calls.service.js'
+import { MeetingsController } from './meetings/meetings.controller.js'
+import { MeetingsService } from './meetings/meetings.service.js'
 import { GistReconciler } from './gists/gist-queue.js'
 import { GistsController, LiveKitWebhookController } from './gists/gists.controller.js'
 import { GISTS_CONFIG, GistsService } from './gists/gists.service.js'
@@ -72,7 +74,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, CallsController, LiveKitWebhookController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, CallsController, MeetingsController, LiveKitWebhookController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -178,6 +180,9 @@ class HealthController {
       }),
       inject: [ENV],
     },
+    // Meetings (stage 2) ride the calls flag, config and once-a-minute pass: one kill switch.
+    MeetingsService,
+    { provide: MEETINGS_PASS, useExisting: MeetingsService },
     CallsService,
     CallsEnabledGuard,
     LiveKitWebhookGuard,

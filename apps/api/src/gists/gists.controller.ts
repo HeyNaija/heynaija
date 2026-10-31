@@ -21,6 +21,7 @@ import { parse } from '../http.js'
 import { RateLimiter } from '../rate-limit.js'
 import { LiveKitWebhookGuard } from '../calls/calls-enabled.guard.js'
 import { CallsService } from '../calls/calls.service.js'
+import { MeetingsService } from '../meetings/meetings.service.js'
 import { ROOM_SERVICE, type RoomService, WebhookRejectedError } from './room-service.js'
 import { GistError, GistsService } from './gists.service.js'
 import { GistsEnabledGuard, routeNotFound } from './gists-enabled.guard.js'
@@ -201,6 +202,7 @@ export class LiveKitWebhookController {
     @Inject(ROOM_SERVICE) private readonly rooms: RoomService,
     @Inject(GistsService) private readonly gists: GistsService,
     @Inject(CallsService) private readonly calls: CallsService,
+    @Inject(MeetingsService) private readonly meetings: MeetingsService,
   ) {}
 
   @Post('webhook')
@@ -208,10 +210,11 @@ export class LiveKitWebhookController {
   async webhook(@Body() body: unknown, @Headers('authorization') authorization: string | undefined) {
     if (typeof body !== 'string') throw new UnauthorizedException('bad signature')
     try {
-      // Read and verified once; Gists and calls each ignore rooms that are not theirs.
+      // Read and verified once; Gists, calls and meetings each ignore rooms that are not theirs.
       const event = await this.rooms.readWebhook(body, authorization)
       await this.gists.handleEvent(event)
       await this.calls.handleEvent(event)
+      await this.meetings.handleEvent(event)
     } catch (err) {
       if (err instanceof WebhookRejectedError) throw new UnauthorizedException('bad signature')
       throw err

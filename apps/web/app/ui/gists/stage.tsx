@@ -6,7 +6,8 @@ import { MicOffIcon } from '@/app/ui/icons'
 import { elapsedLabel } from '@/lib/gist-mic'
 import { personName, type Person } from '@/lib/gists'
 
-export type StagePerson = Person & { label: 'Host' | 'Co-host' | 'Speaker' }
+/** `label` is the role word; a meeting tile has none for an ordinary participant. */
+export type StagePerson = Person & { label?: 'Host' | 'Co-host' | 'Speaker' }
 
 /**
  * Who is on stage. State is never colour alone: a speaking tile has a ring and
@@ -19,6 +20,7 @@ export function StageGrid({
   speaking,
   mics,
   level,
+  heading = 'People on stage',
 }: {
   people: StagePerson[]
   meId: string
@@ -27,9 +29,11 @@ export function StageGrid({
   mics: Record<string, boolean>
   /** The member's own input level, 0..1. */
   level: number
+  /** The list's accessible name. */
+  heading?: string
 }) {
   return (
-    <ul className="gist-stage" aria-label="People on stage">
+    <ul className="gist-stage" aria-label={heading}>
       {people.map((p) => {
         const talking = speaking.includes(p.id) && mics[p.id] !== false
         const live = mics[p.id] === true
@@ -44,7 +48,7 @@ export function StageGrid({
               {self ? ' (you)' : ''}
             </span>
             <span className="gist-badges">
-              {p.label !== 'Speaker' ? <span className="gist-badge gist-badge-role">{p.label}</span> : <span className="gist-badge">Speaker</span>}
+              {p.label === undefined ? null : p.label !== 'Speaker' ? <span className="gist-badge gist-badge-role">{p.label}</span> : <span className="gist-badge">Speaker</span>}
               {live ? null : (
                 <span className="gist-badge gist-badge-muted">
                   <MicOffIcon size={12} /> Muted

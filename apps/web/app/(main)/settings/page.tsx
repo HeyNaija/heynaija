@@ -121,6 +121,12 @@ async function CallSettings() {
     <section className="content-panel settings-section" aria-labelledby="calls-heading">
       <h2 id="calls-heading" className="section-title">Calls</h2>
       <AllowCalls initial={allow} />
+      <p className="mt-3 text-sm">
+        <Link href="/meetings/new" className="inline-flex min-h-11 items-center font-semibold text-accent-strong hover:underline">
+          Start a meeting
+        </Link>
+        <span className="text-muted"> A voice meeting for up to 8 people you invite.</span>
+      </p>
     </section>
   )
 }

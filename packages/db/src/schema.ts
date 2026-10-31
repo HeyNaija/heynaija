@@ -1031,3 +1031,69 @@ export const calls = pgTable(
     check('calls_parties_check', sql`${t.callerId} <> ${t.calleeId}`),
   ],
 )
+
+export const MEETING_STATUSES = ['open', 'ended'] as const
+export const MEETING_PARTICIPANT_STATUSES = ['invited', 'joined', 'left', 'declined', 'missed', 'removed'] as const
+
+// A small group voice meeting (docs/adr/0017, stage 2). Its id is the LiveKit room
+// name. Invite-only: everyone in it is an eligible member the host invited. State
+// lives here, not in LiveKit. No media, no recording.
+export const meetings = pgTable(
+  'meetings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // The current host. It moves to the longest-present participant when the host leaves.
+    hostId: uuid('host_id')
+      .notNull()
+      .references(() => members.id),
+    status: text('status', { enum: MEETING_STATUSES }).notNull().default('open'),
+    // A locked meeting takes no new joins (the API enforces it; the token is withheld).
+    locked: boolean('locked').notNull().default(false),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    endedAt: ts('ended_at'),
+  },
+  (t) => [
+    // One open meeting hosted per member.
+    uniqueIndex('meetings_one_open_per_host_idx')
+      .on(t.hostId)
+      .where(sql`status = 'open'`),
+    index('meetings_open_idx')
+      .on(t.createdAt)
+      .where(sql`status = 'open'`),
+    check('meetings_status_check', sql.raw(`status in (${MEETING_STATUSES.map((value) => `'${value}'`).join(', ')})`)),
+  ],
+)
+
+// Who was invited, who joined, who was removed. 'removed' is the meeting's removed
+// list: such a member gets no token and cannot be invited again. Only one 'joined'
+// row per member, so nobody is in two meetings at once (ended meetings clear theirs).
+export const meetingParticipants = pgTable(
+  'meeting_participants',
+  {
+    meetingId: uuid('meeting_id')
+      .notNull()
+      .references(() => meetings.id, { onDelete: 'cascade' }),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    status: text('status', { enum: MEETING_PARTICIPANT_STATUSES }).notNull().default('invited'),
+    invitedAt: ts('invited_at').notNull().defaultNow(),
+    joinedAt: ts('joined_at'),
+    leftAt: ts('left_at'),
+    // LiveKit's id for the connection last reported joined (see calls.caller_sid).
+    sid: text('sid'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.meetingId, t.memberId] }),
+    uniqueIndex('meeting_participants_one_joined_idx')
+      .on(t.memberId)
+      .where(sql`status = 'joined'`),
+    index('meeting_participants_invited_idx')
+      .on(t.memberId, t.invitedAt)
+      .where(sql`status = 'invited'`),
+    check(
+      'meeting_participants_status_check',
+      sql.raw(`status in (${MEETING_PARTICIPANT_STATUSES.map((value) => `'${value}'`).join(', ')})`),
+    ),
+  ],
+)
