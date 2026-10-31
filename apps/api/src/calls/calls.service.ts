@@ -1,5 +1,5 @@
 import { CALL_STATUSES, type Db, calls, members } from '@heynaija/db'
-import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common'
+import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit, Optional } from '@nestjs/common'
 import { and, eq, inArray, lt, or, sql } from 'drizzle-orm'
 import { ROOM_SERVICE, type RoomEvent, type RoomService } from '../gists/room-service.js'
 import { DB } from '../tokens.js'
@@ -15,6 +15,13 @@ export type CallsConfig = {
 }
 
 export const CALLS_CONFIG = Symbol('CALLS_CONFIG')
+
+/**
+ * A job that rides on this service's once-a-minute pass: meetings (docs/adr/0017 stage 2),
+ * so there is one timer and one kill switch. It reconciles with calls on and tears down with calls off.
+ */
+export type PeriodicPass = { tick(): Promise<unknown> }
+export const MEETINGS_PASS = Symbol('MEETINGS_PASS')
 
 /** How long a call rings before it is missed (docs/adr/0017 section 5 was 30s; the product decision is 45s). */
 export const RING_TIMEOUT_MS = 45_000
@@ -53,8 +60,8 @@ export type CallView = {
 type CallRow = typeof calls.$inferSelect
 
 const OPEN: CallStatus[] = ['ringing', 'active']
-const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
-const isUniqueViolation = (err: unknown): boolean => {
+export const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+export const isUniqueViolation = (err: unknown): boolean => {
   for (let e = err as { code?: unknown; cause?: unknown } | undefined, depth = 0; e && depth < 5; e = e.cause as typeof e, depth++) {
     if (e.code === '23505') return true
   }
@@ -70,6 +77,7 @@ export class CallsService implements OnModuleInit, OnModuleDestroy {
     @Inject(DB) private readonly db: Db,
     @Inject(ROOM_SERVICE) private readonly rooms: RoomService,
     @Inject(CALLS_CONFIG) private readonly config: CallsConfig,
+    @Optional() @Inject(MEETINGS_PASS) private readonly meetings?: PeriodicPass,
   ) {}
 
   /**
@@ -87,11 +95,12 @@ export class CallsService implements OnModuleInit, OnModuleDestroy {
 
   /** One pass of whichever job applies to the current flag. Returns how many calls it ended (0 when on). */
   async tick(): Promise<number> {
-    if (this.config.enabled) {
-      await this.reconcile()
-      return 0
-    }
-    return this.shutdownLive()
+    let ended = 0
+    if (this.config.enabled) await this.reconcile()
+    else ended = await this.shutdownLive()
+    // Meetings follow the same flag; a failure there must not stop the calls pass.
+    await this.meetings?.tick().catch((err) => this.logger.error(`meeting pass failed: ${String(err)}`))
+    return ended
   }
 
   /** Ends every ringing or active call and deletes its room. One indexed query; no rows in the normal case. */
