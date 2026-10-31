@@ -448,11 +448,12 @@ export async function removeCommunityPhoto(slug: string, takeDown = false): Prom
 export async function submitReport(_prev: FormState, formData: FormData): Promise<FormState> {
   const postId = String(formData.get('postId') ?? '') || undefined
   const handle = String(formData.get('handle') ?? '') || undefined
+  const communitySlug = String(formData.get('community') ?? '') || undefined
   const res = await api('/v1/reports', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      ...(postId ? { postId } : { handle }),
+      ...(postId ? { postId } : communitySlug ? { communitySlug } : { handle }),
       reason: String(formData.get('reason') ?? ''),
       details: String(formData.get('details') ?? ''),
     }),
