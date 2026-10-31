@@ -100,6 +100,7 @@ check its key (staging step 5), run `./gen-env.sh`, and edit `.env`:
 |---|---|
 | `COMPOSE_PROJECT_NAME` | `heynaija-production` |
 | `DEPLOY_BRANCH` | `main` |
+| `APP_ENV` | `production` (also what an unset value means). Feature flags start from their production defaults ([feature-flags.md](../feature-flags.md)) |
 | `SITE_URL` | `https://heynaija.ng` |
 | `SITE_ADDRESS` | `heynaija.ng` |
 | `ROBOTS` | `index` |

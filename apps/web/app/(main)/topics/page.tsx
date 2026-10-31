@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { EmptyState } from '@/app/ui/empty-state'
 import { HashIcon } from '@/app/ui/icons'
@@ -30,7 +31,10 @@ export default function TopicsPage() {
 }
 
 async function Topics() {
-  const { topics, rules } = await getTrendingTopics()
+  const trending = await getTrendingTopics()
+  // Switched off (a feature flag): the page does not exist.
+  if (!trending) notFound()
+  const { topics, rules } = trending
   const period = topicPeriod(rules.windowDays)
 
   return (

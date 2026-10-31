@@ -101,7 +101,12 @@ starts, as Playwright empties `test-results` first; a bare `playwright test`
 takes it in global setup, still before anything is deleted.
 
 Playwright reuses `pnpm dev:web` and `pnpm dev:api` if they are already running
-and starts them otherwise. `google-auth.spec.ts` restarts Kratos with a local
+and starts them otherwise. The suite relies on no flag variables: the API's `dev`
+and `start` scripts run it with `APP_ENV=development`, where every
+[feature flag](feature-flags.md) is on, as on staging. An API you started some
+other way must be given `APP_ENV=development` (unset means production, where new
+features are off), and one started before feature flags existed needs restarting.
+`google-auth.spec.ts` restarts Kratos with a local
 test issuer in place of Google, which would cut off other tests' sign-ins, so it
 has its own projects (`google`, `google-mobile`) that run after everything else;
 teardown restores the normal Google configuration. To run only those:

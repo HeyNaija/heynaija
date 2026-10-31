@@ -60,6 +60,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   if (res.status === 400) {
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     if (body.code === 'parent_gone') return { error: 'The post you are replying to has been deleted.' }
+    if (body.code === 'feature_unavailable') return { error: 'That is not available right now.' }
     if (body.code === 'quote_gone') return { error: 'The post you are quoting is no longer available.' }
     if (body.code === 'not_a_member') return { error: 'Join that community to post in it.' }
     if (body.code === 'community_gone') return { error: 'That community is no longer available.' }
@@ -440,6 +441,31 @@ export async function resolveReport(formData: FormData): Promise<void> {
   })
   if (res.status === 401) redirect('/login')
   refresh()
+}
+
+/** A site moderator turns a feature on or off, or limits it to some members (docs/feature-flags.md). */
+export async function setFlag(_prev: FormState, formData: FormData): Promise<FormState> {
+  const key = String(formData.get('key') ?? '')
+  const mode = String(formData.get('mode') ?? 'default')
+  const handles = String(formData.get('handles') ?? '')
+    .split(/[\s,]+/)
+    .map((h) => h.replace(/^@/, '').trim().toLowerCase())
+    .filter(Boolean)
+  if (mode === 'list' && handles.length === 0) return { error: 'Name at least one member, or choose another setting.' }
+  const enabled = mode === 'on' ? true : mode === 'off' ? false : null
+  const res = await api(`/v1/admin/flags/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ enabled, handles: mode === 'list' ? handles : [] }),
+  })
+  if (res.status === 401) redirect('/login')
+  if (res.status === 400) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string }
+    return { error: typeof body.message === 'string' && body.message.length < 160 ? body.message : 'Check the handles.' }
+  }
+  if (!res.ok) return { error: 'Could not change that. Try again in a moment.' }
+  refresh()
+  return { done: true }
 }
 
 /** A site moderator makes someone a community moderator, or stops them being one. */

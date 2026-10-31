@@ -19,6 +19,7 @@ import { eq } from 'drizzle-orm'
 import type { FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import type { Env } from '../env.js'
+import { FeatureFlags } from '../flags/feature-flags.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
 import { gistsFeatureFor } from '../gists/gists-enabled.guard.js'
@@ -87,14 +88,16 @@ export class AuthController {
     @Inject(AuthService) private readonly auth: Pick<AuthService, 'invalidateSessionCache'>,
     @Inject(MembersService) private readonly members: MembersService,
     @Inject(GovernanceService) private readonly governance: GovernanceService,
+    @Inject(FeatureFlags) private readonly flags: FeatureFlags,
   ) {}
 
   @Get('v1/me')
   @UseGuards(SessionGuard)
   async me(@Req() req: AuthedRequest) {
-    const [scope, unread, [row]] = await Promise.all([
+    const [scope, unread, features, [row]] = await Promise.all([
       this.moderation.scope(req.member.id),
       this.notifications.unreadCount(req.member.id),
+      this.flags.all(req.member.id),
       this.db
         .select({
           avatarMediaId: members.avatarMediaId,
@@ -116,9 +119,11 @@ export class AuthController {
       moderates: scope.siteWide || scope.communityIds.length > 0,
       // False until the member finishes or skips the welcome flow; the web app's
       // home page sends them to /welcome until then.
-      onboarded: Boolean(row?.onboardedAt),
-      // Switches the web app may show this member (docs/adr/0017); false when off.
-      features: { gists: gistsFeatureFor(this.env, req.member) },
+      // With the welcome flow switched off nobody is sent to it.
+      onboarded: !features.onboarding || Boolean(row?.onboardedAt),
+      // What is switched on for this member: the database-backed flags (docs/feature-flags.md),
+      // plus gists, still switched by env (docs/adr/0017) until it moves onto the flags.
+      features: { ...features, gists: gistsFeatureFor(this.env, req.member) },
     }
   }
 

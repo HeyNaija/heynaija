@@ -24,8 +24,11 @@ import {
   SessionGuard,
 } from '../auth/session.guard.js'
 import { paged, pageQuery, parse, slugParam } from '../http.js'
+import { FeatureFlags } from '../flags/feature-flags.js'
+import { Feature, FeatureGuard } from '../flags/feature.guard.js'
 import { LinksService } from '../links/links.service.js'
 import { MediaService } from '../media/media.service.js'
+import type { FlagKey } from '../flags/registry.js'
 import { RateLimiter } from '../rate-limit.js'
 import {
   CommunityNotFoundError,
@@ -73,7 +76,15 @@ export class PostsController {
     @Inject(MediaService) private readonly media: MediaService,
     @Inject(LinksService) private readonly links: LinksService,
     @Inject(RateLimiter) private readonly limits: RateLimiter,
+    @Inject(FeatureFlags) private readonly flags: FeatureFlags,
   ) {}
+
+  /** A new post using something that is switched off is refused, not quietly stripped of it. */
+  private async requireFeature(req: AuthedRequest, key: FlagKey, what: string): Promise<void> {
+    if (!(await this.flags.isEnabled(key, req.member.id))) {
+      throw new BadRequestException({ code: 'feature_unavailable', message: `${what} are not available yet` })
+    }
+  }
 
   @Get('feed')
   @UseGuards(OptionalSessionGuard)
@@ -156,6 +167,9 @@ export class PostsController {
   @UseGuards(SessionGuard)
   async create(@Req() req: AuthedRequest, @Body() body: unknown) {
     const { text, replyTo, community, images, quote, poll, replyAudience } = parse(createPostBody, body)
+    if (poll) await this.requireFeature(req, 'polls', 'Polls')
+    if (replyAudience !== 'everyone') await this.requireFeature(req, 'replyControls', 'Reply controls')
+    if (quote) await this.requireFeature(req, 'quotePosts', 'Quote posts')
     await this.limits.hit('post', req.member.id)
     try {
       const { id, linkUrl } = await this.posts.create(req.member.id, text, {
@@ -167,7 +181,7 @@ export class PostsController {
         replyAudience,
       })
       // The card appears once the page has been read, a few seconds on; the post does not wait for it.
-      if (linkUrl) await this.links.request(linkUrl)
+      if (linkUrl && (await this.flags.isEnabled('linkPreviews', req.member.id))) await this.links.request(linkUrl)
       return { id }
     } catch (err) {
       if (err instanceof ReplyNotAllowedError) {
@@ -194,7 +208,8 @@ export class PostsController {
 
   @Put('posts/:id/reply-audience')
   @HttpCode(204)
-  @UseGuards(SessionGuard)
+  @UseGuards(SessionGuard, FeatureGuard)
+  @Feature('replyControls')
   async setReplyAudience(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
     const { audience } = parse(replyAudienceBody, body)
     await this.limits.hit('action', req.member.id)
@@ -203,7 +218,8 @@ export class PostsController {
 
   @Put('posts/:id/poll/vote')
   @HttpCode(204)
-  @UseGuards(SessionGuard)
+  @UseGuards(SessionGuard, FeatureGuard)
+  @Feature('polls')
   async votePoll(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
     const { optionIds } = parse(pollVoteBody, body)
     await this.limits.hit('action', req.member.id)
@@ -253,7 +269,8 @@ export class PostsController {
 
   @Put('posts/:id/repost')
   @HttpCode(204)
-  @UseGuards(SessionGuard)
+  @UseGuards(SessionGuard, FeatureGuard)
+  @Feature('reposts')
   async repost(@Req() req: AuthedRequest, @Param('id') id: string) {
     await this.limits.hit('action', req.member.id)
     if (!(await this.posts.repost(req.member.id, postId(id)))) throw new NotFoundException()
@@ -269,7 +286,8 @@ export class PostsController {
   /** Keeps one of your own top-level posts at the top of your profile, in place of any other. */
   @Put('posts/:id/pin')
   @HttpCode(204)
-  @UseGuards(SessionGuard)
+  @UseGuards(SessionGuard, FeatureGuard)
+  @Feature('profilePins')
   async pin(@Req() req: AuthedRequest, @Param('id') id: string) {
     await this.limits.hit('action', req.member.id)
     if (!(await this.posts.pinToProfile(req.member.id, postId(id)))) throw new NotFoundException()
@@ -285,7 +303,8 @@ export class PostsController {
   /** Keeps a top-level post at the top of its community. For that community's moderators and site-wide ones. */
   @Put('posts/:id/community-pin')
   @HttpCode(204)
-  @UseGuards(SessionGuard)
+  @UseGuards(SessionGuard, FeatureGuard)
+  @Feature('communityPins')
   async pinInCommunity(@Req() req: AuthedRequest, @Param('id') id: string) {
     await this.limits.hit('action', req.member.id)
     const pinned = await forbidden(() => this.posts.pinInCommunity(req.member.id, postId(id)))
