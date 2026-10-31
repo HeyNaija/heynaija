@@ -7,6 +7,7 @@ import { Composer } from '@/app/ui/composer'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { QuotedPostCard } from '@/app/ui/quoted-post'
 import { getCommunities, getPost, getViewer } from '@/lib/api'
+import { currentDataSaver } from '@/lib/low-data-server'
 
 export const metadata: Metadata = { title: 'Quote post' }
 
@@ -27,6 +28,7 @@ async function QuoteView({ params }: Props) {
   if (viewer.state !== 'member') redirect(viewer.state === 'anonymous' ? '/login' : '/')
   if (!post || post.deleted) notFound()
   const joined = (await getCommunities()).filter((c) => c.viewerIsMember)
+  const saver = await currentDataSaver()
 
   return (
     <div className="page-stack">
@@ -43,7 +45,7 @@ async function QuoteView({ params }: Props) {
         choices={joined}
         placeholder="Add your thoughts…"
         submitAction={createQuote}
-        quote={{ id: post.id, preview: <QuotedPostCard quote={post} now={Date.now()} /> }}
+        quote={{ id: post.id, preview: <QuotedPostCard quote={post} now={Date.now()} saver={saver} /> }}
       />
       <Link prefetch={false} href={`/p/${post.id}`} className="self-start text-sm font-medium text-muted hover:text-ink hover:underline">
         Cancel

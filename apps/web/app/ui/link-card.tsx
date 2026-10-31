@@ -6,8 +6,9 @@ import type { LinkPreview } from '@/lib/api'
  * shown is the one the link really goes to; the title and text are the page's
  * own words and are shown as plain text only.
  */
-export function LinkCard({ preview }: { preview: LinkPreview }) {
-  const { image } = preview
+export function LinkCard({ preview, saver = false }: { preview: LinkPreview; saver?: boolean }) {
+  // Saving data: the text stays, the picture is left out.
+  const image = saver ? null : preview.image
   let host = ''
   try {
     host = new URL(preview.url).hostname.replace(/^www\./, '')

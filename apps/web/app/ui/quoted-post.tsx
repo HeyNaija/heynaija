@@ -8,7 +8,7 @@ import { LocalTime } from './local-time'
  * The post a quote post quotes, shown inside it as one link to that post. Its
  * images are small previews here; they open full size on the post itself.
  */
-export function QuotedPostCard({ quote, now }: { quote: QuotedPost; now: number }) {
+export function QuotedPostCard({ quote, now, saver = false }: { quote: QuotedPost; now: number; saver?: boolean }) {
   if (quote.unavailable) {
     return <p className="quoted-post is-unavailable">This post is no longer available.</p>
   }
@@ -28,7 +28,9 @@ export function QuotedPostCard({ quote, now }: { quote: QuotedPost; now: number 
       </span>
       {quote.replyParentId ? <span className="quoted-post-note">Replying to a post</span> : null}
       {quote.text ? <span className="quoted-post-text">{quote.text}</span> : null}
-      {quote.images.length ? (
+      {quote.images.length && saver ? (
+        <span className="quoted-post-note">{quote.images.length === 1 ? '1 image' : `${quote.images.length} images`} not loaded. Open the post to load.</span>
+      ) : quote.images.length ? (
         <span className="quoted-post-images" data-count={quote.images.length}>
           {quote.images.map((image) => (
             // eslint-disable-next-line @next/next/no-img-element -- already resized; next/image would resize again

@@ -20,10 +20,11 @@ const useReducedMotion = () =>
  * for less motion; either way the reader can change it, and anything that moves
  * for more than a few seconds must be pausable.
  */
-function useGif(): [playing: boolean, toggle: () => void] {
+function useGif(saver: boolean): [playing: boolean, toggle: () => void] {
   const reduced = useReducedMotion()
   const [chosen, setChosen] = useState<boolean | null>(null)
-  const playing = chosen ?? !reduced
+  // Saving data also means no autoplay: the reader starts a GIF themselves.
+  const playing = chosen ?? (!reduced && !saver)
   return [playing, () => setChosen(!playing)]
 }
 
@@ -41,7 +42,7 @@ function GifToggle({ playing, onToggle, className = '' }: { playing: boolean; on
  * share a 16:9 frame. Tapping one opens it full screen in a viewer; without
  * JavaScript, or with a modifier key held, the link opens the large image itself.
  */
-export function PostImages({ images, compact = false }: { images: PostImage[]; compact?: boolean }) {
+export function PostImages({ images, compact = false, saver = false }: { images: PostImage[]; compact?: boolean; saver?: boolean }) {
   const [open, setOpen] = useState<number | null>(null)
   if (images.length === 0) return null
   const single = images.length === 1
@@ -57,19 +58,43 @@ export function PostImages({ images, compact = false }: { images: PostImage[]; c
         style={{ aspectRatio: ratio }}
       >
         {images.map((image, i) => (
-          <Tile key={image.src} image={image} label={`View ${image.animated ? 'GIF' : 'image'} ${i + 1} of ${images.length}${image.alt.trim() ? `: ${image.alt.trim()}` : ''}`} sizes={single ? '(max-width: 640px) 100vw, 560px' : '(max-width: 640px) 50vw, 280px'} onOpen={() => setOpen(i)} />
+          <Tile key={image.src} image={image} label={`View ${image.animated ? 'GIF' : 'image'} ${i + 1} of ${images.length}${image.alt.trim() ? `: ${image.alt.trim()}` : ''}`} sizes={single ? '(max-width: 640px) 100vw, 560px' : '(max-width: 640px) 50vw, 280px'} saver={saver} onOpen={() => setOpen(i)} />
         ))}
       </div>
       {/* Keep the top-layer viewer outside feed cards and their layout/interaction styles. */}
-      {open !== null ? createPortal(<ImageViewer images={images} start={open} onClose={() => setOpen(null)} />, document.body) : null}
+      {open !== null ? createPortal(<ImageViewer images={images} start={open} saver={saver} onClose={() => setOpen(null)} />, document.body) : null}
     </>
   )
 }
 
 /** One image in the grid; a GIF has a pause button beside its link, since a button cannot sit inside one. */
-function Tile({ image, label, sizes, onOpen }: { image: PostImage; label: string; sizes: string; onOpen: () => void }) {
-  const [playing, toggle] = useGif()
+function Tile({ image, label, sizes, saver, onOpen }: { image: PostImage; label: string; sizes: string; saver: boolean; onOpen: () => void }) {
+  const [playing, toggle] = useGif(saver)
+  // Saving data: nothing is fetched until the reader taps. Without JavaScript the
+  // placeholder is a plain link to the small version, so it still works.
+  const [loaded, setLoaded] = useState(false)
   const still = image.animated && !playing
+  if (saver && !loaded) {
+    const kind = image.animated ? 'GIF' : 'image'
+    return (
+      <a
+        href={`${image.src}/640.webp`}
+        target="_blank"
+        rel="noopener"
+        className="post-image media-held"
+        // The name starts with the visible words (WCAG 2.5.3 Label in Name).
+        aria-label={`Tap to load ${label.replace(/^View /, '')}`}
+        onClick={(e) => {
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+          e.preventDefault()
+          setLoaded(true)
+        }}
+      >
+        <span className="media-held-label">{`Tap to load ${kind}`}</span>
+        {image.alt.trim() ? <span className="media-held-alt">{image.alt.trim()}</span> : null}
+      </a>
+    )
+  }
   const link = (
     <a
       href={`${image.src}/1600.webp`}
@@ -86,7 +111,7 @@ function Tile({ image, label, sizes, onOpen }: { image: PostImage; label: string
       {/* eslint-disable-next-line @next/next/no-img-element -- already resized to the sizes we need */}
       <img
         src={`${image.src}/${still ? 'still' : '640'}.webp`}
-        srcSet={still ? undefined : `${image.src}/640.webp 640w, ${image.src}/1600.webp 1600w`}
+        srcSet={still || saver ? undefined : `${image.src}/640.webp 640w, ${image.src}/1600.webp 1600w`}
         sizes={sizes}
         alt={image.alt}
         width={image.width}
@@ -110,7 +135,7 @@ function Tile({ image, label, sizes, onOpen }: { image: PostImage; label: string
  * and hands focus back to the image that opened it. Arrow keys and swipes move
  * between images.
  */
-function ImageViewer({ images, start, onClose }: { images: PostImage[]; start: number; onClose: () => void }) {
+function ImageViewer({ images, start, saver, onClose }: { images: PostImage[]; start: number; saver: boolean; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [index, setIndex] = useState(start)
   const swipeFrom = useRef<{ x: number; y: number; id: number } | null>(null)
@@ -120,7 +145,7 @@ function ImageViewer({ images, start, onClose }: { images: PostImage[]; start: n
   const reduced = useReducedMotion()
   // Chosen per GIF, so pausing one does not pause the next.
   const [chosen, setChosen] = useState<Record<string, boolean>>({})
-  const playing = chosen[image.src] ?? !reduced
+  const playing = chosen[image.src] ?? (!reduced && !saver)
   const go = (step: number) => setIndex((i) => (i + step + images.length) % images.length)
 
   // No cleanup: removing the element closes the dialog, while calling close()
