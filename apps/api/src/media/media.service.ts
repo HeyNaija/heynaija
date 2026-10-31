@@ -28,11 +28,28 @@ export const CONTENT_SCANNER = Symbol('CONTENT_SCANNER')
 export interface ContentScanner {
   /** Throws when it cannot tell, and then the image is not published. */
   scan(image: Buffer): Promise<'clear' | 'match'>
+  /**
+   * Sampled frames of one video (ADR 0019): `match` if any frame matches, with the
+   * index of the first that did. `unscanned` means nobody looked, which is not
+   * `clear`: a video is only ever published on `clear`. A scanner without this
+   * method counts as `unscanned`. Throws when it cannot tell, and then the job retries.
+   */
+  scanFrames?(frames: Buffer[]): Promise<FrameScan>
 }
+
+export type FrameScan = { verdict: 'clear' | 'match' | 'unscanned'; matchIndex: number | null }
 
 export class NoScanner implements ContentScanner {
   async scan(): Promise<'clear'> {
     return 'clear'
+  }
+
+  /**
+   * Fail closed for video: with no scanner bound, images still pass (as they always
+   * have) but a video is never called clear, so it stays quarantined.
+   */
+  async scanFrames(_frames?: Buffer[]): Promise<FrameScan> {
+    return { verdict: 'unscanned', matchIndex: null }
   }
 }
 
