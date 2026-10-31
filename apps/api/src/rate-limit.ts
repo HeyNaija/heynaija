@@ -49,6 +49,16 @@ export const LIMITS = {
   // Answering, declining, ending, tokens (reconnects), polling for an incoming call.
   callAction: [{ max: 60, windowMs: MINUTE }],
   callPoll: [{ max: 40, windowMs: MINUTE }],
+  // Meetings (docs/adr/0017 stage 2): starting one, inviting (so a host cannot ring people in
+  // bulk), the invitation search, and joins/leaves/host controls/tokens, and polling.
+  meetingStart: [
+    { max: 3, windowMs: 10 * MINUTE },
+    { max: 10, windowMs: HOUR },
+  ],
+  meetingInvite: [{ max: 30, windowMs: HOUR }],
+  meetingSearch: [{ max: 30, windowMs: MINUTE }],
+  meetingAction: [{ max: 60, windowMs: MINUTE }],
+  meetingPoll: [{ max: 40, windowMs: MINUTE }],
 } satisfies Record<string, { max: number; windowMs: number }[]>
 
 export type LimitKind = keyof typeof LIMITS
