@@ -511,6 +511,16 @@ export type QueueItem = {
   reportCount: number
   post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
+  /** A report about a Gist: what it is, and who was in it when it was reported. */
+  gist: {
+    id: string
+    title: string
+    status: 'scheduled' | 'live' | 'ended'
+    hostHandle: string
+    communityName: string | null
+    startedAt: string | null
+    participants: { handle: string; role: string }[]
+  } | null
 }
 
 export type LogEntry = {
@@ -522,6 +532,8 @@ export type LogEntry = {
   postId: string | null
   memberHandle: string | null
   communityName: string | null
+  /** Ending a Gist: its title. */
+  gistTitle: string | null
 }
 
 export type ModeratorRoster = { slug: string; name: string; moderators: { handle: string; displayName: string | null }[] }[]
@@ -567,7 +579,7 @@ export type Notification = {
   post: { id: string; excerpt: string } | null
   subjectHandle: string | null
   community: { slug: string; name: string } | null
-  /** report_resolved: 'actioned' or 'dismissed'. post_removed: the report reason. idea_status: the new status. */
+  /** report_resolved: 'actioned' or 'dismissed' ('gist_actioned', 'gist_dismissed' for a Gist). post_removed: the report reason. idea_status: the new status. */
   detail: string | null
   /** idea_status: an idea or a problem, and whether the reader sent it (or only voted for it). */
   idea?: { kind: IdeaKind; yours: boolean } | null

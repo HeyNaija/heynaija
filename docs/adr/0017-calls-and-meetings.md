@@ -516,7 +516,14 @@ not. Nobody can use presence to tell what a particular member is listening to.
   a moderator can **end a Gist** and revoke its link on the metadata alone;
   reports from distinct, long-standing members count more than a burst from new
   accounts; and a Gist with several such reports is hidden from the Live now
-  card and queued for a moderator (a proposal, tuned by use).
+  card and queued for a moderator (a proposal, tuned by use). **Built (31
+  October 2026):** Report in the room, for everyone in it but the host; the
+  report records who is in the room then (`gist_report_participants`); the
+  moderation queue shows it to site moderators and to the Gist's community
+  moderators, with **End the Gist** (the room is closed first, then the decision
+  logged). Account deletion keeps a reported Gist as evidence. Not yet: hiding a
+  much-reported Gist from Live now, weighting reports by account age, and the
+  host standing rule.
 - **Raids and hosts.** The host can **lock the room** (no new listeners), set a
   lower listener cap for that Gist, and require that listeners follow the host
   or are in the community. Joins are rate-limited per member and per Gist, so a

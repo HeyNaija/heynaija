@@ -59,6 +59,16 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
   await expect(ear.getByRole('button', { name: 'Microphone', exact: true, pressed: false })).toBeVisible({ timeout: 15_000 })
   await expect(ear.getByRole('status').filter({ hasText: 'You are now a speaker' })).toBeAttached()
 
+  // Anyone in the room but the host can report the Gist itself; the room keeps playing.
+  await expect(host.getByRole('button', { name: 'Report', exact: true })).toHaveCount(0)
+  await ear.getByRole('button', { name: 'Report', exact: true }).click()
+  const sheet = ear.getByRole('dialog', { name: 'Report this Gist' })
+  await sheet.getByRole('radio', { name: 'Harassment or bullying' }).check()
+  await sheet.getByRole('button', { name: 'Send report' }).click()
+  await expect(sheet.getByText('A moderator will review this Gist')).toBeVisible()
+  await sheet.getByRole('button', { name: 'Back to the Gist' }).click()
+  await expect(ear.getByRole('heading', { name: 'On stage' })).toBeVisible()
+
   // The host ends it; the listener's poll finds out.
   await host.getByRole('button', { name: 'End the Gist' }).click()
   await host.getByRole('button', { name: /Tap again to end/ }).click()
