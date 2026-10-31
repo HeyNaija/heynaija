@@ -3,7 +3,7 @@
 //
 // The audio path stays a clean pass-through: only the browser's own processing
 // switches (noise suppression, echo cancellation, auto gain) are offered. There is
-// deliberately no pitch shifting or voice changing (ADR 0017, open question 14).
+// deliberately no pitch shifting or voice changing (ADR 0017, open question 20).
 
 export type MicSettings = {
   /** null: the browser's default input. */

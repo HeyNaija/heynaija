@@ -1,5 +1,5 @@
 {
-  "id": "636b652c-9052-4823-98f9-86b36a9adc00",
+  "id": "623ec321-41c1-496f-a1c5-edcba7186eb2",
   "prevId": "b8cfcaf5-6bd7-4bf9-8edf-10295efd994c",
   "version": "7",
   "dialect": "postgresql",
@@ -534,6 +534,343 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.gist_members": {
+      "name": "gist_members",
+      "schema": "",
+      "columns": {
+        "gist_id": {
+          "name": "gist_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'listener'"
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "left_at": {
+          "name": "left_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "connection_sid": {
+          "name": "connection_sid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "speak_requested_at": {
+          "name": "speak_requested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "role_changed_by": {
+          "name": "role_changed_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "role_changed_at": {
+          "name": "role_changed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "removed_at": {
+          "name": "removed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "removed_by": {
+          "name": "removed_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "gist_members_member_idx": {
+          "name": "gist_members_member_idx",
+          "columns": [
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "gist_members_gist_id_gists_id_fk": {
+          "name": "gist_members_gist_id_gists_id_fk",
+          "tableFrom": "gist_members",
+          "tableTo": "gists",
+          "columnsFrom": [
+            "gist_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "gist_members_member_id_members_id_fk": {
+          "name": "gist_members_member_id_members_id_fk",
+          "tableFrom": "gist_members",
+          "tableTo": "members",
+          "columnsFrom": [
+            "member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "gist_members_role_changed_by_members_id_fk": {
+          "name": "gist_members_role_changed_by_members_id_fk",
+          "tableFrom": "gist_members",
+          "tableTo": "members",
+          "columnsFrom": [
+            "role_changed_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "gist_members_removed_by_members_id_fk": {
+          "name": "gist_members_removed_by_members_id_fk",
+          "tableFrom": "gist_members",
+          "tableTo": "members",
+          "columnsFrom": [
+            "removed_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "gist_members_gist_id_member_id_pk": {
+          "name": "gist_members_gist_id_member_id_pk",
+          "columns": [
+            "gist_id",
+            "member_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "gist_members_role_check": {
+          "name": "gist_members_role_check",
+          "value": "role in ('host', 'cohost', 'speaker', 'listener')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.gists": {
+      "name": "gists",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "host_id": {
+          "name": "host_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "community_id": {
+          "name": "community_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'live'"
+        },
+        "scheduled_for": {
+          "name": "scheduled_for",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "peak_listeners": {
+          "name": "peak_listeners",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "locked": {
+          "name": "locked",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "listener_cap": {
+          "name": "listener_cap",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requests_open": {
+          "name": "requests_open",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "gists_one_live_per_host_idx": {
+          "name": "gists_one_live_per_host_idx",
+          "columns": [
+            {
+              "expression": "host_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "status = 'live'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gists_status_idx": {
+          "name": "gists_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "gists_host_id_members_id_fk": {
+          "name": "gists_host_id_members_id_fk",
+          "tableFrom": "gists",
+          "tableTo": "members",
+          "columnsFrom": [
+            "host_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "gists_community_id_communities_id_fk": {
+          "name": "gists_community_id_communities_id_fk",
+          "tableFrom": "gists",
+          "tableTo": "communities",
+          "columnsFrom": [
+            "community_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "gists_status_check": {
+          "name": "gists_status_check",
+          "value": "status in ('scheduled', 'live', 'ended')"
+        },
+        "gists_title_check": {
+          "name": "gists_title_check",
+          "value": "char_length(\"gists\".\"title\") between 1 and 120"
+        },
+        "gists_listener_cap_check": {
+          "name": "gists_listener_cap_check",
+          "value": "\"gists\".\"listener_cap\" is null or \"gists\".\"listener_cap\" between 1 and 10000"
+        }
+      },
       "isRLSEnabled": false
     },
     "restricted.governance_audit_log": {
@@ -3725,337 +4062,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.space_members": {
-      "name": "space_members",
-      "schema": "",
-      "columns": {
-        "space_id": {
-          "name": "space_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'listener'"
-        },
-        "joined_at": {
-          "name": "joined_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "left_at": {
-          "name": "left_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "speak_requested_at": {
-          "name": "speak_requested_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "role_changed_by": {
-          "name": "role_changed_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "role_changed_at": {
-          "name": "role_changed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "removed_at": {
-          "name": "removed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "removed_by": {
-          "name": "removed_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "space_members_member_idx": {
-          "name": "space_members_member_idx",
-          "columns": [
-            {
-              "expression": "member_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "space_members_space_id_spaces_id_fk": {
-          "name": "space_members_space_id_spaces_id_fk",
-          "tableFrom": "space_members",
-          "tableTo": "spaces",
-          "columnsFrom": [
-            "space_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "space_members_member_id_members_id_fk": {
-          "name": "space_members_member_id_members_id_fk",
-          "tableFrom": "space_members",
-          "tableTo": "members",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "space_members_role_changed_by_members_id_fk": {
-          "name": "space_members_role_changed_by_members_id_fk",
-          "tableFrom": "space_members",
-          "tableTo": "members",
-          "columnsFrom": [
-            "role_changed_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "space_members_removed_by_members_id_fk": {
-          "name": "space_members_removed_by_members_id_fk",
-          "tableFrom": "space_members",
-          "tableTo": "members",
-          "columnsFrom": [
-            "removed_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "space_members_space_id_member_id_pk": {
-          "name": "space_members_space_id_member_id_pk",
-          "columns": [
-            "space_id",
-            "member_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "space_members_role_check": {
-          "name": "space_members_role_check",
-          "value": "role in ('host', 'cohost', 'speaker', 'listener')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.spaces": {
-      "name": "spaces",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "host_id": {
-          "name": "host_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "community_id": {
-          "name": "community_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'live'"
-        },
-        "scheduled_for": {
-          "name": "scheduled_for",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ended_at": {
-          "name": "ended_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "peak_listeners": {
-          "name": "peak_listeners",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "locked": {
-          "name": "locked",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "listener_cap": {
-          "name": "listener_cap",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "requests_open": {
-          "name": "requests_open",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "spaces_one_live_per_host_idx": {
-          "name": "spaces_one_live_per_host_idx",
-          "columns": [
-            {
-              "expression": "host_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "status = 'live'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "spaces_status_idx": {
-          "name": "spaces_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "started_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "spaces_host_id_members_id_fk": {
-          "name": "spaces_host_id_members_id_fk",
-          "tableFrom": "spaces",
-          "tableTo": "members",
-          "columnsFrom": [
-            "host_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "spaces_community_id_communities_id_fk": {
-          "name": "spaces_community_id_communities_id_fk",
-          "tableFrom": "spaces",
-          "tableTo": "communities",
-          "columnsFrom": [
-            "community_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "spaces_status_check": {
-          "name": "spaces_status_check",
-          "value": "status in ('scheduled', 'live', 'ended')"
-        },
-        "spaces_title_check": {
-          "name": "spaces_title_check",
-          "value": "char_length(\"spaces\".\"title\") between 1 and 120"
-        },
-        "spaces_listener_cap_check": {
-          "name": "spaces_listener_cap_check",
-          "value": "\"spaces\".\"listener_cap\" is null or \"spaces\".\"listener_cap\" between 1 and 10000"
-        }
-      },
       "isRLSEnabled": false
     }
   },

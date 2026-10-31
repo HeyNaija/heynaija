@@ -64,8 +64,8 @@ ensure PUSH_CONTACT "mailto:no-reply@heynaija.test"
 ensure PUSH_ALLOW_LOOPBACK "true"
 ensure PUSH_SWEEP_EVERY_S "2"
 
-# LiveKit for Spaces (docs/adr/0017). The server starts with `pnpm infra:livekit`; the
-# API uses these only when CALLS_ENABLED and CALLS_SPACES_ENABLED are also true and the
+# LiveKit for Gists (docs/adr/0017). The server starts with `pnpm infra:livekit`; the
+# API uses these only when CALLS_ENABLED and CALLS_GISTS_ENABLED are also true and the
 # handle is in CALLS_MEMBERS, none of which this script switches on.
 ensure LIVEKIT_URL "ws://127.0.0.1:7880"
 ensure LIVEKIT_API_KEY "devkey"

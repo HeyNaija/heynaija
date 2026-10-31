@@ -195,9 +195,13 @@ export async function post(page: Page, text: string, community?: string, find = 
  * post, unless `postId` is given). It is drawn under the post in focus; choosing
  * another post to reply to moves it there, and the move replaces the textarea,
  * so text typed into the old one would be lost and Reply would stay disabled.
+ * On a phone the fixed bar is the one box whoever is answered (it names the
+ * recipient, and `form#compose input[name="replyTo"]` says who), so `postId` is
+ * ignored there.
  */
 export async function replyBox(page: Page, postId?: string) {
-  const host = postId ? page.locator(`#thread-editor-${postId}`) : page.locator('[id^="thread-editor-"]')
+  const phone = (page.viewportSize()?.width ?? 1280) < 1024
+  const host = postId && !phone ? page.locator(`#thread-editor-${postId}`) : page.locator('[id^="thread-editor-"]')
   const box = host.getByRole('textbox', { name: 'Your reply' })
   await expect(box).toBeVisible()
   return box

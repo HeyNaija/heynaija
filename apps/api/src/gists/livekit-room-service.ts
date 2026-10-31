@@ -45,7 +45,7 @@ export class LiveKitRoomService implements RoomService {
   }
 
   /**
-   * Every Space token is this one: join the room, hear it, say nothing. A token
+   * Every Gist token is this one: join the room, hear it, say nothing. A token
    * that outlives a role change can therefore never speak; speaking is granted
    * afterwards by `setPermissions`. Listeners join hidden so the audience is not
    * sent a list of names (LiveKit's `hidden` grant; see the report's verify list).
@@ -120,7 +120,7 @@ export class LiveKitRoomService implements RoomService {
 }
 
 /**
- * Stands in when LiveKit is not configured. Every Spaces route is already a 404
+ * Stands in when LiveKit is not configured. Every Gists route is already a 404
  * then, so none of this is reachable; it exists so the app can be built without
  * the settings.
  */

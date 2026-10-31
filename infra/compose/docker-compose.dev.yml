@@ -1,5 +1,5 @@
 # Local development stack: Postgres, Redis, Ory Kratos (identity), Mailpit and MinIO,
-# and, on request (`pnpm infra:livekit`), a LiveKit media server for Spaces.
+# and, on request (`pnpm infra:livekit`), a LiveKit media server for Gists.
 # Host ports are offset so they do not clash with other local projects.
 name: heynaija-dev
 
@@ -88,7 +88,7 @@ services:
       - "127.0.0.1:1026:1025" # SMTP, for the API's notification emails (Kratos uses mailpit:1025 inside Docker)
       - "127.0.0.1:8026:8025"
 
-  # LiveKit media server for Spaces (docs/adr/0017). Off unless asked for, so
+  # LiveKit media server for Gists (docs/adr/0017). Off unless asked for, so
   # `pnpm infra:up` does not start it: run `pnpm infra:livekit`. One node, no Redis.
   # Signalling (WebSocket + REST) on :7880, ICE over TCP on :7881, all media over
   # UDP on :7882 (single-port mode). Keys come from .env (`pnpm infra:env`); the API

@@ -4,7 +4,7 @@
 //
 // The microphone path is a clean pass-through: the browser's own capture
 // processing (noise suppression, echo cancellation, auto gain) can be switched, and
-// that is all. No effects, no pitch shifting (ADR 0017, open question 14).
+// that is all. No effects, no pitch shifting (ADR 0017, open question 20).
 import { ConnectionState, DisconnectReason, type LocalAudioTrack, Room, RoomEvent, Track, TrackEvent } from 'livekit-client'
 import type { AudioEvents, LostReason } from '@/lib/space-session'
 import { afterFailedRestart, micPlan, rmsLevel, type MicSettings } from '@/lib/space-mic'
