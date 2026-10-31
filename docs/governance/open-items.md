@@ -9,6 +9,7 @@ Last reviewed: 19 October 2026 (draft v0.3).
 
 Canonical framework: [README.md](README.md), [CAC review copy](cac-constitution.md),
 [policies](policies.md), [legal review](legal-review.md) and [implementation](implementation.md).
+Everything to take to counsel is gathered in the [counsel log](counsel-log.md).
 
 ## 1. Facts the public pages still need (placeholders)
 
@@ -22,7 +23,7 @@ Canonical framework: [README.md](README.md), [CAC review copy](cac-constitution.
 | Charter notice period (the draft proposes 14 days) | `/charter#changes` | Founders, then adoption |
 | Data-centre location | `/privacy#processors` | Operator |
 | Cross-border transfer safeguards | `/privacy#processors` | Counsel |
-| Retention: deleted posts, quarantined images, server logs, account deletion | `/privacy#keep`, `/privacy#rights` | Counsel |
+| Retention: deleted posts and moderation evidence (`DELETED_CONTENT_RETENTION_DAYS`), quarantined images, server logs, privacy request records, the record of an 18+ declaration after deletion | `/privacy#keep` | Counsel (C-04, C-06, C-07, C-09) |
 | Retention for verification results | `/privacy#identity` | After the DPIA |
 
 ## 2. Needs legal review before anything is adopted
@@ -69,6 +70,9 @@ Canonical framework: [README.md](README.md), [CAC review copy](cac-constitution.
 - [ ] Resolve s838 paid-office/benefit restrictions for trustees and representatives;
       no founder salary assumption. Approve separated operational employment,
       conflicts, bank mandate, funding, tax, audits, assets and dissolution.
+- [ ] Account deletion and privacy requests: deadlines, what is kept after an
+      account is erased and for how long, legal holds. Entries C-01 to C-15 in
+      the [counsel log](counsel-log.md).
 - [ ] Review all items in [legal-review.md](legal-review.md) and the final adopted
       charter/constitution for consistency, including required constitutional
       recognition of supporting policies.
@@ -148,10 +152,15 @@ moderation, privacy) is in [under-18-rollout.md](under-18-rollout.md).
 - Recording real governance decisions and treasury entries. The pages show empty
   states; tables for them should be added only with a way to publish actual,
   auditable records.
-- In-app account deletion (privacy policy says to write in).
 - Marking a milestone complete: change `OWNERSHIP_MILESTONES` in
   `apps/web/lib/governance.ts` with an `evidence` link; a test refuses a
   completed milestone without one.
+
+In-app account deletion is built (30 October 2026, [ADR 0016](../adr/0016-account-deletion.md)),
+with [a runbook for requests by email](privacy-requests.md). What remains is for
+counsel and the operator: the retention periods in section 1, the 30-day answer
+deadline `/privacy` now states (C-02), and entries C-01 to C-15 in the
+[counsel log](counsel-log.md).
 
 ## Release and rollback
 

@@ -60,6 +60,7 @@ const steps = [
   ['duplicates reopened', `update ideas set status = 'under_review', duplicate_of = null where duplicate_of in (select id from lt_p) and post_id not in (select id from lt_p)`],
   ['ideas', `delete from ideas where post_id in (select id from lt_p)`],
   ['posts', `delete from posts where id in (select id from lt_p)`],
+  ['privacy requests', `delete from privacy_requests where member_id in (select id from lt_m) or handled_by in (select id from lt_m)`],
   ['members', `delete from members where id in (select id from lt_m)`],
   ['thread bookkeeping', `drop table if exists loadtest_thread_fixtures`],
   ['bookkeeping', `drop table loadtest_posts, loadtest_members`],

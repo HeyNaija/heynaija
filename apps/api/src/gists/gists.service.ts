@@ -374,6 +374,20 @@ export class GistsService {
     }
   }
 
+  /**
+   * Ends every live Gist `hostId` hosts, room first, before their account is
+   * erased (docs/adr/0016). The erase deletes the Gist's rows, and the reconciler
+   * goes by those rows, so a room still open then would never be closed. A
+   * LiveKit failure leaves the Gist live for the erase's retry. Safe to repeat.
+   */
+  async endHostedBy(hostId: string): Promise<void> {
+    const live = await this.db.select({ id: gists.id }).from(gists).where(and(eq(gists.hostId, hostId), eq(gists.status, 'live')))
+    for (const { id } of live) {
+      await this.rooms.deleteRoom(id)
+      await this.finish(id)
+    }
+  }
+
   /** Lock the room (no new listeners), set a lower listener cap, or close requests. Host only. */
   async updateSettings(
     actor: { id: string; handle: string },
