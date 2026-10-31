@@ -107,3 +107,32 @@ test('a meeting runs on the Gists session with its own words: a refused token en
   assert.match(said.join(' '), /You are in the meeting/)
   assert.doesNotMatch(said.join(' '), /Gist/)
 })
+
+test('StrictMode: mount, dispose, mount with the real session, then the first join resolves => no /leave', async () => {
+  const log = []
+  const resolvers = []
+  const audio = { connect: async () => undefined, disconnect: async () => undefined, setMic: async () => undefined, applyMic: async () => undefined, startAudio: async () => undefined, watchLevel: () => () => undefined }
+  const session = new GistSession({
+    join: () => new Promise((resolve) => { resolvers.push(resolve) }),
+    sync: () => undefined,
+    leave: () => void log.push('leave'),
+    createAudio: async () => audio,
+    rememberGist: () => undefined,
+    holdScreen: async () => () => undefined,
+    sleep: async () => undefined,
+    reloadPage: () => undefined,
+    noun: 'meeting',
+    ui: { phase: (p) => void log.push(`phase:${p}`), problem: () => undefined, joined: () => undefined, announce: () => undefined, playbackBlocked: () => undefined, speaking: () => undefined, micOff: () => undefined, mics: () => undefined },
+  })
+  // The component's mount effect: open() then join(); its cleanup: dispose(); the second mount: open() again, join().
+  session.open()
+  const first = session.join()
+  session.dispose()
+  session.open()
+  const second = session.join()
+  // The first request answers first, as a real one would; both answers are good.
+  for (const resolve of resolvers) resolve({ ok: true, data: { url: 'wss://x', token: 't', meeting: view() } })
+  await Promise.all([first, second])
+  assert.ok(!log.includes('leave'), log.join(','))
+  assert.ok(log.includes('phase:live'), log.join(','))
+})

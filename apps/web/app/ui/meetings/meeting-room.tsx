@@ -153,6 +153,8 @@ export function MeetingRoom({ initial, meId }: { initial: MeetingView; meId: str
     window.addEventListener('pagehide', onHide)
     return () => {
       window.removeEventListener('pagehide', onHide)
+      // The guard must not outlive the session: under StrictMode (and on a real remount) the next mount starts again.
+      started.current = false
       session.current?.dispose()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

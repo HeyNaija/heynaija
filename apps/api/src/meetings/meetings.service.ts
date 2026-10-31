@@ -22,6 +22,7 @@ export const CONNECT_GRACE_MS = 60_000
 const EMPTY_TIMEOUT_S = 60
 const DEPARTURE_TIMEOUT_S = 20
 const SEARCH_LIMIT = 20
+const MIN_SEARCH = 2
 
 /** `not_found` covers everything the caller must not be able to tell apart: missing, not eligible, blocked, removed, locked out. */
 export type MeetingErrorCode = 'not_found' | 'already_in_meeting' | 'in_call' | 'full' | 'locked' | 'livekit_unavailable'
@@ -118,8 +119,7 @@ export class MeetingsService {
         await tx.select({ id: members.id }).from(members).where(inArray(members.id, [host.id, ...ids])).orderBy(members.id).for('update')
         if (!(await canCall(tx, this.config, host.id))) throw nf()
         for (const invitee of ids) if (!(await canCall(tx, this.config, host.id, invitee))) throw nf()
-        // Two invitees in a block cannot be in one room (ADR 0017 section 3).
-        if (await this.anyBlockAmong(tx, ids)) throw nf()
+        // Blocks between two invitees are NOT checked here: the host could probe them. The join refuses (section 3).
         if (await this.inOpenCall(tx, host.id)) throw new MeetingError('in_call')
         const [created] = await tx.insert(meetings).values({ hostId: host.id }).returning()
         await tx.insert(mp).values([
@@ -163,7 +163,8 @@ export class MeetingsService {
   }
 
   async get(me: Who, meetingId: string): Promise<MeetingView> {
-    const { meeting } = await this.mine(me, meetingId)
+    const { meeting, participant } = await this.mine(me, meetingId)
+    if (!(await this.mayRead(meeting, participant))) throw nf()
     return this.view(meeting, me.id)
   }
 
@@ -175,6 +176,8 @@ export class MeetingsService {
     let meeting: MeetingRow
     try {
       meeting = await this.db.transaction(async (tx) => {
+        // The member's row first (as call create and meeting invite lock it), then the meeting's.
+        await tx.select({ id: members.id }).from(members).where(eq(members.id, me.id)).for('update')
         const [locked] = await tx.select().from(meetings).where(eq(meetings.id, meetingId)).for('update')
         if (!locked || locked.status !== 'open') throw nf()
         const [row] = await tx.select().from(mp).where(and(eq(mp.meetingId, meetingId), eq(mp.memberId, me.id))).for('update')
@@ -235,8 +238,9 @@ export class MeetingsService {
       const [row] = await tx.select().from(mp).where(and(eq(mp.meetingId, meetingId), eq(mp.memberId, memberId)))
       if (row?.status === 'removed') throw nf()
       if (!(await canCall(tx, this.config, me.id, memberId))) throw nf()
+      // Only the host and the candidate are compared (canCall above). A block between the candidate and
+      // someone else in the meeting is not checked here, or the host could probe it: the join refuses it.
       const live = (await this.liveIds(tx, meetingId)).filter((i) => i !== memberId)
-      if (await this.blockedWithAny(tx, memberId, live)) throw nf()
       if (row?.status === 'joined') return m
       if (m.locked) throw new MeetingError('locked')
       if (live.length + 1 > MAX_PARTICIPANTS) throw new MeetingError('full')
@@ -266,7 +270,8 @@ export class MeetingsService {
   async invitable(me: Who, meetingId: string, query: string): Promise<Person[]> {
     await this.hosted(me, meetingId)
     const allow = this.config.callsMembers.map((h) => h.toLowerCase())
-    if (allow.length === 0) return []
+    // A real query only: an empty one would list the whole allow-list.
+    if (allow.length === 0 || query.trim().length < MIN_SEARCH) return []
     const taken = new Map((await this.db.select().from(mp).where(eq(mp.meetingId, meetingId))).map((r) => [r.memberId, r]))
     const q = query.trim().slice(0, 40).replace(/[\\%_]/g, (c) => `\\${c}`)
     const rows = await this.db
@@ -279,18 +284,16 @@ export class MeetingsService {
           eq(members.allowCalls, true),
           ne(members.id, me.id),
           inArray(sql`lower(${members.handle})`, allow),
-          q ? or(ilike(members.handle, `${q}%`), ilike(members.displayName, `%${q}%`)) : undefined,
+          or(ilike(members.handle, `${q}%`), ilike(members.displayName, `%${q}%`)),
         ),
       )
       .orderBy(asc(members.handle))
       .limit(SEARCH_LIMIT * 3)
-    const live = await this.liveIds(this.db, meetingId)
     const out: Person[] = []
     for (const row of rows) {
       const there = taken.get(row.id)
       if (there && (there.status === 'removed' || there.status === 'joined' || (there.status === 'invited' && there.invitedAt.getTime() > this.inviteCutoff().getTime()))) continue
       if (!(await canCall(this.db, this.config, me.id, row.id))) continue
-      if (await this.blockedWithAny(this.db, row.id, live)) continue
       out.push(row)
       if (out.length >= SEARCH_LIMIT) break
     }
@@ -338,6 +341,8 @@ export class MeetingsService {
       // A reload makes a second connection under the same identity and LiveKit drops
       // the first: its leave names an older sid and must not take the member out.
       if (event.sid && row.sid && row.sid !== event.sid) return
+      // A leave stamped before the member's latest join belongs to an earlier connection (a quick Rejoin).
+      if (row.joinedAt && event.at.getTime() + 1000 < row.joinedAt.getTime()) return
       await this.departed(meeting.id, event.identity, false)
       return
     }
@@ -455,16 +460,6 @@ export class MeetingsService {
     return Boolean(hit)
   }
 
-  private async anyBlockAmong(q: Q, ids: string[]): Promise<boolean> {
-    if (ids.length < 2) return false
-    const [hit] = await q
-      .select({ b: blocks.blockerId })
-      .from(blocks)
-      .where(and(inArray(blocks.blockerId, ids), inArray(blocks.blockedId, ids)))
-      .limit(1)
-    return Boolean(hit)
-  }
-
   /** Who leaves when blocks stand between people already in the room: the non-host, else the later joiner. */
   private async conflictLosers(joined: ParticipantRow[], hostId: string): Promise<string[]> {
     const ids = joined.map((j) => j.memberId)
@@ -562,6 +557,20 @@ export class MeetingsService {
       .where(and(eq(mp.meetingId, meetingId), eq(mp.memberId, me.id)))
     if (!row || row.participant.status === 'removed') throw nf()
     return row
+  }
+
+  /**
+   * Who may read a meeting: only a member who is invited (unexpired) or joined now, in an open
+   * meeting, still eligible with the host and in no block with anyone live. Anyone else (declined,
+   * missed, left, removed, blocked since) is the same 404, so the host's name is not learned.
+   */
+  private async mayRead(meeting: MeetingRow, participant: ParticipantRow): Promise<boolean> {
+    if (meeting.status !== 'open') return false
+    const invitedNow = participant.status === 'invited' && participant.invitedAt.getTime() > this.inviteCutoff().getTime()
+    if (participant.status !== 'joined' && !invitedNow) return false
+    if (!(await this.memberOk(this.db, meeting, participant.memberId))) return false
+    const others = (await this.liveIds(this.db, meeting.id)).filter((i) => i !== participant.memberId)
+    return !(await this.blockedWithAny(this.db, participant.memberId, others))
   }
 
   /** An open meeting this member hosts, or not_found. */

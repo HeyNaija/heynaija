@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import { blocks, calls, meetingParticipants, meetings, members } from '@heynaija/db'
 import { and, eq } from 'drizzle-orm'
-import { CallsService, type CallsConfig } from '../calls/calls.service.js'
+import { CallError, CallsService, type CallsConfig } from '../calls/calls.service.js'
 import { FakeRoomService, type FakeToken } from '../gists/fake-room-service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { INVITE_TTL_MS, MAX_PARTICIPANTS, MeetingError, MeetingsService } from './meetings.service.js'
@@ -16,12 +16,22 @@ const config: CallsConfig = { callsMembers: people.filter((p) => p !== 'outsider
 
 let rooms: FakeRoomService
 let service: MeetingsService
+let callsService: CallsService
 
 const codeOf = async (promise: Promise<unknown>): Promise<string> => {
   try {
     await promise
   } catch (err: unknown) {
     assert.ok(err instanceof MeetingError, String(err))
+    return err.code
+  }
+  return 'ok'
+}
+const callCode = async (promise: Promise<unknown>): Promise<string> => {
+  try {
+    await promise
+  } catch (err: unknown) {
+    assert.ok(err instanceof CallError, String(err))
     return err.code
   }
   return 'ok'
@@ -51,6 +61,7 @@ beforeEach(async () => {
   await db.insert(members).values(people.map((p) => ({ id: id[p], handle: p, allowCalls: true })))
   rooms = new FakeRoomService()
   service = new MeetingsService(db, rooms, config)
+  callsService = new CallsService(db, rooms, config)
 })
 after(() => pool.end())
 
@@ -85,11 +96,12 @@ test('an ineligible invitee, a stranger, yourself, a block (either way) or too m
   assert.equal((await db.select().from(meetings)).length, 0)
 })
 
-test('two invitees who blocked each other cannot be in the same invite list', async () => {
+test('a block between two other members is not observable by the host; the join is where it is refused', async () => {
   await db.insert(blocks).values({ blockerId: id.bayo, blockedId: id.chi })
-  assert.equal(await codeOf(service.create(as('ada'), [id.bayo, id.chi])), 'not_found')
-  assert.equal(await codeOf(service.create(as('ada'), [id.chi, id.bayo])), 'not_found')
-  assert.equal((await db.select().from(meetings)).length, 0)
+  const view = await service.create(as('ada'), [id.bayo, id.chi])
+  assert.equal(view.participants.length, 3)
+  await service.join(as('bayo'), view.id)
+  assert.equal(await codeOf(service.join(as('chi'), view.id)), 'not_found')
 })
 
 test('a meeting can have no invitees yet, and duplicate invitees count once', async () => {
@@ -176,7 +188,7 @@ test('inviting: host only, eligible only, nobody in a block with someone already
   assert.equal(await codeOf(service.invite(as('bayo'), meetingId, id.chi)), 'not_found')
   assert.equal(await codeOf(service.invite(as('ada'), meetingId, id.outsider)), 'not_found')
   assert.equal(await codeOf(service.invite(as('ada'), meetingId, id.ada)), 'not_found')
-  await db.insert(blocks).values({ blockerId: id.chi, blockedId: id.bayo })
+  await db.insert(blocks).values({ blockerId: id.chi, blockedId: id.ada })
   assert.equal(await codeOf(service.invite(as('ada'), meetingId, id.chi)), 'not_found')
   await service.invite(as('ada'), meetingId, id.dayo)
   assert.equal(await stateOf(meetingId, 'dayo'), 'invited')
@@ -303,16 +315,95 @@ test('a block that arrives after joining stops a reconnect token for the blocked
   assert.equal(await codeOf(service.token(as('chi'), meetingId)), 'not_found')
 })
 
-test('the invitation search offers only members who pass canCall with the host, and not those already in', async () => {
+test('the invitation search offers only members who pass canCall with the host, needs a real query, and not those already in', async () => {
   const meetingId = await meet('ada', ['bayo'])
   await db.insert(blocks).values({ blockerId: id.chi, blockedId: id.ada })
   await db.update(members).set({ allowCalls: false }).where(eq(members.id, id.dayo))
-  const found = (await service.invitable(as('ada'), meetingId, '')).map((p) => p.handle).sort()
-  assert.deepEqual(found, ['ezi', 'funmi', 'gozie', 'hadiza', 'ife'])
-  assert.deepEqual((await service.invitable(as('ada'), meetingId, 'FUN')).map((p) => p.handle), ['funmi'])
-  assert.deepEqual(await service.invitable(as('ada'), meetingId, 'out'), [])
-  assert.deepEqual(await service.invitable(as('ada'), meetingId, '%'), [])
-  assert.equal(await codeOf(service.invitable(as('bayo'), meetingId, '')), 'not_found')
+  const names = async (q: string) => (await service.invitable(as('ada'), meetingId, q)).map((p) => p.handle)
+  // An empty or one-letter query lists nobody (it would list the whole allow-list).
+  assert.deepEqual(await names(''), [])
+  assert.deepEqual(await names('e'), [])
+  assert.deepEqual(await names('  f '), [])
+  assert.deepEqual(await names('ez'), ['ezi'])
+  assert.deepEqual(await names('FUN'), ['funmi'])
+  assert.deepEqual(await names('ch'), [])
+  assert.deepEqual(await names('da'), [])
+  assert.deepEqual(await names('ba'), [])
+  assert.deepEqual(await names('ou'), [])
+  assert.deepEqual(await names('%%'), [])
+  assert.equal(await codeOf(service.invitable(as('bayo'), meetingId, 'ez')), 'not_found')
+})
+
+test('a block between two members who are not the host cannot be seen through search or invitation', async () => {
+  const meetingId = await meet('ada', ['bayo'])
+  const names = async (q: string) => (await service.invitable(as('ada'), meetingId, q)).map((p) => p.handle)
+  const before = await names('ch')
+  await db.insert(blocks).values({ blockerId: id.chi, blockedId: id.bayo })
+  assert.deepEqual(await names('ch'), before)
+  assert.deepEqual(before, ['chi'])
+  assert.equal(await codeOf(service.invite(as('ada'), meetingId, id.chi)), 'ok')
+  // Only the join refuses, neutrally, to the joiner.
+  assert.equal(await codeOf(service.join(as('chi'), meetingId)), 'not_found')
+})
+
+test('reading a meeting needs a live invitation or a seat, and the same eligibility and block checks', async () => {
+  const meetingId = await meet('ada', ['bayo', 'chi'], false)
+  // Invited: may read.
+  assert.equal((await service.get(as('bayo'), meetingId)).host.handle, 'ada')
+  // Declined, missed and left no longer may.
+  await service.decline(as('bayo'), meetingId)
+  assert.equal(await codeOf(service.get(as('bayo'), meetingId)), 'not_found')
+  await service.join(as('chi'), meetingId)
+  assert.equal(await codeOf(service.get(as('chi'), meetingId)), 'ok')
+  await service.leave(as('chi'), meetingId)
+  assert.equal(await codeOf(service.get(as('chi'), meetingId)), 'not_found')
+  await db.update(meetingParticipants).set({ status: 'missed' }).where(and(eq(meetingParticipants.meetingId, meetingId), eq(meetingParticipants.memberId, id.chi)))
+  assert.equal(await codeOf(service.get(as('chi'), meetingId)), 'not_found')
+})
+
+test('reading: blocked since the invitation, no longer eligible, or in a block with someone live is the 404', async () => {
+  const meetingId = await meet('ada', ['bayo', 'chi', 'dayo'], false)
+  await service.join(as('chi'), meetingId)
+  assert.equal(await codeOf(service.get(as('bayo'), meetingId)), 'ok')
+  await db.insert(blocks).values({ blockerId: id.bayo, blockedId: id.chi })
+  assert.equal(await codeOf(service.get(as('bayo'), meetingId)), 'not_found')
+  assert.equal(await codeOf(service.get(as('dayo'), meetingId)), 'ok')
+  await db.insert(blocks).values({ blockerId: id.dayo, blockedId: id.ada })
+  assert.equal(await codeOf(service.get(as('dayo'), meetingId)), 'not_found')
+  await db.update(members).set({ allowCalls: false }).where(eq(members.id, id.chi))
+  assert.equal(await codeOf(service.get(as('chi'), meetingId)), 'not_found')
+  // An ended meeting is not readable either.
+  await service.end(as('ada'), meetingId)
+  assert.equal(await codeOf(service.get(as('ada'), meetingId)), 'not_found')
+})
+
+test('one live room at a time: a member in or hosting a meeting cannot start, answer or get a token for a call, and the reverse', async () => {
+  await meet('ada', ['bayo'])
+  // Hosting, and joined: neither can start a call, and neither can be called.
+  assert.equal(await callCode(callsService.create(as('ada'), id.chi)), 'not_found')
+  assert.equal(await callCode(callsService.create(as('bayo'), id.chi)), 'not_found')
+  assert.equal(await callCode(callsService.create(as('chi'), id.ada)), 'not_found')
+  assert.equal(await callCode(callsService.create(as('chi'), id.bayo)), 'not_found')
+  // Invited but not joined is free to call.
+  const invited = await meet('dayo', ['ezi'], false)
+  assert.equal(await callCode(callsService.create(as('ezi'), id.funmi)), 'ok')
+  void invited
+  // A call that was ringing when its callee joined a meeting (inserted directly, as a race would leave it) cannot be answered.
+  const [ringing] = await db.insert(calls).values({ callerId: id.gozie, calleeId: id.hadiza, ringExpiresAt: new Date(Date.now() + 40_000) }).returning()
+  const other = await meet('ife', ['hadiza'], false)
+  await db.update(meetingParticipants).set({ status: 'joined', joinedAt: new Date() }).where(and(eq(meetingParticipants.meetingId, other), eq(meetingParticipants.memberId, id.hadiza)))
+  assert.equal(await callCode(callsService.accept(as('hadiza'), ringing!.id)), 'not_found')
+  assert.equal((await db.select().from(calls).where(eq(calls.id, ringing!.id)))[0]!.status, 'ringing')
+  // An active call cannot hand a token to someone sitting in a meeting.
+  await db.update(calls).set({ status: 'active', answeredAt: new Date() }).where(eq(calls.id, ringing!.id))
+  assert.equal(await callCode(callsService.token(as('hadiza'), ringing!.id)), 'not_found')
+  assert.equal(await callCode(callsService.token(as('gozie'), ringing!.id)), 'ok')
+})
+
+test('a call create and a meeting join for the same member cannot both succeed', async () => {
+  const meetingId = await meet('ada', ['bayo'], false)
+  const results = await Promise.allSettled([service.join(as('bayo'), meetingId), callsService.create(as('bayo'), id.chi)])
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1, JSON.stringify(results.map((r) => r.status)))
 })
 
 test('webhooks: joiners who are not in the meeting are removed; leaving follows the connection that left', async () => {
@@ -453,4 +544,13 @@ test('the calls pass also runs the meetings pass (one timer, one kill switch)', 
   const on = new CallsService(db, rooms, config, new MeetingsService(db, rooms, config))
   await on.tick()
   assert.equal((await meetingRow(second)).status, 'ended')
+})
+
+test('webhooks: a leave stamped before the latest join belongs to an earlier connection and is ignored', async () => {
+  const meetingId = await meet('ada', ['bayo'])
+  await service.leave(as('bayo'), meetingId)
+  await service.join(as('bayo'), meetingId)
+  const stale = new Date(Date.now() - 30_000)
+  await service.handleEvent({ id: randomUUID(), kind: 'participant_left', room: meetingId, identity: id.bayo, sid: null, at: stale })
+  assert.equal(await stateOf(meetingId, 'bayo'), 'joined')
 })
