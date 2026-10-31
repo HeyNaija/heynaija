@@ -493,6 +493,12 @@ export type SearchResults = {
   posts: Post[]
 }
 
+/** A member offered while typing an @mention; `following` ones come first. */
+export type MentionSuggestion = SearchResults['members'][number] & { following: boolean }
+
+/** A page of suggestions; `cursor` asks for the next, null at the end. */
+export type MentionPage = { members: MentionSuggestion[]; cursor: string | null }
+
 /** Null when the query is too short or too long to search for. */
 export async function search(q: string): Promise<SearchResults | null> {
   const res = await api(`/v1/search?q=${encodeURIComponent(q)}`)
