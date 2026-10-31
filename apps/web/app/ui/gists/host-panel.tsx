@@ -8,7 +8,7 @@ import { listenerLabel, personName, type Person, type GistRole, type GistView, t
 import { gistCall } from './api'
 
 /** A button that must be tapped twice, for the moves that cannot be undone from here (remove, end). */
-function ConfirmButton({ label, confirmLabel, onConfirm, disabled, name }: { label: string; confirmLabel: string; onConfirm: () => void; disabled?: boolean; name?: string }) {
+export function ConfirmButton({ label, confirmLabel, onConfirm, disabled, name }: { label: string; confirmLabel: string; onConfirm: () => void; disabled?: boolean; name?: string }) {
   const [armed, setArmed] = useState(false)
   useEffect(() => {
     if (!armed) return

@@ -59,6 +59,7 @@ export type MeetingView = {
   host: Person
   /** Who is in or invited; only for someone who is in the meeting now. */
   participants: MeetingPerson[]
+  startedAt: string
   endedAt: string | null
 }
 export type IncomingMeeting = { id: string; host: Person; expiresAt: string }
@@ -600,6 +601,7 @@ export class MeetingsService {
       me: mine?.status ?? 'removed',
       host: host ? { id: host.id, handle: host.handle, displayName: host.displayName } : await this.person(meeting.hostId),
       participants,
+      startedAt: meeting.createdAt.toISOString(),
       endedAt: meeting.endedAt?.toISOString() ?? null,
     }
   }

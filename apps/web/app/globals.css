@@ -2163,3 +2163,6 @@ a.result-row:hover { color: var(--accent-strong); }
 @media (prefers-reduced-motion: no-preference) {
   .call-avatar.is-ringing { animation: gist-ring 1.4s ease-in-out infinite; }
 }
+
+/* Meetings (docs/adr/0017 stage 2). They reuse the Gists room pieces; existing tokens only. */
+.meeting-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }

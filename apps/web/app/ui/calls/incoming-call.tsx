@@ -7,12 +7,19 @@ import { PhoneIcon, PhoneOffIcon } from '@/app/ui/icons'
 import { apiCall } from '@/app/ui/gists/api'
 import { activationAllowed, incomingPollDelay, mayTakeFocus, ringSecondsLeft, startFailure, type CallView } from '@/lib/calls'
 import { personName } from '@/lib/gists'
+import { countdownLabel, meetingFailure, type IncomingMeeting } from '@/lib/meetings'
+
+/** What is ringing: a 1:1 call, or an invitation to a meeting. They share this alert and all its safety rules. */
+type Ring = { kind: 'call' | 'meeting'; id: string; handle: string; displayName: string | null; expiresAt: string }
+const ringOfCall = (c: CallView): Ring => ({ kind: 'call', id: c.id, handle: c.other.handle, displayName: c.other.displayName, expiresAt: c.ringExpiresAt })
+const ringOfMeeting = (m: IncomingMeeting): Ring => ({ kind: 'meeting', id: m.id, handle: m.host.handle, displayName: m.host.displayName, expiresAt: m.expiresAt })
 
 /**
  * The incoming-call alert, on every page of the app for members who have calls
  * (it is mounted only when `features.calls` is on). It asks the API every few
- * seconds whether a call is ringing: there is no realtime channel, and a closed
- * tab cannot ring. Accept opens the call screen; Decline sends the caller a
+ * seconds whether a call is ringing, and if none is, whether a meeting invitation
+ * is waiting (meetings reuse this alert and its rules): there is no realtime channel, and a closed
+ * tab cannot ring. Accept opens the call or meeting screen; Decline sends the caller a
  * "declined". It works over a DM page or anywhere else. It is announced by its role
  * and never steals focus from a field or an open dialog; otherwise focus goes to the
  * alert itself (not to a button). Nothing acts for the first 700 ms, and Esc does nothing:
@@ -23,7 +30,7 @@ export function IncomingCall() {
   const pathname = usePathname()
   const titleId = useId()
   const descId = useId()
-  const [call, setCall] = useState<CallView | null>(null)
+  const [call, setCall] = useState<Ring | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -37,7 +44,7 @@ export function IncomingCall() {
   callRef.current = call
 
   // On the call screen the call itself is in front of the member; do not ask.
-  const onCallScreen = pathname.startsWith('/calls/')
+  const onCallScreen = pathname.startsWith('/calls/') || pathname.startsWith('/meetings/')
 
   useEffect(() => {
     if (onCallScreen) {
@@ -53,9 +60,15 @@ export function IncomingCall() {
       // A 404 means calls are not for this member (or are off): ask rarely, not never.
       failures = res.ok ? 0 : res.status === 404 ? 3 : failures + 1
       if (res.ok) {
-        const next = res.data.call && !handled.current.has(res.data.call.id) ? res.data.call : null
+        let next = res.data.call && !handled.current.has(res.data.call.id) ? ringOfCall(res.data.call) : null
+        // A ringing call comes first; only without one is a meeting invitation looked for.
+        if (!next) {
+          const invite = await apiCall<{ meeting: IncomingMeeting | null }>('GET', '/v1/meetings/incoming')
+          if (stopped) return
+          if (invite.ok && invite.data.meeting && !handled.current.has(invite.data.meeting.id)) next = ringOfMeeting(invite.data.meeting)
+        }
         const shown = callRef.current
-        if (shown && !next && !handled.current.has(shown.id)) setMissed(`Missed call from ${personName(shown.other)}.`)
+        if (shown && !next && !handled.current.has(shown.id)) setMissed(`Missed ${shown.kind === 'call' ? 'call' : 'invitation'} from ${personName(shown)}.`)
         setCall(next)
       }
       schedule()
@@ -85,9 +98,9 @@ export function IncomingCall() {
     const t = setInterval(() => {
       const current = Date.now()
       setNow(current)
-      if (ringSecondsLeft(call.ringExpiresAt, current) === 0) {
+      if (ringSecondsLeft(call.expiresAt, current) === 0) {
         handled.current.add(call.id)
-        setMissed(`Missed call from ${personName(call.other)}.`)
+        setMissed(`Missed ${call.kind === 'call' ? 'call' : 'invitation'} from ${personName(call)}.`)
         setCall(null)
       }
     }, 1000)
@@ -119,25 +132,27 @@ export function IncomingCall() {
     if (!current || !activationAllowed(shownAt.current, Date.now())) return
     handled.current.add(current.id)
     setCall(null)
-    await apiCall('POST', `/v1/calls/${current.id}/decline`)
+    await apiCall('POST', `/v1/${current.kind === 'call' ? 'calls' : 'meetings'}/${current.id}/decline`)
   }, [])
 
   async function answer() {
     if (!call || !activationAllowed(shownAt.current, Date.now())) return
     setBusy(true)
     setError(null)
-    const res = await apiCall<CallView>('POST', `/v1/calls/${call.id}/accept`)
+    const isCall = call.kind === 'call'
+    // Accepting a call and joining a meeting are the same step: the member says yes. Neither starts the microphone.
+    const res = await apiCall<unknown>('POST', `/v1/${isCall ? 'calls' : 'meetings'}/${call.id}/${isCall ? 'accept' : 'join'}`)
     setBusy(false)
     if (!res.ok) {
       handled.current.add(call.id)
       setCall(null)
-      setMissed('That call is no longer available.')
-      if (res.status !== 404) setError(startFailure(res.status, res.code))
+      setMissed(isCall ? 'That call is no longer available.' : 'That meeting is no longer available.')
+      if (res.status !== 404) setError(isCall ? startFailure(res.status, res.code) : meetingFailure(res.status, res.code))
       return
     }
     handled.current.add(call.id)
     setCall(null)
-    router.push(`/calls/${call.id}`)
+    router.push(`/${isCall ? 'calls' : 'meetings'}/${call.id}`)
   }
 
   function onKeyDown(event: React.KeyboardEvent) {
@@ -158,8 +173,9 @@ export function IncomingCall() {
     }
   }
 
-  const left = call ? ringSecondsLeft(call.ringExpiresAt, now) : 0
-  const name = call ? personName(call.other) : ''
+  const left = call ? ringSecondsLeft(call.expiresAt, now) : 0
+  const name = call ? personName(call) : ''
+  const isCall = call?.kind !== 'meeting'
 
   return (
     <>
@@ -176,16 +192,16 @@ export function IncomingCall() {
         <div className="incoming-call-wrap">
           <div ref={dialog} role="alertdialog" aria-labelledby={titleId} aria-describedby={descId} className="incoming-call square-card" tabIndex={-1} onKeyDown={onKeyDown}>
             <div className="incoming-call-who">
-              <Avatar handle={call.other.handle} size={48} />
+              <Avatar handle={call.handle} size={48} />
               <div className="min-w-0">
                 <h2 id={titleId} className="section-title">
-                  Incoming call
+                  {isCall ? 'Incoming call' : 'Meeting invitation'}
                 </h2>
                 <p id={descId} className="break-words text-sm">
-                  {name} is calling
+                  {isCall ? `${name} is calling` : `${name} invited you to a meeting`}
                   <span className="text-muted" aria-hidden="true">
                     {' '}
-                    · {left}s
+                    · {countdownLabel(left)}
                   </span>
                 </p>
               </div>
@@ -193,7 +209,7 @@ export function IncomingCall() {
             <div className="incoming-call-actions">
               <button type="button" className="btn btn-primary gist-btn" disabled={busy} onClick={() => void answer()}>
                 <PhoneIcon size={20} />
-                Accept
+                {isCall ? 'Accept' : 'Join'}
               </button>
               <button type="button" className="btn btn-danger gist-btn" disabled={busy} onClick={() => void decline()}>
                 <PhoneOffIcon size={20} />

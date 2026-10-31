@@ -43,3 +43,6 @@ export async function featureGate(feature: GatedFeature, session: string | undef
 
 export const gistsGate = (session: string | undefined, askMe: AskMe) => featureGate('gists', session, askMe)
 export const callsGate = (session: string | undefined, askMe: AskMe) => featureGate('calls', session, askMe)
+
+/** Which feature switch a gated path needs: calls and meetings share `features.calls`, everything else is Gists. */
+export const featureForPath = (pathname: string): GatedFeature => (/^\/(calls|meetings)(\/|$)/.test(pathname) ? 'calls' : 'gists')

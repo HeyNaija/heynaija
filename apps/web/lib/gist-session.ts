@@ -46,6 +46,8 @@ export type SessionDeps<J extends { url: string; token: string } = JoinResult> =
   holdScreen: () => Promise<() => void>
   sleep: (ms: number) => Promise<void>
   reloadPage: () => void
+  /** What the room is called in announcements: 'Gist' (the default), or 'meeting' for a meeting. */
+  noun?: string
   ui: {
     phase: (phase: Phase) => void
     problem: (message: string | null) => void
@@ -72,6 +74,10 @@ export class GistSession<J extends { url: string; token: string } = JoinResult> 
   private reconnecting = false
   private release: (() => void) | null = null
   audio: AudioLike | null = null
+
+  private get noun() {
+    return this.deps.noun ?? 'Gist'
+  }
 
   constructor(deps: SessionDeps<J>) {
     this.deps = deps
@@ -124,7 +130,7 @@ export class GistSession<J extends { url: string; token: string } = JoinResult> 
         await this.finish()
         return 'stop'
       }
-      ui.problem(res.message ?? 'Could not reach the Gist. Check your connection.')
+      ui.problem(res.message ?? `Could not reach the ${this.noun}. Check your connection.`)
       return 'retry'
     }
     ui.joined(res.data)
@@ -182,7 +188,7 @@ export class GistSession<J extends { url: string; token: string } = JoinResult> 
     }
     this.release = release
     ui.phase('live')
-    ui.announce('You are in the Gist. Keep this screen open to keep listening.')
+    ui.announce(`You are in the ${this.noun}. Keep this screen open to keep listening.`)
   }
 
   /** The connection ended; why decides what happens next. */
@@ -197,7 +203,7 @@ export class GistSession<J extends { url: string; token: string } = JoinResult> 
     this.present = false
     await this.teardown(false)
     ui.phase(reason === 'duplicate' ? 'elsewhere' : 'gone')
-    ui.announce(reason === 'duplicate' ? 'This Gist is open somewhere else.' : 'You are no longer in this Gist.')
+    ui.announce(reason === 'duplicate' ? `This ${this.noun} is open somewhere else.` : `You are no longer in this ${this.noun}.`)
   }
 
   async reconnect(): Promise<void> {
