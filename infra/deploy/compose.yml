@@ -48,6 +48,11 @@ x-api-env: &api-env
   LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
   LIVEKIT_WEBHOOK_KEY: ${LIVEKIT_WEBHOOK_KEY:-}
   LIVEKIT_WEBHOOK_SECRET: ${LIVEKIT_WEBHOOK_SECRET:-}
+  # Age verification with Didit (docs/deployment/age-verification.md). All three or
+  # none; with any empty no check is offered and the webhook answers 404.
+  DIDIT_API_KEY: ${DIDIT_API_KEY:-}
+  DIDIT_WORKFLOW_ID: ${DIDIT_WORKFLOW_ID:-}
+  DIDIT_WEBHOOK_SECRET: ${DIDIT_WEBHOOK_SECRET:-}
   # Safety (docs/safety/abuse-material-scanning.md): where alerts are emailed, the
   # PhotoDNA key once approved, and what purging Cloudflare's cache needs. Each
   # is optional; without them alerts are only logged, nothing is scanned and
