@@ -723,6 +723,28 @@ export const VERIFICATION_STATUSES = ['pending', 'verified', 'rejected', 'expire
 // One row per attempt to verify a member's identity with a provider (NINAuth).
 // A member has at most one live (pending or verified) row; older ones are kept,
 // marked expired, revoked or rejected, as the record of what happened.
+// The result of a hosted age check by Didit (ADR 0018), one row per member. Only
+// the outcome is kept: never the document, the face, a date of birth or Didit's
+// raw answer. `method` says how an approval was reached ('document' or
+// 'age_estimation'); it is null until there is one. `diditSessionId` is the only
+// reference back to the provider, and the only session a webhook may change.
+// pending: a session was started. in_review: Didit sent it to a person.
+// verified: approved, so an adult. declined and expired are not adult and may
+// start a new session. Nothing here is the member's declared age (age_assurances).
+export const AGE_VERIFICATION_STATUSES = ['pending', 'in_review', 'verified', 'declined', 'expired'] as const
+
+export const ageVerifications = restricted.table('age_verifications', {
+  memberId: uuid('member_id')
+    .primaryKey()
+    .references(() => members.id, { onDelete: 'cascade' }),
+  status: text('status', { enum: AGE_VERIFICATION_STATUSES }).notNull(),
+  method: text('method'),
+  verifiedAt: ts('verified_at'),
+  diditSessionId: text('didit_session_id').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+})
+
 export const identityVerifications = restricted.table(
   'identity_verifications',
   {
