@@ -1,6 +1,6 @@
 import { type Db, GIST_ROLES, blocks, communities, communityMemberships, gistMembers, gists, members } from '@heynaija/db'
 import { Inject, Injectable, Logger } from '@nestjs/common'
-import { and, asc, count, eq, inArray, isNotNull, isNull, lt, ne, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lt, ne, notInArray, or, sql } from 'drizzle-orm'
 import { RateLimiter } from '../rate-limit.js'
 import { DB } from '../tokens.js'
 import { type GistViewer, canHostGist, canJoinGist } from './eligibility.js'
@@ -91,6 +91,19 @@ export type GistView = {
 
 export type JoinResult = { url: string; token: string; role: GistRole; gist: GistView }
 
+/** A Gist in the Live now list: what its card shows, and no one but the host. */
+export type LiveGist = {
+  id: string
+  title: string
+  host: Person
+  community: { id: string; slug: string; name: string } | null
+  listenerCount: number
+  startedAt: string | null
+}
+
+/** The most Gists the Live now list shows. */
+export const LIVE_LIST_MAX = 20
+
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
 type Q = Db | Tx
 type GistRow = typeof gists.$inferSelect
@@ -155,6 +168,88 @@ export class GistsService {
         ),
       )
       .orderBy(asc(gistMembers.speakRequestedAt))
+  }
+
+  /**
+   * The live Gists this member may see, newest first: the Live now list. The
+   * rules are the ones `open` applies to a single Gist, batched for the list: on
+   * the allow-list, a member of a community-only Gist's community, not on its
+   * removed list, and (unless on its stage) not blocked either way with its host
+   * or a speaker. So it never lists a Gist the member would get not-found for.
+   */
+  async live(viewer: { id: string; handle: string }): Promise<LiveGist[]> {
+    const me = await this.viewer(this.db, viewer.id)
+    // Someone who may not use Gists gets the not-found of a dark feature, not an empty list.
+    if (!me || !canJoinGist(me, { status: 'live', communityId: null }, { ...this.config, inCommunity: false })) throw new GistError('not_found')
+
+    // More than the list shows, since some will be filtered out.
+    const rows = await this.db
+      .select({ gist: gists, host: { id: members.id, handle: members.handle, displayName: members.displayName } })
+      .from(gists)
+      .innerJoin(members, eq(members.id, gists.hostId))
+      .where(eq(gists.status, 'live'))
+      .orderBy(desc(gists.startedAt))
+      .limit(LIVE_LIST_MAX * 5)
+    if (rows.length === 0) return []
+    const ids = rows.map((r) => r.gist.id)
+    const communityIds = [...new Set(rows.map((r) => r.gist.communityId).filter((c): c is string => c !== null))]
+
+    const [mine, joined, communityRows, blockedOn, counts] = await Promise.all([
+      // The viewer's own rows in these Gists: removed, or on the stage.
+      this.db
+        .select({ gistId: gistMembers.gistId, role: gistMembers.role, removedAt: gistMembers.removedAt })
+        .from(gistMembers)
+        .where(and(inArray(gistMembers.gistId, ids), eq(gistMembers.memberId, viewer.id))),
+      communityIds.length
+        ? this.db
+            .select({ id: communities.id })
+            .from(communities)
+            .innerJoin(communityMemberships, eq(communityMemberships.communityId, communities.id))
+            .where(and(inArray(communities.id, communityIds), eq(communities.active, true), eq(communityMemberships.memberId, viewer.id)))
+        : [],
+      communityIds.length
+        ? this.db.select({ id: communities.id, slug: communities.slug, name: communities.name }).from(communities).where(inArray(communities.id, communityIds))
+        : [],
+      // Gists with someone on the stage who blocked the viewer, or whom the viewer blocked.
+      this.db
+        .selectDistinct({ gistId: gistMembers.gistId })
+        .from(gistMembers)
+        .innerJoin(
+          blocks,
+          or(
+            and(eq(blocks.blockerId, viewer.id), eq(blocks.blockedId, gistMembers.memberId)),
+            and(eq(blocks.blockedId, viewer.id), eq(blocks.blockerId, gistMembers.memberId)),
+          ),
+        )
+        .where(and(inArray(gistMembers.gistId, ids), inArray(gistMembers.role, STAGE), isNull(gistMembers.removedAt))),
+      this.db
+        .select({ gistId: gistMembers.gistId, n: count() })
+        .from(gistMembers)
+        .where(and(inArray(gistMembers.gistId, ids), eq(gistMembers.role, 'listener'), this.present()))
+        .groupBy(gistMembers.gistId),
+    ])
+
+    const own = new Map(mine.map((row) => [row.gistId, row]))
+    const inCommunity = new Set(joined.map((c) => c.id))
+    const community = new Map(communityRows.map((c) => [c.id, c]))
+    const blocked = new Set(blockedOn.map((row) => row.gistId))
+    const listeners = new Map(counts.map((row) => [row.gistId, row.n]))
+    return rows
+      .filter(({ gist }) => {
+        const mineHere = own.get(gist.id)
+        if (mineHere?.removedAt) return false
+        if (!canJoinGist(me, gist, { ...this.config, inCommunity: gist.communityId !== null && inCommunity.has(gist.communityId) })) return false
+        return (mineHere !== undefined && STAGE.includes(mineHere.role)) || !blocked.has(gist.id)
+      })
+      .slice(0, LIVE_LIST_MAX)
+      .map(({ gist, host }) => ({
+        id: gist.id,
+        title: gist.title,
+        host,
+        community: gist.communityId ? (community.get(gist.communityId) ?? null) : null,
+        listenerCount: listeners.get(gist.id) ?? 0,
+        startedAt: gist.startedAt?.toISOString() ?? null,
+      }))
   }
 
   /** Who is listening. Host and co-hosts only: other listeners never see the audience. */

@@ -485,7 +485,10 @@ not. Nobody can use presence to tell what a particular member is listening to.
   Live/Ended state, so the card cannot be told apart from a deleted post. A Gist
   can be public (any eligible member) or **community-only** (members of one
   community); never invite-only, never guests without accounts. "Public" here
-  means open to any eligible member, not discoverable by strangers.
+  means open to any eligible member, not discoverable by strangers. **Built
+  (31 October 2026):** the Live now card on Home, from `GET /v1/gists/live`,
+  which lists a Gist only when opening it would succeed (allow-list, community,
+  removed list, the block rule); community pages and profiles come later.
 - **Blocks in a Gist are not section 3's meeting rule.** That rule refuses any
   join that puts a blocker and a blocked member in one room, which in a
   200-person room lets one early joiner lock others out. In a Gist a block is

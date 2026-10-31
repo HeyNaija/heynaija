@@ -38,7 +38,10 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
   const earContext = await browser.newContext()
   const ear = await earContext.newPage()
   await signUpOverHttp(ear, EAR)
-  await ear.goto(url)
+  // The listener finds it in Home's Live now list, not from a shared link.
+  await ear.goto('/')
+  await ear.getByRole('link', { name: /Jollof, settled/ }).click()
+  await ear.waitForURL(url)
   // Nothing is playing before the tap: no media element exists yet.
   await expect(ear.locator('audio')).toHaveCount(0)
   await expect(ear.getByText('Keep this screen open.').first()).toBeVisible()

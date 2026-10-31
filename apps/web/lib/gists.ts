@@ -114,6 +114,23 @@ export function joinFailure(status: number, code: string | undefined): JoinFailu
 export const listenerLabel = (n: number) =>
   n <= 0 ? 'No listeners yet' : `${n.toLocaleString('en-NG')} ${n === 1 ? 'listener' : 'listeners'}`
 
+/** A Gist in the Live now list (GET /v1/gists/live). */
+export type LiveGist = {
+  id: string
+  title: string
+  host: Person
+  community: { id: string; slug: string; name: string } | null
+  listenerCount: number
+  startedAt: string | null
+}
+
+/** The line under a Live now title: who hosts it, in which community, how many listen. */
+export const liveMeta = (gist: Pick<LiveGist, 'host' | 'community' | 'listenerCount'>) =>
+  [`Hosted by ${personName(gist.host)}`, gist.community ? `in ${gist.community.name}` : null, listenerLabel(gist.listenerCount)].filter(Boolean).join(' · ')
+
+/** How often Home asks for the Live now list, while the tab is visible. */
+export const LIVE_POLL_MS = 30_000
+
 type Connection = { type?: string; saveData?: boolean } | undefined
 
 /** About 43 MB an hour with three speakers (ADR 0017 section 4a); said plainly, louder on mobile data. */
