@@ -477,10 +477,18 @@ export class GistsService {
    */
   async endHostedBy(hostId: string): Promise<void> {
     const live = await this.db.select({ id: gists.id }).from(gists).where(and(eq(gists.hostId, hostId), eq(gists.status, 'live')))
-    for (const { id } of live) {
-      await this.rooms.deleteRoom(id)
-      await this.finish(id)
-    }
+    for (const { id } of live) await this.endNow(id)
+  }
+
+  /**
+   * Ends a Gist at once, whoever hosts it: a moderator's decision on a report.
+   * The room goes first, so everyone in it is disconnected; if the database
+   * write then fails, the reconcile ends a live Gist whose room is gone. A
+   * LiveKit failure throws and leaves the Gist live, to be tried again. Safe to repeat.
+   */
+  async endNow(gistId: string): Promise<void> {
+    await this.rooms.deleteRoom(gistId)
+    await this.finish(gistId)
   }
 
   /** Lock the room (no new listeners), set a lower listener cap, or close requests. Host only. */

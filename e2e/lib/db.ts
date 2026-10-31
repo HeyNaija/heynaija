@@ -46,14 +46,19 @@ export async function cleanTestData(log = (_: string) => {}) {
       await client.query('begin')
       await client.query(`create temp table e2e_m on commit drop as select unnest($1::uuid[]) as id`, [ids])
       await client.query(`create temp table e2e_p on commit drop as select id from posts where author_id in (select id from e2e_m)`)
+      await client.query(`create temp table e2e_g on commit drop as select id from gists where host_id in (select id from e2e_m)`)
       const steps: [string, string][] = [
         ['notifications', `delete from notifications where recipient_id in (select id from e2e_m) or actor_id in (select id from e2e_m)
            or subject_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
+        ['gist report records', `delete from gist_report_participants where member_id in (select id from e2e_m)
+           or report_id in (select id from reports where reporter_id in (select id from e2e_m) or member_id in (select id from e2e_m)
+           or post_id in (select id from e2e_p) or resolved_by in (select id from e2e_m) or gist_id in (select id from e2e_g))`],
         ['moderation actions', `delete from moderation_actions where actor_id in (select id from e2e_m) or member_id in (select id from e2e_m)
-           or post_id in (select id from e2e_p) or report_id in (select id from reports where reporter_id in (select id from e2e_m)
-           or member_id in (select id from e2e_m) or post_id in (select id from e2e_p))`],
+           or post_id in (select id from e2e_p) or gist_id in (select id from e2e_g) or report_id in (select id from reports
+           where reporter_id in (select id from e2e_m) or member_id in (select id from e2e_m) or post_id in (select id from e2e_p)
+           or gist_id in (select id from e2e_g))`],
         ['reports', `delete from reports where reporter_id in (select id from e2e_m) or member_id in (select id from e2e_m)
-           or post_id in (select id from e2e_p) or resolved_by in (select id from e2e_m)`],
+           or post_id in (select id from e2e_p) or resolved_by in (select id from e2e_m) or gist_id in (select id from e2e_g)`],
         ['notification settings', `delete from notification_opt_outs where member_id in (select id from e2e_m)`],
         ['push subscriptions', `delete from push_subscriptions where member_id in (select id from e2e_m)`],
         ['link previews', `delete from link_previews where url like 'https://links.e2e.test/%'`],
@@ -73,7 +78,7 @@ export async function cleanTestData(log = (_: string) => {}) {
            or gist_id in (select id from gists where host_id in (select id from e2e_m))`],
         ['gist role changes', `update gist_members set role_changed_by = null where role_changed_by in (select id from e2e_m)`],
         ['gist removals', `update gist_members set removed_by = null where removed_by in (select id from e2e_m)`],
-        ['gists', `delete from gists where host_id in (select id from e2e_m)`],
+        ['gists', `delete from gists where id in (select id from e2e_g)`],
         ['media', `delete from media where owner_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         // Replies by others to these posts would be orphaned; tests only reply among themselves.
         ['idea votes', `delete from idea_votes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
