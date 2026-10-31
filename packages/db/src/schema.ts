@@ -10,6 +10,7 @@ import {
   pgSchema,
   pgTable,
   primaryKey,
+  real,
   text,
   uniqueIndex,
   timestamp,
@@ -102,13 +103,19 @@ export const media = pgTable(
     ownerId: uuid('owner_id')
       .notNull()
       .references(() => members.id),
-    kind: text('kind', { enum: ['avatar', 'post_image', 'community_photo'] }).notNull(),
+    kind: text('kind', { enum: ['avatar', 'post_image', 'community_photo', 'post_video'] }).notNull(),
     // pending: an upload URL was issued. processing: uploaded, waiting for the
     // background job. ready: processed and public. failed: it was not a usable
     // image. deleted: replaced or removed by its owner, or abandoned.
     // quarantined: taken down by a moderator; the files are kept privately.
     // blocked: matched known abuse material; the original is kept privately.
-    status: text('status', { enum: ['pending', 'processing', 'ready', 'failed', 'deleted', 'quarantined', 'blocked'] })
+    // Videos only (ADR 0019): uploading is the video's "pending" (a multipart upload
+    // is open, see video_details), and rejected is its "failed" for a permanent
+    // reason (too long, too large, not a video). A video that no scanner has cleared
+    // stays quarantined; it is never made ready by default.
+    status: text('status', {
+      enum: ['pending', 'uploading', 'processing', 'ready', 'failed', 'rejected', 'deleted', 'quarantined', 'blocked'],
+    })
       .notNull()
       .default('pending'),
     // What the browser said it would send; the upload URL only accepts exactly this.
@@ -135,6 +142,48 @@ export const media = pgTable(
     index('media_owner_status_idx').on(t.ownerId, t.status),
     index('media_post_idx').on(t.postId),
   ],
+)
+
+// A video's own facts, one row per `media` row of kind post_video (ADR 0019 section 7).
+// A table of its own so `media` gains no columns and the previous release ignores it.
+export const videoDetails = pgTable('video_details', {
+  mediaId: uuid('media_id')
+    .primaryKey()
+    .references(() => media.id, { onDelete: 'cascade' }),
+  // The open S3 multipart upload and the part size it was started with, so a reload can resume.
+  uploadId: text('upload_id'),
+  partSize: integer('part_size'),
+  durationMs: integer('duration_ms'),
+  // The poster's (and so the video's displayed) size.
+  width: integer('width'),
+  height: integer('height'),
+  fps: real('fps'),
+  originalSha256: text('original_sha256'),
+  framesScanned: integer('frames_scanned'),
+  // Where in the clip the first matching frame was, when the scanner blocked it.
+  matchFrameMs: integer('match_frame_ms'),
+  // clear, match, or unscanned (no scanner is configured: the video stays quarantined).
+  scanResult: text('scan_result', { enum: ['clear', 'match', 'unscanned'] }),
+  posterKey: text('poster_key'),
+  // Why a video was rejected (a class the uploader may be told) or failed (for the log).
+  rejectionReason: text('rejection_reason', { enum: ['too_long', 'too_short', 'too_large', 'too_big_picture', 'not_a_video'] }),
+  failureReason: text('failure_reason'),
+  attempts: integer('attempts').notNull().default(0),
+})
+
+// The MP4s made for one video, one row per height (240, 360, 480).
+export const videoRenditions = pgTable(
+  'video_renditions',
+  {
+    mediaId: uuid('media_id')
+      .notNull()
+      .references(() => media.id, { onDelete: 'cascade' }),
+    height: integer('height').notNull(),
+    width: integer('width').notNull(),
+    bytes: integer('bytes').notNull(),
+    bitrateKbps: integer('bitrate_kbps').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.mediaId, t.height] })],
 )
 
 // What a web address in a post leads to, fetched once and shared by every post
