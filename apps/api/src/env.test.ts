@@ -105,19 +105,19 @@ test('the safety settings are optional, also when given empty, and the Cloudflar
   assert.throws(() => loadEnv({ ...base, SAFETY_ALERT_EMAIL: 'contact@heynaija.ng' }), /needs SMTP_CONNECTION_URI/)
 })
 
-test('calls and Spaces are off by default, with nobody on the allow-list', () => {
+test('calls and Gists are off by default, with nobody on the allow-list', () => {
   const env = loadEnv(base)
   assert.equal(env.CALLS_ENABLED, false)
-  assert.equal(env.CALLS_SPACES_ENABLED, false)
+  assert.equal(env.CALLS_GISTS_ENABLED, false)
   assert.deepEqual(env.CALLS_MEMBERS, [])
   assert.equal(env.LIVEKIT_URL, undefined)
-  assert.equal(env.SPACES_LISTENER_CAP, 200)
-  assert.equal(env.SPACES_MAX_COHOSTS, 2)
-  assert.equal(env.SPACES_MAX_SPEAKERS, 10)
+  assert.equal(env.GISTS_LISTENER_CAP, 200)
+  assert.equal(env.GISTS_MAX_COHOSTS, 2)
+  assert.equal(env.GISTS_MAX_SPEAKERS, 10)
 })
 
-test('the Spaces switches accept only true or false, and the allow-list is a trimmed, lower-cased handle list', () => {
-  assert.equal(loadEnv({ ...base, CALLS_ENABLED: 'true', CALLS_SPACES_ENABLED: 'true' }).CALLS_SPACES_ENABLED, true)
+test('the Gists switches accept only true or false, and the allow-list is a trimmed, lower-cased handle list', () => {
+  assert.equal(loadEnv({ ...base, CALLS_ENABLED: 'true', CALLS_GISTS_ENABLED: 'true' }).CALLS_GISTS_ENABLED, true)
   assert.throws(() => loadEnv({ ...base, CALLS_ENABLED: '1' }))
   assert.deepEqual(loadEnv({ ...base, CALLS_MEMBERS: ' Ada, bayo ,,' }).CALLS_MEMBERS, ['ada', 'bayo'])
 })

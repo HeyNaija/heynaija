@@ -107,14 +107,14 @@ const schema = z.object({
   // The media bucket's public custom domain (nginx serves it under /media too), so
   // a purge also clears copies cached under that address.
   MEDIA_ORIGIN: optional(z.url().transform((u) => u.replace(/\/$/, ''))),
-  // Calls and Spaces (docs/adr/0017). Everything ships dark: both switches default
-  // to false, and with either off (or LiveKit not configured) every Spaces route
+  // Calls and Gists (docs/adr/0017). Everything ships dark: both switches default
+  // to false, and with either off (or LiveKit not configured) every Gists route
   // answers 404 exactly like a route that does not exist.
   CALLS_ENABLED: flag(),
-  CALLS_SPACES_ENABLED: flag(),
-  // Handles allowed to use calls and Spaces during the beta, comma-separated. Empty
+  CALLS_GISTS_ENABLED: flag(),
+  // Handles allowed to use calls and Gists during the beta, comma-separated. Empty
   // means nobody. Temporary: replaced by the real age-verified, opted-in gate (see
-  // spaces/eligibility.ts).
+  // gists/eligibility.ts).
   CALLS_MEMBERS: z
     .string()
     .default('')
@@ -127,10 +127,10 @@ const schema = z.object({
   LIVEKIT_API_SECRET: optional(z.string().min(32)),
   LIVEKIT_WEBHOOK_KEY: optional(z.string().min(1)),
   LIVEKIT_WEBHOOK_SECRET: optional(z.string().min(32)),
-  // Spaces limits (docs/adr/0017 section 4a); a load test sets the real numbers.
-  SPACES_MAX_COHOSTS: z.coerce.number().int().min(0).max(10).default(2),
-  SPACES_MAX_SPEAKERS: z.coerce.number().int().min(0).max(50).default(10),
-  SPACES_LISTENER_CAP: z.coerce.number().int().min(1).max(10_000).default(200),
+  // Gists limits (docs/adr/0017 section 4a); a load test sets the real numbers.
+  GISTS_MAX_COHOSTS: z.coerce.number().int().min(0).max(10).default(2),
+  GISTS_MAX_SPEAKERS: z.coerce.number().int().min(0).max(50).default(10),
+  GISTS_LISTENER_CAP: z.coerce.number().int().min(1).max(10_000).default(200),
   // Lets browsers subscribe with an http://127.0.0.1 address, for the end-to-end
   // tests' stand-in push service. Only allowed while WEB_PUBLIC_URL is on this machine.
   PUSH_ALLOW_LOOPBACK: z
