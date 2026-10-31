@@ -47,7 +47,7 @@ async function answer<T>(req: AuthedRequest, run: () => Promise<T>): Promise<T> 
   } catch (err) {
     if (!(err instanceof GistError)) throw err
     if (err.code === 'not_found') throw routeNotFound(req)
-    throw new HttpException({ code: err.code, message: err.message === err.code ? messages[err.code] : err.message }, err.status)
+    throw new HttpException({ code: err.code, message: err.message === err.code ? messages[err.code] : err.message, ...err.details }, err.status)
   }
 }
 
@@ -89,12 +89,11 @@ export class GistsController {
     return answer(req, () => this.gists.get(req.member, id))
   }
 
-  /** A listener token and the role the member has. Also the reconnect call. */
+  /** A listener token and the role the member has. Also the reconnect call. The per-Gist limit is in the service, after eligibility. */
   @Post(':id/join')
   @HttpCode(200)
   async join(@Req() req: AuthedRequest, @Param('id') id: string) {
     await this.limits.hit('gistJoin', req.member.id)
-    await this.limits.hit('gistJoinBurst', id)
     return answer(req, () => this.gists.join(req.member, id))
   }
 

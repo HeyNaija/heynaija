@@ -1,6 +1,7 @@
 import { type Db, GIST_ROLES, blocks, communities, communityMemberships, gistMembers, gists, members } from '@heynaija/db'
 import { Inject, Injectable, Logger } from '@nestjs/common'
-import { and, asc, count, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
+import { and, asc, count, eq, inArray, isNotNull, isNull, lt, ne, notInArray, or, sql } from 'drizzle-orm'
+import { RateLimiter } from '../rate-limit.js'
 import { DB } from '../tokens.js'
 import { type GistViewer, canHostGist, canJoinGist } from './eligibility.js'
 import { ParticipantNotFoundError, ROOM_SERVICE, type RoomPermissions, type RoomService } from './room-service.js'
@@ -59,6 +60,8 @@ export class GistError extends Error {
   constructor(
     readonly code: GistErrorCode,
     message: string = code,
+    /** Facts the caller may be told with the refusal (only ever about their own Gist). */
+    readonly details?: Record<string, string>,
   ) {
     super(message)
     this.status = STATUS[code]
@@ -96,6 +99,14 @@ type MemberRow = typeof gistMembers.$inferSelect
 const STAGE: GistRole[] = ['host', 'cohost', 'speaker']
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 const EMPTY_TIMEOUT_S = 300
+// LiveKit closes a room this long after the last person leaves. Its default is
+// 20 seconds, which ended a Gist when the host only reloaded or switched apps.
+const DEPARTURE_TIMEOUT_S = 120
+// The reconcile (below) waits this long before acting on an absence: a host or
+// speaker who is gone that long is taken as gone (docs/adr/0017 section 4a, takeover).
+const ABSENT_MS = 2 * 60_000
+// Between /join and connecting the browser has a token and no connection yet.
+const CONNECTING_MS = 30_000
 
 /** What a role may do in the room. The database role is the truth; this is only its translation. */
 export const permissionsFor = (role: GistRole): RoomPermissions =>
@@ -116,6 +127,7 @@ export class GistsService {
     @Inject(DB) private readonly db: Db,
     @Inject(ROOM_SERVICE) private readonly rooms: RoomService,
     @Inject(GISTS_CONFIG) private readonly config: GistsConfig,
+    @Inject(RateLimiter) private readonly limits: RateLimiter,
   ) {}
 
   // ---- reading -------------------------------------------------------------
@@ -173,14 +185,17 @@ export class GistsService {
     try {
       gist = await this.db.transaction(async (tx) => {
         const [live] = await tx.select({ id: gists.id }).from(gists).where(and(eq(gists.hostId, host.id), eq(gists.status, 'live')))
-        if (live) throw new GistError('already_hosting')
+        if (live) throw this.alreadyHosting(live.id)
         const [row] = await tx.insert(gists).values({ hostId: host.id, communityId, title, status: 'live', startedAt: new Date() }).returning()
         await tx.insert(gistMembers).values({ gistId: row!.id, memberId: host.id, role: 'host' })
         return row!
       })
     } catch (err) {
       // Two starts at once: the unique index lets one through.
-      if (isUniqueViolation(err)) throw new GistError('already_hosting')
+      if (isUniqueViolation(err)) {
+        const [live] = await this.db.select({ id: gists.id }).from(gists).where(and(eq(gists.hostId, host.id), eq(gists.status, 'live')))
+        throw this.alreadyHosting(live?.id)
+      }
       throw err
     }
 
@@ -188,6 +203,7 @@ export class GistsService {
       await this.rooms.createRoom(gist.id, {
         maxParticipants: this.config.listenerCap + 1 + this.config.maxCohosts + this.config.maxSpeakers,
         emptyTimeoutS: EMPTY_TIMEOUT_S,
+        departureTimeoutS: DEPARTURE_TIMEOUT_S,
       })
     } catch (err) {
       this.logger.error(`could not create the room for Gist ${gist.id}: ${String(err)}`)
@@ -204,6 +220,10 @@ export class GistsService {
    * Also the reconnect path: each reconnect asks again and gets a fresh token.
    */
   async join(viewer: { id: string; handle: string }, gistId: string): Promise<JoinResult> {
+    // Counted per Gist only once the caller may see it, so accounts that know an
+    // id but may not join cannot use up its allowance and lock others out.
+    await this.open(this.db, viewer, gistId)
+    await this.limits.hit('gistJoinBurst', gistId)
     const result = await this.db.transaction(async (tx) => {
       // The row lock serialises joins to one Gist, so the cap cannot be beaten by a burst.
       const [locked] = isUuid(gistId) ? await tx.select().from(gists).where(eq(gists.id, gistId)).for('update') : []
@@ -224,7 +244,7 @@ export class GistsService {
         await tx
           .update(gistMembers)
           .set({ joinedAt: now, leftAt: null, connectionSid: null })
-          .where(and(eq(gistMembers.gistId, gist.id), eq(gistMembers.memberId, viewer.id)))
+          .where(and(eq(gistMembers.gistId, gist.id), eq(gistMembers.memberId, viewer.id), isNull(gistMembers.removedAt)))
       } else {
         await tx.insert(gistMembers).values({ gistId: gist.id, memberId: viewer.id, role: 'listener', joinedAt: now })
       }
@@ -257,12 +277,14 @@ export class GistsService {
     const { gist, me } = await this.open(this.db, viewer, gistId)
     if (gist.status !== 'live') throw new GistError('gist_ended')
     if (!me) throw new GistError('not_in_gist')
-    // A connected client is present, whatever a lost or reordered webhook said.
-    await this.db
-      .update(gistMembers)
-      .set({ joinedAt: sql`coalesce(${gistMembers.joinedAt}, now())`, leftAt: null })
-      .where(and(eq(gistMembers.gistId, gist.id), eq(gistMembers.memberId, viewer.id), isNull(gistMembers.removedAt)))
-    return { role: await this.applyRole(gist.id, viewer.id, true) }
+    // LiveKit first: only a client it reports as connected is marked present.
+    const role = await this.applyRole(gist.id, viewer.id, true)
+    // Present, then, whatever a lost or reordered webhook said, if there is still room.
+    if (!(await this.markPresent(gist.id, viewer.id))) {
+      await this.disconnect(gist.id, viewer.id)
+      throw new GistError('gist_full')
+    }
+    return { role }
   }
 
   // ---- asking to speak ------------------------------------------------------
@@ -315,15 +337,22 @@ export class GistsService {
 
   /** Disconnects a member and puts them on the removed list: no new token for this Gist, ever. */
   async remove(actor: { id: string; handle: string }, gistId: string, targetId: string): Promise<void> {
-    const { gist, me } = await this.moderator(this.db, actor, gistId)
-    if (gist.status !== 'live') throw new GistError('gist_ended')
-    const target = await this.target(this.db, gist.id, targetId)
-    this.mayActOn(me.role, target.role, actor.id === targetId)
-    if (actor.id === targetId) throw new GistError('forbidden')
-    await this.db
-      .update(gistMembers)
-      .set({ removedAt: new Date(), removedBy: actor.id, role: 'listener', speakRequestedAt: null, leftAt: new Date(), roleChangedBy: actor.id, roleChangedAt: new Date() })
-      .where(and(eq(gistMembers.gistId, gist.id), eq(gistMembers.memberId, targetId)))
+    const gist = await this.db.transaction(async (tx) => {
+      // Serialised with joins: a join that has read the member as welcome cannot
+      // write them back in after this, and one that comes later sees the removal.
+      if (isUuid(gistId)) await tx.select({ id: gists.id }).from(gists).where(eq(gists.id, gistId)).for('update')
+      const { gist, me } = await this.moderator(tx, actor, gistId)
+      if (gist.status !== 'live') throw new GistError('gist_ended')
+      const target = await this.target(tx, gist.id, targetId)
+      this.mayActOn(me.role, target.role, actor.id === targetId)
+      if (actor.id === targetId) throw new GistError('forbidden')
+      const now = new Date()
+      await tx
+        .update(gistMembers)
+        .set({ removedAt: now, removedBy: actor.id, role: 'listener', speakRequestedAt: null, leftAt: now, roleChangedBy: actor.id, roleChangedAt: now })
+        .where(and(eq(gistMembers.gistId, gist.id), eq(gistMembers.memberId, targetId)))
+      return gist
+    })
     try {
       await this.rooms.removeParticipant(gist.id, targetId)
     } catch (err) {
@@ -407,22 +436,145 @@ export class GistsService {
 
     // participant_joined: only someone the API let in may stay, and only as their role.
     if (!isUuid(event.identity)) return void (await this.rooms.removeParticipant(gist.id, event.identity))
-    const allowed = gist.status === 'live' && (await this.mayStay(gist, event.identity))
+    const allowed = gist.status === 'live' && (await this.mayStay(gist, event.identity)) && (await this.markPresent(gist.id, event.identity, event.sid))
     if (!allowed) {
       await this.rooms.removeParticipant(gist.id, event.identity)
       return
     }
+    await this.applyRole(gist.id, event.identity, false)
+  }
+
+  // ---- reconcile ------------------------------------------------------------------
+
+  /**
+   * Puts every live Gist right against LiveKit, once a minute (gist-queue.ts).
+   * Webhooks can be lost, and hidden listeners may never send one (verify), so
+   * this is what finally holds: a Gist whose room is gone ends; anyone connected
+   * who may not stay (removed, suspended, blocked with the stage) is disconnected,
+   * and everyone else gets the permissions of their role; a member the database
+   * thinks is in the room but LiveKit does not have is gone. A speaker gone for
+   * two minutes goes back to the audience, freeing the slot, and a Gist whose host
+   * has been gone that long ends: there is no co-host takeover yet.
+   */
+  async reconcile(now = new Date()): Promise<void> {
+    const live = await this.db.select().from(gists).where(eq(gists.status, 'live'))
+    for (const gist of live) {
+      try {
+        await this.reconcileOne(gist, now)
+      } catch (err) {
+        this.logger.warn(`could not reconcile Gist ${gist.id}: ${String(err)}`)
+      }
+    }
+  }
+
+  private async reconcileOne(gist: GistRow, now: Date): Promise<void> {
+    // A Gist that is still being started may not have its room yet.
+    if (gist.startedAt && now.getTime() - gist.startedAt.getTime() < CONNECTING_MS) return
+    const connected = await this.rooms.participants(gist.id)
+    if (connected === null) {
+      this.logger.log(`Gist ${gist.id} has no room any more, ending it`)
+      await this.finish(gist.id)
+      return
+    }
+
+    const rows = new Map(
+      (await this.db.select().from(gistMembers).where(eq(gistMembers.gistId, gist.id))).map((row) => [row.memberId, row]),
+    )
+    for (const p of connected) {
+      const row = rows.get(p.identity)
+      const present = Boolean(row?.joinedAt && !row.leftAt)
+      if (!row || !(await this.mayStay(gist, p.identity)) || (!present && !(await this.markPresent(gist.id, p.identity)))) {
+        await this.disconnect(gist.id, p.identity)
+        continue
+      }
+      const want = permissionsFor(row.role)
+      if (want.canPublish !== p.canPublish || want.hidden !== p.hidden) await this.applyRole(gist.id, p.identity, false)
+    }
+
+    // In the room by the database, not by LiveKit, for longer than a connection takes: gone.
+    const here = connected.map((p) => p.identity).filter(isUuid)
     await this.db
       .update(gistMembers)
-      .set({ joinedAt: sql`coalesce(${gistMembers.joinedAt}, now())`, leftAt: null, connectionSid: event.sid })
-      .where(and(eq(gistMembers.gistId, gist.id), eq(gistMembers.memberId, event.identity), isNull(gistMembers.removedAt)))
-    await this.applyRole(gist.id, event.identity, false)
+      .set({ leftAt: now, speakRequestedAt: null })
+      .where(
+        and(
+          eq(gistMembers.gistId, gist.id),
+          isNotNull(gistMembers.joinedAt),
+          isNull(gistMembers.leftAt),
+          lt(gistMembers.joinedAt, new Date(now.getTime() - CONNECTING_MS)),
+          here.length > 0 ? notInArray(gistMembers.memberId, here) : undefined,
+        ),
+      )
+
+    const absentSince = new Date(now.getTime() - ABSENT_MS)
+    const [host] = await this.db.select().from(gistMembers).where(and(eq(gistMembers.gistId, gist.id), eq(gistMembers.role, 'host')))
+    // Gone since they left, or since the Gist started if they never came.
+    const hostGoneAt = host?.leftAt ?? (host?.joinedAt ? null : gist.startedAt)
+    if (!host || (hostGoneAt && hostGoneAt < absentSince)) {
+      this.logger.log(`the host of Gist ${gist.id} has been gone two minutes, ending it`)
+      await this.finish(gist.id)
+      try {
+        await this.rooms.deleteRoom(gist.id)
+      } catch (err) {
+        this.logger.warn(`could not delete the room of Gist ${gist.id}: ${String(err)}`)
+      }
+      return
+    }
+
+    // Co-hosts and speakers who left two minutes ago give their place back. Their
+    // connection is gone, so there is no permission to take away.
+    await this.db
+      .update(gistMembers)
+      .set({ role: 'listener', roleChangedBy: null, roleChangedAt: now })
+      .where(
+        and(
+          eq(gistMembers.gistId, gist.id),
+          inArray(gistMembers.role, ['cohost', 'speaker']),
+          lt(gistMembers.leftAt, absentSince),
+        ),
+      )
   }
 
   // ---- internals ----------------------------------------------------------------
 
   private capOf(gist: GistRow): number {
     return Math.min(this.config.listenerCap, gist.listenerCap ?? this.config.listenerCap)
+  }
+
+  private alreadyHosting(liveId: string | undefined): GistError {
+    // Their own Gist, so telling them which one leaks nothing; it is how a host
+    // who lost the tab finds it again.
+    return new GistError('already_hosting', undefined, liveId ? { gistId: liveId } : undefined)
+  }
+
+  /**
+   * Marks a member LiveKit reports as connected as present, recording the
+   * connection when its sid is known. A listener who was counted as gone takes a
+   * place again, so the cap is checked as a join checks it, under the same lock.
+   * False when they may not be marked: removed, no row, or no room left.
+   */
+  private async markPresent(gistId: string, memberId: string, sid?: string | null): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const [gist] = await tx.select().from(gists).where(eq(gists.id, gistId)).for('update')
+      const [row] = await tx.select().from(gistMembers).where(and(eq(gistMembers.gistId, gistId), eq(gistMembers.memberId, memberId)))
+      if (!gist || !row || row.removedAt) return false
+      const counted = row.joinedAt !== null && row.leftAt === null
+      if (!counted && row.role === 'listener' && (await this.listenerCount(tx, gistId)) >= this.capOf(gist)) return false
+      await tx
+        .update(gistMembers)
+        .set({ joinedAt: sql`coalesce(${gistMembers.joinedAt}, now())`, leftAt: null, ...(sid !== undefined ? { connectionSid: sid } : {}) })
+        .where(and(eq(gistMembers.gistId, gistId), eq(gistMembers.memberId, memberId)))
+      return true
+    })
+  }
+
+  /** Disconnects a participant, logging rather than failing when LiveKit cannot be reached. */
+  private async disconnect(gistId: string, memberId: string): Promise<void> {
+    try {
+      await this.rooms.removeParticipant(gistId, memberId)
+    } catch (err) {
+      this.logger.warn(`could not disconnect ${memberId} from Gist ${gistId}: ${String(err)}`)
+    }
   }
 
   /** In the room now: joined, not left, not removed. */

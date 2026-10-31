@@ -1,9 +1,11 @@
 import { AccessToken, RoomServiceClient, ServerError, TrackSource, WebhookReceiver } from 'livekit-server-sdk'
 import {
+  type ConnectedParticipant,
   ParticipantNotFoundError,
   type RoomEvent,
   type RoomPermissions,
   type RoomService,
+  type RoomTimeouts,
   WebhookRejectedError,
 } from './room-service.js'
 
@@ -20,6 +22,13 @@ export type LiveKitSettings = {
 /** Join tokens only get you into the room; they are not a session (docs/adr/0017 section 3). */
 export const TOKEN_TTL_S = 600
 
+/**
+ * The longest any server call may take. Role changes hold a database connection
+ * while they wait (gists.service.ts, pushRole), so a slow LiveKit must not be
+ * waited on for the SDK's default 10 seconds.
+ */
+export const REQUEST_TIMEOUT_S = 4
+
 const notFound = (err: unknown): boolean => err instanceof ServerError && (err.status === 404 || err.code === 'not_found')
 
 /** The real thing: livekit-server-sdk against a LiveKit server. */
@@ -28,12 +37,19 @@ export class LiveKitRoomService implements RoomService {
   private readonly receiver: WebhookReceiver
 
   constructor(private readonly settings: LiveKitSettings) {
-    this.client = new RoomServiceClient(settings.url.replace(/^ws/, 'http'), settings.apiKey, settings.apiSecret)
+    this.client = new RoomServiceClient(settings.url.replace(/^ws/, 'http'), settings.apiKey, settings.apiSecret, {
+      requestTimeout: REQUEST_TIMEOUT_S,
+    })
     this.receiver = new WebhookReceiver(settings.webhookKey ?? settings.apiKey, settings.webhookSecret ?? settings.apiSecret)
   }
 
-  async createRoom(room: string, options: { maxParticipants: number; emptyTimeoutS: number }): Promise<void> {
-    await this.client.createRoom({ name: room, maxParticipants: options.maxParticipants, emptyTimeout: options.emptyTimeoutS })
+  async createRoom(room: string, options: RoomTimeouts): Promise<void> {
+    await this.client.createRoom({
+      name: room,
+      maxParticipants: options.maxParticipants,
+      emptyTimeout: options.emptyTimeoutS,
+      departureTimeout: options.departureTimeoutS,
+    })
   }
 
   async deleteRoom(room: string): Promise<void> {
@@ -90,6 +106,19 @@ export class LiveKitRoomService implements RoomService {
     }
   }
 
+  async participants(room: string): Promise<ConnectedParticipant[] | null> {
+    const [found] = await this.client.listRooms([room])
+    if (!found) return null
+    try {
+      const list = await this.client.listParticipants(room)
+      return list.map((p) => ({ identity: p.identity, sid: p.sid, canPublish: Boolean(p.permission?.canPublish), hidden: Boolean(p.permission?.hidden) }))
+    } catch (err) {
+      // Finished between the two calls.
+      if (notFound(err)) return null
+      throw err
+    }
+  }
+
   async readWebhook(rawBody: string, authorization: string | undefined): Promise<RoomEvent> {
     // Without the header the SDK would skip the check; a missing signature is a refusal.
     if (!authorization) throw new WebhookRejectedError('missing signature')
@@ -133,6 +162,7 @@ export class UnconfiguredRoomService implements RoomService {
   listenerToken = async () => this.fail()
   setPermissions = async () => this.fail()
   removeParticipant = async () => this.fail()
+  participants = async () => this.fail()
   readWebhook = async () => this.fail()
 }
 

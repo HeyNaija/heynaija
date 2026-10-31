@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import { blocks, communities, communityMemberships, gistMembers, gists, members } from '@heynaija/db'
 import { and, eq } from 'drizzle-orm'
+import { MemoryRateLimiter } from '../rate-limit.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { FakeRoomService, type FakeToken } from './fake-room-service.js'
 import { GistError, GistsService, type GistsConfig } from './gists.service.js'
@@ -51,13 +52,13 @@ beforeEach(async () => {
   await reset()
   await db.insert(members).values(people.map((p) => ({ id: id[p], handle: p })))
   rooms = new FakeRoomService()
-  service = new GistsService(db, rooms, config)
+  service = new GistsService(db, rooms, config, new MemoryRateLimiter())
   gist = (await service.create(as('ada'), { title: 'Jollof wars' })).id
 })
 after(() => pool.end())
 
 test('creating a Gist makes its room, with room for the cap, the host, co-hosts and speakers', async () => {
-  assert.deepEqual(rooms.rooms.get(gist), { maxParticipants: 3 + 1 + 2 + 2, emptyTimeoutS: 300 })
+  assert.deepEqual(rooms.rooms.get(gist), { maxParticipants: 3 + 1 + 2 + 2, emptyTimeoutS: 300, departureTimeoutS: 120 })
   const view = await service.get(as('ada'), gist)
   assert.equal(view.status, 'live')
   assert.equal(view.host.handle, 'ada')
@@ -421,4 +422,128 @@ test('a webhook join that read "speaker" cannot give the microphone back after a
   release()
   await Promise.all([slow, mute])
   assert.deepEqual(rooms.permissionsOf(gist, id.bayo), { canPublish: false, hidden: true })
+})
+
+test('a host who is already live is told which Gist is theirs, so they can go back to it', async () => {
+  const err = await service.create(as('ada'), { title: 'Second' }).then(
+    () => undefined,
+    (e: unknown) => e,
+  )
+  assert.ok(err instanceof GistError)
+  assert.equal(err.code, 'already_hosting')
+  assert.deepEqual(err.details, { gistId: gist })
+})
+
+// The window between join's read and its write is too small to hit from here, so this
+// checks the end state; the Gist row lock both take is what rules the overlap out.
+test('a removal while a join is in flight leaves the member removed and out of the room', async () => {
+  for (const p of ['bayo', 'chi', 'dayo', 'efe', 'femi', 'gozie'] as const) {
+    await enter(p, gist)
+    await Promise.all([codeOf(service.join(as(p), gist)), service.remove(as('ada'), gist, id[p])])
+    const row = (await roleOf(gist, p))!
+    assert.ok(row.removedAt)
+    assert.ok(row.leftAt, `${p} was written back in after the removal`)
+    assert.equal(await codeOf(service.join(as(p), gist)), 'not_found')
+  }
+})
+
+test('a sync from a client LiveKit does not have leaves the member marked as gone', async () => {
+  await enter('bayo', gist)
+  await send({ id: 'l1', kind: 'participant_left', room: gist, identity: id.bayo, sid: 'PA_1' })
+  rooms.connected.delete(`${gist}/${id.bayo}`)
+  assert.equal(await codeOf(service.sync(as('bayo'), gist)), 'not_in_gist')
+  assert.ok((await roleOf(gist, 'bayo'))!.leftAt)
+})
+
+test('members who may not join a Gist do not use up its join allowance', async () => {
+  for (let i = 0; i < 130; i++) assert.equal(await codeOf(service.join(as('outsider'), gist)), 'not_found')
+  assert.equal(await codeOf(service.join(as('bayo'), gist)), 'ok')
+})
+
+test('a listener brought back by a webhook or a sync still needs a place under the cap', async () => {
+  await enter('bayo', gist)
+  await enter('chi', gist)
+  await enter('dayo', gist)
+  await send({ id: 'l1', kind: 'participant_left', room: gist, identity: id.bayo, sid: 'PA_1' }) // counted as gone
+  await enter('efe', gist) // takes the place
+  await send({ id: 'j1', kind: 'participant_joined', room: gist, identity: id.bayo, sid: 'PA_2' })
+  assert.ok(rooms.removed.includes(`${gist}/${id.bayo}`))
+  assert.equal((await service.get(as('ada'), gist)).listenerCount, 3)
+  rooms.connect(gist, id.bayo)
+  assert.equal(await codeOf(service.sync(as('bayo'), gist)), 'gist_full')
+  assert.ok(rooms.removed.filter((r) => r === `${gist}/${id.bayo}`).length >= 2)
+  assert.equal((await service.get(as('ada'), gist)).listenerCount, 3)
+})
+
+// ---- reconcile ----------------------------------------------------------------
+
+const later = (ms: number) => new Date(Date.now() + ms)
+const MINUTE = 60_000
+
+test('reconcile: a Gist whose room is gone ends, as if its room_finished had arrived', async () => {
+  await enter('ada', gist)
+  rooms.rooms.delete(gist)
+  await service.reconcile(later(MINUTE))
+  assert.equal((await service.get(as('ada'), gist)).status, 'ended')
+})
+
+test('reconcile: someone who may no longer be there is disconnected', async () => {
+  await enter('ada', gist)
+  await enter('bayo', gist)
+  await db.update(members).set({ active: false }).where(eq(members.id, id.bayo)) // suspended mid-Gist
+  await service.reconcile(later(MINUTE))
+  assert.ok(rooms.removed.includes(`${gist}/${id.bayo}`))
+  assert.ok(!rooms.removed.includes(`${gist}/${id.ada}`))
+})
+
+test('reconcile: permissions that drifted from the role are put back', async () => {
+  await enter('ada', gist)
+  await enter('bayo', gist)
+  await enter('chi', gist)
+  await service.setSpeaker(as('ada'), gist, id.bayo)
+  rooms.permissions.set(`${gist}/${id.bayo}`, { canPublish: false, hidden: true })
+  rooms.permissions.set(`${gist}/${id.chi}`, { canPublish: true, hidden: false })
+  await service.reconcile(later(MINUTE))
+  assert.deepEqual(rooms.permissionsOf(gist, id.bayo), { canPublish: true, hidden: false })
+  assert.deepEqual(rooms.permissionsOf(gist, id.chi), { canPublish: false, hidden: true })
+})
+
+test('reconcile: a member LiveKit does not have is marked gone, but not while they are still connecting', async () => {
+  await db.update(gists).set({ startedAt: new Date(Date.now() - 10 * MINUTE) }).where(eq(gists.id, gist))
+  await enter('ada', gist)
+  await service.join(as('bayo'), gist) // a token, not connected yet
+  await service.reconcile(later(10_000))
+  assert.equal((await roleOf(gist, 'bayo'))!.leftAt, null)
+  await service.reconcile(later(MINUTE))
+  assert.ok((await roleOf(gist, 'bayo'))!.leftAt)
+  assert.equal((await service.get(as('ada'), gist)).listenerCount, 0)
+  assert.equal((await roleOf(gist, 'ada'))!.leftAt, null)
+})
+
+test('reconcile: a speaker gone for two minutes goes back to the audience and frees the slot', async () => {
+  await enter('ada', gist)
+  await enter('bayo', gist)
+  await service.setSpeaker(as('ada'), gist, id.bayo)
+  await send({ id: 'l1', kind: 'participant_left', room: gist, identity: id.bayo, sid: 'PA_1' })
+  rooms.connected.delete(`${gist}/${id.bayo}`)
+  await service.reconcile(later(MINUTE))
+  assert.equal((await roleOf(gist, 'bayo'))!.role, 'speaker')
+  await service.reconcile(later(3 * MINUTE))
+  assert.equal((await roleOf(gist, 'bayo'))!.role, 'listener')
+  assert.equal((await service.get(as('ada'), gist)).status, 'live')
+})
+
+test('reconcile: a Gist whose host has been gone two minutes ends, and so does one the host never came to', async () => {
+  await enter('ada', gist)
+  await send({ id: 'l1', kind: 'participant_left', room: gist, identity: id.ada, sid: 'PA_1' })
+  rooms.connected.delete(`${gist}/${id.ada}`)
+  await service.reconcile(later(MINUTE))
+  assert.equal((await service.get(as('ada'), gist)).status, 'live')
+  await service.reconcile(later(3 * MINUTE))
+  assert.equal((await service.get(as('ada'), gist)).status, 'ended')
+  assert.ok(rooms.deleted.includes(gist))
+
+  const other = (await service.create(as('bayo'), { title: 'Never came' })).id
+  await service.reconcile(later(3 * MINUTE))
+  assert.equal((await service.get(as('bayo'), other)).status, 'ended')
 })

@@ -18,6 +18,7 @@ import { unsubscribeKey } from './email/unsubscribe-token.js'
 import { type Env, loadEnv } from './env.js'
 import { ExportController } from './export/export.controller.js'
 import { ExportService } from './export/export.service.js'
+import { GistReconciler } from './gists/gist-queue.js'
 import { GistsController, LiveKitWebhookController } from './gists/gists.controller.js'
 import { GISTS_CONFIG, GistsService } from './gists/gists.service.js'
 import { GistsEnabledGuard } from './gists/gists-enabled.guard.js'
@@ -162,6 +163,7 @@ class HealthController {
     },
     GistsService,
     GistsEnabledGuard,
+    GistReconciler,
   ],
 })
 export class AppModule {}

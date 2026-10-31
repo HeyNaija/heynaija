@@ -1,8 +1,10 @@
 import {
+  type ConnectedParticipant,
   ParticipantNotFoundError,
   type RoomEvent,
   type RoomPermissions,
   type RoomService,
+  type RoomTimeouts,
   WebhookRejectedError,
 } from './room-service.js'
 
@@ -19,7 +21,7 @@ export type FakeToken = {
 
 /** A RoomService that records what it was asked and holds no network. For tests. */
 export class FakeRoomService implements RoomService {
-  readonly rooms = new Map<string, { maxParticipants: number; emptyTimeoutS: number }>()
+  readonly rooms = new Map<string, RoomTimeouts>()
   /** Who is "connected": tests add identities with `connect`. */
   readonly connected = new Set<string>()
   /** The permissions last set on each connected identity, as `room/identity`. */
@@ -56,7 +58,7 @@ export class FakeRoomService implements RoomService {
     }
   }
 
-  async createRoom(room: string, options: { maxParticipants: number; emptyTimeoutS: number }): Promise<void> {
+  async createRoom(room: string, options: RoomTimeouts): Promise<void> {
     this.calls.push('createRoom')
     this.failIf('createRoom')
     this.rooms.set(room, options)
@@ -99,6 +101,18 @@ export class FakeRoomService implements RoomService {
     this.removed.push(this.key(room, identity))
     this.connected.delete(this.key(room, identity))
     this.permissions.delete(this.key(room, identity))
+  }
+
+  async participants(room: string): Promise<ConnectedParticipant[] | null> {
+    this.calls.push('participants')
+    if (!this.rooms.has(room)) return null
+    return [...this.connected]
+      .filter((key) => key.startsWith(`${room}/`))
+      .map((key) => {
+        const identity = key.slice(room.length + 1)
+        const { canPublish, hidden } = this.permissions.get(key) ?? { canPublish: false, hidden: true }
+        return { identity, sid: `PA_${identity}`, canPublish, hidden }
+      })
   }
 
   async readWebhook(rawBody: string, authorization: string | undefined): Promise<RoomEvent> {
