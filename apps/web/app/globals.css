@@ -1071,7 +1071,7 @@ summary.menu::-webkit-details-marker {
   .governance-actions .btn { width: 100%; }
 }
 @media print {
-  .square-sidebar, .square-rail, .square-topbar, .square-bottom-nav, .governance-tabs, .policy-contents, .policy-footer, .no-print { display: none !important; }
+  .square-sidebar, .square-rail, .square-topbar, .square-bottom-nav, .thread-editor-host, .governance-tabs, .policy-contents, .policy-footer, .no-print { display: none !important; }
   .square-feed { padding: 0 !important; }
   .policy-section, .governance-section { break-inside: avoid-page; border: 0; padding: 12px 0; }
 }
@@ -1173,9 +1173,47 @@ summary.menu::-webkit-details-marker {
 .reply-composer .composer-toolbar .icon-btn, .reply-composer .composer-submit { min-height: 40px; }
 .reply-composer .composer-privacy, .reply-composer > [role="alert"], .reply-composer .composer-posted { margin-left: 44px; }
 .reply-composer .composer-privacy { margin-top: 2px; }
+/* "Post your reply": at rest the field and the Reply button share one line under the
+   post in focus; focusing (or a draft) opens the rest. The button stays visible, so
+   the way to reply is never hidden. The field and the toolbar share one grid cell, so
+   the button is centred on the field whatever either's height; the lines that can show
+   at rest (the recipient above, an error or "Reply posted" below) keep rows of their own. */
+.reply-composer:not(.is-expanded):not(:focus-within) { display: grid; grid-template-columns: minmax(0, 1fr); }
+.reply-composer:not(.is-expanded):not(:focus-within) > .composer-recipient { grid-row: 1; }
+.reply-composer:not(.is-expanded):not(:focus-within) > :is(.composer-reply-writing, .composer-toolbar) { grid-row: 2; grid-column: 1; }
+.reply-composer:not(.is-expanded):not(:focus-within) > [role="alert"] { grid-row: 3; }
+.reply-composer:not(.is-expanded):not(:focus-within) > .composer-posted { grid-row: 4; }
+.reply-composer:not(.is-expanded):not(:focus-within) .composer-toolbar { z-index: 1; align-self: center; justify-self: end; margin: 0 6px 0 0; pointer-events: none; }
+.reply-composer:not(.is-expanded):not(:focus-within) .composer-toolbar > :not(.composer-submit) { display: none; }
+.reply-composer:not(.is-expanded):not(:focus-within) .composer-toolbar .composer-submit { min-height: 32px; margin: 0; }
+.reply-composer:not(.is-expanded):not(:focus-within) .composer-input { padding-right: 84px; }
+.reply-signin { display: flex; min-height: 44px; align-items: center; gap: 12px; padding: 10px 0 4px; color: var(--accent-strong); font-size: 15px; font-weight: 600; }
+.reply-limited { color: var(--muted); font-size: 13px; font-weight: 500; }
+.reply-signin:hover span:last-child { text-decoration: underline; }
+.reply-signin-avatar { width: 32px; height: 32px; flex: none; border-radius: 9999px; background: var(--panel); border: 1px solid var(--line-strong); }
+/* On a phone the reply bar is fixed above the bottom tabs (62px and a 1px border), so the
+   replies scroll under it wherever the reader is, and a #compose link needs no scrolling.
+   It is as wide as the 720px shell; the page keeps room beneath for it. env() is 0 unless
+   the page opts into viewport-fit=cover, as the tabs' own padding is. */
+@media (max-width: 1023px) {
+  .thread-branch.is-root > .thread-editor-host { position: fixed; z-index: 4; inset-inline: 0; bottom: calc(63px + env(safe-area-inset-bottom)); box-sizing: border-box; width: 100%; max-width: 720px; margin: 0 auto; padding: 4px 20px 6px; border-top: 1px solid var(--line); background: var(--bg); }
+  /* Expanded, it stays below the 64px top bar and above the tabs, and scrolls inside itself. */
+  .thread-branch.is-root > .thread-editor-host { max-height: calc(100dvh - 64px - 63px - env(safe-area-inset-bottom) - 8px); overflow-y: auto; overscroll-behavior: contain; }
+  .thread-branch.is-root > .thread-editor-host .composer-input { max-height: min(40dvh, 20rem); }
+  /* The room beneath never depends on whether the bar is open: opening it on the press that
+     starts a tap elsewhere would move the page under the finger and the tap would miss. It
+     covers an open bar of the usual size; scrolling something into view stops short of it. */
+  .thread-view:has(> .thread-branch.is-root > .thread-editor-host:not(:empty)) { padding-bottom: min(220px, calc(100dvh - 135px)); }
+  html:has(.thread-branch.is-root > .thread-editor-host:not(:empty)) { scroll-padding-bottom: min(270px, calc(100dvh - 135px)); }
+}
+@media (max-width: 419px) { .thread-branch.is-root > .thread-editor-host { padding-inline: 12px; } }
+@media (max-width: 1023px) and (max-height: 520px) { .thread-branch.is-root > .thread-editor-host .composer-privacy { display: none; } }
 /* Reading starts with one line. Writing reveals the recipient, tools and notice;
    an existing draft or attachment keeps them open when focus moves away. */
-.reply-composer:not(.is-expanded):not(:focus-within) :is(.composer-recipient, .composer-toolbar, .composer-privacy) { display: none; }
+.reply-composer:not(.is-expanded):not(:focus-within) :is(.composer-recipient, .composer-privacy) { display: none; }
+/* Answering a reply from the phone bar keeps the bar where it is, so the recipient stays
+   in view even while the field is at rest. */
+.reply-composer.is-answering:not(.is-expanded):not(:focus-within) .composer-recipient { display: block; }
 .community-discovery { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--accent-soft); padding: 14px 16px; color: var(--brand-deep); transition: border-color 0.15s; }
 .community-discovery:hover { border-color: var(--accent); }
 .community-discovery > span:nth-child(2) { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
@@ -1228,6 +1266,18 @@ summary.menu::-webkit-details-marker {
 .post-card:has(details[open]) { z-index: 5; }
 .post-list > li > .post-card:has(details[open]) { content-visibility: visible; }
 .post-context { margin-bottom: 14px; color: var(--muted); font-size: 10px; font-weight: 500; }
+/* A reply in a list, as on X: the start of the post it answers sits above it in a compact row,
+   and a 2px line runs from that row's avatar down to the reply's own (the 42px avatar column is
+   shared, so the two avatars have one centre). Decoration only; "Replying to @handle" says it
+   in words. A parent the reader cannot see gets the words alone. */
+.reply-parent { display: grid; grid-template-columns: 42px minmax(0, 1fr); column-gap: 12px; position: relative; margin-bottom: 4px; padding-bottom: 14px; color: var(--muted); font-size: 13px; line-height: 18px; }
+.reply-parent:hover .reply-parent-excerpt { text-decoration: underline; }
+.reply-parent-avatar { display: flex; justify-content: center; align-self: start; }
+.reply-parent::before { content: ''; position: absolute; top: 28px; bottom: -2px; left: 20px; width: 2px; background: var(--line-strong); pointer-events: none; }
+.reply-parent-text { display: flex; min-width: 0; flex-direction: column; }
+.reply-parent-who { display: flex; min-width: 0; align-items: baseline; gap: 6px; }
+.reply-parent-excerpt { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-to { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 18px; }
 .post-author { letter-spacing: -0.02em; }
 .post-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; color: var(--muted); font-size: var(--post-meta-size); line-height: 18px; }
 .post-actions { display: flex; align-items: center; gap: clamp(4px, 2vw, 24px); margin-top: 12px; border-top: 1px solid var(--line); padding-top: 5px; }
@@ -1308,8 +1358,8 @@ ol.post-list { margin-inline: 0; }
 ol.post-list .post-card { padding-inline: 18px; }
 .post-card.is-focused { padding: 24px 24px 12px; }
 .post-card.is-reply { padding: var(--reply-padding); }
-.post-card.is-reply .post-header { gap: 10px; align-items: center; }
-.post-card.is-reply .post-identity { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.post-card.is-reply .post-header { gap: 10px; align-items: flex-start; }
+.post-card.is-reply .post-identity { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 2px 8px; min-height: 32px; }
 .post-card.is-reply .post-author { min-width: 0; max-width: 100%; }
 .post-card.is-reply .post-meta { margin-top: 0; }
 .post-card.is-reply > .mt-3 { margin-top: var(--reply-gap); }
@@ -1317,11 +1367,31 @@ ol.post-list .post-card { padding-inline: 18px; }
    space under the text. Its buttons keep the full 44px touch target, as in the feed. */
 .post-card.is-reply .post-actions { margin-top: 6px; border-top: 0; padding-top: 0; }
 .thread-author-label { color: var(--accent-strong); font-size: var(--post-meta-size); font-weight: 600; line-height: 18px; }
+/* On the focused post's details line the handle gives way first, so the label never breaks. */
+.post-meta > .thread-author-label { flex: none; }
 .thread-view { gap: 14px; }
+/* The earlier conversation, open above the post in focus: each post is a reply card, and a
+   short line in the gap joins the bottom edge of one card to the top edge of the next, on
+   the avatar axis (1px border + 14px padding + half a 32px avatar), as under replies. The
+   parent's line runs on past "Replying to" to the focused card's top edge. The line stays
+   between cards, never on one. Decoration only: the order and "Replying to" say it in words. */
+.thread-lineage { display: flex; flex-direction: column; gap: 14px; }
+.thread-chain { display: flex; flex-direction: column; gap: var(--reply-gap); }
+.thread-chain > li { position: relative; }
+.thread-chain > li:not(:last-child)::after,
+.thread-chain > li.is-parent::after,
+.thread-context[open] .thread-chain > li:last-child::after { content: ''; position: absolute; top: 100%; left: 30px; width: 2px; height: var(--reply-gap); background: var(--line-strong); pointer-events: none; }
+/* Across the 14px gap to the next list, or from the parent down to "Replying to". */
+.thread-chain > li.is-parent::after,
+.thread-context[open] .thread-chain > li:last-child::after { height: 14px; }
 .thread-context { border-bottom: 1px solid var(--line); }
 .thread-context summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
 .thread-context[open] summary > svg { transform: rotate(180deg); }
-.thread-context .post-list { margin-block: 10px 16px; }
+/* Open, the older posts run straight on into the nearer ones, so no rule between them. */
+.thread-context[open] { border-bottom: 0; }
+.thread-context .thread-chain { margin-top: 10px; }
+.thread-view.has-chain .thread-recipient { position: relative; margin: 0; padding-left: 44px; }
+.thread-view.has-chain .thread-recipient::before { content: ''; position: absolute; top: 0; bottom: -14px; left: 30px; width: 2px; background: var(--line-strong); pointer-events: none; }
 .thread-replies-heading { font-size: 13px; font-weight: 600; }
 .thread-replies-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--touch-target); margin-bottom: 4px; }
 .thread-replies-head > .dropdown-menu > summary { min-width: var(--touch-target); min-height: var(--touch-target); }
@@ -1335,12 +1405,16 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-branch.is-root > .thread-children > .thread-list { gap: 14px; }
 .thread-branch { position: relative; }
 .thread-row { position: relative; }
-/* The line runs down from under the parent's avatar (14px padding + half a 32px avatar),
-   starting at its card's edge, with an elbow to each answer's avatar. */
+/* The line runs in the gutter, never across a card: it starts at the parent card's bottom
+   edge, on its avatar's axis (1px border + 14px padding + half a 32px avatar), and an
+   elbow at each answer's avatar height (1 + 12 + 16) meets that answer's card at its edge.
+   "Your reply" answers below the dashed marker get their elbows too. */
 .thread-children { margin-left: 30px; border-left: 2px solid var(--line-strong); padding: var(--reply-gap) 0 0 12px; }
 .thread-branch.is-root > .thread-children { margin: var(--reply-gap) 0 0; border-left: 0; padding: 0; }
-.thread-children > .thread-list > li > .thread-branch > .thread-row::before { content: ''; position: absolute; top: 28px; left: -14px; width: 14px; border-top: 2px solid var(--line-strong); }
-.thread-branch.is-root > .thread-children > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
+.thread-children > .thread-list > li > .thread-branch > .thread-row::before,
+.thread-children > .thread-recent > .thread-list > li > .thread-branch > .thread-row::before { content: ''; position: absolute; top: 28px; left: -14px; width: 14px; border-top: 2px solid var(--line-strong); }
+.thread-branch.is-root > .thread-children > .thread-list > li > .thread-branch > .thread-row::before,
+.thread-branch.is-root > .thread-children > .thread-recent > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
 /* Nothing to show yet while a branch loads, so no space either: the next reply stays put. */
 .thread-children[hidden], .thread-children:empty { display: none; }
 /* Replies stop at THREAD_MAX_DEPTH (5), and every level indents: 44px on a desktop,
@@ -1348,7 +1422,8 @@ ol.post-list .post-card { padding-inline: 18px; }
    (.is-beyond). They keep the width they have, and a second line beside them, in
    the gutter, shows where their run starts and ends. */
 .thread-children.is-beyond { margin-left: -7px; padding-left: 5px; }
-.thread-children.is-beyond > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
+.thread-children.is-beyond > .thread-list > li > .thread-branch > .thread-row::before,
+.thread-children.is-beyond > .thread-recent > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
 .thread-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
 /* In a reply's action row, as tall as its buttons, so a reply with answers is no taller. */
 .thread-toggle { display: inline-flex; min-height: var(--touch-target); align-items: center; padding-inline: 6px; color: var(--accent-strong); font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -1958,7 +2033,8 @@ a.result-row:hover { color: var(--accent-strong); }
   /* Narrow indents, 12px a level, so the fifth level still keeps most of the width. The line
      stays clear of the card's rounded corner, so it starts a gap below it. */
   .thread-children { margin-top: var(--reply-gap); margin-left: 2px; padding: 0 0 0 8px; }
-  .thread-children > .thread-list > li > .thread-branch > .thread-row::before { left: -9px; width: 9px; }
+  .thread-children > .thread-list > li > .thread-branch > .thread-row::before,
+  .thread-children > .thread-recent > .thread-list > li > .thread-branch > .thread-row::before { left: -9px; width: 9px; }
   .thread-children.is-beyond { margin-left: -5px; padding-left: 3px; }
   .notification-row { padding: 16px; }
   .page-header, .content-panel, .community-card, .governance-section { padding: 20px; }
