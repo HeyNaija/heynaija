@@ -1,4 +1,5 @@
-# Local development stack: Postgres, Redis, Ory Kratos (identity), Mailpit and MinIO.
+# Local development stack: Postgres, Redis, Ory Kratos (identity), Mailpit and MinIO,
+# and, on request (`pnpm infra:livekit`), a LiveKit media server for Gists.
 # Host ports are offset so they do not clash with other local projects.
 name: heynaija-dev
 
@@ -87,7 +88,52 @@ services:
       - "127.0.0.1:1026:1025" # SMTP, for the API's notification emails (Kratos uses mailpit:1025 inside Docker)
       - "127.0.0.1:8026:8025"
 
+  # LiveKit media server for Gists (docs/adr/0017). Off unless asked for, so
+  # `pnpm infra:up` does not start it: run `pnpm infra:livekit`. One node, no Redis.
+  # Signalling (WebSocket + REST) on :7880, ICE over TCP on :7881, all media over
+  # UDP on :7882 (single-port mode). Keys come from .env (`pnpm infra:env`); the API
+  # reads the same ones as LIVEKIT_API_KEY and LIVEKIT_API_SECRET. LiveKit posts
+  # webhooks to the web app on the host (host.docker.internal), which passes them to the API.
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    profiles: [calls]
+    command: ["--config", "/etc/livekit.yaml"]
+    configs:
+      - source: livekit
+        target: /etc/livekit.yaml
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "127.0.0.1:7881:7881"
+      - "127.0.0.1:7882:7882/udp"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
 configs:
+  # LiveKit's own config. The two key pairs (API and webhook signing) are rendered
+  # from .env; with the secrets unset LiveKit refuses to start, which is the point.
+  livekit:
+    content: |
+      port: 7880
+      log_level: info
+      keys:
+        ${LIVEKIT_API_KEY:-devkey}: "${LIVEKIT_API_SECRET:-}"
+        ${LIVEKIT_WEBHOOK_KEY:-devhook}: "${LIVEKIT_WEBHOOK_SECRET:-}"
+      rtc:
+        tcp_port: 7881
+        udp_port: 7882
+        # Browsers on this machine reach the container through the published ports.
+        use_external_ip: false
+        node_ip: 127.0.0.1
+      room:
+        # Only rooms the API created: a client cannot open one by joining.
+        auto_create: false
+        empty_timeout: 300
+      webhook:
+        api_key: ${LIVEKIT_WEBHOOK_KEY:-devhook}
+        urls:
+          # Through the web app's rewrite, the way staging and production get it.
+          - http://host.docker.internal:3000/api/internal/livekit/webhook
   # Kratos cannot read a hook list from environment variables, and this one holds
   # the webhook secret, so Compose renders it here and Kratos merges it over
   # kratos.yml. The same goes for the Google client secret.

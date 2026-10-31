@@ -18,6 +18,12 @@ import { unsubscribeKey } from './email/unsubscribe-token.js'
 import { type Env, loadEnv } from './env.js'
 import { ExportController } from './export/export.controller.js'
 import { ExportService } from './export/export.service.js'
+import { GistReconciler } from './gists/gist-queue.js'
+import { GistsController, LiveKitWebhookController } from './gists/gists.controller.js'
+import { GISTS_CONFIG, GistsService } from './gists/gists.service.js'
+import { GistsEnabledGuard } from './gists/gists-enabled.guard.js'
+import { roomServiceFor } from './gists/livekit-room-service.js'
+import { ROOM_SERVICE } from './gists/room-service.js'
 import { GovernanceController } from './governance/governance.controller.js'
 import { GovernanceService } from './governance/governance.service.js'
 import { IdeasController } from './ideas/ideas.controller.js'
@@ -63,7 +69,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -142,6 +148,22 @@ class HealthController {
     ExportService,
     GovernanceService,
     OnboardingService,
+    // Gists (docs/adr/0017): dark unless CALLS_ENABLED, CALLS_GISTS_ENABLED and the LIVEKIT_* settings are all set.
+    { provide: ROOM_SERVICE, useFactory: roomServiceFor, inject: [ENV] },
+    {
+      provide: GISTS_CONFIG,
+      useFactory: (env: Env) => ({
+        callsMembers: env.CALLS_MEMBERS,
+        maxCohosts: env.GISTS_MAX_COHOSTS,
+        maxSpeakers: env.GISTS_MAX_SPEAKERS,
+        listenerCap: env.GISTS_LISTENER_CAP,
+        livekitUrl: env.LIVEKIT_URL ?? '',
+      }),
+      inject: [ENV],
+    },
+    GistsService,
+    GistsEnabledGuard,
+    GistReconciler,
   ],
 })
 export class AppModule {}

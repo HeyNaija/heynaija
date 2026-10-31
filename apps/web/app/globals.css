@@ -2087,3 +2087,60 @@ a.result-row:hover { color: var(--accent-strong); }
 .governance-documents a { color: var(--accent-strong); font-size: 14px; font-weight: 600; }
 .governance-documents a:hover { text-decoration: underline; }
 .governance-documents span { color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+/* Gists (DESIGN.md, "Gists"). Existing tokens only; every control is 44px. */
+.gist-section { padding: 22px; }
+.gist-btn { min-height: var(--touch-target); }
+.gist-live { display: flex; align-items: center; gap: 6px; color: var(--danger); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.gist-locked { display: inline-flex; align-items: center; gap: 4px; }
+.gist-subhead { margin-top: 18px; margin-bottom: 8px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.gist-people { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.gist-person { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 52px; padding: 4px 8px; border-radius: var(--r-control); }
+.gist-person-name { min-width: 0; flex: 1 1 8rem; overflow-wrap: anywhere; font-size: 15px; font-weight: 600; }
+.gist-person-name > .text-muted { font-size: 13px; font-weight: 400; }
+.gist-speaking { outline: 2px solid var(--accent); outline-offset: -2px; }
+.gist-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.gist-note { color: var(--muted); font-size: 13px; }
+.gist-bar { position: sticky; bottom: calc(62px + env(safe-area-inset-bottom, 0px) + 8px); z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; background: var(--surface); }
+@media (min-width: 1024px) { .gist-bar { bottom: 12px; } }
+@media (max-width: 1023px) { .gist-section { padding: 18px; } }
+
+/* Gists room: stage, speaking state, sheets, controls. State is never colour alone: each one also has a word or an icon. */
+.gist-head-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.gist-live-dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--danger); }
+.gist-elapsed { margin-left: 4px; color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.gist-count { max-width: 100%; }
+.gist-stage { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px 8px; margin-top: 12px; }
+.gist-tile { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 6px; padding: 8px 4px; border-radius: var(--r-control); text-align: center; }
+.gist-avatar { display: inline-flex; padding: 4px; border-radius: 9999px; box-shadow: 0 0 0 3px transparent; }
+.is-speaking .gist-avatar { box-shadow: 0 0 0 3px var(--accent); }
+.gist-tile-name { max-width: 100%; overflow-wrap: anywhere; font-size: 14px; font-weight: 600; line-height: 1.3; }
+.gist-badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
+.gist-badge { display: inline-flex; align-items: center; gap: 3px; min-height: 20px; padding: 1px 7px; border-radius: var(--r-chip); background: var(--panel); color: var(--muted); font-size: 11px; font-weight: 600; line-height: 1.4; }
+.gist-badge-role { background: var(--accent-soft); color: var(--accent-strong); }
+.gist-badge-muted { border: 1px solid var(--line-strong); }
+.gist-badge-speaking { background: var(--accent); color: var(--accent-ink); }
+.gist-meter { display: block; width: 100%; max-width: 96px; height: 6px; overflow: hidden; border-radius: 9999px; background: var(--panel); border: 1px solid var(--line); }
+.gist-meter-fill { display: block; width: 100%; height: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); }
+.gist-mic-panel { display: flex; flex-direction: column; gap: 8px; }
+.gist-mic-panel .gist-meter { max-width: none; height: 10px; margin-top: 6px; }
+.gist-switch { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; padding-block: 10px; font-size: 14px; }
+.gist-switch input { width: 22px; height: 22px; flex-shrink: 0; margin-top: 1px; accent-color: var(--accent); }
+.gist-sheet { margin: auto auto 0; width: 100%; max-width: 560px; max-height: 88dvh; padding: 0; border: 1px solid var(--line); border-radius: 16px 16px 0 0; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-pop); }
+.gist-sheet::backdrop { background: var(--modal-scrim); }
+.gist-sheet-body { padding: 18px 18px calc(18px + env(safe-area-inset-bottom, 0px)); }
+.gist-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.gist-sheet-close { min-width: var(--touch-target); min-height: var(--touch-target); }
+@media (min-width: 640px) { .gist-sheet { margin: auto; border-radius: var(--r-panel); } }
+.gist-bar { flex-wrap: nowrap; }
+.gist-main { flex: 1 1 0; min-width: 0; }
+.gist-square { width: var(--touch-target); padding-inline: 0; }
+@media (max-width: 359px) { .gist-bar { flex-wrap: wrap; } .gist-main { flex-basis: 100%; } }
+@media (prefers-reduced-motion: no-preference) {
+  .gist-avatar { transition: box-shadow 0.15s; }
+  .is-speaking .gist-avatar { animation: gist-ring 1.4s ease-in-out infinite; }
+  .gist-live-dot { animation: gist-blink 2s ease-in-out infinite; }
+}
+@keyframes gist-ring { 0%, 100% { box-shadow: 0 0 0 3px var(--accent); } 50% { box-shadow: 0 0 0 7px var(--accent-soft); } }
+@keyframes gist-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.gist-mic-state { padding: 0 6px; border-radius: var(--r-chip); background: color-mix(in srgb, currentColor 14%, transparent); font-size: 12px; font-weight: 700; }

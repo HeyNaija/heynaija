@@ -95,6 +95,15 @@ pnpm media:init         # creates the two storage buckets on the local MinIO
 pnpm demo:seed          # optional: 14 demo members, threads, images, likes and follows (re-run to refresh)
 ```
 
+Gists (live audio rooms, [ADR 0017](docs/adr/0017-calls-and-meetings.md)) are off
+by default. To try the API against a local media server: `pnpm infra:env` (adds the
+`LIVEKIT_*` keys), `pnpm infra:livekit` (LiveKit v1.13.11 on `127.0.0.1:7880` for
+signalling, `:7881` TCP and `:7882` UDP for media; not started by `infra:up`), then put
+`CALLS_ENABLED=true`, `CALLS_GISTS_ENABLED=true` and `CALLS_MEMBERS=<your handle>` in
+`.env`. With any of those missing every `/v1/gists` route answers 404. Local only:
+the config in `docker-compose.dev.yml` advertises `127.0.0.1` for media. Servers for
+staging and production are a separate piece of work.
+
 The demo members can sign in as `<handle>@demo.heynaija.test` with the code
 Mailpit catches; `pnpm demo:clean` removes them and everything they did.
 

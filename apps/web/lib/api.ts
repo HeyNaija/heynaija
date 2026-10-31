@@ -2,6 +2,7 @@ import 'server-only'
 import { headers } from 'next/headers'
 import { cache } from 'react'
 import { getApiAuthHeaders, hasSessionCredentials } from './auth/server'
+import type { GistView } from './gists'
 import type { NotificationPreferences } from './notification-preferences'
 import type { ReplyAudience } from './reply-audience'
 import type { ReplyContext } from './reply-context'
@@ -23,6 +24,8 @@ export type Me = {
   moderates: boolean
   /** False until they finish or skip the welcome flow, which the home page sends them to. */
   onboarded: boolean
+  /** Switches the API turns on for this member (docs/adr/0017). All false when a feature is off or they are not on its list. */
+  features: { gists: boolean }
 }
 
 /** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
@@ -352,6 +355,9 @@ async function getOrNull<T>(path: string): Promise<T | null> {
   if (!res.ok) throw new Error(`API ${path} responded ${res.status}`)
   return res.json()
 }
+
+/** A Gist the viewer may see; null for every refusal, which the API makes the same 404. */
+export const getGist = (id: string) => getOrNull<GistView>(`/v1/gists/${encodeURIComponent(id)}`)
 
 /**
  * A member's profile; or, for a handle its owner gave up recently, the handle they
