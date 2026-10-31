@@ -11,7 +11,8 @@ import { LocalTime } from '@/app/ui/local-time'
 import { Menu } from '@/app/ui/menu'
 import { PostItem, PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
-import { findProfile, getMemberPosts, getViewer, PROFILE_FILTERS, type ProfileFilter } from '@/lib/api'
+import { CallButton } from '@/app/ui/calls/call-button'
+import { findProfile, getCanCall, getMemberPosts, getViewer, PROFILE_FILTERS, type ProfileFilter } from '@/lib/api'
 import { defaultPreviewImage, excerpt, siteOpenGraph } from '@/lib/previews'
 
 type Props = PageProps<'/u/[handle]'>
@@ -72,6 +73,8 @@ async function ProfileView({ params, searchParams }: Props) {
   // Behind a block there is nothing to load: the API would return no posts anyway.
   const feed = profile.viewerBlocks ? { posts: [], cursor: null } : await getMemberPosts(profile.handle, tab, page)
   const viewerId = viewer.state === 'member' ? viewer.me.id : null
+  // The Call button: only with calls on for the viewer, and only if the API says this member can be called (yes or no, never why).
+  const canCall = viewer.state === 'member' && viewer.me.features.calls && !profile.isSelf && !profile.viewerBlocks && (await getCanCall(profile.id))
   const now = Date.now()
 
   return (
@@ -97,6 +100,7 @@ async function ProfileView({ params, searchParams }: Props) {
             </Link>
           ) : viewerId ? (
             <div className="flex shrink-0 items-center gap-1">
+              {canCall ? <CallButton memberId={profile.id} name={profile.displayName ?? `@${profile.handle}`} /> : null}
               {profile.viewerBlocks ? (
                 <form action={setBlock}>
                   <input type="hidden" name="handle" value={profile.handle} />

@@ -14,22 +14,32 @@ export function sessionCookieHeader(value: string | undefined): string | null {
   return `${SESSION_COOKIE}=${value}`
 }
 
-/** What GET /v1/me must answer for the member to be shown Gists: 200 and `features.gists === true`. */
-export function meAllowsGists(status: number, body: unknown): boolean {
+export type GatedFeature = 'gists' | 'calls'
+
+/** What GET /v1/me must answer for the member to be shown a feature: 200 and `features[feature] === true`. */
+export function meAllowsFeature(feature: GatedFeature, status: number, body: unknown): boolean {
   if (status !== 200 || typeof body !== 'object' || body === null) return false
   const features = (body as { features?: unknown }).features
-  return typeof features === 'object' && features !== null && (features as { gists?: unknown }).gists === true
+  return typeof features === 'object' && features !== null && (features as Record<string, unknown>)[feature] === true
 }
 
+/** What GET /v1/me must answer for the member to be shown Gists: 200 and `features.gists === true`. */
+export const meAllowsGists = (status: number, body: unknown) => meAllowsFeature('gists', status, body)
+
+type AskMe = (cookie: string) => Promise<{ status: number; json: () => Promise<unknown> }>
+
 /** 'allow' to let the page run; 'deny' to answer as for a missing URL. Never throws. */
-export async function gistsGate(session: string | undefined, askMe: (cookie: string) => Promise<{ status: number; json: () => Promise<unknown> }>): Promise<'allow' | 'deny'> {
+export async function featureGate(feature: GatedFeature, session: string | undefined, askMe: AskMe): Promise<'allow' | 'deny'> {
   const cookie = sessionCookieHeader(session)
   if (!cookie) return 'deny'
   try {
     const res = await askMe(cookie)
-    return meAllowsGists(res.status, await res.json()) ? 'allow' : 'deny'
+    return meAllowsFeature(feature, res.status, await res.json()) ? 'allow' : 'deny'
   } catch {
     // The API is down, slow, or answered with something that is not JSON.
     return 'deny'
   }
 }
+
+export const gistsGate = (session: string | undefined, askMe: AskMe) => featureGate('gists', session, askMe)
+export const callsGate = (session: string | undefined, askMe: AskMe) => featureGate('calls', session, askMe)

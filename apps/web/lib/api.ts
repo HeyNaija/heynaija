@@ -2,6 +2,7 @@ import 'server-only'
 import { headers } from 'next/headers'
 import { cache } from 'react'
 import { getApiAuthHeaders, hasSessionCredentials } from './auth/server'
+import type { CallView } from './calls'
 import type { GistView } from './gists'
 import type { NotificationPreferences } from './notification-preferences'
 import type { ReplyAudience } from './reply-audience'
@@ -25,7 +26,7 @@ export type Me = {
   /** False until they finish or skip the welcome flow, which the home page sends them to. */
   onboarded: boolean
   /** Switches the API turns on for this member (docs/adr/0017). All false when a feature is off or they are not on its list. */
-  features: { gists: boolean }
+  features: { gists: boolean; calls: boolean }
 }
 
 /** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
@@ -358,6 +359,23 @@ async function getOrNull<T>(path: string): Promise<T | null> {
 
 /** A Gist the viewer may see; null for every refusal, which the API makes the same 404. */
 export const getGist = (id: string) => getOrNull<GistView>(`/v1/gists/${encodeURIComponent(id)}`)
+
+/** A call the viewer is one of the two parties of; null for every refusal, which the API makes the same 404. */
+export const getCall = (id: string) => getOrNull<CallView>(`/v1/calls/${encodeURIComponent(id)}`)
+
+/** Whether the Call button shows for this member; false for every refusal (a plain yes or no, never why). */
+export async function getCanCall(memberId: string): Promise<boolean> {
+  const res = await api(`/v1/calls/can-call/${encodeURIComponent(memberId)}`)
+  if (!res.ok) return false
+  return ((await res.json()) as { eligible?: boolean }).eligible === true
+}
+
+/** The "Allow calls" switch; null when calls are not shown to this member. */
+export async function getAllowCalls(): Promise<boolean | null> {
+  const res = await api('/v1/calls/settings')
+  if (!res.ok) return null
+  return ((await res.json()) as { allowCalls?: boolean }).allowCalls === true
+}
 
 /**
  * A member's profile; or, for a handle its owner gave up recently, the handle they

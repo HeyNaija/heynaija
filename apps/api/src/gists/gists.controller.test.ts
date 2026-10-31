@@ -4,6 +4,7 @@ import { type ExecutionContext, HttpException, NotFoundException } from '@nestjs
 import { GUARDS_METADATA } from '@nestjs/common/constants.js'
 import type { Env } from '../env.js'
 import { MemoryRateLimiter } from '../rate-limit.js'
+import { LiveKitWebhookGuard } from '../calls/calls-enabled.guard.js'
 import { GistsController, LiveKitWebhookController } from './gists.controller.js'
 import { GistsEnabledGuard, gistsEnabled, gistsFeatureFor } from './gists-enabled.guard.js'
 
@@ -42,10 +43,11 @@ test('every Gists route is behind the flag, and the flag is checked before sign-
   for (const controller of [GistsController, LiveKitWebhookController]) {
     const names = Object.getOwnPropertyNames(controller.prototype).filter((n) => n !== 'constructor')
     assert.ok(names.length > 0)
+    const first = controller === LiveKitWebhookController ? LiveKitWebhookGuard : GistsEnabledGuard
     for (const name of names) {
       const guards = Reflect.getMetadata(GUARDS_METADATA, controller.prototype[name as keyof typeof controller.prototype]) as unknown[] | undefined
       const own = guards ?? (Reflect.getMetadata(GUARDS_METADATA, controller) as unknown[] | undefined) ?? []
-      assert.equal(own[0], GistsEnabledGuard, `${controller.name}.${name} must start with GistsEnabledGuard`)
+      assert.equal(own[0], first, `${controller.name}.${name} must start with ${first.name}`)
     }
   }
 })

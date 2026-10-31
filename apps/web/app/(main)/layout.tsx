@@ -1,3 +1,5 @@
+import { Suspense } from 'react'
+import { CallsHost } from '@/app/ui/calls/calls-host'
 import { BottomNav, RightRail, Sidebar, TopBar } from '@/app/ui/shell'
 
 // The app proper: navigation on the left, the page in the middle, discovery on the
@@ -16,6 +18,9 @@ export default function MainLayout({ children }: LayoutProps<'/'>) {
           <RightRail />
         </div>
       </div>
+      <Suspense fallback={null}>
+        <CallsHost />
+      </Suspense>
       <BottomNav />
     </div>
   )

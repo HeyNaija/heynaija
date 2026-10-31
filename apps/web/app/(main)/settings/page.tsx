@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Suspense } from 'react'
+import { AllowCalls } from '@/app/ui/calls/allow-calls'
 import { AvatarUploader } from '@/app/ui/avatar-uploader'
 import { IdentityBadge } from '@/app/ui/identity-badge'
 import { InstallApp } from '@/app/ui/install-app'
@@ -8,7 +9,7 @@ import { NotificationPreferencesForm } from '@/app/ui/notification-preferences-f
 import { ProfileForm } from '@/app/ui/profile-form'
 import { PushSwitch } from '@/app/ui/push-switch'
 import { ThemeSwitch } from '@/app/ui/theme-switch'
-import { type GovernanceStatus, getGovernanceStatus, getNotificationPreferences, getPushKey, getViewer } from '@/lib/api'
+import { type GovernanceStatus, getAllowCalls, getGovernanceStatus, getNotificationPreferences, getPushKey, getViewer } from '@/lib/api'
 import { AuthForm } from '@/lib/auth/server'
 
 export const metadata: Metadata = { title: 'Settings' }
@@ -53,6 +54,9 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
           <NotificationSettings />
         </Suspense>
       </section>
+      <Suspense fallback={null}>
+        <CallSettings />
+      </Suspense>
       <div className="content-panel settings-section">
         <p className="page-eyebrow">Account access</p>
         <Suspense fallback={<div aria-busy="true" className="skeleton h-48" />}>
@@ -105,6 +109,20 @@ async function NameAndBio() {
   const viewer = await getViewer()
   if (viewer.state !== 'member') return null
   return <ProfileForm displayName={viewer.me.displayName} bio={viewer.me.bio} />
+}
+
+/** "Allow calls": rendered only for a member who has calls (the flag on, and on the list). */
+async function CallSettings() {
+  const viewer = await getViewer()
+  if (viewer.state !== 'member' || !viewer.me.features.calls) return null
+  const allow = await getAllowCalls()
+  if (allow === null) return null
+  return (
+    <section className="content-panel settings-section" aria-labelledby="calls-heading">
+      <h2 id="calls-heading" className="section-title">Calls</h2>
+      <AllowCalls initial={allow} />
+    </section>
+  )
 }
 
 async function NotificationSettings() {
