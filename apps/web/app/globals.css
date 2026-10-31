@@ -497,7 +497,8 @@ summary.menu::-webkit-details-marker {
    and each link 46px with a 4px gap (a 50px step), the compose button 44px, the
    gaps between blocks 18px. A list of m rows with the button needs 94 + 50m.
    Link tiers (data-tier, set in shell.tsx) hide at 94 + 50 * (tier + 1) = 144 + 50 * tier;
-   the More row itself counts as one of the m. */
+   the two lowest-priority links share the first tier so replacing them with More
+   saves one row. The More row itself counts as one of the m. */
 .square-sidebar {
   position: sticky;
   top: 0;
@@ -566,8 +567,7 @@ summary.menu::-webkit-details-marker {
    link is in the list and in the menu; a tier's copy is shown exactly when its
    list item is hidden (the rules at the end of this block). */
 .sidebar-more-dot { display: none; }
-.sidebar-nav-list > [data-tier="0"] { display: none; }
-.sidebar-more { display: block; }
+.sidebar-more { display: none; }
 .sidebar-more summary { cursor: pointer; }
 .sidebar-more details[open] > summary { background: var(--surface); color: var(--ink); }
 .sidebar-more-panel {
@@ -579,8 +579,6 @@ summary.menu::-webkit-details-marker {
   margin: 0 0 6px;
 }
 .sidebar-more-panel > * { display: none; }
-.sidebar-more-panel > [data-tier="0"] { display: block; }
-.sidebar-more details:has(.sidebar-more-panel > [data-tier="0"] [aria-current="page"]) > summary { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; }
 .sidebar-more-panel [aria-current="page"] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; }
 .sidebar-more-panel .unread-badge { margin-left: auto; }
 
@@ -627,6 +625,7 @@ summary.menu::-webkit-details-marker {
 @container sidebar (height < 444px) { .sidebar-nav-list > [data-tier="6"] { display: none; } .sidebar-more-panel > [data-tier="6"] { display: block; } .sidebar-more[data-more-tier="6"] { display: block; } .sidebar-more-dot[data-tier="6"] { display: contents; } }
 @container sidebar (height < 494px) { .sidebar-nav-list > [data-tier="7"] { display: none; } .sidebar-more-panel > [data-tier="7"] { display: block; } .sidebar-more[data-more-tier="7"] { display: block; } .sidebar-more-dot[data-tier="7"] { display: contents; } }
 @container sidebar (height < 544px) { .sidebar-nav-list > [data-tier="8"] { display: none; } .sidebar-more-panel > [data-tier="8"] { display: block; } .sidebar-more[data-more-tier="8"] { display: block; } .sidebar-more-dot[data-tier="8"] { display: contents; } }
+@container sidebar (height < 594px) { .sidebar-nav-list > [data-tier="9"] { display: none; } .sidebar-more-panel > [data-tier="9"] { display: block; } .sidebar-more[data-more-tier="9"] { display: block; } .sidebar-more-dot[data-tier="9"] { display: contents; } }
 .ownership-copy {
   padding: 17px;
 }
