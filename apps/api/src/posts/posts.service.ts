@@ -376,7 +376,7 @@ export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
 const outerId = sql`"posts"."id"`
 
 // Has at least one image a reader can see.
-const withImages = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.status = 'ready')`
+const withImages = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.kind = 'post_image' and m.status = 'ready')`
 
 const profileFilter: Record<ProfileFilter, SQL> = {
   posts: topLevel,
@@ -386,7 +386,7 @@ const profileFilter: Record<ProfileFilter, SQL> = {
 
 /** A post's ready images in order, as JSON, for any query with `posts` in scope. */
 export const imagesOf = (postId: SQL) =>
-  sql<ImageRow[]>`coalesce((select json_agg(json_build_object('id', m.id, 'alt', m.alt, 'width', m.width, 'height', m.height, 'animated', m.animated) order by m.position) from media m where m.post_id = ${postId} and m.status = 'ready'), '[]'::json)`
+  sql<ImageRow[]>`coalesce((select json_agg(json_build_object('id', m.id, 'alt', m.alt, 'width', m.width, 'height', m.height, 'animated', m.animated) order by m.position) from media m where m.post_id = ${postId} and m.kind = 'post_image' and m.status = 'ready'), '[]'::json)`
 
 export const toPostImages = (rows: ImageRow[]): PostImage[] =>
   rows.map(({ id, alt, width, height, animated }) => ({ src: postImagePath(id), alt, width, height, animated }))
