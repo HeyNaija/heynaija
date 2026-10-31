@@ -4,12 +4,11 @@ import { and, asc, eq, inArray, isNull, lte, or, type SQL, sql } from 'drizzle-o
 import { AuthService } from '../auth/auth.service.js'
 import { EMAIL_ADDRESSES, type EmailAddresses } from '../email/addresses.js'
 import type { Env } from '../env.js'
+import { GistsService } from '../gists/gists.service.js'
 import { MediaService } from '../media/media.service.js'
 import { HANDLE_HOLD_DAYS, MembersService } from '../members/members.service.js'
 import { DB, ENV } from '../tokens.js'
-import { OPEN_REQUEST } from './privacy-requests.service.js'
-
-const DAY_MS = 24 * 60 * 60 * 1000
+import { DAY_MS, OPEN_REQUEST } from './privacy-requests.service.js'
 
 /**
  * What an erased account's handle becomes. Never a real handle: Kratos allows
@@ -53,10 +52,11 @@ export class AccountDeletionService {
   constructor(
     @Inject(DB) private readonly db: Db,
     @Inject(ENV) private readonly env: Pick<Env, 'ACCOUNT_DELETION_GRACE_DAYS' | 'PRIVACY_REQUEST_DUE_DAYS'>,
-    @Inject(AuthService) private readonly auth: Pick<AuthService, 'revokeAllSessions' | 'deleteIdentity'>,
+    @Inject(AuthService) private readonly auth: Pick<AuthService, 'revokeAllSessions' | 'deactivateIdentity' | 'deleteIdentity'>,
     @Inject(EMAIL_ADDRESSES) private readonly addresses: EmailAddresses,
     @Inject(MediaService) private readonly media: Pick<MediaService, 'eraseFilesOf'>,
     @Inject(MembersService) private readonly memberships: Pick<MembersService, 'holdHandle'>,
+    @Inject(GistsService) private readonly gists: Pick<GistsService, 'endHostedBy'>,
     @Optional() @Inject(DELETION_NOTICES) private readonly notices?: DeletionNotices,
   ) {}
 
@@ -84,7 +84,8 @@ export class AccountDeletionService {
    * privacy request: a new one, or `requestId`, a deletion request recorded when
    * it arrived by email (so its due date runs from then). `immediate` (operators
    * only) erases it within the hour. Asking again changes nothing, except that
-   * `immediate` brings the erase forward. A site moderator cannot ask for
+   * `immediate` brings the erase forward and `requestId` is linked to the
+   * account, so the erase completes it too. A site moderator cannot ask for
    * themselves: they are demoted first (`pnpm mod:revoke`), as before a suspension.
    */
   async request(
@@ -113,8 +114,26 @@ export class AccountDeletionService {
       if (channel === 'self_service' && member.role === 'moderator') {
         throw new AccountDeletionError('site_moderator', 'a site moderator cannot delete their own account; ask to be demoted first')
       }
+      // The request recorded when the email arrived becomes this account's, scheduled
+      // now or before: the erase completes it either way.
+      const link = async (id: string) => {
+        const linked = await tx
+          .update(privacyRequests)
+          .set({ memberId, status: 'in_progress', handledBy })
+          .where(
+            and(
+              eq(privacyRequests.id, id),
+              eq(privacyRequests.kind, 'deletion'),
+              inArray(privacyRequests.status, OPEN_REQUEST),
+              or(isNull(privacyRequests.memberId), eq(privacyRequests.memberId, memberId)),
+            ),
+          )
+          .returning({ id: privacyRequests.id })
+        if (!linked.length) throw new AccountDeletionError('no_request', 'no open deletion request with that ID for this account')
+      }
 
       if (member.deletionRequestedAt && member.deletionScheduledFor) {
+        if (requestId) await link(requestId)
         if (!immediate || member.deletionScheduledFor <= now) return { scheduledFor: member.deletionScheduledFor, alreadyRequested: true }
         await tx.update(members).set({ deletionScheduledFor: now }).where(eq(members.id, memberId))
         return { scheduledFor: now, alreadyRequested: true }
@@ -129,19 +148,7 @@ export class AccountDeletionService {
         .set({ active: false, deletionRequestedAt: now, deletionScheduledFor: scheduledFor })
         .where(eq(members.id, memberId))
       if (requestId) {
-        const linked = await tx
-          .update(privacyRequests)
-          .set({ memberId, status: 'in_progress', handledBy })
-          .where(
-            and(
-              eq(privacyRequests.id, requestId),
-              eq(privacyRequests.kind, 'deletion'),
-              inArray(privacyRequests.status, OPEN_REQUEST),
-              or(isNull(privacyRequests.memberId), eq(privacyRequests.memberId, memberId)),
-            ),
-          )
-          .returning({ id: privacyRequests.id })
-        if (!linked.length) throw new AccountDeletionError('no_request', 'no open deletion request with that ID for this account')
+        await link(requestId)
       } else {
         await tx.insert(privacyRequests).values({
           memberId,
@@ -229,20 +236,28 @@ export class AccountDeletionService {
     if (!member.deletionRequestedAt) return 'cancelled'
     if (!member.deletionScheduledFor || member.deletionScheduledFor > now) throw new AccountDeletionError('not_due', 'that deletion is not due yet')
 
-    // 1. The address for the last email, while Kratos still has it (null once deleted).
+    // 1. The address for the last email, while Kratos still has it (null once the
+    //    identity is switched off or deleted).
     const email = await this.addresses.addressFor(memberId)
     // 2. Signed out everywhere, in case they signed in during the grace period.
     await this.auth.revokeAllSessions(memberId)
-    // 3. Everything in the app's database.
+    // 3. A live Gist they host ends, room and all: once its rows go, nothing would close the room.
+    await this.gists.endHostedBy(memberId)
+    // 4. Everything in the app's database.
     const erased = await this.eraseRows(memberId, now)
     if (!erased) return 'cancelled'
-    // 4. Their images out of storage and the CDN's cache; evidence kept privately.
+    // 5. Their images out of storage and the CDN's cache; evidence kept privately.
     await this.media.eraseFilesOf(memberId)
-    // 5. A retry between here and the next step may send this twice.
-    if (email && this.notices) await this.notices.erased(email)
-    // 6. The sign-in account: email, sign-in methods and any session left.
+    // 6. The last email, then the identity switched off, which hides its address
+    //    from step 1: a retry after that sends nothing. Only a failure between the
+    //    two can send it twice.
+    if (email && this.notices) {
+      await this.notices.erased(email)
+      await this.auth.deactivateIdentity(memberId)
+    }
+    // 7. The sign-in account: email, sign-in methods and any session left.
     await this.auth.deleteIdentity(memberId)
-    // 7. Done.
+    // 8. Done.
     await this.db.transaction(async (tx) => {
       await tx.update(members).set({ deletedAt: now }).where(and(eq(members.id, memberId), isNull(members.deletedAt)))
       await tx

@@ -106,6 +106,7 @@ async function deleteAccount() {
     addresses,
     { eraseFilesOf: () => Promise.reject(new Error('erasing runs in the API, not here')) },
     new MembersService(db),
+    { endHostedBy: () => Promise.reject(new Error('erasing runs in the API, not here')) },
     new EmailDeletionNotices(smtpMailer(env), addresses, env.WEB_PUBLIC_URL),
   )
   const { scheduledFor, alreadyRequested } = await deletion.request(member.id, { channel: 'email', immediate: values.now, requestId: values.request })
@@ -114,7 +115,7 @@ async function deleteAccount() {
     // The API's worker erases it as soon as it picks this up, instead of within the hour.
     const jobs = new BullAccountJobs(env)
     try {
-      await jobs.erase(member.id)
+      await jobs.erase(member.id, { retryNow: true })
     } finally {
       await jobs.queue.close()
     }

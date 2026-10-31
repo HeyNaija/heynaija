@@ -7,7 +7,8 @@ import { DB, ENV } from '../tokens.js'
 /** The statuses of a request nobody has finished with. */
 export const OPEN_REQUEST = ['received', 'verifying', 'in_progress'] as const satisfies readonly (typeof PRIVACY_REQUEST_STATUSES)[number][]
 
-const DAY_MS = 24 * 60 * 60 * 1000
+/** A day, for the due dates here and the deletion's grace period and job timings. */
+export const DAY_MS = 24 * 60 * 60 * 1000
 
 export type RequestKind = (typeof PRIVACY_REQUEST_KINDS)[number]
 

@@ -18,23 +18,32 @@ const isProviderError = (kind: 'unavailable' | 'protocol') => (error: unknown) =
   error instanceof AuthProviderError && error.kind === kind
 
 const deletions = [
-  ['revokeAllSessions', `${ADMIN}/admin/identities/${memberId}/sessions`],
-  ['deleteIdentity', `${ADMIN}/admin/identities/${memberId}`],
+  ['revokeAllSessions', `${ADMIN}/admin/identities/${memberId}/sessions`, 'DELETE'],
+  ['deactivateIdentity', `${ADMIN}/admin/identities/${memberId}`, 'PATCH'],
+  ['deleteIdentity', `${ADMIN}/admin/identities/${memberId}`, 'DELETE'],
 ] as const
 
-test('ending sessions and deleting the identity each send one DELETE to the admin API', async () => {
-  for (const [operation, url] of deletions) {
-    const fetch = answer(() => new Response(null, { status: 204 }))
+test('ending sessions, switching the identity off and deleting it each send one request to the admin API', async () => {
+  for (const [operation, url, method] of deletions) {
+    const fetch = answer(() => new Response(null, { status: method === 'PATCH' ? 200 : 204 }))
     assert.equal(await admin[operation](memberId), undefined)
     assert.equal(fetch.mock.callCount(), 1)
     const [calledUrl, init] = fetch.mock.calls[0]!.arguments
     assert.equal(calledUrl, url)
-    assert.equal(init?.method, 'DELETE')
+    assert.equal(init?.method, method)
     mock.restoreAll()
   }
 })
 
-test('both are safe to repeat: a 404 means there is nothing left to end or delete', async () => {
+test('switching the identity off is a JSON Patch of its state', async () => {
+  const fetch = answer(() => Response.json({ id: memberId, state: 'inactive' }))
+  await admin.deactivateIdentity(memberId)
+  const [, init] = fetch.mock.calls[0]!.arguments
+  assert.equal(new Headers(init?.headers).get('content-type'), 'application/json')
+  assert.deepEqual(JSON.parse(String(init?.body)), [{ op: 'replace', path: '/state', value: 'inactive' }])
+})
+
+test('each is safe to repeat: a 404 means there is nothing left to end, switch off or delete', async () => {
   // Kratos answers 404 for an identity with no sessions left as well as for one that is gone.
   for (const [operation] of deletions) {
     answer(() => Response.json({ error: { code: 404 } }, { status: 404 }))

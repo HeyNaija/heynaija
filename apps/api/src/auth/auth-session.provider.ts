@@ -22,6 +22,8 @@ export interface AuthSessionProvider {
   authenticatedAtForRequest(request: AuthRequest): Promise<Date | null>
   /** Ends every session the member has, everywhere. Safe to repeat. */
   revokeAllSessions(memberId: string): Promise<void>
+  /** Switches the sign-in account off: no signing in, and no address for emails. Safe to repeat. */
+  deactivateIdentity(memberId: string): Promise<void>
   /** Deletes the member's sign-in account, with any session left. Safe to repeat. */
   deleteIdentity(memberId: string): Promise<void>
   /** The member whose account email this is, in any case, or null. For operators. */

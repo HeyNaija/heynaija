@@ -62,6 +62,7 @@ beforeEach(async () => {
     { addressFor: async () => null },
     { eraseFilesOf: async () => {} },
     new MembersService(db),
+    { endHostedBy: async () => {} },
   )
   controller = new AccountController({ ACCOUNT_DELETION_GRACE_DAYS: 14 }, deletion, auth, new MemoryRateLimiter())
 })

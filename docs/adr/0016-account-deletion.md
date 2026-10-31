@@ -175,7 +175,7 @@ does nothing for an inactive author. The text search index follows the text.
 | --- | --- | --- | --- |
 | Current and old profile photos, `ready` | hidden | deleted from the bucket and purged from the CDN; quarantined instead if a report about the account is open | delete |
 | Images of ordinary posts, `ready` | hidden | deleted and purged | delete |
-| Images of evidence posts, `ready` | hidden | quarantined (kept privately, like images of removed posts) | keep until sweep |
+| Images of evidence posts, `ready` | hidden | quarantined (kept privately, like images of removed posts); restoring a removed post does not release them, since the post is deleted | keep until sweep |
 | `quarantined`, `blocked` (and the blocked original in `uploads/quarantine/originals/`) | — | kept | keep (evidence) |
 | `pending`, `processing` uploads | — | marked deleted; the upload removed from the `uploads` bucket | delete |
 
@@ -280,23 +280,26 @@ every step; a step already done changes nothing.
    "your account has been deleted" email, and the handle Kratos has. A 404 means
    it is already deleted: carry on without them.
 2. **End every session** again, in case they signed in during the grace period.
-3. **One Postgres transaction** applying the tables above: the tombstone and
+3. **End a live Gist they host**, room first, if the reconciler has not yet:
+   the next step deletes the rows it goes by.
+4. **One Postgres transaction** applying the tables above: the tombstone and
    the handle holds. Every statement can run twice.
-4. **Storage:** delete the files of every media row the transaction marked
-   deleted, quarantine evidence images, and queue CDN purges.
-5. **Email** the address from step 1, if SMTP is configured: "Your HeyNaija
+5. **Storage:** delete the files of every media row of theirs marked deleted,
+   quarantine evidence images, and queue CDN purges.
+6. **Email** the address from step 1, if SMTP is configured: "Your HeyNaija
    account has been deleted". A mail server that refuses it for good (a dead
    address) does not hold the erase up; one that is away does, so the email gets
-   the erase's retries.
-6. **Delete the Kratos identity.** A 404 counts as done.
-7. **Finish:** set `deleted_at` and mark the privacy request completed, in one
+   the erase's retries. Once it is sent the Kratos identity is switched off
+   (`state: inactive`), so step 1 finds no address on a retry.
+7. **Delete the Kratos identity.** A 404 counts as done.
+8. **Finish:** set `deleted_at` and mark the privacy request completed, in one
    transaction.
 
 `deleted_at` means the whole erase is done, so it is set last. The hourly scan
 picks members whose deletion is due and whose `deleted_at` is still null
 (`members_deletion_due_idx`), so an erase that gave up part-way is tried again
-instead of leaving a Kratos identity behind. A retry between steps 5 and 6 can
-send the email twice; that is accepted.
+instead of leaving a Kratos identity behind. Only a failure between sending the
+email and switching the identity off can send it twice; that is accepted.
 
 Cancelling is possible only before `deletion_scheduled_for`. The cancel and the
 erase each lock the member's row first, so a cancel at the last moment and the
@@ -311,7 +314,9 @@ process, on its own BullMQ queue, one job at a time:
   ID as its job ID, so an account is never queued twice. An erase that fails is
   tried eight times over about two hours (1, 2, 4 … 64 minutes apart). If every
   try fails, an error names the member, and the failed job is kept for a day,
-  which keeps the scan from queueing it again; then it has another round. The
+  which keeps the scan from queueing it again; then it has another round.
+  BullMQ prunes failed jobs only when another job fails, so the scan removes one
+  that has had its day itself, and `--now` removes it at once. The
   account stays off the site all the while. A finished job is removed at once,
   so a deletion asked for again after a cancel can be queued.
 - **Every hour, what is kept only for a while.** Handles held for an erased
@@ -341,7 +346,9 @@ mail server's can name the address it refused. Messages written in this code
 - **A live Gist they host** ends by itself: the request makes them inactive, so
   the Gist reconciler (`GistsService.reconcile`, every minute) disconnects them,
   marks them gone, and ends the Gist once its host has been gone two minutes;
-  the erase then deletes it. There is no co-host takeover.
+  the erase then deletes it. An erase that comes sooner (`--now`, or no grace
+  period) ends it itself, room first (`GistsService.endHostedBy`), since the
+  reconciler goes by the rows the erase deletes. There is no co-host takeover.
 - **Founders** can delete their account; the Founder badge goes with it.
 - **Community moderators**, including a community's only moderator, can delete
   their account. Site moderators can act in every community, so none is left

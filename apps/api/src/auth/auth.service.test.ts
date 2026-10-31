@@ -92,6 +92,7 @@ test('a provider failure stops the protected guard; the optional guard still ser
     emailForRequest: async () => null,
     authenticatedAtForRequest: async () => null,
     revokeAllSessions: async () => {},
+    deactivateIdentity: async () => {},
     deleteIdentity: async () => {},
     identityIdByEmail: async () => null,
   }
@@ -125,10 +126,12 @@ test('the account operations go through the Kratos admin API and fail as a 503 w
       : new Response(null, { status: 204 }))
   const auth = setup()
   await auth.revokeAllSessions(memberId)
+  await auth.deactivateIdentity(memberId)
   await auth.deleteIdentity(memberId)
   assert.equal(await auth.identityIdByEmail('ada@example.test'), memberId)
   assert.deepEqual(fetch.mock.calls.map((c) => String(c.arguments[0]).replace(/\?.*/, '')), [
     `http://kratos-admin.test/admin/identities/${memberId}/sessions`,
+    `http://kratos-admin.test/admin/identities/${memberId}`,
     `http://kratos-admin.test/admin/identities/${memberId}`,
     'http://kratos-admin.test/admin/identities',
   ])
@@ -137,6 +140,7 @@ test('the account operations go through the Kratos admin API and fail as a 503 w
   mock.method(globalThis, 'fetch', async () => new Response(null, { status: 502 }))
   for (const operation of [
     () => auth.revokeAllSessions(memberId),
+    () => auth.deactivateIdentity(memberId),
     () => auth.deleteIdentity(memberId),
     () => auth.identityIdByEmail('ada@example.test'),
     () => auth.authenticatedAtForRequest({ cookieHeader: 'hn_session=good' }),

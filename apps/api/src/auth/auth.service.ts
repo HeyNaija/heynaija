@@ -46,6 +46,10 @@ export class AuthService {
     return this.providerCall(() => this.provider.revokeAllSessions(memberId))
   }
 
+  deactivateIdentity(memberId: string): Promise<void> {
+    return this.providerCall(() => this.provider.deactivateIdentity(memberId))
+  }
+
   deleteIdentity(memberId: string): Promise<void> {
     return this.providerCall(() => this.provider.deleteIdentity(memberId))
   }

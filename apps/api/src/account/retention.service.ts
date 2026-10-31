@@ -31,18 +31,23 @@ export class RetentionService {
       // nothing is blanked.
       const days = this.env.DELETED_CONTENT_RETENTION_DAYS
       if (days === undefined) return { posts: 0, handles: handles.rowCount ?? 0 }
-      const expired = sql`(select p.id from posts p
-        where p.deleted_at <= ${now}::timestamptz - make_interval(days => ${days})
-          and not exists(select 1 from reports r where r.post_id = p.id and r.status = 'open'))`
-      const blanked = await tx.execute(sql`update posts set text = '', link_url = null, quote_post_id = null
-        where id in ${expired} and (text <> '' or link_url is not null or quote_post_id is not null)`)
-      await tx.execute(sql`delete from post_mentions where post_id in ${expired}`)
-      await tx.execute(sql`delete from post_hashtags where post_id in ${expired}`)
-      await tx.execute(sql`update ideas set title = '' where title <> '' and post_id in ${expired}`)
-      await tx.execute(sql`delete from problem_details where post_id in ${expired}`)
+      // One statement, so the posts past the period are looked for once an hour,
+      // not once a table. Every part runs whether or not the last line reads it.
       // A poll kept with an evidence post goes now (its options and votes cascade).
-      await tx.execute(sql`delete from post_polls where post_id in ${expired}`)
-      return { posts: blanked.rowCount ?? 0, handles: handles.rowCount ?? 0 }
+      const { rows } = await tx.execute<{ blanked: number }>(sql`
+        with expired as (select p.id from posts p
+            where p.deleted_at <= ${now}::timestamptz - make_interval(days => ${days})
+              and not exists(select 1 from reports r where r.post_id = p.id and r.status = 'open')),
+          blanked as (update posts set text = '', link_url = null, quote_post_id = null
+            where id in (select id from expired) and (text <> '' or link_url is not null or quote_post_id is not null)
+            returning 1),
+          mentions as (delete from post_mentions where post_id in (select id from expired)),
+          hashtags as (delete from post_hashtags where post_id in (select id from expired)),
+          titles as (update ideas set title = '' where title <> '' and post_id in (select id from expired)),
+          problems as (delete from problem_details where post_id in (select id from expired)),
+          polls as (delete from post_polls where post_id in (select id from expired))
+        select count(*)::int as blanked from blanked`)
+      return { posts: rows[0]?.blanked ?? 0, handles: handles.rowCount ?? 0 }
     })
   }
 }

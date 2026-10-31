@@ -561,3 +561,21 @@ test('reconcile: a Gist whose host asked to delete their account (so is inactive
   assert.equal((await service.get(as('bayo'), gist)).status, 'ended')
   assert.ok(rooms.deleted.includes(gist))
 })
+
+test('before an erase, the Gists the member hosts are ended with their rooms; one LiveKit cannot close stays live', async () => {
+  await enter('ada', gist)
+  await enter('bayo', gist)
+  const chis = (await service.create(as('chi'), { title: 'Not hers' })).id
+
+  rooms.failNext = 'deleteRoom'
+  await assert.rejects(service.endHostedBy(id.ada))
+  assert.equal((await service.get(as('bayo'), gist)).status, 'live', 'left for the retry, which the erase gets')
+
+  await service.endHostedBy(id.ada)
+  assert.equal((await service.get(as('bayo'), gist)).status, 'ended')
+  assert.ok(rooms.deleted.includes(gist))
+  assert.ok((await roleOf(gist, 'bayo'))!.leftAt)
+  assert.equal((await service.get(as('chi'), chis)).status, 'live', 'another host’s Gist is not hers to end')
+  await service.endHostedBy(id.ada) // nothing live left: nothing to do
+  assert.deepEqual(rooms.deleted.filter((r) => r === gist), [gist])
+})

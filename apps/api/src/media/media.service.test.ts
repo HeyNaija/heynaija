@@ -370,6 +370,16 @@ test("deleting a post deletes its images; a moderator's removal only hides them"
   assert.deepEqual((await postsService.thread(null, removed))!.post.images.map((i) => i.src), [`/media/posts/${kept}`])
 })
 
+test('the images of a deleted post leave the CDN in one purge', async () => {
+  const postsService = new PostsService(db)
+  const [first, second] = [await readyPostImage(ada), await readyPostImage(ada)]
+  const { id: deleted } = await postsService.create(ada, 'two pictures', { images: [{ id: first, alt: '' }, { id: second, alt: '' }] })
+  await postsService.remove(ada, deleted)
+  await service.discardPostImages(deleted)
+  assert.equal(jobs.purged.length, 1)
+  assert.deepEqual([...jobs.purged[0]!].sort(), [first, second].flatMap((id) => [`posts/${id}/640.webp`, `posts/${id}/1600.webp`, `posts/${id}/still.webp`]).sort())
+})
+
 test('images never put on a post are swept after an hour, by the hourly job too', async () => {
   const postsService = new PostsService(db)
   const unused = await readyPostImage(ada)
@@ -433,6 +443,20 @@ test("a moderator's removal moves a post's images out of public view, and a rest
   assert.equal(await statusOf(image), 'ready')
   assert.deepEqual(store.keys('uploads'), [])
   assert.deepEqual((await postsService.thread(null, post))!.post.images.map((i) => i.src), [`/media/posts/${image}`])
+})
+
+test('restoring a removed post its author has since deleted, as an erase does, keeps its images private', async () => {
+  const moderation = await withModerator()
+  const postsService = new PostsService(db)
+  const image = await readyPostImage(bayo)
+  const { id: post } = await postsService.create(bayo, 'look', { images: [{ id: image, alt: '' }] })
+  await moderation.report(ada, { postId: post }, 'illegal')
+  await moderation.resolve(sam, (await reportOf(eq(reports.postId, post))).id, 'remove_post')
+  await db.update(posts).set({ deletedAt: new Date() }).where(eq(posts.id, post))
+
+  await moderation.restorePost(sam, post)
+  assert.equal(await statusOf(image), 'quarantined')
+  assert.deepEqual(store.keys('media'), [])
 })
 
 test('the hourly sweep takes down images of removed posts that are still public', async () => {

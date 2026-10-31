@@ -4,17 +4,18 @@ import type { Env } from '../env.js'
 import { ENV } from '../tokens.js'
 import { AccountDeletionService } from './account-deletion.service.js'
 import { failureReason } from './failure-reason.js'
-import { PrivacyRequestsService } from './privacy-requests.service.js'
+import { DAY_MS, PrivacyRequestsService } from './privacy-requests.service.js'
 import { RetentionService } from './retention.service.js'
 
 const QUEUE = 'account'
 const HOUR_MS = 60 * 60 * 1000
-const DAY_MS = 24 * HOUR_MS
 // An erase that fails is tried again 1, 2, 4 … 64 minutes later: eight tries over
 // about two hours, for Kratos or storage being away for a while.
 const ERASE_ATTEMPTS = 8
 // One that failed every time is kept a day. Its job ID stays taken meanwhile, so
 // the hourly look for due erases cannot queue it; after that it has another round.
+// BullMQ lets go of old failed jobs only when another job fails, which may be never,
+// so `erase` removes one that has waited its day itself.
 const ERASE_FAILED_KEEP_S = 24 * 3600
 
 type Job =
@@ -49,15 +50,21 @@ export class BullAccountJobs implements OnModuleDestroy {
     })
   }
 
-  async erase(memberId: string): Promise<void> {
+  /** Queues an account's erase. `retryNow` (an operator's --now) does not wait out the day after one gave up. */
+  async erase(memberId: string, { retryNow = false }: { retryNow?: boolean } = {}): Promise<void> {
     // The member as job ID: an account is never queued for erasing twice. A finished
     // job goes at once: kept, it would stop a later deletion of the same account
     // (asked for again after a cancel) from being queued.
+    const jobId = `erase-${memberId}`
+    const gaveUp = await this.queue.getJob(jobId)
+    if (gaveUp && (await gaveUp.isFailed()) && (retryNow || Date.now() - (gaveUp.finishedOn ?? 0) >= ERASE_FAILED_KEEP_S * 1000)) {
+      await gaveUp.remove()
+    }
     await this.queue.add(
       'erase',
       { memberId },
       {
-        jobId: `erase-${memberId}`,
+        jobId,
         attempts: ERASE_ATTEMPTS,
         backoff: { type: 'exponential', delay: 60_000 },
         removeOnComplete: true,

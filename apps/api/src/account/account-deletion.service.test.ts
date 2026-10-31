@@ -83,20 +83,25 @@ class RecordingJobs implements MediaJobs {
 /** Kratos as the deletion sees it: which identities had their sessions ended or were deleted. */
 class FakeKratos {
   readonly revoked: string[] = []
+  readonly deactivated = new Set<string>()
   readonly deleted = new Set<string>()
-  failing = new Set<'address' | 'sessions' | 'identity'>()
+  failing = new Set<'address' | 'sessions' | 'deactivate' | 'identity'>()
   async revokeAllSessions(memberId: string) {
     if (this.failing.has('sessions')) throw new Error('Kratos is down')
     this.revoked.push(memberId)
+  }
+  async deactivateIdentity(memberId: string) {
+    if (this.failing.has('deactivate')) throw new Error('Kratos is down')
+    this.deactivated.add(memberId)
   }
   async deleteIdentity(memberId: string) {
     if (this.failing.has('identity')) throw new Error('Kratos is down')
     this.deleted.add(memberId)
   }
-  // KratosAddresses: an address while the identity exists.
+  // KratosAddresses: an address while the identity exists and is active.
   async addressFor(memberId: string) {
     if (this.failing.has('address')) throw new Error('Kratos is down')
-    return this.deleted.has(memberId) ? null : `${memberId}@example.test`
+    return this.deleted.has(memberId) || this.deactivated.has(memberId) ? null : `${memberId}@example.test`
   }
 }
 
@@ -123,6 +128,7 @@ let jobs: RecordingJobs
 let kratos: FakeKratos
 let notices: RecordingNotices
 let failFiles: boolean
+let gistsEnded: string[]
 let deletion: AccountDeletionService
 const postsService = new PostsService(db)
 const membersService = new MembersService(db)
@@ -148,6 +154,7 @@ beforeEach(async () => {
   kratos = new FakeKratos()
   notices = new RecordingNotices()
   failFiles = false
+  gistsEnded = []
   const mediaService = new MediaService(db, store, jobs)
   deletion = new AccountDeletionService(
     db,
@@ -156,6 +163,8 @@ beforeEach(async () => {
     kratos,
     { eraseFilesOf: async (id) => (failFiles ? Promise.reject(new Error('R2 is down')) : mediaService.eraseFilesOf(id)) },
     membersService,
+    // GistsService.endHostedBy has its own tests; here, that the erase asks for it before the rows go.
+    { endHostedBy: async (id) => void gistsEnded.push(`${id} with ${await count(gists, eq(gists.hostId, id))} Gists`) },
     notices,
   )
 })
@@ -287,6 +296,24 @@ test('a deletion asked for by email completes the request recorded when it arriv
     (err: unknown) => err instanceof AccountDeletionError && err.code === 'no_request',
   )
   assert.equal((await member(zara)).active, true)
+})
+
+test('an emailed request for an account already waiting for deletion is linked to it and completed by the erase', async () => {
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  // From an address no account has, so nobody's until the operator says whose.
+  const [recorded] = await db
+    .insert(privacyRequests)
+    .values({ memberId: null, kind: 'deletion', channel: 'email', status: 'received', receivedAt: now, dueBy: days(30) })
+    .returning()
+  assert.deepEqual(await deletion.request(xena, { channel: 'email', handledBy: sam, requestId: recorded!.id }, days(1)), {
+    scheduledFor: days(14),
+    alreadyRequested: true,
+  })
+  const [linked] = await db.select().from(privacyRequests).where(eq(privacyRequests.id, recorded!.id))
+  assert.deepEqual([linked!.memberId, linked!.status, linked!.handledBy], [xena, 'in_progress', sam])
+
+  await deletion.erase(xena, days(14))
+  assert.deepEqual((await requestsOf(xena)).map((r) => r.status), ['completed', 'completed'])
 })
 
 test('the erases due are the accounts past their time and not yet erased, longest waiting first', async () => {
@@ -547,7 +574,7 @@ test('another member’s export still works and holds nothing of the erased acco
 })
 
 test('the erase is safe to repeat after a failure at any step', async () => {
-  for (const failure of ['address', 'sessions', 'files', 'email', 'identity'] as const) {
+  for (const failure of ['address', 'sessions', 'files', 'email', 'deactivate', 'identity'] as const) {
     const id = randomUUID()
     await db.insert(members).values({ id, handle: `m_${failure}` })
     const { id: postId } = await postsService.create(id, `post by ${failure}`)
@@ -575,9 +602,19 @@ test('the erase is safe to repeat after a failure at any step', async () => {
     assert.equal((await requestsOf(id))[0]!.status, 'completed', failure)
     // Held once, whichever attempt got that far.
     assert.deepEqual((await db.select().from(releasedHandles).where(eq(releasedHandles.memberId, id))).map((h) => h.handle), [`m_${failure}`])
-    // The last email went out, perhaps twice if the failure came after it.
-    assert.ok(notices.erasedTo.includes(`${id}@example.test`), failure)
+    // The last email went out once, or twice when switching the identity off failed just after it.
+    const sent = notices.erasedTo.filter((to) => to === `${id}@example.test`).length
+    assert.equal(sent, failure === 'deactivate' ? 2 : 1, failure)
   }
+})
+
+test('an erase that keeps failing after the last email does not send it again', async () => {
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  kratos.failing.add('identity')
+  for (let attempt = 0; attempt < 3; attempt++) await assert.rejects(deletion.erase(xena, days(14)))
+  kratos.failing.clear()
+  assert.equal(await deletion.erase(xena, days(14)), 'erased')
+  assert.deepEqual(notices.erasedTo, [`${xena}@example.test`])
 })
 
 test('an erased account is notified of nothing', async () => {
@@ -658,6 +695,7 @@ test('Gists: their place in other Gists goes, the Gists they hosted go with ever
   await deletion.request(xena, { channel: 'self_service' }, now)
   await deletion.erase(xena, days(14))
 
+  assert.deepEqual(gistsEnded, [`${xena} with 1 Gists`], 'a live one is ended, room and all, while its rows are still there')
   assert.equal(await count(gists, eq(gists.hostId, xena)), 0)
   assert.equal(await count(gistMembers, eq(gistMembers.gistId, theirs!.id)), 0, 'nobody keeps a place in a Gist without its host')
   assert.equal(await count(gistMembers, eq(gistMembers.memberId, xena)), 0)

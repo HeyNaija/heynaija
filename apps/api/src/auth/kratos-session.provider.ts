@@ -21,7 +21,7 @@ export class KratosSessionProvider implements AuthSessionProvider {
     @Inject(KratosService)
     private readonly kratos: Pick<KratosService, 'identityForSession' | 'forgetSession' | 'emailForSession' | 'authenticatedAtForSession'>,
     @Inject(KratosAdmin)
-    private readonly admin: Pick<KratosAdmin, 'revokeAllSessions' | 'deleteIdentity' | 'identityIdByEmail'>,
+    private readonly admin: Pick<KratosAdmin, 'revokeAllSessions' | 'deactivateIdentity' | 'deleteIdentity' | 'identityIdByEmail'>,
   ) {}
 
   async identityForRequest(request: AuthRequest): Promise<MemberIdentity | null> {
@@ -46,6 +46,10 @@ export class KratosSessionProvider implements AuthSessionProvider {
 
   revokeAllSessions(memberId: string): Promise<void> {
     return this.admin.revokeAllSessions(memberId)
+  }
+
+  deactivateIdentity(memberId: string): Promise<void> {
+    return this.admin.deactivateIdentity(memberId)
   }
 
   deleteIdentity(memberId: string): Promise<void> {

@@ -159,7 +159,7 @@ test('while a deletion waits, the member row keeps the handle the erase will hol
   assert.deepEqual([row!.handle, row!.lastSeenAt], ['ada', asked])
 })
 
-test('an erased account is refused, even by the appeal guard, and its tombstone is never rewritten', async () => {
+test('an erased account is signed out, even to the appeal guard, and its tombstone is never rewritten', async () => {
   const identity = await invited('ada')
   await guardFor(identity).canActivate(request({ cookie: 'good' }).context)
   await db
@@ -169,7 +169,7 @@ test('an erased account is refused, even by the appeal guard, and its tombstone 
 
   // Kratos may still vouch for the session for up to WHOAMI_CACHE_TTL_S after deleting the identity.
   for (const guard of [guardFor(identity), new SuspendedAllowedGuard(authFor(identity), { WEB_PUBLIC_URL: WEB }, db, invites)]) {
-    await assert.rejects(guard.canActivate(request({ cookie: 'good' }).context), ForbiddenException)
+    await assert.rejects(guard.canActivate(request({ cookie: 'good' }).context), UnauthorizedException)
   }
   const [row] = await db.select().from(members).where(eq(members.id, identity.id))
   assert.equal(row!.handle, 'deleted-0a1b2c3d')

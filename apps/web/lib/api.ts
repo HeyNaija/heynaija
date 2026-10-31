@@ -245,8 +245,10 @@ export const getViewer = cache(async (): Promise<Viewer> => {
     const body = (await res.json().catch(() => ({}))) as { message?: string }
     if (body.message !== 'account_inactive') return { state: 'blocked', suspended: false, deletion: null }
     // Inactive: suspended, or waiting for deletion, which is what they need to know first.
+    // Not finding out is no reason to tell them they are suspended.
     const deletion = await getAccountDeletion()
-    return deletion?.state === 'scheduled'
+    if (!deletion) throw new Error('API /v1/me/deletion did not answer')
+    return deletion.state === 'scheduled'
       ? { state: 'blocked', suspended: false, deletion: { scheduledFor: deletion.scheduledFor } }
       : { state: 'blocked', suspended: true, deletion: null }
   }
@@ -599,12 +601,15 @@ export async function getPushKey(): Promise<string | null> {
 /** Whether the signed-in member's account is waiting to be deleted; if not, how long it would wait. */
 export type AccountDeletion = { state: 'none'; graceDays: number } | { state: 'scheduled'; scheduledFor: string }
 
-/** Null if it could not be found out. Suspended members and members waiting for deletion may ask. */
-export async function getAccountDeletion(): Promise<AccountDeletion | null> {
+/**
+ * Null if it could not be found out. Suspended members and members waiting for
+ * deletion may ask. Once per request, like getViewer: the deletion page asks twice.
+ */
+export const getAccountDeletion = cache(async (): Promise<AccountDeletion | null> => {
   const res = await api('/v1/me/deletion', { cache: 'no-store' }).catch(() => null)
   if (!res?.ok) return null
   return (await res.json()) as AccountDeletion
-}
+})
 
 export type Appeal = { status: 'open' | 'actioned' | 'dismissed'; createdAt: string; resolvedAt: string | null }
 

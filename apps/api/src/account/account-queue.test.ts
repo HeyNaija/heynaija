@@ -73,13 +73,44 @@ test('every hour, each account due is queued for erasing, and its erase job eras
   assert.deepEqual(calls.erased, [['m1', now]])
 })
 
-test('an account is queued under its own ID, and a finished erase job is removed at once', async () => {
+/** BullAccountJobs on a stand-in queue holding at most `existing`, recording what is added and removed. */
+function jobsWith(existing?: { failed: boolean; finishedOn: number }) {
   const added: unknown[][] = []
+  const removed: string[] = []
   const jobs = Object.create(BullAccountJobs.prototype) as BullAccountJobs
-  Object.defineProperty(jobs, 'queue', { value: { add: async (...args: unknown[]) => void added.push(args) } })
+  const job = existing && { ...existing, isFailed: async () => existing.failed, remove: async () => void removed.push('erase-m1') }
+  Object.defineProperty(jobs, 'queue', {
+    value: { getJob: async (id: string) => (id === 'erase-m1' ? job : undefined), add: async (...args: unknown[]) => void added.push(args) },
+  })
+  return { jobs, added, removed }
+}
+
+test('an account is queued under its own ID, and a finished erase job is removed at once', async () => {
+  const { jobs, added } = jobsWith()
   await jobs.erase('m1')
   const [name, data, opts] = added[0] as [string, unknown, { jobId: string; removeOnComplete: boolean; attempts: number }]
   assert.deepEqual([name, data, opts.jobId, opts.removeOnComplete, opts.attempts], ['erase', { memberId: 'm1' }, 'erase-m1', true, 8])
+})
+
+test('an erase that gave up is let go after a day, or at once for --now, so the account is queued again', async () => {
+  const hour = 3600 * 1000
+  // BullMQ itself would keep it until some other job failed.
+  const recent = jobsWith({ failed: true, finishedOn: Date.now() - 23 * hour })
+  await recent.jobs.erase('m1')
+  assert.deepEqual(recent.removed, [], 'still waiting out its day')
+
+  const old = jobsWith({ failed: true, finishedOn: Date.now() - 25 * hour })
+  await old.jobs.erase('m1')
+  assert.deepEqual([old.removed, old.added.length], [['erase-m1'], 1])
+
+  const operator = jobsWith({ failed: true, finishedOn: Date.now() - hour })
+  await operator.jobs.erase('m1', { retryNow: true })
+  assert.deepEqual(operator.removed, ['erase-m1'])
+
+  // One still being tried is left alone: it is that account's erase.
+  const running = jobsWith({ failed: false, finishedOn: 0 })
+  await running.jobs.erase('m1', { retryNow: true })
+  assert.deepEqual(running.removed, [])
 })
 
 test('the sweep and the overdue check log counts and request IDs, and stay quiet with nothing to say', async () => {

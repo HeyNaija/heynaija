@@ -94,8 +94,9 @@ export class SessionGuard implements CanActivate {
         .where(eq(members.id, identity.id))
     }
     if (!member) throw new ForbiddenException('account_inactive')
-    // An erased account is no account, even to a session Kratos has not yet forgotten.
-    if (member.deletedAt) throw new ForbiddenException('account_inactive')
+    // An erased account is no account, even to a session Kratos has not yet
+    // forgotten: whoever holds it is signed out, not suspended.
+    if (member.deletedAt) throw new UnauthorizedException('sign in required')
     if (!member.active && this.requireActive) throw new ForbiddenException('account_inactive')
 
     req.member = identity

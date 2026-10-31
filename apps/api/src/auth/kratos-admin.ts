@@ -26,6 +26,15 @@ export class KratosAdmin {
   }
 
   /**
+   * Switches the identity off: it can no longer sign in, and KratosAddresses no
+   * longer gives its address, so an erase tried again after its last email does
+   * not send it twice. Safe to repeat: an identity already gone is a 404.
+   */
+  async deactivateIdentity(memberId: string): Promise<void> {
+    await this.call('PATCH', `/admin/identities/${encodeURIComponent(memberId)}`, [{ op: 'replace', path: '/state', value: 'inactive' }])
+  }
+
+  /**
    * Deletes the identity: the email address, the sign-in methods and any session
    * left. Safe to repeat: an identity already gone is a 404.
    */
@@ -49,18 +58,20 @@ export class KratosAdmin {
     return matches[0]?.id ?? null
   }
 
-  private async call(method: 'GET' | 'DELETE', path: string): Promise<Response> {
+  /** A change (DELETE, or PATCH with a JSON Patch `patch`) to an identity that is gone counts as done. */
+  private async call(method: 'GET' | 'DELETE' | 'PATCH', path: string, patch?: unknown[]): Promise<Response> {
     let res: Response
     try {
       res = await fetch(`${this.env.KRATOS_ADMIN_URL}${path}`, {
         method,
-        headers: { accept: 'application/json' },
+        headers: patch ? { accept: 'application/json', 'content-type': 'application/json' } : { accept: 'application/json' },
+        body: patch ? JSON.stringify(patch) : undefined,
         signal: AbortSignal.timeout(5000),
       })
     } catch {
       throw new AuthProviderError('unavailable')
     }
-    if (res.ok || (method === 'DELETE' && res.status === 404)) return res
+    if (res.ok || (method !== 'GET' && res.status === 404)) return res
     throw new AuthProviderError('unavailable')
   }
 }
