@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { ideas, members, postHashtags, postMentions, posts, problemDetails, releasedHandles, reports } from '@heynaija/db'
+import { ideas, members, pollOptions, pollVotes, postHashtags, postMentions, postPolls, posts, problemDetails, releasedHandles, reports } from '@heynaija/db'
 import { asc, eq, sql } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import { ModerationService } from '../moderation/moderation.service.js'
@@ -89,4 +89,28 @@ test("an erased account's handles are let go once their hold is over; other memb
   assert.deepEqual(await sweep(undefined), { posts: 0, handles: 1 })
   const left = await db.select({ handle: releasedHandles.handle }).from(releasedHandles).orderBy(asc(releasedHandles.handle))
   assert.deepEqual(left.map((r) => r.handle), ['ada_before', 'still_held'])
+})
+
+test('the poll of an expired deleted post goes with its text, unless a report about the post is open', async () => {
+  const withPoll = async (text: string) => {
+    const { id } = await postsService.create(ada, text)
+    await db.insert(postPolls).values({ postId: id })
+    const [option] = await db.insert(pollOptions).values({ postId: id, position: 0, text: 'yes' }).returning({ id: pollOptions.id })
+    await db.insert(pollVotes).values({ postId: id, optionId: option!.id, memberId: bola })
+    return id
+  }
+  const expired = await withPoll('which one?')
+  const underReview = await withPoll('which one, reported?')
+  const recent = await withPoll('which one, lately?')
+  await moderation.report(bola, { postId: underReview }, 'spam')
+  await deletedDaysAgo(expired, 31)
+  await deletedDaysAgo(underReview, 31)
+  await deletedDaysAgo(recent, 7)
+
+  await sweep(30)
+
+  assert.deepEqual([await countFor(postPolls, postPolls.postId, expired), await countFor(pollOptions, pollOptions.postId, expired), await countFor(pollVotes, pollVotes.postId, expired)], [0, 0, 0])
+  for (const id of [underReview, recent]) {
+    assert.deepEqual([await countFor(postPolls, postPolls.postId, id), await countFor(pollOptions, pollOptions.postId, id), await countFor(pollVotes, pollVotes.postId, id)], [1, 1, 1], id)
+  }
 })

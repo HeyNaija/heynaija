@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { deletePost, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin } from '@/app/actions'
+import { deletePost, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin, setReplyAudience } from '@/app/actions'
 import type { Post } from '@/lib/api'
 import { textParts } from '@/lib/mentions'
 import { excerpt } from '@/lib/previews'
+import { REPLY_AUDIENCES } from '@/lib/reply-audience'
+import { replyContextView } from '@/lib/reply-context'
 import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
 import type { FeedSource } from './feed-source'
@@ -14,6 +16,7 @@ import { LinkCard } from './link-card'
 import { LocalTime } from './local-time'
 import { Menu } from './menu'
 import { MorePosts } from './more-posts'
+import { PollCard } from './poll-card'
 import { PostImages } from './post-images'
 import { PostPermalink } from './post-permalink'
 import { PostText } from './post-text'
@@ -33,6 +36,18 @@ const VIA_ACTION: Record<NonNullable<Post['via']>['action'], string> = {
   quoted: 'quoted this',
   reposted: 'reposted',
 }
+
+const REPLY_AUDIENCE_LABEL = {
+  everyone: 'Everyone can reply',
+  following: 'People you follow can reply',
+  mentioned: 'Only people mentioned can reply',
+} satisfies Record<Post['replyAudience'], string>
+
+/** The note under a limited conversation's first post, worded for whoever reads it. */
+const replyAudienceNote = (post: Post, viewerId: string | null) =>
+  post.replyAudience === 'following' && post.authorId !== viewerId
+    ? `People @${post.authorHandle} follows can reply`
+    : REPLY_AUDIENCE_LABEL[post.replyAudience]
 
 export function PostItem({
   post,
@@ -139,9 +154,39 @@ export function PostItem({
   const namesOther = post.reason !== null && post.reason !== 'community'
   const showChip = post.community && !hideCommunity && !compact && !(why && !namesOther && !reposter)
 
+  // In a list, a reply says whom it answers and shows the start of that post, joined to
+  // it by a line; a thread already shows the conversation.
+  const context = inThread || focused ? ({ kind: 'none' } as const) : replyContextView(post)
+  const replyPreview =
+    context.kind === 'parent' ? (
+      <Link prefetch={false} href={context.href} tabIndex={-1} className="reply-parent">
+        <span className="reply-parent-avatar"><Avatar handle={context.handle} src={context.avatar} size={24} /></span>
+        <span className="reply-parent-text">
+          <span className="reply-parent-who">
+            <span className="truncate font-semibold text-ink">{context.name ?? `@${context.handle}`}</span>
+            {context.name ? <span className="truncate">@{context.handle}</span> : null}
+          </span>
+          <span className="reply-parent-excerpt">{context.excerpt || 'Post with pictures'}</span>
+        </span>
+      </Link>
+    ) : null
+  const replyLabel =
+    context.kind === 'parent' ? (
+      <p className="reply-to">
+        Replying to{' '}
+        <Link prefetch={false} href={context.href} className="font-semibold text-accent-strong hover:underline">@{context.handle}</Link>
+      </p>
+    ) : context.kind === 'gone' ? (
+      <p className="reply-to">{context.label}</p>
+    ) : context.kind === 'link' ? (
+      <Link prefetch={false} href={context.href} className="reply-to block hover:underline">{context.label}</Link>
+    ) : null
+
   return (
     <article id={`post-${post.id}`} className={`post-card ${focused ? 'is-focused' : 'is-clickable'}${compact ? ' is-reply' : ''}`}>
       {why ? <p className="post-context">{why}</p> : null}
+
+      {replyPreview}
 
       <div className="post-header flex gap-3">
         <Link prefetch={false} href={`/u/${post.authorHandle}`} tabIndex={-1} aria-hidden="true" className="h-fit rounded-full">
@@ -163,6 +208,7 @@ export function PostItem({
                 <Link prefetch={false} href={href} className="shrink-0 hover:underline">
                   {focused ? <LocalTime at={post.createdAt} as="posted" title /> : <LocalTime at={post.createdAt} now={now} title />}
                 </Link>
+                {focused && inThread ? <ThreadAuthorLabel authorId={post.authorId} separator /> : null}
               </p>
               {showChip ? (
                 <Link prefetch={false} href={`/c/${post.community!.slug}`} className="chip mt-1.5">
@@ -186,13 +232,24 @@ export function PostItem({
                 {post.authorId === viewerId ? (
                   <>
                     {post.replyParentId ? null : (
-                      <form action={setProfilePin}>
-                        <input type="hidden" name="id" value={post.id} />
-                        <input type="hidden" name="on" value={post.pinnedOnProfile ? '0' : '1'} />
-                        <SubmitButton className="menu-item">
-                          {post.pinnedOnProfile ? 'Unpin from your profile' : 'Pin to your profile'}
-                        </SubmitButton>
-                      </form>
+                      <>
+                        <form action={setProfilePin}>
+                          <input type="hidden" name="id" value={post.id} />
+                          <input type="hidden" name="on" value={post.pinnedOnProfile ? '0' : '1'} />
+                          <SubmitButton className="menu-item">
+                            {post.pinnedOnProfile ? 'Unpin from your profile' : 'Pin to your profile'}
+                          </SubmitButton>
+                        </form>
+                        {REPLY_AUDIENCES.map((audience) => (
+                          <form action={setReplyAudience} key={audience}>
+                            <input type="hidden" name="id" value={post.id} />
+                            <input type="hidden" name="audience" value={audience} />
+                            <SubmitButton className="menu-item" pressed={post.replyAudience === audience}>
+                              {REPLY_AUDIENCE_LABEL[audience]}
+                            </SubmitButton>
+                          </form>
+                        ))}
+                      </>
                     )}
                     {communityPin}
                     <form action={deletePost}>
@@ -234,11 +291,7 @@ export function PostItem({
         </div>
       </div>
 
-      {post.replyParentId && !inThread && !focused ? (
-        <Link prefetch={false} href={`/p/${post.replyParentId}`} className="mt-1 block text-xs text-muted hover:underline">
-          Replying to a post
-        </Link>
-      ) : null}
+      {replyLabel}
 
       {post.text ? (
         <p className={`mt-3 whitespace-pre-wrap break-words ${focused ? 'text-base leading-relaxed' : 'post-body'}`}>
@@ -253,6 +306,7 @@ export function PostItem({
           )}
         </p>
       ) : !focused ? <PostPermalink href={href} label={openLabel}><span className="sr-only">Open conversation</span></PostPermalink> : null}
+      {post.poll ? <PollCard postId={post.id} poll={post.poll} member={viewerId !== null} /> : null}
       {post.images.length ? (
         <div className="mt-3">
           <PostImages images={post.images} />
@@ -269,9 +323,12 @@ export function PostItem({
           <LinkCard preview={post.linkPreview} />
         </div>
       ) : null}
+      {!post.replyParentId && post.replyAudience !== 'everyone' ? (
+        <p className="reply-audience-note"><BubbleIcon size={14} /> {replyAudienceNote(post, viewerId)}</p>
+      ) : null}
 
       <div className="post-actions">
-        {replyAction ?? <ReplyLink id={post.id} href={`${href}#compose`} count={post.replyCount} />}
+        {replyAction ?? <ReplyLink id={post.id} href={`${href}#compose`} count={post.replyCount} disabled={viewerId !== null && !post.viewerCanReply} />}
 
         {viewerId ? (
           <RepostButton id={post.id} reposted={post.viewerReposted} count={post.repostCount} />

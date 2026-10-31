@@ -150,3 +150,30 @@ test('the privacy-request command needs no storage keys, and checks the deletion
   assert.throws(() => loadPrivacyToolEnv({ ...tool, ACCOUNT_DELETION_GRACE_DAYS: '20', PRIVACY_REQUEST_DUE_DAYS: '10' }), /must not be more than/)
   assert.throws(() => loadPrivacyToolEnv({ DATABASE_URL: base.DATABASE_URL, REDIS_URL: base.REDIS_URL }), /KRATOS_ADMIN_URL/)
 })
+
+test('calls and Gists are off by default, with nobody on the allow-list', () => {
+  const env = loadEnv(base)
+  assert.equal(env.CALLS_ENABLED, false)
+  assert.equal(env.CALLS_GISTS_ENABLED, false)
+  assert.deepEqual(env.CALLS_MEMBERS, [])
+  assert.equal(env.LIVEKIT_URL, undefined)
+  assert.equal(env.GISTS_LISTENER_CAP, 200)
+  assert.equal(env.GISTS_MAX_COHOSTS, 2)
+  assert.equal(env.GISTS_MAX_SPEAKERS, 10)
+})
+
+test('the Gists switches accept only true or false, and the allow-list is a trimmed, lower-cased handle list', () => {
+  assert.equal(loadEnv({ ...base, CALLS_ENABLED: 'true', CALLS_GISTS_ENABLED: 'true' }).CALLS_GISTS_ENABLED, true)
+  assert.throws(() => loadEnv({ ...base, CALLS_ENABLED: '1' }))
+  assert.deepEqual(loadEnv({ ...base, CALLS_MEMBERS: ' Ada, bayo ,,' }).CALLS_MEMBERS, ['ada', 'bayo'])
+})
+
+test('LiveKit settings may be empty (compose passes them empty), and key and secret come as a pair', () => {
+  const empty = loadEnv({ ...base, LIVEKIT_URL: '', LIVEKIT_API_KEY: '', LIVEKIT_API_SECRET: '', LIVEKIT_WEBHOOK_KEY: '', LIVEKIT_WEBHOOK_SECRET: '' })
+  assert.equal(empty.LIVEKIT_URL, undefined)
+  const set = loadEnv({ ...base, LIVEKIT_URL: 'wss://rtc.example.com/', LIVEKIT_API_KEY: 'k', LIVEKIT_API_SECRET: 's'.repeat(32) })
+  assert.equal(set.LIVEKIT_URL, 'wss://rtc.example.com')
+  assert.throws(() => loadEnv({ ...base, LIVEKIT_API_KEY: 'k' }), /LIVEKIT_API_KEY and LIVEKIT_API_SECRET/)
+  assert.throws(() => loadEnv({ ...base, LIVEKIT_WEBHOOK_KEY: 'k' }), /LIVEKIT_WEBHOOK_KEY and LIVEKIT_WEBHOOK_SECRET/)
+  assert.throws(() => loadEnv({ ...base, LIVEKIT_URL: 'http://rtc.example.com' }))
+})

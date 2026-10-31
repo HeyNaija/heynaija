@@ -18,6 +18,8 @@ import { preferencesFromForm } from '@/lib/notification-preferences'
 import { PUSH_COOKIE } from '@/lib/push'
 import { choicesFromForm, welcomePath } from '@/lib/onboarding'
 import type { ThreadRow } from '@/lib/thread-state'
+import { POLL_OPTIONS_MAX } from '@/lib/polls'
+import { isReplyAudience } from '@/lib/reply-audience'
 
 // The API is the authority on who is signed in and what they may do; these
 // functions only relay the visitor's own session cookie to it.
@@ -34,6 +36,14 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   const replyTo = String(formData.get('replyTo') ?? '') || undefined
   const community = String(formData.get('community') ?? '') || undefined
   const quote = String(formData.get('quote') ?? '') || undefined
+  const replyAudience = String(formData.get('replyAudience') ?? 'everyone')
+  const poll = formData.get('poll') === '1'
+    ? {
+        multiple: formData.get('pollMultiple') === '1',
+        options: formData.getAll('pollOption').map(String).map((option) => option.trim()).filter(Boolean),
+        expiresIn: String(formData.get('pollExpiry') ?? '7_days'),
+      }
+    : undefined
   // Each attached image is an `image` field naming the upload, with its description in `alt-<id>`.
   const images = formData
     .getAll('image')
@@ -43,13 +53,18 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   const res = await api('/v1/posts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, replyTo, community, images, quote }),
+    body: JSON.stringify({ text, replyTo, community, images, quote, poll, replyAudience }),
   }).catch(() => null)
 
   if (!res) return { error: 'Could not post. Check your connection and try again.' }
 
   if (res.status === 401) redirect('/login')
   if (res.status === 429) return { error: 'You are posting very fast. Wait a minute and try again.' }
+  if (res.status === 403) {
+    // The session itself can be refused with a 403 too (a suspension, say).
+    const body = (await res.json().catch(() => ({}))) as { code?: string }
+    if (body.code === 'reply_not_allowed') return { error: 'The author has limited who can reply to this conversation.' }
+  }
   if (res.status === 400) {
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     if (body.code === 'parent_gone') return { error: 'The post you are replying to has been deleted.' }
@@ -59,6 +74,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
     if (body.code === 'images_not_ready') {
       return { error: 'One of your images is no longer available. Remove it and add it again.' }
     }
+    if (poll) return { error: `Check the poll question and its choices. Use 2 to ${POLL_OPTIONS_MAX} different options.` }
     if (text.trim()) return { error: 'That post is too long, or an image description is. The post limit is 300 characters.' }
     return { error: images.length ? 'Could not post those images. Try again.' : 'Write something first.' }
   }
@@ -154,6 +170,44 @@ export async function setCommunityPin(formData: FormData): Promise<void> {
   const res = await api(`/v1/posts/${encodeURIComponent(id)}/community-pin`, { method })
   if (res.status === 401) redirect('/login')
   refresh()
+}
+
+export async function setReplyAudience(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '')
+  const audience = String(formData.get('audience') ?? '')
+  if (!isReplyAudience(audience)) return
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/reply-audience`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ audience }),
+  })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+export type PollVoteState = { error?: string; done?: boolean }
+
+export async function castPollVote(_previous: PollVoteState, formData: FormData): Promise<PollVoteState> {
+  const id = String(formData.get('id') ?? '')
+  const optionIds = formData.getAll('option').map(String)
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/poll/vote`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ optionIds }),
+  }).catch(() => null)
+  if (!res) return { error: 'Could not record your vote. Check your connection and try again.' }
+  if (res.status === 401) redirect('/login')
+  if (res.status === 429) return { error: 'You are voting very fast. Wait a moment and try again.' }
+  if (res.status === 404) return { error: 'This poll is no longer available.' }
+  if (res.status === 400) {
+    const body = await res.json().catch(() => ({})) as { code?: string }
+    if (body.code === 'poll_closed') return { error: 'This poll has ended.' }
+    if (body.code === 'poll_already_voted') return { error: 'Your vote has already been recorded.' }
+    return { error: 'Choose a valid poll option and try again.' }
+  }
+  if (!res.ok) return { error: 'Could not record your vote. Try again in a moment.' }
+  refresh()
+  return { done: true }
 }
 
 export async function setMembership(formData: FormData): Promise<void> {

@@ -59,6 +59,7 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['link previews', `delete from link_previews where url like 'https://links.e2e.test/%'`],
         ['mentions', `delete from post_mentions where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['hashtags', `delete from post_hashtags where post_id in (select id from e2e_p)`],
+        ['poll votes', `delete from poll_votes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['likes', `delete from likes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['reposts', `delete from reposts where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         ['bookmarks', `delete from bookmarks where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
@@ -66,6 +67,13 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['blocks', `delete from blocks where blocker_id in (select id from e2e_m) or blocked_id in (select id from e2e_m)`],
         ['mutes', `delete from mutes where muter_id in (select id from e2e_m) or muted_id in (select id from e2e_m)`],
         ['community memberships', `delete from community_memberships where member_id in (select id from e2e_m)`],
+        // Gists hosted by test members go whole; elsewhere a test member's row goes, and
+        // who changed a role or removed someone is forgotten rather than the row deleted.
+        ['gist members', `delete from gist_members where member_id in (select id from e2e_m)
+           or gist_id in (select id from gists where host_id in (select id from e2e_m))`],
+        ['gist role changes', `update gist_members set role_changed_by = null where role_changed_by in (select id from e2e_m)`],
+        ['gist removals', `update gist_members set removed_by = null where removed_by in (select id from e2e_m)`],
+        ['gists', `delete from gists where host_id in (select id from e2e_m)`],
         ['media', `delete from media where owner_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         // Replies by others to these posts would be orphaned; tests only reply among themselves.
         ['idea votes', `delete from idea_votes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],

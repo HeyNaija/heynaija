@@ -3,6 +3,7 @@ import {
   type AnyPgColumn,
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   pgSchema,
@@ -11,10 +12,13 @@ import {
   text,
   uniqueIndex,
   timestamp,
+  unique,
   uuid,
 } from 'drizzle-orm/pg-core'
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
+
+export const REPLY_AUDIENCES = ['everyone', 'following', 'mentioned'] as const
 
 // A member of the network. `id` is the Ory Kratos identity ID: Kratos owns the
 // email, password and sessions; this table holds only what the app itself needs.
@@ -199,6 +203,9 @@ export const posts = pgTable(
     // No foreign key, like reply_parent_id: a quoted post that is gone, or that the
     // reader may not see, is shown as a placeholder.
     quotePostId: uuid('quote_post_id'),
+    // The root post owns the conversation boundary. Replies retain this column's
+    // default but inherit the root's value when policy is checked.
+    replyAudience: text('reply_audience', { enum: REPLY_AUDIENCES }).notNull().default('everyone'),
     // The first web address in the text, without its #fragment: the one that gets a
     // preview card. Matches link_previews.url; null when the text has no address.
     linkUrl: text('link_url'),
@@ -224,8 +231,76 @@ export const posts = pgTable(
     index('posts_reply_parent_created_idx').on(t.replyParentId, t.createdAt, t.id),
     index('posts_community_created_idx').on(t.communityId, t.createdAt),
     index('posts_quote_idx').on(t.quotePostId).where(sql`quote_post_id is not null`),
+    check('posts_reply_audience_check', sql.raw(`reply_audience in (${REPLY_AUDIENCES.map((value) => `'${value}'`).join(', ')})`)),
     // Full-text search. 'simple' (no stemming) suits mixed English, Pidgin and names.
     index('posts_text_search_idx').using('gin', sql`to_tsvector('simple', ${t.text})`),
+  ],
+)
+
+// An informal social poll attached to one post. This is deliberately separate
+// from governance ballots: it has no eligibility, quorum or binding effect.
+export const postPolls = pgTable(
+  'post_polls',
+  {
+    postId: uuid('post_id')
+      .primaryKey()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    multiple: boolean('multiple').notNull().default(false),
+    // Null means the creator explicitly chose "never". New polls default to a
+    // seven-day expiry in application policy, where the requested preset lives.
+    expiresAt: ts('expires_at'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    // Active members who have voted, and on each option below the active members
+    // who chose it. Kept by triggers (migration 0028), in the same transaction as
+    // the ballot or suspension that changes them, like posts.like_count.
+    voterCount: integer('voter_count').notNull().default(0),
+  },
+  (t) => [check('post_polls_expiry_check', sql`${t.expiresAt} is null or ${t.expiresAt} > ${t.createdAt}`)],
+)
+
+export const pollOptions = pgTable(
+  'poll_options',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => postPolls.postId, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    text: text('text').notNull(),
+    voteCount: integer('vote_count').notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex('poll_options_post_position_idx').on(t.postId, t.position),
+    uniqueIndex('poll_options_post_text_idx').on(t.postId, sql`lower(${t.text})`),
+    unique('poll_options_post_id_unique').on(t.postId, t.id),
+    check('poll_options_position_check', sql`${t.position} between 0 and 9`),
+    // Application policy counts 80 graphemes; this wider database ceiling only
+    // guards pathological input because one visible grapheme may use many code points.
+    check('poll_options_text_check', sql`char_length(${t.text}) between 1 and 1280`),
+  ],
+)
+
+// Votes are public. One row is one selected option; a multiple-choice ballot has
+// several rows with the same post/member, written in one statement, so they share
+// created_at. PostsService locks the poll row before accepting the member's one
+// immutable ballot.
+export const pollVotes = pgTable(
+  'poll_votes',
+  {
+    postId: uuid('post_id').notNull(),
+    optionId: uuid('option_id').notNull(),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.postId, t.memberId, t.optionId] }),
+    foreignKey({ columns: [t.postId, t.optionId], foreignColumns: [pollOptions.postId, pollOptions.id] }).onDelete('cascade'),
+    index('poll_votes_option_idx').on(t.postId, t.optionId),
+    index('poll_votes_member_idx').on(t.memberId, t.createdAt),
+    // The public voter list, newest ballot first, a page at a time.
+    index('poll_votes_ballot_idx').on(t.postId, t.createdAt, t.memberId),
   ],
 )
 
@@ -899,5 +974,79 @@ export const privacyRequests = pgTable(
       'privacy_requests_closed_check',
       sql.raw(`(status in (${inList(CLOSED_PRIVACY_REQUEST_STATUSES)})) = (closed_at is not null)`),
     ),
+  ],
+)
+
+export const GIST_STATUSES = ['scheduled', 'live', 'ended'] as const
+export const GIST_ROLES = ['host', 'cohost', 'speaker', 'listener'] as const
+
+// A live audio room (docs/adr/0017, section 4a). One LiveKit room per Gist; the
+// room's name is this id. A Gist with a community is community-only, one
+// without is open to any eligible member. Ended Gists keep their row, no audio.
+export const gists = pgTable(
+  'gists',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    hostId: uuid('host_id')
+      .notNull()
+      .references(() => members.id),
+    communityId: uuid('community_id').references(() => communities.id),
+    title: text('title').notNull(),
+    status: text('status', { enum: GIST_STATUSES }).notNull().default('live'),
+    scheduledFor: ts('scheduled_for'),
+    startedAt: ts('started_at'),
+    endedAt: ts('ended_at'),
+    peakListeners: integer('peak_listeners').notNull().default(0),
+    // Host controls: no new listeners, a lower listener cap for this Gist, and
+    // whether listeners may ask to speak.
+    locked: boolean('locked').notNull().default(false),
+    listenerCap: integer('listener_cap'),
+    requestsOpen: boolean('requests_open').notNull().default(true),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    // One live Gist per host, enforced here so two racing requests cannot make two.
+    uniqueIndex('gists_one_live_per_host_idx')
+      .on(t.hostId)
+      .where(sql`status = 'live'`),
+    index('gists_status_idx').on(t.status, t.startedAt),
+    check('gists_status_check', sql.raw(`status in (${GIST_STATUSES.map((value) => `'${value}'`).join(', ')})`)),
+    check('gists_title_check', sql`char_length(${t.title}) between 1 and 120`),
+    check('gists_listener_cap_check', sql`${t.listenerCap} is null or ${t.listenerCap} between 1 and 10000`),
+  ],
+)
+
+// Who is in a Gist, and in what role. A row exists from the first join. The
+// role here is the truth: every LiveKit token is listener-only and speaking is
+// granted from this row. A removed member keeps the row with removed_at set,
+// which is the Gist's removed list: they cannot get a token again.
+export const gistMembers = pgTable(
+  'gist_members',
+  {
+    gistId: uuid('gist_id')
+      .notNull()
+      .references(() => gists.id),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    role: text('role', { enum: GIST_ROLES }).notNull().default('listener'),
+    // In the room now: set on join, cleared on leave. Listener counts come from it.
+    joinedAt: ts('joined_at'),
+    leftAt: ts('left_at'),
+    // LiveKit's id for the connection last reported joined. A reload makes a new
+    // connection under the same identity; a leave for an older one must not count.
+    connectionSid: text('connection_sid'),
+    // An open request to speak (one per member); oldest first is the queue.
+    speakRequestedAt: ts('speak_requested_at'),
+    // Who last changed the role, and when.
+    roleChangedBy: uuid('role_changed_by').references(() => members.id),
+    roleChangedAt: ts('role_changed_at'),
+    removedAt: ts('removed_at'),
+    removedBy: uuid('removed_by').references(() => members.id),
+  },
+  (t) => [
+    primaryKey({ columns: [t.gistId, t.memberId] }),
+    index('gist_members_member_idx').on(t.memberId),
+    check('gist_members_role_check', sql.raw(`role in (${GIST_ROLES.map((value) => `'${value}'`).join(', ')})`)),
   ],
 )

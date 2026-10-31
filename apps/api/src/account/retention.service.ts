@@ -40,6 +40,8 @@ export class RetentionService {
       await tx.execute(sql`delete from post_hashtags where post_id in ${expired}`)
       await tx.execute(sql`update ideas set title = '' where title <> '' and post_id in ${expired}`)
       await tx.execute(sql`delete from problem_details where post_id in ${expired}`)
+      // A poll kept with an evidence post goes now (its options and votes cascade).
+      await tx.execute(sql`delete from post_polls where post_id in ${expired}`)
       return { posts: blanked.rowCount ?? 0, handles: handles.rowCount ?? 0 }
     })
   }

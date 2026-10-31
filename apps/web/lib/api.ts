@@ -2,7 +2,10 @@ import 'server-only'
 import { headers } from 'next/headers'
 import { cache } from 'react'
 import { getApiAuthHeaders, hasSessionCredentials } from './auth/server'
+import type { GistView } from './gists'
 import type { NotificationPreferences } from './notification-preferences'
+import type { ReplyAudience } from './reply-audience'
+import type { ReplyContext } from './reply-context'
 import type { ReplyOrder } from './thread-state'
 
 // Server-to-server address of the NestJS API. Browsers never use this; they go
@@ -21,6 +24,8 @@ export type Me = {
   moderates: boolean
   /** False until they finish or skip the welcome flow, which the home page sends them to. */
   onboarded: boolean
+  /** Switches the API turns on for this member (docs/adr/0017). All false when a feature is off or they are not on its list. */
+  features: { gists: boolean }
 }
 
 /** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
@@ -65,6 +70,16 @@ export type PostHashtag = { start: number; length: number; tag: string }
 
 /** A web address in the text: where it is (UTF-16 code units) and where it leads. Always http or https. */
 export type PostLink = { start: number; length: number; url: string }
+export type { ReplyAudience }
+
+export type Poll = {
+  multiple: boolean
+  expiresAt: string | null
+  closed: boolean
+  totalVotes: number
+  viewerVoted: boolean
+  options: { id: string; text: string; position: number; voteCount: number; viewerVoted: boolean }[]
+}
 
 /** What the first web address in a post leads to, read by the server. */
 export type LinkPreview = {
@@ -98,6 +113,11 @@ export type Post = {
   linkPreview: LinkPreview | null
   createdAt: string
   replyParentId: string | null
+  replyAudience: ReplyAudience
+  viewerCanReply: boolean
+  poll: Poll | null
+  /** What a reply answers, in lists: a preview, or a placeholder. Null on other posts and in threads. */
+  replyTo?: ReplyContext | null
   likeCount: number
   replyCount: number
   repostCount: number
@@ -342,6 +362,9 @@ async function getOrNull<T>(path: string): Promise<T | null> {
   return res.json()
 }
 
+/** A Gist the viewer may see; null for every refusal, which the API makes the same 404. */
+export const getGist = (id: string) => getOrNull<GistView>(`/v1/gists/${encodeURIComponent(id)}`)
+
 /**
  * A member's profile; or, for a handle its owner gave up recently, the handle they
  * use now (the API answers 404 with `movedTo`).
@@ -368,6 +391,19 @@ export const getThread = (id: string, order: ReplyOrder = 'newest') =>
 
 /** Hydrate one confirmed post without fetching its ancestors or replies. */
 export const getPost = (id: string) => getOrNull<Post>(`/v1/posts/${encodeURIComponent(id)}/post`)
+
+export type PollVoterPage = {
+  voters: {
+    member: { id: string; handle: string; displayName: string | null; avatar: string | null }
+    optionIds: string[]
+    createdAt: string
+  }[]
+  cursor: string | null
+}
+
+export const getPollVoters = (id: string, cursor?: string) => getOrNull<PollVoterPage>(
+  `/v1/posts/${encodeURIComponent(id)}/poll/votes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+)
 
 /** A branch is always an explicit, bounded page; it never fetches descendants. */
 export async function getReplies(id: string, cursor?: string, order: ReplyOrder = 'newest'): Promise<ReplyPage | null> {

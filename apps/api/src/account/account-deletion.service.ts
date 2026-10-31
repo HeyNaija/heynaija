@@ -306,11 +306,16 @@ export class AccountDeletionService {
       await run(sql`delete from post_hashtags where post_id in ${ordinary}`)
       await run(sql`update ideas set title = '' where post_id in ${ordinary}`)
       await run(sql`delete from problem_details where post_id in ${own}`)
+      // A poll on an ordinary post goes with it (options and votes cascade); one on an
+      // evidence post stays until the retention sweep.
+      await run(sql`delete from post_polls where post_id in ${ordinary}`)
       await run(sql`update communities set pinned_post_id = null where pinned_post_id in ${own}`)
 
       // What they did. The member is inactive, so the like and repost triggers change no count.
       await run(sql`delete from likes where member_id = ${memberId}`)
       await run(sql`delete from reposts where member_id = ${memberId}`)
+      // Their votes in polls: inactive, so the vote trigger changes no count either.
+      await run(sql`delete from poll_votes where member_id = ${memberId}`)
       await run(sql`delete from bookmarks where member_id = ${memberId}`)
       await run(sql`delete from idea_votes where member_id = ${memberId}`)
       await run(sql`delete from follows where follower_id = ${memberId} or followee_id = ${memberId}`)
@@ -325,6 +330,15 @@ export class AccountDeletionService {
           and not exists(select 1 from community_memberships o join members m on m.id = o.member_id and m.active
             where o.community_id = cm.community_id and o.role = 'moderator' and o.member_id <> ${memberId})`)
       await run(sql`delete from community_memberships where member_id = ${memberId}`)
+
+      // Gists (docs/adr/0017). One they hosted is nothing without its host and title, so
+      // it goes with everyone's place in it; it has already ended if it was live
+      // (GistsService.reconcile disconnects an inactive member, then ends a Gist whose
+      // host has been gone two minutes). Their place in other people's Gists goes;
+      // `role_changed_by` and `removed_by` naming them stay, pointing at the tombstone.
+      await run(sql`delete from gist_members where gist_id in (select id from gists where host_id = ${memberId})`)
+      await run(sql`delete from gists where host_id = ${memberId}`)
+      await run(sql`delete from gist_members where member_id = ${memberId}`)
 
       await run(sql`delete from notifications where recipient_id = ${memberId} or actor_id = ${memberId}`)
       await run(sql`delete from notification_opt_outs where member_id = ${memberId}`)

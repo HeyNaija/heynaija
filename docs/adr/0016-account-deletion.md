@@ -124,6 +124,8 @@ or still has to look at. Their other posts are **ordinary posts**.
 | Titles of their ideas (`ideas.title`) | hidden (off the board) | `''` for ordinary posts, kept for evidence posts | blank / keep until sweep |
 | Where their problem reports happened (`problem_details`) | hidden | deleted | delete |
 | Their post pinned in a community (`communities.pinned_post_id`) | hidden | null | blank |
+| Polls on their ordinary posts (`post_polls`, with `poll_options` and every member's `poll_votes` on them) | hidden | deleted | delete |
+| Polls on their evidence posts | hidden | kept with the post; the retention sweep deletes the poll when it blanks the post | keep until sweep |
 | Other members' likes, reposts and bookmarks of their posts | hidden | kept: the other member's data; the post shows as gone | keep |
 
 `replies_count_visibility` fires when `deleted_at` is set on their replies, but
@@ -136,6 +138,9 @@ does nothing for an inactive author. The text search index follows the text.
 | `likes`, `reposts` by them | out of the counts (trigger) | deleted; triggers change nothing | delete |
 | `bookmarks` | — | deleted | delete |
 | `idea_votes` by them | not counted (votes are counted from active members on read) | deleted | delete |
+| Their votes in polls (`poll_votes.member_id`) | out of the counts (trigger and `active` move them) | deleted; the trigger counts active voters only, so nothing moves | delete |
+| Their place in other members' Gists (`gist_members.member_id`) | disconnected by the reconciler (see Edge cases) | deleted; the Gist and its other members stay. `role_changed_by` and `removed_by` naming them stay, pointing at the tombstone | delete |
+| Gists they hosted (`gists.host_id`, title) with everyone's `gist_members` rows in them | a live one ends (see Edge cases) | deleted, members first. No audio is stored; a Gist without its host and title is nothing | delete |
 | `follows`, `blocks`, `mutes`, both ways | hidden | deleted | delete |
 | `community_memberships`, including moderator roles | — | deleted | delete |
 
@@ -311,7 +316,8 @@ process, on its own BullMQ queue, one job at a time:
   needed them. If `DELETED_CONTENT_RETENTION_DAYS` is set, every post deleted
   longer ago than that (the ones members delete and the evidence posts of erased
   accounts) is blanked as an ordinary post is at erase: text, link, quote,
-  mentions, hashtags, idea title and problem details. A post with a report about
+  mentions, hashtags, idea title, problem details and poll (options and votes
+  with it). A post with a report about
   it still open is kept until it is decided. Unset, nothing is blanked (counsel
   log, C-04).
 - **Every day, overdue requests.** A warning lists the privacy requests still
@@ -329,6 +335,10 @@ mail server's can name the address it refused. Messages written in this code
   told to ask to be demoted first (`pnpm mod:revoke`), as with suspension. This
   covers "the last site-wide moderator" without counting anyone. The operator
   path can still delete a moderator; erasing sets `role` back to `member`.
+- **A live Gist they host** ends by itself: the request makes them inactive, so
+  the Gist reconciler (`GistsService.reconcile`, every minute) disconnects them,
+  marks them gone, and ends the Gist once its host has been gone two minutes;
+  the erase then deletes it. There is no co-host takeover.
 - **Founders** can delete their account; the Founder badge goes with it.
 - **Community moderators**, including a community's only moderator, can delete
   their account. Site moderators can act in every community, so none is left
@@ -390,7 +400,7 @@ mail server's can name the address it refused. Messages written in this code
 ## Release
 
 - **API and web app in one deploy.** The web app's deletion pages call
-  endpoints only the new API has. `migrate` (0028) runs before `api` starts
+  endpoints only the new API has. `migrate` (0030) runs before `api` starts
   (compose: `depends_on: migrate: condition: service_completed_successfully`),
   and the new API needs it: the session guard reads the new columns.
 - **Settings: none to add.** `ACCOUNT_DELETION_GRACE_DAYS` (14) and
@@ -416,7 +426,7 @@ mail server's can name the address it refused. Messages written in this code
 
 ## Rollback
 
-- Migration 0028 only adds columns and a table. Older code ignores them.
+- Migration 0030 only adds columns and a table. Older code ignores them.
 - Rolling the API back pauses erasure, since the job is new code. Accounts
   waiting for deletion stay inactive (older code reads `active`) and are erased
   once the new code is back. The account queue's scheduled jobs wait in Redis

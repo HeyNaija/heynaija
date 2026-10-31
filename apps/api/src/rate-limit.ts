@@ -35,6 +35,13 @@ export const LIMITS = {
     { max: 12, windowMs: MINUTE },
     { max: 60, windowMs: HOUR },
   ],
+  // Gists (docs/adr/0017): starting one, joining (per member, and per Gist so a
+  // group cannot fill the room in a burst), asking to speak.
+  gistCreate: [{ max: 5, windowMs: HOUR }],
+  gistJoin: [{ max: 30, windowMs: MINUTE }],
+  gistJoinBurst: [{ max: 120, windowMs: MINUTE }],
+  gistRequest: [{ max: 10, windowMs: MINUTE }],
+  gistSync: [{ max: 20, windowMs: MINUTE }],
 } satisfies Record<string, { max: number; windowMs: number }[]>
 
 export type LimitKind = keyof typeof LIMITS

@@ -7,6 +7,8 @@ import {
   communities,
   communityMemberships,
   follows,
+  gistMembers,
+  gists,
   governanceAuditLog,
   ideas,
   ideaVotes,
@@ -20,6 +22,9 @@ import {
   blocks,
   notificationOptOuts,
   notifications,
+  pollOptions,
+  pollVotes,
+  postPolls,
   postHashtags,
   postMentions,
   posts,
@@ -584,4 +589,79 @@ test('an erased account is notified of nothing', async () => {
   ])
   const told = await db.select({ recipientId: notifications.recipientId }).from(notifications)
   assert.deepEqual(told.map((n) => n.recipientId), [yemi])
+})
+
+/** A poll on `postId` with two options; returns the option ids. */
+async function poll(postId: string) {
+  await db.insert(postPolls).values({ postId })
+  const options = await db
+    .insert(pollOptions)
+    .values([{ postId, position: 0, text: 'jollof' }, { postId, position: 1, text: 'fried rice' }])
+    .returning({ id: pollOptions.id })
+  return options.map((o) => o.id) as [string, string]
+}
+
+test('polls: their votes go without moving a count, a poll on an ordinary post goes, one on an evidence post stays', async () => {
+  const { id: zPost } = await postsService.create(zara, 'jollof or fried rice?')
+  const [jollof, rice] = await poll(zPost)
+  await db.insert(pollVotes).values([
+    { postId: zPost, optionId: jollof, memberId: xena },
+    { postId: zPost, optionId: jollof, memberId: yemi },
+    { postId: zPost, optionId: rice, memberId: zara },
+  ])
+  const { id: ordinary } = await postsService.create(xena, 'which one?')
+  const [oA] = await poll(ordinary)
+  await db.insert(pollVotes).values({ postId: ordinary, optionId: oA, memberId: yemi })
+  const { id: reported } = await postsService.create(xena, 'which one, reported?')
+  const [rA] = await poll(reported)
+  await db.insert(pollVotes).values({ postId: reported, optionId: rA, memberId: yemi })
+  await moderation.report(yemi, { postId: reported }, 'spam')
+
+  const tallies = async () => ({
+    options: (await db.select({ id: pollOptions.id, n: pollOptions.voteCount }).from(pollOptions).where(eq(pollOptions.postId, zPost))).sort((a, b) => a.id.localeCompare(b.id)),
+    voters: (await db.select().from(postPolls).where(eq(postPolls.postId, zPost)))[0]!.voterCount,
+  })
+  assert.equal((await tallies()).voters, 3)
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  // Her vote left the counts with the request.
+  const afterRequest = await tallies()
+  assert.equal(afterRequest.voters, 2)
+  assert.deepEqual(afterRequest.options.find((o) => o.id === jollof)!.n, 1)
+
+  await deletion.erase(xena, days(14))
+
+  assert.equal(await count(pollVotes, eq(pollVotes.memberId, xena)), 0)
+  assert.equal(await count(pollVotes, eq(pollVotes.postId, zPost)), 2, 'other members’ votes stay')
+  assert.deepEqual(await tallies(), afterRequest, 'the erase moves no count')
+  assert.equal(await count(postPolls, eq(postPolls.postId, ordinary)), 0)
+  assert.equal(await count(pollOptions, eq(pollOptions.postId, ordinary)), 0)
+  assert.equal(await count(pollVotes, eq(pollVotes.postId, ordinary)), 0)
+  assert.equal(await count(postPolls, eq(postPolls.postId, reported)), 1, 'evidence keeps its poll until the sweep')
+  assert.equal(await count(pollOptions, eq(pollOptions.postId, reported)), 2)
+  assert.equal(await count(pollVotes, eq(pollVotes.postId, reported)), 1)
+  assert.equal(await count(postPolls, eq(postPolls.postId, zPost)), 1)
+})
+
+test('Gists: their place in other Gists goes, the Gists they hosted go with everyone’s place in them', async () => {
+  const [theirs, zaras] = await db
+    .insert(gists)
+    .values([{ hostId: xena, title: 'Xena’s room', status: 'ended' }, { hostId: zara, title: 'Zara’s room' }])
+    .returning({ id: gists.id })
+  await db.insert(gistMembers).values([
+    { gistId: theirs!.id, memberId: xena, role: 'host' },
+    { gistId: theirs!.id, memberId: yemi },
+    { gistId: zaras!.id, memberId: zara, role: 'host' },
+    { gistId: zaras!.id, memberId: xena, role: 'speaker' },
+    { gistId: zaras!.id, memberId: yemi, role: 'speaker', roleChangedBy: xena },
+  ])
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  assert.equal(await count(gists, eq(gists.hostId, xena)), 0)
+  assert.equal(await count(gistMembers, eq(gistMembers.gistId, theirs!.id)), 0, 'nobody keeps a place in a Gist without its host')
+  assert.equal(await count(gistMembers, eq(gistMembers.memberId, xena)), 0)
+  assert.equal(await count(gists, eq(gists.id, zaras!.id)), 1, 'another member’s Gist stays')
+  const left = await db.select().from(gistMembers).where(eq(gistMembers.gistId, zaras!.id))
+  assert.deepEqual(left.map((r) => [r.memberId, r.roleChangedBy]).sort(), [[yemi, xena], [zara, null]].sort(), 'a role change naming her stays, pointing at the tombstone')
 })
