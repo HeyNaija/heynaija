@@ -4,12 +4,14 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { AppPushCard } from '@/app/ui/app-push-card'
 import { AppealForm } from '@/app/ui/appeal-form'
+import { CancelDeletionForm } from '@/app/ui/cancel-deletion-form'
 import { Composer } from '@/app/ui/composer'
 import { DiscoverMoment } from '@/app/ui/discover-moment'
 import { FeedTab } from '@/app/ui/feed-tab'
 import { ArrowUpRightIcon, PeopleIcon } from '@/app/ui/icons'
 import { LocalTime } from '@/app/ui/local-time'
 import { card, PostList, PostsSkeleton } from '@/app/ui/post-item'
+import { StartGist } from '@/app/ui/gists/start-gist'
 import {
   type Feed,
   getCommunities,
@@ -20,6 +22,7 @@ import {
   getPushKey,
   getViewer,
 } from '@/lib/api'
+import { getLogoutUrl } from '@/lib/auth/server'
 import { discoverPeriod } from '@/lib/discover'
 import { FEED_COOKIE, type HomeFeed, homeFeed } from '@/lib/home-feed'
 
@@ -136,6 +139,7 @@ async function HomeHeader({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
   }
 
   if (viewer.state === 'blocked') {
+    if (viewer.deletion) return <DeletionPending scheduledFor={viewer.deletion.scheduledFor} />
     return viewer.suspended ? (
       <div className={`${card} p-5`}>
         <h1 className="page-title">Your account is suspended</h1>
@@ -144,6 +148,10 @@ async function HomeHeader({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
           think that was a mistake, tell us why and a moderator will look again.
         </p>
         <AppealStatus />
+        <p className="mt-4 text-sm leading-relaxed text-muted">
+          Or{' '}
+          <Link href="/settings/delete" className="font-semibold text-accent-strong hover:underline">delete your account</Link>.
+        </p>
       </div>
     ) : (
       <p className="notice">
@@ -196,6 +204,7 @@ async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) 
 
   return (
     <>
+      {me?.features.gists ? <StartGist /> : null}
       {me ? (
         <Composer
           handle={me.handle}
@@ -261,6 +270,32 @@ async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) 
         />
       </section>
     </>
+  )
+}
+
+/**
+ * A member who asked for their account's deletion and signed in again during the
+ * grace period: the date, and the choice (docs/adr/0016). Cancelling leaves a
+ * suspended account suspended; the next page shows them that instead.
+ */
+async function DeletionPending({ scheduledFor }: { scheduledFor: string }) {
+  const logoutUrl = await getLogoutUrl()
+  return (
+    <div className={`${card} flex flex-col gap-4 p-5`}>
+      <div>
+        <h1 className="page-title">Your account is being deleted</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted">
+          You asked for your account to be deleted. It is off HeyNaija now and will be erased on{' '}
+          <LocalTime at={scheduledFor} as="date" />. Until then you can keep it, and everything comes back as it was.
+        </p>
+      </div>
+      <CancelDeletionForm />
+      {logoutUrl ? (
+        <a href={`/logout?to=${encodeURIComponent(logoutUrl)}`} className="self-start text-sm font-semibold text-accent-strong hover:underline">
+          Sign out
+        </a>
+      ) : null}
+    </div>
   )
 }
 

@@ -104,6 +104,7 @@ async function clean() {
       ['ideas', `delete from ideas where post_id in (select id from d_p)`],
       // The counter triggers lower reply counts on the real posts demo members answered.
       ['posts', 'delete from posts where id in (select id from d_p)'],
+      ['privacy requests', 'delete from privacy_requests where member_id in (select id from d_m) or handled_by in (select id from d_m)'],
       ['members', 'delete from members where id in (select id from d_m)'],
       ['bookkeeping', 'delete from demo_members'],
     ]

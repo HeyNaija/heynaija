@@ -44,6 +44,9 @@ const BranchAncestry = createContext<readonly string[]>([])
 type BranchControl = { id: string; inPlace: boolean; expanded: boolean; shown: boolean; busy: boolean; toggle?: () => void }
 const BranchToggle = createContext<BranchControl | null>(null)
 
+/** The widths where the reply editor is the fixed bar (globals.css). */
+const PHONE_QUERY = '(max-width: 1023px)'
+
 const plainClick = (event: MouseEvent<HTMLAnchorElement>) =>
   !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
 
@@ -77,6 +80,16 @@ export function ThreadConversation({
   const [target, setTarget] = useState(focus)
   const [focusRequest, setFocusRequest] = useState(0)
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
+  // On a phone the fixed reply bar is the one place to write, whoever is answered: moving the
+  // editor inline would empty the bar. Desktop widths keep the editor under the reply.
+  const [phone, setPhone] = useState(false)
+  useEffect(() => {
+    const query = window.matchMedia(PHONE_QUERY)
+    const update = () => setPhone(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
   const [posting, setPosting] = useState(false)
   const [, startTransition] = useTransition()
   const cache = useRef(branches)
@@ -110,15 +123,17 @@ export function ThreadConversation({
   // the move replaces its elements, and the Composer puts focus back.
   const lastFocus = useRef(0)
   useEffect(() => {
-    const selectedHost = target.id === focus.id ? null : document.getElementById(`thread-editor-${target.id}`)
+    const selectedHost = phone || target.id === focus.id ? null : document.getElementById(`thread-editor-${target.id}`)
     const host = selectedHost && !selectedHost.closest('[hidden]') ? selectedHost : null
     setPortalTarget((current) => current === host ? current : host)
     const shown = host ?? document.getElementById(`thread-editor-${focus.id}`)
     if (focusRequest && focusRequest !== lastFocus.current && shown) {
       lastFocus.current = focusRequest
+      // The fixed bar is always in view; there is nothing to scroll to.
+      if (phone) return
       shown.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
     }
-  }, [target, branches, focus.id, focusRequest])
+  }, [target, branches, focus.id, focusRequest, phone])
 
   const select = useCallback((next: ReplyTarget) => {
     if (posting) return
@@ -190,14 +205,24 @@ export function ThreadConversation({
       replyTo={target.id}
       replyHandle={target.handle}
       replyDepth={target.depth + 1}
-      placeholder="Write a reply…"
+      answeringReply={target.id !== focus.id}
+      placeholder="Post your reply"
       submitAction={createThreadReply}
       onPosted={onPosted}
       onPendingChange={setPosting}
       portalTarget={portalTarget}
       focusRequest={focusRequest}
     />
-  ) : null
+  ) : limited ? (
+    // A member the conversation's author has not allowed to reply: told so, in the bar's place.
+    <p className="reply-signin reply-limited">The conversation author has limited who can reply.</p>
+  ) : (
+    // Visitors get the same place, with the way in. Plain link, so it works without JavaScript.
+    <Link href="/login" prefetch={false} className="reply-signin">
+      <span className="reply-signin-avatar" aria-hidden="true" />
+      <span>Sign in to reply</span>
+    </Link>
+  )
 
   return (
     <Conversation.Provider value={{ order, branches, increments, canReply: member !== null, limited, posting, select, load, collapse, editor }}>

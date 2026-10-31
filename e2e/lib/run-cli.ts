@@ -3,6 +3,7 @@
 // whole suite keeps every core busy for many minutes; CI runs it on every pull
 // request. E2E_ALL=1 runs it here anyway.
 import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { holdRunLock } from './lock.ts'
 
 const args = process.argv.slice(2)
@@ -40,8 +41,13 @@ if (projects.length && named.some((name) => /google/i.test(name))) {
   process.exit(2)
 }
 
+// Playwright's CLI script under this Node, as its bin shim runs it: on Windows the
+// shim is playwright.cmd, which Node spawns only through a shell, and the shell
+// would split arguments such as `-g "two words"` again.
+const cli = createRequire(import.meta.url).resolve('@playwright/test/cli')
+
 const release = await holdRunLock()
-const playwright = spawn('playwright', ['test', ...args, ...projects], {
+const playwright = spawn(process.execPath, [cli, 'test', ...args, ...projects], {
   stdio: 'inherit',
   // Tells global-setup.ts that this run already holds the lock.
   env: { ...process.env, E2E_RUN_LOCK: String(process.pid) },

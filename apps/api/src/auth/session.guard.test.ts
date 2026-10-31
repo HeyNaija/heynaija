@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm'
 import { InvitesService } from '../invites/invites.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { AuthService, type MemberIdentity as Identity } from './auth.service.js'
+import { KratosAdmin } from './kratos-admin.js'
 import { KratosSessionProvider } from './kratos-session.provider.js'
 import { type AuthedRequest, LAST_SEEN_EVERY_MS, SessionGuard, SuspendedAllowedGuard } from './session.guard.js'
 
@@ -19,7 +20,8 @@ const authFor = (identity: Identity) => new AuthService(new KratosSessionProvide
   identityForSession: async (cookie) => (cookie === 'good' ? identity : null),
   forgetSession: async () => {},
   emailForSession: async () => null,
-}))
+  authenticatedAtForSession: async () => null,
+}, new KratosAdmin({ KRATOS_ADMIN_URL: 'http://kratos-admin.test' })))
 const guardFor = (identity: Identity) =>
   new SessionGuard(
     authFor(identity),
@@ -142,4 +144,33 @@ test('the appeal guard lets a suspended member through, but still not a stranger
     appealGuard.canActivate(request({ cookie: 'good', method: 'POST', origin: 'https://evil.example' }).context),
     ForbiddenException,
   )
+})
+
+test('while a deletion waits, the member row keeps the handle the erase will hold', async () => {
+  const identity = await invited('ada')
+  await guardFor(identity).canActivate(request({ cookie: 'good' }).context)
+  const asked = new Date(Date.now() - LAST_SEEN_EVERY_MS * 2)
+  await db.update(members).set({ active: false, deletionRequestedAt: asked, lastSeenAt: asked }).where(eq(members.id, identity.id))
+
+  // A session cached from before the request, or renamed in Kratos meanwhile.
+  const pending = new SuspendedAllowedGuard(authFor({ ...identity, handle: 'ada_new' }), { WEB_PUBLIC_URL: WEB }, db, invites)
+  assert.equal(await pending.canActivate(request({ cookie: 'good' }).context), true)
+  const [row] = await db.select().from(members).where(eq(members.id, identity.id))
+  assert.deepEqual([row!.handle, row!.lastSeenAt], ['ada', asked])
+})
+
+test('an erased account is signed out, even to the appeal guard, and its tombstone is never rewritten', async () => {
+  const identity = await invited('ada')
+  await guardFor(identity).canActivate(request({ cookie: 'good' }).context)
+  await db
+    .update(members)
+    .set({ active: false, handle: 'deleted-0a1b2c3d', deletionRequestedAt: new Date(), deletedAt: new Date() })
+    .where(eq(members.id, identity.id))
+
+  // Kratos may still vouch for the session for up to WHOAMI_CACHE_TTL_S after deleting the identity.
+  for (const guard of [guardFor(identity), new SuspendedAllowedGuard(authFor(identity), { WEB_PUBLIC_URL: WEB }, db, invites)]) {
+    await assert.rejects(guard.canActivate(request({ cookie: 'good' }).context), UnauthorizedException)
+  }
+  const [row] = await db.select().from(members).where(eq(members.id, identity.id))
+  assert.equal(row!.handle, 'deleted-0a1b2c3d')
 })

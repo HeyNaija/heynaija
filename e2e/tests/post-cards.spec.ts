@@ -47,7 +47,7 @@ test('clicking a reply card focuses its own conversation without sibling replies
     await expect(replies.locator(`#post-${fixture.bridgeParent}`)).toHaveCount(0)
     await expect(replies.locator(`#post-${fixture.root}`)).toHaveCount(0)
     // The original root stays visible above, as the post being replied to.
-    await expect(page.locator(`.thread-immediate-parent #post-${fixture.root}`)).toHaveCount(1)
+    await expect(page.locator(`.thread-chain > li.is-parent #post-${fixture.root}`)).toHaveCount(1)
   } finally {
     await context.close()
   }

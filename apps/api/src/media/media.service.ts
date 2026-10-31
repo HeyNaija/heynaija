@@ -419,12 +419,17 @@ export class MediaService {
     await this.quarantine('post_image', rows.map((r) => r.id))
   }
 
-  /** Puts a restored post's images back. Idempotent. */
+  /**
+   * Puts a restored post's images back, unless the post has been deleted: then
+   * they stay private, as the evidence images of an erased account must
+   * (docs/adr/0016). Idempotent.
+   */
   async releasePostImages(postId: string): Promise<void> {
     const rows = await this.db
       .select({ id: media.id })
       .from(media)
-      .where(and(eq(media.postId, postId), eq(media.status, 'quarantined')))
+      .innerJoin(posts, eq(posts.id, media.postId))
+      .where(and(eq(media.postId, postId), eq(media.status, 'quarantined'), isNull(posts.deletedAt)))
     for (const { id } of rows) {
       await this.moveVariants('post_image', id, 'release')
       await this.db.update(media).set({ status: 'ready' }).where(eq(media.id, id))
@@ -485,7 +490,31 @@ export class MediaService {
   private async discard(kind: Kind, mediaIds: string[]): Promise<void> {
     if (mediaIds.length === 0) return
     await this.db.update(media).set({ status: 'deleted' }).where(inArray(media.id, mediaIds))
-    for (const id of mediaIds) for (const key of publishedKeys(kind, id)) await this.store.remove('media', key)
+    const keys = mediaIds.flatMap((id) => publishedKeys(kind, id))
+    for (const key of keys) await this.store.remove('media', key)
+    // Gone from the bucket, but Cloudflare may still serve a cached copy for a year.
+    // One job for them all: the purger splits them into requests Cloudflare takes.
+    await this.jobs.purgeCdn(keys)
+  }
+
+  /**
+   * After an account's rows are erased (docs/adr/0016): deletes the files of
+   * every image of theirs marked deleted, unfinished uploads included, and takes
+   * what was kept as evidence (left 'ready') out of public view. Old deleted ones
+   * too: one deleted before deleting purged the CDN may still be cached there.
+   * Safe to repeat: removing a file already gone changes nothing.
+   */
+  async eraseFilesOf(ownerId: string): Promise<void> {
+    const rows = await this.db
+      .select({ id: media.id, kind: media.kind, status: media.status })
+      .from(media)
+      .where(and(eq(media.ownerId, ownerId), inArray(media.status, ['deleted', 'ready'])))
+    for (const kind of ['avatar', 'post_image'] as const) {
+      const ids = (status: 'deleted' | 'ready') => rows.filter((r) => r.kind === kind && r.status === status).map((r) => r.id)
+      for (const id of ids('deleted')) await this.store.remove('uploads', uploadKey(kind, id))
+      await this.discard(kind, ids('deleted'))
+      await this.quarantine(kind, ids('ready'))
+    }
   }
 
   /**

@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 11 | 18 | 14 | 88 |
+| 45 | 12 | 18 | 13 | 88 |
 
 ## Priority order
 
@@ -264,12 +264,12 @@ This tracks product development, not formal governance decisions. Priority means
 #### Account deletion and privacy requests
 
 - **ID:** `account-deletion`
-- **Priority:** P0 · **Status:** Blocked · **Availability:** Not live
+- **Priority:** P0 · **Status:** Partial · **Availability:** Not live
 - **Description:** Provide a usable route to delete an account and handle privacy requests.
-- **Remaining work / caveat:** Members can ask for deletion through the contact address, but the time it takes is still to be set and self-service account deletion is absent.
+- **Remaining work / caveat:** Members can delete their account in Settings, and requests by email are recorded and answered. The operator's name and address, and how long deletion records and moderation evidence are kept, are still placeholders for the operator and counsel.
 - **Dependencies:** `operator-disclosure`
-- **Inspected evidence:** `apps/web/app/(main)/privacy/page.tsx`, `apps/web/app/(main)/settings/page.tsx`, `docs/governance/open-items.md`
-- **Audit notes:** Promoted from the initial P2 proposal: a working privacy-rights route is a public-beta prerequisite. The privacy contact is contact@heynaija.ng (apps/web/app/ui/policy-page.tsx); the deletion period is a placeholder on /privacy, and there is no tool for an operator to delete an account.
+- **Inspected evidence:** `apps/web/app/(main)/settings/delete/page.tsx`, `apps/web/app/(main)/privacy/page.tsx`, `apps/api/src/account/account-deletion.service.ts`, `apps/api/src/account/account-deletion.service.test.ts`, `apps/api/src/account/account.controller.ts`, `apps/api/src/account/account-queue.ts`, `apps/api/src/cli/privacy-request.ts`, `e2e/tests/account-deletion.spec.ts`, `docs/adr/0016-account-deletion.md`, `docs/governance/privacy-requests.md`
+- **Audit notes:** Built on 30 October 2026 (ADR 0016): an account leaves the site at once and is erased after 14 days unless its owner keeps it; an hourly job erases due accounts; members are emailed at both steps; `pnpm privacy-request` records and closes requests made by email. Waiting on counsel's retention periods (counsel log C-01 to C-15) and on operator-disclosure.
 
 ### Reliability and access
 
@@ -407,7 +407,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Mention a member by handle and notify the person mentioned.
 - **Inspected evidence:** `apps/api/src/posts/mentions.ts`, `apps/api/src/posts/posts.service.ts`, `packages/db/drizzle/0017_mentions.sql`, `apps/web/app/ui/post-text.tsx`, `apps/api/src/posts/posts.service.test.ts`, `apps/api/src/notifications/notifications.service.test.ts`, `e2e/tests/mentions.spec.ts`
-- **Audit notes:** Mentions are stored by member ID with their place in the text, so they follow renames; held handles lead to their previous owner. At most 10 members per post are notified; blocked members either way are not, mutes hide the notification, and deleting or removing the post hides it. The composer suggests members after @ and at least one character (GET /v1/search/mentions), but not inside a web address: the member whose handle is exactly what was typed first, then people the viewer follows, by handle or any word of their name, then everyone else by handle start, then by name start, never blocked either way; pages of 10 continue along each index from a cursor (migration 0029), loaded as the list is scrolled or arrowed to its end, and the browser debounces and caches answers. The list is fixed to the window, under the box or over it near the bottom, so the phone reply bar does not clip it.
+- **Audit notes:** Mentions are stored by member ID with their place in the text, so they follow renames; held handles lead to their previous owner. At most 10 members per post are notified; blocked members either way are not, mutes hide the notification, and deleting or removing the post hides it. The composer suggests members after @ and at least one character (GET /v1/search/mentions), but not inside a web address: the member whose handle is exactly what was typed first, then people the viewer follows, by handle or any word of their name, then everyone else by handle start, then by name start, never blocked either way; pages of 10 continue along each index from a cursor (migration 0031), loaded as the list is scrolled or arrowed to its end, and the browser debounces and caches answers. The list is fixed to the window, under the box or over it near the bottom, so the phone reply bar does not clip it.
 
 #### Conversation polls
 
@@ -751,11 +751,11 @@ This tracks product development, not formal governance decisions. Priority means
 - **Dependencies:** `abuse-response`
 - **Inspected evidence:** `PRODUCT.md`, `packages/db/src/schema.ts`
 
-#### Calls, meetings and screen sharing
+#### Calls, meetings, Gists and screen sharing
 
 - **ID:** `calls-and-meetings`
 - **Priority:** P3 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Voice and video calls between age-verified adults, then small group meetings and screen sharing, on a self-hosted LiveKit server.
+- **Description:** Voice and video calls between age-verified adults, then small group meetings, screen sharing and Gists (live audio rooms with a few speakers and a large audience), on a self-hosted LiveKit server.
 - **Remaining work / caveat:** Design only. Needs direct messages and age verification first; recording, moderator access and retention need counsel and governance.
 - **Dependencies:** `minor-safeguards`
 - **Inspected evidence:** `docs/adr/0017-calls-and-meetings.md`, `docs/governance/under-18-rollout.md`
