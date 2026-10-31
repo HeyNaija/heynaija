@@ -437,7 +437,7 @@ export const mutes = pgTable(
 
 export const REPORT_REASONS = ['spam', 'harassment', 'hate', 'scam', 'illegal', 'other', 'appeal'] as const
 
-// A report about a post or an account. An appeal is a report a suspended member
+// A report about a post, an account or a community's photo. An appeal is a report a suspended member
 // files about themselves (reason 'appeal'), so it lands in the same queue. A
 // report with no reporter was filed by the upload scanner, not by a person.
 export const reports = pgTable(
@@ -447,6 +447,10 @@ export const reports = pgTable(
     reporterId: uuid('reporter_id').references(() => members.id),
     postId: uuid('post_id').references(() => posts.id),
     memberId: uuid('member_id').references(() => members.id),
+    // A community photo report: the community, and the photo reported (a replaced
+    // photo is a different thing, so reports do not carry over to it).
+    communityId: uuid('community_id').references(() => communities.id),
+    photoMediaId: uuid('photo_media_id'),
     reason: text('reason', { enum: REPORT_REASONS }).notNull(),
     details: text('details').notNull().default(''),
     status: text('status', { enum: ['open', 'actioned', 'dismissed'] }).notNull().default('open'),

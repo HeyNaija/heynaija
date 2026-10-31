@@ -209,3 +209,14 @@ test('the hourly sweep takes down a community photo nothing uses any more', asyn
   assert.equal(await statusOf(mediaId), 'quarantined')
   assert.deepEqual(store.keys('media'), [])
 })
+
+test('removing a reported photo from the queue also moves its files out of public view', async () => {
+  const { mediaId, finish } = await upload(lola)
+  await finish()
+  await moderation.report(ada, { communitySlug: 'lagos' }, 'hate')
+  const [item] = await moderation.queue(sam)
+  await moderation.resolve(sam, item!.id, 'remove_community_photo')
+  assert.equal(await photoColumn(), null)
+  assert.equal(await statusOf(mediaId), 'quarantined')
+  assert.deepEqual(store.keys('media'), [])
+})
