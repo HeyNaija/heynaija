@@ -87,6 +87,24 @@ in mind: after flipping a flag from another process, wait a few seconds.
 If there never was a good read, the **production** defaults answer (never staging's)
 until a read works. Failures are logged and retried once per TTL.
 
+## Moving the env switches onto flags (follow-up)
+
+Staging has env switches that predate this system (`CALLS_ENABLED`,
+`CALLS_GISTS_ENABLED`, `CALLS_MEMBERS` in `apps/api/src/env.ts`, read by
+`gistsFeatureFor` and the calls code). They are not flags yet. When they move:
+
+| Env | Flag | Production default | Notes |
+|---|---|---|---|
+| `CALLS_ENABLED` | `calls` | OFF | Master switch; `@Feature('calls')` on call routes. |
+| `CALLS_GISTS_ENABLED` | `callsGists` | OFF | On only when `calls` is on too (`calls && callsGists`). |
+| `CALLS_MEMBERS` (handle list) | allow-list on `calls` | n/a | Set from the admin page; the env var goes away. |
+
+Gists code is in staging but not in `main`, so by the rule above both flags default to
+**off in production** (and on in staging and development), with a `false` entry in
+`LIVE_IN_MAIN`. `/v1/me` `features.gists` would then come from `callsGists`. The
+`GISTS_*` numbers (cohost, speaker and listener caps) are limits, not switches, and stay
+in the env.
+
 ## Known limits
 
 - The kill switches (`reposts`, `quotePosts`, `linkPreviews`) are on in production, so a
