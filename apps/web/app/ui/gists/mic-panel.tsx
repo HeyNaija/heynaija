@@ -1,7 +1,7 @@
 'use client'
 
 import { useId } from 'react'
-import { deviceLabel, type InputDevice, type MicFailure, type MicSettings } from '@/lib/space-mic'
+import { deviceLabel, type InputDevice, type MicFailure, type MicSettings } from '@/lib/gist-mic'
 import { LevelMeter } from './stage'
 
 const SWITCHES: { key: 'noiseSuppression' | 'echoCancellation' | 'autoGainControl'; label: string; hint: string }[] = [
@@ -32,7 +32,7 @@ export function MicPanel({
 }) {
   const selectId = useId()
   return (
-    <div className="space-mic-panel">
+    <div className="gist-mic-panel">
       {failure ? (
         <p role="alert" className="notice notice-danger">
           {failure.message}
@@ -69,7 +69,7 @@ export function MicPanel({
         <legend className="field-label">Sound clean-up</legend>
         <p className="field-hint">Your browser does this. Your voice is otherwise sent as it is: HeyNaija does not offer voice changers.</p>
         {SWITCHES.map(({ key, label, hint }) => (
-          <label key={key} className="space-switch">
+          <label key={key} className="gist-switch">
             <input type="checkbox" checked={settings[key]} onChange={(event) => onChange({ ...settings, [key]: event.target.checked })} />
             <span>
               <span className="font-semibold">{label}</span>

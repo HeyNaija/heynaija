@@ -10,7 +10,7 @@ import { FeedTab } from '@/app/ui/feed-tab'
 import { ArrowUpRightIcon, PeopleIcon } from '@/app/ui/icons'
 import { LocalTime } from '@/app/ui/local-time'
 import { card, PostList, PostsSkeleton } from '@/app/ui/post-item'
-import { StartSpace } from '@/app/ui/spaces/start-space'
+import { StartGist } from '@/app/ui/gists/start-gist'
 import {
   type Feed,
   getCommunities,
@@ -197,7 +197,7 @@ async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) 
 
   return (
     <>
-      {me?.features.spaces ? <StartSpace /> : null}
+      {me?.features.gists ? <StartGist /> : null}
       {me ? (
         <Composer
           handle={me.handle}

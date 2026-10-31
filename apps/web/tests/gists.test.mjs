@@ -10,7 +10,7 @@ import {
   POLL_BASE_MS,
   POLL_MAX_MS,
   titleProblem,
-} from '../lib/spaces.ts'
+} from '../lib/gists.ts'
 
 const view = (role, extra = {}) => ({
   status: 'live',
@@ -48,7 +48,7 @@ test('host and co-host moderate; only the host ends, locks and appoints', () => 
   assert.equal(controlsFor(view('listener')).moderate, false)
 })
 
-test('an ended Space has no controls at all', () => {
+test('an ended Gist has no controls at all', () => {
   const c = controlsFor(view('host', { status: 'ended' }))
   assert.deepEqual(Object.values(c).filter(Boolean), [])
 })
@@ -66,14 +66,14 @@ test('a poll that changes my role says so once, and asks for a permission reset'
   assert.equal(same.resync, false)
 })
 
-test('a poll that finds the Space ended says so', () => {
+test('a poll that finds the Gist ended says so', () => {
   const r = applyView({ role: 'listener', status: 'live' }, view('listener', { status: 'ended' }))
   assert.equal(r.ended, true)
   assert.match(r.announcement, /ended/i)
   assert.equal(applyView({ role: 'listener', status: 'ended' }, view('listener', { status: 'ended' })).announcement, null)
 })
 
-test('a poll that shows I am no longer in the Space (role null) is not a role change', () => {
+test('a poll that shows I am no longer in the Gist (role null) is not a role change', () => {
   const r = applyView({ role: 'listener', status: 'live' }, view(null))
   assert.equal(r.announcement, null)
   assert.equal(r.resync, false)
@@ -89,9 +89,9 @@ test('polling every few seconds, never while hidden, backing off on failure up t
 
 test('join refusals map to the room states, and an unknown one is a retryable failure', () => {
   assert.equal(joinFailure(404, undefined), 'notfound')
-  assert.equal(joinFailure(409, 'space_full'), 'full')
-  assert.equal(joinFailure(409, 'space_locked'), 'locked')
-  assert.equal(joinFailure(409, 'space_ended'), 'ended')
+  assert.equal(joinFailure(409, 'gist_full'), 'full')
+  assert.equal(joinFailure(409, 'gist_locked'), 'locked')
+  assert.equal(joinFailure(409, 'gist_ended'), 'ended')
   assert.equal(joinFailure(502, 'livekit_unavailable'), 'retry')
   assert.equal(joinFailure(429, undefined), 'retry')
   assert.equal(joinFailure(0, undefined), 'retry')

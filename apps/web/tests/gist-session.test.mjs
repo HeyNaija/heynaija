@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { RECONNECT_ATTEMPTS, SpaceSession } from '../lib/space-session.ts'
-import { createLatest } from '../lib/spaces.ts'
+import { RECONNECT_ATTEMPTS, GistSession } from '../lib/gist-session.ts'
+import { createLatest } from '../lib/gists.ts'
 
 const deferred = () => {
   let resolve
   const promise = new Promise((r) => (resolve = r))
   return { promise, resolve }
 }
-const joined = { ok: true, data: { url: 'ws://x', token: 't', role: 'listener', space: { status: 'live' } } }
+const joined = { ok: true, data: { url: 'ws://x', token: 't', role: 'listener', gist: { status: 'live' } } }
 
 /** Fakes for everything the session touches, and a log of what it did. */
 function rig({ join, createAudio, holdScreen } = {}) {
@@ -33,7 +33,7 @@ function rig({ join, createAudio, holdScreen } = {}) {
         audios.push(audio)
         return audio
       }),
-    rememberSpace: (on) => log.push(on ? 'remember' : 'forget'),
+    rememberGist: (on) => log.push(on ? 'remember' : 'forget'),
     holdScreen:
       holdScreen ??
       (async () => {
@@ -53,7 +53,7 @@ function rig({ join, createAudio, holdScreen } = {}) {
       mics: () => {},
     },
   }
-  const session = new SpaceSession(deps)
+  const session = new GistSession(deps)
   session.open()
   return { session, log, phases, audios, lose: (reason) => events.onLost(reason) }
 }
@@ -258,7 +258,7 @@ test('join refusals: 404 reloads for the real not-found page, 409 full shows the
   const a = rig({ join: async () => ({ ok: false, status: 404 }) })
   await a.session.join()
   assert.ok(a.log.includes('reload'))
-  const b = rig({ join: async () => ({ ok: false, status: 409, code: 'space_full' }) })
+  const b = rig({ join: async () => ({ ok: false, status: 409, code: 'gist_full' }) })
   await b.session.join()
   assert.equal(b.phases.at(-1), 'full')
 })

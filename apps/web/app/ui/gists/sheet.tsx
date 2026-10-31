@@ -22,7 +22,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   return (
     <dialog
       ref={ref}
-      className="space-sheet"
+      className="gist-sheet"
       aria-labelledby={titleId}
       onClose={onClose}
       // A tap on the dimmed area outside the card closes it.
@@ -31,12 +31,12 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
       }}
     >
       {open ? (
-        <div className="space-sheet-body">
-          <div className="space-sheet-head">
+        <div className="gist-sheet-body">
+          <div className="gist-sheet-head">
             <h2 id={titleId} className="section-title">
               {title}
             </h2>
-            <button type="button" className="icon-btn space-sheet-close" aria-label={`Close ${title}`} onClick={onClose}>
+            <button type="button" className="icon-btn gist-sheet-close" aria-label={`Close ${title}`} onClick={onClose}>
               <CloseIcon size={20} />
             </button>
           </div>

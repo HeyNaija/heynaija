@@ -1,4 +1,4 @@
-// The only file that imports livekit-client. space-room.tsx loads it with a dynamic
+// The only file that imports livekit-client. gist-room.tsx loads it with a dynamic
 // import() when someone taps Join, so the SDK is a separate chunk that the feed,
 // the profile and every other page never download (ADR 0017 section 6).
 //
@@ -6,8 +6,8 @@
 // processing (noise suppression, echo cancellation, auto gain) can be switched, and
 // that is all. No effects, no pitch shifting (ADR 0017, open question 20).
 import { ConnectionState, DisconnectReason, type LocalAudioTrack, Room, RoomEvent, Track, TrackEvent } from 'livekit-client'
-import type { AudioEvents, LostReason } from '@/lib/space-session'
-import { afterFailedRestart, micPlan, rmsLevel, type MicSettings } from '@/lib/space-mic'
+import type { AudioEvents, LostReason } from '@/lib/gist-session'
+import { afterFailedRestart, micPlan, rmsLevel, type MicSettings } from '@/lib/gist-mic'
 
 /** Why LiveKit ended the connection, in the terms the room acts on: only a network drop is worth retrying. */
 export function lostReason(reason: DisconnectReason | undefined): LostReason {
@@ -203,4 +203,4 @@ export function createAudio(container: HTMLElement, on: AudioEvents) {
   }
 }
 
-export type SpaceAudio = ReturnType<typeof createAudio>
+export type GistAudio = ReturnType<typeof createAudio>

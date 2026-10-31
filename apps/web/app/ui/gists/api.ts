@@ -1,12 +1,12 @@
-// The browser's calls to the Spaces API, through the /api rewrite so the session
+// The browser's calls to the Gists API, through the /api rewrite so the session
 // cookie is first-party. There are no server actions here: the room is live, and a
 // server action would re-render the page on every tap.
 
 export type Reply<T> = { ok: true; status: number; data: T } | { ok: false; status: number; code?: string; message?: string }
 
-export async function spaceCall<T = undefined>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<Reply<T>> {
+export async function gistCall<T = undefined>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<Reply<T>> {
   try {
-    const res = await fetch(`/api/v1/spaces${path}`, {
+    const res = await fetch(`/api/v1/gists${path}`, {
       method,
       headers: body === undefined ? undefined : { 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),

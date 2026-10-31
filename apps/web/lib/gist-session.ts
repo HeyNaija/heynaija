@@ -1,6 +1,6 @@
-// The join / reconnect / leave state machine of a Space room, with no React and no
+// The join / reconnect / leave state machine of a Gist room, with no React and no
 // livekit-client, so the order of awaits and the "did the member leave meanwhile?"
-// checks can be unit tested with fakes (tests/space-session.test.mjs).
+// checks can be unit tested with fakes (tests/gist-session.test.mjs).
 //
 // Rules it keeps:
 //  - Every await in an attempt is followed by a staleness check. An attempt is
@@ -9,7 +9,7 @@
 //    API was told the member joined.
 //  - Why a connection ended decides what happens next: a network drop reconnects
 //    (capped, with backoff), a duplicate identity or a removal never does.
-import { joinFailure, type JoinResult } from './spaces.ts'
+import { joinFailure, type JoinResult } from './gists.ts'
 
 export type Phase = 'prejoin' | 'connecting' | 'live' | 'reconnecting' | 'ended' | 'full' | 'locked' | 'failed' | 'elsewhere' | 'gone'
 export type LostReason = 'duplicate' | 'removed' | 'room_deleted' | 'network'
@@ -39,7 +39,7 @@ export type SessionDeps = {
   leave: () => void
   /** Loads the media library and builds the connection. Throws if the page it plays into is gone. */
   createAudio: (events: AudioEvents) => Promise<AudioLike>
-  rememberSpace: (on: boolean) => void
+  rememberGist: (on: boolean) => void
   /** Takes a screen wake lock; resolves to its release function. */
   holdScreen: () => Promise<() => void>
   sleep: (ms: number) => Promise<void>
@@ -61,7 +61,7 @@ export const reconnectDelay = (attempt: number) => Math.min(1000 * 2 ** attempt,
 
 type Outcome = 'ok' | 'retry' | 'stop'
 
-export class SpaceSession {
+export class GistSession {
   private deps: SessionDeps
   private gen = 0
   private closed = false
@@ -90,7 +90,7 @@ export class SpaceSession {
     this.audio = null
     this.release?.()
     this.release = null
-    this.deps.rememberSpace(false)
+    this.deps.rememberGist(false)
     if (leave && this.present) this.deps.leave()
     this.present = false
     await audio?.disconnect().catch(() => undefined)
@@ -122,7 +122,7 @@ export class SpaceSession {
         await this.finish()
         return 'stop'
       }
-      ui.problem(res.message ?? 'Could not reach the Space. Check your connection.')
+      ui.problem(res.message ?? 'Could not reach the Gist. Check your connection.')
       return 'retry'
     }
     ui.joined(res.data)
@@ -171,7 +171,7 @@ export class SpaceSession {
       return ui.phase('failed')
     }
     if (result === 'stop') return
-    this.deps.rememberSpace(true)
+    this.deps.rememberGist(true)
     const release = await this.deps.holdScreen()
     if (this.stale(my)) {
       release()
@@ -180,7 +180,7 @@ export class SpaceSession {
     }
     this.release = release
     ui.phase('live')
-    ui.announce('You are in the Space. Keep this screen open to keep listening.')
+    ui.announce('You are in the Gist. Keep this screen open to keep listening.')
   }
 
   /** The connection ended; why decides what happens next. */
@@ -195,7 +195,7 @@ export class SpaceSession {
     this.present = false
     await this.teardown(false)
     ui.phase(reason === 'duplicate' ? 'elsewhere' : 'gone')
-    ui.announce(reason === 'duplicate' ? 'This Space is open somewhere else.' : 'You are no longer in this Space.')
+    ui.announce(reason === 'duplicate' ? 'This Gist is open somewhere else.' : 'You are no longer in this Gist.')
   }
 
   async reconnect(): Promise<void> {
@@ -228,7 +228,7 @@ export class SpaceSession {
     }
   }
 
-  /** The Space ended (poll, join refusal or room deleted). */
+  /** The Gist ended (poll, join refusal or room deleted). */
   async finish(): Promise<void> {
     this.ended = true
     this.gen++

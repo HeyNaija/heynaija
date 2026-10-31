@@ -4,11 +4,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useId, useState } from 'react'
 import { LiveIcon } from '@/app/ui/icons'
-import { CURRENT_SPACE_KEY, TITLE_MAX, titleProblem, type SpaceView } from '@/lib/spaces'
-import { spaceCall } from './api'
+import { CURRENT_GIST_KEY, TITLE_MAX, titleProblem, type GistView } from '@/lib/gists'
+import { gistCall } from './api'
 
-/** "Start a Space": a title and a button. Shown on Home to members on the Spaces list, and at /spaces/new. */
-export function StartSpace({ heading = true }: { heading?: boolean }) {
+/** "Start a Gist": a title and a button. Shown on Home to members on the Gists list, and at /gists/new. */
+export function StartGist({ heading = true }: { heading?: boolean }) {
   const router = useRouter()
   const fieldId = useId()
   const hintId = useId()
@@ -17,8 +17,8 @@ export function StartSpace({ heading = true }: { heading?: boolean }) {
   const [busy, setBusy] = useState(false)
   const [current, setCurrent] = useState<string | null>(null)
 
-  // The API has no list of live Spaces yet, so a Space you are in is remembered for this tab.
-  useEffect(() => setCurrent(sessionStorage.getItem(CURRENT_SPACE_KEY)), [])
+  // The API has no list of live Gists yet, so a Gist you are in is remembered for this tab.
+  useEffect(() => setCurrent(sessionStorage.getItem(CURRENT_GIST_KEY)), [])
 
   async function start(event: React.FormEvent) {
     event.preventDefault()
@@ -26,21 +26,21 @@ export function StartSpace({ heading = true }: { heading?: boolean }) {
     if (problem) return setError(problem)
     setBusy(true)
     setError(null)
-    const res = await spaceCall<SpaceView>('POST', '', { title: title.trim() })
-    if (res.ok) return router.push(`/spaces/${res.data.id}`)
+    const res = await gistCall<GistView>('POST', '', { title: title.trim() })
+    if (res.ok) return router.push(`/gists/${res.data.id}`)
     setBusy(false)
-    setError(res.message ?? 'Could not start the Space. Try again.')
+    setError(res.message ?? 'Could not start the Gist. Try again.')
   }
 
   return (
-    <section className="square-card space-section" aria-labelledby={`${fieldId}-h`}>
+    <section className="square-card gist-section" aria-labelledby={`${fieldId}-h`}>
       {heading ? (
         <h2 id={`${fieldId}-h`} className="section-title flex items-center gap-2">
-          <LiveIcon size={18} /> Start a Space
+          <LiveIcon size={18} /> Start a Gist
         </h2>
       ) : (
         <h1 id={`${fieldId}-h`} className="page-title">
-          Start a Space
+          Start a Gist
         </h1>
       )}
       <p id={hintId} className="mt-1 text-sm text-muted">
@@ -48,7 +48,7 @@ export function StartSpace({ heading = true }: { heading?: boolean }) {
       </p>
       <form onSubmit={start} className="mt-3 flex flex-col gap-3 sm:flex-row" noValidate>
         <label htmlFor={fieldId} className="sr-only">
-          Space title
+          Gist title
         </label>
         <input
           id={fieldId}
@@ -60,7 +60,7 @@ export function StartSpace({ heading = true }: { heading?: boolean }) {
           aria-invalid={error ? true : undefined}
           onChange={(e) => setTitle(e.target.value)}
         />
-        <button type="submit" disabled={busy} className="btn btn-primary space-btn">
+        <button type="submit" disabled={busy} className="btn btn-primary gist-btn">
           {busy ? 'Starting…' : 'Go live'}
         </button>
       </form>
@@ -71,8 +71,8 @@ export function StartSpace({ heading = true }: { heading?: boolean }) {
       ) : null}
       {current ? (
         <p className="mt-3 text-sm">
-          <Link href={`/spaces/${current}`} className="font-semibold text-accent-strong hover:underline">
-            Return to the Space you are in
+          <Link href={`/gists/${current}`} className="font-semibold text-accent-strong hover:underline">
+            Return to the Gist you are in
           </Link>
         </p>
       ) : null}

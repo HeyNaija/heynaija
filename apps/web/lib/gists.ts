@@ -1,12 +1,12 @@
-// Spaces (docs/adr/0017, section 4a): the pure rules the room follows. No React, no
+// Gists (docs/adr/0017, section 4a): the pure rules the room follows. No React, no
 // browser and no livekit-client here, so this stays in the main bundle at almost no
-// cost and is covered by tests/spaces.test.mjs.
+// cost and is covered by tests/gists.test.mjs.
 
-export type SpaceRole = 'host' | 'cohost' | 'speaker' | 'listener'
+export type GistRole = 'host' | 'cohost' | 'speaker' | 'listener'
 export type Person = { id: string; handle: string; displayName: string | null }
 
-/** What GET /v1/spaces/:id answers. */
-export type SpaceView = {
+/** What GET /v1/gists/:id answers. */
+export type GistView = {
   id: string
   title: string
   status: 'scheduled' | 'live' | 'ended'
@@ -21,10 +21,10 @@ export type SpaceView = {
   peakListeners: number
   startedAt: string | null
   endedAt: string | null
-  viewer: { role: SpaceRole | null; requestedToSpeak: boolean }
+  viewer: { role: GistRole | null; requestedToSpeak: boolean }
 }
 
-export type JoinResult = { url: string; token: string; role: SpaceRole; space: SpaceView }
+export type JoinResult = { url: string; token: string; role: GistRole; gist: GistView }
 export type SpeakRequest = Person & { requestedAt: string }
 
 export const personName = (p: Pick<Person, 'handle' | 'displayName'>) => p.displayName?.trim() || `@${p.handle}`
@@ -32,9 +32,9 @@ export const personName = (p: Pick<Person, 'handle' | 'displayName'>) => p.displ
 // ---- what each role may do ---------------------------------------------------
 
 type ControlsInput = {
-  status: SpaceView['status']
+  status: GistView['status']
   requestsOpen: boolean
-  viewer: { role: SpaceRole | null; requestedToSpeak: boolean }
+  viewer: { role: GistRole | null; requestedToSpeak: boolean }
 }
 
 /**
@@ -59,9 +59,9 @@ export function controlsFor({ status, requestsOpen, viewer }: ControlsInput) {
 
 // ---- following the room by polling -------------------------------------------
 
-export type Snapshot = { role: SpaceRole | null; status: SpaceView['status'] }
+export type Snapshot = { role: GistRole | null; status: GistView['status'] }
 
-const ROLE_SENTENCE: Record<SpaceRole, string> = {
+const ROLE_SENTENCE: Record<GistRole, string> = {
   host: 'You are the host.',
   cohost: 'You are now a co-host. Tap the microphone to talk.',
   speaker: 'You are now a speaker. Tap the microphone to talk.',
@@ -73,13 +73,13 @@ const ROLE_SENTENCE: Record<SpaceRole, string> = {
  * polite live region and is set only when something changed; `resync` asks the
  * room to call /sync so LiveKit's permissions follow the new role.
  */
-export function applyView(prev: Snapshot, view: Pick<SpaceView, 'status' | 'viewer'>) {
+export function applyView(prev: Snapshot, view: Pick<GistView, 'status' | 'viewer'>) {
   const role = view.viewer.role
   const ended = view.status === 'ended'
   let announcement: string | null = null
   let resync = false
   if (ended && prev.status !== 'ended') {
-    announcement = 'This Space has ended.'
+    announcement = 'This Gist has ended.'
   } else if (!ended && role && prev.role && role !== prev.role) {
     announcement = ROLE_SENTENCE[role]
     resync = true
@@ -103,9 +103,9 @@ export type JoinFailure = 'notfound' | 'full' | 'locked' | 'ended' | 'retry'
 /** Which room state a refused join or reconnect leads to. */
 export function joinFailure(status: number, code: string | undefined): JoinFailure {
   if (status === 404) return 'notfound'
-  if (status === 409 && code === 'space_full') return 'full'
-  if (status === 409 && code === 'space_locked') return 'locked'
-  if (status === 409 && code === 'space_ended') return 'ended'
+  if (status === 409 && code === 'gist_full') return 'full'
+  if (status === 409 && code === 'gist_locked') return 'locked'
+  if (status === 409 && code === 'gist_ended') return 'ended'
   return 'retry'
 }
 
@@ -124,15 +124,15 @@ export function dataUseHint(connection: Connection): string {
   return `${cost} It is more on mobile data, so Wi-Fi is kinder to your bundle.`
 }
 
-/** Where the Home card finds "your Space" again: the API has no list of live Spaces yet. */
-export const CURRENT_SPACE_KEY = 'hn-space-current'
+/** Where the Home card finds "your Gist" again: the API has no list of live Gists yet. */
+export const CURRENT_GIST_KEY = 'hn-gist-current'
 
-/** What the API accepts (SpacesService.create); its controller's schema is looser. */
+/** What the API accepts (GistsService.create); its controller's schema is looser. */
 export const TITLE_MAX = 120
 
 export function titleProblem(title: string): string | null {
   const t = title.trim()
-  if (!t) return 'Give your Space a title.'
+  if (!t) return 'Give your Gist a title.'
   if (t.length > TITLE_MAX) return `Keep the title to ${TITLE_MAX} characters or fewer.`
   return null
 }

@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import { Avatar } from '@/app/ui/avatar'
 import { MicOffIcon } from '@/app/ui/icons'
-import { elapsedLabel } from '@/lib/space-mic'
-import { personName, type Person } from '@/lib/spaces'
+import { elapsedLabel } from '@/lib/gist-mic'
+import { personName, type Person } from '@/lib/gists'
 
 export type StagePerson = Person & { label: 'Host' | 'Co-host' | 'Speaker' }
 
@@ -29,29 +29,29 @@ export function StageGrid({
   level: number
 }) {
   return (
-    <ul className="space-stage" aria-label="People on stage">
+    <ul className="gist-stage" aria-label="People on stage">
       {people.map((p) => {
         const talking = speaking.includes(p.id) && mics[p.id] !== false
         const live = mics[p.id] === true
         const self = p.id === meId
         return (
-          <li key={p.id} className={`space-tile ${talking ? 'is-speaking' : ''}`}>
-            <span className="space-avatar">
+          <li key={p.id} className={`gist-tile ${talking ? 'is-speaking' : ''}`}>
+            <span className="gist-avatar">
               <Avatar handle={p.handle} size={72} />
             </span>
-            <span className="space-tile-name">
+            <span className="gist-tile-name">
               {personName(p)}
               {self ? ' (you)' : ''}
             </span>
-            <span className="space-badges">
-              {p.label !== 'Speaker' ? <span className="space-badge space-badge-role">{p.label}</span> : <span className="space-badge">Speaker</span>}
+            <span className="gist-badges">
+              {p.label !== 'Speaker' ? <span className="gist-badge gist-badge-role">{p.label}</span> : <span className="gist-badge">Speaker</span>}
               {live ? null : (
-                <span className="space-badge space-badge-muted">
+                <span className="gist-badge gist-badge-muted">
                   <MicOffIcon size={12} /> Muted
                 </span>
               )}
               {talking ? (
-                <span className="space-badge space-badge-speaking" aria-hidden="true">
+                <span className="gist-badge gist-badge-speaking" aria-hidden="true">
                   Speaking
                 </span>
               ) : null}
@@ -70,13 +70,13 @@ export function StageGrid({
  */
 export function LevelMeter({ level }: { level: number }) {
   return (
-    <span className="space-meter" aria-hidden="true">
-      <span className="space-meter-fill" style={{ transform: `scaleX(${level})` }} />
+    <span className="gist-meter" aria-hidden="true">
+      <span className="gist-meter-fill" style={{ transform: `scaleX(${level})` }} />
     </span>
   )
 }
 
-/** Time since the Space started, ticking each second. A timer role is not announced as it changes. */
+/** Time since the Gist started, ticking each second. A timer role is not announced as it changes. */
 export function Elapsed({ startedAt }: { startedAt: string | null }) {
   const [now, setNow] = useState<number | null>(null)
   useEffect(() => {
@@ -86,7 +86,7 @@ export function Elapsed({ startedAt }: { startedAt: string | null }) {
   }, [])
   if (!startedAt || now === null) return null
   return (
-    <span role="timer" aria-label="Time live" className="space-elapsed">
+    <span role="timer" aria-label="Time live" className="gist-elapsed">
       {elapsedLabel(startedAt, now)}
     </span>
   )

@@ -1,5 +1,5 @@
 // Pure rules for a speaker's microphone and for how the room talks about who is
-// speaking. No browser APIs here, so tests/space-mic.test.mjs covers them.
+// speaking. No browser APIs here, so tests/gist-mic.test.mjs covers them.
 //
 // The audio path stays a clean pass-through: only the browser's own processing
 // switches (noise suppression, echo cancellation, auto gain) are offered. There is
@@ -14,7 +14,7 @@ export type MicSettings = {
 }
 
 export const DEFAULT_MIC: MicSettings = { deviceId: null, noiseSuppression: true, echoCancellation: true, autoGainControl: true }
-export const MIC_SETTINGS_KEY = 'hn-space-mic'
+export const MIC_SETTINGS_KEY = 'hn-gist-mic'
 
 /** Settings saved in localStorage; anything missing, mistyped or corrupt falls back to the defaults. */
 export function readMicSettings(raw: string | null): MicSettings {
@@ -133,7 +133,7 @@ export function createSpeakingAnnouncer(minGapMs = 6000) {
   }
 }
 
-/** "12:03" under an hour, "1:02:03" after. Empty before the Space has started. */
+/** "12:03" under an hour, "1:02:03" after. Empty before the Gist has started. */
 export function elapsedLabel(startedAt: string | null, now: number): string {
   if (!startedAt) return ''
   const seconds = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1000))

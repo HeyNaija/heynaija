@@ -834,7 +834,7 @@ Each has a recommendation; the PR description repeats them.
 19. **Captions for Gists.** Is the "captions by the host" stopgap enough to
     start, or must server transcription (open question 8) come first? Recommend
     the stopgap for the allow-list, a decision before widening.
-20. **Voice effects (pitch shifting, voice changers, "voice masks") in Spaces
+20. **Voice effects (pitch shifting, voice changers, "voice masks") in Gists
     and calls.** Not built, and the audio path is a clean pass-through: the web
     client offers only the browser's own noise suppression, echo cancellation and
     automatic gain control. A disguised voice in a live public room is a
@@ -843,4 +843,4 @@ Each has a recommendation; the PR description repeats them.
     Recommend: do not offer any effect that changes who a voice sounds like,
     until governance decides; if one is ever allowed, say so in the room to
     everyone ("this speaker is using a voice effect"), and let a host switch it
-    off for their Space.
+    off for their Gist.

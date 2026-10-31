@@ -16,24 +16,24 @@ import {
   type InputDevice,
   type MicFailure,
   type MicSettings,
-} from '@/lib/space-mic'
-import { SpaceSession, type Phase } from '@/lib/space-session'
+} from '@/lib/gist-mic'
+import { GistSession, type Phase } from '@/lib/gist-session'
 import {
   applyView,
   controlsFor,
   createLatest,
-  CURRENT_SPACE_KEY,
+  CURRENT_GIST_KEY,
   dataUseHint,
   listenerLabel,
   nextPollDelay,
   personName,
   type JoinResult,
   type Snapshot,
-  type SpaceView,
+  type GistView,
   type SpeakRequest,
-} from '@/lib/spaces'
-import { spaceCall } from './api'
-import type { SpaceAudio } from './audio'
+} from '@/lib/gists'
+import { gistCall } from './api'
+import type { GistAudio } from './audio'
 import { HostPanel } from './host-panel'
 import { MicPanel } from './mic-panel'
 import { Sheet } from './sheet'
@@ -41,7 +41,7 @@ import { Elapsed, StageGrid, type StagePerson } from './stage'
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string }) {
+export function GistRoom({ initial, meId }: { initial: GistView; meId: string }) {
   const router = useRouter()
   const id = initial.id
   const [view, setView] = useState(initial)
@@ -63,13 +63,13 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
   const [micSheet, setMicSheet] = useState(false)
   const [speakingNote, setSpeakingNote] = useState('')
 
-  const audio = useRef<SpaceAudio | null>(null)
+  const audio = useRef<GistAudio | null>(null)
   const container = useRef<HTMLDivElement>(null)
   const snapshot = useRef<Snapshot>({ role: initial.viewer.role, status: initial.status })
   const micRef = useRef(false)
   const wake = useRef<WakeLockSentinel | null>(null)
   const latest = useRef(createLatest())
-  const session = useRef<SpaceSession | null>(null)
+  const session = useRef<GistSession | null>(null)
   const announcer = useRef(createSpeakingAnnouncer())
   const noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -99,15 +99,15 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
     setMicOn(on)
   }
 
-  /** The join / reconnect / leave state machine (lib/space-session.ts), wired to this page. */
-  function getSession(): SpaceSession {
+  /** The join / reconnect / leave state machine (lib/gist-session.ts), wired to this page. */
+  function getSession(): GistSession {
     if (!session.current) {
-      session.current = new SpaceSession({
-        join: () => spaceCall<JoinResult>('POST', `/${id}/join`),
+      session.current = new GistSession({
+        join: () => gistCall<JoinResult>('POST', `/${id}/join`),
         // The server grants the microphone to a speaker only after this; the poll repeats it if it is lost.
-        sync: () => void spaceCall('POST', `/${id}/sync`),
+        sync: () => void gistCall('POST', `/${id}/sync`),
         // keepalive lets it finish while the page is closing.
-        leave: () => void fetch(`/api/v1/spaces/${id}/leave`, { method: 'POST', keepalive: true }).catch(() => undefined),
+        leave: () => void fetch(`/api/v1/gists/${id}/leave`, { method: 'POST', keepalive: true }).catch(() => undefined),
         createAudio: async (events) => {
           // The one place the SDK is fetched: a separate chunk, only after a tap.
           const { createAudio } = await import('./audio')
@@ -117,7 +117,7 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
           audio.current = made
           return made
         },
-        rememberSpace: (on) => (on ? sessionStorage.setItem(CURRENT_SPACE_KEY, id) : sessionStorage.removeItem(CURRENT_SPACE_KEY)),
+        rememberGist: (on) => (on ? sessionStorage.setItem(CURRENT_GIST_KEY, id) : sessionStorage.removeItem(CURRENT_GIST_KEY)),
         holdScreen: async () => {
           try {
             wake.current = (await navigator.wakeLock?.request('screen')) ?? null
@@ -138,8 +138,8 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
           },
           problem: setProblem,
           joined: (result) => {
-            setView(result.space)
-            snapshot.current = { role: result.role, status: result.space.status }
+            setView(result.gist)
+            snapshot.current = { role: result.role, status: result.gist.status }
           },
           announce,
           playbackBlocked: setBlocked,
@@ -168,7 +168,7 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
   async function join() {
     if (typeof RTCPeerConnection === 'undefined') {
       setPhase('failed')
-      setProblem('This browser cannot play Spaces. Try a recent Chrome, Firefox, Safari or Edge.')
+      setProblem('This browser cannot play Gists. Try a recent Chrome, Firefox, Safari or Edge.')
       return
     }
     await getSession().join()
@@ -183,7 +183,7 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
 
   const poll = useCallback(async (): Promise<boolean> => {
     const ticket = latest.current.begin()
-    const res = await spaceCall<SpaceView>('GET', `/${id}`)
+    const res = await gistCall<GistView>('GET', `/${id}`)
     if (!res.ok) {
       if (res.status === 404) window.location.reload()
       return false
@@ -204,11 +204,11 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
         await audio.current?.setMic(false, effective, effKey).catch(() => undefined)
         setMic(false)
       }
-      void spaceCall('POST', `/${id}/sync`)
+      void gistCall('POST', `/${id}/sync`)
     }
     const r = res.data.viewer.role
     if (r === 'host' || r === 'cohost') {
-      const queue = await spaceCall<{ items: SpeakRequest[] }>('GET', `/${id}/requests`)
+      const queue = await gistCall<{ items: SpeakRequest[] }>('GET', `/${id}/requests`)
       if (queue.ok) setRequests(queue.data.items)
     } else {
       setRequests([])
@@ -257,7 +257,7 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
 
   useEffect(() => {
     if (phase !== 'live' || !('mediaSession' in navigator)) return
-    navigator.mediaSession.metadata = new MediaMetadata({ title: view.title, artist: `Hosted by ${personName(view.host)}`, album: 'HeyNaija Spaces' })
+    navigator.mediaSession.metadata = new MediaMetadata({ title: view.title, artist: `Hosted by ${personName(view.host)}`, album: 'HeyNaija Gists' })
   }, [phase, view.title, view.host])
 
   // ---- controls ----------------------------------------------------------------------
@@ -365,7 +365,7 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
 
   async function speakRequest(on: boolean) {
     setProblem(null)
-    const res = await spaceCall(on ? 'PUT' : 'DELETE', `/${id}/speak-request`)
+    const res = await gistCall(on ? 'PUT' : 'DELETE', `/${id}/speak-request`)
     if (!res.ok) setProblem(res.message ?? 'That did not work. Try again.')
     else announce(on ? 'Request sent. The host will see it.' : 'Request withdrawn.')
     await refreshAfterAction()
@@ -381,7 +381,7 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
   const ended = view.status === 'ended' || phase === 'ended'
 
   return (
-    <div className="page-stack space-room">
+    <div className="page-stack gist-room">
       <div role="status" aria-live="polite" className="sr-only">
         {announcement}
       </div>
@@ -392,15 +392,15 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
       {/* The SDK attaches one <audio> per speaker here. */}
       <div ref={container} hidden />
 
-      <header className="square-card space-section space-head">
-        <div className="space-head-row">
-          <p className="space-live">
-            {ended ? null : <span className="space-live-dot" aria-hidden="true" />}
+      <header className="square-card gist-section gist-head">
+        <div className="gist-head-row">
+          <p className="gist-live">
+            {ended ? null : <span className="gist-live-dot" aria-hidden="true" />}
             <span>{ended ? 'Ended' : 'Live'}</span>
             {!ended ? <Elapsed startedAt={view.startedAt} /> : null}
           </p>
           {view.locked ? (
-            <span className="space-badge">
+            <span className="gist-badge">
               <LockIcon size={12} /> Room locked
             </span>
           ) : null}
@@ -423,7 +423,7 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
         {!ended ? (
           <button
             type="button"
-            className="btn btn-secondary space-btn space-count mt-3"
+            className="btn btn-secondary gist-btn gist-count mt-3"
             aria-haspopup="dialog"
             // A host or co-host's list is in the host panel, which appears once they have joined.
             disabled={moderator && !polling}
@@ -436,8 +436,8 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
       </header>
 
       {phase === 'prejoin' ? (
-        <section className="square-card space-section" aria-labelledby="space-join-heading">
-          <h2 id="space-join-heading" className="section-title">
+        <section className="square-card gist-section" aria-labelledby="gist-join-heading">
+          <h2 id="gist-join-heading" className="section-title">
             Ready to listen?
           </h2>
           <p className="mt-2 text-sm">
@@ -445,40 +445,40 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
           </p>
           <p className="mt-2 text-sm text-muted">{hint}</p>
           <p className="mt-2 text-sm text-muted">The sound starts when you tap Join. You only need your microphone if the host lets you speak.</p>
-          <button type="button" className="btn btn-primary btn-lg space-btn mt-4" onClick={join}>
-            Join the Space
+          <button type="button" className="btn btn-primary btn-lg gist-btn mt-4" onClick={join}>
+            Join the Gist
           </button>
         </section>
       ) : null}
 
       {phase === 'connecting' ? (
-        <p className="square-card space-section text-sm" role="status">
+        <p className="square-card gist-section text-sm" role="status">
           Connecting… keep this screen open.
         </p>
       ) : null}
 
       {phase === 'failed' ? (
-        <section className="square-card space-section">
+        <section className="square-card gist-section">
           <p role="alert" className="notice notice-danger">
-            {problem ?? 'Could not join the Space.'}
+            {problem ?? 'Could not join the Gist.'}
           </p>
-          <button type="button" className="btn btn-primary space-btn mt-4" onClick={join}>
+          <button type="button" className="btn btn-primary gist-btn mt-4" onClick={join}>
             Try again
           </button>
         </section>
       ) : null}
 
       {phase === 'full' || phase === 'locked' ? (
-        <section className="square-card space-section" role="alert">
-          <h2 className="section-title">{phase === 'full' ? 'This Space is full' : 'This Space is locked'}</h2>
+        <section className="square-card gist-section" role="alert">
+          <h2 className="section-title">{phase === 'full' ? 'This Gist is full' : 'This Gist is locked'}</h2>
           <p className="mt-2 text-sm text-muted">
             {phase === 'full' ? 'It has all the listeners it can take. Spots open up as people leave.' : 'The host has locked the room, so no new listeners can join.'}
           </p>
-          <div className="space-actions mt-4">
-            <button type="button" className="btn btn-primary space-btn" onClick={join}>
+          <div className="gist-actions mt-4">
+            <button type="button" className="btn btn-primary gist-btn" onClick={join}>
               Try again
             </button>
-            <Link href="/" className="btn btn-secondary space-btn">
+            <Link href="/" className="btn btn-secondary gist-btn">
               Back to Home
             </Link>
           </div>
@@ -486,31 +486,31 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
       ) : null}
 
       {phase === 'elsewhere' ? (
-        <section className="square-card space-section" role="alert">
-          <h2 className="section-title">This Space is open in another tab or device</h2>
+        <section className="square-card gist-section" role="alert">
+          <h2 className="section-title">This Gist is open in another tab or device</h2>
           <p className="mt-2 text-sm text-muted">You can only listen in one place at a time. The sound is playing there. To move it here, tap the button.</p>
-          <button type="button" className="btn btn-primary space-btn mt-4" onClick={join}>
+          <button type="button" className="btn btn-primary gist-btn mt-4" onClick={join}>
             Use it here
           </button>
         </section>
       ) : null}
 
       {phase === 'gone' ? (
-        <section className="square-card space-section" role="alert">
-          <h2 className="section-title">You are no longer in this Space</h2>
-          <Link href="/" className="btn btn-primary space-btn mt-4">
+        <section className="square-card gist-section" role="alert">
+          <h2 className="section-title">You are no longer in this Gist</h2>
+          <Link href="/" className="btn btn-primary gist-btn mt-4">
             Back to Home
           </Link>
         </section>
       ) : null}
 
       {phase === 'ended' ? (
-        <section className="square-card space-section" role="status">
-          <h2 className="section-title">This Space has ended</h2>
+        <section className="square-card gist-section" role="status">
+          <h2 className="section-title">This Gist has ended</h2>
           <p className="mt-2 text-sm text-muted">
-            {view.peakListeners > 0 ? `Up to ${listenerLabel(view.peakListeners)} listened. ` : ''}Thanks for being part of it. Spaces are not recorded.
+            {view.peakListeners > 0 ? `Up to ${listenerLabel(view.peakListeners)} listened. ` : ''}Thanks for being part of it. Gists are not recorded.
           </p>
-          <Link href="/" className="btn btn-primary space-btn mt-4">
+          <Link href="/" className="btn btn-primary gist-btn mt-4">
             Back to Home
           </Link>
         </section>
@@ -533,8 +533,8 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
             </p>
           ) : null}
 
-          <section className="square-card space-section" aria-labelledby="space-stage-heading">
-            <h2 id="space-stage-heading" className="section-title">
+          <section className="square-card gist-section" aria-labelledby="gist-stage-heading">
+            <h2 id="gist-stage-heading" className="section-title">
               On stage
             </h2>
             <StageGrid people={people} meId={meId} speaking={speaking} mics={mics} level={level} />
@@ -560,45 +560,45 @@ export function SpaceRoom({ initial, meId }: { initial: SpaceView; meId: string 
           {choice.fellBack && controls.mic && !micSheet ? <p className="notice">The microphone you chose is not plugged in. Using the default one.</p> : null}
 
           {blocked ? (
-            <button type="button" className="btn btn-primary btn-lg space-btn" onClick={() => void audio.current?.startAudio().then(() => setBlocked(false))}>
-              Tap to hear the Space
+            <button type="button" className="btn btn-primary btn-lg gist-btn" onClick={() => void audio.current?.startAudio().then(() => setBlocked(false))}>
+              Tap to hear the Gist
             </button>
           ) : null}
 
-          <div className="space-bar square-card" role="group" aria-label="Your controls">
+          <div className="gist-bar square-card" role="group" aria-label="Your controls">
             {controls.mic ? (
               <>
                 <button
                   type="button"
-                  className={`btn space-btn space-main ${micOn ? 'btn-primary' : 'btn-secondary'}`}
+                  className={`btn gist-btn gist-main ${micOn ? 'btn-primary' : 'btn-secondary'}`}
                   // One fixed name; the pressed state says on or off, so it is never announced twice.
                   aria-pressed={micOn}
                   onClick={toggleMic}
                 >
                   {micOn ? <MicIcon size={20} /> : <MicOffIcon size={20} />}
                   Microphone
-                  <span aria-hidden="true" className="space-mic-state">
+                  <span aria-hidden="true" className="gist-mic-state">
                     {micOn ? 'On' : 'Off'}
                   </span>
                 </button>
-                <button type="button" className="btn btn-secondary space-btn space-square" aria-haspopup="dialog" aria-label="Microphone settings" onClick={() => setMicSheet(true)}>
+                <button type="button" className="btn btn-secondary gist-btn gist-square" aria-haspopup="dialog" aria-label="Microphone settings" onClick={() => setMicSheet(true)}>
                   <GearIcon size={20} />
                 </button>
               </>
             ) : null}
             {controls.request ? (
-              <button type="button" className="btn btn-primary space-btn space-main" onClick={() => speakRequest(true)}>
+              <button type="button" className="btn btn-primary gist-btn gist-main" onClick={() => speakRequest(true)}>
                 <HandIcon size={20} />
                 Request to speak
               </button>
             ) : null}
             {controls.cancelRequest ? (
-              <button type="button" className="btn btn-secondary space-btn space-main" onClick={() => speakRequest(false)}>
+              <button type="button" className="btn btn-secondary gist-btn gist-main" onClick={() => speakRequest(false)}>
                 Cancel request
               </button>
             ) : null}
-            {role === 'listener' && !controls.request && !controls.cancelRequest ? <span className="space-note space-main">The host is not taking requests to speak.</span> : null}
-            <button type="button" className="btn btn-secondary space-btn" onClick={leave}>
+            {role === 'listener' && !controls.request && !controls.cancelRequest ? <span className="gist-note gist-main">The host is not taking requests to speak.</span> : null}
+            <button type="button" className="btn btn-secondary gist-btn" onClick={leave}>
               <LeaveIcon size={20} />
               Leave
             </button>

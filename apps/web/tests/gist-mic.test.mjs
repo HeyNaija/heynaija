@@ -13,7 +13,7 @@ import {
   rmsLevel,
   smoothLevel,
   writeMicSettings,
-} from '../lib/space-mic.ts'
+} from '../lib/gist-mic.ts'
 
 const devs = (...ids) => ids.map((deviceId) => ({ deviceId, label: '' }))
 
