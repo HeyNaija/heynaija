@@ -135,6 +135,13 @@ const schema = z.object({
   LIVEKIT_API_SECRET: optional(z.string().min(32)),
   LIVEKIT_WEBHOOK_KEY: optional(z.string().min(1)),
   LIVEKIT_WEBHOOK_SECRET: optional(z.string().min(32)),
+  // Age verification through Didit (docs/adr/0018, docs/deployment/age-verification.md).
+  // All three are needed; with any missing, no check is offered and the webhook
+  // refuses everything, and the API still starts. Whether the feature is on at all is
+  // the `ageVerification` flag, not these.
+  DIDIT_API_KEY: optional(z.string().min(1)),
+  DIDIT_WORKFLOW_ID: optional(z.string().min(1)),
+  DIDIT_WEBHOOK_SECRET: optional(z.string().min(1)),
   // Gists limits (docs/adr/0017 section 4a); a load test sets the real numbers.
   GISTS_MAX_COHOSTS: z.coerce.number().int().min(0).max(10).default(2),
   GISTS_MAX_SPEAKERS: z.coerce.number().int().min(0).max(50).default(10),
