@@ -144,7 +144,8 @@ the site's `Permissions-Policy` still blocks every microphone.
       (two minutes' grace, then the next once-a-minute reconcile).
 - [ ] On a laptop with UDP blocked, the room still connects (TURN on 443).
 - [ ] LiveKit's `participant_joined` webhook arrives for listeners, who join
-      hidden; that was never verified. Only that webhook records a connection id,
+      hidden (seen on a laptop with v1.13.11; this checks it through Cloudflare
+      and nginx). Only that webhook records a connection id,
       so with a Gist live, on staging in `/srv/heynaija/infra/deploy`:
       `docker compose exec postgres psql -U heynaija -d heynaija -c "select role, connection_sid is not null as webhook_seen from gist_members where left_at is null"`
       shows `t` for each listener. If it shows `f`, the reconcile still puts

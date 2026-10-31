@@ -21,10 +21,12 @@ test('a member who may not use Gists gets the normal not-found page', async ({ b
 test('a signed-out visitor gets the same not-found page as for any missing URL', async ({ page }) => {
   const missing = await page.goto('/no-such-page-at-all')
   expect(missing?.status()).toBe(404)
-  const notFound = await page.locator('main').innerText()
+  await expect(page.getByRole('heading', { name: 'Nothing here' })).toBeVisible()
+  const notFound = await page.locator('body').innerText()
   for (const path of [MISSING, '/gists/new']) {
     const res = await page.goto(path)
     expect(res?.status(), path).toBe(404)
-    expect(await page.locator('main').innerText(), path).toBe(notFound)
+    await expect(page.getByRole('heading', { name: 'Nothing here' })).toBeVisible()
+    expect(await page.locator('body').innerText(), path).toBe(notFound)
   }
 })

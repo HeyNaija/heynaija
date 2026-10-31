@@ -448,8 +448,8 @@ export class GistsService {
 
   /**
    * Puts every live Gist right against LiveKit, once a minute (gist-queue.ts).
-   * Webhooks can be lost, and hidden listeners may never send one (verify), so
-   * this is what finally holds: a Gist whose room is gone ends; anyone connected
+   * Webhooks can be lost (LiveKit does not promise delivery), so this is what
+   * finally holds: a Gist whose room is gone ends; anyone connected
    * who may not stay (removed, suspended, blocked with the stage) is disconnected,
    * and everyone else gets the permissions of their role; a member the database
    * thinks is in the room but LiveKit does not have is gone. A speaker gone for

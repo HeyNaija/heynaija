@@ -93,7 +93,7 @@ services:
   # Signalling (WebSocket + REST) on :7880, ICE over TCP on :7881, all media over
   # UDP on :7882 (single-port mode). Keys come from .env (`pnpm infra:env`); the API
   # reads the same ones as LIVEKIT_API_KEY and LIVEKIT_API_SECRET. LiveKit posts
-  # webhooks to the API on the host, the way Kratos does (host.docker.internal).
+  # webhooks to the web app on the host (host.docker.internal), which passes them to the API.
   livekit:
     image: livekit/livekit-server:v1.13.11
     profiles: [calls]
@@ -132,7 +132,8 @@ configs:
       webhook:
         api_key: ${LIVEKIT_WEBHOOK_KEY:-devhook}
         urls:
-          - http://host.docker.internal:4000/internal/livekit/webhook
+          # Through the web app's rewrite, the way staging and production get it.
+          - http://host.docker.internal:3000/api/internal/livekit/webhook
   # Kratos cannot read a hook list from environment variables, and this one holds
   # the webhook secret, so Compose renders it here and Kratos merges it over
   # kratos.yml. The same goes for the Google client secret.
