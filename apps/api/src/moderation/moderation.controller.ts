@@ -118,6 +118,13 @@ export class ModerationController {
     return guarded(() => this.moderation.moderatorRoster(req.member.id))
   }
 
+  @Post('moderation/communities/:slug/photo/remove')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async removeCommunityPhoto(@Req() req: AuthedRequest, @Param('slug') slug: string, @Body() body: unknown) {
+    await guarded(() => this.moderation.removeCommunityPhoto(req.member.id, parse(slugParam, slug), parse(note, body ?? {}).note))
+  }
+
   @Put('moderation/communities/:slug/moderators/:handle')
   @HttpCode(204)
   @UseGuards(SessionGuard)

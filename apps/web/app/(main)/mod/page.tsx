@@ -33,6 +33,7 @@ const ACTIONS: Record<string, string> = {
   dismiss_report: 'dismissed a report',
   remove_avatar: 'removed the profile photo of',
   clear_profile: 'cleared the name and bio of',
+  remove_community_photo: 'removed the community photo',
   grant_community_moderator: 'made a moderator:',
   revoke_community_moderator: 'removed as moderator:',
 }

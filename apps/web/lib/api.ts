@@ -181,10 +181,17 @@ export type Community = {
   name: string
   description: string
   memberCount: number
+  /** Photo path without the size suffix; null for the subject icon. */
+  photo: string | null
   viewerIsMember: boolean
 }
 
-export type CommunityDetail = Community & { rules: string; moderators: string[] }
+export type CommunityDetail = Community & {
+  rules: string
+  moderators: string[]
+  viewerCanManagePhoto: boolean
+  viewerIsSiteModerator: boolean
+}
 
 export type Profile = {
   id: string

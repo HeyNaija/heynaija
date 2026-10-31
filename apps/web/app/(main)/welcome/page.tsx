@@ -145,7 +145,7 @@ function CommunitiesStep({ communities, chosen }: { communities: Community[]; ch
                   ) : (
                     <input type="checkbox" name="c" value={c.slug} defaultChecked={ticked.has(c.slug)} aria-label={`Join ${c.name}`} aria-describedby={`welcome-c-${c.slug}`} />
                   )}
-                  <CommunityMark slug={c.slug} />
+                  <CommunityMark slug={c.slug} photo={c.photo} />
                   <span className="welcome-choice-text">
                     <strong>{c.name}</strong>
                     <span id={`welcome-c-${c.slug}`} className="welcome-choice-about">
