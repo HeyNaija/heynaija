@@ -70,7 +70,8 @@ after(() => pool.end())
 
 test('/v1/me: `features` has one boolean per registry flag, and the rest of the shape is unchanged', async () => {
   const me = await auth(development).me(as(ada, 'ada'))
-  assert.deepEqual(Object.keys(me.features).sort(), [...flagKeys].sort())
+  // The database-backed flags, plus `gists`, which is still switched by env (docs/feature-flags.md).
+  assert.deepEqual(Object.keys(me.features).sort(), [...flagKeys, 'gists'].sort())
   for (const key of flagKeys) assert.equal(me.features[key], FLAGS[key].defaults.development, key)
   for (const field of ['id', 'handle', 'avatar', 'displayName', 'bio', 'unreadNotifications', 'moderates', 'onboarded']) {
     assert.ok(field in me, field)

@@ -130,6 +130,7 @@ test('LiveKit settings may be empty (compose passes them empty), and key and sec
   assert.throws(() => loadEnv({ ...base, LIVEKIT_API_KEY: 'k' }), /LIVEKIT_API_KEY and LIVEKIT_API_SECRET/)
   assert.throws(() => loadEnv({ ...base, LIVEKIT_WEBHOOK_KEY: 'k' }), /LIVEKIT_WEBHOOK_KEY and LIVEKIT_WEBHOOK_SECRET/)
   assert.throws(() => loadEnv({ ...base, LIVEKIT_URL: 'http://rtc.example.com' }))
+})
 
 test('APP_ENV names the environment and, unset, is production so a forgotten variable never switches an unlaunched feature on', () => {
   assert.equal(loadEnv(base).APP_ENV, 'production')
