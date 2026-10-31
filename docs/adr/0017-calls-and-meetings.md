@@ -1,12 +1,13 @@
 # ADR 0017 — Calls, meetings, Gists and screen sharing on a self-hosted LiveKit server
 
-**Date:** 30 October 2026 · **Status:** Proposed, design only. Nothing is built:
-no schema, no migration, no endpoint, no server, no UI. · **Roadmap:**
+**Date:** 30 October 2026 · **Status:** Proposed. Partly built: the staging
+LiveKit server (section 2) and the Gists work behind `CALLS_GISTS_ENABLED`
+(section 4a) exist; 1:1 calls, meetings and screen sharing are design only. · **Roadmap:**
 `calls-and-meetings` (depends on `direct-messages` and `age-verification`, see
 the note in the roadmap entry) · **UI spec:** `apps/web/DESIGN.md`, "Calls and
 meetings" · **Related:** [ADR 0006](0006-age-status-model.md),
 [ADR 0009](0009-notification-emails.md), [ADR 0011](0011-push-notifications.md),
-ADR 0016 (direct messages; PR #42, not yet on `staging`),
+ADR 0016 (direct messages; its design is on `staging`, the feature is not built),
 `docs/governance/under-18-rollout.md`
 
 ## Decision
@@ -849,9 +850,10 @@ Each has a recommendation; the PR description repeats them.
 10. **Is "no calls without an existing conversation" too strict?** It means
     first contact is always a request. Recommend keep: it is the same rule as
     DMs and the safe default.
-11. **Dependencies on PR #42.** `direct-messages` and `age-verification` are
-    added to the roadmap when ADR 0016 merges; until then the roadmap entry
-    names them in its notes.
+11. **Dependencies on ADR 0016.** ADR 0016 is on `staging` and the roadmap has
+    `direct-messages` and `age-verification` entries. Still to do: list them as
+    dependencies of the `calls-and-meetings` roadmap entry, which names them
+    only in its notes.
 12. **Who may listen?** Recommend verified adults, the same age rule as calls,
     through `canListen` (section 4a), without the DM opt-in or "Allow calls"
     that `canCall` needs. Opening it to unverified adults or to minors is a
