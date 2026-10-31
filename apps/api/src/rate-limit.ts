@@ -27,6 +27,9 @@ export const LIMITS = {
   upload: [{ max: 10, windowMs: HOUR }],
   // Downloading your own data: it reads everything, so only a few times an hour.
   export: [{ max: 5, windowMs: HOUR }],
+  // Asking for your account's deletion, or cancelling it: each asking signs you out
+  // everywhere and emails you.
+  accountDeletion: [{ max: 5, windowMs: HOUR }],
   // Images attached to posts: up to four a post, so a bigger budget than photos.
   postImage: [
     { max: 12, windowMs: MINUTE },

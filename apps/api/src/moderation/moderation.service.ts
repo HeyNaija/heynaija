@@ -30,6 +30,10 @@ export type Resolution = (typeof RESOLUTIONS)[number]
 export class NotAModeratorError extends Error {}
 export class ModerationTargetError extends Error {}
 
+// Reinstating lifts the suspension, but an account waiting to be deleted stays
+// off the site until its owner cancels the deletion (docs/adr/0016).
+const reinstated = { active: sql<boolean>`${members.deletionRequestedAt} is null`, status: null }
+
 /** What a moderator may act on: everything, or only posts in certain communities. */
 export type Scope = { siteWide: boolean; communityIds: string[] }
 
@@ -181,9 +185,19 @@ export class ModerationService {
     return row ?? null
   }
 
-  /** A suspended member asks for the decision to be looked at again. One open appeal at a time. */
+  /**
+   * A suspended member asks for the decision to be looked at again. One open
+   * appeal at a time. Not while the account is waiting to be deleted: they can
+   * cancel the deletion first (docs/adr/0016).
+   */
   async appeal(memberId: string, message: string): Promise<void> {
-    const [member] = await this.db.select({ active: members.active }).from(members).where(eq(members.id, memberId))
+    const [member] = await this.db
+      .select({ active: members.active, deletionRequestedAt: members.deletionRequestedAt })
+      .from(members)
+      .where(eq(members.id, memberId))
+    if (member?.deletionRequestedAt) {
+      throw new ModerationTargetError('an account waiting to be deleted cannot appeal; cancel the deletion first')
+    }
     if (!member || member.active) throw new ModerationTargetError('only a suspended account can appeal')
 
     const [existing] = await this.db
@@ -320,7 +334,7 @@ export class ModerationService {
         if (suspend) await this.assertSuspendable(tx, moderatorId, targetMemberId)
         await tx
           .update(members)
-          .set(suspend ? { active: false, status: 'suspended' } : { active: true, status: null })
+          .set(suspend ? { active: false, status: 'suspended' } : reinstated)
           .where(eq(members.id, targetMemberId))
         action = suspend ? 'suspend_member' : 'reinstate_member'
       }
@@ -401,13 +415,23 @@ export class ModerationService {
     await this.afterwards(`releasing images of post ${postId}`, () => this.media!.releasePostImages(postId))
   }
 
-  /** Suspends or reinstates an account directly, without a report. Site moderators only. */
+  /**
+   * Suspends or reinstates an account directly, without a report. Site
+   * moderators only. An account waiting to be deleted can be suspended too, so
+   * cancelling the deletion does not bring it back (docs/adr/0016).
+   */
   async setSuspended(moderatorId: string, handle: string, suspended: boolean, note = ''): Promise<void> {
     if (!(await this.requireModerator(moderatorId)).siteWide) throw new NotAModeratorError()
     const [target] = await this.db
       .select({ id: members.id })
       .from(members)
-      .where(and(eq(members.handle, handle), eq(members.active, suspended)))
+      .where(
+        and(
+          eq(members.handle, handle),
+          isNull(members.deletedAt),
+          suspended ? sql`${members.status} is distinct from 'suspended'` : eq(members.status, 'suspended'),
+        ),
+      )
       .orderBy(sql`${members.lastSeenAt} desc nulls last`)
       .limit(1)
     if (!target) throw new ModerationTargetError(suspended ? 'no active member with that handle' : 'no suspended member with that handle')
@@ -415,7 +439,7 @@ export class ModerationService {
 
     await this.db
       .update(members)
-      .set(suspended ? { active: false, status: 'suspended' } : { active: true, status: null })
+      .set(suspended ? { active: false, status: 'suspended' } : reinstated)
       .where(eq(members.id, target.id))
     await this.db.insert(moderationActions).values({
       actorId: moderatorId,
