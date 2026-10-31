@@ -3,9 +3,10 @@
 Gists (live audio rooms, [ADR 0017](../adr/0017-calls-and-meetings.md)) need a
 media server. It is LiveKit, self-hosted on a small server of its own: not on the
 staging box (memory-tight, shared with Koinovera) and not behind Cloudflare, whose
-proxy cannot carry WebRTC. This page is the staging one; production gets a second
-server when the beta leaves the allow-list (ADR 0017 section 2, one server per
-environment).
+proxy cannot carry WebRTC. This page is the staging one. Production gets a server
+of its own too, a netcup VPS 1000 ARM G12.5 separate from the production app
+server, when the beta leaves the allow-list (ADR 0017 section 2, one server per
+environment); the same `infra/livekit/` runs there with its own `.env`.
 
 Everything for the server is in [`infra/livekit/`](../../infra/livekit): the Compose
 file with both configs, `.env.example`, `gen-env.sh` and `setup-server.sh`. The
@@ -31,10 +32,11 @@ post it, and the API checks LiveKit's signature as well.
 traffic Contabo calls unlimited under its fair-use terms; about €4.40 to €5.50 a
 month, check the order page), region **European Union**, image **Ubuntu 24.04**,
 with your SSH key. No add-ons. For staging this is far more than needed: the ADR's
-estimate for 200 listeners and three speakers is about 30 Mbit/s. Production stays
-on netcup; where its LiveKit runs is ADR 0017 open question 2. Both images in
+estimate for 200 listeners and three speakers is about 30 Mbit/s. Production's
+LiveKit will be its own netcup VPS 1000 ARM G12.5; both images in
 `infra/livekit/compose.yml` are published for amd64 and arm64, so the same setup
-runs on netcup's ARM servers.
+runs there. Which netcup location is ADR 0017 open question 2: measure from Lagos
+first.
 
 Note its IPv4 address (and IPv6, if it has one).
 

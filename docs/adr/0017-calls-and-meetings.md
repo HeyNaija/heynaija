@@ -102,7 +102,10 @@ runs on 443 behind Caddy, and the webhook comes through Cloudflare.
 - **Staging and production:** LiveKit's webhook config takes one signing key
   and a list of URLs, so two environments on one server would each receive the
   other's events. Recommend **one server per environment**: staging first, a
-  second for production when the beta leaves the allow-list.
+  second for production when the beta leaves the allow-list. **Owner decision
+  (31 October 2026):** staging's is a Contabo Cloud VPS 4; production's is a
+  netcup VPS 1000 ARM G12.5 of its own, not the production app server, which
+  should not carry media.
 
 ### Ports
 
@@ -807,7 +810,10 @@ Each has a recommendation; the PR description repeats them.
    built (and fallback if the VPS fails)? Recommend yes for dev and staging
    experiments only, never production, because the code is the same.
 2. **Where is the server, and which provider?** Needs a measured Lagos test.
-   Recommend choosing on measured loss and RTT, not on price.
+   Recommend choosing on measured loss and RTT, not on price. *Provider decided
+   (31 October 2026): netcup for production (its own VPS 1000 ARM G12.5),
+   Contabo for staging. Still open: which netcup location, chosen on the Lagos
+   measurement.*
 3. **TURN on 443 (second IP) or 5349?** Recommend 5349 first, measure.
 4. **Moderator access to live or past calls?** Recommend none; metadata from
    reports only. Governance decision.
