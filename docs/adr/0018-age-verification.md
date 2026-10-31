@@ -435,21 +435,62 @@ untouched.
 
 ## Open questions
 
-1. **Provider.** Smile ID (recommended, price unknown) or Didit (published and
-   cheap, coverage unverified)? Recommend getting both quotes and running the same
-   five people through each on staging before choosing.
-2. **Is a provider-run NIN or BVN route acceptable?** Recommend yes as one
-   route, never required; counsel to confirm (section 8, question 3).
-3. **Data residency.** Must processing stay in Nigeria? Recommend asking each
-   provider, with Nigerian or African processing preferred but not a hard rule.
-4. **Retention at the provider.** Recommend the shortest offered; confirm numbers.
-5. **Keep a document-derived key to stop one adult verifying many accounts?**
-   Recommend no (section 5); revisit if abuse shows up.
-6. **Appeal staffing.** Who answers appeals, and in what time? Needs the safety
-   contact and the moderator runbook (ADR 0016 open question 8).
-7. **Roadmap.** `age-verification` notes remain accurate; add this ADR to its
-    evidence when this is accepted. ADR 0017 still calls ADR 0016 "PR #42, not yet on
-    `staging`"; that is now out of date.
+### Questions for the team to answer
+
+Answer under each question (edit this file in a PR, or reply on the PR and the
+answer gets written back here). Each has a recommendation so "agreed" is a
+complete answer. Until questions 1 to 3 and 6 are answered nothing in this ADR is
+accepted, and the age check stays a placeholder (the `CALLS_MEMBERS` allow-list).
+
+1. **May a provider run a NIN or BVN check as one optional route while our own NIN
+   verification is locked?** The rollout doc says the age provider "must not
+   require a NIN". Recommendation: yes, as one optional route and never the only
+   one, subject to counsel's confirmation (section 8, question 3).
+   - Answer:
+   - Answered by / date:
+
+2. **Must the data stay in Nigeria, or is Africa or elsewhere acceptable with the
+   right agreements?** Recommendation: not a hard rule; prefer Nigerian or African
+   processing, and ask each provider where it processes and stores before choosing.
+   - Answer:
+   - Answered by / date:
+
+3. **Do we accept that members with no usable ID or no registry record cannot use
+   DMs or calls?** Recommendation: accept it for now (those features are optional
+   and everything else keeps working), and revisit if many members are affected.
+   - Answer:
+   - Answered by / date:
+
+4. **Who answers age-verification appeals, how fast, and what is the safety contact
+   address?** Needs the moderator runbook (ADR 0016 open question 8).
+   Recommendation: a named moderator, first reply within 2 working days, and a
+   dedicated safety address that is not a personal inbox.
+   - Answer:
+   - Answered by / date:
+
+5. **Should HeyNaija pay for the checks, so members pay nothing?**
+   Recommendation: yes, because charging for a safety gate shuts out the members it
+   protects; the cost model (section 2) shows the cost at 200, 2,000 and 20,000
+   verified members, and the opt-in keeps it to people who want DMs or calls.
+   - Answer:
+   - Answered by / date:
+
+6. **Provider: Smile ID (recommended, price unpublished) or Didit (price published,
+   Nigerian coverage unverified), and do we run a trial on staging first?**
+   Recommendation: get a written quote from Smile ID, then run the same five people
+   through both on staging before choosing.
+   - Answer:
+   - Answered by / date:
+
+### Smaller open items
+
+- **Retention at the provider.** Recommend the shortest the provider offers;
+  confirm the numbers when we have a quote.
+- **Keep a document-derived key to stop one adult verifying many accounts?**
+  Recommend no (section 5); revisit if abuse shows up.
+- **Roadmap.** `age-verification` notes remain accurate; add this ADR to its
+  evidence when this is accepted. ADR 0017 still calls ADR 0016 "PR #42, not yet on
+  `staging`"; that is now out of date.
 
 ## Sources (retrieved 31 October 2026)
 
