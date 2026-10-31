@@ -20,6 +20,8 @@ export const LIMITS = {
   action: [{ max: 120, windowMs: MINUTE }],
   report: [{ max: 10, windowMs: HOUR }],
   search: [{ max: 60, windowMs: MINUTE }],
+  // @mention suggestions: one per pause in typing, so more than full searches.
+  mentionSuggest: [{ max: 240, windowMs: MINUTE }],
   inviteCheck: [{ max: 20, windowMs: MINUTE }],
   // Name and bio changes.
   profile: [{ max: 20, windowMs: HOUR }],

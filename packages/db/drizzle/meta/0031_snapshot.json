@@ -1,5 +1,5 @@
 {
-  "id": "3a02895d-fc0a-4853-9c05-acaa0326f3e6",
+  "id": "91ad4c19-d190-4854-bbc8-a434f5090bb9",
   "prevId": "5d7ed57e-5ca0-4c2b-b839-2a1b283f3dfd",
   "version": "7",
   "dialect": "postgresql",
@@ -693,77 +693,6 @@
       "checkConstraints": {
         "gist_members_role_check": {
           "name": "gist_members_role_check",
-          "value": "role in ('host', 'cohost', 'speaker', 'listener')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.gist_report_participants": {
-      "name": "gist_report_participants",
-      "schema": "",
-      "columns": {
-        "report_id": {
-          "name": "report_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "gist_report_participants_report_id_reports_id_fk": {
-          "name": "gist_report_participants_report_id_reports_id_fk",
-          "tableFrom": "gist_report_participants",
-          "tableTo": "reports",
-          "columnsFrom": [
-            "report_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "gist_report_participants_member_id_members_id_fk": {
-          "name": "gist_report_participants_member_id_members_id_fk",
-          "tableFrom": "gist_report_participants",
-          "tableTo": "members",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "gist_report_participants_report_id_member_id_pk": {
-          "name": "gist_report_participants_report_id_member_id_pk",
-          "columns": [
-            "report_id",
-            "member_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "gist_report_participants_role_check": {
-          "name": "gist_report_participants_role_check",
           "value": "role in ('host', 'cohost', 'speaker', 'listener')"
         }
       },
@@ -2147,6 +2076,38 @@
           "method": "btree",
           "with": {}
         },
+        "members_handle_prefix_idx": {
+          "name": "members_handle_prefix_idx",
+          "columns": [
+            {
+              "expression": "handle collate \"C\"",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "active",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "members_name_prefix_idx": {
+          "name": "members_name_prefix_idx",
+          "columns": [
+            {
+              "expression": "lower(display_name) collate \"C\"",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "active and display_name is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "members_deletion_due_idx": {
           "name": "members_deletion_due_idx",
           "columns": [
@@ -2222,12 +2183,6 @@
         },
         "report_id": {
           "name": "report_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "gist_id": {
-          "name": "gist_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -2316,19 +2271,6 @@
           "tableTo": "reports",
           "columnsFrom": [
             "report_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "moderation_actions_gist_id_gists_id_fk": {
-          "name": "moderation_actions_gist_id_gists_id_fk",
-          "tableFrom": "moderation_actions",
-          "tableTo": "gists",
-          "columnsFrom": [
-            "gist_id"
           ],
           "columnsTo": [
             "id"
@@ -4065,12 +4007,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "gist_id": {
-          "name": "gist_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "reason": {
           "name": "reason",
           "type": "text",
@@ -4167,19 +4103,6 @@
           "tableTo": "members",
           "columnsFrom": [
             "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "reports_gist_id_gists_id_fk": {
-          "name": "reports_gist_id_gists_id_fk",
-          "tableFrom": "reports",
-          "tableTo": "gists",
-          "columnsFrom": [
-            "gist_id"
           ],
           "columnsTo": [
             "id"
