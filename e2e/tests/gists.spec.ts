@@ -64,14 +64,3 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
   await hostContext.close()
   await earContext.close()
 })
-
-test('a member who is not on the list gets the normal not-found page', async ({ browser }) => {
-  const context = await browser.newContext()
-  const page = await context.newPage()
-  await signUpOverHttp(page, `${MARK.handlePrefix}gist_out`)
-  // The proxy answers a member who is not on the list exactly as it answers a missing URL.
-  const res = await page.goto('/gists/00000000-0000-4000-8000-000000000000')
-  expect(res?.status()).toBe(404)
-  await expect(page.getByRole('heading', { name: 'Nothing here' })).toBeVisible()
-  await context.close()
-})

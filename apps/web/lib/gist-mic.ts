@@ -49,6 +49,16 @@ export function chooseDevice(devices: InputDevice[], wanted: string | null): { d
   return { deviceId: null, fellBack: true, none: false }
 }
 
+/**
+ * Whether to forget the saved input. Only on the visit's first full list of inputs:
+ * one that was not there when the member came in is long gone (or the browser now
+ * knows it by another id), and keeping it would say "not plugged in" on every visit.
+ * One that goes missing during the visit is kept, so plugging it back in picks it up.
+ */
+export function staleSavedDevice(devices: InputDevice[], wanted: string | null, firstList: boolean): boolean {
+  return firstList && wanted !== null && devices.length > 0 && !devices.some((d) => d.deviceId === wanted)
+}
+
 /** Browsers hide labels until the microphone has been allowed once. */
 export const deviceLabel = (device: InputDevice, index: number) => device.label.trim() || `Microphone ${index + 1}`
 

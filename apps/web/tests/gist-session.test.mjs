@@ -294,3 +294,34 @@ test('a poll requested before the member acted cannot undo the action', () => {
   assert.equal(l2.accept(stale), false)
   assert.equal(l2.accept(fresh), true)
 })
+
+test('pagehide drops the connection too, so a page kept in the back/forward cache is not still connected', async () => {
+  const r = rig()
+  await r.session.join()
+  r.session.pageHide()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(r.audios[0].disconnected, 1)
+  assert.equal(count(r.log, 'leave'), 1)
+  assert.equal(count(r.log, 'unwake'), 1)
+})
+
+test('back from the back/forward cache, the room asks to Join again, and joining works', async () => {
+  const r = rig()
+  await r.session.join()
+  r.session.pageHide()
+  r.session.pageShow()
+  assert.equal(r.phases.at(-1), 'prejoin')
+  await r.session.join()
+  assert.equal(r.phases.at(-1), 'live')
+  assert.equal(r.audios.length, 2)
+  assert.equal(count(r.log, 'leave'), 1)
+})
+
+test('an ended Gist stays ended when the page comes back from the cache', async () => {
+  const r = rig()
+  await r.session.join()
+  await r.session.finish()
+  r.session.pageHide()
+  r.session.pageShow()
+  assert.equal(r.phases.at(-1), 'ended')
+})

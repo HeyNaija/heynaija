@@ -250,11 +250,25 @@ export class GistSession {
     void this.teardown(true)
   }
 
-  /** The tab is going away: stop counting as present now, not when the webhook notices. */
+  /**
+   * The tab is going away, or into the back/forward cache: stop counting as present
+   * now, not when the webhook notices, and drop the connection, so a page brought
+   * back later is never connected while the API counts it as gone.
+   */
   pageHide(): void {
     if (this.present) {
       this.present = false
       this.deps.leave()
     }
+    if (this.ended) return
+    this.gen++
+    void this.teardown(false)
+  }
+
+  /** Back from the back/forward cache: Join again, for a fresh token and the role as it is now. */
+  pageShow(): void {
+    if (this.ended || this.closed) return
+    this.deps.ui.problem(null)
+    this.deps.ui.phase('prejoin')
   }
 }

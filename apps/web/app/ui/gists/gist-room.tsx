@@ -12,6 +12,7 @@ import {
   micFailure,
   readMicSettings,
   smoothLevel,
+  staleSavedDevice,
   writeMicSettings,
   type InputDevice,
   type MicFailure,
@@ -72,6 +73,14 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
   const session = useRef<GistSession | null>(null)
   const announcer = useRef(createSpeakingAnnouncer())
   const noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  const retryRef = useRef<HTMLButtonElement>(null)
+  const homeRef = useRef<HTMLAnchorElement>(null)
+  const requestRef = useRef<HTMLButtonElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  const wantFocus = useRef<'request' | 'cancel' | null>(null)
+  const firstDeviceList = useRef(true)
+  const shownPhase = useRef(phase)
 
   const announce = useCallback((text: string) => setAnnouncement(text), [])
   const role = view.viewer.role
@@ -93,6 +102,25 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
     const connection = (navigator as Navigator & { connection?: { type?: string; saveData?: boolean } }).connection
     setHint(dataUseHint(connection))
   }, [])
+
+  // Focus never falls to nothing: when the button that was tapped goes away (Join,
+  // Try again), it moves to the room's title once live, or to what to do next.
+  useEffect(() => {
+    // Only on a change: the phase the page opened with (an ended Gist, say) takes no focus.
+    if (shownPhase.current === phase) return
+    shownPhase.current = phase
+    if (document.activeElement && document.activeElement !== document.body) return
+    if (phase === 'live') titleRef.current?.focus()
+    else (retryRef.current ?? homeRef.current)?.focus()
+  }, [phase])
+
+  // Request to speak and Cancel request replace each other: focus follows to the new one.
+  useEffect(() => {
+    const target = wantFocus.current === 'cancel' ? cancelRef.current : wantFocus.current === 'request' ? requestRef.current : null
+    if (!target) return
+    target.focus()
+    wantFocus.current = null
+  }, [controls.request, controls.cancelRequest])
 
   const setMic = (on: boolean) => {
     micRef.current = on
@@ -156,9 +184,13 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
     const s = getSession()
     s.open()
     const onHide = () => s.pageHide()
+    // Back from the back/forward cache: the connection was dropped on the way out.
+    const onShow = (event: PageTransitionEvent) => event.persisted && s.pageShow()
     window.addEventListener('pagehide', onHide)
+    window.addEventListener('pageshow', onShow)
     return () => {
       window.removeEventListener('pagehide', onHide)
+      window.removeEventListener('pageshow', onShow)
       // Leaving by any route (a link, Back) drops the connection, the screen lock and the presence.
       s.dispose()
     }
@@ -294,6 +326,14 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
     setDevices(inputs.filter((d) => d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications').map((d) => ({ deviceId: d.deviceId, label: d.label })))
   }, [])
 
+  // A saved input that was not there when the visit began is forgotten (lib/gist-mic.ts).
+  useEffect(() => {
+    if (devices.length === 0 || !firstDeviceList.current) return
+    firstDeviceList.current = false
+    if (staleSavedDevice(devices, micSettings.deviceId, true)) changeMicSettings({ ...micSettings, deviceId: null })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devices])
+
   // What the member chose last time on this browser.
   useEffect(() => {
     try {
@@ -367,7 +407,10 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
     setProblem(null)
     const res = await gistCall(on ? 'PUT' : 'DELETE', `/${id}/speak-request`)
     if (!res.ok) setProblem(res.message ?? 'That did not work. Try again.')
-    else announce(on ? 'Request sent. The host will see it.' : 'Request withdrawn.')
+    else {
+      wantFocus.current = on ? 'cancel' : 'request'
+      announce(on ? 'Request sent. The host will see it.' : 'Request withdrawn.')
+    }
     await refreshAfterAction()
   }
 
@@ -405,7 +448,9 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
             </span>
           ) : null}
         </div>
-        <h1 className="page-title mt-2">{view.title}</h1>
+        <h1 ref={titleRef} tabIndex={-1} className="page-title mt-2">
+          {view.title}
+        </h1>
         <p className="mt-2 text-sm text-muted">
           Hosted by{' '}
           <Link href={`/u/${view.host.handle}`} className="font-semibold text-ink hover:underline">
@@ -462,7 +507,7 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
           <p role="alert" className="notice notice-danger">
             {problem ?? 'Could not join the Gist.'}
           </p>
-          <button type="button" className="btn btn-primary gist-btn mt-4" onClick={join}>
+          <button ref={retryRef} type="button" className="btn btn-primary gist-btn mt-4" onClick={join}>
             Try again
           </button>
         </section>
@@ -475,7 +520,7 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
             {phase === 'full' ? 'It has all the listeners it can take. Spots open up as people leave.' : 'The host has locked the room, so no new listeners can join.'}
           </p>
           <div className="gist-actions mt-4">
-            <button type="button" className="btn btn-primary gist-btn" onClick={join}>
+            <button ref={retryRef} type="button" className="btn btn-primary gist-btn" onClick={join}>
               Try again
             </button>
             <Link href="/" className="btn btn-secondary gist-btn">
@@ -489,7 +534,7 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
         <section className="square-card gist-section" role="alert">
           <h2 className="section-title">This Gist is open in another tab or device</h2>
           <p className="mt-2 text-sm text-muted">You can only listen in one place at a time. The sound is playing there. To move it here, tap the button.</p>
-          <button type="button" className="btn btn-primary gist-btn mt-4" onClick={join}>
+          <button ref={retryRef} type="button" className="btn btn-primary gist-btn mt-4" onClick={join}>
             Use it here
           </button>
         </section>
@@ -498,7 +543,7 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
       {phase === 'gone' ? (
         <section className="square-card gist-section" role="alert">
           <h2 className="section-title">You are no longer in this Gist</h2>
-          <Link href="/" className="btn btn-primary gist-btn mt-4">
+          <Link ref={homeRef} href="/" className="btn btn-primary gist-btn mt-4">
             Back to Home
           </Link>
         </section>
@@ -510,7 +555,7 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
           <p className="mt-2 text-sm text-muted">
             {view.peakListeners > 0 ? `Up to ${listenerLabel(view.peakListeners)} listened. ` : ''}Thanks for being part of it. Gists are not recorded.
           </p>
-          <Link href="/" className="btn btn-primary gist-btn mt-4">
+          <Link ref={homeRef} href="/" className="btn btn-primary gist-btn mt-4">
             Back to Home
           </Link>
         </section>
@@ -587,13 +632,13 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
               </>
             ) : null}
             {controls.request ? (
-              <button type="button" className="btn btn-primary gist-btn gist-main" onClick={() => speakRequest(true)}>
+              <button ref={requestRef} type="button" className="btn btn-primary gist-btn gist-main" onClick={() => speakRequest(true)}>
                 <HandIcon size={20} />
                 Request to speak
               </button>
             ) : null}
             {controls.cancelRequest ? (
-              <button type="button" className="btn btn-secondary gist-btn gist-main" onClick={() => speakRequest(false)}>
+              <button ref={cancelRef} type="button" className="btn btn-secondary gist-btn gist-main" onClick={() => speakRequest(false)}>
                 Cancel request
               </button>
             ) : null}

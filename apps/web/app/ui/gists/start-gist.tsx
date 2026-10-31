@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { LiveIcon } from '@/app/ui/icons'
 import { CURRENT_GIST_KEY, TITLE_MAX, titleProblem, type GistView } from '@/lib/gists'
 import { gistCall } from './api'
@@ -16,9 +16,15 @@ export function StartGist({ heading = true }: { heading?: boolean }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [current, setCurrent] = useState<string | null>(null)
+  const [hosting, setHosting] = useState<string | null>(null)
+  const backRef = useRef<HTMLAnchorElement>(null)
 
-  // The API has no list of live Gists yet, so a Gist you are in is remembered for this tab.
+  // The API has no list of live Gists yet, so a Gist you are in is remembered for this tab;
+  // a host who lost the tab is told which one is theirs when they try to start another.
   useEffect(() => setCurrent(sessionStorage.getItem(CURRENT_GIST_KEY)), [])
+  useEffect(() => {
+    if (hosting) backRef.current?.focus()
+  }, [hosting])
 
   async function start(event: React.FormEvent) {
     event.preventDefault()
@@ -30,6 +36,7 @@ export function StartGist({ heading = true }: { heading?: boolean }) {
     if (res.ok) return router.push(`/gists/${res.data.id}`)
     setBusy(false)
     setError(res.message ?? 'Could not start the Gist. Try again.')
+    if (res.code === 'already_hosting' && res.gistId) setHosting(res.gistId)
   }
 
   return (
@@ -69,10 +76,10 @@ export function StartGist({ heading = true }: { heading?: boolean }) {
           {error}
         </p>
       ) : null}
-      {current ? (
+      {hosting || current ? (
         <p className="mt-3 text-sm">
-          <Link href={`/gists/${current}`} className="font-semibold text-accent-strong hover:underline">
-            Return to the Gist you are in
+          <Link ref={backRef} href={`/gists/${hosting ?? current}`} className="font-semibold text-accent-strong hover:underline">
+            {hosting ? 'Return to your live Gist' : 'Return to the Gist you are in'}
           </Link>
         </p>
       ) : null}

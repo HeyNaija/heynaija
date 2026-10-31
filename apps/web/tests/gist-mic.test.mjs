@@ -12,6 +12,7 @@ import {
   readMicSettings,
   rmsLevel,
   smoothLevel,
+  staleSavedDevice,
   writeMicSettings,
 } from '../lib/gist-mic.ts'
 
@@ -123,4 +124,15 @@ test('a microphone stopped by Mute is brought back by Unmute, or restarted when 
   const stopped = { appliedKey: 'a', hasPublication: true, isMuted: true, wantOn: true }
   assert.equal(micPlan({ ...stopped, key: 'a' }), 'unmute')
   assert.equal(micPlan({ ...stopped, key: 'b' }), 'restart')
+})
+
+test('a saved input missing when the visit begins is forgotten; one unplugged during the visit is kept', () => {
+  // First full list of the visit: the saved one is not there, so it is long gone.
+  assert.equal(staleSavedDevice(devs('a', 'b'), 'gone', true), true)
+  // Unplugged later in the visit: kept, so plugging it back in picks it up.
+  assert.equal(staleSavedDevice(devs('a', 'b'), 'gone', false), false)
+  // Still there, nothing saved, or no list yet (before the microphone is allowed): nothing to forget.
+  assert.equal(staleSavedDevice(devs('a', 'b'), 'b', true), false)
+  assert.equal(staleSavedDevice(devs('a'), null, true), false)
+  assert.equal(staleSavedDevice([], 'gone', true), false)
 })
