@@ -84,6 +84,12 @@ export class GistsController {
     return answer(req, () => this.gists.create(req.member, input))
   }
 
+  /** The live Gists the caller may see, newest first: the Live now list. */
+  @Get('live')
+  async live(@Req() req: AuthedRequest) {
+    return { items: await answer(req, () => this.gists.live(req.member)) }
+  }
+
   @Get(':id')
   get(@Req() req: AuthedRequest, @Param('id') id: string) {
     return answer(req, () => this.gists.get(req.member, id))

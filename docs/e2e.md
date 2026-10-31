@@ -84,7 +84,10 @@ pnpm e2e posting
 ```
 
 That is a file (part of its name will do, and several work), or `-g "<title>"`,
-or `--last-failed`. Outside CI, `pnpm e2e` with nothing named refuses: the whole
+or `--last-failed`. A name only ever matches a spec file's own name, never the
+folders above `tests/`, so it picks the same files in any checkout or worktree
+([`e2e/lib/cli-args.ts`](../e2e/lib/cli-args.ts)); a path such as
+`tests/posting.spec.ts` works too. Outside CI, `pnpm e2e` with nothing named refuses: the whole
 suite keeps every core busy for many minutes, and CI runs it on every pull
 request. To run it all here anyway:
 

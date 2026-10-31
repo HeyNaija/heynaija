@@ -8,6 +8,7 @@ import {
   communityMemberships,
   follows,
   gistMembers,
+  gistReportParticipants,
   gists,
   governanceAuditLog,
   ideas,
@@ -702,4 +703,29 @@ test('Gists: their place in other Gists goes, the Gists they hosted go with ever
   assert.equal(await count(gists, eq(gists.id, zaras!.id)), 1, 'another member’s Gist stays')
   const left = await db.select().from(gistMembers).where(eq(gistMembers.gistId, zaras!.id))
   assert.deepEqual(left.map((r) => [r.memberId, r.roleChangedBy]).sort(), [[yemi, xena], [zara, null]].sort(), 'a role change naming her stays, pointing at the tombstone')
+})
+
+test('Gists: one they hosted that was reported stays as evidence, with the report’s record of who was in it', async () => {
+  const [reported, plain] = await db
+    .insert(gists)
+    .values([{ hostId: xena, title: 'Reported room', status: 'ended' }, { hostId: xena, title: 'Quiet room', status: 'ended' }])
+    .returning({ id: gists.id })
+  await db.insert(gistMembers).values([
+    { gistId: reported!.id, memberId: xena, role: 'host' },
+    { gistId: reported!.id, memberId: yemi },
+  ])
+  const [report] = await db.insert(reports).values({ reporterId: yemi, gistId: reported!.id, reason: 'harassment' }).returning({ id: reports.id })
+  await db.insert(gistReportParticipants).values([
+    { reportId: report!.id, memberId: xena, role: 'host' },
+    { reportId: report!.id, memberId: yemi, role: 'listener' },
+  ])
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  assert.equal(await count(gists, eq(gists.id, reported!.id)), 1, 'the reported Gist stays, its host now the tombstone')
+  assert.equal(await count(gists, eq(gists.id, plain!.id)), 0)
+  assert.equal(await count(gistMembers, eq(gistMembers.gistId, reported!.id)), 0, 'places in it go; the report keeps its own record')
+  assert.equal(await count(gistReportParticipants, eq(gistReportParticipants.reportId, report!.id)), 2)
+  assert.equal(await count(reports, eq(reports.id, report!.id)), 1)
 })

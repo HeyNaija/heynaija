@@ -349,10 +349,15 @@ export class AccountDeletionService {
       // Gists (docs/adr/0017). One they hosted is nothing without its host and title, so
       // it goes with everyone's place in it; it has already ended if it was live
       // (GistsService.reconcile disconnects an inactive member, then ends a Gist whose
-      // host has been gone two minutes). Their place in other people's Gists goes;
-      // `role_changed_by` and `removed_by` naming them stay, pointing at the tombstone.
+      // host has been gone two minutes). A Gist someone reported, or a moderator ended,
+      // stays as evidence, like a reported post: its title and host (the tombstone); who
+      // was in it is the report's own record (gist_report_participants), which stays.
+      // Their place in other people's Gists goes; `role_changed_by` and `removed_by`
+      // naming them stay, pointing at the tombstone.
       await run(sql`delete from gist_members where gist_id in (select id from gists where host_id = ${memberId})`)
-      await run(sql`delete from gists where host_id = ${memberId}`)
+      await run(sql`delete from gists where host_id = ${memberId}
+        and id not in (select gist_id from reports where gist_id is not null)
+        and id not in (select gist_id from moderation_actions where gist_id is not null)`)
       await run(sql`delete from gist_members where member_id = ${memberId}`)
 
       await run(sql`delete from notifications where recipient_id = ${memberId} or actor_id = ${memberId}`)

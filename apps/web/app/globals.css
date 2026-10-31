@@ -2115,6 +2115,11 @@ a.result-row:hover { color: var(--accent-strong); }
 .gist-live-dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--danger); }
 .gist-elapsed { margin-left: 4px; color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: 0; }
 .gist-count { max-width: 100%; }
+/* Live now on Home: one 52px link per live Gist, its title and who hosts it. */
+.gist-live-list { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.gist-live-item { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; min-height: 52px; padding: 6px 8px; border-radius: var(--r-control); }
+.gist-live-item:hover { background: var(--panel); }
+.gist-live-item-title { min-width: 0; flex: 1 1 12rem; overflow-wrap: anywhere; font-size: 15px; font-weight: 600; }
 .gist-stage { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px 8px; margin-top: 12px; }
 .gist-tile { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 6px; padding: 8px 4px; border-radius: var(--r-control); text-align: center; }
 .gist-avatar { display: inline-flex; padding: 4px; border-radius: 9999px; box-shadow: 0 0 0 3px transparent; }

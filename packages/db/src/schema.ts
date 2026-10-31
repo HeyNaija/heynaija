@@ -462,6 +462,8 @@ export const reports = pgTable(
     reporterId: uuid('reporter_id').references(() => members.id),
     postId: uuid('post_id').references(() => posts.id),
     memberId: uuid('member_id').references(() => members.id),
+    // A report about a Gist (docs/adr/0017): who was in it is in gist_report_participants.
+    gistId: uuid('gist_id').references(() => gists.id),
     reason: text('reason', { enum: REPORT_REASONS }).notNull(),
     details: text('details').notNull().default(''),
     status: text('status', { enum: ['open', 'actioned', 'dismissed'] }).notNull().default('open'),
@@ -482,6 +484,7 @@ export const MODERATION_ACTIONS = [
   'clear_profile',
   'grant_community_moderator',
   'revoke_community_moderator',
+  'end_gist',
 ] as const
 
 // Append-only record of every moderator decision: who did what, to what, and why.
@@ -496,6 +499,8 @@ export const moderationActions = pgTable(
     postId: uuid('post_id').references(() => posts.id),
     memberId: uuid('member_id').references(() => members.id),
     reportId: uuid('report_id').references(() => reports.id),
+    // Ending a reported Gist: the Gist concerned.
+    gistId: uuid('gist_id').references(() => gists.id),
     // Role changes: the community concerned.
     communityId: uuid('community_id').references(() => communities.id),
     note: text('note').notNull().default(''),
@@ -1051,5 +1056,25 @@ export const gistMembers = pgTable(
     primaryKey({ columns: [t.gistId, t.memberId] }),
     index('gist_members_member_idx').on(t.memberId),
     check('gist_members_role_check', sql.raw(`role in (${GIST_ROLES.map((value) => `'${value}'`).join(', ')})`)),
+  ],
+)
+
+// Who was in a Gist when a member reported it (docs/adr/0017): the report's
+// evidence, since a Gist keeps no audio. Members, not handles, so an erased
+// account shows as its tombstone.
+export const gistReportParticipants = pgTable(
+  'gist_report_participants',
+  {
+    reportId: uuid('report_id')
+      .notNull()
+      .references(() => reports.id),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    role: text('role', { enum: GIST_ROLES }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.reportId, t.memberId] }),
+    check('gist_report_participants_role_check', sql.raw(`role in (${GIST_ROLES.map((value) => `'${value}'`).join(', ')})`)),
   ],
 )
