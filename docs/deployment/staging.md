@@ -355,6 +355,27 @@ sudo install -m 600 heynaija-origin-key.pem /etc/ssl/cloudflare/
    To roll back by running the workflow on a tag, allow tags too
    (`-f name='*' -f type=tag`). `ssh-deploy.sh` still deploys only commits on
    `staging`.
+5. **Only `staging` goes to `main`.** Make `staging` the default branch, so pull
+   requests open against it:
+
+   ```bash
+   gh api -X PATCH repos/HeyNaija/heynaija -f default_branch=staging
+   ```
+
+   `.github/workflows/main-takes-staging.yml` moves a pull request into `main`
+   from any other branch to `staging`, and fails where it cannot. Require its
+   check on `main` (15368 is GitHub Actions; admins can still bypass, for a fix
+   that cannot wait for staging):
+
+   ```bash
+   gh api repos/HeyNaija/heynaija/rulesets --input - <<'EOF'
+   {"name": "Main takes staging only", "target": "branch", "enforcement": "active",
+    "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+    "bypass_actors": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}],
+    "rules": [{"type": "required_status_checks", "parameters": {"strict_required_status_checks_policy": false,
+      "required_status_checks": [{"context": "Only staging goes to main", "integration_id": 15368}]}}]}
+   EOF
+   ```
 
 ## 5. First deploy
 
