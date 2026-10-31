@@ -41,6 +41,9 @@ export const LIMITS = {
   gistJoinBurst: [{ max: 120, windowMs: MINUTE }],
   gistRequest: [{ max: 10, windowMs: MINUTE }],
   gistSync: [{ max: 20, windowMs: MINUTE }],
+  // Age verification: starting a Didit check costs money, and the status poll calls Didit while a result is open.
+  ageVerificationStart: [{ max: 5, windowMs: HOUR }],
+  ageVerificationStatus: [{ max: 20, windowMs: MINUTE }],
 } satisfies Record<string, { max: number; windowMs: number }[]>
 
 export type LimitKind = keyof typeof LIMITS

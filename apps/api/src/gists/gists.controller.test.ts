@@ -57,6 +57,14 @@ test('/v1/me shows the Gists feature only to allow-listed members, and only whil
   assert.equal(gistsFeatureFor(env({ CALLS_MEMBERS: ['ada'], CALLS_GISTS_ENABLED: false }), { handle: 'ada' }), false)
 })
 
+test('/v1/me with the age gate in force shows Gists to verified adults only, whatever the allow-list says', () => {
+  const on = env({ CALLS_MEMBERS: ['ada'] })
+  assert.equal(gistsFeatureFor(on, { handle: 'bayo' }, true), true)
+  assert.equal(gistsFeatureFor(on, { handle: 'ada' }, false), false)
+  assert.equal(gistsFeatureFor(on, { handle: 'ada' }, undefined), true)
+  assert.equal(gistsFeatureFor(env({ CALLS_MEMBERS: [], CALLS_GISTS_ENABLED: false }), { handle: 'bayo' }, true), false)
+})
+
 test('/sync is rate-limited', async () => {
   let calls = 0
   const service = { sync: async () => ({ role: 'listener', n: ++calls }) }

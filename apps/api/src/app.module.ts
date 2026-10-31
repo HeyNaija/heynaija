@@ -1,5 +1,9 @@
 import { createDb, type Db } from '@heynaija/db'
 import { Controller, Get, Module } from '@nestjs/common'
+import { AgeVerificationController, DiditWebhookController } from './age-verification/age-verification.controller.js'
+import { AgeVerificationService, DIDIT_CONFIG } from './age-verification/age-verification.service.js'
+import { diditConfig } from './age-verification/config.js'
+import { DIDIT_CLIENT, HttpDiditClient } from './age-verification/didit-client.js'
 import { AuthController } from './auth/auth.controller.js'
 import { AuthService } from './auth/auth.service.js'
 import { AUTH_SESSION_PROVIDER } from './auth/auth-session.provider.js'
@@ -72,7 +76,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController, FlagsController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController, FlagsController, AgeVerificationController, DiditWebhookController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -167,6 +171,15 @@ class HealthController {
       }),
       inject: [ENV],
     },
+    // Age verification with Didit (docs/adr/0018): without all three DIDIT_* settings
+    // there is no config and no client, and nothing is offered.
+    { provide: DIDIT_CONFIG, useFactory: (env: Env) => diditConfig(env), inject: [ENV] },
+    {
+      provide: DIDIT_CLIENT,
+      useFactory: (config: ReturnType<typeof diditConfig>) => (config ? new HttpDiditClient(config) : null),
+      inject: [DIDIT_CONFIG],
+    },
+    AgeVerificationService,
     GistsService,
     GistsEnabledGuard,
     GistReconciler,

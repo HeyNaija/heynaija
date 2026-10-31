@@ -24,3 +24,22 @@ test('a community-only Gist needs community membership', () => {
   assert.equal(canJoinGist(ada, closed, { ...allow, inCommunity: false }), false)
   assert.equal(canJoinGist(ada, closed, { ...allow, inCommunity: true }), true)
 })
+
+test('with the age gate in force a verified adult may join and host, and the beta allow-list no longer counts', () => {
+  const none = { callsMembers: [] }
+  assert.equal(canHostGist({ ...ada, ageVerified: true }, none), true)
+  assert.equal(canJoinGist({ ...ada, ageVerified: true }, open, { ...none, inCommunity: false }), true)
+  // On the allow-list but not verified: no.
+  assert.equal(canHostGist({ ...ada, ageVerified: false }, allow), false)
+  assert.equal(canJoinGist({ ...ada, ageVerified: false }, open, { ...allow, inCommunity: false }), false)
+})
+
+test('with the age gate not in force (undefined) the allow-list rule is exactly as before', () => {
+  assert.equal(canHostGist({ ...ada, ageVerified: undefined }, allow), true)
+  assert.equal(canHostGist({ ...ada, ageVerified: undefined }, { callsMembers: [] }), false)
+})
+
+test('a suspended member is refused even when verified', () => {
+  assert.equal(canHostGist({ ...ada, active: false, ageVerified: true }, allow), false)
+  assert.equal(canJoinGist({ ...ada, active: false, ageVerified: true }, open, { ...allow, inCommunity: false }), false)
+})

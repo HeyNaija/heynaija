@@ -22,6 +22,7 @@ import type { Env } from '../env.js'
 import { FeatureFlags } from '../flags/feature-flags.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
+import { AgeVerificationService } from '../age-verification/age-verification.service.js'
 import { gistsFeatureFor } from '../gists/gists-enabled.guard.js'
 import { signupAgeDecision } from '../governance/age.js'
 import { GovernanceService } from '../governance/governance.service.js'
@@ -89,15 +90,17 @@ export class AuthController {
     @Inject(MembersService) private readonly members: MembersService,
     @Inject(GovernanceService) private readonly governance: GovernanceService,
     @Inject(FeatureFlags) private readonly flags: FeatureFlags,
+    @Inject(AgeVerificationService) private readonly age: Pick<AgeVerificationService, 'adultGate'> | null = null,
   ) {}
 
   @Get('v1/me')
   @UseGuards(SessionGuard)
   async me(@Req() req: AuthedRequest) {
-    const [scope, unread, features, [row]] = await Promise.all([
+    const [scope, unread, features, ageGate, [row]] = await Promise.all([
       this.moderation.scope(req.member.id),
       this.notifications.unreadCount(req.member.id),
       this.flags.all(req.member.id),
+      this.age?.adultGate(req.member.id),
       this.db
         .select({
           avatarMediaId: members.avatarMediaId,
@@ -123,7 +126,7 @@ export class AuthController {
       onboarded: !features.onboarding || Boolean(row?.onboardedAt),
       // What is switched on for this member: the database-backed flags (docs/feature-flags.md),
       // plus gists, still switched by env (docs/adr/0017) until it moves onto the flags.
-      features: { ...features, gists: gistsFeatureFor(this.env, req.member) },
+      features: { ...features, gists: gistsFeatureFor(this.env, req.member, ageGate) },
     }
   }
 

@@ -35,4 +35,7 @@ export class GistsEnabledGuard implements CanActivate {
 export const gistsFeatureFor = (
   env: Parameters<typeof gistsEnabled>[0] & Pick<Env, 'CALLS_MEMBERS'>,
   member: { handle: string },
-): boolean => gistsEnabled(env) && canHostGist({ id: '', handle: member.handle, active: true }, { callsMembers: env.CALLS_MEMBERS })
+  /** The member's age gate (AgeVerificationService.adultGate): undefined while the flag is off for them. */
+  ageVerified?: boolean,
+): boolean =>
+  gistsEnabled(env) && canHostGist({ id: '', handle: member.handle, active: true, ageVerified }, { callsMembers: env.CALLS_MEMBERS })

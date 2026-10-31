@@ -74,6 +74,21 @@ test('only an eligible member can host, and a failed room leaves no live Gist be
   assert.equal(await codeOf(service.create(as('bayo'), { title: 'Hi again' })), 'ok')
 })
 
+test('with the age gate in force the age result decides who hosts and joins, not the allow-list', async () => {
+  const verified = new Set([id.outsider])
+  const gated = new GistsService(db, rooms, config, new MemoryRateLimiter(), { adultGate: async (memberId) => verified.has(memberId) })
+  // A verified adult who is not on the allow-list may host and join.
+  const hosted = await gated.create(as('outsider'), { title: 'Verified' })
+  assert.equal(await codeOf(gated.join(as('outsider'), hosted.id)), 'ok')
+  // Someone on the allow-list but not verified may not.
+  assert.equal(await codeOf(gated.create(as('bayo'), { title: 'Hi' })), 'not_found')
+  assert.equal(await codeOf(gated.join(as('bayo'), hosted.id)), 'not_found')
+  // The flag off for a member (undefined) leaves the allow-list in charge.
+  const ungated = new GistsService(db, rooms, config, new MemoryRateLimiter(), { adultGate: async () => undefined })
+  assert.equal(await codeOf(ungated.create(as('bayo'), { title: 'Allow-listed' })), 'ok')
+  assert.equal(await codeOf(ungated.create(as('outsider'), { title: 'Not' })), 'not_found')
+})
+
 test('a host can have one live Gist at a time, even when two are started at once', async () => {
   assert.equal(await codeOf(service.create(as('ada'), { title: 'Second' })), 'already_hosting')
   const both = await Promise.all([

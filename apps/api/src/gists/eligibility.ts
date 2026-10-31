@@ -1,27 +1,41 @@
 /**
  * Who may join or host a Gist (docs/adr/0017, sections 4a and 5).
  *
- * TEMPORARY GATE. The real rule is "signed in, 18 or over, age-verified, opted in
- * to calls, in good standing", and none of age verification (ADR 0006), the
- * opt-in or direct messages exist yet. Until they do, the only gate is: signed in
- * (the caller has a session) AND the member's handle is on the CALLS_MEMBERS
- * beta allow-list, and the account is active.
+ * The real rule is "signed in, 18 or over, age-verified, opted in to calls, in good
+ * standing". Age verification (ADR 0018) is built behind the `ageVerification`
+ * flag; the opt-in and direct messages do not exist yet. So the gate is: signed in
+ * (the caller has a session), the account is active, and `isAgeVerifiedAdult`:
+ *
+ *  - flag on for the member: a verified result is on record (`ageVerified`);
+ *  - flag off for the member (`ageVerified` undefined): the member's handle is on
+ *    the CALLS_MEMBERS beta allow-list, exactly as before.
  *
  * Every eligibility decision in the Gists code goes through `canJoinGist` and
- * `canHostGist`, and both end in `isCallsMember`. When the real gate exists,
- * replace the body of `isCallsMember` (and give it the member data it needs);
- * nothing else in the module should change. Do not add a second check elsewhere.
+ * `canHostGist`, and both end in `isAgeVerifiedAdult`. Do not add a second check
+ * elsewhere.
  */
 
-export type GistViewer = { id: string; handle: string; active: boolean }
+export type GistViewer = {
+  id: string
+  handle: string
+  active: boolean
+  /**
+   * Whether a verified age result is on record, when the age-verification flag is on
+   * for this member; undefined when it is off, which keeps the allow-list rule.
+   * Whoever builds the viewer reads it fresh (AgeVerificationService.adultGate).
+   */
+  ageVerified?: boolean | undefined
+}
 
 export type GistFacts = { status: 'scheduled' | 'live' | 'ended'; communityId: string | null }
 
 export type EligibilityConfig = { callsMembers: readonly string[] }
 
 /** The one place that decides whether a member may take part in calls at all. */
-function isCallsMember(viewer: GistViewer, config: EligibilityConfig): boolean {
-  return viewer.active && config.callsMembers.includes(viewer.handle.toLowerCase())
+export function isAgeVerifiedAdult(viewer: GistViewer, config: EligibilityConfig): boolean {
+  if (!viewer.active) return false
+  if (viewer.ageVerified !== undefined) return viewer.ageVerified
+  return config.callsMembers.includes(viewer.handle.toLowerCase())
 }
 
 /**
@@ -31,11 +45,11 @@ function isCallsMember(viewer: GistViewer, config: EligibilityConfig): boolean {
  * service against live data.
  */
 export function canJoinGist(viewer: GistViewer, gist: GistFacts, context: EligibilityConfig & { inCommunity: boolean }): boolean {
-  if (!isCallsMember(viewer, context)) return false
+  if (!isAgeVerifiedAdult(viewer, context)) return false
   return gist.communityId === null || context.inCommunity
 }
 
 /** May this viewer host a Gist, be made a co-host, or be given the microphone? */
 export function canHostGist(viewer: GistViewer, config: EligibilityConfig): boolean {
-  return isCallsMember(viewer, config)
+  return isAgeVerifiedAdult(viewer, config)
 }

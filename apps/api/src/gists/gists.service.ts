@@ -1,6 +1,7 @@
 import { type Db, GIST_ROLES, blocks, communities, communityMemberships, gistMembers, gists, members } from '@heynaija/db'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { and, asc, count, eq, inArray, isNotNull, isNull, lt, ne, notInArray, or, sql } from 'drizzle-orm'
+import { AgeVerificationService } from '../age-verification/age-verification.service.js'
 import { RateLimiter } from '../rate-limit.js'
 import { DB } from '../tokens.js'
 import { type GistViewer, canHostGist, canJoinGist } from './eligibility.js'
@@ -128,6 +129,8 @@ export class GistsService {
     @Inject(ROOM_SERVICE) private readonly rooms: RoomService,
     @Inject(GISTS_CONFIG) private readonly config: GistsConfig,
     @Inject(RateLimiter) private readonly limits: RateLimiter,
+    /** Age verification (ADR 0018); without it the CALLS_MEMBERS allow-list is the only rule. */
+    @Inject(AgeVerificationService) private readonly age: Pick<AgeVerificationService, 'adultGate'> | null = null,
   ) {}
 
   // ---- reading -------------------------------------------------------------
@@ -592,7 +595,9 @@ export class GistsService {
 
   private async viewer(q: Q, memberId: string): Promise<GistViewer | undefined> {
     const [row] = await q.select({ id: members.id, handle: members.handle, active: members.active }).from(members).where(eq(members.id, memberId))
-    return row
+    if (!row) return undefined
+    // Read live on every call, outside any transaction `q` belongs to. Undefined while the flag is off for this member.
+    return { ...row, ageVerified: await this.age?.adultGate(memberId) }
   }
 
   private async inCommunity(q: Q, memberId: string, communityId: string): Promise<boolean> {
