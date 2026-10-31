@@ -79,8 +79,8 @@ use.**
 **One dedicated small VPS, one node, no Redis at first.**
 
 **Built for staging (31 October 2026).** `infra/livekit/` and
-[`docs/deployment/livekit.md`](../deployment/livekit.md): a Contabo Cloud VPS 10 in
-the EU, `rtc-staging.heynaija.ng` and `turn-staging.heynaija.ng` (DNS only),
+[`docs/deployment/livekit.md`](../deployment/livekit.md): a Contabo Cloud VPS 4 in
+the EU (4 vCPU, 8 GB RAM, a 200 Mbit/s port), `rtc-staging.heynaija.ng` and `turn-staging.heynaija.ng` (DNS only),
 LiveKit v1.13.11 and Caddy with its layer-4 module, both on the host network. It
 differs from the sketches below in two ways, both noted where they apply: TURN
 runs on 443 behind Caddy, and the webhook comes through Cloudflare.

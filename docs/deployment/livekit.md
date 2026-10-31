@@ -27,12 +27,14 @@ post it, and the API checks LiveKit's signature as well.
 
 ## 1. Buy the server
 
-**Contabo Cloud VPS 10** (about 4 vCPU, 8 GB RAM, a 200 Mbit/s port and 32 TB of
-outbound traffic; check the order page, the terms change), region **European
-Union**, image **Ubuntu 24.04**, with your SSH key. No add-ons. For staging this
-is far more than needed: the ADR's estimate for 200 listeners and three speakers
-is about 30 Mbit/s. Where production goes is still open (ADR 0017 open question 2:
-measure from Lagos first).
+**Contabo Cloud VPS 4** (4 vCPU, 8 GB RAM, 100 GB SSD, a 200 Mbit/s port and
+traffic Contabo calls unlimited under its fair-use terms; about €4.40 to €5.50 a
+month, check the order page), region **European Union**, image **Ubuntu 24.04**,
+with your SSH key. No add-ons. For staging this is far more than needed: the ADR's
+estimate for 200 listeners and three speakers is about 30 Mbit/s. Production stays
+on netcup; where its LiveKit runs is ADR 0017 open question 2. Both images in
+`infra/livekit/compose.yml` are published for amd64 and arm64, so the same setup
+runs on netcup's ARM servers.
 
 Note its IPv4 address (and IPv6, if it has one).
 
