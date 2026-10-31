@@ -818,7 +818,7 @@
       "status": "partial",
       "availability": "not_live",
       "evidence": [
-        "packages/db/drizzle/0031_community_photos.sql",
+        "packages/db/drizzle/0030_community_photos.sql",
         "packages/db/src/schema.ts",
         "apps/api/src/media/media.service.ts",
         "apps/api/src/media/media.controller.ts",
