@@ -990,6 +990,7 @@ export const gistMembers = pgTable(
     index('gist_members_member_idx').on(t.memberId),
     check('gist_members_role_check', sql.raw(`role in (${GIST_ROLES.map((value) => `'${value}'`).join(', ')})`)),
   ],
+)
 
 // Runtime feature flags (docs/feature-flags.md). The flags themselves are defined
 // in code (apps/api/src/flags/registry.ts); this table holds only the overrides an
