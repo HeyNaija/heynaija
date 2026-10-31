@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Suspense } from 'react'
+import { AgeVerificationPanel } from '@/app/ui/age-verification-panel'
 import { AvatarUploader } from '@/app/ui/avatar-uploader'
 import { IdentityBadge } from '@/app/ui/identity-badge'
 import { InstallApp } from '@/app/ui/install-app'
@@ -71,6 +72,9 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
           <GovernanceStanding />
         </Suspense>
       </section>
+      <Suspense fallback={null}>
+        <AgeVerificationSection />
+      </Suspense>
       <section className="content-panel settings-section" aria-labelledby="data-heading">
         <div>
           <h2 id="data-heading" className="section-title">Your data</h2>
@@ -205,6 +209,24 @@ async function GovernanceStanding() {
         </dd>
       </div>
     </dl>
+  )
+}
+
+/** "Verify your age": only for a member the `ageVerification` flag is on for (`me.features`), so otherwise there is no trace of it. */
+async function AgeVerificationSection() {
+  const viewer = await getViewer()
+  if (viewer.state !== 'member' || !viewer.me.features.ageVerification) return null
+  return (
+    <section className="content-panel settings-section" aria-labelledby="age-verification-heading">
+      <div>
+        <h2 id="age-verification-heading" className="section-title">Verify your age</h2>
+        <p className="field-hint mt-1">
+          Optional. Prove you are 18 or older with a short check run by Didit. HeyNaija keeps only the result, never your
+          document or your face.
+        </p>
+      </div>
+      <AgeVerificationPanel />
+    </section>
   )
 }
 

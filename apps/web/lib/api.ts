@@ -1,6 +1,7 @@
 import 'server-only'
 import { headers } from 'next/headers'
 import { cache } from 'react'
+import type { AgeVerificationState } from './age-verification'
 import { getApiAuthHeaders, hasSessionCredentials } from './auth/server'
 import type { GistView } from './gists'
 import type { NotificationPreferences } from './notification-preferences'
@@ -643,5 +644,12 @@ export type GovernanceStatus = {
 export async function getGovernanceStatus(): Promise<GovernanceStatus | null> {
   const res = await api('/v1/me/governance')
   if (!res.ok) return null
+  return res.json()
+}
+
+/** The member's own age check (Settings). Null while the feature is off for them (the API answers 404), and on any error. */
+export async function getAgeVerification(): Promise<AgeVerificationState | null> {
+  const res = await api('/v1/me/age-verification', { cache: 'no-store' }).catch(() => null)
+  if (!res?.ok) return null
   return res.json()
 }

@@ -228,6 +228,21 @@ export async function setMute(formData: FormData): Promise<void> {
   return setRelation(formData, 'mute')
 }
 
+/**
+ * "Verify your age": asks the API for a Didit session and sends the browser to its
+ * hosted page. Didit sends the member back to /settings/age-verification, which
+ * reads the result from the API; nothing from the return address is trusted.
+ */
+export async function startAgeVerification(): Promise<void> {
+  const res = await api('/v1/me/age-verification/session', { method: 'POST' })
+  if (res.status === 401) redirect('/login')
+  const body = res.ok ? ((await res.json().catch(() => null)) as { url?: string | null } | null) : null
+  // The API only ever returns Didit's https address; check again before leaving the site.
+  if (body?.url && /^https:\/\//.test(body.url)) redirect(body.url)
+  if (body && !body.url) redirect('/settings/age-verification')
+  redirect(`/settings/age-verification?problem=${res.status === 429 ? 'busy' : 'failed'}`)
+}
+
 export type FormState = { error?: string; done?: boolean }
 
 export async function updateProfile(_prev: FormState, formData: FormData): Promise<FormState> {
