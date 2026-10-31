@@ -2144,3 +2144,22 @@ a.result-row:hover { color: var(--accent-strong); }
 @keyframes gist-ring { 0%, 100% { box-shadow: 0 0 0 3px var(--accent); } 50% { box-shadow: 0 0 0 7px var(--accent-soft); } }
 @keyframes gist-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .gist-mic-state { padding: 0 6px; border-radius: var(--r-chip); background: color-mix(in srgb, currentColor 14%, transparent); font-size: 12px; font-weight: 700; }
+
+/* 1:1 calls (docs/adr/0017 stage 1). Existing tokens only. */
+.call-card { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 18px; text-align: center; }
+.call-avatar { display: inline-flex; padding: 4px; border-radius: 9999px; box-shadow: 0 0 0 3px transparent; }
+.call-avatar.is-ringing { box-shadow: 0 0 0 3px var(--accent); }
+.call-name { overflow-wrap: anywhere; }
+.call-state { min-height: 44px; }
+.call-timer { font-variant-numeric: tabular-nums; }
+.call-card .gist-meter { max-width: 220px; }
+.incoming-call-wrap { position: fixed; inset-inline: 0; top: 0; z-index: 60; display: flex; justify-content: center; padding: 12px 12px 0; padding-top: calc(12px + env(safe-area-inset-top, 0px)); pointer-events: none; }
+.incoming-call { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 420px; padding: 14px; border: 1px solid var(--line-strong); background: var(--surface); box-shadow: var(--shadow-pop); pointer-events: auto; }
+.incoming-call-who { display: flex; align-items: center; gap: 12px; }
+.incoming-call-actions { display: flex; gap: 8px; }
+.incoming-call-actions .btn { flex: 1 1 0; min-width: 0; min-height: var(--touch-target); }
+.incoming-call-error { position: fixed; inset-inline: 12px; top: 12px; z-index: 60; }
+.call-button-error { margin-top: 6px; }
+@media (prefers-reduced-motion: no-preference) {
+  .call-avatar.is-ringing { animation: gist-ring 1.4s ease-in-out infinite; }
+}

@@ -21,6 +21,7 @@ import { z } from 'zod'
 import type { Env } from '../env.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
+import { callsFeatureFor } from '../calls/calls-enabled.guard.js'
 import { gistsFeatureFor } from '../gists/gists-enabled.guard.js'
 import { signupAgeDecision } from '../governance/age.js'
 import { GovernanceService } from '../governance/governance.service.js'
@@ -118,7 +119,7 @@ export class AuthController {
       // home page sends them to /welcome until then.
       onboarded: Boolean(row?.onboardedAt),
       // Switches the web app may show this member (docs/adr/0017); false when off.
-      features: { gists: gistsFeatureFor(this.env, req.member) },
+      features: { gists: gistsFeatureFor(this.env, req.member), calls: callsFeatureFor(this.env, req.member) },
     }
   }
 

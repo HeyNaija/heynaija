@@ -5,9 +5,14 @@
 /** `gistId` comes only with `already_hosting`: the caller's own live Gist. */
 export type Reply<T> = { ok: true; status: number; data: T } | { ok: false; status: number; code?: string; message?: string; gistId?: string }
 
-export async function gistCall<T = undefined>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<Reply<T>> {
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+
+export const gistCall = <T = undefined>(method: Method, path: string, body?: unknown) => apiCall<T>(method, `/v1/gists${path}`, body)
+
+/** The same call for any API path (1:1 calls use it too). */
+export async function apiCall<T = undefined>(method: Method, path: string, body?: unknown): Promise<Reply<T>> {
   try {
-    const res = await fetch(`/api/v1/gists${path}`, {
+    const res = await fetch(`/api${path}`, {
       method,
       headers: body === undefined ? undefined : { 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),

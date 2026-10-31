@@ -39,6 +39,16 @@ export const LIMITS = {
   gistJoinBurst: [{ max: 120, windowMs: MINUTE }],
   gistRequest: [{ max: 10, windowMs: MINUTE }],
   gistSync: [{ max: 20, windowMs: MINUTE }],
+  // 1:1 calls (docs/adr/0017 section 5): attempts per caller per hour, and per
+  // caller-and-recipient pair so one person cannot be rung over and over.
+  callStart: [
+    { max: 6, windowMs: 10 * MINUTE },
+    { max: 20, windowMs: HOUR },
+  ],
+  callPair: [{ max: 5, windowMs: HOUR }],
+  // Answering, declining, ending, tokens (reconnects), polling for an incoming call.
+  callAction: [{ max: 60, windowMs: MINUTE }],
+  callPoll: [{ max: 40, windowMs: MINUTE }],
 } satisfies Record<string, { max: number; windowMs: number }[]>
 
 export type LimitKind = keyof typeof LIMITS

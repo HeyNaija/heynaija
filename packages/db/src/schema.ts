@@ -55,6 +55,8 @@ export const members = pgTable(
     // When a notification email was last sent to them. The next one waits a while
     // after it, so a steady trickle of activity is not a steady trickle of mail.
     lastNotificationEmailAt: ts('last_notification_email_at'),
+    // The "Allow calls" switch (docs/adr/0017 section 5). Off until the member turns it on.
+    allowCalls: boolean('allow_calls').notNull().default(false),
     // The one of their own top-level posts they keep at the top of their profile.
     // Shown only while it is live; a post removed for good takes the pin with it.
     pinnedPostId: uuid('pinned_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
@@ -988,5 +990,44 @@ export const gistMembers = pgTable(
     primaryKey({ columns: [t.gistId, t.memberId] }),
     index('gist_members_member_idx').on(t.memberId),
     check('gist_members_role_check', sql.raw(`role in (${GIST_ROLES.map((value) => `'${value}'`).join(', ')})`)),
+  ],
+)
+
+export const CALL_STATUSES = ['ringing', 'active', 'ended', 'missed', 'declined'] as const
+
+// A 1:1 voice call (docs/adr/0017, stage 1). The call's id is the LiveKit room
+// name. State lives here, not in LiveKit: webhooks are hints and a job reconciles.
+// No media, no recording. A caller who cancels while it rings leaves 'missed'.
+export const calls = pgTable(
+  'calls',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    callerId: uuid('caller_id')
+      .notNull()
+      .references(() => members.id),
+    calleeId: uuid('callee_id')
+      .notNull()
+      .references(() => members.id),
+    status: text('status', { enum: CALL_STATUSES }).notNull().default('ringing'),
+    ringExpiresAt: ts('ring_expires_at').notNull(),
+    answeredAt: ts('answered_at'),
+    endedAt: ts('ended_at'),
+    // LiveKit's id for each side's connection last reported joined, so the leave of
+    // a connection a reload replaced does not end the call.
+    callerSid: text('caller_sid'),
+    calleeSid: text('callee_sid'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    // One open call per member, as caller and as callee; the service also checks across the two.
+    uniqueIndex('calls_one_open_per_caller_idx')
+      .on(t.callerId)
+      .where(sql`status in ('ringing', 'active')`),
+    uniqueIndex('calls_one_open_per_callee_idx')
+      .on(t.calleeId)
+      .where(sql`status in ('ringing', 'active')`),
+    index('calls_callee_idx').on(t.calleeId, t.createdAt),
+    check('calls_status_check', sql.raw(`status in (${CALL_STATUSES.map((value) => `'${value}'`).join(', ')})`)),
+    check('calls_parties_check', sql`${t.callerId} <> ${t.calleeId}`),
   ],
 )

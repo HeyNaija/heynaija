@@ -19,7 +19,9 @@ import { z } from 'zod'
 import { type AuthedRequest, SessionGuard } from '../auth/session.guard.js'
 import { parse } from '../http.js'
 import { RateLimiter } from '../rate-limit.js'
-import { WebhookRejectedError } from './room-service.js'
+import { LiveKitWebhookGuard } from '../calls/calls-enabled.guard.js'
+import { CallsService } from '../calls/calls.service.js'
+import { ROOM_SERVICE, type RoomService, WebhookRejectedError } from './room-service.js'
 import { GistError, GistsService } from './gists.service.js'
 import { GistsEnabledGuard, routeNotFound } from './gists-enabled.guard.js'
 
@@ -193,16 +195,23 @@ export class GistsController {
  * covers its exact bytes.
  */
 @Controller('internal/livekit')
-@UseGuards(GistsEnabledGuard)
+@UseGuards(LiveKitWebhookGuard)
 export class LiveKitWebhookController {
-  constructor(@Inject(GistsService) private readonly gists: GistsService) {}
+  constructor(
+    @Inject(ROOM_SERVICE) private readonly rooms: RoomService,
+    @Inject(GistsService) private readonly gists: GistsService,
+    @Inject(CallsService) private readonly calls: CallsService,
+  ) {}
 
   @Post('webhook')
   @HttpCode(200)
   async webhook(@Body() body: unknown, @Headers('authorization') authorization: string | undefined) {
     if (typeof body !== 'string') throw new UnauthorizedException('bad signature')
     try {
-      await this.gists.handleWebhook(body, authorization)
+      // Read and verified once; Gists and calls each ignore rooms that are not theirs.
+      const event = await this.rooms.readWebhook(body, authorization)
+      await this.gists.handleEvent(event)
+      await this.calls.handleEvent(event)
     } catch (err) {
       if (err instanceof WebhookRejectedError) throw new UnauthorizedException('bad signature')
       throw err

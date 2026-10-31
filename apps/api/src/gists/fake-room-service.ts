@@ -30,7 +30,7 @@ export class FakeRoomService implements RoomService {
   readonly deleted: string[] = []
   readonly calls: string[] = []
   /** Make the next call of this kind fail. */
-  failNext: 'createRoom' | 'setPermissions' | 'removeParticipant' | undefined
+  failNext: 'createRoom' | 'setPermissions' | 'removeParticipant' | 'participants' | undefined
   /**
    * Makes the next setPermissions call wait until released before it takes effect,
    * the way a slow request reaches the server after a later one.
@@ -83,6 +83,19 @@ export class FakeRoomService implements RoomService {
     return JSON.stringify(token)
   }
 
+  async participantToken(room: string, identity: string, displayName: string): Promise<string> {
+    const token: FakeToken = {
+      room,
+      identity,
+      name: displayName,
+      canSubscribe: true,
+      canPublish: true,
+      canPublishData: false,
+      hidden: false,
+    }
+    return JSON.stringify(token)
+  }
+
   async setPermissions(room: string, identity: string, permissions: RoomPermissions): Promise<void> {
     this.calls.push('setPermissions')
     this.failIf('setPermissions')
@@ -105,6 +118,7 @@ export class FakeRoomService implements RoomService {
 
   async participants(room: string): Promise<ConnectedParticipant[] | null> {
     this.calls.push('participants')
+    this.failIf('participants')
     if (!this.rooms.has(room)) return null
     return [...this.connected]
       .filter((key) => key.startsWith(`${room}/`))

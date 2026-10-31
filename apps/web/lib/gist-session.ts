@@ -2,6 +2,8 @@
 // livekit-client, so the order of awaits and the "did the member leave meanwhile?"
 // checks can be unit tested with fakes (tests/gist-session.test.mjs).
 //
+// 1:1 calls (lib/calls.ts) reuse it as it is: the token reply is the join result.
+//
 // Rules it keeps:
 //  - Every await in an attempt is followed by a staleness check. An attempt is
 //    stale when the session was closed (Leave, unmount) or a newer attempt began.
@@ -14,7 +16,7 @@ import { joinFailure, type JoinResult } from './gists.ts'
 export type Phase = 'prejoin' | 'connecting' | 'live' | 'reconnecting' | 'ended' | 'full' | 'locked' | 'failed' | 'elsewhere' | 'gone'
 export type LostReason = 'duplicate' | 'removed' | 'room_deleted' | 'network'
 
-export type JoinReply = { ok: true; data: JoinResult } | { ok: false; status: number; code?: string; message?: string }
+export type JoinReply<J = JoinResult> = { ok: true; data: J } | { ok: false; status: number; code?: string; message?: string }
 
 export type AudioLike = {
   connect(url: string, token: string): Promise<void>
@@ -32,8 +34,8 @@ export type AudioEvents = {
   onMics: (mics: Record<string, boolean>) => void
 }
 
-export type SessionDeps = {
-  join: () => Promise<JoinReply>
+export type SessionDeps<J extends { url: string; token: string } = JoinResult> = {
+  join: () => Promise<JoinReply<J>>
   sync: () => void
   /** POST /leave. Fire and forget; the session calls it at most once per presence. */
   leave: () => void
@@ -47,7 +49,7 @@ export type SessionDeps = {
   ui: {
     phase: (phase: Phase) => void
     problem: (message: string | null) => void
-    joined: (result: JoinResult) => void
+    joined: (result: J) => void
     announce: (text: string) => void
     playbackBlocked: (blocked: boolean) => void
     speaking: (ids: string[]) => void
@@ -61,8 +63,8 @@ export const reconnectDelay = (attempt: number) => Math.min(1000 * 2 ** attempt,
 
 type Outcome = 'ok' | 'retry' | 'stop'
 
-export class GistSession {
-  private deps: SessionDeps
+export class GistSession<J extends { url: string; token: string } = JoinResult> {
+  private deps: SessionDeps<J>
   private gen = 0
   private closed = false
   private ended = false
@@ -71,7 +73,7 @@ export class GistSession {
   private release: (() => void) | null = null
   audio: AudioLike | null = null
 
-  constructor(deps: SessionDeps) {
+  constructor(deps: SessionDeps<J>) {
     this.deps = deps
   }
 

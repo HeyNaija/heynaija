@@ -80,6 +80,20 @@ export class LiveKitRoomService implements RoomService {
     return token.toJwt()
   }
 
+  /** The 1:1 call token: both parties publish the microphone and nothing else. */
+  async participantToken(room: string, identity: string, displayName: string): Promise<string> {
+    const token = new AccessToken(this.settings.apiKey, this.settings.apiSecret, { identity, name: displayName, ttl: TOKEN_TTL_S })
+    token.addGrant({
+      roomJoin: true,
+      room,
+      canSubscribe: true,
+      canPublish: true,
+      canPublishData: false,
+      canPublishSources: [TrackSource.MICROPHONE],
+    })
+    return token.toJwt()
+  }
+
   async setPermissions(room: string, identity: string, permissions: RoomPermissions): Promise<void> {
     try {
       // Permissions are replaced as a whole, so everything is spelled out each time.
@@ -160,6 +174,7 @@ export class UnconfiguredRoomService implements RoomService {
   createRoom = async () => this.fail()
   deleteRoom = async () => this.fail()
   listenerToken = async () => this.fail()
+  participantToken = async () => this.fail()
   setPermissions = async () => this.fail()
   removeParticipant = async () => this.fail()
   participants = async () => this.fail()

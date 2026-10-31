@@ -18,6 +18,8 @@ import {
   Flag,
   Flame,
   Hash,
+  Phone,
+  PhoneOff,
   Pin,
   Heart,
   History,
@@ -114,6 +116,8 @@ export const FollowIcon = icon(UserPlus)
 export const FlagIcon = icon(Flag)
 export const VerifiedIcon = icon(BadgeCheck)
 export const MicIcon = icon(Mic)
+export const PhoneIcon = icon(Phone)
+export const PhoneOffIcon = icon(PhoneOff)
 export const MicOffIcon = icon(MicOff)
 export const LiveIcon = icon(Radio)
 export const LockIcon = icon(Lock)

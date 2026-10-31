@@ -18,6 +18,9 @@ import { unsubscribeKey } from './email/unsubscribe-token.js'
 import { type Env, loadEnv } from './env.js'
 import { ExportController } from './export/export.controller.js'
 import { ExportService } from './export/export.service.js'
+import { CallsController } from './calls/calls.controller.js'
+import { CallsEnabledGuard, LiveKitWebhookGuard, callsEnabled } from './calls/calls-enabled.guard.js'
+import { CALLS_CONFIG, CallsService } from './calls/calls.service.js'
 import { GistReconciler } from './gists/gist-queue.js'
 import { GistsController, LiveKitWebhookController } from './gists/gists.controller.js'
 import { GISTS_CONFIG, GistsService } from './gists/gists.service.js'
@@ -69,7 +72,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, CallsController, LiveKitWebhookController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -164,6 +167,20 @@ class HealthController {
     GistsService,
     GistsEnabledGuard,
     GistReconciler,
+    // 1:1 voice calls (docs/adr/0017 stage 1): dark unless CALLS_ENABLED and the LIVEKIT_* settings are set.
+    {
+      provide: CALLS_CONFIG,
+      useFactory: (env: Env) => ({
+        callsMembers: env.CALLS_MEMBERS,
+        // Set whenever LiveKit is configured, so a switched-off flag can still tear down calls left open.
+        livekitUrl: env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET ? env.LIVEKIT_URL : '',
+        enabled: callsEnabled(env),
+      }),
+      inject: [ENV],
+    },
+    CallsService,
+    CallsEnabledGuard,
+    LiveKitWebhookGuard,
   ],
 })
 export class AppModule {}

@@ -4,7 +4,7 @@ import { and, asc, count, eq, inArray, isNotNull, isNull, lt, ne, notInArray, or
 import { RateLimiter } from '../rate-limit.js'
 import { DB } from '../tokens.js'
 import { type GistViewer, canHostGist, canJoinGist } from './eligibility.js'
-import { ParticipantNotFoundError, ROOM_SERVICE, type RoomPermissions, type RoomService } from './room-service.js'
+import { ParticipantNotFoundError, ROOM_SERVICE, type RoomEvent, type RoomPermissions, type RoomService } from './room-service.js'
 
 export type GistsConfig = {
   /** CALLS_MEMBERS: the beta allow-list of handles (see eligibility.ts). */
@@ -403,7 +403,11 @@ export class GistsService {
    * branch only sets state, never counts, and is safe to run twice.
    */
   async handleWebhook(rawBody: string, authorization: string | undefined): Promise<void> {
-    const event = await this.rooms.readWebhook(rawBody, authorization)
+    await this.handleEvent(await this.rooms.readWebhook(rawBody, authorization))
+  }
+
+  /** One verified event. The webhook controller reads it once and hands it to Gists and to calls. */
+  async handleEvent(event: RoomEvent): Promise<void> {
     if (event.kind === 'other' || !isUuid(event.room)) return
 
     const [gist] = await this.db.select().from(gists).where(eq(gists.id, event.room))

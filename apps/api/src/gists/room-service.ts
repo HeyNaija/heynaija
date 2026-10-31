@@ -36,6 +36,11 @@ export interface RoomService {
   deleteRoom(room: string): Promise<void>
   /** A short-lived token that can only listen: it never carries publish rights. */
   listenerToken(room: string, identity: string, displayName: string): Promise<string>
+  /**
+   * A short-lived token for a 1:1 call: the two parties may speak (microphone only,
+   * no data channel) and hear each other. Never used for Gists.
+   */
+  participantToken(room: string, identity: string, displayName: string): Promise<string>
   /** Throws ParticipantNotFoundError if the participant is not connected. */
   setPermissions(room: string, identity: string, permissions: RoomPermissions): Promise<void>
   /** Disconnects a participant. One who is not there is not an error. */
