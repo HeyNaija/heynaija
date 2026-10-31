@@ -68,6 +68,12 @@ export const FLAGS = {
     owner: 'links',
     defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
+  ageVerification: {
+    description:
+      'Offering age verification (a Didit check) in settings, and counting a verified result as proof of adulthood for calls. With it off, calls keep using the CALLS_MEMBERS list. A result already recorded stays on record.',
+    owner: 'age-verification',
+    defaults: { development: true, staging: true, production: false }, // not in main yet: see LIVE_IN_MAIN
+  },
 } as const satisfies Record<string, FlagDefinition>
 
 export type FlagKey = keyof typeof FLAGS
