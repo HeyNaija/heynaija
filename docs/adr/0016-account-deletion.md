@@ -235,7 +235,10 @@ push on a device.
 
 In the web app, Settings links to `/settings/delete`: what is erased and what is
 kept, the grace period, the data download, and the form. The form is outside
-every `<Suspense>`, so it works without JavaScript. Asking ends every session,
+every `<Suspense>`, so it works without JavaScript. A production build cannot draw
+a refused action's message into that prerendered shell, so without JavaScript a
+refusal leads to `/settings/delete/refused/<reason>`, a prerendered copy of the
+page with the message above the form. Asking ends every session,
 this one too, and Kratos's logout refuses a session that has ended
 (`session_inactive`, checked 30 October 2026), so neither it nor `/logout` can
 follow. The server action instead drops the dead session cookie and the push
@@ -246,7 +249,7 @@ cookie (nothing is pushed to an inactive member), and redirects to
 (`/self-service/login/browser?refresh=true`, the same one Settings uses before
 an email change) and back to the form, where the member confirms once more. The
 browser opens that itself, as for joining, so Kratos's cookies reach it; without
-JavaScript it is a link to follow.
+JavaScript the action redirects straight to Kratos.
 
 Signing in during the grace period, `GET v1/me` answers `account_inactive`, so
 the web app asks `GET v1/me/deletion`: a scheduled deletion shows the date, Keep

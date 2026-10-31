@@ -9,6 +9,8 @@ import {
   DELETION_REAUTHED_PATH,
   DELETION_SCHEDULED_PATH,
   deletionAnswer,
+  type Refusal,
+  refusalPath,
 } from '@/lib/account-deletion'
 import { api } from '@/lib/api'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
@@ -561,9 +563,10 @@ export async function acceptInvite(_prev: JoinState, formData: FormData): Promis
 
 /**
  * What the account deletion form shows: an error, or Kratos's sign-in to confirm
- * it is them (`next`), which the form opens itself and, without JavaScript,
- * offers as a link. Not redirect(), as in acceptInvite: Kratos must set its
- * cookies in the browser itself.
+ * it is them (`next`), which the form opens itself and, if that fails, offers
+ * as a link. Not redirect(), as in acceptInvite: Kratos must set its cookies in
+ * the browser itself. (Without JavaScript there is no form state to draw, so
+ * requestAccountDeletion redirects instead: see there.)
  */
 export type DeletionFormState = { error?: string; next?: { href: string; label: string } }
 
@@ -573,21 +576,31 @@ export type DeletionFormState = { error?: string; next?: { href: string; label: 
  * logout (and so /logout) refuses a session that has ended, so this browser just
  * forgets its cookie. Its push subscription goes too: nothing is pushed to an
  * account waiting for deletion, and the erase deletes the subscriptions.
+ *
+ * The form says whether JavaScript runs (`js`). With it, a refusal or the sign-in
+ * step is returned for the form to draw. Without it a production build cannot
+ * draw form state into the prerendered page, so a refusal redirects to its page
+ * (refusalPath) and the sign-in step to Kratos, a plain redirect the browser
+ * follows with Kratos's cookies.
  */
 export async function requestAccountDeletion(_prev: DeletionFormState, formData: FormData): Promise<DeletionFormState> {
+  const viaScript = formData.get('js') === '1'
+  const refuse = (refusal: Refusal, message: string): DeletionFormState =>
+    viaScript ? { error: message } : redirect(refusalPath(refusal))
   const res = await api('/v1/me/deletion', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ confirmHandle: String(formData.get('confirmHandle') ?? '') }),
     cache: 'no-store',
   }).catch(() => null)
-  if (!res) return { error: 'Your account could not be deleted just now. Check your connection and try again.' }
+  if (!res) return refuse('unavailable', 'Your account could not be deleted just now. Check your connection and try again.')
 
   const answer = deletionAnswer(res.status, await res.json().catch(() => ({})))
   if (answer.kind === 'signed_out') redirect('/login')
-  if (answer.kind === 'error') return { error: answer.message }
+  if (answer.kind === 'error') return refuse(answer.refusal, answer.message)
   if (answer.kind === 'reauth') {
-    return { next: { href: reauthUrl(new URL(DELETION_REAUTHED_PATH, siteOrigin).href), label: 'Sign in again' } }
+    const href = reauthUrl(new URL(DELETION_REAUTHED_PATH, siteOrigin).href)
+    return viaScript ? { next: { href, label: 'Sign in again' } } : redirect(href)
   }
 
   await forgetEndedSession()

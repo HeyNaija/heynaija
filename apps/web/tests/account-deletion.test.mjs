@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cancelAnswer, deletionAnswer, scheduledDate } from '../lib/account-deletion.ts'
+import { cancelAnswer, deletionAnswer, REFUSALS, refusalPath, scheduledDate } from '../lib/account-deletion.ts'
 
 test('a deletion request is scheduled, sent to sign in again, or explained', () => {
   const at = '2026-11-13T09:00:00.000Z'
@@ -8,13 +8,29 @@ test('a deletion request is scheduled, sent to sign in again, or explained', () 
   assert.deepEqual(deletionAnswer(403, { code: 'reauth_required' }), { kind: 'reauth' })
   assert.deepEqual(deletionAnswer(401, {}), { kind: 'signed_out' })
   assert.match(deletionAnswer(400, { code: 'handle_mismatch' }).message, /not your handle/)
+  assert.equal(deletionAnswer(400, { code: 'handle_mismatch' }).refusal, 'handle')
   assert.match(deletionAnswer(403, { code: 'site_moderator' }).message, /moderator/)
+  assert.equal(deletionAnswer(403, { code: 'site_moderator' }).refusal, 'moderator')
   assert.match(deletionAnswer(429, { code: 'rate_limited' }).message, /Wait an hour/)
+  assert.equal(deletionAnswer(429, { code: 'rate_limited' }).refusal, 'busy')
+  assert.equal(deletionAnswer(503, {}).refusal, 'unavailable')
   // A 403 that is not about signing in again is never taken for one.
   assert.equal(deletionAnswer(403, { message: 'account_inactive' }).kind, 'error')
   // Neither is a 200 without a date.
   assert.equal(deletionAnswer(200, {}).kind, 'error')
   assert.equal(deletionAnswer(503, {}).kind, 'error')
+})
+
+test('every refusal has a message and a page of its own', () => {
+  for (const [refusal, message] of Object.entries(REFUSALS)) {
+    assert.ok(message.length > 0, refusal)
+    assert.equal(refusalPath(refusal), `/settings/delete/refused/${refusal}`)
+  }
+  for (const status of [400, 403, 429, 500]) {
+    const answer = deletionAnswer(status, {})
+    assert.equal(answer.kind, 'error')
+    assert.equal(answer.message, REFUSALS[answer.refusal])
+  }
 })
 
 test('cancelling succeeds, is too late, or is explained', () => {

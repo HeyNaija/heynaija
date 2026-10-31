@@ -13,25 +13,39 @@ export const DELETION_REAUTHED_PATH = '/settings/delete?signed_in=1'
  */
 export const DELETION_COOKIE = 'hn_deletion'
 
+/**
+ * Why a request was refused, and what the member is told. Without JavaScript a
+ * refusal leads to refusalPath(), a prerendered copy of the page with the message.
+ */
+export const REFUSALS = {
+  handle: 'That is not your handle. Type it as it appears after the @ on your profile.',
+  busy: 'You have tried several times this hour. Wait an hour and try again.',
+  moderator: 'A site moderator cannot delete their own account. Ask to stop being a moderator first.',
+  unavailable: 'Your account could not be deleted just now. Try again in a few minutes.',
+} as const
+
+export type Refusal = keyof typeof REFUSALS
+
+/** The page that shows a refusal's message above the form, for a browser without JavaScript. */
+export const refusalPath = (refusal: Refusal) => `/settings/delete/refused/${refusal}`
+
 export type DeletionAnswer =
   | { kind: 'scheduled'; scheduledFor: string }
   | { kind: 'reauth' }
   | { kind: 'signed_out' }
-  | { kind: 'error'; message: string }
+  | { kind: 'error'; refusal: Refusal; message: string }
+
+const refused = (refusal: Refusal): DeletionAnswer => ({ kind: 'error', refusal, message: REFUSALS[refusal] })
 
 /** What the API's answer to `POST /v1/me/deletion` means for the form. */
 export function deletionAnswer(status: number, body: { code?: string; scheduledFor?: string }): DeletionAnswer {
   if (status === 200 && body.scheduledFor) return { kind: 'scheduled', scheduledFor: body.scheduledFor }
   if (status === 401) return { kind: 'signed_out' }
   if (status === 403 && body.code === 'reauth_required') return { kind: 'reauth' }
-  if (status === 403 && body.code === 'site_moderator') {
-    return { kind: 'error', message: 'A site moderator cannot delete their own account. Ask to stop being a moderator first.' }
-  }
-  if (status === 400) {
-    return { kind: 'error', message: 'That is not your handle. Type it as it appears after the @ on your profile.' }
-  }
-  if (status === 429) return { kind: 'error', message: 'You have tried several times this hour. Wait an hour and try again.' }
-  return { kind: 'error', message: 'Your account could not be deleted just now. Try again in a few minutes.' }
+  if (status === 403 && body.code === 'site_moderator') return refused('moderator')
+  if (status === 400) return refused('handle')
+  if (status === 429) return refused('busy')
+  return refused('unavailable')
 }
 
 /** What the API's answer to `DELETE /v1/me/deletion` means: null when it is cancelled. */

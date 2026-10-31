@@ -23,6 +23,16 @@ async function deletionOf(handle: string) {
   }
 }
 
+async function likeCountOf(postId: string) {
+  const db = pool()
+  try {
+    const { rows } = await db.query<{ like_count: number }>(`select like_count from posts where id = $1`, [postId])
+    return rows[0]?.like_count
+  } finally {
+    await db.end()
+  }
+}
+
 /** The browser's session no longer opens the account: the API says nobody is signed in. */
 async function expectSignedOut(page: Page) {
   expect((await page.request.get('/api/v1/me')).status()).toBe(401)
@@ -46,8 +56,10 @@ async function waitForErasure(memberId: string, timeoutMs = 60_000) {
 
 /** Opens the post with `text` from the page it is on, and returns its address and id. */
 async function openPost(page: Page, text: string) {
+  // From one post's page to another's the address matches before and after, so wait for it to change.
+  const before = page.url()
   await page.locator('article', { hasText: text }).first().getByText(text).click({ position: { x: 4, y: 4 } })
-  await page.waitForURL(/\/p\/[0-9a-f-]+$/)
+  await page.waitForURL((url) => /^\/p\/[0-9a-f-]+$/.test(url.pathname) && url.href !== before)
   const path = new URL(page.url()).pathname
   return { path, id: path.split('/').pop()! }
 }
@@ -121,8 +133,11 @@ test('without JavaScript, the account is deleted and the browser signed out', as
   const plain = await browser.newContext({ baseURL: test.info().project.use.baseURL, javaScriptEnabled: false, storageState: state })
   const page = await plain.newPage()
   await page.goto('/settings/delete')
+  // A wrong handle changes nothing, and leads to the page that says why.
   await confirm(page, 'someone_else')
+  await page.waitForURL((url) => url.pathname === '/settings/delete/refused/handle')
   await expect(page.getByText('That is not your handle.')).toBeVisible()
+  expect(await deletionOf(handle)).toEqual({ active: true, scheduled: false })
 
   await confirm(page, handle)
   await page.waitForURL((url) => url.pathname === '/settings/delete/scheduled')
@@ -149,11 +164,13 @@ test('an erased account is gone for good, while other members’ conversations k
 
   const kept = `Liked by someone who left, says ${neighbour.handle}`
   await post(neighbour.page, kept)
-  const { path: keptPath } = await openPost(neighbour.page, kept)
+  const { path: keptPath, id: keptId } = await openPost(neighbour.page, kept)
   await leaver.page.goto(keptPath)
   const liked = leaver.page.locator('article', { hasText: kept }).first()
   await liked.getByRole('button', { name: /^Like \(0 likes\)$/ }).click()
   await expect(liked.getByRole('button', { name: /^Unlike \(1 like\)$/ })).toHaveAttribute('aria-pressed', 'true')
+  // The button changes before the like is saved; another browser sees it only once it is.
+  await expect.poll(() => likeCountOf(keptId)).toBe(1)
   await neighbour.page.reload()
   await expect(neighbour.page.locator('article', { hasText: kept }).first().getByRole('button', { name: /^Like \(1 like\)$/ })).toBeVisible()
 
