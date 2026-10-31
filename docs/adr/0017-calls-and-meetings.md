@@ -78,6 +78,13 @@ use.**
 
 **One dedicated small VPS, one node, no Redis at first.**
 
+**Built for staging (31 October 2026).** `infra/livekit/` and
+[`docs/deployment/livekit.md`](../deployment/livekit.md): a Contabo Cloud VPS 10 in
+the EU, `rtc-staging.heynaija.ng` and `turn-staging.heynaija.ng` (DNS only),
+LiveKit v1.13.11 and Caddy with its layer-4 module, both on the host network. It
+differs from the sketches below in two ways, both noted where they apply: TURN
+runs on 443 behind Caddy, and the webhook comes through Cloudflare.
+
 - **Not behind Cloudflare.** The media host gets a **DNS-only** (grey cloud)
   record, for example `rtc.heynaija.ng`, and `turn.heynaija.ng` (names are
   placeholders). The orange-cloud proxy would break UDP.
@@ -125,7 +132,10 @@ accept that some networks block it; (b) a second public IP, Caddy on one and
 TURN on 443 on the other; (c) TURN on 443 and a TCP-level router in front. **Recommendation:
 (a) to start,** because most mobile carriers pass 5349 and 7881/TCP covers a
 good share of the rest, and measure how many calls need relay. Move to (b) if
-relay failures show up. TURN needs its own domain and a CA-issued certificate
+relay failures show up. **Built: (c).** LiveKit's own VM setup already puts a
+layer-4 Caddy on 443 that routes by name: TLS for `turn-` is ended there and
+passed to LiveKit's TURN as plain TCP (`turn.external_tls`), so TURN gets 443 on
+one address with no certificate files to share. TURN needs its own domain and a CA-issued certificate
 (self-signed does not work); LiveKit needs `turn.domain`, `turn.tls_port`,
 `turn.cert_file` and `turn.key_file`
 ([deployment](https://docs.livekit.io/transport/self-hosting/deployment/)).
@@ -137,11 +147,11 @@ this is LiveKit's recommended mode)**, so ufw rules are the real rules.
 ### TLS
 
 Caddy obtains and renews Let's Encrypt certificates for `rtc.` and `turn.` and
-proxies 443 to `127.0.0.1:7880`. LiveKit's TURN reads certificate files, so
-Caddy's certificate directory is mounted read-only into LiveKit, and LiveKit is
-restarted after a renewal **(verify whether it reloads files itself)**.
+proxies 443 to `127.0.0.1:7880`. **Built:** Caddy also ends TLS for `turn.` and
+passes TURN on as plain TCP (above), so LiveKit reads no certificate files and
+needs no restart after a renewal.
 
-### Config sketch (`infra/livekit/livekit.yaml`, not final)
+### Config sketch (`infra/livekit/livekit.yaml`, not final; built as the `livekit` config in `infra/livekit/compose.yml`)
 
 ```yaml
 port: 7880                       # behind Caddy; never published
@@ -170,7 +180,7 @@ webhook:
 prometheus_port: 6789            # bound to a private interface (verify the setting)
 ```
 
-### Compose sketch (`infra/livekit/compose.yml`, consistent with `infra/deploy/`)
+### Compose sketch (`infra/livekit/compose.yml`, consistent with `infra/deploy/`; built)
 
 Same conventions as `infra/deploy/compose.yml`: a `name:`, the shared `logging`
 anchor (10 MB x 5), `restart: unless-stopped`, settings and secrets from an
@@ -215,6 +225,16 @@ servers; (c) no webhooks, and the API polls LiveKit's room API. **Recommendation
 (a).** (c) is the fallback if webhooks prove unreliable, which they may: LiveKit
 says delivery is not guaranteed
 ([webhooks](https://docs.livekit.io/intro/basics/rooms-participants-tracks/webhooks-events/)).
+
+**Built instead (31 October 2026): (d), through Cloudflare.** (a) needs a DNS-only
+name pointing at the web server, which would publish the address Cloudflare
+hides. So LiveKit posts to `https://<site>/api/internal/livekit/webhook` like any
+other client; Cloudflare connects to the origin with its client certificate as
+for every request; nginx lets only the LiveKit server's own address
+(`LIVEKIT_WEBHOOK_FROM`, read from `CF-Connecting-IP`) reach that one path; a Next
+rewrite passes the body unchanged to the API; and the API checks the signature.
+A once-a-minute reconcile against LiveKit's room API (the API's `gist-queue.ts`)
+covers lost deliveries, so (c) is already half there.
 
 ### Sizing and bandwidth (estimates, verify with a load test)
 

@@ -1,0 +1,124 @@
+# The LiveKit media server for Gists (docs/adr/0017, docs/deployment/livekit.md),
+# on a server of its own: LiveKit, and Caddy in front of it for TLS.
+#
+#   cd infra/livekit && ./gen-env.sh && docker compose up -d
+#
+# Both run with the host's network, so ufw's rules (setup-server.sh) are the real
+# rules: Docker's published ports would go around them. Open to the world: 443
+# (Caddy), 80 (certificates), 7881/tcp and 7882/udp (media), 3478/udp (TURN).
+# LiveKit's own 7880 and 5349 are only for Caddy, on this machine.
+name: heynaija-livekit
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    network_mode: host
+    command: ["--config", "/etc/livekit.yaml"]
+    configs:
+      - source: livekit
+        target: /etc/livekit.yaml
+    restart: unless-stopped
+    logging: *logging
+
+  # Caddy with its layer-4 module, as LiveKit's own VM setup uses: one port, 443,
+  # serves both names. TLS for rtc- is ended here and passed to LiveKit's
+  # signalling; TLS for turn- is ended here too and passed to LiveKit's TURN
+  # (external_tls), so TURN works on 443, the port restrictive networks let out.
+  # Caddy gets and renews both certificates from Let's Encrypt.
+  caddy:
+    image: livekit/caddyl4:v2.11.3
+    network_mode: host
+    command: ["run", "--config", "/etc/caddy.yaml", "--adapter", "yaml"]
+    configs:
+      - source: caddy
+        target: /etc/caddy.yaml
+    volumes:
+      - caddy-data:/data
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  caddy-data:
+
+configs:
+  # Rendered from .env. The keys are the API's (LIVEKIT_API_KEY) and the webhook
+  # signer's (LIVEKIT_WEBHOOK_KEY); the API holds the same pairs.
+  livekit:
+    content: |
+      port: 7880
+      log_level: info
+      keys:
+        ${LIVEKIT_API_KEY:?run gen-env.sh}: "${LIVEKIT_API_SECRET:?run gen-env.sh}"
+        ${LIVEKIT_WEBHOOK_KEY:?run gen-env.sh}: "${LIVEKIT_WEBHOOK_SECRET:?run gen-env.sh}"
+      rtc:
+        tcp_port: 7881
+        # All media on one UDP port (ADR 0017, "Ports"); the 50000-60000 range is not used.
+        udp_port: 7882
+        use_external_ip: true
+      turn:
+        enabled: true
+        domain: ${TURN_DOMAIN:?set TURN_DOMAIN in .env}
+        # Plain TCP from Caddy, which has ended TLS on 443.
+        tls_port: 5349
+        external_tls: true
+        udp_port: 3478
+      room:
+        # Only rooms the API created: a client cannot open one by joining.
+        auto_create: false
+        empty_timeout: 300
+        # The API sets 120 s on each Gist's room as well (gists.service.ts).
+        departure_timeout: 120
+      webhook:
+        api_key: ${LIVEKIT_WEBHOOK_KEY}
+        urls:
+          - ${WEBHOOK_URL:?set WEBHOOK_URL in .env}
+
+  caddy:
+    content: |
+      logging:
+        logs:
+          default:
+            level: INFO
+      storage:
+        module: file_system
+        root: /data
+      apps:
+        tls:
+          certificates:
+            automate:
+              - ${LIVEKIT_DOMAIN:?set LIVEKIT_DOMAIN in .env}
+              - ${TURN_DOMAIN}
+          automation:
+            policies:
+              - issuers:
+                  - module: acme
+                    email: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+        layer4:
+          servers:
+            main:
+              listen: [":443"]
+              routes:
+                - match:
+                    - tls:
+                        sni: ["${TURN_DOMAIN}"]
+                  handle:
+                    - handler: tls
+                    - handler: proxy
+                      upstreams:
+                        - dial: ["localhost:5349"]
+                - match:
+                    - tls:
+                        sni: ["${LIVEKIT_DOMAIN}"]
+                  handle:
+                    - handler: tls
+                      connection_policies:
+                        - alpn: ["http/1.1"]
+                    - handler: proxy
+                      upstreams:
+                        - dial: ["localhost:7880"]
