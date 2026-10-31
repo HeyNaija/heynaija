@@ -34,6 +34,7 @@ const auth = (flags: FeatureFlags) =>
     {} as never,
     {} as never,
     flags,
+    { effective: (on: boolean) => on },
   )
 const as = (id: string, handle: string) => ({ member: { id, handle } }) as AuthedRequest
 

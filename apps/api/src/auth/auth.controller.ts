@@ -26,6 +26,7 @@ import { gistsFeatureFor } from '../gists/gists-enabled.guard.js'
 import { signupAgeDecision } from '../governance/age.js'
 import { GovernanceService } from '../governance/governance.service.js'
 import { avatarPath } from '../media/media.service.js'
+import { VideoGate } from '../video/video-gate.js'
 import { MembersService } from '../members/members.service.js'
 import { NotificationsService } from '../notifications/notifications.service.js'
 import { RateLimiter, visitor } from '../rate-limit.js'
@@ -84,6 +85,7 @@ export class AuthController {
     @Inject(MembersService) private readonly members: MembersService,
     @Inject(GovernanceService) private readonly governance: GovernanceService,
     @Inject(FeatureFlags) private readonly flags: FeatureFlags,
+    @Inject(VideoGate) private readonly videoGate: Pick<VideoGate, 'effective'>,
   ) {}
 
   @Get('v1/me')
@@ -118,7 +120,8 @@ export class AuthController {
       onboarded: !features.onboarding || Boolean(row?.onboardedAt),
       // What is switched on for this member: the database-backed flags (docs/feature-flags.md),
       // plus gists, still switched by env (docs/adr/0017) until it moves onto the flags.
-      features: { ...features, gists: gistsFeatureFor(this.env, req.member) },
+      // videoPosts is the flag AND the scanner rule (ADR 0019 section 4.7), never the flag alone.
+      features: { ...features, videoPosts: this.videoGate.effective(features.videoPosts), gists: gistsFeatureFor(this.env, req.member) },
     }
   }
 
