@@ -65,7 +65,14 @@ test('typing @ and part of a handle offers members to mention, and picking one f
   await expect(list).toBeVisible()
   await box.press('Escape')
   await expect(list).toHaveCount(0)
-  await box.fill(`Ask @${named.handle} about suya`)
+
+  // Clicking a member fills them in and leaves the caret in the box.
+  await box.fill('Ask ')
+  await box.pressSequentially(`@${named.handle}`)
+  await list.getByRole('option', { name: `@${named.handle}` }).click()
+  await expect(box).toHaveValue(`Ask @${named.handle} `)
+  await expect(box).toBeFocused()
+  await box.pressSequentially('about suya')
 
   await author.page.getByRole('button', { name: 'Post', exact: true }).click()
   const card = author.page.locator('article', { hasText: 'about suya' }).first()

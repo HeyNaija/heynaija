@@ -14,6 +14,7 @@ import { BubbleIcon, CloseIcon, GifIcon, ImageIcon, PeopleIcon, PlusIcon, VoteIc
 import { IMAGE_TYPES } from './shrink-image'
 import { useAutoGrow } from './use-auto-grow'
 import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
+import { useFixedPlacement } from './use-fixed-placement'
 import { useMentionSuggestions } from './use-mention-suggestions'
 
 const LIMIT = 300
@@ -71,18 +72,23 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
   const mentionsId = `${inputId}-mentions`
   const [caret, setCaret] = useState(0)
   const [dismissed, setDismissed] = useState<number | null>(null)
-  const [picked, setPicked] = useState(0)
+  // Who is highlighted, by handle, so the highlight stays on them when the list is replaced.
+  const [picked, setPicked] = useState<string | null>(null)
   const typing = mentionBeforeCaret(text, caret)
   const mentions = useMentionSuggestions(typing?.query ?? null)
   const suggestions = mentions.list
   const suggesting = !!typing && suggestions.length > 0 && dismissed !== typing.start && !pending
-  const choice = Math.min(picked, suggestions.length - 1)
+  const choice = Math.max(0, suggestions.findIndex((m) => m.handle === picked))
   const nextCaret = useRef<number | null>(null)
+  const writingRow = useRef<HTMLDivElement>(null)
   const mentionList = useRef<HTMLUListElement>(null)
+  useFixedPlacement(writingRow, mentionList, suggesting)
   useEffect(() => {
-    setPicked(0)
+    setPicked(null)
     mentionList.current?.scrollTo({ top: 0 })
   }, [typing?.query])
+  // Escape closes the list for that one mention; the next one offers members again.
+  useEffect(() => setDismissed(null), [typing?.start])
   useLayoutEffect(() => {
     if (nextCaret.current === null) return
     input.current?.setSelectionRange(nextCaret.current, nextCaret.current)
@@ -92,7 +98,9 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
   const pickMention = (handle: string) => {
     if (!typing) return
     const next = insertMention(text, typing, caret, handle)
-    nextCaret.current = next.caret
+    // The same text (the handle was already written out) renders nothing new, so the caret moves here.
+    if (next.text === text) input.current?.setSelectionRange(next.caret, next.caret)
+    else nextCaret.current = next.caret
     setText(next.text)
     setCaret(next.caret)
   }
@@ -108,7 +116,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
         return
       }
       const next = (choice + step + suggestions.length) % suggestions.length
-      setPicked(next)
+      setPicked(suggestions[next]!.handle)
       // Keeps the highlighted member in view, including the wrap from last to first.
       mentionList.current?.children[next]?.scrollIntoView({ block: 'nearest' })
     } else if (e.key === 'Enter' || e.key === 'Tab') {
@@ -132,7 +140,8 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
   // the pointer and swallow a click on the image button.
   useEffect(() => {
     const outside = (e: PointerEvent) => {
-      if (!form.current?.contains(e.target as Node)) setExpanded(false)
+      // The @mention list is drawn outside the form, but belongs to it.
+      if (!form.current?.contains(e.target as Node) && !mentionList.current?.contains(e.target as Node)) setExpanded(false)
     }
     document.addEventListener('pointerdown', outside)
     return () => document.removeEventListener('pointerdown', outside)
@@ -202,7 +211,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
           <label htmlFor={inputId} className="sr-only">
             {replyTo ? 'Your reply' : 'New post'}
           </label>
-          <div className="composer-writing-row">
+          <div ref={writingRow} className="composer-writing-row">
             <textarea
               ref={input}
               id={inputId}
@@ -231,7 +240,8 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
               aria-controls={suggesting ? mentionsId : undefined}
               aria-activedescendant={suggesting ? `${mentionsId}-${choice}` : undefined}
             />
-            {suggesting ? (
+            {/* In the page's body, fixed to the window (useFixedPlacement), so no scrolling bar around the box clips it. */}
+            {suggesting ? createPortal(
               <ul
                 ref={mentionList}
                 id={mentionsId}
@@ -255,7 +265,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
                     // Keeps focus (and the caret) in the box.
                     onPointerDown={(e) => e.preventDefault()}
                     onClick={() => pickMention(m.handle)}
-                    onPointerEnter={() => setPicked(i)}
+                    onPointerEnter={() => setPicked(m.handle)}
                   >
                     <Avatar handle={m.handle} src={m.avatar} size={36} />
                     <span className="min-w-0 flex-1">
@@ -273,7 +283,8 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, pla
                     Loading…
                   </li>
                 ) : null}
-              </ul>
+              </ul>,
+              document.body,
             ) : null}
           </div>
 

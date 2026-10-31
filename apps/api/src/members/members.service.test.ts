@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm'
 import { InvalidCursorError } from '../cursor.js'
 import { PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
-import { CannotFollowSelfError, MembersService, NoSuchMemberError, profileInput } from './members.service.js'
+import { CannotFollowSelfError, MENTION_CURSOR_MAX, MembersService, NoSuchMemberError, profileInput } from './members.service.js'
 
 const service = new MembersService(db)
 const postsService = new PostsService(db)
@@ -309,7 +309,8 @@ test('mention suggestions page through followed members, then others by handle, 
     db.insert(members).values(rows.map((r) => ({ id: randomUUID(), ...r })))
   await add(Array.from({ length: 12 }, (_, i) => ({ handle: `kaf${String(i).padStart(2, '0')}` })))
   for (let i = 0; i < 12; i++) await service.follow(ada, `kaf${String(i).padStart(2, '0')}`)
-  await add([{ handle: 'kao' }, { handle: 'kap' }, { handle: 'zz1', displayName: 'Kayode B' }, { handle: 'zz0', displayName: 'Kayode B' }])
+  await add([{ handle: 'kao' }, { handle: 'kap' }, { handle: 'kaq' }, { handle: 'kar' }, { handle: 'kas' }])
+  await add([{ handle: 'zz1', displayName: 'Kayode B' }, { handle: 'zz0', displayName: 'Kayode B' }])
 
   const pages: { handle: string; following: boolean }[][] = []
   let cursor: string | undefined
@@ -319,11 +320,56 @@ test('mention suggestions page through followed members, then others by handle, 
     cursor = page.cursor ?? undefined
   } while (cursor)
 
+  // Pages end inside each part: followed, others by handle (kaq), others by name.
   const all = pages.flat()
-  assert.deepEqual(pages.map((p) => p.length), [5, 5, 5, 1])
+  assert.deepEqual(pages.map((p) => p.length), [5, 5, 5, 4])
   assert.deepEqual(all.filter((m) => m.following).map((m) => m.handle), Array.from({ length: 12 }, (_, i) => `kaf${String(i).padStart(2, '0')}`))
-  assert.deepEqual(all.filter((m) => !m.following).map((m) => m.handle), ['kao', 'kap', 'zz0', 'zz1'])
+  assert.deepEqual(all.filter((m) => !m.following).map((m) => m.handle), ['kao', 'kap', 'kaq', 'kar', 'kas', 'zz0', 'zz1'])
   assert.equal(all.findIndex((m) => !m.following), 12, 'everyone followed comes before anyone else')
 
   await assert.rejects(service.suggestMentions(ada, 'ka', 'not-a-cursor'), InvalidCursorError)
+})
+
+test('the member whose handle is exactly what was typed comes first, followed or not', async () => {
+  await db.insert(members).values([
+    { id: randomUUID(), handle: 'adaeze' },
+    { id: randomUUID(), handle: 'adam' },
+    { id: randomUUID(), handle: 'tolu', displayName: 'Tolu Ada' },
+  ])
+  await service.follow(bayo, 'adaeze')
+  await service.follow(bayo, 'tolu')
+  const rows = async (cursor?: string, limit?: number) => service.suggestMentions(bayo, 'ada', cursor, limit)
+  const pairs = (page: { members: { handle: string; following: boolean }[] }) => page.members.map((m) => [m.handle, m.following])
+
+  assert.deepEqual(pairs(await rows()), [['ada', false], ['adaeze', true], ['tolu', true], ['adam', false]])
+
+  // Followed, they are still listed once, first.
+  await service.follow(bayo, 'ada')
+  assert.deepEqual(pairs(await rows()), [['ada', true], ['adaeze', true], ['tolu', true], ['adam', false]])
+
+  // One at a time, the pages give the same list.
+  const handles: string[] = []
+  let cursor: string | undefined
+  do {
+    const page = await rows(cursor, 1)
+    handles.push(...page.members.map((m) => m.handle))
+    cursor = page.cursor ?? undefined
+  } while (cursor)
+  assert.deepEqual(handles, ['ada', 'adaeze', 'tolu', 'adam'])
+})
+
+test('a cursor carries even the longest name a member can have to the next page', async () => {
+  // 50 characters of 16 UTF-16 units each (a Thai letter and its marks), 3 bytes apiece in UTF-8.
+  const { displayName } = profileInput.parse({ displayName: `Ka${'ก'.padEnd(16, 'ั').repeat(48)}`, bio: '' })
+  await db.insert(members).values([
+    { id: randomUUID(), handle: 'zz_a', displayName },
+    { id: randomUUID(), handle: 'zz_b', displayName },
+  ])
+
+  const first = await service.suggestMentions(ada, 'ka', undefined, 1)
+  assert.deepEqual(first.members.map((m) => m.handle), ['zz_a'])
+  assert.ok(first.cursor && first.cursor.length > 2000 && first.cursor.length <= MENTION_CURSOR_MAX, `cursor of ${first.cursor?.length}`)
+  const second = await service.suggestMentions(ada, 'ka', first.cursor, 1)
+  assert.deepEqual(second.members.map((m) => m.handle), ['zz_b'])
+  assert.equal(second.cursor, null)
 })

@@ -1,15 +1,15 @@
-import { Controller, Get, Header, Inject, Query, Req, UseGuards } from '@nestjs/common'
+import { Controller, Get, Inject, Query, Req, UseGuards } from '@nestjs/common'
 import { z } from 'zod'
 import { type AuthedRequest, type MaybeAuthedRequest, OptionalSessionGuard, SessionGuard } from '../auth/session.guard.js'
 import { CommunitiesService } from '../communities/communities.service.js'
 import { paged, parse } from '../http.js'
-import { MembersService } from '../members/members.service.js'
+import { MENTION_CURSOR_MAX, MembersService } from '../members/members.service.js'
 import { PostsService } from '../posts/posts.service.js'
 import { RateLimiter, visitor } from '../rate-limit.js'
 
 const searchQuery = z.object({ q: z.string().trim().min(2).max(80) })
 // What can follow an @ in a handle (infra/kratos/identity.schema.json).
-const mentionQuery = z.object({ q: z.string().regex(/^[A-Za-z0-9_]{1,20}$/), cursor: z.string().max(400).optional() })
+const mentionQuery = z.object({ q: z.string().regex(/^[A-Za-z0-9_]{1,20}$/), cursor: z.string().max(MENTION_CURSOR_MAX).optional() })
 
 /** Searches only what heynaija itself holds: members, communities and posts. */
 @Controller('v1/search')
@@ -35,8 +35,8 @@ export class SearchController {
     return { members, communities, posts }
   }
 
+  // No cache-control: the answer depends on who is asking (whom they follow and have blocked).
   @Get('mentions')
-  @Header('cache-control', 'private, max-age=30')
   @UseGuards(SessionGuard)
   async mentions(@Req() req: AuthedRequest, @Query() query: unknown) {
     const { q, cursor } = parse(mentionQuery, query)

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MentionPage, MentionSuggestion } from '@/lib/api'
-import { matches, narrow } from '@/lib/mention-suggest'
+import { trimTo } from '@/lib/mention-suggest'
 
 const DEBOUNCE_MS = 120
 const CACHE_MS = 60_000
@@ -19,15 +19,10 @@ function remember(found: Found) {
   cache.set(found.query, { ...found, at: Date.now() })
 }
 
-/** A fresh answer for `query`, or one narrowed from a complete answer for a shorter prefix. */
+/** A fresh answer for `query`, if there is one. */
 function known(query: string): Found | null {
-  for (let end = query.length; end > 0; end--) {
-    const hit = cache.get(query.slice(0, end))
-    if (!hit || Date.now() - hit.at > CACHE_MS) continue
-    if (end === query.length) return hit
-    if (hit.cursor === null) return { query, list: narrow(hit.list, query), cursor: null }
-  }
-  return null
+  const hit = cache.get(query)
+  return hit && Date.now() - hit.at <= CACHE_MS ? hit : null
 }
 
 async function fetchPage(query: string, cursor: string | null, signal: AbortSignal): Promise<MentionPage | null> {
@@ -51,23 +46,23 @@ export function useMentionSuggestions(query: string | null): MentionSuggestions 
   const paging = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    if (!query) return
-    const local = known(query)
-    if (local) {
-      setFound(local)
-      return
-    }
     const controller = new AbortController()
-    const timer = setTimeout(() => {
-      fetchPage(query, null, controller.signal)
-        .then((page) => {
-          if (!page) return
-          const next = { query, list: page.members, cursor: page.cursor }
-          remember(next)
-          setFound(next)
-        })
-        .catch(() => {})
-    }, DEBOUNCE_MS)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const local = query ? known(query) : null
+    if (local) setFound(local)
+    else if (query) {
+      timer = setTimeout(() => {
+        fetchPage(query, null, controller.signal)
+          .then((page) => {
+            if (!page || controller.signal.aborted) return
+            const next = { query, list: page.members, cursor: page.cursor }
+            remember(next)
+            setFound(next)
+          })
+          .catch(() => {})
+      }, DEBOUNCE_MS)
+    }
+    // Whatever this query was doing, a page it asked for included, stops when it changes.
     return () => {
       clearTimeout(timer)
       controller.abort()
@@ -82,15 +77,20 @@ export function useMentionSuggestions(query: string | null): MentionSuggestions 
     const controller = new AbortController()
     paging.current = controller
     setLoading(true)
+    // A page that cannot be had (an error, the rate limit) ends the list for now, rather than being asked for on every key and scroll.
+    const stop = () => setFound({ ...found, cursor: null })
     fetchPage(found.query, found.cursor, controller.signal)
       .then((page) => {
-        if (!page) return
+        if (controller.signal.aborted) return
+        if (!page) return stop()
         const seen = new Set(found.list.map((m) => m.handle))
         const next = { query: found.query, list: [...found.list, ...page.members.filter((m) => !seen.has(m.handle))], cursor: page.cursor }
         remember(next)
         setFound(next)
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!controller.signal.aborted) stop()
+      })
       .finally(() => {
         if (paging.current !== controller) return
         paging.current = null
@@ -101,5 +101,5 @@ export function useMentionSuggestions(query: string | null): MentionSuggestions 
   if (!query || !found) return { list: [], more: false, loading: false, loadMore }
   if (found.query === query) return { list: found.list, more: found.cursor !== null, loading, loadMore }
   // Keeps the last list, trimmed to what still fits, while the next one loads.
-  return { list: found.list.filter((m) => matches(m, query)), more: false, loading: false, loadMore }
+  return { list: trimTo(found.list, query), more: false, loading: false, loadMore }
 }
