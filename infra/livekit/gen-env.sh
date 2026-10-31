@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Creates infra/livekit/.env from .env.example with fresh keys, or fills in any
 # that are empty. Never overwrites a value that is already set. When it makes
-# keys it prints the lines the API's .env needs (infra/deploy/.env on the
-# staging server), once: copy them there and clear the terminal.
+# keys it prints, once and last, the lines the API needs in infra/deploy/.env on
+# the staging server: paste them there and clear the terminal.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -27,22 +27,28 @@ fill LIVEKIT_API_SECRET "$(hex 32)"
 fill LIVEKIT_WEBHOOK_KEY "HOOK$(hex 6)"
 fill LIVEKIT_WEBHOOK_SECRET "$(hex 32)"
 
+echo ".env is up to date"
+
+# The block below is printed last and is valid in a bash-sourced .env as it
+# stands (prose only in comments, plain values), so pasting all of it is safe.
 if [[ $made == 1 ]]; then
   set -a; source .env; set +a
+  ip=$(curl -4 -fsS --max-time 10 https://api.ipify.org || true)
+  if [[ $ip =~ ^[0-9]+(\.[0-9]+){3}$ ]]; then
+    from="LIVEKIT_WEBHOOK_FROM=${ip}"
+  else
+    from="# LIVEKIT_WEBHOOK_FROM= (the address lookup failed: put this server IPv4 here)"
+  fi
   cat <<EOF
 
-Put these in the API's .env (infra/deploy/.env on the staging server), with
-CALLS_ENABLED=true, CALLS_GISTS_ENABLED=true and CALLS_MEMBERS=<handles>:
-
+# LiveKit for Gists (docs/deployment/livekit.md, step 5). Paste these lines at the
+# end of infra/deploy/.env on the staging server, then add CALLS_ENABLED=true,
+# CALLS_GISTS_ENABLED=true and CALLS_MEMBERS (handles, comma-separated, no spaces).
 LIVEKIT_URL=wss://${LIVEKIT_DOMAIN}
 LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
 LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
 LIVEKIT_WEBHOOK_KEY=${LIVEKIT_WEBHOOK_KEY}
 LIVEKIT_WEBHOOK_SECRET=${LIVEKIT_WEBHOOK_SECRET}
-
-and this server's address in the same file, for nginx:
-
-LIVEKIT_WEBHOOK_FROM=$(curl -4 -fsS --max-time 10 https://api.ipify.org || echo '<this server IPv4>')
+${from}
 EOF
 fi
-echo ".env is up to date"
