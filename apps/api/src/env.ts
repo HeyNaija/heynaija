@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { videoEnvShape } from './video/video-config.js'
 
 /**
  * A switch for work that is not allowed to run yet. It must be absent or
@@ -130,6 +131,8 @@ const schema = z.object({
   // The media bucket's public custom domain (nginx serves it under /media too), so
   // a purge also clears copies cached under that address.
   MEDIA_ORIGIN: optional(z.url().transform((u) => u.replace(/\/$/, ''))),
+  // Video posts (docs/adr/0019): limits and trust rules, defaults as the ADR recommends.
+  ...videoEnvShape,
   // Calls and Gists (docs/adr/0017). Everything ships dark: both switches default
   // to false, and with either off (or LiveKit not configured) every Gists route
   // answers 404 exactly like a route that does not exist.
