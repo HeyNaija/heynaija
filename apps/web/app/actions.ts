@@ -13,6 +13,7 @@ import {
   refusalPath,
 } from '@/lib/account-deletion'
 import { api } from '@/lib/api'
+import { DATA_COOKIE, DATA_COOKIE_MAX_AGE, dataMode } from '@/lib/low-data'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
 import { forgetEndedSession, reauthUrl, startAuthUrl } from '@/lib/auth/server'
 import { siteOrigin } from '@/lib/previews'
@@ -704,4 +705,16 @@ export async function cancelAccountDeletion(_prev: FormState, _formData: FormDat
   if (answer) return { error: answer.message }
   refresh()
   return { done: true }
+}
+
+/** Saves how much media the reader wants. A plain form post, so it works without JavaScript. */
+export async function setDataMode(formData: FormData) {
+  const mode = dataMode(String(formData.get('mode') ?? ''))
+  ;(await cookies()).set(DATA_COOKIE, mode, {
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: DATA_COOKIE_MAX_AGE,
+  })
+  redirect('/settings')
 }

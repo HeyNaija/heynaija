@@ -998,14 +998,19 @@
       "description": "Let members choose how much media loads on limited connections.",
       "category": "operations",
       "priority": "P1",
-      "status": "planned",
+      "status": "partial",
       "availability": "not_live",
       "evidence": [
+        "apps/web/lib/low-data.ts",
+        "apps/web/lib/low-data-server.ts",
+        "apps/web/tests/low-data.test.mjs",
+        "e2e/tests/low-data.spec.ts",
         "apps/web/app/ui/post-images.tsx",
+        "apps/web/app/ui/link-card.tsx",
         "apps/web/app/ui/shrink-image.ts",
         "apps/web/app/(main)/settings/page.tsx"
       ],
-      "notes": "Upload resizing is implemented; member low-data settings are not. GIFs play unless the device asks for less motion and can be paused. Video is not supported."
+      "caveat": "Settings has a data-use choice (Automatic follows the browser's Save-Data hint, Save data, Always load) that holds post pictures and GIFs back until tapped and leaves link pictures out. Avatars still load, the moderator queue is unchanged, video is not supported, and savings on real constrained networks are not measured."
     },
     {
       "id": "social-polls",

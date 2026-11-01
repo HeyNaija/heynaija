@@ -310,6 +310,12 @@ Shared page introductions use an eyebrow, title and short description. Directory
 
 Account entry pages use a separate layout: the approved wordmark and an Explore link above a desktop welcome column and a form card. The desktop form column is capped at 440px; the welcome column disappears below 1024px so the form leads on phones. Settings stays inside the main shell with separate sections for photo, public profile, appearance and account access.
 
+### Data use and held media
+
+Settings has a "Data use" section (below Appearance): the existing segmented control, three buttons that submit a plain form, so it works without JavaScript: **Automatic** (follows the browser's `Save-Data` hint, the default), **Save data** and **Always load**. The pressed one uses the same accent-soft fill as the theme switch. Helper text in the field-hint style says what Save data does and that the choice is kept on this device only (a year-long cookie, `hn_data`, so the server can leave media out of the page).
+
+When data is being saved, post pictures and GIFs render as a **held-media placeholder** in the picture's own frame (same grid, aspect ratio and radius): Inset Sage fill, no border of its own, the label "Tap to load image" (or "GIF") in 13.5px 600 Forest Green text, and the picture's description beneath in 12px Slate Muted, clamped to two lines. The whole tile is the target (at least 96px tall, so at least 44px); its accessible name starts with the visible words, "Tap to load image 1 of 1: description". Tapping it loads that one picture at the small size; without JavaScript it is a link to that small file. Link-card pictures are left out (the card keeps its host, title and text); a quoted post's pictures become one line, "N images not loaded. Open the post to load." A GIF never plays by itself while saving data: tapping its placeholder loads it and it plays (its first frame and a play button if the device asks for less motion), and in the full-screen viewer GIFs start paused. Avatars still load; they are small and identify people.
+
 ### Direct messages (spec, not built)
 
 Proposed in [ADR 0016](../../docs/adr/0016-direct-messages.md); nothing here exists yet. Only tokens above are used: no new colours, radii or shadows. Depth is the 1px Hairline border. DMs are opt-in and only for age-verified adults who turned them on; everyone else sees none of this surface except the Settings entry and the verification prompt below.
