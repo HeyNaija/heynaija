@@ -9,6 +9,7 @@ import { loadWorkerEnv, workerVideoConfig } from './worker-env.js'
 const base = {
   DATABASE_URL: 'postgres://localhost/heynaija',
   KRATOS_PUBLIC_URL: 'http://127.0.0.1:4533',
+  KRATOS_ADMIN_URL: 'http://127.0.0.1:4534',
   KRATOS_WEBHOOK_SECRET: 'x'.repeat(32),
   REDIS_URL: 'redis://127.0.0.1:6380',
   S3_ENDPOINT: 'http://127.0.0.1:9100',
