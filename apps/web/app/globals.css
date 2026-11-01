@@ -497,8 +497,9 @@ summary.menu::-webkit-details-marker {
    and each link 46px with a 4px gap (a 50px step), the compose button 44px, the
    gaps between blocks 18px. A list of m rows with the button needs 94 + 50m.
    Link tiers (data-tier, set in shell.tsx) hide at 94 + 50 * (tier + 1) = 144 + 50 * tier;
-   the two lowest-priority links share the first tier so replacing them with More
-   saves one row. The More row itself counts as one of the m. */
+   the More row itself counts as one of the m. The two least needed links share the
+   last tier, the first to go: More takes the room of one link, so moving a single
+   link would gain nothing. */
 .square-sidebar {
   position: sticky;
   top: 0;
@@ -616,16 +617,20 @@ summary.menu::-webkit-details-marker {
 
 /* One block per tier, from 194px (tier 1) in steps of 50px: hide the link in the
    list, show its copy in More, show More itself (on the tier that is last for this
-   member) and the unread dot there if the Notifications link is the one that left. */
-@container sidebar (height < 194px) { .sidebar-nav-list > [data-tier="1"] { display: none; } .sidebar-more-panel > [data-tier="1"] { display: block; } .sidebar-more[data-more-tier="1"] { display: block; } .sidebar-more-dot[data-tier="1"] { display: contents; } }
-@container sidebar (height < 244px) { .sidebar-nav-list > [data-tier="2"] { display: none; } .sidebar-more-panel > [data-tier="2"] { display: block; } .sidebar-more[data-more-tier="2"] { display: block; } .sidebar-more-dot[data-tier="2"] { display: contents; } }
-@container sidebar (height < 294px) { .sidebar-nav-list > [data-tier="3"] { display: none; } .sidebar-more-panel > [data-tier="3"] { display: block; } .sidebar-more[data-more-tier="3"] { display: block; } .sidebar-more-dot[data-tier="3"] { display: contents; } }
-@container sidebar (height < 344px) { .sidebar-nav-list > [data-tier="4"] { display: none; } .sidebar-more-panel > [data-tier="4"] { display: block; } .sidebar-more[data-more-tier="4"] { display: block; } .sidebar-more-dot[data-tier="4"] { display: contents; } }
-@container sidebar (height < 394px) { .sidebar-nav-list > [data-tier="5"] { display: none; } .sidebar-more-panel > [data-tier="5"] { display: block; } .sidebar-more[data-more-tier="5"] { display: block; } .sidebar-more-dot[data-tier="5"] { display: contents; } }
-@container sidebar (height < 444px) { .sidebar-nav-list > [data-tier="6"] { display: none; } .sidebar-more-panel > [data-tier="6"] { display: block; } .sidebar-more[data-more-tier="6"] { display: block; } .sidebar-more-dot[data-tier="6"] { display: contents; } }
-@container sidebar (height < 494px) { .sidebar-nav-list > [data-tier="7"] { display: none; } .sidebar-more-panel > [data-tier="7"] { display: block; } .sidebar-more[data-more-tier="7"] { display: block; } .sidebar-more-dot[data-tier="7"] { display: contents; } }
-@container sidebar (height < 544px) { .sidebar-nav-list > [data-tier="8"] { display: none; } .sidebar-more-panel > [data-tier="8"] { display: block; } .sidebar-more[data-more-tier="8"] { display: block; } .sidebar-more-dot[data-tier="8"] { display: contents; } }
-@container sidebar (height < 594px) { .sidebar-nav-list > [data-tier="9"] { display: none; } .sidebar-more-panel > [data-tier="9"] { display: block; } .sidebar-more[data-more-tier="9"] { display: block; } .sidebar-more-dot[data-tier="9"] { display: contents; } }
+   member), mark More as the current page if that link is, and show the unread dot
+   there if the Notifications link is the one that left. Tiers 10 and 11 are spare,
+   for a list of up to 12 links. */
+@container sidebar (height < 194px) { .sidebar-nav-list > [data-tier="1"] { display: none; } .sidebar-more-panel > [data-tier="1"] { display: block; } .sidebar-more[data-more-tier="1"] { display: block; } .sidebar-more details:has(.sidebar-more-panel > [data-tier="1"] [aria-current="page"]) > summary { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; } .sidebar-more-dot[data-tier="1"] { display: contents; } }
+@container sidebar (height < 244px) { .sidebar-nav-list > [data-tier="2"] { display: none; } .sidebar-more-panel > [data-tier="2"] { display: block; } .sidebar-more[data-more-tier="2"] { display: block; } .sidebar-more details:has(.sidebar-more-panel > [data-tier="2"] [aria-current="page"]) > summary { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; } .sidebar-more-dot[data-tier="2"] { display: contents; } }
+@container sidebar (height < 294px) { .sidebar-nav-list > [data-tier="3"] { display: none; } .sidebar-more-panel > [data-tier="3"] { display: block; } .sidebar-more[data-more-tier="3"] { display: block; } .sidebar-more details:has(.sidebar-more-panel > [data-tier="3"] [aria-current="page"]) > summary { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; } .sidebar-more-dot[data-tier="3"] { display: contents; } }
+@container sidebar (height < 344px) { .sidebar-nav-list > [data-tier="4"] { display: none; } .sidebar-more-panel > [data-tier="4"] { display: block; } .sidebar-more[data-more-tier="4"] { display: block; } .sidebar-more details:has(.sidebar-more-panel > [data-tier="4"] [aria-current="page"]) > summary { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; } .sidebar-more-dot[data-tier="4"] { display: contents; } }
+@container sidebar (height < 394px) { .sidebar-nav-list > [data-tier="5"] { display: none; } .sidebar-more-panel > [data-tier="5"] { display: block; } .sidebar-more[data-more-tier="5"] { display: block; } .sidebar-more details:has(.sidebar-more-panel > [data-tier="5"] [aria-current="page"]) > summary { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; } .sidebar-more-dot[data-tier="5"] { display: contents; } }
+@container sidebar (height < 444px) { .sidebar-nav-list > [data-tier="6"] { display: none; } .sidebar-more-panel > [data-tier="6"] { display: block; } .sidebar-more[data-more-tier="6"] { display: block; } .sidebar-more details:has(.sidebar-more-panel > [data-tier="6"] [aria-current="page"]) > summary { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; } .sidebar-more-dot[data-tier="6"] { display: contents; } }
+@container sidebar (height < 494px) { .sidebar-nav-list > [data-tier="7"] { display: none; } .sidebar-more-panel > [data-tier="7"] { display: block; } .sidebar-more[data-more-tier="7"] { display: block; } .sidebar-more details:has(.sidebar-more-panel > [data-tier="7"] [aria-current="page"]) > summary { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; } .sidebar-more-dot[data-tier="7"] { display: contents; } }
+@container sidebar (height < 544px) { .sidebar-nav-list > [data-tier="8"] { display: none; } .sidebar-more-panel > [data-tier="8"] { display: block; } .sidebar-more[data-more-tier="8"] { display: block; } .sidebar-more details:has(.sidebar-more-panel > [data-tier="8"] [aria-current="page"]) > summary { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; } .sidebar-more-dot[data-tier="8"] { display: contents; } }
+@container sidebar (height < 594px) { .sidebar-nav-list > [data-tier="9"] { display: none; } .sidebar-more-panel > [data-tier="9"] { display: block; } .sidebar-more[data-more-tier="9"] { display: block; } .sidebar-more details:has(.sidebar-more-panel > [data-tier="9"] [aria-current="page"]) > summary { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; } .sidebar-more-dot[data-tier="9"] { display: contents; } }
+@container sidebar (height < 644px) { .sidebar-nav-list > [data-tier="10"] { display: none; } .sidebar-more-panel > [data-tier="10"] { display: block; } .sidebar-more[data-more-tier="10"] { display: block; } .sidebar-more details:has(.sidebar-more-panel > [data-tier="10"] [aria-current="page"]) > summary { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; } .sidebar-more-dot[data-tier="10"] { display: contents; } }
+@container sidebar (height < 694px) { .sidebar-nav-list > [data-tier="11"] { display: none; } .sidebar-more-panel > [data-tier="11"] { display: block; } .sidebar-more[data-more-tier="11"] { display: block; } .sidebar-more details:has(.sidebar-more-panel > [data-tier="11"] [aria-current="page"]) > summary { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; } .sidebar-more-dot[data-tier="11"] { display: contents; } }
 .ownership-copy {
   padding: 17px;
 }

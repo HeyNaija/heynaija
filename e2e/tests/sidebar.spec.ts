@@ -117,22 +117,32 @@ test('a member on 1280×720 sees the everyday links and the compose button', asy
 
 test('at any window height the sidebar fits, loses no link and keeps the order of what gives way', async ({ browser }) => {
   const member = await newMember(browser, 'fits')
+  try {
+    await member.page.goto('/')
+    await expect(member.page.locator('a.sidebar-compose')).toBeVisible()
+    expect(await sweep(member.page)).toEqual([])
+  } finally {
+    await member.context.close()
+  }
+})
+
+test('a moderator has a member’s sidebar, and Moderation in the account menu', async ({ browser }) => {
   const moderator = await newMember(browser, 'fitsmod')
   try {
     grantModerator(moderator.handle)
-    for (const { page } of [member, moderator]) {
-      await page.goto('/')
-      await expect(page.locator('a.sidebar-compose')).toBeVisible()
-    }
-    // A moderator's extra link also stays in the list while there is room.
-    const first = await look(moderator.page)
-    expect(first.listed).toContain('Moderation')
-    expect(first.moved).toEqual([])
-    expect(first.more).toBe(false)
-    expect(await sweep(member.page)).toEqual([])
-    expect(await sweep(moderator.page)).toEqual([])
+    const { page } = moderator
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await page.goto('/')
+    await expect(page.locator('a.sidebar-compose')).toBeVisible()
+    // The same rows as the first paint, which is drawn for a member (shell.tsx).
+    const now = await look(page)
+    expect(now.problems).toEqual([])
+    expect(now.listed).toEqual(['Home', 'Communities', 'Notifications', 'About HeyNaija', 'Progress', 'Governance', 'Ideas board', 'Bookmarks', 'Settings'])
+    expect(now.more).toBe(false)
+    await page.getByLabel('Account menu').click()
+    await page.locator('.account-menu-panel').getByRole('link', { name: 'Moderation' }).click()
+    await page.waitForURL((url) => url.pathname === '/mod')
   } finally {
-    await member.context.close()
     await moderator.context.close()
   }
 })
@@ -151,6 +161,8 @@ test('More holds the links that do not fit and opens above its button', async ({
     await expect(sidebar.getByRole('link', { name: 'Home', exact: true })).toBeVisible()
     await expect(sidebar.getByRole('link', { name: 'Ideas board' })).toBeVisible()
     await expectOnScreen(sidebar.getByRole('link', { name: 'New post' }))
+    // Home is in the list, so More is not the current page.
+    await expect(more).toHaveCSS('font-weight', '500')
 
     await more.click()
     const panel = sidebar.locator('.sidebar-more-panel')
@@ -168,6 +180,8 @@ test('More holds the links that do not fit and opens above its button', async ({
     await panel.getByRole('link', { name: 'Progress' }).click()
     await page.waitForURL((url) => url.pathname === '/progress')
     await expect(panel).toBeHidden()
+    // Progress is in More, so More is marked as the current page.
+    await expect(more).toHaveCSS('font-weight', '700')
     await more.click()
     await expect(panel.getByRole('link', { name: 'Progress' })).toHaveAttribute('aria-current', 'page')
   } finally {
