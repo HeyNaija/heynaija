@@ -15,12 +15,15 @@ import {
   REPLY_AUDIENCES,
   reposts,
 } from '@heynaija/db'
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { and, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { findLinks, type FoundLink, previewUrlOf } from '../links/link-text.js'
 import { type LinkPreview, type LinkPreviewRow, linkPreviewOf, toLinkPreview } from '../links/links.service.js'
 import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/media.service.js'
+import { type VideoConfig, DEFAULT_VIDEO_CONFIG } from '../video/video-config.js'
+import { assertVideoEligible } from '../video/video-eligibility.js'
+import { VIDEO_CONFIG } from '../video/video.service.js'
 import { type PostVideo, toPostVideo, type VideoRow, videoOf } from '../video/video-view.js'
 import { isFounder } from '../members/badges.js'
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
@@ -529,7 +532,11 @@ const toReplyContext = (row: ReplyContextRow | null): ReplyContext | null => {
 
 @Injectable()
 export class PostsService {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    // The trust rules for video are checked again when a video is attached (ADR 0019 section 4.7).
+    @Optional() @Inject(VIDEO_CONFIG) private readonly videoCfg: VideoConfig = DEFAULT_VIDEO_CONFIG,
+  ) {}
 
   /**
    * The one place posts are read for display. Posts by inactive members never
@@ -1503,6 +1510,10 @@ export class PostsService {
         if (attached.length === 0) throw new ImagesNotReadyError('an image is missing, still processing or already used')
       }
       if (video) {
+        // Lock the member's row so two creates cannot both count 49 live videos and both pass, then re-check
+        // the rules the upload was checked against: the cap, the account's age and any upheld action since.
+        await tx.select({ id: members.id }).from(members).where(eq(members.id, authorId)).for('update')
+        await assertVideoEligible(tx, authorId, this.videoCfg)
         const attached = await tx
           .update(media)
           .set({ postId: row!.id, position: 0, alt: video.description })

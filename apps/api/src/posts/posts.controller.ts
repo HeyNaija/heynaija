@@ -31,6 +31,7 @@ import { LinksService } from '../links/links.service.js'
 import { MediaService } from '../media/media.service.js'
 import type { FlagKey } from '../flags/registry.js'
 import { RateLimiter } from '../rate-limit.js'
+import { VideoError } from '../video/video-error.js'
 import { VideoGate } from '../video/video-gate.js'
 import { VideoService } from '../video/video.service.js'
 import {
@@ -195,6 +196,11 @@ export class PostsController {
       if (linkUrl && (await this.flags.isEnabled('linkPreviews', req.member.id))) await this.links.request(linkUrl)
       return { id }
     } catch (err) {
+      // The trust rules, re-checked at attach: same answers as starting an upload.
+      if (err instanceof VideoError) {
+        if (err.code === 'not_eligible') throw new ForbiddenException({ code: err.code, message: err.message })
+        throw new BadRequestException({ code: err.code, message: err.message })
+      }
       if (err instanceof ReplyNotAllowedError) {
         throw new ForbiddenException({ code: 'reply_not_allowed', message: err.message })
       }

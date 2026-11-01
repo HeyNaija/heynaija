@@ -55,7 +55,7 @@ export type QueueItem = {
   reporterHandle: string | null
   /** How many open reports there are about the same post or account. */
   reportCount: number
-  post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
+  post: { id: string; text: string; images: PostImage[]; /** Has a video, shown or held: the queue shows a label, not the video (phase 3). */ hasVideo: boolean; authorHandle: string; communityName: string | null } | null
   /** For reports about an account: what the moderator needs to judge it. */
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
   /** For reports about a community's photo: the photo as reported; `photo` is null once it is no longer published (replaced or removed). */
@@ -110,11 +110,10 @@ export class ModerationService {
    * the decision stands and the hourly sweep finishes moving the files.
    */
   private async afterwards(what: string, work: () => Promise<void>): Promise<void> {
-    if (!this.media) return
     try {
       await work()
     } catch (err) {
-      this.logger.error(`${what} failed; the hourly sweep will retry: ${(err as Error).message}`)
+      this.logger.error(`${what} failed; the hourly sweep will retry (for a video that is the video sweep, which re-hides a ready video of a removed post or one under an open illegal report): ${(err as Error).message}`)
     }
   }
 
@@ -308,6 +307,7 @@ export class ModerationService {
       post_id: string | null
       post_text: string | null
       post_images: { id: string; alt: string; width: number; height: number; animated: boolean }[]
+      post_has_video: boolean | null
       post_author: string | null
       community_name: string | null
       member_handle: string | null
@@ -334,7 +334,8 @@ export class ModerationService {
             or (r.community_id is not null and o.community_id = r.community_id and o.photo_media_id = r.photo_media_id)
             or (r.post_id is null and r.gist_id is null and r.community_id is null and o.post_id is null and o.gist_id is null
               and o.community_id is null and o.member_id = r.member_id))) as report_count,
-        p.id as post_id, p.text as post_text, ${imagesOf(sql`p.id`)} as post_images, pa.handle as post_author, c.name as community_name,
+        p.id as post_id, p.text as post_text, ${imagesOf(sql`p.id`)} as post_images,
+        exists(select 1 from media vm where vm.post_id = p.id and vm.kind = 'post_video' and vm.status in ('ready', 'quarantined')) as post_has_video, pa.handle as post_author, c.name as community_name,
         tm.handle as member_handle, tm.active as member_active, tm.display_name as member_name,
         tm.bio as member_bio, tm.avatar_media_id as member_avatar,
         g.id as gist_id, g.title as gist_title, g.status as gist_status, gh.handle as gist_host, gc.name as gist_community,
@@ -369,7 +370,7 @@ export class ModerationService {
       reporterHandle: r.reporter_handle,
       reportCount: r.report_count,
       post: r.post_id
-        ? { id: r.post_id, text: r.post_text!, images: toPostImages(r.post_images), authorHandle: r.post_author!, communityName: r.community_name }
+        ? { id: r.post_id, text: r.post_text!, images: toPostImages(r.post_images), hasVideo: r.post_has_video === true, authorHandle: r.post_author!, communityName: r.community_name }
         : null,
       member: r.member_handle
         ? {
@@ -411,6 +412,7 @@ export class ModerationService {
     let removedPost: string | null = null
     let removedCommunityPhoto: string | null = null
     let dismissedCommunityPhoto: string | null = null
+    let dismissedPost: string | null = null
 
     await this.db.transaction(async (tx) => {
       const [report] = await tx
@@ -443,6 +445,7 @@ export class ModerationService {
       if (resolution === 'dismiss') {
         action = 'dismiss_report'
         dismissedCommunityPhoto = report.photoMediaId
+        dismissedPost = report.postId
       } else if (resolution === 'end_gist') {
         // Ended already, by endReportedGist.
         if (!report.gistId) throw new ModerationTargetError('this report is not about a Gist')
@@ -561,7 +564,7 @@ export class ModerationService {
 
     if (removedPost) {
       const postId = removedPost
-      await this.afterwards(`quarantining images of post ${postId}`, () => this.media!.quarantinePostImages(postId))
+      await this.afterwards(`quarantining images of post ${postId}`, async () => void (await this.media?.quarantinePostImages(postId)))
       await this.afterwards(`quarantining the video of post ${postId}`, async () => void (await this.videos?.quarantinePostVideos(postId)))
     }
     if (removedCommunityPhoto) {
@@ -576,9 +579,14 @@ export class ModerationService {
         this.logger.error(`deleting dismissed community photo ${mediaId} failed; its files stay private: ${err.message}`)
       })
     }
+    if (dismissedPost) {
+      // A video hidden by an illegal report comes back when the report is dismissed (unless something else keeps it down).
+      const postId = dismissedPost
+      await this.afterwards(`releasing the video of dismissed post ${postId}`, async () => void (await this.videos?.releaseIfCleared(postId)))
+    }
     if (removedAvatar) {
       const mediaId = removedAvatar
-      await this.afterwards(`quarantining profile photo ${mediaId}`, () => this.media!.quarantineAvatar(mediaId))
+      await this.afterwards(`quarantining profile photo ${mediaId}`, async () => void (await this.media?.quarantineAvatar(mediaId)))
     }
   }
 
@@ -663,7 +671,7 @@ export class ModerationService {
     if (restored.length === 0) throw new ModerationTargetError('that post is not removed')
     await this.db.insert(moderationActions).values({ actorId: moderatorId, action: 'restore_post', postId, note })
     await notify(this.db, [{ recipientId: restored[0]!.authorId, kind: 'post_restored', postId }])
-    await this.afterwards(`releasing images of post ${postId}`, () => this.media!.releasePostImages(postId))
+    await this.afterwards(`releasing images of post ${postId}`, async () => void (await this.media?.releasePostImages(postId)))
     await this.afterwards(`releasing the video of post ${postId}`, async () => void (await this.videos?.releasePostVideos(postId)))
   }
 

@@ -6,6 +6,8 @@ import type { VideoStore } from '../media/object-store.js'
 import { DB } from '../tokens.js'
 import type { Rejection } from './ffmpeg.js'
 import { type VideoConfig, VIDEO_TYPES, type VideoType } from './video-config.js'
+import { assertVideoEligible } from './video-eligibility.js'
+import { VideoError } from './video-error.js'
 import { originalKey, posterKey, quarantinedKey, renditionKey } from './video-keys.js'
 import { type PostVideo, toPostVideo } from './video-view.js'
 
@@ -19,14 +21,7 @@ export interface VideoJobs {
   processVideo(mediaId: string): Promise<void>
 }
 
-export class VideoError extends Error {
-  constructor(
-    readonly code: 'not_found' | 'not_eligible' | 'too_large' | 'bad_type' | 'too_long' | 'bad_parts' | 'too_many_videos',
-    message: string,
-  ) {
-    super(message)
-  }
-}
+export { VideoError }
 
 export type VideoState = 'uploading' | 'processing' | 'quarantined' | 'ready' | 'rejected' | 'failed'
 export type VideoStatusView = { status: VideoState; reason: Rejection | null; video: PostVideo | null }
@@ -43,8 +38,6 @@ export type UploadPlan = {
 
 /** A video ready for an hour that no post took is cleared, as images are. */
 const UNATTACHED_AFTER_MS = 60 * 60 * 1000
-/** Moderation actions that count as "upheld" against the account for the trust rule (ADR 4.7). */
-const UPHELD_AGAINST_MEMBER = ['suspend_member', 'remove_avatar', 'clear_profile'] as const
 
 @Injectable()
 export class VideoService {
@@ -239,6 +232,22 @@ export class VideoService {
     return this.quarantinePostVideos(postId)
   }
 
+  /**
+   * After a dismissed report: puts the video back if nothing else keeps it down. The post must be
+   * neither removed nor deleted, and no other open illegal report may be on it.
+   */
+  async releaseIfCleared(postId: string): Promise<void> {
+    const [post] = await this.db.select({ removedAt: posts.removedAt, deletedAt: posts.deletedAt }).from(posts).where(eq(posts.id, postId))
+    if (!post || post.removedAt || post.deletedAt) return
+    const [open] = await this.db
+      .select({ id: reports.id })
+      .from(reports)
+      .where(and(eq(reports.postId, postId), eq(reports.status, 'open'), eq(reports.reason, 'illegal')))
+      .limit(1)
+    if (open) return
+    await this.releasePostVideos(postId)
+  }
+
   /** Puts a restored post's videos back. Only ones the scanner cleared: a held video has no public files. Idempotent. */
   async releasePostVideos(postId: string): Promise<void> {
     const rows = await this.db
@@ -340,53 +349,29 @@ export class VideoService {
       .innerJoin(posts, eq(posts.id, media.postId))
       .where(and(eq(media.kind, 'post_video'), eq(media.status, 'ready'), isNotNull(posts.removedAt)))
     for (const { id } of exposed) await this.quarantine(id)
-    if (stale.length + unused.length + exposed.length > 0) {
-      this.log.log(`video sweep: ${stale.length} abandoned uploads, ${unused.length} unused videos, ${exposed.length} re-quarantined`)
+
+    // A report of illegal content hides the video at once; if that hide failed (storage down), it is finished here.
+    const reported = await this.db
+      .select({ id: media.id })
+      .from(media)
+      .where(
+        and(
+          eq(media.kind, 'post_video'),
+          eq(media.status, 'ready'),
+          sql`exists (select 1 from reports r where r.post_id = ${media.postId} and r.status = 'open' and r.reason = 'illegal')`,
+        ),
+      )
+    for (const { id } of reported) await this.quarantine(id)
+    const hidden = exposed.length + reported.length
+    if (stale.length + unused.length + hidden > 0) {
+      this.log.log(`video sweep: ${stale.length} abandoned uploads, ${unused.length} unused videos, ${hidden} re-quarantined`)
     }
   }
 
   // --- Checks ---
 
-  /** The trust rules of ADR 0019 section 4.7. The allow-list is the feature flag's. */
-  private async assertEligible(ownerId: string): Promise<void> {
-    const [member] = await this.db.select({ createdAt: members.createdAt }).from(members).where(eq(members.id, ownerId))
-    if (!member) throw new VideoError('not_found', 'no such member')
-    const oldEnough = Date.now() - member.createdAt.getTime() >= this.cfg.minAccountAgeDays * 86_400_000
-    if (!oldEnough) {
-      throw new VideoError('not_eligible', `videos can be posted once an account is ${this.cfg.minAccountAgeDays} days old`)
-    }
-
-    const since = new Date(Date.now() - this.cfg.upheldLookbackDays * 86_400_000)
-    const [upheld] = await this.db
-      .select({ n: count() })
-      .from(moderationActions)
-      .where(
-        and(
-          gt(moderationActions.createdAt, since),
-          or(
-            and(inArray(moderationActions.action, [...UPHELD_AGAINST_MEMBER]), eq(moderationActions.memberId, ownerId)),
-            and(
-              eq(moderationActions.action, 'remove_post'),
-              sql`${moderationActions.postId} in (select id from posts where author_id = ${ownerId})`,
-            ),
-          ),
-        ),
-      )
-    const [blocked] = await this.db
-      .select({ n: count() })
-      .from(media)
-      .where(and(eq(media.ownerId, ownerId), eq(media.status, 'blocked'), gt(media.createdAt, since)))
-    if ((upheld?.n ?? 0) + (blocked?.n ?? 0) > 0) {
-      throw new VideoError('not_eligible', 'video is not available to this account right now')
-    }
-
-    const [live] = await this.db
-      .select({ n: count() })
-      .from(media)
-      .where(and(eq(media.ownerId, ownerId), eq(media.kind, 'post_video'), eq(media.status, 'ready'), isNotNull(media.postId)))
-    if ((live?.n ?? 0) >= this.cfg.maxLivePerMember) {
-      throw new VideoError('too_many_videos', `you can have at most ${this.cfg.maxLivePerMember} videos; delete a post with one first`)
-    }
+  private assertEligible(ownerId: string): Promise<void> {
+    return assertVideoEligible(this.db, ownerId, this.cfg)
   }
 
   /** The member's own open upload, within its window. Anything else is not found. */

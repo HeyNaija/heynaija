@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { featureFlags, media, members, posts, videoDetails, videoRenditions } from '@heynaija/db'
+import { featureFlags, media, members, moderationActions, posts, videoDetails, videoRenditions } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { AuthController } from '../auth/auth.controller.js'
 import type { AuthedRequest } from '../auth/session.guard.js'
@@ -11,7 +11,9 @@ import { NoScanner } from '../media/media.service.js'
 import { PhotoDnaScanner } from '../media/photodna.js'
 import { newPost, PostsService, VideoNotReadyError } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
+import { DEFAULT_VIDEO_CONFIG } from './video-config.js'
 import { VideoGate } from './video-gate.js'
+import { VideoError } from './video-error.js'
 
 const ada = randomUUID()
 const bayo = randomUUID()
@@ -22,9 +24,10 @@ before(migrate)
 beforeEach(async () => {
   await reset()
   await db.delete(featureFlags)
+  const old = new Date(Date.now() - 30 * 86_400_000)
   await db.insert(members).values([
-    { id: ada, handle: 'ada' },
-    { id: bayo, handle: 'bayo' },
+    { id: ada, handle: 'ada', createdAt: old },
+    { id: bayo, handle: 'bayo', createdAt: old },
   ])
 })
 after(() => pool.end())
@@ -80,7 +83,8 @@ test('only a READY video of your own can be attached; a held, blocked, unfinishe
   const cases: [string, string][] = [
     ['processing', await video(ada, 'processing')],
     ['quarantined', await video(ada, 'quarantined')],
-    ['blocked', await video(ada, 'blocked')],
+    // A recent block would make the account ineligible (a different refusal, tested below), so this one is old.
+    ['blocked', await (async () => { const id = await video(ada, 'blocked'); await db.update(media).set({ createdAt: new Date(Date.now() - 100 * 86_400_000) }).where(eq(media.id, id)); return id })()],
     ['uploading', await video(ada, 'uploading')],
     ['rejected', await video(ada, 'rejected')],
     ['someone else’s', await video(bayo)],
@@ -134,4 +138,51 @@ test('/v1/me features.videoPosts: the flag AND the scanner rule, never the flag 
   await db.delete(featureFlags)
   const off = new FeatureFlags(db, 'production')
   assert.equal((await meWith(off, 'production', new PhotoDnaScanner('k')).me(asAda)).features.videoPosts, false, 'production default is off')
+})
+
+// --- The trust rules hold when the video is attached, not only when the upload starts (ADR 0019 section 4.7) ---
+
+const capped = new PostsService(db, { ...DEFAULT_VIDEO_CONFIG, maxLivePerMember: 2 })
+const code = async (work: () => Promise<unknown>) => {
+  try {
+    await work()
+  } catch (err) {
+    assert.ok(err instanceof VideoError, String(err))
+    return err.code
+  }
+  return null
+}
+
+test('attach: the live-video cap is checked at attach, so uploads started at cap-1 cannot both be posted', async () => {
+  const first = await video()
+  const second = await video()
+  const third = await video()
+  await capped.create(ada, 'one', { video: { id: first, description: '' } }) // 1 live
+  await capped.create(ada, 'two', { video: { id: second, description: '' } }) // 2 live: the cap
+  assert.equal(await code(() => capped.create(ada, 'three', { video: { id: third, description: '' } })), 'too_many_videos')
+  const [row] = await db.select().from(media).where(eq(media.id, third))
+  assert.equal(row!.postId, null, 'the refused video is not attached')
+  assert.equal((await db.select().from(posts).where(eq(posts.authorId, ada))).length, 2, 'and no post was made')
+})
+
+test('attach: two creates racing at cap-1 let exactly one through (the member row is locked before counting)', async () => {
+  await capped.create(ada, 'one', { video: { id: await video(), description: '' } }) // 1 live, cap 2
+  const [a, b] = [await video(), await video()]
+  const results = await Promise.allSettled([capped.create(ada, 'a', { video: { id: a, description: '' } }), capped.create(ada, 'b', { video: { id: b, description: '' } })])
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1)
+  const refused = results.find((r) => r.status === 'rejected') as PromiseRejectedResult
+  assert.ok(refused.reason instanceof VideoError && refused.reason.code === 'too_many_videos')
+})
+
+test('attach: an upheld action between the upload and the post refuses the post', async () => {
+  const id = await video()
+  await db.insert(moderationActions).values({ actorId: bayo, action: 'remove_avatar', memberId: ada })
+  assert.equal(await code(() => service.create(ada, 'late', { video: { id, description: '' } })), 'not_eligible')
+  assert.equal((await db.select().from(posts).where(eq(posts.authorId, ada))).length, 0)
+})
+
+test('attach: an account that is too new is refused', async () => {
+  await db.update(members).set({ createdAt: new Date() }).where(eq(members.id, ada))
+  const id = await video()
+  assert.equal(await code(() => service.create(ada, 'new here', { video: { id, description: '' } })), 'not_eligible')
 })

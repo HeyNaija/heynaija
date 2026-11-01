@@ -150,6 +150,9 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
               <PostImages images={item.post.images} compact />
             </div>
           ) : null}
+          {item.post.hasVideo ? (
+            <p className="mt-2 font-medium">This post has a video. It is not shown here; a video reported as illegal is already hidden from readers.</p>
+          ) : null}
         </blockquote>
       ) : item.gist ? (
         <div className="rounded-lg bg-panel p-4 text-sm">

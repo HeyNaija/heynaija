@@ -544,7 +544,7 @@ export type QueueItem = {
   /** Null when the upload scanner filed it. */
   reporterHandle: string | null
   reportCount: number
-  post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
+  post: { id: string; text: string; images: PostImage[]; hasVideo: boolean; authorHandle: string; communityName: string | null } | null
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
   /** A reported community photo; `photo` is null if the community no longer has one. */
   communityPhoto: { slug: string; name: string; photo: string | null } | null
