@@ -47,8 +47,6 @@ type SidebarLink = {
   unread?: number
   /** Drawn empty, for its room only (see `sidebarLinks`). */
   placeholder?: boolean
-  /** Always lives in More, however tall the window is. */
-  secondary?: boolean
 }
 
 /** The member as far as the sidebar can tell: undefined until it is known who is looking. */
@@ -59,9 +57,9 @@ type Looking = Extract<Viewer, { state: 'member' }>['me'] | null | undefined
  * "The sidebar" in globals.css), so it is right on the first paint and with
  * JavaScript off. Each link is also listed in the More menu; the stylesheet shows
  * those copies, and hides the ones in the list, a tier at a time as space runs out.
- * Links marked `secondary` (Progress, Settings, Moderation) always stay in More,
- * leaving the main list for everyday reading. Tier zero is their permanent home
- * in that menu.
+ * The two least needed links share the last tier, the first to go: the More button
+ * takes the room of one link, so moving a single link would gain nothing. After
+ * that, one more link moves at each tier.
  */
 export function Sidebar() {
   return (
@@ -111,6 +109,8 @@ export function Sidebar() {
  * undefined) the page is drawn for a member, whose list is the longer: the
  * Notifications row is kept, empty, so nothing below it moves when a member's page
  * fills in. For a visitor that row goes away when it is known they are one.
+ * Every member's list is the same, so Moderation is in the account menu (`UserMenu`):
+ * a row here would push the compose button down when a moderator's page fills in.
  */
 function sidebarLinks(me: Looking): SidebarLink[] {
   return [
@@ -121,12 +121,11 @@ function sidebarLinks(me: Looking): SidebarLink[] {
       ? [{ href: '/notifications', label: 'Notifications', icon: BellIcon, keep: 3, unread: me?.unreadNotifications, placeholder: me === undefined }]
       : []),
     { href: '/about', label: 'About HeyNaija', icon: InfoIcon, keep: 9 },
-    { href: '/progress', label: 'Progress', icon: HistoryIcon, keep: 8, secondary: true },
+    { href: '/progress', label: 'Progress', icon: HistoryIcon, keep: 8 },
     { href: '/governance', label: 'Governance', icon: GovernanceIcon, keep: 7 },
+    { href: '/ideas', label: 'Ideas board', icon: IdeaIcon, keep: 4 },
     { href: '/bookmarks', label: 'Bookmarks', icon: BookmarkIcon, keep: 5 },
-    { href: '/settings', label: 'Settings', icon: GearIcon, keep: 6, secondary: true },
-    // Only moderators see this; the API checks the role again on every request.
-    ...(me?.moderates ? [{ href: '/mod', label: 'Moderation', icon: ShieldIcon, keep: 4, secondary: true }] : []),
+    { href: '/settings', label: 'Settings', icon: GearIcon, keep: 6 },
   ]
 }
 
@@ -154,9 +153,10 @@ function SidebarLinkItem({ link, known, className, size }: { link: SidebarLink; 
 }
 
 function SidebarLinks({ links, known }: { links: SidebarLink[]; known: boolean }) {
-  const primary = links.filter((link) => !link.secondary).sort((a, b) => a.keep - b.keep)
+  // globals.css has a block for each tier up to 11, enough for a list of 12 links.
+  const moreTier = Math.max(1, links.length - 1)
   const tiers = new Map(
-    links.map((link) => [link.href, link.secondary ? 0 : primary.indexOf(link) + 1]),
+    [...links].sort((a, b) => a.keep - b.keep).map((link, i) => [link.href, Math.min(i + 1, moreTier)]),
   )
   const notifications = links.find((link) => link.unread)
 
@@ -169,7 +169,7 @@ function SidebarLinks({ links, known }: { links: SidebarLink[]; known: boolean }
             <SidebarLinkItem link={link} known={known} className="sidebar-nav-item" size={20} />
           </li>
         ))}
-        <li className="sidebar-more">
+        <li className="sidebar-more" data-more-tier={moreTier}>
           <Menu
             label="More"
             triggerClassName="sidebar-nav-item"

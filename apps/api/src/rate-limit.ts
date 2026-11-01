@@ -20,6 +20,10 @@ export const LIMITS = {
   action: [{ max: 120, windowMs: MINUTE }],
   report: [{ max: 10, windowMs: HOUR }],
   search: [{ max: 60, windowMs: MINUTE }],
+  // @mention suggestions: one per pause in typing, so more than full searches.
+  mentionSuggest: [{ max: 240, windowMs: MINUTE }],
+  // Site admins changing feature flags: rare, and each change is audited.
+  flagChange: [{ max: 30, windowMs: HOUR }],
   inviteCheck: [{ max: 20, windowMs: MINUTE }],
   // Name and bio changes.
   profile: [{ max: 20, windowMs: HOUR }],
@@ -27,6 +31,9 @@ export const LIMITS = {
   upload: [{ max: 10, windowMs: HOUR }],
   // Downloading your own data: it reads everything, so only a few times an hour.
   export: [{ max: 5, windowMs: HOUR }],
+  // Asking for your account's deletion, or cancelling it: each asking signs you out
+  // everywhere and emails you.
+  accountDeletion: [{ max: 5, windowMs: HOUR }],
   // Images attached to posts: up to four a post, so a bigger budget than photos.
   postImage: [
     { max: 12, windowMs: MINUTE },

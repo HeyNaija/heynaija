@@ -1,6 +1,6 @@
 {
-  "id": "fb346b5d-036c-4451-ab58-ff8bc70b04ed",
-  "prevId": "20478bfe-ab2b-4f03-85dd-f30cc383a2ba",
+  "id": "91ad4c19-d190-4854-bbc8-a434f5090bb9",
+  "prevId": "5d7ed57e-5ca0-4c2b-b839-2a1b283f3dfd",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -328,12 +328,6 @@
         },
         "pinned_post_id": {
           "name": "pinned_post_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "photo_media_id": {
-          "name": "photo_media_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -2046,6 +2040,24 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "deletion_requested_at": {
+          "name": "deletion_requested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deletion_scheduled_for": {
+          "name": "deletion_scheduled_for",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -2060,6 +2072,54 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "members_handle_prefix_idx": {
+          "name": "members_handle_prefix_idx",
+          "columns": [
+            {
+              "expression": "handle collate \"C\"",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "active",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "members_name_prefix_idx": {
+          "name": "members_name_prefix_idx",
+          "columns": [
+            {
+              "expression": "lower(display_name) collate \"C\"",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "active and display_name is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "members_deletion_due_idx": {
+          "name": "members_deletion_due_idx",
+          "columns": [
+            {
+              "expression": "deletion_scheduled_for",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "deletion_scheduled_for is not null and deleted_at is null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -3516,6 +3576,149 @@
       },
       "isRLSEnabled": false
     },
+    "public.privacy_requests": {
+      "name": "privacy_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channel": {
+          "name": "channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'received'"
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "due_by": {
+          "name": "due_by",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handled_by": {
+          "name": "handled_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        }
+      },
+      "indexes": {
+        "privacy_requests_status_due_idx": {
+          "name": "privacy_requests_status_due_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "due_by",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "privacy_requests_member_id_members_id_fk": {
+          "name": "privacy_requests_member_id_members_id_fk",
+          "tableFrom": "privacy_requests",
+          "tableTo": "members",
+          "columnsFrom": [
+            "member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "privacy_requests_handled_by_members_id_fk": {
+          "name": "privacy_requests_handled_by_members_id_fk",
+          "tableFrom": "privacy_requests",
+          "tableTo": "members",
+          "columnsFrom": [
+            "handled_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "privacy_requests_kind_check": {
+          "name": "privacy_requests_kind_check",
+          "value": "kind in ('deletion', 'access', 'correction', 'objection', 'other')"
+        },
+        "privacy_requests_channel_check": {
+          "name": "privacy_requests_channel_check",
+          "value": "channel in ('self_service', 'email')"
+        },
+        "privacy_requests_status_check": {
+          "name": "privacy_requests_status_check",
+          "value": "status in ('received', 'verifying', 'in_progress', 'completed', 'cancelled', 'refused')"
+        },
+        "privacy_requests_closed_check": {
+          "name": "privacy_requests_closed_check",
+          "value": "(status in ('completed', 'cancelled', 'refused')) = (closed_at is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.problem_details": {
       "name": "problem_details",
       "schema": "",
@@ -3804,18 +4007,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "community_id": {
-          "name": "community_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "photo_media_id": {
-          "name": "photo_media_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "reason": {
           "name": "reason",
           "type": "text",
@@ -3912,19 +4103,6 @@
           "tableTo": "members",
           "columnsFrom": [
             "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "reports_community_id_communities_id_fk": {
-          "name": "reports_community_id_communities_id_fk",
-          "tableFrom": "reports",
-          "tableTo": "communities",
-          "columnsFrom": [
-            "community_id"
           ],
           "columnsTo": [
             "id"

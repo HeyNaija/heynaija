@@ -1,0 +1,47 @@
+name: Main takes staging
+
+# Only staging goes to main: everything else lands on staging first, and reaches
+# main when staging does. A pull request into main from any other branch is moved
+# to staging, with a note saying why. Where it cannot be moved (one from a fork,
+# whose token is read-only), this check fails instead. The "Main takes staging
+# only" ruleset requires the check to pass before anything merges into main.
+#
+# pull_request rather than pull_request_target: its check is the one on the pull
+# request's own commit, which is what a required check looks for. Nothing here
+# checks out or runs the pull request's code.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, edited, synchronize]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  staging-only:
+    name: Only staging goes to main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the branch, and move the pull request to staging if it is another
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if [ "$HEAD_REPO" = "$REPO" ] && [ "$HEAD_REF" = staging ]; then
+            echo "From staging: it may go to main."
+            exit 0
+          fi
+          if gh api -X PATCH "repos/$REPO/pulls/$PR" -f base=staging --silent; then
+            gh api "repos/$REPO/issues/$PR/comments" --silent -f body="Moved to \`staging\`: only \`staging\` goes to \`main\`. Changes reach \`main\` when \`staging\` is merged into it."
+            echo "::notice::Moved to staging: only staging goes to main."
+            exit 0
+          fi
+          echo "::error::Only staging goes to main. Change this pull request's base branch to staging."
+          exit 1

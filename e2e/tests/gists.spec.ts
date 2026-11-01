@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { MARK } from '../lib/env.ts'
+import { codeFor } from '../lib/mailpit.ts'
 import { signUpOverHttp } from '../lib/members.ts'
 
 // Gists need a LiveKit server and an API started with the Gists switches on, so
@@ -32,13 +33,39 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
   await host.getByRole('button', { name: 'Go live' }).click()
   await host.waitForURL(/\/gists\/[0-9a-f-]{36}$/)
   const url = host.url()
+  // Back on Home, which Next shows as it was left, the form is ready again, not stuck on Starting….
+  await host.goBack()
+  await expect(host.getByRole('button', { name: 'Go live' })).toBeEnabled()
+  await expect(host.getByLabel('Gist title')).toHaveValue('')
+  await host.goto(url)
   await host.getByRole('button', { name: 'Join the Gist' }).click()
   await expect(host.getByRole('button', { name: 'Microphone', exact: true, pressed: false })).toBeVisible()
 
   const earContext = await browser.newContext()
   const ear = await earContext.newPage()
-  await signUpOverHttp(ear, EAR)
-  await ear.goto(url)
+  const earEmail = await signUpOverHttp(ear, EAR)
+
+  // Sent the link while signed out (another device): asked to sign in first, with
+  // nothing about this Gist on the page, then brought straight back to the room.
+  const phoneContext = await browser.newContext()
+  const phone = await phoneContext.newPage()
+  await phone.goto(url)
+  await expect(phone.getByRole('heading', { name: 'Sign in to join this Gist' })).toBeVisible()
+  await expect(phone.getByText('Jollof, settled')).toHaveCount(0)
+  await phone.getByRole('link', { name: 'Sign in', exact: true }).click()
+  await phone.getByLabel('Email address').fill(earEmail)
+  const asked = new Date()
+  await phone.getByRole('button', { name: 'Email me a code' }).click()
+  await phone.getByLabel('Code from the email').fill(await codeFor(earEmail, asked))
+  await phone.getByRole('button', { name: 'Continue' }).click()
+  await phone.waitForURL(url)
+  await expect(phone.getByRole('heading', { name: 'Jollof, settled' })).toBeVisible()
+  await phoneContext.close()
+
+  // The listener finds it in Home's Live now list, not from a shared link.
+  await ear.goto('/')
+  await ear.getByRole('link', { name: /Jollof, settled/ }).click()
+  await ear.waitForURL(url)
   // Nothing is playing before the tap: no media element exists yet.
   await expect(ear.locator('audio')).toHaveCount(0)
   await expect(ear.getByText('Keep this screen open.').first()).toBeVisible()
@@ -55,6 +82,16 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
 
   await expect(ear.getByRole('button', { name: 'Microphone', exact: true, pressed: false })).toBeVisible({ timeout: 15_000 })
   await expect(ear.getByRole('status').filter({ hasText: 'You are now a speaker' })).toBeAttached()
+
+  // Anyone in the room but the host can report the Gist itself; the room keeps playing.
+  await expect(host.getByRole('button', { name: 'Report', exact: true })).toHaveCount(0)
+  await ear.getByRole('button', { name: 'Report', exact: true }).click()
+  const sheet = ear.getByRole('dialog', { name: 'Report this Gist' })
+  await sheet.getByRole('radio', { name: 'Harassment or bullying' }).check()
+  await sheet.getByRole('button', { name: 'Send report' }).click()
+  await expect(sheet.getByText('A moderator will review this Gist')).toBeVisible()
+  await sheet.getByRole('button', { name: 'Back to the Gist' }).click()
+  await expect(ear.getByRole('heading', { name: 'On stage' })).toBeVisible()
 
   // The host ends it; the listener's poll finds out.
   await host.getByRole('button', { name: 'End the Gist' }).click()

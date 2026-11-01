@@ -1,1 +1,0 @@
-ALTER TABLE "communities" ADD COLUMN "photo_media_id" uuid;

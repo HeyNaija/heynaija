@@ -6,6 +6,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgSchema,
   pgTable,
   primaryKey,
@@ -58,8 +59,25 @@ export const members = pgTable(
     // The one of their own top-level posts they keep at the top of their profile.
     // Shown only while it is live; a post removed for good takes the pin with it.
     pinnedPostId: uuid('pinned_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
+    // Account deletion (docs/adr/0016). Asking for it deactivates the account at
+    // once and schedules the erase; cancelling before then clears both. Kept apart
+    // from `status`, which reinstating a suspended member clears.
+    deletionRequestedAt: ts('deletion_requested_at'),
+    deletionScheduledFor: ts('deletion_scheduled_for'),
+    // When the erase finished. From then on the row is a blank tombstone, kept so
+    // that reports, moderation records and other people's replies still point somewhere.
+    deletedAt: ts('deleted_at'),
   },
-  (t) => [index('members_handle_idx').on(t.handle)],
+  (t) => [
+    index('members_handle_idx').on(t.handle),
+    // Prefix lookups for @mention suggestions; "C" so LIKE 'ad%' can use them.
+    index('members_handle_prefix_idx').on(sql`handle collate "C"`).where(sql`active`),
+    index('members_name_prefix_idx').on(sql`lower(display_name) collate "C"`).where(sql`active and display_name is not null`),
+    // What the erase job looks through: deletions requested and not yet finished.
+    index('members_deletion_due_idx')
+      .on(t.deletionScheduledFor)
+      .where(sql`deletion_scheduled_for is not null and deleted_at is null`),
+  ],
 )
 
 // A handle a member gave up by renaming. For a while afterwards only they can take
@@ -107,6 +125,9 @@ export const media = pgTable(
     postId: uuid('post_id').references(() => posts.id),
     position: integer('position'),
     alt: text('alt').notNull().default(''),
+    // Community photos only: the community the upload was started for, the only
+    // one it can become the photo of.
+    communityId: uuid('community_id').references(() => communities.id),
     createdAt: ts('created_at').notNull().defaultNow(),
     readyAt: ts('ready_at'),
   },
@@ -437,7 +458,7 @@ export const mutes = pgTable(
 
 export const REPORT_REASONS = ['spam', 'harassment', 'hate', 'scam', 'illegal', 'other', 'appeal'] as const
 
-// A report about a post, an account or a community's photo. An appeal is a report a suspended member
+// A report about a post, an account, a Gist or a community's photo. An appeal is a report a suspended member
 // files about themselves (reason 'appeal'), so it lands in the same queue. A
 // report with no reporter was filed by the upload scanner, not by a person.
 export const reports = pgTable(
@@ -451,6 +472,8 @@ export const reports = pgTable(
     // photo is a different thing, so reports do not carry over to it).
     communityId: uuid('community_id').references(() => communities.id),
     photoMediaId: uuid('photo_media_id'),
+    // A report about a Gist (docs/adr/0017): who was in it is in gist_report_participants.
+    gistId: uuid('gist_id').references(() => gists.id),
     reason: text('reason', { enum: REPORT_REASONS }).notNull(),
     details: text('details').notNull().default(''),
     status: text('status', { enum: ['open', 'actioned', 'dismissed'] }).notNull().default('open'),
@@ -472,6 +495,7 @@ export const MODERATION_ACTIONS = [
   'remove_community_photo',
   'grant_community_moderator',
   'revoke_community_moderator',
+  'end_gist',
 ] as const
 
 // Append-only record of every moderator decision: who did what, to what, and why.
@@ -486,6 +510,8 @@ export const moderationActions = pgTable(
     postId: uuid('post_id').references(() => posts.id),
     memberId: uuid('member_id').references(() => members.id),
     reportId: uuid('report_id').references(() => reports.id),
+    // Ending a reported Gist: the Gist concerned.
+    gistId: uuid('gist_id').references(() => gists.id),
     // Role changes: the community concerned.
     communityId: uuid('community_id').references(() => communities.id),
     note: text('note').notNull().default(''),
@@ -924,6 +950,52 @@ export const problemDetails = pgTable('problem_details', {
   appVersion: text('app_version'),
 })
 
+export const PRIVACY_REQUEST_KINDS = ['deletion', 'access', 'correction', 'objection', 'other'] as const
+export const PRIVACY_REQUEST_CHANNELS = ['self_service', 'email'] as const
+// received: logged, not yet acted on. verifying: waiting for the person to show
+// the account is theirs. in_progress: being acted on, such as a deletion waiting
+// for its erase. The other three close the request.
+export const PRIVACY_REQUEST_STATUSES = ['received', 'verifying', 'in_progress', 'completed', 'cancelled', 'refused'] as const
+const CLOSED_PRIVACY_REQUEST_STATUSES = ['completed', 'cancelled', 'refused'] as const satisfies readonly (typeof PRIVACY_REQUEST_STATUSES)[number][]
+
+const inList = (values: readonly string[]) => values.map((v) => `'${v}'`).join(', ')
+
+// Every request someone makes about their data (docs/adr/0016): to delete their
+// account, see or correct what HeyNaija holds, or object to its use, from
+// Settings or by email. The record that each was answered in time. Operators only.
+export const privacyRequests = pgTable(
+  'privacy_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // Whose account it is about. Null while none is known to match, such as an
+    // email from an address nobody signs in with.
+    memberId: uuid('member_id').references(() => members.id),
+    kind: text('kind', { enum: PRIVACY_REQUEST_KINDS }).notNull(),
+    channel: text('channel', { enum: PRIVACY_REQUEST_CHANNELS }).notNull(),
+    status: text('status', { enum: PRIVACY_REQUEST_STATUSES }).notNull().default('received'),
+    receivedAt: ts('received_at').notNull().defaultNow(),
+    // When the answer is due: PRIVACY_REQUEST_DUE_DAYS after it came in.
+    dueBy: ts('due_by').notNull(),
+    // When it was closed, whichever way: set exactly when the status is one that closes it.
+    closedAt: ts('closed_at'),
+    // The operator who handled it. Null for what a member did themselves in Settings.
+    handledBy: uuid('handled_by').references(() => members.id),
+    // Private to operators, and as little as will do (docs/governance/counsel-log.md, C-09).
+    notes: text('notes').notNull().default(''),
+  },
+  (t) => [
+    // Open requests by due date, for the overdue check and the operator's list.
+    index('privacy_requests_status_due_idx').on(t.status, t.dueBy),
+    check('privacy_requests_kind_check', sql.raw(`kind in (${inList(PRIVACY_REQUEST_KINDS)})`)),
+    check('privacy_requests_channel_check', sql.raw(`channel in (${inList(PRIVACY_REQUEST_CHANNELS)})`)),
+    check('privacy_requests_status_check', sql.raw(`status in (${inList(PRIVACY_REQUEST_STATUSES)})`)),
+    check(
+      'privacy_requests_closed_check',
+      sql.raw(`(status in (${inList(CLOSED_PRIVACY_REQUEST_STATUSES)})) = (closed_at is not null)`),
+    ),
+  ],
+)
+
 export const GIST_STATUSES = ['scheduled', 'live', 'ended'] as const
 export const GIST_ROLES = ['host', 'cohost', 'speaker', 'listener'] as const
 
@@ -996,4 +1068,69 @@ export const gistMembers = pgTable(
     index('gist_members_member_idx').on(t.memberId),
     check('gist_members_role_check', sql.raw(`role in (${GIST_ROLES.map((value) => `'${value}'`).join(', ')})`)),
   ],
+)
+
+// Who was in a Gist when a member reported it (docs/adr/0017): the report's
+// evidence, since a Gist keeps no audio. Members, not handles, so an erased
+// account shows as its tombstone.
+export const gistReportParticipants = pgTable(
+  'gist_report_participants',
+  {
+    reportId: uuid('report_id')
+      .notNull()
+      .references(() => reports.id),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    role: text('role', { enum: GIST_ROLES }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.reportId, t.memberId] }),
+    check('gist_report_participants_role_check', sql.raw(`role in (${GIST_ROLES.map((value) => `'${value}'`).join(', ')})`)),
+  ],
+)
+
+// Runtime feature flags (docs/feature-flags.md). The flags themselves are defined
+// in code (apps/api/src/flags/registry.ts); this table holds only the overrides an
+// admin has set. No row, or a null `enabled` with no allow-list, means "follow the
+// default for this environment". A key the code does not know is ignored on read.
+export const featureFlags = pgTable('feature_flags', {
+  key: text('key').primaryKey(),
+  // True or false forces the flag on or off for everyone; null is no override.
+  enabled: boolean('enabled'),
+  updatedBy: uuid('updated_by').references(() => members.id, { onDelete: 'set null' }),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+})
+
+// An allow-list: while a flag has any rows here it is on for these members only and
+// off for everyone else, whatever `enabled` and the default say. Members, not
+// handles, because a handle can change.
+export const featureFlagMembers = pgTable(
+  'feature_flag_members',
+  {
+    flagKey: text('flag_key')
+      .notNull()
+      .references(() => featureFlags.key, { onDelete: 'cascade' }),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.flagKey, t.memberId] })],
+)
+
+// Append-only audit of every change to an override: who, and the override before
+// and after as { enabled: boolean | null, memberIds: string[] }. Members, not
+// handles, so an erased account shows as its tombstone (docs/adr/0016).
+export const featureFlagChanges = pgTable(
+  'feature_flag_changes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    flagKey: text('flag_key').notNull(),
+    // The admin who made the change; null for one an account's erase made.
+    actorId: uuid('actor_id').references(() => members.id, { onDelete: 'set null' }),
+    before: jsonb('before').notNull(),
+    after: jsonb('after').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('feature_flag_changes_key_created_idx').on(t.flagKey, t.createdAt)],
 )

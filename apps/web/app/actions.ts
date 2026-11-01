@@ -3,14 +3,25 @@
 import { refresh } from 'next/cache'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import {
+  cancelAnswer,
+  DELETION_COOKIE,
+  DELETION_REAUTHED_PATH,
+  DELETION_SCHEDULED_PATH,
+  deletionAnswer,
+  type Refusal,
+  refusalPath,
+} from '@/lib/account-deletion'
 import { api } from '@/lib/api'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
-import { startAuthUrl } from '@/lib/auth/server'
+import { forgetEndedSession, reauthUrl, startAuthUrl } from '@/lib/auth/server'
+import { siteOrigin } from '@/lib/previews'
 import { preferencesFromForm } from '@/lib/notification-preferences'
 import { PUSH_COOKIE } from '@/lib/push'
 import { choicesFromForm, welcomePath } from '@/lib/onboarding'
 import type { ThreadRow } from '@/lib/thread-state'
 import { POLL_OPTIONS_MAX } from '@/lib/polls'
+import { POST_MAX } from '@/lib/post-length'
 import { isReplyAudience } from '@/lib/reply-audience'
 
 // The API is the authority on who is signed in and what they may do; these
@@ -60,6 +71,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   if (res.status === 400) {
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     if (body.code === 'parent_gone') return { error: 'The post you are replying to has been deleted.' }
+    if (body.code === 'feature_unavailable') return { error: 'That is not available right now.' }
     if (body.code === 'quote_gone') return { error: 'The post you are quoting is no longer available.' }
     if (body.code === 'not_a_member') return { error: 'Join that community to post in it.' }
     if (body.code === 'community_gone') return { error: 'That community is no longer available.' }
@@ -67,7 +79,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
       return { error: 'One of your images is no longer available. Remove it and add it again.' }
     }
     if (poll) return { error: `Check the poll question and its choices. Use 2 to ${POLL_OPTIONS_MAX} different options.` }
-    if (text.trim()) return { error: 'That post is too long, or an image description is. The post limit is 300 characters.' }
+    if (text.trim()) return { error: `That post is too long, or an image description is. The post limit is ${POST_MAX.toLocaleString('en-NG')} characters.` }
     return { error: images.length ? 'Could not post those images. Try again.' : 'Write something first.' }
   }
   if (!res.ok) return { error: 'Could not post. Check your connection and try again.' }
@@ -492,6 +504,31 @@ export async function resolveReport(formData: FormData): Promise<void> {
   refresh()
 }
 
+/** A site moderator turns a feature on or off, or limits it to some members (docs/feature-flags.md). */
+export async function setFlag(_prev: FormState, formData: FormData): Promise<FormState> {
+  const key = String(formData.get('key') ?? '')
+  const mode = String(formData.get('mode') ?? 'default')
+  const handles = String(formData.get('handles') ?? '')
+    .split(/[\s,]+/)
+    .map((h) => h.replace(/^@/, '').trim().toLowerCase())
+    .filter(Boolean)
+  if (mode === 'list' && handles.length === 0) return { error: 'Name at least one member, or choose another setting.' }
+  const enabled = mode === 'on' ? true : mode === 'off' ? false : null
+  const res = await api(`/v1/admin/flags/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ enabled, handles: mode === 'list' ? handles : [] }),
+  })
+  if (res.status === 401) redirect('/login')
+  if (res.status === 400) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string }
+    return { error: typeof body.message === 'string' && body.message.length < 160 ? body.message : 'Check the handles.' }
+  }
+  if (!res.ok) return { error: 'Could not change that. Try again in a moment.' }
+  refresh()
+  return { done: true }
+}
+
 /** A site moderator makes someone a community moderator, or stops them being one. */
 export async function setCommunityModerator(_prev: FormState, formData: FormData): Promise<FormState> {
   const slug = String(formData.get('community') ?? '')
@@ -599,4 +636,73 @@ export async function acceptInvite(_prev: JoinState, formData: FormData): Promis
   // rendered without the invite cookie, which sends the visitor back to /join.
   // The form navigates the browser itself instead.
   return { next: startAuthUrl('registration') }
+}
+
+/**
+ * What the account deletion form shows: an error, or Kratos's sign-in to confirm
+ * it is them (`next`), which the form opens itself and, if that fails, offers
+ * as a link. Not redirect(), as in acceptInvite: Kratos must set its cookies in
+ * the browser itself. (Without JavaScript there is no form state to draw, so
+ * requestAccountDeletion redirects instead: see there.)
+ */
+export type DeletionFormState = { error?: string; next?: { href: string; label: string } }
+
+/**
+ * Asks for the member's account to be deleted (docs/adr/0016), then lands on a
+ * page with the date. The API ends every session, this one too, and Kratos's
+ * logout (and so /logout) refuses a session that has ended, so this browser just
+ * forgets its cookie. Its push subscription goes too: nothing is pushed to an
+ * account waiting for deletion, and the erase deletes the subscriptions.
+ *
+ * The form says whether JavaScript runs (`js`). With it, a refusal or the sign-in
+ * step is returned for the form to draw. Without it a production build cannot
+ * draw form state into the prerendered page, so a refusal redirects to its page
+ * (refusalPath) and the sign-in step to Kratos, a plain redirect the browser
+ * follows with Kratos's cookies.
+ */
+export async function requestAccountDeletion(_prev: DeletionFormState, formData: FormData): Promise<DeletionFormState> {
+  const viaScript = formData.get('js') === '1'
+  const refuse = (refusal: Refusal, message: string): DeletionFormState =>
+    viaScript ? { error: message } : redirect(refusalPath(refusal))
+  const res = await api('/v1/me/deletion', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ confirmHandle: String(formData.get('confirmHandle') ?? '') }),
+    cache: 'no-store',
+  }).catch(() => null)
+  if (!res) return refuse('unavailable', 'Your account could not be deleted just now. Check your connection and try again.')
+
+  const answer = deletionAnswer(res.status, await res.json().catch(() => ({})))
+  if (answer.kind === 'signed_out') redirect('/login')
+  if (answer.kind === 'error') return refuse(answer.refusal, answer.message)
+  if (answer.kind === 'reauth') {
+    const href = reauthUrl(new URL(DELETION_REAUTHED_PATH, siteOrigin).href)
+    return viaScript ? { next: { href, label: 'Sign in again' } } : redirect(href)
+  }
+
+  await forgetEndedSession()
+  const jar = await cookies()
+  jar.delete(PUSH_COOKIE)
+  jar.set(DELETION_COOKIE, answer.scheduledFor, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: DELETION_SCHEDULED_PATH,
+    maxAge: 60 * 60,
+  })
+  redirect(DELETION_SCHEDULED_PATH)
+}
+
+/**
+ * Calls off the deletion of a member who signed in again during the grace period.
+ * The page is drawn again, as the member it is now: home shows the feed.
+ */
+export async function cancelAccountDeletion(_prev: FormState, _formData: FormData): Promise<FormState> {
+  const res = await api('/v1/me/deletion', { method: 'DELETE', cache: 'no-store' }).catch(() => null)
+  if (!res) return { error: 'The deletion could not be cancelled just now. Check your connection and try again.' }
+  const answer = cancelAnswer(res.status, await res.json().catch(() => ({})))
+  if (answer?.kind === 'signed_out') redirect('/login')
+  if (answer) return { error: answer.message }
+  refresh()
+  return { done: true }
 }

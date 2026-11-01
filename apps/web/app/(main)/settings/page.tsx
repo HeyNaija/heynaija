@@ -88,6 +88,16 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
           Download your data
         </a>
       </section>
+      <section className="content-panel settings-section" aria-labelledby="delete-heading">
+        <div>
+          <h2 id="delete-heading" className="section-title">Delete your account</h2>
+          <p className="field-hint mt-1">
+            Take your account and what you posted off HeyNaija for good. You can change your mind for a while after
+            asking.
+          </p>
+        </div>
+        <Link href="/settings/delete" className="btn btn-danger self-start">Delete your account</Link>
+      </section>
       <Link href="/" className="inline-flex min-h-11 items-center self-start text-sm font-semibold text-accent-strong hover:underline">
         Back to the feed
       </Link>

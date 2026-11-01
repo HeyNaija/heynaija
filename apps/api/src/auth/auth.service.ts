@@ -35,6 +35,29 @@ export class AuthService {
     return this.providerCall(() => this.provider.emailForRequest(request))
   }
 
+  /** When the member last signed in, or signed in again, on this session: for steps that need a recent sign-in. */
+  authenticatedAtForRequest(request: AuthRequest): Promise<Date | null> {
+    return this.providerCall(() => this.provider.authenticatedAtForRequest(request))
+  }
+
+  // Account deletion (docs/adr/0016). Each is safe to repeat.
+
+  revokeAllSessions(memberId: string): Promise<void> {
+    return this.providerCall(() => this.provider.revokeAllSessions(memberId))
+  }
+
+  deactivateIdentity(memberId: string): Promise<void> {
+    return this.providerCall(() => this.provider.deactivateIdentity(memberId))
+  }
+
+  deleteIdentity(memberId: string): Promise<void> {
+    return this.providerCall(() => this.provider.deleteIdentity(memberId))
+  }
+
+  identityIdByEmail(email: string): Promise<string | null> {
+    return this.providerCall(() => this.provider.identityIdByEmail(email))
+  }
+
   // A backend that is down or answers nonsense is a 503, so a protected route
   // fails instead of treating the member as signed out.
   private async providerCall<T>(operation: () => Promise<T>): Promise<T> {
