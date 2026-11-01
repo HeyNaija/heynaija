@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 12 | 18 | 13 | 88 |
+| 45 | 13 | 17 | 13 | 88 |
 
 ## Priority order
 
@@ -726,9 +726,11 @@ This tracks product development, not formal governance decisions. Priority means
 #### Long-form writing
 
 - **ID:** `long-form`
-- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
-- **Description:** Support writing beyond the current short-post limit.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
+- **Description:** Write posts longer than a short post, up to 1,000 characters, with longer pieces to follow.
+- **Remaining work / caveat:** Posts can be up to 1,000 characters, and lists show the start of a long one with Show more; longer articles with formatting are not built yet.
+- **Inspected evidence:** `apps/api/src/posts/posts.service.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/lib/post-length.ts`, `apps/web/app/ui/post-item.tsx`, `apps/api/src/posts/posts.service.test.ts`, `apps/web/tests/post-length.test.mjs`, `e2e/tests/posting.spec.ts`
+- **Audit notes:** PR #72 (1 November 2026) raised the limit from 300 to 1,000 graphemes (POST_MAX_GRAPHEMES in the API, POST_MAX in apps/web/lib/post-length.ts). In lists a post past 400 characters or 10 lines shows about its first 300 characters and 8 lines, then a Show more link to its page; mentions, hashtags and links are never cut. Not built: articles longer than a post, formatting, drafts. Availability stays not_live until the change reaches production.
 
 #### Richer media and video
 

@@ -18,10 +18,19 @@ export function StartGist({ heading = true }: { heading?: boolean }) {
   const [current, setCurrent] = useState<string | null>(null)
   const [hosting, setHosting] = useState<string | null>(null)
   const backRef = useRef<HTMLAnchorElement>(null)
+  const started = useRef(false)
 
   // The API has no list of live Gists yet, so a Gist you are in is remembered for this tab;
   // a host who lost the tab is told which one is theirs when they try to start another.
   useEffect(() => setCurrent(sessionStorage.getItem(CURRENT_GIST_KEY)), [])
+  // Next keeps a page you leave mounted but hidden, and shows it as it was when you come Back.
+  // Effects run again when it is shown, so a Gist started from here leaves no "Starting…" behind.
+  useEffect(() => {
+    if (!started.current) return
+    started.current = false
+    setBusy(false)
+    setTitle('')
+  }, [])
   useEffect(() => {
     if (hosting) backRef.current?.focus()
   }, [hosting])
@@ -33,7 +42,10 @@ export function StartGist({ heading = true }: { heading?: boolean }) {
     setBusy(true)
     setError(null)
     const res = await gistCall<GistView>('POST', '', { title: title.trim() })
-    if (res.ok) return router.push(`/gists/${res.data.id}`)
+    if (res.ok) {
+      started.current = true
+      return router.push(`/gists/${res.data.id}`)
+    }
     setBusy(false)
     setError(res.message ?? 'Could not start the Gist. Try again.')
     if (res.code === 'already_hosting' && res.gistId) setHosting(res.gistId)

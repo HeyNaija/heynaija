@@ -13,7 +13,7 @@ import {
 } from './client'
 import { FlowForm } from './flow-form'
 import { ForgetFlowParam } from './forget-flow'
-import { isLogoutUrl, reauthUrl } from './urls'
+import { isLogoutUrl, reauthUrl, signInUrl } from './urls'
 
 async function Form({ kind, flowId }: AuthFormProps) {
   const flow = await getFlow(kind, flowId)
@@ -58,6 +58,7 @@ export const kratosAuth: FrontendAuthProvider = {
   isLogoutUrl,
   forgetEndedSession,
   reauthUrl,
+  signInUrl,
   getFlowError,
   getApiAuthHeaders,
   hasSessionCredentials,

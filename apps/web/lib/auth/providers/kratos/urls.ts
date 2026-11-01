@@ -10,3 +10,7 @@ export const isLogoutUrl = (url: string): boolean => url.startsWith('/kratos/sel
  */
 export const reauthUrl = (returnTo: string): string =>
   `/kratos/self-service/login/browser?refresh=true&return_to=${encodeURIComponent(returnTo)}`
+
+/** Signing in, then back to `returnTo`: an absolute address on the site's own origin, as above. */
+export const signInUrl = (returnTo: string): string =>
+  `/kratos/self-service/login/browser?return_to=${encodeURIComponent(returnTo)}`

@@ -13,6 +13,8 @@ export interface FrontendAuthProvider {
   forgetEndedSession(): Promise<void>
   /** Where the browser goes to sign in again while signed in, then back to `returnTo` (absolute). */
   reauthUrl(returnTo: string): string
+  /** Where the browser goes to sign in while signed out, then back to `returnTo` (absolute). */
+  signInUrl(returnTo: string): string
   getFlowError(id: string): Promise<string | null>
   getApiAuthHeaders(): Promise<Record<string, string>>
   /** Whether a session cookie is present at all; the API decides whether it is valid. */

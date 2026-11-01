@@ -479,7 +479,14 @@ not. Nobody can use presence to tell what a particular member is listening to.
 - **Who is shown a Gist.** The Live now card, the join page and a shared link
   all require `canListen` (not `canCall`). A minor, an
   unverified or opted-out member, and a logged-out visitor get nothing: no card,
-  and the link shows the same not-found page as any other missing page. A **Gist
+  and the link shows the same not-found page as any other missing page. **Changed
+  (1 November 2026):** while Gists are on, a logged-out visitor is first asked to
+  sign in, at the link's own address, and comes back to it afterwards to get the
+  Gist or the not-found page like anyone else; before, a member who was on the
+  list but signed out had no way back to a shared link. The prompt is the same
+  at every Gist address, real or not, so it says nothing about any Gist, and a
+  link preview (fetched signed out) shows only what a Gist is. With Gists off it is
+  still the not-found page. A **Gist
   card inside a post** (stage 5, section 4b) shows an ineligible viewer exactly
   the deleted-post placeholder, byte for byte, with no title, host, time or
   Live/Ended state, so the card cannot be told apart from a deleted post. A Gist
