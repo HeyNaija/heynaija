@@ -2,6 +2,7 @@ import {
   communities,
   communityMemberships,
   type Db,
+  media as mediaTable,
   members,
   moderationActions,
   posts,
@@ -10,7 +11,7 @@ import {
 } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
-import { avatarPath, MediaService } from '../media/media.service.js'
+import { avatarPath, communityPhotoPath, MediaService } from '../media/media.service.js'
 import { type NewNotification, notify } from '../notifications/notifications.service.js'
 import { imagesOf, type PostImage, toPostImages } from '../posts/posts.service.js'
 import { DB } from '../tokens.js'
@@ -24,6 +25,7 @@ export const RESOLUTIONS = [
   'reinstate_member',
   'remove_avatar',
   'clear_profile',
+  'remove_community_photo',
 ] as const
 export type Resolution = (typeof RESOLUTIONS)[number]
 
@@ -45,6 +47,8 @@ export type QueueItem = {
   post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
   /** For reports about an account: what the moderator needs to judge it. */
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
+  /** For reports about a community's photo: the photo as reported; `photo` is null once it is no longer published (replaced or removed). */
+  communityPhoto: { slug: string; name: string; photo: string | null } | null
 }
 
 export type LogEntry = {
@@ -112,19 +116,34 @@ export class ModerationService {
   }
 
   /**
-   * Files a report about a post or an account. Reporting the same thing again
-   * while the first report is still open changes nothing.
+   * Files a report about a post, an account or a community's photo. Reporting
+   * the same thing again while the first report is still open changes nothing.
    */
   async report(
     reporterId: string,
-    target: { postId: string } | { handle: string },
+    target: { postId: string } | { handle: string } | { communitySlug: string },
     reason: ReportReason,
     details = '',
   ): Promise<void> {
     let postId: string | null = null
     let memberId: string | null = null
+    let communityId: string | null = null
+    let photoMediaId: string | null = null
 
-    if ('postId' in target) {
+    if ('communitySlug' in target) {
+      const [community] = await this.db
+        .select({ id: communities.id, photoMediaId: communities.photoMediaId })
+        .from(communities)
+        .where(and(eq(communities.slug, target.communitySlug), eq(communities.active, true)))
+      if (!community?.photoMediaId) throw new ModerationTargetError('that community has no photo')
+      // Whoever can change the photo can simply remove it.
+      const scope = await this.scope(reporterId)
+      if (scope.siteWide || scope.communityIds.includes(community.id)) {
+        throw new ModerationTargetError('you can remove this photo yourself')
+      }
+      communityId = community.id
+      photoMediaId = community.photoMediaId
+    } else if ('postId' in target) {
       const [post] = await this.db
         .select({ id: posts.id, authorId: posts.authorId })
         .from(posts)
@@ -151,16 +170,24 @@ export class ModerationService {
         and(
           eq(reports.reporterId, reporterId),
           eq(reports.status, 'open'),
-          postId ? eq(reports.postId, postId) : eq(reports.memberId, memberId!),
+          postId
+            ? eq(reports.postId, postId)
+            : communityId
+              ? and(eq(reports.communityId, communityId), eq(reports.photoMediaId, photoMediaId!))
+              : eq(reports.memberId, memberId!),
         ),
       )
     if (existing) return
-    await this.db.insert(reports).values({ reporterId, postId, memberId, reason, details })
+    await this.db.insert(reports).values({ reporterId, postId, memberId, communityId, photoMediaId, reason, details })
     // Illegal content may need taking down and reporting quickly, so a person
     // hears about it rather than waiting for a moderator to open the queue.
     if (reason === 'illegal') {
       await this.alerts?.alert('A member reported illegal content', [
-        postId ? `A post (${postId}) was reported as illegal.` : `An account (${memberId}) was reported as illegal.`,
+        postId
+          ? `A post (${postId}) was reported as illegal.`
+          : communityId
+            ? `A community photo (community ${communityId}) was reported as illegal.`
+            : `An account (${memberId}) was reported as illegal.`,
         'Illegal-content reports are at the top of the moderation queue.',
       ])
     }
@@ -214,20 +241,28 @@ export class ModerationService {
       member_name: string | null
       member_bio: string | null
       member_avatar: string | null
+      community_slug: string | null
+      community_title: string | null
+      photo_media_id: string | null
+      photo_status: string | null
     }>(sql`
       select r.id, r.reason, r.details, r.created_at, rep.handle as reporter_handle,
         (select count(*)::int from reports o where o.status = 'open'
           and ((r.post_id is not null and o.post_id = r.post_id)
-            or (r.post_id is null and o.post_id is null and o.member_id = r.member_id))) as report_count,
+            or (r.community_id is not null and o.community_id = r.community_id and o.photo_media_id = r.photo_media_id)
+            or (r.post_id is null and r.community_id is null and o.post_id is null and o.community_id is null and o.member_id = r.member_id))) as report_count,
         p.id as post_id, p.text as post_text, ${imagesOf(sql`p.id`)} as post_images, pa.handle as post_author, c.name as community_name,
         tm.handle as member_handle, tm.active as member_active, tm.display_name as member_name,
-        tm.bio as member_bio, tm.avatar_media_id as member_avatar
+        tm.bio as member_bio, tm.avatar_media_id as member_avatar,
+        rc.slug as community_slug, rc.name as community_title, r.photo_media_id, pm.status as photo_status
       from reports r
       left join members rep on rep.id = r.reporter_id
       left join posts p on p.id = r.post_id
       left join members pa on pa.id = p.author_id
       left join communities c on c.id = p.community_id
       left join members tm on tm.id = r.member_id
+      left join communities rc on rc.id = r.community_id
+      left join media pm on pm.id = r.photo_media_id
       where r.status = 'open'
         and (${scope.siteWide} or p.community_id in ${scope.communityIds.length ? sql`(${sql.join(scope.communityIds.map((id) => sql`${id}`), sql`, `)})` : sql`(null)`})
       order by r.reason = 'illegal' desc, r.created_at asc
@@ -252,6 +287,9 @@ export class ModerationService {
             avatar: avatarPath(r.member_avatar),
           }
         : null,
+      communityPhoto: r.community_slug
+        ? { slug: r.community_slug, name: r.community_title!, photo: r.photo_status === 'ready' ? communityPhotoPath(r.photo_media_id) : null }
+        : null,
     }))
   }
 
@@ -264,6 +302,7 @@ export class ModerationService {
 
     let removedAvatar: string | null = null
     let removedPost: string | null = null
+    let removedCommunityPhoto: string | null = null
 
     await this.db.transaction(async (tx) => {
       const [report] = await tx
@@ -272,6 +311,8 @@ export class ModerationService {
           reason: reports.reason,
           postId: reports.postId,
           memberId: reports.memberId,
+          communityId: reports.communityId,
+          photoMediaId: reports.photoMediaId,
           postAuthorId: posts.authorId,
           postCommunityId: posts.communityId,
         })
@@ -295,6 +336,30 @@ export class ModerationService {
         await tx.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, report.postId))
         action = 'remove_post'
         removedPost = report.postId
+      } else if (resolution === 'remove_community_photo') {
+        // Like any takedown of a community's photo, this is for site moderators only.
+        if (!scope.siteWide) throw new NotAModeratorError()
+        if (!report.communityId) throw new ModerationTargetError('this report is not about a community photo')
+        const [community] = await tx
+          .select({ photoMediaId: communities.photoMediaId })
+          .from(communities)
+          .where(eq(communities.id, report.communityId))
+          .for('update')
+        action = 'remove_community_photo'
+        if (community?.photoMediaId && community.photoMediaId === report.photoMediaId) {
+          await tx.update(communities).set({ photoMediaId: null }).where(eq(communities.id, report.communityId))
+          removedCommunityPhoto = community.photoMediaId
+        } else {
+          // Replaced or removed since. Never take down a different photo; but if the
+          // reported one is already out of public view, the report is settled by that.
+          const [gone] = await tx
+            .select({ status: mediaTable.status })
+            .from(mediaTable)
+            .where(eq(mediaTable.id, report.photoMediaId!))
+          if (gone?.status !== 'quarantined' && gone?.status !== 'deleted') {
+            throw new ModerationTargetError('that photo has already been replaced or removed')
+          }
+        }
       } else if (resolution === 'remove_avatar' || resolution === 'clear_profile') {
         // Changing someone's profile is for site moderators only, like suspension.
         if (!scope.siteWide) throw new NotAModeratorError()
@@ -327,7 +392,9 @@ export class ModerationService {
 
       const sameTarget = report.postId
         ? eq(reports.postId, report.postId)
-        : and(isNull(reports.postId), eq(reports.memberId, report.memberId!))
+        : report.communityId
+          ? and(eq(reports.communityId, report.communityId), eq(reports.photoMediaId, report.photoMediaId!))
+          : and(isNull(reports.postId), isNull(reports.communityId), eq(reports.memberId, report.memberId!))
       const closed = await tx
         .update(reports)
         .set({ status: resolution === 'dismiss' ? 'dismissed' : 'actioned', resolvedAt: new Date(), resolvedBy: moderatorId })
@@ -355,6 +422,7 @@ export class ModerationService {
           kind: 'report_resolved',
           postId: report.postId,
           subjectId: report.postId ? null : report.memberId,
+          communityId: report.communityId,
           detail: resolution === 'dismiss' ? 'dismissed' : 'actioned',
         })
       }
@@ -365,6 +433,7 @@ export class ModerationService {
         action,
         postId: report.postId,
         memberId: targetMemberId,
+        communityId: report.communityId,
         reportId: report.id,
         note,
       })
@@ -373,6 +442,10 @@ export class ModerationService {
     if (removedPost) {
       const postId = removedPost
       await this.afterwards(`quarantining images of post ${postId}`, () => this.media!.quarantinePostImages(postId))
+    }
+    if (removedCommunityPhoto) {
+      const mediaId = removedCommunityPhoto
+      await this.afterwards(`quarantining community photo ${mediaId}`, () => this.media!.quarantineCommunityPhoto(mediaId))
     }
     if (removedAvatar) {
       const mediaId = removedAvatar
@@ -396,10 +469,29 @@ export class ModerationService {
       if (!community) throw new ModerationTargetError(`no community "${slug}"`)
       if (!community.photoMediaId) throw new ModerationTargetError('that community has no photo')
       await tx.update(communities).set({ photoMediaId: null }).where(eq(communities.id, community.id))
+      // Reports about this photo are settled by its removal; their reporters hear.
+      const closed = await tx
+        .update(reports)
+        .set({ status: 'actioned', resolvedAt: new Date(), resolvedBy: moderatorId })
+        .where(
+          and(eq(reports.status, 'open'), eq(reports.communityId, community.id), eq(reports.photoMediaId, community.photoMediaId)),
+        )
+        .returning({ id: reports.id, reporterId: reports.reporterId })
+      const reporters = new Set(closed.flatMap((r) => (r.reporterId ? [r.reporterId] : [])))
+      await notify(
+        tx,
+        [...reporters].map((recipientId) => ({
+          recipientId,
+          kind: 'report_resolved' as const,
+          communityId: community.id,
+          detail: 'actioned',
+        })),
+      )
       await tx.insert(moderationActions).values({
         actorId: moderatorId,
         action: 'remove_community_photo',
         communityId: community.id,
+        reportId: closed[0]?.id,
         note,
       })
       return community.photoMediaId

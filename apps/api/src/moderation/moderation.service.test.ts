@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { communities, members, moderationActions, notifications, posts, reports } from '@heynaija/db'
+import { communities, media, members, moderationActions, notifications, posts, reports } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { CommunitiesService } from '../communities/communities.service.js'
 import { PostsService } from '../posts/posts.service.js'
@@ -290,4 +290,86 @@ test('a report the upload scanner filed has no reporter, and closing it tells no
   await service.resolve(sam, item!.id, 'suspend_member')
   assert.equal((await db.select().from(members).where(eq(members.id, bayo)))[0]!.active, false)
   assert.deepEqual(await db.select().from(notifications), [])
+})
+
+// --- Reporting a community's photo ---
+
+const photo = randomUUID()
+const setPhoto = async (slug: string, mediaId: string | null) => {
+  if (mediaId) {
+    await db
+      .insert(media)
+      .values({ id: mediaId, ownerId: sam, kind: 'community_photo', status: 'ready', contentType: 'image/jpeg', bytes: 1 })
+      .onConflictDoNothing()
+  }
+  await db.update(communities).set({ photoMediaId: mediaId }).where(eq(communities.slug, slug))
+}
+
+test('photo reports: no duplicates, not for moderators, not for a community without a photo', async () => {
+  await assert.rejects(service.report(ada, { communitySlug: 'lagos' }, 'other'), ModerationTargetError)
+  await assert.rejects(service.report(ada, { communitySlug: 'nowhere' }, 'other'), ModerationTargetError)
+
+  await setPhoto('lagos', photo)
+  await service.report(ada, { communitySlug: 'lagos' }, 'hate', 'rude picture')
+  await service.report(ada, { communitySlug: 'lagos' }, 'spam')
+  assert.equal(await openReports(), 1)
+  await service.report(bayo, { communitySlug: 'lagos' }, 'spam')
+  assert.equal(await openReports(), 2)
+
+  // Whoever can change the photo can just remove it.
+  await assert.rejects(service.report(lola, { communitySlug: 'lagos' }, 'spam'), ModerationTargetError)
+  await assert.rejects(service.report(sam, { communitySlug: 'lagos' }, 'spam'), ModerationTargetError)
+
+  // A different photo is a different thing to report.
+  await setPhoto('lagos', randomUUID())
+  await service.report(ada, { communitySlug: 'lagos' }, 'spam')
+  assert.equal(await openReports(), 3)
+})
+
+test('a photo report reaches site moderators only, and an illegal one alerts safety', async () => {
+  await setPhoto('lagos', photo)
+  await service.report(ada, { communitySlug: 'lagos' }, 'illegal', 'rude')
+  assert.equal(alerts.length, 1)
+  assert.doesNotMatch(alerts[0]!.lines.join(' '), /rude/)
+
+  const [item] = await service.queue(sam)
+  assert.deepEqual(item!.communityPhoto, { slug: 'lagos', name: 'Lagos', photo: `/media/community-photos/${photo}` })
+  assert.equal(item!.post, null)
+  assert.equal(item!.member, null)
+  assert.deepEqual(await service.queue(lola), [])
+  await assert.rejects(service.resolve(lola, item!.id, 'remove_community_photo'), NotAModeratorError)
+  await assert.rejects(service.resolve(sam, item!.id, 'remove_post'), ModerationTargetError)
+  await assert.rejects(service.resolve(sam, item!.id, 'suspend_member'), ModerationTargetError)
+})
+
+test('removing a reported photo clears it, closes every report on it, tells reporters and is logged', async () => {
+  await setPhoto('lagos', photo)
+  await service.report(ada, { communitySlug: 'lagos' }, 'hate')
+  await service.report(bayo, { communitySlug: 'lagos' }, 'hate')
+  const [item] = await service.queue(sam)
+  assert.equal(item!.reportCount, 2)
+
+  await service.resolve(sam, item!.id, 'remove_community_photo', 'not ok')
+  assert.equal((await communitiesService.detail(null, 'lagos'))!.photo, null)
+  assert.equal(await openReports(), 0)
+  assert.deepEqual((await db.select().from(reports)).map((r) => r.status), ['actioned', 'actioned'])
+  const [entry] = await db.select().from(moderationActions)
+  assert.deepEqual([entry!.action, entry!.actorId, entry!.note], ['remove_community_photo', sam, 'not ok'])
+  assert.equal(entry!.communityId, (await db.select().from(communities).where(eq(communities.slug, 'lagos')))[0]!.id)
+  const told = await db.select().from(notifications)
+  assert.deepEqual(told.map((n) => [n.kind, n.detail]), [['report_resolved', 'actioned'], ['report_resolved', 'actioned']])
+  assert.ok(told.every((n) => n.communityId === entry!.communityId))
+})
+
+test('a photo report about a photo already replaced cannot remove the new one, but can be dismissed', async () => {
+  await setPhoto('lagos', photo)
+  await service.report(ada, { communitySlug: 'lagos' }, 'spam')
+  const newer = randomUUID()
+  await setPhoto('lagos', newer)
+  const [item] = await service.queue(sam)
+  await assert.rejects(service.resolve(sam, item!.id, 'remove_community_photo'), ModerationTargetError)
+  assert.equal((await db.select().from(communities).where(eq(communities.slug, 'lagos')))[0]!.photoMediaId, newer)
+  await service.resolve(sam, item!.id, 'dismiss')
+  assert.equal(await openReports(), 0)
+  assert.equal((await db.select().from(communities).where(eq(communities.slug, 'lagos')))[0]!.photoMediaId, newer)
 })

@@ -510,6 +510,8 @@ export type QueueItem = {
   reportCount: number
   post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
+  /** A reported community photo; `photo` is null if the community no longer has one. */
+  communityPhoto: { slug: string; name: string; photo: string | null } | null
 }
 
 export type LogEntry = {

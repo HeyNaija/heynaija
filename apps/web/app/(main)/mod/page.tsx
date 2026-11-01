@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { resolveReport, restorePost } from '@/app/actions'
 import { Avatar } from '@/app/ui/avatar'
+import { CommunityMark } from '@/app/ui/community-mark'
 import { EmptyState } from '@/app/ui/empty-state'
 import { ShieldIcon } from '@/app/ui/icons'
 import { LocalTime } from '@/app/ui/local-time'
@@ -147,6 +148,16 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
             {item.member.bio ? <p className="mt-1 whitespace-pre-wrap break-words">{item.member.bio}</p> : null}
           </div>
         </div>
+      ) : item.communityPhoto ? (
+        <div className="flex items-center gap-3 rounded-lg bg-panel p-4 text-sm">
+          <CommunityMark slug={item.communityPhoto.slug} photo={item.communityPhoto.photo} large />
+          <p>
+            <Link href={`/c/${item.communityPhoto.slug}`} className="font-semibold hover:underline">
+              {item.communityPhoto.name}
+            </Link>
+            <span className="text-muted"> community photo{item.communityPhoto.photo ? '' : ' (since replaced or removed)'}</span>
+          </p>
+        </div>
       ) : null}
 
       {item.details ? (
@@ -175,6 +186,11 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
                 Remove post
               </SubmitButton>
             ) : null}
+            {item.communityPhoto && siteWide ? (
+              <SubmitButton name="resolution" value="remove_community_photo" className={danger}>
+                Remove photo
+              </SubmitButton>
+            ) : null}
             {item.member && !item.post && siteWide && item.member.avatar ? (
               <SubmitButton name="resolution" value="remove_avatar" className={button}>
                 Remove photo
@@ -185,14 +201,16 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
                 Clear name and bio
               </SubmitButton>
             ) : null}
-            <SubmitButton
-              name="resolution"
-              value="suspend_member"
-              className={danger}
-              confirmMessage="Suspend this account? They will not be able to post until reinstated."
-            >
-              Suspend account
-            </SubmitButton>
+            {item.communityPhoto ? null : (
+              <SubmitButton
+                name="resolution"
+                value="suspend_member"
+                className={danger}
+                confirmMessage="Suspend this account? They will not be able to post until reinstated."
+              >
+                Suspend account
+              </SubmitButton>
+            )}
           </>
         )}
         <SubmitButton name="resolution" value="dismiss" className={button}>

@@ -109,7 +109,7 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
     case 'post_restored':
       return { icon: <ShieldIcon size={18} />, text: <>A moderator restored your post.</> }
     case 'report_resolved': {
-      const about = n.subjectHandle ? `@${n.subjectHandle}` : 'a post'
+      const about = n.subjectHandle ? `@${n.subjectHandle}` : n.community ? `the photo of ${n.community.name}` : 'a post'
       return {
         icon: <FlagIcon size={20} />,
         text:

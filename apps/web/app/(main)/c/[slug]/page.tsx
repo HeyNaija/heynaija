@@ -55,6 +55,11 @@ async function CommunityView({ params, searchParams }: Props) {
             siteModerator={community.viewerIsSiteModerator}
           />
         ) : null}
+        {viewerId && community.photo && !community.viewerCanManagePhoto ? (
+          <Link href={`/report?community=${community.slug}`} prefetch={false} className="mt-3 inline-flex min-h-8 items-center text-sm text-muted hover:underline">
+            Report photo
+          </Link>
+        ) : null}
         <p className="mt-4 text-[15px] leading-relaxed text-muted">{community.description}</p>
         <p className="mt-4 text-sm leading-6 text-muted">
           <span className="font-semibold text-ink">{community.memberCount.toLocaleString('en-NG')}</span>{' '}

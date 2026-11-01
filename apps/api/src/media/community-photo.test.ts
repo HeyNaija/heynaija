@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { communities, media, members, moderationActions } from '@heynaija/db'
+import { communities, media, members, moderationActions, notifications, reports } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import sharp from 'sharp'
 import { CommunitiesService } from '../communities/communities.service.js'
@@ -206,6 +206,59 @@ test('the hourly sweep takes down a community photo nothing uses any more', asyn
   await finish()
   await db.update(communities).set({ photoMediaId: null }).where(eq(communities.id, communityId))
   await service.sweepAbandoned()
+  assert.equal(await statusOf(mediaId), 'quarantined')
+  assert.deepEqual(store.keys('media'), [])
+})
+
+test('a reported photo that is replaced or removed is kept privately, not deleted', async () => {
+  const first = await upload(lola)
+  await first.finish()
+  await moderation.report(ada, { communitySlug: 'lagos' }, 'hate')
+
+  const second = await upload(lola)
+  await second.finish()
+  assert.equal(await statusOf(first.mediaId), 'quarantined')
+  assert.equal(store.keys('uploads').filter((k) => k.includes(`quarantine/community-photos/${first.mediaId}`)).length, 2)
+  assert.equal(await statusOf(second.mediaId), 'ready')
+
+  // The queue shows no image for it, and a moderator is not forced into dismissing.
+  const [item] = await moderation.queue(sam)
+  assert.equal(item!.communityPhoto!.photo, null)
+  await moderation.resolve(sam, item!.id, 'remove_community_photo')
+  assert.equal((await db.select().from(reports))[0]!.status, 'actioned')
+  assert.equal(await photoColumn(), second.mediaId)
+
+  // Removing as a community moderator keeps it too when it is reported.
+  await moderation.report(chi, { communitySlug: 'lagos' }, 'spam')
+  await service.removeCommunityPhoto(lola, 'lagos')
+  assert.equal(await statusOf(second.mediaId), 'quarantined')
+
+  // Unreported photos are still deleted outright.
+  const third = await upload(lola)
+  await third.finish()
+  await service.removeCommunityPhoto(lola, 'lagos')
+  assert.equal(await statusOf(third.mediaId), 'deleted')
+})
+
+test('a direct takedown by a site moderator settles open reports on that photo and tells reporters', async () => {
+  const { mediaId, finish } = await upload(lola)
+  await finish()
+  await moderation.report(ada, { communitySlug: 'lagos' }, 'hate')
+  await moderation.removeCommunityPhoto(sam, 'lagos')
+  assert.deepEqual((await db.select().from(reports)).map((r) => [r.status, r.resolvedBy]), [['actioned', sam]])
+  const told = await db.select().from(notifications)
+  assert.deepEqual(told.map((n) => [n.recipientId, n.kind, n.detail, n.communityId]), [[ada, 'report_resolved', 'actioned', communityId]])
+  assert.equal(await statusOf(mediaId), 'quarantined')
+  assert.deepEqual(await moderation.queue(sam), [])
+})
+
+test('removing a reported photo from the queue also moves its files out of public view', async () => {
+  const { mediaId, finish } = await upload(lola)
+  await finish()
+  await moderation.report(ada, { communitySlug: 'lagos' }, 'hate')
+  const [item] = await moderation.queue(sam)
+  await moderation.resolve(sam, item!.id, 'remove_community_photo')
+  assert.equal(await photoColumn(), null)
   assert.equal(await statusOf(mediaId), 'quarantined')
   assert.deepEqual(store.keys('media'), [])
 })

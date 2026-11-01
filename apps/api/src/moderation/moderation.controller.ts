@@ -27,6 +27,7 @@ const note = z.object({ note: z.string().trim().max(500).default('') })
 const reportBody = z.union([
   z.object({ postId: z.uuid(), reason: z.enum(reasons), details }),
   z.object({ handle: handleParam, reason: z.enum(reasons), details }),
+  z.object({ communitySlug: slugParam, reason: z.enum(reasons), details }),
 ])
 const appealBody = z.object({ message: z.string().trim().min(10).max(1000) })
 const resolveBody = note.extend({ resolution: z.enum(RESOLUTIONS) })
