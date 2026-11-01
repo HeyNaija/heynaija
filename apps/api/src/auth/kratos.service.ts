@@ -10,6 +10,10 @@ export const SESSION_COOKIE = 'hn_session'
 
 const whoami = z.object({
   active: z.boolean(),
+  // When the member last proved who they are on this session: signing in, or
+  // signing in again, which keeps the session and moves this forward. Read only
+  // by authenticatedAtForSession, so an odd value cannot break a session lookup.
+  authenticated_at: z.unknown().optional(),
   identity: z.object({
     id: z.uuid(),
     state: z.string().optional(),
@@ -17,9 +21,16 @@ const whoami = z.object({
   }),
 })
 
+// Kratos writes times as RFC 3339, with up to six digits of fractions.
+const timestamp = z.iso.datetime({ offset: true }).transform((value) => new Date(value))
+
 export type Identity = { id: string; handle: string }
 
 const cachedIdentity = z.object({ id: z.string(), handle: z.string() })
+
+// Kratos compares the cookie byte for byte, so it is passed through unencoded;
+// refuse anything that could smuggle a second cookie or header.
+const plausibleCookie = (sessionCookie: string) => /^[A-Za-z0-9_\-=.~+/%|]+$/.test(sessionCookie)
 
 const parseCached = (raw: string | null): Identity | null => {
   if (!raw) return null
@@ -58,9 +69,7 @@ export class KratosService {
    * nobody can fill Redis by sending made-up cookies.
    */
   async identityForSession(sessionCookie: string): Promise<Identity | null> {
-    // Kratos compares the cookie byte for byte, so it is passed through unencoded;
-    // refuse anything that could smuggle a second cookie or header.
-    if (!/^[A-Za-z0-9_\-=.~+/%|]+$/.test(sessionCookie)) return null
+    if (!plausibleCookie(sessionCookie)) return null
 
     const ttl = this.env.WHOAMI_CACHE_TTL_S
     if (ttl > 0) {
@@ -89,12 +98,27 @@ export class KratosService {
     return session?.identity.traits.email ?? null
   }
 
+  /**
+   * When the member last signed in, or signed in again, on this session, asked
+   * of Kratos directly. Never cached: signing in again keeps the session and its
+   * cookie and only moves this forward, so a cached answer could be up to
+   * WHOAMI_CACHE_TTL_S old just when it matters. Null if the session has ended.
+   */
+  async authenticatedAtForSession(sessionCookie: string): Promise<Date | null> {
+    const session = await this.session(sessionCookie)
+    if (!session) return null
+    const at = timestamp.safeParse(session.authenticated_at)
+    if (!at.success) throw new AuthProviderError('protocol')
+    return at.data
+  }
+
   private async whoami(sessionCookie: string): Promise<Identity | null> {
     const session = await this.session(sessionCookie)
     return session ? { id: session.identity.id, handle: session.identity.traits.handle } : null
   }
 
   private async session(sessionCookie: string): Promise<z.infer<typeof whoami> | null> {
+    if (!plausibleCookie(sessionCookie)) return null
     let res: Response
     try {
       res = await fetch(`${this.env.KRATOS_PUBLIC_URL}/sessions/whoami`, {

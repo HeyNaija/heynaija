@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import { Composer } from '@/app/ui/composer'
 import { JoinButton } from '@/app/ui/join-button'
 import { CommunityMark } from '@/app/ui/community-mark'
+import { CommunityPhotoEditor } from '@/app/ui/community-photo-editor'
 import { PostItem, PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { getCommunity, getCommunityPosts, getViewer } from '@/lib/api'
 
@@ -39,7 +40,7 @@ async function CommunityView({ params, searchParams }: Props) {
         </Link>
         <div className="mt-3 flex flex-wrap items-start gap-4">
           <div className="flex min-w-0 grow basis-52 items-center gap-4">
-            <CommunityMark slug={community.slug} large />
+            <CommunityMark slug={community.slug} photo={community.photo} large priority />
             <div className="min-w-0 flex-1">
               <h1 className="page-title break-words">{community.name}</h1>
               <p className="mt-1 text-xs text-muted">Public community</p>
@@ -47,6 +48,18 @@ async function CommunityView({ params, searchParams }: Props) {
           </div>
           {viewerId ? <JoinButton slug={community.slug} joined={community.viewerIsMember} /> : null}
         </div>
+        {community.viewerCanManagePhoto ? (
+          <CommunityPhotoEditor
+            slug={community.slug}
+            hasPhoto={community.photo !== null}
+            siteModerator={community.viewerIsSiteModerator}
+          />
+        ) : null}
+        {viewerId && community.photo && !community.viewerCanManagePhoto ? (
+          <Link href={`/report?community=${community.slug}`} prefetch={false} className="mt-3 inline-flex min-h-8 items-center text-sm text-muted hover:underline">
+            Report photo
+          </Link>
+        ) : null}
         <p className="mt-4 text-[15px] leading-relaxed text-muted">{community.description}</p>
         <p className="mt-4 text-sm leading-6 text-muted">
           <span className="font-semibold text-ink">{community.memberCount.toLocaleString('en-NG')}</span>{' '}
@@ -91,6 +104,8 @@ async function CommunityView({ params, searchParams }: Props) {
           handle={viewer.me.handle}
           avatar={viewer.me.avatar}
           community={community.slug}
+          polls={viewer.me.features?.polls ?? false}
+          replyControls={viewer.me.features?.replyControls ?? false}
           placeholder={`Say something to ${community.name}`}
         />
       ) : viewerId ? (

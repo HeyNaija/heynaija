@@ -1,0 +1,100 @@
+'use client'
+
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useEffect, useId, useRef, useState } from 'react'
+import { LiveIcon } from '@/app/ui/icons'
+import { CURRENT_GIST_KEY, TITLE_MAX, titleProblem, type GistView } from '@/lib/gists'
+import { gistCall } from './api'
+
+/** "Start a Gist": a title and a button. Shown on Home to members on the Gists list, and at /gists/new. */
+export function StartGist({ heading = true }: { heading?: boolean }) {
+  const router = useRouter()
+  const fieldId = useId()
+  const hintId = useId()
+  const [title, setTitle] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [current, setCurrent] = useState<string | null>(null)
+  const [hosting, setHosting] = useState<string | null>(null)
+  const backRef = useRef<HTMLAnchorElement>(null)
+  const started = useRef(false)
+
+  // The API has no list of live Gists yet, so a Gist you are in is remembered for this tab;
+  // a host who lost the tab is told which one is theirs when they try to start another.
+  useEffect(() => setCurrent(sessionStorage.getItem(CURRENT_GIST_KEY)), [])
+  // Next keeps a page you leave mounted but hidden, and shows it as it was when you come Back.
+  // Effects run again when it is shown, so a Gist started from here leaves no "Starting…" behind.
+  useEffect(() => {
+    if (!started.current) return
+    started.current = false
+    setBusy(false)
+    setTitle('')
+  }, [])
+  useEffect(() => {
+    if (hosting) backRef.current?.focus()
+  }, [hosting])
+
+  async function start(event: React.FormEvent) {
+    event.preventDefault()
+    const problem = titleProblem(title)
+    if (problem) return setError(problem)
+    setBusy(true)
+    setError(null)
+    const res = await gistCall<GistView>('POST', '', { title: title.trim() })
+    if (res.ok) {
+      started.current = true
+      return router.push(`/gists/${res.data.id}`)
+    }
+    setBusy(false)
+    setError(res.message ?? 'Could not start the Gist. Try again.')
+    if (res.code === 'already_hosting' && res.gistId) setHosting(res.gistId)
+  }
+
+  return (
+    <section className="square-card gist-section" aria-labelledby={`${fieldId}-h`}>
+      {heading ? (
+        <h2 id={`${fieldId}-h`} className="section-title flex items-center gap-2">
+          <LiveIcon size={18} /> Start a Gist
+        </h2>
+      ) : (
+        <h1 id={`${fieldId}-h`} className="page-title">
+          Start a Gist
+        </h1>
+      )}
+      <p id={hintId} className="mt-1 text-sm text-muted">
+        A live audio room. You talk, others listen, and you choose who else may speak. Not recorded. Needs JavaScript and a browser with a microphone.
+      </p>
+      <form onSubmit={start} className="mt-3 flex flex-col gap-3 sm:flex-row" noValidate>
+        <label htmlFor={fieldId} className="sr-only">
+          Gist title
+        </label>
+        <input
+          id={fieldId}
+          className="field sm:flex-1"
+          value={title}
+          maxLength={TITLE_MAX}
+          placeholder="What is it about?"
+          aria-describedby={hintId}
+          aria-invalid={error ? true : undefined}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <button type="submit" disabled={busy} className="btn btn-primary gist-btn">
+          {busy ? 'Starting…' : 'Go live'}
+        </button>
+      </form>
+      {error ? (
+        <p role="alert" className="notice notice-danger mt-3">
+          {error}
+        </p>
+      ) : null}
+      {hosting || current ? (
+        <p className="mt-3 text-sm">
+          <Link ref={backRef} href={`/gists/${hosting ?? current}`} className="font-semibold text-accent-strong hover:underline">
+            {hosting ? 'Return to your live Gist' : 'Return to the Gist you are in'}
+          </Link>
+        </p>
+      ) : null}
+    </section>
+  )
+}

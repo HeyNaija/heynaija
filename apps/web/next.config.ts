@@ -47,6 +47,9 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       { source: '/api/v1/:path*', destination: `${apiInternalUrl}/v1/:path*` },
+      // LiveKit's webhook for Gists (docs/adr/0017). The proxy passes the body through
+      // untouched, which the signature needs; nginx lets only the LiveKit server post it.
+      { source: '/api/internal/livekit/webhook', destination: `${apiInternalUrl}/internal/livekit/webhook` },
       { source: '/kratos/:path*', destination: `${kratosInternalUrl}/:path*` },
       { source: '/media/:path*', destination: `${mediaInternalUrl}/:path*` },
     ]

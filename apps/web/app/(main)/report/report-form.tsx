@@ -3,17 +3,9 @@
 import Link from 'next/link'
 import { useActionState } from 'react'
 import { type FormState, submitReport } from '@/app/actions'
+import { REPORT_REASONS as REASONS } from '@/lib/report-reasons'
 
-const REASONS = [
-  ['spam', 'Spam'],
-  ['harassment', 'Harassment or bullying'],
-  ['hate', 'Hate speech'],
-  ['scam', 'Scam or fraud'],
-  ['illegal', 'Illegal content'],
-  ['other', 'Something else'],
-] as const
-
-export function ReportForm({ postId, handle }: { postId?: string; handle?: string }) {
+export function ReportForm({ postId, handle, community }: { postId?: string; handle?: string; community?: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(submitReport, {})
 
   if (state.done) {
@@ -33,6 +25,7 @@ export function ReportForm({ postId, handle }: { postId?: string; handle?: strin
     <form action={action} className="flex flex-col gap-4">
       {postId ? <input type="hidden" name="postId" value={postId} /> : null}
       {handle ? <input type="hidden" name="handle" value={handle} /> : null}
+      {community ? <input type="hidden" name="community" value={community} /> : null}
 
       <fieldset>
         <legend className="field-label">What is wrong?</legend>

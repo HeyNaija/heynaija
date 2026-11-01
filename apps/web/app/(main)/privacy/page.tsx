@@ -10,7 +10,7 @@ export default function PrivacyPage() {
       eyebrow="Your data"
       title="Privacy policy"
       summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, and how you get your data or have it deleted. No ads, no selling data, no trackers."
-      updated="28 October 2026"
+      updated="30 October 2026"
       sections={[
         {
           id: 'who',
@@ -133,6 +133,7 @@ export default function PrivacyPage() {
               <li><code>hn_age</code>: records that you confirmed you are 18 or older while you sign up, for up to an hour.</li>
               <li>A security cookie from our sign-in service, which stops other sites submitting forms as you.</li>
               <li><code>hn_feed</code>: which tab you last chose on Home (Discover, Latest or Following), so Home opens on it, for up to a year.</li>
+              <li><code>hn_deletion</code>: the date your account will be erased, shown to you once you ask for it to be deleted, for an hour.</li>
               <li><code>hn_data</code>: whether you chose to save data (Automatic, Save data or Always load), so pictures can be held back until you tap them, for up to a year.</li>
               <li>Your light or dark theme is saved in your browser, not sent to us.</li>
             </ul>
@@ -142,20 +143,51 @@ export default function PrivacyPage() {
           id: 'keep',
           title: 'How long we keep it',
           body: (
-            <ul>
-              <li>Your account, profile and age confirmation: for as long as you have an account.</li>
-              <li>
-                Posts you delete leave every page at once, but the record is kept for{' '}
-                <Placeholder>period</Placeholder> so moderation decisions can be checked.
-              </li>
-              <li>Images that were never posted: removed within a few hours.</li>
-              <li>
-                Images moderators take down are moved out of public view and kept privately as evidence for{' '}
-                <Placeholder>period, to be confirmed by counsel</Placeholder>.
-              </li>
-              <li>Backups: kept for 30 days, encrypted.</li>
-              <li>Server logs: <Placeholder>period</Placeholder>.</li>
-            </ul>
+            <>
+              <ul>
+                <li>Your account, profile and age confirmation: for as long as you have an account.</li>
+                <li>
+                  Posts you delete leave every page at once, but the record is kept for{' '}
+                  <Placeholder>period</Placeholder> so moderation decisions can be checked.
+                </li>
+                <li>Images that were never posted: removed within a few hours.</li>
+                <li>
+                  Images moderators take down are moved out of public view and kept privately as evidence for{' '}
+                  <Placeholder>period, to be confirmed by counsel</Placeholder>.
+                </li>
+                <li>
+                  Backups of our two databases (HeyNaija’s, and the sign-in service’s): kept for 30 days, encrypted.
+                  Something deleted stays in them until they age out.
+                </li>
+                <li>Copies of the emails our sign-in service sends you, such as sign-in codes: 7 days.</li>
+                <li>Server logs: <Placeholder>period</Placeholder>.</li>
+              </ul>
+              <p>
+                <strong>When you delete your account</strong>, it leaves HeyNaija at once and is erased 14 days later.
+                Erasing removes your email address and the ways you sign in, your name, bio and photo, the text and
+                images of your posts and replies, your likes, reposts, bookmarks and votes, who you follow, block and
+                mute, your community memberships and notifications, and your age record. What stays:
+              </p>
+              <ul>
+                <li>
+                  A blank placeholder, shown as @deleted-…, in place of your account, so other people’s conversations
+                  and reports still make sense. Your handle is held for 30 days so nobody can take it straight away.
+                </li>
+                <li>Other people’s replies to your posts. Your posts show as no longer available.</li>
+                <li>
+                  Posts of yours that were reported or taken down, out of public view, as the record of moderation
+                  decisions, for the period above, and the reports and decisions themselves.
+                </li>
+                <li>
+                  A record that you declared you were 18 or older, and when, linked only to that placeholder, for{' '}
+                  <Placeholder>period, to be confirmed by counsel</Placeholder>.
+                </li>
+                <li>
+                  The record that you asked for your account to be deleted, and when it was done, for{' '}
+                  <Placeholder>period, to be confirmed by counsel</Placeholder>.
+                </li>
+              </ul>
+            </>
           ),
         },
         {
@@ -169,9 +201,13 @@ export default function PrivacyPage() {
               </li>
               <li><strong>Correct it:</strong> change your name, bio, photo, email or handle in Settings.</li>
               <li>
-                <strong>Delete your account:</strong> not in the app yet; write to{' '}
-                <ContactEmail /> and we will delete it within{' '}
-                <Placeholder>period</Placeholder>.
+                <strong>Delete your account:</strong> in{' '}
+                <Link href="/settings/delete">Settings → Delete your account</Link>. It leaves HeyNaija at once and is
+                erased after 14 days; until then you can sign in and keep it. <Link href="#keep">What is kept</Link>.
+              </li>
+              <li>
+                <strong>Anything else</strong>, or if you cannot use Settings: write to <ContactEmail /> from the
+                address you sign in with. We answer within 30 days.
               </li>
               <li>
                 <strong>Complain:</strong> to us first, and if we do not resolve it, to the Nigeria Data

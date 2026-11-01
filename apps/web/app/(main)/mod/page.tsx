@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { resolveReport, restorePost } from '@/app/actions'
 import { Avatar } from '@/app/ui/avatar'
+import { CommunityMark } from '@/app/ui/community-mark'
 import { EmptyState } from '@/app/ui/empty-state'
 import { ShieldIcon } from '@/app/ui/icons'
 import { LocalTime } from '@/app/ui/local-time'
@@ -11,7 +12,8 @@ import { ModeratorRoster } from '@/app/ui/moderator-roster'
 import { PostImages } from '@/app/ui/post-images'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
-import { getModeration, type LogEntry, type QueueItem } from '@/lib/api'
+import { FlagControls } from '@/app/ui/flag-controls'
+import { getFlags, getModeration, type LogEntry, type QueueItem } from '@/lib/api'
 
 export const metadata: Metadata = { title: 'Moderation' }
 
@@ -33,9 +35,13 @@ const ACTIONS: Record<string, string> = {
   dismiss_report: 'dismissed a report',
   remove_avatar: 'removed the profile photo of',
   clear_profile: 'cleared the name and bio of',
+  remove_community_photo: 'removed the community photo',
   grant_community_moderator: 'made a moderator:',
   revoke_community_moderator: 'removed as moderator:',
+  end_gist: 'ended the Gist',
 }
+
+const GIST_ROLES: Record<string, string> = { host: 'Host', cohost: 'Co-host', speaker: 'Speaker', listener: 'Listener' }
 
 export default function ModerationPage() {
   return (
@@ -56,6 +62,8 @@ async function Moderation() {
   const data = await getModeration()
   // To anyone who is not a moderator this page does not exist.
   if (!data) notFound()
+  // Site moderators only: everyone else gets null.
+  const flags = data.roster ? await getFlags() : null
   const now = Date.now()
 
   return (
@@ -78,6 +86,18 @@ async function Moderation() {
           <h2 className="section-title">Community moderators</h2>
           <div className="mt-3">
             <ModeratorRoster roster={data.roster} />
+          </div>
+        </section>
+      ) : null}
+
+      {flags ? (
+        <section aria-label="Feature flags" className="content-panel">
+          <h2 className="section-title">Feature flags</h2>
+          <p className="mt-1 text-sm text-muted">
+            This is the {flags.env} environment. A change reaches every server within seconds and is kept in the log below.
+          </p>
+          <div className="mt-3">
+            <FlagControls flags={flags} />
           </div>
         </section>
       ) : null}
@@ -131,6 +151,42 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
             </div>
           ) : null}
         </blockquote>
+      ) : item.gist ? (
+        <div className="rounded-lg bg-panel p-4 text-sm">
+          <p>
+            <span className="font-semibold">{item.gist.title}</span>
+            <span className="text-muted">
+              {' '}
+              · a Gist hosted by{' '}
+              <Link href={`/u/${item.gist.hostHandle}`} className="hover:underline">
+                @{item.gist.hostHandle}
+              </Link>
+              {item.gist.communityName ? ` in ${item.gist.communityName}` : ''} · {item.gist.status === 'ended' ? 'ended' : item.gist.status}
+              {item.gist.startedAt ? (
+                <>
+                  {' '}
+                  · started <LocalTime at={item.gist.startedAt} now={now} />
+                </>
+              ) : null}
+            </span>
+          </p>
+          {/* No audio is kept: who was in the room when it was reported is the record. */}
+          <p className="mt-2 text-muted">In the room when reported:</p>
+          {item.gist.participants.length ? (
+            <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+              {item.gist.participants.map((p) => (
+                <li key={p.handle}>
+                  <Link href={`/u/${p.handle}`} className="font-medium hover:underline">
+                    @{p.handle}
+                  </Link>{' '}
+                  <span className="text-muted">{GIST_ROLES[p.role] ?? p.role}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1">Nobody but the reporter.</p>
+          )}
+        </div>
       ) : item.member ? (
         // The account as others see it: photo, name and bio are what get reported.
         <div className="flex gap-3 rounded-lg bg-panel p-4 text-sm">
@@ -145,6 +201,16 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
             </p>
             {item.member.bio ? <p className="mt-1 whitespace-pre-wrap break-words">{item.member.bio}</p> : null}
           </div>
+        </div>
+      ) : item.communityPhoto ? (
+        <div className="flex items-center gap-3 rounded-lg bg-panel p-4 text-sm">
+          <CommunityMark slug={item.communityPhoto.slug} photo={item.communityPhoto.photo} large />
+          <p>
+            <Link href={`/c/${item.communityPhoto.slug}`} className="font-semibold hover:underline">
+              {item.communityPhoto.name}
+            </Link>
+            <span className="text-muted"> community photo{item.communityPhoto.photo ? '' : ' (since replaced or removed)'}</span>
+          </p>
         </div>
       ) : null}
 
@@ -174,6 +240,26 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
                 Remove post
               </SubmitButton>
             ) : null}
+            {item.communityPhoto && siteWide ? (
+              <SubmitButton name="resolution" value="remove_community_photo" className={danger}>
+                Remove photo
+              </SubmitButton>
+            ) : null}
+            {item.gist && item.gist.status !== 'ended' ? (
+              <SubmitButton
+                name="resolution"
+                value="end_gist"
+                className={danger}
+                confirmMessage="End this Gist now? Everyone in it is disconnected and its link stops working."
+              >
+                End the Gist
+              </SubmitButton>
+            ) : null}
+            {item.gist && item.gist.status === 'ended' ? (
+              <SubmitButton name="resolution" value="end_gist" className={button}>
+                Uphold (already ended)
+              </SubmitButton>
+            ) : null}
             {item.member && !item.post && siteWide && item.member.avatar ? (
               <SubmitButton name="resolution" value="remove_avatar" className={button}>
                 Remove photo
@@ -184,14 +270,17 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
                 Clear name and bio
               </SubmitButton>
             ) : null}
-            <SubmitButton
-              name="resolution"
-              value="suspend_member"
-              className={danger}
-              confirmMessage="Suspend this account? They will not be able to post until reinstated."
-            >
-              Suspend account
-            </SubmitButton>
+            {/* A Gist or community photo report names no account; suspending someone is done from a report about them. */}
+            {item.gist || item.communityPhoto ? null : (
+              <SubmitButton
+                name="resolution"
+                value="suspend_member"
+                className={danger}
+                confirmMessage="Suspend this account? They will not be able to post until reinstated."
+              >
+                Suspend account
+              </SubmitButton>
+            )}
           </>
         )}
         <SubmitButton name="resolution" value="dismiss" className={button}>
@@ -214,6 +303,7 @@ function Decision({ entry, now }: { entry: LogEntry; now: number }) {
           </>
         ) : null}
         {entry.communityName ? ` in ${entry.communityName}` : null}
+        {entry.gistTitle ? <> “{entry.gistTitle}”</> : null}
       </span>
       <LocalTime at={entry.createdAt} now={now} className="text-muted" />
       {entry.note ? <span className="w-full text-muted">“{entry.note}”</span> : null}

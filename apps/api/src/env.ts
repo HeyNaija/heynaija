@@ -14,10 +14,33 @@ const lockedOff = (name: string) =>
     .transform((value) => value === 'true')
     .refine((on) => !on, { error: `${name} cannot be enabled yet; see docs/governance/open-items.md` })
 
+/** A plain on/off switch: absent or "false" is off, "true" is on, anything else is refused. */
+const flag = () =>
+  z
+    .enum(['false', 'true'])
+    .default('false')
+    .transform((value) => value === 'true')
+
 /** An optional setting that may also be given empty (compose passes `${NAME:-}`), which means unset. */
 const optional = <T extends z.ZodType>(type: T) => z.preprocess((value) => (value === '' ? undefined : value), type.optional())
 
+export const APP_ENVS = ['development', 'staging', 'production'] as const
+export type AppEnv = (typeof APP_ENVS)[number]
+
+/**
+ * A whole number of days with a default, where empty means the default. Plain
+ * coercion would read compose's empty `${NAME:-}` as 0, which for the deletion
+ * grace period would mean erasing accounts at once.
+ */
+const days = (fallback: number, min: number, max: number) =>
+  z.preprocess((value) => (value === '' ? undefined : value), z.coerce.number().int().min(min).max(max).default(fallback))
+
 const schema = z.object({
+  // Which deployment this is; it picks each feature flag's default (docs/feature-flags.md).
+  // Unset or empty is production, so a server that forgets it can never switch on a
+  // feature that is only meant for staging. The dev scripts, CI and the staging
+  // server set their own.
+  APP_ENV: z.preprocess((value) => (value === '' ? undefined : value), z.enum(APP_ENVS).default('production')),
   DATABASE_URL: z.string().min(1),
   // Ory Kratos public API, reached server-to-server to validate sessions.
   KRATOS_PUBLIC_URL: z.url().transform((u) => u.replace(/\/$/, '')),
@@ -62,11 +85,18 @@ const schema = z.object({
   SMTP_FROM_ADDRESS: z.email().optional(),
   SMTP_FROM_NAME: z.string().min(1).default('HeyNaija'),
   // Kratos's admin API, on the private network only: the one place a member's
-  // email address is kept, read when an email is about to be sent.
-  KRATOS_ADMIN_URL: z
-    .url()
-    .transform((u) => u.replace(/\/$/, ''))
-    .optional(),
+  // email address is kept, read when an email is about to be sent. Also how an
+  // account being deleted is signed out everywhere and its sign-in removed.
+  KRATOS_ADMIN_URL: z.url().transform((u) => u.replace(/\/$/, '')),
+  // Account deletion (docs/adr/0016). Days between asking for deletion and the
+  // erase, during which the member can sign in and cancel; 0 erases within the hour.
+  ACCOUNT_DELETION_GRACE_DAYS: days(14, 0, 30),
+  // Days HeyNaija gives itself to answer a privacy request (counsel to confirm:
+  // docs/governance/counsel-log.md, C-02). Requests past it are flagged.
+  PRIVACY_REQUEST_DUE_DAYS: days(30, 1, 90),
+  // Days the text of a deleted post is kept for moderation records before it is
+  // blanked. Unset until counsel sets the period (C-04): nothing is blanked.
+  DELETED_CONTENT_RETENTION_DAYS: optional(z.coerce.number().int().min(1).max(3650)),
   // How long a notification waits for company before it is emailed, and the least
   // time between two emails to the same member, in seconds (docs/adr/0009).
   EMAIL_DIGEST_DELAY_S: z.coerce.number().int().min(0).max(3600).default(300),
@@ -100,6 +130,30 @@ const schema = z.object({
   // The media bucket's public custom domain (nginx serves it under /media too), so
   // a purge also clears copies cached under that address.
   MEDIA_ORIGIN: optional(z.url().transform((u) => u.replace(/\/$/, ''))),
+  // Calls and Gists (docs/adr/0017). Everything ships dark: both switches default
+  // to false, and with either off (or LiveKit not configured) every Gists route
+  // answers 404 exactly like a route that does not exist.
+  CALLS_ENABLED: flag(),
+  CALLS_GISTS_ENABLED: flag(),
+  // Handles allowed to use calls and Gists during the beta, comma-separated. Empty
+  // means nobody. Temporary: replaced by the real age-verified, opted-in gate (see
+  // gists/eligibility.ts).
+  CALLS_MEMBERS: z
+    .string()
+    .default('')
+    .transform((raw) => raw.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean)),
+  // The LiveKit server. The URL is what browsers connect to (ws:// or wss://), and
+  // the key and secret sign tokens and server calls. Webhooks may be signed with a
+  // key of their own; without one the API key is used. Empty means calls are off.
+  LIVEKIT_URL: optional(z.string().regex(/^wss?:\/\/\S+$/, 'a ws:// or wss:// address').transform((u) => u.replace(/\/$/, ''))),
+  LIVEKIT_API_KEY: optional(z.string().min(1)),
+  LIVEKIT_API_SECRET: optional(z.string().min(32)),
+  LIVEKIT_WEBHOOK_KEY: optional(z.string().min(1)),
+  LIVEKIT_WEBHOOK_SECRET: optional(z.string().min(32)),
+  // Gists limits (docs/adr/0017 section 4a); a load test sets the real numbers.
+  GISTS_MAX_COHOSTS: z.coerce.number().int().min(0).max(10).default(2),
+  GISTS_MAX_SPEAKERS: z.coerce.number().int().min(0).max(50).default(10),
+  GISTS_LISTENER_CAP: z.coerce.number().int().min(1).max(10_000).default(200),
   // Lets browsers subscribe with an http://127.0.0.1 address, for the end-to-end
   // tests' stand-in push service. Only allowed while WEB_PUBLIC_URL is on this machine.
   PUSH_ALLOW_LOOPBACK: z
@@ -108,11 +162,20 @@ const schema = z.object({
     .transform((value) => value === 'true'),
 })
 
+// A deletion is a privacy request too: erasing after its answer is due would be late every time.
+const graceWithinDue = (
+  env: { ACCOUNT_DELETION_GRACE_DAYS: number; PRIVACY_REQUEST_DUE_DAYS: number },
+  ctx: z.RefinementCtx,
+) => {
+  if (env.ACCOUNT_DELETION_GRACE_DAYS > env.PRIVACY_REQUEST_DUE_DAYS) {
+    ctx.addIssue({ code: 'custom', path: ['ACCOUNT_DELETION_GRACE_DAYS'], message: 'ACCOUNT_DELETION_GRACE_DAYS must not be more than PRIVACY_REQUEST_DUE_DAYS' })
+  }
+}
+
 const checked = schema.superRefine((env, ctx) => {
-  if (env.SMTP_CONNECTION_URI) {
-    for (const name of ['SMTP_FROM_ADDRESS', 'KRATOS_ADMIN_URL'] as const) {
-      if (!env[name]) ctx.addIssue({ code: 'custom', path: [name], message: `${name} is required when SMTP_CONNECTION_URI is set` })
-    }
+  graceWithinDue(env, ctx)
+  if (env.SMTP_CONNECTION_URI && !env.SMTP_FROM_ADDRESS) {
+    ctx.addIssue({ code: 'custom', path: ['SMTP_FROM_ADDRESS'], message: 'SMTP_FROM_ADDRESS is required when SMTP_CONNECTION_URI is set' })
   }
   if (Boolean(env.PUSH_VAPID_PUBLIC_KEY) !== Boolean(env.PUSH_VAPID_PRIVATE_KEY)) {
     ctx.addIssue({ code: 'custom', path: ['PUSH_VAPID_PRIVATE_KEY'], message: 'set both PUSH_VAPID_PUBLIC_KEY and PUSH_VAPID_PRIVATE_KEY, or neither' })
@@ -126,6 +189,12 @@ const checked = schema.superRefine((env, ctx) => {
   if (env.SAFETY_ALERT_EMAIL && !env.SMTP_CONNECTION_URI) {
     ctx.addIssue({ code: 'custom', path: ['SAFETY_ALERT_EMAIL'], message: 'SAFETY_ALERT_EMAIL needs SMTP_CONNECTION_URI to send anything' })
   }
+  if (Boolean(env.LIVEKIT_WEBHOOK_KEY) !== Boolean(env.LIVEKIT_WEBHOOK_SECRET)) {
+    ctx.addIssue({ code: 'custom', path: ['LIVEKIT_WEBHOOK_SECRET'], message: 'set both LIVEKIT_WEBHOOK_KEY and LIVEKIT_WEBHOOK_SECRET, or neither' })
+  }
+  if (Boolean(env.LIVEKIT_API_KEY) !== Boolean(env.LIVEKIT_API_SECRET)) {
+    ctx.addIssue({ code: 'custom', path: ['LIVEKIT_API_SECRET'], message: 'set both LIVEKIT_API_KEY and LIVEKIT_API_SECRET, or neither' })
+  }
   if (env.PUSH_ALLOW_LOOPBACK && new URL(env.WEB_PUBLIC_URL).hostname !== '127.0.0.1') {
     ctx.addIssue({ code: 'custom', path: ['PUSH_ALLOW_LOOPBACK'], message: 'PUSH_ALLOW_LOOPBACK is only for a WEB_PUBLIC_URL on 127.0.0.1' })
   }
@@ -134,3 +203,26 @@ const checked = schema.superRefine((env, ctx) => {
 export type Env = z.infer<typeof schema>
 
 export const loadEnv = (source: Record<string, string | undefined> = process.env): Env => checked.parse(source)
+
+const privacyTool = schema
+  .pick({
+    DATABASE_URL: true,
+    REDIS_URL: true,
+    KRATOS_ADMIN_URL: true,
+    WEB_PUBLIC_URL: true,
+    ACCOUNT_DELETION_GRACE_DAYS: true,
+    PRIVACY_REQUEST_DUE_DAYS: true,
+    SMTP_CONNECTION_URI: true,
+    SMTP_FROM_ADDRESS: true,
+    SMTP_FROM_NAME: true,
+  })
+  .superRefine(graceWithinDue)
+
+export type PrivacyToolEnv = z.infer<typeof privacyTool>
+
+/**
+ * What the privacy-request command (src/cli/privacy-request.ts) needs. It asks for
+ * erasures but never does one, so it has no storage or CDN keys to be given.
+ */
+export const loadPrivacyToolEnv = (source: Record<string, string | undefined> = process.env): PrivacyToolEnv =>
+  privacyTool.parse(source)

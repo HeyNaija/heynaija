@@ -1,4 +1,4 @@
-# ADR 0017 — Calls, meetings and screen sharing on a self-hosted LiveKit server
+# ADR 0017 — Calls, meetings, Gists and screen sharing on a self-hosted LiveKit server
 
 **Date:** 30 October 2026 · **Status:** Proposed, design only. Nothing is built:
 no schema, no migration, no endpoint, no server, no UI. · **Roadmap:**
@@ -12,7 +12,9 @@ ADR 0016 (direct messages; PR #42, not yet on `staging`),
 ## Decision
 
 Members can make one-to-one voice and video calls, later join small group
-meetings, later share their screen, and much later record. The media server is
+meetings, later share their screen, host and join **Gists** (live audio rooms
+with a few speakers and a large audience, modelled on X Spaces), and much later
+record. The media server is
 **LiveKit, self-hosted on its own small server** (not on the staging box, which
 is memory-tight, and not LiveKit Cloud). The API decides who may join which room
 and mints short-lived tokens; LiveKit only moves media.
@@ -20,7 +22,8 @@ and mints short-lived tokens; LiveKit only moves media.
 **Owner decision (30 October 2026): self-host LiveKit.** Everything else here is
 a proposal. The feature ships dark (off by default everywhere), and calls follow
 the same gate as direct messages: 18 or over, age-verified, opted in, both
-sides. **Minors are never in a call.**
+sides. Gists have their own gate (section 4a): verified adults, with no DM
+opt-in. **Minors are never in a call or a Gist.**
 
 Facts about LiveKit below come from its documentation, read on 30 October 2026
 and cited inline. Anything marked **(verify)** is from memory or an estimate and
@@ -75,6 +78,13 @@ use.**
 
 **One dedicated small VPS, one node, no Redis at first.**
 
+**Built for staging (31 October 2026).** `infra/livekit/` and
+[`docs/deployment/livekit.md`](../deployment/livekit.md): a Contabo Cloud VPS 4 in
+the EU (4 vCPU, 8 GB RAM, a 200 Mbit/s port), `rtc-staging.heynaija.ng` and `turn-staging.heynaija.ng` (DNS only),
+LiveKit v1.13.11 and Caddy with its layer-4 module, both on the host network. It
+differs from the sketches below in two ways, both noted where they apply: TURN
+runs on 443 behind Caddy, and the webhook comes through Cloudflare.
+
 - **Not behind Cloudflare.** The media host gets a **DNS-only** (grey cloud)
   record, for example `rtc.heynaija.ng`, and `turn.heynaija.ng` (names are
   placeholders). The orange-cloud proxy would break UDP.
@@ -92,7 +102,10 @@ use.**
 - **Staging and production:** LiveKit's webhook config takes one signing key
   and a list of URLs, so two environments on one server would each receive the
   other's events. Recommend **one server per environment**: staging first, a
-  second for production when the beta leaves the allow-list.
+  second for production when the beta leaves the allow-list. **Owner decision
+  (31 October 2026):** staging's is a Contabo Cloud VPS 4; production's is a
+  netcup VPS 1000 ARM G12.5 of its own, not the production app server, which
+  should not carry media.
 
 ### Ports
 
@@ -122,7 +135,10 @@ accept that some networks block it; (b) a second public IP, Caddy on one and
 TURN on 443 on the other; (c) TURN on 443 and a TCP-level router in front. **Recommendation:
 (a) to start,** because most mobile carriers pass 5349 and 7881/TCP covers a
 good share of the rest, and measure how many calls need relay. Move to (b) if
-relay failures show up. TURN needs its own domain and a CA-issued certificate
+relay failures show up. **Built: (c).** LiveKit's own VM setup already puts a
+layer-4 Caddy on 443 that routes by name: TLS for `turn-` is ended there and
+passed to LiveKit's TURN as plain TCP (`turn.external_tls`), so TURN gets 443 on
+one address with no certificate files to share. TURN needs its own domain and a CA-issued certificate
 (self-signed does not work); LiveKit needs `turn.domain`, `turn.tls_port`,
 `turn.cert_file` and `turn.key_file`
 ([deployment](https://docs.livekit.io/transport/self-hosting/deployment/)).
@@ -134,11 +150,11 @@ this is LiveKit's recommended mode)**, so ufw rules are the real rules.
 ### TLS
 
 Caddy obtains and renews Let's Encrypt certificates for `rtc.` and `turn.` and
-proxies 443 to `127.0.0.1:7880`. LiveKit's TURN reads certificate files, so
-Caddy's certificate directory is mounted read-only into LiveKit, and LiveKit is
-restarted after a renewal **(verify whether it reloads files itself)**.
+proxies 443 to `127.0.0.1:7880`. **Built:** Caddy also ends TLS for `turn.` and
+passes TURN on as plain TCP (above), so LiveKit reads no certificate files and
+needs no restart after a renewal.
 
-### Config sketch (`infra/livekit/livekit.yaml`, not final)
+### Config sketch (`infra/livekit/livekit.yaml`, not final; built as the `livekit` config in `infra/livekit/compose.yml`)
 
 ```yaml
 port: 7880                       # behind Caddy; never published
@@ -167,7 +183,7 @@ webhook:
 prometheus_port: 6789            # bound to a private interface (verify the setting)
 ```
 
-### Compose sketch (`infra/livekit/compose.yml`, consistent with `infra/deploy/`)
+### Compose sketch (`infra/livekit/compose.yml`, consistent with `infra/deploy/`; built)
 
 Same conventions as `infra/deploy/compose.yml`: a `name:`, the shared `logging`
 anchor (10 MB x 5), `restart: unless-stopped`, settings and secrets from an
@@ -212,6 +228,16 @@ servers; (c) no webhooks, and the API polls LiveKit's room API. **Recommendation
 (a).** (c) is the fallback if webhooks prove unreliable, which they may: LiveKit
 says delivery is not guaranteed
 ([webhooks](https://docs.livekit.io/intro/basics/rooms-participants-tracks/webhooks-events/)).
+
+**Built instead (31 October 2026): (d), through Cloudflare.** (a) needs a DNS-only
+name pointing at the web server, which would publish the address Cloudflare
+hides. So LiveKit posts to `https://<site>/api/internal/livekit/webhook` like any
+other client; Cloudflare connects to the origin with its client certificate as
+for every request; nginx lets only the LiveKit server's own address
+(`LIVEKIT_WEBHOOK_FROM`, read from `CF-Connecting-IP`) reach that one path; a Next
+rewrite passes the body unchanged to the API; and the API checks the signature.
+A once-a-minute reconcile against LiveKit's room API (the API's `gist-queue.ts`)
+covers lost deliveries, so (c) is already half there.
 
 ### Sizing and bandwidth (estimates, verify with a load test)
 
@@ -321,7 +347,12 @@ the participant identity and grants (`roomJoin`, `canPublish`, `canSubscribe`,
   not guaranteed**, so a webhook is a hint: call state (ringing, active, ended,
   missed) lives in Postgres, and a job reconciles it against LiveKit's list of
   participants every minute, so a lost `room_finished` does not leave a call
-  "active". A `participant_joined` for someone who is no longer eligible gets
+  "active". **For Gists the reconcile also compares each participant's
+  permissions with the role stored in the database**, not only who is present:
+  a failed demote, mute or remove `UpdateParticipant` call would otherwise leave
+  the database saying listener while LiveKit still allows publishing, and nothing
+  would repair it. A mismatch is corrected to the stored role (and the removed
+  list is enforced) and logged. A `participant_joined` for someone who is no longer eligible gets
   them removed at once.
 
 ## 4. Product scope, in stages
@@ -344,9 +375,280 @@ before widening, as in ADR 0016.
    on counsel and governance (open questions 5 and 6). Not designed in detail
    here.
 
-Out of scope: guests without accounts, public webinars, phone dial-in (SIP),
+5. **Gists: live audio rooms.** Section 4a. Needs stage 1's server and token
+   endpoint, not stages 2 to 4, so it can ship before them. Its gates are its
+   own (`canListen`, `canHostGist`), not stage 1's `canCall`.
+
+Out of scope: guests without accounts, video webinars, phone dial-in (SIP),
 live captions in the first three stages (open question 8), virtual
 backgrounds, chat inside a call.
+
+## 4a. Gists (stage 5), modelled on X Spaces
+
+A Gist is a live audio room: a host and a few speakers talk, and a larger
+audience listens. It is not a meeting: most people in it can hear and cannot
+speak, and anyone eligible may listen without an invitation.
+
+**The name is Gists, never Spaces.** "Spaces" is X's name for its product, so
+HeyNaija does not use it for this feature anywhere: not in the UI, copy, code,
+routes, flags or tables. "Gist" is what Nigerians call a good chat, which is
+what the room is for. X's product is named in this ADR only to compare with it.
+
+**What X has** (from [X's Spaces help](https://help.x.com/using-x/spaces) and
+[hosting help](https://help.x.com/en/using-x/spaces-hosting), read 30 October
+2026; the sources disagree on exact limits):
+
+| X Spaces | What HeyNaija does |
+|---|---|
+| Host starts a Space; up to 2 co-hosts and 11 speakers including the host (a third-party guide says 13 in all; **verify**) | Host, up to 2 co-hosts, up to 10 other speakers. Config values, set by a load test. |
+| Listeners join from a card in the timeline, a profile, or a link | Listeners join from a **Live now** card (Home, the community page, the host's profile) or a link, shown only to eligible members (below). Audio only. |
+| Listener taps Request, host or co-host approves | Same. The host can turn requests off. Approval changes the member's role, not a new join. |
+| Host can invite a listener to speak directly | Same. Speakers are always chosen by a host or co-host; nobody takes the mic on their own. |
+| Host and co-hosts mute, remove, report and block; blocking also blocks the account | Same, enforced by revoking publish rights and removing the participant through LiveKit, not by a client-side mute. A removed member is on the Gist's removed list and cannot rejoin it. Block rules are the Gist rules below, not section 3's. |
+| Listeners react with preset emojis | Preset reactions only, no listener text and no chat (section 4), sent to the API and rate-limited (see Signalling). |
+| Schedule a Space and set a reminder | Host schedules; members tap "Remind me", sent through the existing push and email paths (ADR 0011, ADR 0009). |
+| Recording and replay, indefinite on newer apps | **None in stage 5.** Recording stays stage 4, blocked on counsel (open questions 5 and 6). |
+| Co-host takes over if the host leaves | Same: co-hosts are tried in the order they were added, and the first who passes the standing check (below) becomes host. If none does, the Gist ends after 2 minutes. |
+
+**Roles and LiveKit permissions.** One LiveKit room per Gist, created by the
+API. LiveKit's documentation says a participant can join with publishing off and
+be upgraded during the session, and that the server API `UpdateParticipant`
+changes permissions
+([access tokens](https://docs.livekit.io/guides/access-tokens),
+[authentication](https://docs.livekit.io/home/get-started/authentication/);
+**(verify)** both pages and the current URL layout at build time, since the rest
+of this ADR cites the newer layout).
+
+| Role | Token grant | Can do |
+|---|---|---|
+| Listener | `roomJoin`, `canSubscribe`; `canPublish` and `canPublishData` false | Hear, react, request to speak, leave |
+| Speaker | listener token, then `UpdateParticipant` sets `canPublish` true, `canPublishSources` to the microphone only and `hidden` false | Also speak |
+| Co-host | speaker, plus the API (not LiveKit) lets them approve, mute, remove | Moderate |
+| Host | co-host, plus end the Gist, settings, add or remove co-hosts | Everything |
+
+**Every Gist token is a listener token**, whoever holds the role, so a token
+that outlives a role change can never speak. It comes from section 3's token
+endpoint, which for a Gist room checks `canListen`, the Gist block rule, the
+removed list, the room lock and the listener cap (all below) instead of
+`canJoinCall`. Speaking is granted only by the API calling `UpdateParticipant`
+after it has re-checked eligibility and the role in the database, and is taken
+back the same way (demote, remove, ban). On every join, reconnect and
+`participant_joined` webhook, the API resets the participant's permissions to the role stored in the database, so a rejoin after
+a demotion comes back as a listener. Section 3's note that an unexpired token
+can rejoin a room still applies, which is why the token carries nothing but
+listening. Source limiting means a speaker cannot publish video or share a
+screen. Host "mute" means revoking `canPublish` (LiveKit's server-side track
+mute may not stop a publisher unmuting themselves, **verify**); a muted speaker
+asks to speak again.
+
+**Signalling.** Requests to speak, invites, approvals, reactions and role
+changes do not use LiveKit data messages: listeners have `canPublishData` false.
+They go to the API over its normal HTTP endpoints and come back over the web
+app's existing live channel or short polling (the Context section says there is
+no realtime layer, so this is a build-time choice to make, not a given).
+Reactions are rate-limited per member and batched into counts, and a listener
+can have one open speak request at a time.
+
+**Who can see whom.** Listeners join LiveKit as `hidden` where its grant allows
+(**verify**), so the 200 clients do not receive a participant list that names
+them. Promotion clears `hidden` in the same `UpdateParticipant` call, so
+listeners can see who is speaking; a demotion and the reset on rejoin set it
+again. The room shows speakers and a listener count. The host and co-hosts see
+the listener list through the API, because they moderate; other listeners do
+not. Nobody can use presence to tell what a particular member is listening to.
+
+**Who may take part (the safety question that is new here).**
+- **Gists have their own gates, not `canCall`.** Section 5's `canCall` needs
+  DMs opted in and the separate "Allow calls" switch (default off), which suits
+  a private call and would leave almost nobody able to listen to a public room.
+  Two functions, both server-side from live data: **`canListen`** (active,
+  age-verified at `verified`, not suspended; no DM opt-in and no "Allow calls")
+  and **`canHostGist`** (everything in `canListen`, plus the standing rule
+  below). A **speaker** needs `canListen` plus `canHostGist`'s standing check; a
+  member's own choice to speak is still made by tapping Request.
+- **Host and speakers: verified adults in good standing** (the gate above).
+  Hosting also needs a clean standing: no active suspension and no
+  upheld report for abuse in a Gist in the last 90 days (a proposal). The same
+  standing check applies when someone is **made a co-host** and when a co-host
+  **takes over**; a member who may not host cannot be appointed, a co-host who
+  fails the check is passed over for the next, and if none passes the Gist ends
+  instead.
+- **Listeners: `canListen`, verified adults too** (open question 12). A public live room
+  cannot be previewed, and **minors are never in a call or a Gist.** Letting
+  unverified adults listen is a governance decision, not an engineering one.
+- **Who is shown a Gist.** The Live now card, the join page and a shared link
+  all require `canListen` (not `canCall`). A minor, an
+  unverified or opted-out member, and a logged-out visitor get nothing: no card,
+  and the link shows the same not-found page as any other missing page. **Changed
+  (1 November 2026):** while Gists are on, a logged-out visitor is first asked to
+  sign in, at the link's own address, and comes back to it afterwards to get the
+  Gist or the not-found page like anyone else; before, a member who was on the
+  list but signed out had no way back to a shared link. The prompt is the same
+  at every Gist address, real or not, so it says nothing about any Gist, and a
+  link preview (fetched signed out) shows only what a Gist is. With Gists off it is
+  still the not-found page. A **Gist
+  card inside a post** (stage 5, section 4b) shows an ineligible viewer exactly
+  the deleted-post placeholder, byte for byte, with no title, host, time or
+  Live/Ended state, so the card cannot be told apart from a deleted post. A Gist
+  can be public (any eligible member) or **community-only** (members of one
+  community); never invite-only, never guests without accounts. "Public" here
+  means open to any eligible member, not discoverable by strangers. **Built
+  (31 October 2026):** the Live now card on Home, from `GET /v1/gists/live`,
+  which lists a Gist only when opening it would succeed (allow-list, community,
+  removed list, the block rule); community pages and profiles come later.
+- **Blocks in a Gist are not section 3's meeting rule.** That rule refuses any
+  join that puts a blocker and a blocked member in one room, which in a
+  200-person room lets one early joiner lock others out. In a Gist a block is
+  checked against the host, co-hosts and speakers only: you cannot join a Gist
+  when the host or a current speaker is someone you blocked or who blocked you,
+  and a speaker is not promoted past that check. Two listeners who blocked each
+  other can share a room, and blocking never reveals itself to the other side.
+  **Blocks that arise inside a room** (a listener's block is only checked at
+  join, so something must say what happens after): when a member is promoted, a
+  co-host takes over as host, or someone blocks the host or a speaker mid-Gist,
+  the **affected listener is the one who leaves**: the next reconcile (and an
+  immediate check on promotion or takeover) disconnects any listener who has
+  blocked, or been blocked by, the host or a current speaker, and shows them
+  the neutral "This Gist ended for you". Promotion is not refused on a
+  listener's account, so one listener's block cannot stop a Gist from adding a
+  speaker (the lock-out this rule exists to avoid). A promoted speaker or new
+  host is still checked against the host and the other speakers, as above. A
+  proposal for governance to confirm.
+- **Moderation is live and human.** There is no text to review and no
+  recording, so the tools are the host's: mute, remove, end. Any participant
+  can **Report** a Gist (not just a person): the report carries the Gist id,
+  host, time and participant list, and stage 5 stores no audio. Moderators see
+  that metadata, not the conversation (open question 4). Reports do not stop a
+  Gist on their own, since a group could file false ones. Instead:
+  a moderator can **end a Gist** and revoke its link on the metadata alone;
+  reports from distinct, long-standing members count more than a burst from new
+  accounts; and a Gist with several such reports is hidden from the Live now
+  card and queued for a moderator (a proposal, tuned by use). **Built (31
+  October 2026):** Report in the room, for everyone in it but the host; the
+  report records who is in the room then (`gist_report_participants`); the
+  moderation queue shows it to site moderators and to the Gist's community
+  moderators, with **End the Gist** (the room is closed first, then the decision
+  logged). Account deletion keeps a reported Gist as evidence. Not yet: hiding a
+  much-reported Gist from Live now, weighting reports by account age, and the
+  host standing rule.
+- **Raids and hosts.** The host can **lock the room** (no new listeners), set a
+  lower listener cap for that Gist, and require that listeners follow the host
+  or are in the community. Joins are rate-limited per member and per Gist, so a
+  group cannot fill the cap in a burst; the cap counts only eligible, joined
+  members. A host who repeatedly has Gists ended is barred from hosting by
+  the standing rule above.
+- **No new surface for strangers.** A Gist card never shows a member to someone
+  who blocked them or was blocked by them, and a blocked member cannot join.
+
+**Capacity and cost (estimates, verify with a load test).** Listeners only
+subscribe to audio. Speaking is the expensive part: each active speaker's audio
+is sent to every listener. At about 32 kbps per Opus speaker stream
+(**verify**), 3 people talking at once and 200 listeners is roughly
+19 Mbps of audio payload out of the server; plan for about 30 Mbps once
+packet overhead and a few noisy speakers are counted. The server is sized on outbound bandwidth, not CPU,
+and one node's NIC and provider bandwidth quota set the audience cap. Start
+with a configured cap of 200 listeners, measured on the real server in Lagos,
+and a hard refusal (not a degraded stream) above it. The API sets
+`max_participants` on every Gist room at creation, since the server default in
+the config sketch is 8. **Cost:** one hour at that load is about 13.5 GB out at
+the 30 Mbps planning figure (8.6 GB of it audio payload) and about 12,000
+participant-minutes (200 listeners for 60 minutes). One such hour is close to
+the whole growth-stage 15 GB a month in section 7, and more than twice the Cloud
+Build tier's 5,000 minutes. Section 7's finding that Cloud is "cheaper or free
+through the growth stage" holds for meetings and calls, not for Gists, so Gists
+are costed against the self-hosted server's bandwidth quota instead. Listeners
+download about 43 MB an hour of audio, more with packet overhead; the room shows
+this and offers a data-saver choice (section 4b, gap 3). A bigger audience means a
+second node and LiveKit's distributed mode, which needs Redis (section 2); that
+is a later decision.
+
+**Data (design only, no migration).** `gists` (id, host, optional community,
+title, `scheduled | live | ended`, scheduled and started and ended times, peak
+listeners) and `gist_members` (gist, member, role, joined and left times, who
+changed their role). Ended Gists keep these rows and no audio. Retention is
+open question 13.
+
+**Notifications.** A scheduled Gist reminds followers who asked. A live Gist
+notifies **no one** by default beyond the Live now card; "Notify my followers"
+is a host option limited to once per Gist and rate-limited per host, so a Gist
+cannot become a broadcast tool.
+
+**Feature flag.** Gists have their own switch, `CALLS_GISTS_ENABLED`,
+separate from meetings and screen share (section 7), off by default, and stage
+5 is rolled out on its own: allow-listed adults first, then wider. Stage numbers
+are scope labels, not release order.
+
+**Web client.** The Live now card and the Gist room are in
+`apps/web/DESIGN.md`, "Calls and meetings", which gets a "Gists" subsection
+when this is built. On a phone the room is a bottom sheet that stays when the
+reader leaves the page, with a mini bar to return; mute and leave are always in
+reach, and the page works with a mic denied (listen only).
+
+## 4b. Gaps in the first design, and what stage 5 does about each
+
+These came out of a review of 4a against X Spaces and against how our members
+use the web. Each has a recommendation; none is built.
+
+1. **Phone audio.** A web page can lose its audio when the screen locks or the
+   member switches apps, most of all on iOS Safari. Gists are listened to with
+   the phone in a pocket, so this is the largest product risk. Stage 5 on the
+   web is **listen with the screen on**, said plainly in the room ("keep this
+   screen open"). A Media Session entry and a wake lock are used where the
+   browser allows it **(verify per browser)**. Reliable background listening
+   needs the native apps (roadmap `native-apps`), so stage 5 does not promise
+   background listening on phones until it is measured. Recommend a spike on real
+   Android and iPhone before any promise.
+2. **Captions.** A live audio room with no text excludes deaf and
+   hard-of-hearing members, and X offers captions. The cost and privacy of
+   transcription are open question 8. Recommend: not in the first release of
+   stage 5, said plainly in the room, and a Gist can be marked **"Captions by
+   the host"** (a speaker types key points into a pinned note) as a stopgap.
+   Revisit before widening past the allow-list.
+3. **Listener data use.** About 43 MB an hour of audio at three speakers, more
+   with packet overhead (section 4a). Recommend a **data-saver choice** on
+   mobile data (no audio until the listener taps Listen, never autoplay), a
+   visible "using mobile data" hint where the browser reports the connection
+   type **(verify support)**, and the room never starting video. Measure real
+   use on a Nigerian mobile connection during the load test.
+4. **Testing.** Browsers need a real audio device to test WebRTC. Recommend
+   Chromium's fake-media flags (`--use-fake-device-for-media-stream`,
+   `--use-fake-ui-for-media-stream`) for end-to-end tests against a LiveKit
+   server in a container, with one test per role (host, speaker, listener,
+   removed member, blocked member) **(verify the flags in the pinned Playwright
+   version)**. Unit tests cover the role and eligibility functions. Real
+   network conditions (loss, jitter) are a manual test on the production server,
+   not CI.
+5. **Sharing a Gist.** X lets a Space be posted as a card. Stage 5 allows
+   sharing a Gist's link and a **Gist card in a post** (title, host, time, and
+   "Live" or "Ended"), which obeys the same eligibility: a member who cannot
+   join sees exactly the deleted-post placeholder, with no title, host, time
+   or Live/Ended state (section 4a, "Who is shown a Gist"). The card carries no
+   listener names.
+6. **Host tools.** Beyond mute, remove and end: a **speaker queue** (requests
+   in the order made, one open request per member), **pinned links** (the host
+   pins up to three links, each checked against the existing link rules), a
+   visible muted state for each speaker, and a **host handover** prompt before
+   the host leaves. No polls or co-streaming in stage 5.
+7. **Abuse by hosts and rooms.** A per-host limit (for example one live Gist at
+   a time, and a daily cap on Gists started by an account under 30 days old), a
+   rate limit on "Notify my followers", a required title and category that are
+   checked like post text, and the lock-room, lower-cap and moderator-end tools
+   in 4a. A host whose Gists are repeatedly ended loses hosting through the
+   standing rule. Numbers are proposals, tuned from use.
+8. **Operations.** The media server needs its own checks and a runbook before
+   anyone is told it exists: bandwidth against the provider quota with alerts at
+   60 and 80 percent, CPU and packet loss per node, live rooms and listeners as
+   metrics, an alert if the webhook endpoint stops receiving, a documented way to
+   end every live room (the flag deletes rooms, section 7), and a named person
+   on call during the first allow-listed Gists. Section 2's monitoring list is
+   extended with these; the load test that sets the 200-listener cap also sets
+   the alert thresholds.
+9. **Cost.** Gists are costed on bandwidth (4a): about 13.5 GB an hour at the
+   example load, 8.6 GB of it audio payload. Recommend a monthly cap on
+   bandwidth in the provider account, a Gist-hours counter in the admin view, and a decision from the numbers after
+   the allow-listed period on whether a Gist listener cap or a longer-term
+   plan is needed. No dollar figure is given here because provider pricing and
+   the server choice are open (open question 2).
 
 ## 5. Safety
 
@@ -463,8 +765,8 @@ only through `GET /v1/me` as `features.calls`, so a build with it off ships no
 live call route. `CALLS_MEMBERS` allow-list of handles for the beta. Settings
 `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` and the webhook key are
 optional in `infra/deploy/compose.yml` (the `:-` pattern), empty means calls are
-off. Separate stage switches `CALLS_MEETINGS_ENABLED`, `CALLS_SCREENSHARE_ENABLED`
-and `CALLS_RECORDING_ENABLED` (the last locked off in code until counsel
+off. Separate stage switches `CALLS_MEETINGS_ENABLED`, `CALLS_SCREENSHARE_ENABLED`,
+`CALLS_GISTS_ENABLED` and `CALLS_RECORDING_ENABLED` (the last locked off in code until counsel
 signs off). Flag off ends nothing in the database but refuses new calls; live
 calls are ended by deleting their rooms. A kill switch for a stuck server is
 the flag.
@@ -481,7 +783,7 @@ the flag.
 5. Safeguards sign-off: `age-verification` and `direct-messages` live, privacy
    copy, moderator runbook, governance answers.
 6. Enable for a named adult allow-list, then all eligible members; then repeat
-   per stage (meetings, screen share).
+   per stage (meetings, screen share, Gists).
 
 **Cost model (a sketch; every number is an assumption to replace with
 measurement).**
@@ -525,7 +827,10 @@ Each has a recommendation; the PR description repeats them.
    built (and fallback if the VPS fails)? Recommend yes for dev and staging
    experiments only, never production, because the code is the same.
 2. **Where is the server, and which provider?** Needs a measured Lagos test.
-   Recommend choosing on measured loss and RTT, not on price.
+   Recommend choosing on measured loss and RTT, not on price. *Provider decided
+   (31 October 2026): netcup for production (its own VPS 1000 ARM G12.5),
+   Contabo for staging. Still open: which netcup location, chosen on the Lagos
+   measurement.*
 3. **TURN on 443 (second IP) or 5349?** Recommend 5349 first, measure.
 4. **Moderator access to live or past calls?** Recommend none; metadata from
    reports only. Governance decision.
@@ -547,3 +852,38 @@ Each has a recommendation; the PR description repeats them.
 11. **Dependencies on PR #42.** `direct-messages` and `age-verification` are
     added to the roadmap when ADR 0016 merges; until then the roadmap entry
     names them in its notes.
+12. **Who may listen?** Recommend verified adults, the same age rule as calls,
+    through `canListen` (section 4a), without the DM opt-in or "Allow calls"
+    that `canCall` needs. Opening it to unverified adults or to minors is a
+    governance decision, and a public live audio room cannot be moderated
+    beforehand.
+13. **How long are Gist records kept?** Metadata only (no audio). Recommend 90
+    days, longer for a Gist under a report.
+14. **Audience cap and node size.** Recommend 200 listeners and, on the mic,
+    the host, 2 co-hosts and 10 other speakers (13 in all) to start, set from a
+    load test, with a hard refusal above the cap.
+15. **Should a Gist be able to notify followers when it goes live?** Recommend
+    once per Gist, rate-limited, host-chosen.
+16. **How do clients get live role changes, requests and reactions?** The app
+    has no realtime layer today. Recommend short polling (a few seconds) for
+    stage 5, and a decision on a push channel only if a Gist proves it is
+    needed; never `canPublishData` for listeners.
+17. **Do listeners join `hidden` and is the listener list visible to
+    co-hosts only?** Recommend yes (section 4a), subject to LiveKit supporting
+    it as described **(verify)**.
+18. **Phone audio.** Is "listen with the screen on" acceptable for the first
+    release, or is Gists held until the native apps exist? Recommend ship to
+    the allow-list with the limit stated, and measure before widening.
+19. **Captions for Gists.** Is the "captions by the host" stopgap enough to
+    start, or must server transcription (open question 8) come first? Recommend
+    the stopgap for the allow-list, a decision before widening.
+20. **Voice effects (pitch shifting, voice changers, "voice masks") in Gists
+    and calls.** Not built, and the audio path is a clean pass-through: the web
+    client offers only the browser's own noise suppression, echo cancellation and
+    automatic gain control. A disguised voice in a live public room is a
+    means of impersonating someone and of evading a mute, a removal or a
+    report, and a room that leaves no recording cannot be corrected afterwards.
+    Recommend: do not offer any effect that changes who a voice sounds like,
+    until governance decides; if one is ever allowed, say so in the room to
+    everyone ("this speaker is using a voice effect"), and let a host switch it
+    off for their Gist.

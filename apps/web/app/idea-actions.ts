@@ -4,6 +4,7 @@ import { refresh } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { api } from '@/lib/api'
 import { ideaIdFrom } from '@/lib/ideas'
+import { POST_MAX } from '@/lib/post-length'
 
 // The ideas board's actions. As everywhere, the API decides who may do what;
 // these only relay the visitor's own session.
@@ -36,7 +37,9 @@ export async function sendIdea(_prev: IdeaFormState, formData: FormData): Promis
   if (res.status === 400) {
     const body = (await res.json().catch(() => ({}))) as { message?: string }
     if (/title/.test(body.message ?? '')) return { error: 'Give it a title of at most 80 characters.' }
-    if (/300/.test(body.message ?? '')) return { error: 'The title and details together are longer than 300 characters.' }
+    if (/together are longer/.test(body.message ?? '')) {
+      return { error: `The title and details together are longer than ${POST_MAX.toLocaleString('en-NG')} characters.` }
+    }
     return { error: 'Could not send that. Check the title and details and try again.' }
   }
   if (!res.ok) return { error: 'Could not send it. Try again in a moment.' }

@@ -158,7 +158,7 @@ async function Results({ searchParams }: Pick<PageProps<'/search'>, 'searchParam
               <ul className="result-list mt-3">
                 {results.communities.map((c) => (
                   <li key={c.slug} className="result-row">
-                    <CommunityMark slug={c.slug} />
+                    <CommunityMark slug={c.slug} photo={c.photo} />
                     <div className="min-w-0 flex-1">
                       <Link href={`/c/${c.slug}`} className="font-semibold hover:underline">
                         {c.name}

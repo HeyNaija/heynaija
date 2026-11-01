@@ -42,6 +42,8 @@ async function Welcome({ searchParams }: Pick<PageProps<'/welcome'>, 'searchPara
   const [viewer, params, communities, pushKey] = await Promise.all([getViewer(), searchParams, getCommunities(), getPushKey()])
   if (viewer.state === 'anonymous') redirect('/login')
   if (viewer.state !== 'member') redirect('/')
+  // The welcome flow is switched off (a feature flag): there is nothing to do here.
+  if (viewer.me.features && !viewer.me.features.onboarding) redirect('/')
 
   // Only communities that exist: the URL is the member's to edit.
   const asked = new Set(all(params.c))
@@ -145,7 +147,7 @@ function CommunitiesStep({ communities, chosen }: { communities: Community[]; ch
                   ) : (
                     <input type="checkbox" name="c" value={c.slug} defaultChecked={ticked.has(c.slug)} aria-label={`Join ${c.name}`} aria-describedby={`welcome-c-${c.slug}`} />
                   )}
-                  <CommunityMark slug={c.slug} />
+                  <CommunityMark slug={c.slug} photo={c.photo} />
                   <span className="welcome-choice-text">
                     <strong>{c.name}</strong>
                     <span id={`welcome-c-${c.slug}`} className="welcome-choice-about">

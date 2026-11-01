@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 12 | 17 | 14 | 88 |
+| 45 | 15 | 15 | 13 | 88 |
 
 ## Priority order
 
@@ -264,12 +264,12 @@ This tracks product development, not formal governance decisions. Priority means
 #### Account deletion and privacy requests
 
 - **ID:** `account-deletion`
-- **Priority:** P0 · **Status:** Blocked · **Availability:** Not live
+- **Priority:** P0 · **Status:** Partial · **Availability:** Not live
 - **Description:** Provide a usable route to delete an account and handle privacy requests.
-- **Remaining work / caveat:** Members can ask for deletion through the contact address, but the time it takes is still to be set and self-service account deletion is absent.
+- **Remaining work / caveat:** Members can delete their account in Settings, and requests by email are recorded and answered. The operator's name and address, and how long deletion records and moderation evidence are kept, are still placeholders for the operator and counsel.
 - **Dependencies:** `operator-disclosure`
-- **Inspected evidence:** `apps/web/app/(main)/privacy/page.tsx`, `apps/web/app/(main)/settings/page.tsx`, `docs/governance/open-items.md`
-- **Audit notes:** Promoted from the initial P2 proposal: a working privacy-rights route is a public-beta prerequisite. The privacy contact is contact@heynaija.ng (apps/web/app/ui/policy-page.tsx); the deletion period is a placeholder on /privacy, and there is no tool for an operator to delete an account.
+- **Inspected evidence:** `apps/web/app/(main)/settings/delete/page.tsx`, `apps/web/app/(main)/privacy/page.tsx`, `apps/api/src/account/account-deletion.service.ts`, `apps/api/src/account/account-deletion.service.test.ts`, `apps/api/src/account/account.controller.ts`, `apps/api/src/account/account-queue.ts`, `apps/api/src/cli/privacy-request.ts`, `e2e/tests/account-deletion.spec.ts`, `docs/adr/0016-account-deletion.md`, `docs/governance/privacy-requests.md`
+- **Audit notes:** Built on 30 October 2026 (ADR 0016): an account leaves the site at once and is erased after 14 days unless its owner keeps it; an hourly job erases due accounts; members are emailed at both steps; `pnpm privacy-request` records and closes requests made by email. Waiting on counsel's retention periods (counsel log C-01 to C-15) and on operator-disclosure.
 
 ### Reliability and access
 
@@ -407,7 +407,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
 - **Description:** Mention a member by handle and notify the person mentioned.
 - **Inspected evidence:** `apps/api/src/posts/mentions.ts`, `apps/api/src/posts/posts.service.ts`, `packages/db/drizzle/0017_mentions.sql`, `apps/web/app/ui/post-text.tsx`, `apps/api/src/posts/posts.service.test.ts`, `apps/api/src/notifications/notifications.service.test.ts`, `e2e/tests/mentions.spec.ts`
-- **Audit notes:** Mentions are stored by member ID with their place in the text, so they follow renames; held handles lead to their previous owner. At most 10 members per post are notified; blocked members either way are not, mutes hide the notification, and deleting or removing the post hides it. No composer handle autocomplete yet.
+- **Audit notes:** Mentions are stored by member ID with their place in the text, so they follow renames; held handles lead to their previous owner. At most 10 members per post are notified; blocked members either way are not, mutes hide the notification, and deleting or removing the post hides it. The composer suggests members after @ and at least one character (GET /v1/search/mentions), but not inside a web address: the member whose handle is exactly what was typed first, then people the viewer follows, by handle or any word of their name, then everyone else by handle start, then by name start, never blocked either way; pages of 10 continue along each index from a cursor (migration 0031), loaded as the list is scrolled or arrowed to its end, and the browser debounces and caches answers. The list is fixed to the window, under the box or over it near the bottom, so the phone reply bar does not clip it.
 
 #### Conversation polls
 
@@ -471,9 +471,11 @@ This tracks product development, not formal governance decisions. Priority means
 #### Community photos
 
 - **ID:** `community-photos`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Partial · **Availability:** Not live
 - **Description:** Give communities their own uploaded visual identities.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/web/app/ui/community-mark.tsx`, `apps/api/src/media/media.controller.ts`
+- **Remaining work / caveat:** Moderators can add, replace, remove and take down a community photo in the API, covered by API tests; members can report a photo and site moderators remove it from the moderation queue, also covered by API tests. The web editor, the report page, the queue entry and the end-to-end test have not been run yet, and uploads are only as safe as upload scanning, which is still blocked.
+- **Inspected evidence:** `packages/db/drizzle/0034_community_photos.sql`, `packages/db/src/schema.ts`, `apps/api/src/media/media.service.ts`, `apps/api/src/media/media.controller.ts`, `apps/api/src/communities/communities.service.ts`, `apps/api/src/communities/photo-managers.ts`, `apps/api/src/moderation/moderation.service.ts`, `apps/web/app/ui/community-mark.tsx`, `apps/web/app/ui/community-photo-editor.tsx`, `apps/web/app/ui/use-square-photo-upload.ts`, `apps/web/app/(main)/c/[slug]/page.tsx`, `apps/web/app/(main)/report/page.tsx`, `apps/web/app/(main)/mod/page.tsx`, `apps/api/src/moderation/moderation.service.test.ts`, `apps/api/src/media/community-photo.test.ts`, `e2e/tests/community-photos.spec.ts`
+- **Audit notes:** One square photo per community (communities.photo_media_id), added, replaced or removed by that community's moderators and site moderators from the community page; the control needs JavaScript, while the photo and the subject-icon fallback show to everyone without it. It goes through the profile-photo pipeline (JPEG, PNG or WebP up to 5 MB, 96px and 256px WebP, location data dropped) and the same fail-closed upload scanner, so it depends on upload-scanning being completed before launch. Site moderators take a photo down from the community page: it is quarantined privately and logged as remove_community_photo, but the community's moderators can then upload another. Members who cannot manage the photo report it from a Report photo link on the community page (/report?community=slug), as they would a post or account: same reasons, rate limit and one open report per member per photo (reports.community_id and photo_media_id, migration 0034). The report reaches site moderators only, who can remove the photo from the queue (the photo is quarantined, logged and reporters told) or dismiss; a report about a photo since replaced can only be dismissed, and once its reports are dismissed its private copy is deleted. An upload can only become the photo of the community it was started for (media.community_id). The photo is the community's: erasing the account of the moderator who uploaded it leaves it in place.
 
 #### Email notifications
 
@@ -726,9 +728,11 @@ This tracks product development, not formal governance decisions. Priority means
 #### Long-form writing
 
 - **ID:** `long-form`
-- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
-- **Description:** Support writing beyond the current short-post limit.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
+- **Description:** Write posts longer than a short post, up to 1,000 characters, with longer pieces to follow.
+- **Remaining work / caveat:** Posts can be up to 1,000 characters, and lists show the start of a long one with Show more; longer articles with formatting are not built yet.
+- **Inspected evidence:** `apps/api/src/posts/posts.service.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/lib/post-length.ts`, `apps/web/app/ui/post-item.tsx`, `apps/api/src/posts/posts.service.test.ts`, `apps/web/tests/post-length.test.mjs`, `e2e/tests/posting.spec.ts`
+- **Audit notes:** PR #72 (1 November 2026) raised the limit from 300 to 1,000 graphemes (POST_MAX_GRAPHEMES in the API, POST_MAX in apps/web/lib/post-length.ts). In lists a post past 400 characters or 10 lines shows about its first 300 characters and 8 lines, then a Show more link to its page; mentions, hashtags and links are never cut. Not built: articles longer than a post, formatting, drafts. Availability stays not_live until the change reaches production.
 
 #### Richer media and video
 
@@ -751,11 +755,11 @@ This tracks product development, not formal governance decisions. Priority means
 - **Dependencies:** `abuse-response`
 - **Inspected evidence:** `PRODUCT.md`, `packages/db/src/schema.ts`
 
-#### Calls, meetings and screen sharing
+#### Calls, meetings, Gists and screen sharing
 
 - **ID:** `calls-and-meetings`
 - **Priority:** P3 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Voice and video calls between age-verified adults, then small group meetings and screen sharing, on a self-hosted LiveKit server.
+- **Description:** Voice and video calls between age-verified adults, then small group meetings, screen sharing and Gists (live audio rooms with a few speakers and a large audience), on a self-hosted LiveKit server.
 - **Remaining work / caveat:** Design only. Needs direct messages and age verification first; recording, moderator access and retention need counsel and governance.
 - **Dependencies:** `minor-safeguards`
 - **Inspected evidence:** `docs/adr/0017-calls-and-meetings.md`, `docs/governance/under-18-rollout.md`
