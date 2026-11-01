@@ -4,7 +4,25 @@ import { methodFromDecision } from './state.js'
 export const DIDIT_CLIENT = Symbol('DIDIT_CLIENT')
 
 /** What we read from a decision: Didit's status for the session, whose it is and how it was approved. Nothing else is passed on. */
-export type DiditDecision = { sessionId: string; status: string; vendorData: string; method: string }
+export type DiditDecision = {
+  sessionId: string
+  status: string
+  vendorData: string
+  method: string
+  /** The decision carries a duplicated-face or duplicated-document risk. */
+  duplicate: boolean
+}
+
+/** Didit's risk codes for one person appearing on several accounts or documents. */
+const DUPLICATE_RISKS = new Set(['DUPLICATED_FACE', 'POSSIBLE_DUPLICATED_FACE', 'FRONT_CAMERA_DUPLICATED_FACE', 'DUPLICATED_DOCUMENT'])
+
+/** Whether any string anywhere in the decision is one of those codes. They sit in per-feature warnings, so the whole thing is scanned. */
+export function hasDuplicateRisk(value: unknown): boolean {
+  if (typeof value === 'string') return DUPLICATE_RISKS.has(value)
+  if (Array.isArray(value)) return value.some(hasDuplicateRisk)
+  if (value !== null && typeof value === 'object') return Object.values(value).some(hasDuplicateRisk)
+  return false
+}
 
 export interface DiditClient {
   /** Starts a hosted check for a member; `url` is where to send them. */
@@ -55,6 +73,6 @@ export class HttpDiditClient implements DiditClient {
     const id = str(body.session_id)
     const status = str(body.status)
     if (!id || !status) throw new Error('Didit did not return a decision')
-    return { sessionId: id, status, vendorData: str(body.vendor_data) ?? '', method: methodFromDecision(body) }
+    return { sessionId: id, status, vendorData: str(body.vendor_data) ?? '', method: methodFromDecision(body), duplicate: hasDuplicateRisk(body) }
   }
 }

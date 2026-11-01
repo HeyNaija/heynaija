@@ -2,7 +2,7 @@ import { BadGatewayException, Controller, Get, Headers, HttpCode, Inject, NotFou
 import { type AuthedRequest, SessionGuard } from '../auth/session.guard.js'
 import { Feature, FeatureGuard } from '../flags/feature.guard.js'
 import { RateLimiter } from '../rate-limit.js'
-import { AgeVerificationError, AgeVerificationService, WebhookRejectedError } from './age-verification.service.js'
+import { AgeVerificationError, AgeVerificationService, WebhookRejectedError, WebhookUpstreamError } from './age-verification.service.js'
 
 /** The member's own age check (docs/adr/0018). Dark, as a missing route, while the `ageVerification` flag is off for them. */
 @Controller('v1/me/age-verification')
@@ -53,6 +53,8 @@ export class DiditWebhookController {
     try {
       await this.service.handleWebhook(body, headers)
     } catch (err) {
+      // 5xx so that Didit retries (about 1 and 4 minutes later); a 2xx would drop the event.
+      if (err instanceof WebhookUpstreamError) throw new ServiceUnavailableException()
       if (err instanceof WebhookRejectedError) {
         // With no secret configured the route does not exist; otherwise it is a refusal.
         if (err.message === 'not configured') throw new NotFoundException()

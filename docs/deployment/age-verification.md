@@ -28,6 +28,16 @@ does (`ON DELETE CASCADE`).
    HeyNaija treats Didit's `Approved` as "an adult", so the 18+ rule must live in the
    workflow: a workflow that approves every real ID would verify minors. Copy the workflow
    id.
+
+   **Required, so that one adult cannot verify many accounts:** turn **Face Search** on, set
+   the duplicated-face actions (`DUPLICATED_FACE`, `POSSIBLE_DUPLICATED_FACE`,
+   `FRONT_CAMERA_DUPLICATED_FACE`) and the document duplicate action to **DECLINE**, and set
+   the application's `duplicated_user_action` to **DECLINE**. Do **not** build the workflow
+   from Didit's ISO/IEC 27566-1 age-assurance templates: they switch the duplicate checks
+   off. Check this on the sandbox before any live use. This stops the same face or document
+   being used again; it cannot stop an adult from completing the check for several accounts
+   in turn if each uses a different person or document, and nothing a provider offers can
+   (the code's duplicate rule below is only a backstop).
 3. **API key**: create one with the `read:sessions` privilege (needed for the decision
    fetch) and permission to create sessions.
 4. **Webhook destination** (API and Webhooks): URL `https://<site>/api/v1/webhooks/didit`
@@ -53,16 +63,31 @@ used.
   "accept anything".
 - **Webhook checks.** `X-Signature-V2` only: HMAC-SHA256 (hex) of the parsed body with
   sorted keys, compact separators and Unicode kept, compared in constant time, accepted
-  also from `X-Signature-V2-Previous` for the 24 hours after a secret rotation. `X-Timestamp`
-  must be within 300 seconds of now (replays are refused). `X-Signature-Simple` is never
+  also from `X-Signature-V2-Previous` for the 24 hours after a secret rotation.
+  `X-Timestamp` is not covered by the signature, so on its own it stops nothing; it must be
+  within 300 seconds of now **and equal to the signed body's own `timestamp`**, which makes
+  the window bind the body (an old body sent again with a fresh header is refused). That
+  is the limit of replay protection: Didit itself re-signs retries and manual resends with a
+  fresh timestamp, so a replay inside the window, or a legitimate resend, is accepted. What
+  makes that harmless is the next point. `X-Signature-Simple` is never
   accepted, because it does not cover the decision. The docs list `X-Signature` (raw
   bytes) as an alternative; it is not used.
 - **Whose result.** The session id must be the one stored for the member named in
   `vendor_data` (the member id). Any other session, an old one, or a delivery for nobody
   is accepted and ignored.
-- **Order.** Deliveries repeat and may arrive out of order, so a result never moves back
-  (a late `In Review` cannot undo an approval). Two moves are deliberate: a reviewer in
-  Didit's console can approve a declined or expired session, and can reverse an approval.
+- **The webhook is a signal, not the truth.** After the signature and session checks the
+  API fetches the session's decision from Didit and applies **that** status, never the one
+  in the webhook body. So a retried or resent old `Approved` cannot bring back an approval
+  that was reversed: Didit's current answer wins. If the fetch fails the webhook answers 503
+  and Didit retries (about 1 and 4 minutes later); it never answers 2xx and drops the event.
+- **Order.** A result never moves back on a stale event (a late `In Review` cannot undo an
+  approval). Two moves are deliberate and come only from Didit's current decision: a
+  reviewer in Didit's console can approve a declined or expired session, and can reverse an
+  approval.
+- **Duplicates.** An `Approved` decision that carries `DUPLICATED_FACE`,
+  `POSSIBLE_DUPLICATED_FACE`, `FRONT_CAMERA_DUPLICATED_FACE` or `DUPLICATED_DOCUMENT`
+  anywhere in it is recorded as `declined`, never `verified`. This is a second line behind
+  the workflow settings in step 2.
 - **Polling fallback.** While a result is `pending` or `in_review`, opening the status
   (`GET /v1/me/age-verification`, which the Settings page does) fetches
   `/v3/session/{id}/decision/` and applies it by the same rules. Rate limited.

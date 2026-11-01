@@ -61,10 +61,28 @@ test('a decision is read from GET /v3/session/{id}/decision/ and cut down to sta
     },
   })
   const decision = await new HttpDiditClient(config, impl).getDecision('sess-1')
-  assert.deepEqual(decision, { sessionId: 'sess-1', status: 'Approved', vendorData: 'm-1', method: 'document' })
+  assert.deepEqual(decision, { sessionId: 'sess-1', status: 'Approved', vendorData: 'm-1', method: 'document', duplicate: false })
   assert.equal(calls[0]?.url, 'https://verification.didit.me/v3/session/sess-1/decision/')
   assert.equal(calls[0]?.init.method ?? 'GET', 'GET')
   assert.equal((calls[0]?.init.headers as Record<string, string>)['x-api-key'], 'key-123')
+})
+
+test('a decision flagging a duplicated face or document anywhere in it is marked duplicate', async () => {
+  for (const code of ['DUPLICATED_FACE', 'POSSIBLE_DUPLICATED_FACE', 'FRONT_CAMERA_DUPLICATED_FACE', 'DUPLICATED_DOCUMENT']) {
+    const { impl } = fakeFetch({
+      body: {
+        session_id: 's',
+        status: 'Approved',
+        vendor_data: 'm',
+        face_matches: [{ status: 'Approved', warnings: [{ risk: code, log_type: 'warning' }] }],
+      },
+    })
+    assert.equal((await new HttpDiditClient(config, impl).getDecision('s')).duplicate, true, code)
+  }
+  const { impl } = fakeFetch({
+    body: { session_id: 's', status: 'Approved', vendor_data: 'm', id_verifications: [{ warnings: [{ risk: 'LOW_LIVENESS_SCORE' }] }] },
+  })
+  assert.equal((await new HttpDiditClient(config, impl).getDecision('s')).duplicate, false)
 })
 
 test('the session id is encoded into the path, and a decision with no status is refused', async () => {

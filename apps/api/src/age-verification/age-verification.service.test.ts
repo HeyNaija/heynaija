@@ -5,7 +5,7 @@ import { ageVerifications, members } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { FeatureFlags } from '../flags/feature-flags.js'
 import { db, migrate, pool, reset } from '../test-db.js'
-import { AgeVerificationError, AgeVerificationService, WebhookRejectedError } from './age-verification.service.js'
+import { AgeVerificationError, AgeVerificationService, WebhookRejectedError, WebhookUpstreamError } from './age-verification.service.js'
 import type { DiditConfig } from './config.js'
 import type { DiditClient, DiditDecision } from './didit-client.js'
 import { signDiditBody } from './signature.js'
@@ -57,22 +57,31 @@ const rowOf = async (id: string) => (await db.select().from(ageVerifications).wh
 
 /** A delivery as Didit sends it, signed the documented way a moment ago. */
 const delivery = (over: Record<string, unknown> = {}, secret = SECRET) => {
+  const ts = Math.floor(Date.now() / 1000)
   const body = {
     webhook_type: 'status.updated',
     session_id: 'sess-1',
     status: 'Approved',
     vendor_data: ada,
     created_at: 1,
-    timestamp: Math.floor(Date.now() / 1000),
+    timestamp: ts,
     decision: { features: ['ID_VERIFICATION'], id_verifications: [{ status: 'Approved', full_name: 'Ada Obi', date_of_birth: '1990-01-01' }] },
     ...over,
   }
   return {
     body,
-    headers: { 'x-timestamp': String(Math.floor(Date.now() / 1000)), 'x-signature-v2': signDiditBody(body, secret) },
+    headers: { 'x-timestamp': String(ts), 'x-signature-v2': signDiditBody(body, secret) },
   }
 }
-const deliver = (d: ReturnType<typeof delivery>) => service.handleWebhook(d.body, d.headers)
+/**
+ * Delivers a webhook. What Didit would answer if asked about the session defaults to what
+ * the body says; pass `truth` for when the two differ (a retried or resent old event).
+ */
+const deliver = (d: ReturnType<typeof delivery>, truth: Partial<DiditDecision> = {}) => {
+  const body = d.body as { session_id: string; status: string; vendor_data: string }
+  didit.decisions.set(body.session_id, { sessionId: body.session_id, status: body.status, vendorData: body.vendor_data, method: 'document', duplicate: false, ...truth })
+  return service.handleWebhook(d.body, d.headers)
+}
 
 test('starting a check creates a Didit session for the member and keeps only its id', async () => {
   const started = await service.start(ada)
@@ -186,14 +195,14 @@ test('a delivery is not trusted for someone else: the member in vendor_data must
 
 test('polling fetches the decision and records an approval', async () => {
   await service.start(ada)
-  didit.decisions.set('sess-1', { sessionId: 'sess-1', status: 'Approved', vendorData: ada, method: 'age_estimation' })
+  didit.decisions.set('sess-1', { sessionId: 'sess-1', status: 'Approved', vendorData: ada, method: 'age_estimation', duplicate: false })
   assert.deepEqual(await service.refresh(ada), { available: true, status: 'verified', verified: true })
   assert.equal((await rowOf(ada))?.method, 'age_estimation')
 })
 
 test('polling ignores a decision that is not about this member, and survives Didit being down', async () => {
   await service.start(ada)
-  didit.decisions.set('sess-1', { sessionId: 'sess-1', status: 'Approved', vendorData: bayo, method: 'document' })
+  didit.decisions.set('sess-1', { sessionId: 'sess-1', status: 'Approved', vendorData: bayo, method: 'document', duplicate: false })
   assert.equal((await service.refresh(ada)).status, 'pending')
   didit.failing = true
   assert.equal((await service.refresh(ada)).status, 'pending')
@@ -227,6 +236,52 @@ test('the adult gate follows the flag allow-list: members off it keep the old ru
   await flags.set(ada, 'ageVerification', { enabled: null, handles: ['ada'] })
   assert.equal(await service.adultGate(ada), true)
   assert.equal(await service.adultGate(bayo), undefined)
+})
+
+test('a reversed approval is not brought back by a retried or resent Approved event', async () => {
+  await service.start(ada)
+  await deliver(delivery({ status: 'Approved' }))
+  assert.equal((await rowOf(ada))?.status, 'verified')
+  await deliver(delivery({ status: 'Declined' }))
+  assert.equal((await rowOf(ada))?.status, 'declined')
+  // The old Approved is delivered again, freshly signed. Didit's own record says declined.
+  await deliver(delivery({ status: 'Approved' }), { status: 'Declined' })
+  assert.equal((await rowOf(ada))?.status, 'declined')
+  assert.equal((await rowOf(ada))?.verifiedAt, null)
+})
+
+test('the decision fetched from Didit decides, not the status in the body', async () => {
+  await service.start(ada)
+  await deliver(delivery({ status: 'Approved' }), { status: 'Declined' })
+  assert.equal((await rowOf(ada))?.status, 'declined')
+})
+
+test('when the decision cannot be fetched the delivery fails (so Didit retries) and nothing changes', async () => {
+  await service.start(ada)
+  didit.failing = true
+  const d = delivery({ status: 'Approved' })
+  await assert.rejects(() => service.handleWebhook(d.body, d.headers), WebhookUpstreamError)
+  assert.equal((await rowOf(ada))?.status, 'pending')
+})
+
+test('a decision about another member is not applied', async () => {
+  await service.start(ada)
+  await deliver(delivery({ status: 'Approved' }), { vendorData: bayo })
+  assert.equal((await rowOf(ada))?.status, 'pending')
+})
+
+test('an approval whose decision flags a duplicated face or document is recorded as declined', async () => {
+  await service.start(ada)
+  await deliver(delivery({ status: 'Approved' }), { duplicate: true })
+  assert.equal((await rowOf(ada))?.status, 'declined')
+  assert.equal((await rowOf(ada))?.verifiedAt, null)
+  assert.equal(await service.adultGate(ada), false)
+})
+
+test('polling applies the same duplicate rule', async () => {
+  await service.start(ada)
+  didit.decisions.set('sess-1', { sessionId: 'sess-1', status: 'Approved', vendorData: ada, method: 'document', duplicate: true })
+  assert.equal((await service.refresh(ada)).status, 'declined')
 })
 
 test('a result stays on record when the flag is turned off', async () => {

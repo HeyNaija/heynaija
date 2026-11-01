@@ -62,6 +62,22 @@ test('a missing or non-numeric timestamp is refused', () => {
   assert.deepEqual(check({ headers: headers({ 'x-timestamp': '1774970000abc' }) }), { ok: false, reason: 'bad_timestamp' })
 })
 
+test('an old signed body replayed with a fresh X-Timestamp is refused: the body timestamp must match the header', () => {
+  // X-Timestamp is not part of the signature, so an attacker can change it freely. The body's own
+  // timestamp is signed, and must equal the header.
+  const fresh = headers({ 'x-timestamp': String(SENT_AT + 3600) })
+  assert.deepEqual(check({ headers: fresh, nowMs: now(3600) }), { ok: false, reason: 'bad_timestamp' })
+  assert.deepEqual(check({ headers: headers({ 'x-timestamp': String(SENT_AT + 1) }) }), { ok: false, reason: 'bad_timestamp' })
+})
+
+test('a body without a numeric timestamp is refused', () => {
+  const without = body() as Record<string, unknown>
+  delete without.timestamp
+  assert.deepEqual(check({ body: without }), { ok: false, reason: 'bad_timestamp' })
+  assert.deepEqual(check({ body: { ...without, timestamp: String(SENT_AT) } }), { ok: false, reason: 'bad_timestamp' })
+  assert.deepEqual(check({ body: null }), { ok: false, reason: 'bad_timestamp' })
+})
+
 test('during a secret rotation either secret verifies: the main header has the new one, -Previous the old one', () => {
   // The body was signed with SECRET (new); -Previous carries the signature made with OLD_SECRET.
   const rotating = headers({ 'x-signature-v2-previous': OLD_SECRET_SIGNATURE })

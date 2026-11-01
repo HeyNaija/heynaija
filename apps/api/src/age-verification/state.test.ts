@@ -80,6 +80,19 @@ test('a stored row can never be verified without a date, and a method comes only
   assert.equal(declined.change === 'update' && declined.method, null)
 })
 
+test('an approval flagged as a duplicate is recorded as declined', () => {
+  assert.deepEqual(transition(row('pending'), { ...event('Approved'), duplicate: true }, NOW), {
+    change: 'update',
+    status: 'declined',
+    method: null,
+    verifiedAt: null,
+  })
+  // And it withdraws a verified result the same way.
+  assert.equal(transition(row('verified'), { ...event('Approved'), duplicate: true }, NOW).change, 'update')
+  // A duplicate flag on something that is not an approval changes nothing about it.
+  assert.deepEqual(transition(row('pending'), { ...event('Declined'), duplicate: true }, NOW), { change: 'update', status: 'declined', method: null, verifiedAt: null })
+})
+
 test('starting a session: verified members are done, an open session is resumed, a finished miss starts afresh', () => {
   assert.equal(sessionAction(undefined), 'start')
   assert.equal(sessionAction(row('verified')), 'already_verified')

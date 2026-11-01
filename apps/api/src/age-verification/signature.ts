@@ -29,7 +29,8 @@ function sameHex(expected: string, given: string): boolean {
 
 /**
  * Checks a Didit webhook the way https://docs.didit.me/integration/webhooks says
- * to: X-Timestamp within 300 seconds of now, then X-Signature-V2, the HMAC-SHA256
+ * to: X-Timestamp within 300 seconds of now (and equal to the signed body's own
+ * `timestamp`, see below), then X-Signature-V2, the HMAC-SHA256
  * (hex) of the parsed body written with sorted keys, compact separators and
  * Unicode kept, compared in constant time. The docs recommend V2 because it
  * survives a framework re-encoding the body, and it covers the whole payload.
@@ -48,6 +49,11 @@ export function verifyDiditSignature(input: {
   const stamp = one(input.headers['x-timestamp'])
   if (!stamp || !/^\d{1,12}$/.test(stamp)) return { ok: false, reason: 'bad_timestamp' }
   if (Math.abs(Math.floor(input.nowMs / 1000) - Number(stamp)) > MAX_SKEW_S) return { ok: false, reason: 'stale' }
+  // X-Timestamp is not covered by the signature, so on its own it proves nothing: an old signed
+  // body could be sent again with a fresh header. The body's own `timestamp` is signed, so it
+  // must equal the header. That makes the 300 second window bind the body too.
+  const signedAt = input.body !== null && typeof input.body === 'object' ? (input.body as Record<string, unknown>).timestamp : undefined
+  if (typeof signedAt !== 'number' || signedAt !== Number(stamp)) return { ok: false, reason: 'bad_timestamp' }
 
   const given = [input.headers['x-signature-v2'], input.headers['x-signature-v2-previous']].filter(
     (h): h is string | string[] => h !== undefined && h !== '',

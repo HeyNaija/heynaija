@@ -11,7 +11,13 @@ export type StoredVerification = {
 }
 
 /** What a webhook or a polled decision says: Didit's session, its exact status string, and how an approval was reached. */
-export type DiditStatusEvent = { sessionId: string; status: string; method?: string | undefined }
+export type DiditStatusEvent = {
+  sessionId: string
+  status: string
+  method?: string | undefined
+  /** The decision flags a duplicated face or document: one person on several accounts. */
+  duplicate?: boolean | undefined
+}
 
 export type Change = { change: 'none' } | { change: 'update'; status: VerificationStatus; method: string | null; verifiedAt: Date | null }
 
@@ -60,7 +66,9 @@ const MOVES: Record<VerificationStatus, readonly VerificationStatus[]> = {
  */
 export function transition(current: StoredVerification | undefined, event: DiditStatusEvent, now: Date): Change {
   if (!current || current.diditSessionId !== event.sessionId) return { change: 'none' }
-  const next = statusFromDidit(event.status)
+  // Defence in depth: an approval that Didit itself flags as a duplicate face or document is not
+  // an adult we can count, whatever the workflow decided (docs/deployment/age-verification.md).
+  const next = event.duplicate && event.status === 'Approved' ? 'declined' : statusFromDidit(event.status)
   if (next === null || !MOVES[current.status].includes(next)) return { change: 'none' }
   if (next === 'verified') return { change: 'update', status: 'verified', method: event.method ?? 'didit', verifiedAt: now }
   return { change: 'update', status: next, method: null, verifiedAt: null }

@@ -5,9 +5,9 @@ import { z } from 'zod'
 import { FeatureFlags } from '../flags/feature-flags.js'
 import { DB } from '../tokens.js'
 import type { DiditConfig } from './config.js'
-import { DIDIT_CLIENT, type DiditClient } from './didit-client.js'
+import { DIDIT_CLIENT, type DiditClient, type DiditDecision } from './didit-client.js'
 import { verifyDiditSignature } from './signature.js'
-import { type DiditStatusEvent, type StoredVerification, type VerificationStatus, isVerifiedAdult, methodFromDecision, sessionAction, transition } from './state.js'
+import { type DiditStatusEvent, type StoredVerification, type VerificationStatus, isVerifiedAdult, sessionAction, statusFromDidit, transition } from './state.js'
 
 export const DIDIT_CONFIG = Symbol('DIDIT_CONFIG')
 
@@ -19,6 +19,9 @@ export class AgeVerificationError extends Error {
 
 /** The webhook is not accepted: not configured, or not signed by Didit. Say no more than that to the caller. */
 export class WebhookRejectedError extends Error {}
+
+/** Didit could not be asked about the session just now. The webhook answers 5xx so that Didit sends it again. */
+export class WebhookUpstreamError extends Error {}
 
 export type AgeVerificationStatus = {
   /** Whether this member can start a check now: the flag is on for them and Didit is configured. */
@@ -34,7 +37,6 @@ const webhookBody = z.object({
   session_id: z.string().min(1),
   status: z.string(),
   vendor_data: z.string().optional(),
-  decision: z.unknown().optional(),
 })
 
 /** How many times a change is retried when another delivery changed the same row first. */
@@ -112,7 +114,7 @@ export class AgeVerificationService {
         const decision = await this.didit.getDecision(row.diditSessionId)
         // A decision about someone else's session must never change this member's result.
         if (decision.vendorData === memberId) {
-          await this.apply(memberId, { sessionId: decision.sessionId, status: decision.status, method: decision.method })
+          await this.apply(memberId, { sessionId: decision.sessionId, status: decision.status, method: decision.method, duplicate: decision.duplicate })
         }
       } catch (err) {
         this.logger.warn(`Didit decision could not be read: ${err instanceof Error ? err.message : String(err)}`)
@@ -134,9 +136,24 @@ export class AgeVerificationService {
 
     const parsed = webhookBody.safeParse(body)
     if (!parsed.success || parsed.data.webhook_type !== 'status.updated') return
-    const { session_id: sessionId, status, vendor_data: memberId, decision } = parsed.data
-    if (!memberId || !UUID.test(memberId)) return
-    await this.apply(memberId, { sessionId, status, method: status === 'Approved' ? methodFromDecision(decision) : undefined })
+    const { session_id: sessionId, status, vendor_data: memberId } = parsed.data
+    if (!memberId || !UUID.test(memberId) || statusFromDidit(status) === null) return
+    const current = await this.load(memberId)
+    if (!current || current.diditSessionId !== sessionId || !this.didit) return
+
+    // The webhook is a signal, not the truth. Didit retries and resends old events with a fresh
+    // timestamp and a valid signature, so an old "Approved" could undo a later "Declined". What
+    // the body says is therefore not used: Didit is asked what the session's decision is now.
+    let decision: DiditDecision
+    try {
+      decision = await this.didit.getDecision(sessionId)
+    } catch (err) {
+      this.logger.warn(`Didit decision could not be read for a webhook: ${err instanceof Error ? err.message : String(err)}`)
+      // A failure answer makes Didit retry; a 2xx would drop the event for good.
+      throw new WebhookUpstreamError()
+    }
+    if (decision.vendorData !== memberId || decision.sessionId !== sessionId) return
+    await this.apply(memberId, { sessionId, status: decision.status, method: decision.method, duplicate: decision.duplicate })
   }
 
   private async apply(memberId: string, event: DiditStatusEvent): Promise<void> {
