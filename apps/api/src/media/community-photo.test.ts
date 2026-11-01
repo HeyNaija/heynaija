@@ -143,6 +143,25 @@ test('only that community\'s moderators and site moderators may change the photo
   assert.equal((await list.detail(lola, 'lagos'))!.viewerCanManagePhoto, true)
 })
 
+test('an upload becomes the photo of the community it was started for, and no other', async () => {
+  await moderation.setCommunityModerator('lola', 'abuja', true)
+  const { mediaId } = await upload(lola, 'lagos')
+  await assert.rejects(service.finishCommunityPhotoUpload(lola, 'abuja', mediaId), (e) => e instanceof MediaError && e.code === 'not_found')
+  const [abuja] = await db.select({ photo: communities.photoMediaId }).from(communities).where(eq(communities.slug, 'abuja'))
+  assert.equal(abuja!.photo, null)
+  assert.equal(await service.finishCommunityPhotoUpload(lola, 'lagos', mediaId), `/media/community-photos/${mediaId}`)
+  assert.equal((await db.select().from(media).where(eq(media.id, mediaId)))[0]!.communityId, communityId)
+})
+
+test('a suspended moderator cannot change the photo, and the page offers them nothing', async () => {
+  await db.update(members).set({ active: false, status: 'suspended' }).where(eq(members.id, lola))
+  const body = await picture()
+  await assert.rejects(service.startCommunityPhotoUpload(lola, 'lagos', 'image/jpeg', body.length), (e) => e instanceof MediaError && e.code === 'forbidden')
+  assert.equal((await list.detail(lola, 'lagos'))!.viewerCanManagePhoto, false)
+  assert.equal((await list.detail(sam, 'lagos'))!.viewerIsSiteModerator, true)
+  assert.equal((await list.detail(lola, 'lagos'))!.viewerIsSiteModerator, false)
+})
+
 test('replacing the photo deletes the old one; removing goes back to the icon', async () => {
   const first = await upload(lola)
   await first.finish()
@@ -238,6 +257,27 @@ test('a reported photo that is replaced or removed is kept privately, not delete
   await third.finish()
   await service.removeCommunityPhoto(lola, 'lagos')
   assert.equal(await statusOf(third.mediaId), 'deleted')
+})
+
+test('a replaced photo kept for a report is deleted once the report is dismissed; one still in use stays', async () => {
+  const first = await upload(lola)
+  await first.finish()
+  await moderation.report(ada, { communitySlug: 'lagos' }, 'hate')
+  const second = await upload(lola)
+  await second.finish()
+  assert.equal(await statusOf(first.mediaId), 'quarantined')
+
+  const [item] = await moderation.queue(sam)
+  await moderation.resolve(sam, item!.id, 'dismiss')
+  assert.equal(await statusOf(first.mediaId), 'deleted')
+  assert.deepEqual(store.keys('uploads').filter((k) => k.includes(first.mediaId)), [])
+
+  // Dismissing a report about the photo in use leaves it alone.
+  await moderation.report(ada, { communitySlug: 'lagos' }, 'spam')
+  const [current] = await moderation.queue(sam)
+  await moderation.resolve(sam, current!.id, 'dismiss')
+  assert.equal(await statusOf(second.mediaId), 'ready')
+  assert.equal(store.keys('media').length, 2)
 })
 
 test('a direct takedown by a site moderator settles open reports on that photo and tells reporters', async () => {

@@ -14,6 +14,7 @@ import {
 } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
+import { managesPhoto } from '../communities/photo-managers.js'
 import { GistsService } from '../gists/gists.service.js'
 import { avatarPath, communityPhotoPath, MediaService } from '../media/media.service.js'
 import { type NewNotification, notify } from '../notifications/notifications.service.js'
@@ -157,15 +158,12 @@ export class ModerationService {
 
     if ('communitySlug' in target) {
       const [community] = await this.db
-        .select({ id: communities.id, photoMediaId: communities.photoMediaId })
+        .select({ id: communities.id, photoMediaId: communities.photoMediaId, mine: managesPhoto(reporterId) })
         .from(communities)
         .where(and(eq(communities.slug, target.communitySlug), eq(communities.active, true)))
       if (!community?.photoMediaId) throw new ModerationTargetError('that community has no photo')
       // Whoever can change the photo can simply remove it.
-      const scope = await this.scope(reporterId)
-      if (scope.siteWide || scope.communityIds.includes(community.id)) {
-        throw new ModerationTargetError('you can remove this photo yourself')
-      }
+      if (community.mine) throw new ModerationTargetError('you can remove this photo yourself')
       communityId = community.id
       photoMediaId = community.photoMediaId
     } else if ('postId' in target) {
@@ -407,6 +405,7 @@ export class ModerationService {
     let removedAvatar: string | null = null
     let removedPost: string | null = null
     let removedCommunityPhoto: string | null = null
+    let dismissedCommunityPhoto: string | null = null
 
     await this.db.transaction(async (tx) => {
       const [report] = await tx
@@ -438,6 +437,7 @@ export class ModerationService {
 
       if (resolution === 'dismiss') {
         action = 'dismiss_report'
+        dismissedCommunityPhoto = report.photoMediaId
       } else if (resolution === 'end_gist') {
         // Ended already, by endReportedGist.
         if (!report.gistId) throw new ModerationTargetError('this report is not about a Gist')
@@ -451,15 +451,15 @@ export class ModerationService {
         // Like any takedown of a community's photo, this is for site moderators only.
         if (!scope.siteWide) throw new NotAModeratorError()
         if (!report.communityId) throw new ModerationTargetError('this report is not about a community photo')
-        const [community] = await tx
+        const [current] = await tx
           .select({ photoMediaId: communities.photoMediaId })
           .from(communities)
           .where(eq(communities.id, report.communityId))
           .for('update')
         action = 'remove_community_photo'
-        if (community?.photoMediaId && community.photoMediaId === report.photoMediaId) {
+        if (current?.photoMediaId && current.photoMediaId === report.photoMediaId) {
           await tx.update(communities).set({ photoMediaId: null }).where(eq(communities.id, report.communityId))
-          removedCommunityPhoto = community.photoMediaId
+          removedCommunityPhoto = current.photoMediaId
         } else {
           // Replaced or removed since. Never take down a different photo; but if the
           // reported one is already out of public view, the report is settled by that.
@@ -561,6 +561,14 @@ export class ModerationService {
     if (removedCommunityPhoto) {
       const mediaId = removedCommunityPhoto
       await this.afterwards(`quarantining community photo ${mediaId}`, () => this.media!.quarantineCommunityPhoto(mediaId))
+    }
+    if (dismissedCommunityPhoto && this.media) {
+      // A photo replaced or removed while reported was kept only for this decision.
+      // Still the community's photo, it stays; if deleting fails, it stays private.
+      const mediaId = dismissedCommunityPhoto
+      await this.media.discardClearedCommunityPhoto(mediaId).catch((err: Error) => {
+        this.logger.error(`deleting dismissed community photo ${mediaId} failed; its files stay private: ${err.message}`)
+      })
     }
     if (removedAvatar) {
       const mediaId = removedAvatar

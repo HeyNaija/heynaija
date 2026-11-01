@@ -14,7 +14,7 @@ import { parseArgs } from 'node:util'
 import { createDb } from '@heynaija/db'
 import sharp from 'sharp'
 import { loadEnv } from '../env.js'
-import { AVATAR_SIZES, POST_IMAGE_SIZES } from '../media/media.service.js'
+import { AVATAR_SIZES, type MediaKind, POST_IMAGE_SIZES, publishedKeys } from '../media/media.service.js'
 import { S3ObjectStore } from '../media/object-store.js'
 import { s3Config } from '../media/s3-config.js'
 import type { Art } from './demo/art.js'
@@ -57,7 +57,7 @@ async function clean() {
   if (ids.length === 0) return 0
 
   const client = await pool.connect()
-  let media: { id: string; kind: 'avatar' | 'post_image' }[] = []
+  let media: { id: string; kind: MediaKind }[] = []
   try {
     await client.query('begin')
     await client.query('create temp table d_m on commit drop as select unnest($1::uuid[]) as id', [ids])
@@ -69,7 +69,7 @@ async function clean() {
         select id from posts where author_id in (select id from d_m)
         union select p.id from posts p join tree on p.reply_parent_id = tree.id
       ) select id from tree`)
-    media = (await client.query<{ id: string; kind: 'avatar' | 'post_image' }>(
+    media = (await client.query<{ id: string; kind: MediaKind }>(
       'select id, kind from media where owner_id in (select id from d_m) or post_id in (select id from d_p)',
     )).rows
     const steps: [string, string][] = [
@@ -96,6 +96,8 @@ async function clean() {
         or reviewed_by in (select id from d_m)`],
       ['voting memberships', 'delete from restricted.governance_memberships where member_id in (select id from d_m)'],
       ['age records', 'delete from restricted.age_assurances where member_id in (select id from d_m)'],
+      // A community photo points at its media row by id only, so it is unlinked first.
+      ['community photos', 'update communities set photo_media_id = null where photo_media_id in (select id from media where owner_id in (select id from d_m))'],
       ['media', 'delete from media where owner_id in (select id from d_m) or post_id in (select id from d_p)'],
       ['idea votes', `delete from idea_votes where member_id in (select id from d_m) or post_id in (select id from d_p)`],
       ['idea history', `delete from idea_status_changes where post_id in (select id from d_p) or moderator_id in (select id from d_m)`],
@@ -121,8 +123,7 @@ async function clean() {
   }
 
   for (const m of media) {
-    const folder = m.kind === 'avatar' ? 'avatars' : 'posts'
-    for (const size of m.kind === 'avatar' ? AVATAR_SIZES : POST_IMAGE_SIZES) await store.remove('media', `${folder}/${m.id}/${size}.webp`)
+    for (const key of publishedKeys(m.kind, m.id)) await store.remove('media', key)
   }
   for (const id of kratos) {
     const res = await fetch(`${KRATOS_ADMIN_URL}/admin/identities/${id}`, { method: 'DELETE' })

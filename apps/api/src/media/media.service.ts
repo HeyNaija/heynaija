@@ -1,7 +1,8 @@
-import { communities, communityMemberships, type Db, media, members, posts, reports } from '@heynaija/db'
+import { communities, type Db, media, members, posts, reports } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, eq, inArray, isNotNull, isNull, lt, type SQL, sql } from 'drizzle-orm'
 import sharp from 'sharp'
+import { managesPhoto } from '../communities/photo-managers.js'
 import { SAFETY_ALERTS, type SafetyAlerts } from '../moderation/safety-alerts.js'
 import { DB } from '../tokens.js'
 import type { ObjectStore } from './object-store.js'
@@ -73,15 +74,21 @@ export class MediaError extends Error {
 }
 
 type Kind = 'avatar' | 'post_image' | 'community_photo'
+export type { Kind as MediaKind }
 
 const folder: Record<Kind, string> = { avatar: 'avatars', post_image: 'posts', community_photo: 'community-photos' }
+// Whether an image is its uploader's, and so goes when their account is erased.
+// A community's photo is the community's, whichever moderator uploaded it.
+const personal: Record<Kind, boolean> = { avatar: true, post_image: true, community_photo: false }
+/** The kinds erasing an account takes with it (AccountDeletionService, `eraseFilesOf`). */
+export const ACCOUNT_MEDIA_KINDS = (Object.keys(personal) as Kind[]).filter((kind) => personal[kind])
 const sizes: Record<Kind, readonly number[]> = { avatar: AVATAR_SIZES, post_image: POST_IMAGE_SIZES, community_photo: AVATAR_SIZES }
 const uploadKey = (kind: Kind, mediaId: string) => `${folder[kind]}/${mediaId}`
 const variantKey = (kind: Kind, mediaId: string, size: number) => `${folder[kind]}/${mediaId}/${size}.webp`
 // A GIF's first frame, so readers can pause it and quoted posts need not play it.
 const stillKey = (kind: Kind, mediaId: string) => `${folder[kind]}/${mediaId}/still.webp`
 /** Every file a published image may have: its sizes, and a still if it is animated. */
-const publishedKeys = (kind: Kind, mediaId: string) => [
+export const publishedKeys = (kind: Kind, mediaId: string) => [
   ...sizes[kind].map((px) => variantKey(kind, mediaId, px)),
   ...(kind === 'post_image' ? [stillKey(kind, mediaId)] : []),
 ]
@@ -228,18 +235,19 @@ export class MediaService {
 
   /**
    * Step 1: reserves a media ID and returns a URL the browser uploads the file
-   * to directly. Nothing is public yet.
+   * to directly. Nothing is public yet. A community photo names its community.
    */
   async startUpload(
     ownerId: string,
     kind: Kind,
     contentType: PostImageType,
     bytes: number,
+    communityId: string | null = null,
   ): Promise<{ mediaId: string; uploadUrl: string }> {
     await this.sweepAbandoned(ownerId)
     const [row] = await this.db
       .insert(media)
-      .values({ ownerId, kind, contentType, bytes })
+      .values({ ownerId, kind, contentType, bytes, communityId })
       .returning({ id: media.id })
     const uploadUrl = await this.store.presignUpload(uploadKey(kind, row!.id), contentType, bytes)
     return { mediaId: row!.id, uploadUrl }
@@ -460,37 +468,33 @@ export class MediaService {
   // --- Community photos: the same steps as a profile photo, for moderators. ---
 
   /**
-   * The community's id, if the member may change its photo: its own moderators
-   * and site moderators. Throws not_found for an unknown community and forbidden
-   * for anyone else, so only moderators can tell the difference.
+   * The community, if the member may change its photo (see photo-managers.ts).
+   * Throws not_found for an unknown or closed community, whoever asks, and
+   * forbidden for anyone who may not change it. Communities are public, so
+   * telling the two apart gives nothing away.
    */
   private async photoManagerFor(memberId: string, slug: string): Promise<{ id: string; photoMediaId: string | null }> {
     const [community] = await this.db
-      .select({ id: communities.id, photoMediaId: communities.photoMediaId })
+      .select({ id: communities.id, photoMediaId: communities.photoMediaId, allowed: managesPhoto(memberId) })
       .from(communities)
       .where(and(eq(communities.slug, slug), eq(communities.active, true)))
     if (!community) throw new MediaError('not_found', 'no such community')
-    const [[member], [membership]] = await Promise.all([
-      this.db.select({ role: members.role, active: members.active }).from(members).where(eq(members.id, memberId)),
-      this.db
-        .select({ role: communityMemberships.role })
-        .from(communityMemberships)
-        .where(and(eq(communityMemberships.communityId, community.id), eq(communityMemberships.memberId, memberId))),
-    ])
-    const allowed = member?.active && (member.role === 'moderator' || membership?.role === 'moderator')
-    if (!allowed) throw new MediaError('forbidden', 'only the moderators of this community can change its photo')
-    return community
+    if (!community.allowed) throw new MediaError('forbidden', 'only the moderators of this community can change its photo')
+    return { id: community.id, photoMediaId: community.photoMediaId }
   }
 
   async startCommunityPhotoUpload(memberId: string, slug: string, contentType: ImageType, bytes: number) {
-    await this.photoManagerFor(memberId, slug)
-    return this.startUpload(memberId, 'community_photo', contentType, bytes)
+    const community = await this.photoManagerFor(memberId, slug)
+    return this.startUpload(memberId, 'community_photo', contentType, bytes, community.id)
   }
 
   /** Publishes the upload as the community's photo and deletes the one it replaces. */
   async finishCommunityPhotoUpload(memberId: string, slug: string, mediaId: string): Promise<string> {
     const community = await this.photoManagerFor(memberId, slug)
     const row = await this.ownUpload(memberId, mediaId, 'community_photo')
+    // Started for another community: it can only ever be that one's photo, so two
+    // communities never share one set of files.
+    if (row.communityId !== community.id) throw new MediaError('not_found', 'no such upload')
     if (row.status === 'ready' && community.photoMediaId === row.id) return communityPhotoPath(row.id)!
 
     await this.publishSquare('community_photo', row.id, memberId)
@@ -534,6 +538,30 @@ export class MediaService {
   /** Moves the files of a photo a site moderator took down. The decision itself clears the column. */
   async quarantineCommunityPhoto(mediaId: string): Promise<void> {
     await this.quarantine('community_photo', [mediaId])
+  }
+
+  /**
+   * A replaced or removed community photo kept privately only because it was
+   * reported: once every report about it has been dismissed, its private copies
+   * go, as a replaced photo's files do. Kept while it is still the community's
+   * photo, a report about it is open, or one was upheld. Idempotent.
+   */
+  async discardClearedCommunityPhoto(mediaId: string): Promise<void> {
+    const cleared = await this.db
+      .update(media)
+      .set({ status: 'deleted' })
+      .where(
+        and(
+          eq(media.id, mediaId),
+          eq(media.kind, 'community_photo'),
+          eq(media.status, 'quarantined'),
+          sql`not exists(select 1 from communities c where c.photo_media_id = ${media.id})`,
+          sql`not exists(select 1 from reports r where r.photo_media_id = ${media.id} and r.status <> 'dismissed')`,
+        ),
+      )
+      .returning({ id: media.id })
+    if (cleared.length === 0) return
+    for (const key of publishedKeys('community_photo', mediaId)) await this.store.remove('uploads', quarantineKey(key))
   }
 
   private async quarantine(kind: Kind, mediaIds: string[]): Promise<void> {
@@ -594,14 +622,15 @@ export class MediaService {
    * every image of theirs marked deleted, unfinished uploads included, and takes
    * what was kept as evidence (left 'ready') out of public view. Old deleted ones
    * too: one deleted before deleting purged the CDN may still be cached there.
+   * A community photo they uploaded is the community's and is left alone.
    * Safe to repeat: removing a file already gone changes nothing.
    */
   async eraseFilesOf(ownerId: string): Promise<void> {
     const rows = await this.db
       .select({ id: media.id, kind: media.kind, status: media.status })
       .from(media)
-      .where(and(eq(media.ownerId, ownerId), inArray(media.status, ['deleted', 'ready'])))
-    for (const kind of ['avatar', 'post_image'] as const) {
+      .where(and(eq(media.ownerId, ownerId), inArray(media.kind, ACCOUNT_MEDIA_KINDS), inArray(media.status, ['deleted', 'ready'])))
+    for (const kind of ACCOUNT_MEDIA_KINDS) {
       const ids = (status: 'deleted' | 'ready') => rows.filter((r) => r.kind === kind && r.status === status).map((r) => r.id)
       for (const id of ids('deleted')) await this.store.remove('uploads', uploadKey(kind, id))
       await this.discard(kind, ids('deleted'))

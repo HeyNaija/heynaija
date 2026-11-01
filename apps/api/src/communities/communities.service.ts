@@ -4,6 +4,7 @@ import { and, asc, eq, ilike, or, sql } from 'drizzle-orm'
 import { communityPhotoPath } from '../media/media.service.js'
 import type { Queries } from '../members/members.service.js'
 import { DB } from '../tokens.js'
+import { isSiteModerator, managesPhoto } from './photo-managers.js'
 
 export type CommunitySummary = {
   id: string
@@ -83,7 +84,12 @@ export class CommunitiesService {
 
   async detail(viewerId: string | null, slug: string): Promise<CommunityDetail | null> {
     const [row] = await this.db
-      .select({ ...this.summary(viewerId), rules: communities.rules })
+      .select({
+        ...this.summary(viewerId),
+        rules: communities.rules,
+        viewerCanManagePhoto: viewerId ? managesPhoto(viewerId) : sql<boolean>`false`,
+        viewerIsSiteModerator: viewerId ? isSiteModerator(viewerId) : sql<boolean>`false`,
+      })
       .from(communities)
       .where(and(eq(communities.slug, slug), eq(communities.active, true)))
     if (!row) return null
@@ -100,27 +106,7 @@ export class CommunitiesService {
         ),
       )
       .orderBy(asc(members.handle))
-    let viewerIsSiteModerator = false
-    let viewerIsCommunityModerator = false
-    if (viewerId) {
-      const [viewer] = await this.db
-        .select({ role: members.role })
-        .from(members)
-        .where(and(eq(members.id, viewerId), eq(members.active, true)))
-      viewerIsSiteModerator = viewer?.role === 'moderator'
-      const [mine] = await this.db
-        .select({ role: communityMemberships.role })
-        .from(communityMemberships)
-        .where(and(eq(communityMemberships.communityId, row.id), eq(communityMemberships.memberId, viewerId)))
-      viewerIsCommunityModerator = !!viewer && mine?.role === 'moderator'
-    }
-    return {
-      ...withPhoto(row),
-      rules: row.rules,
-      moderators: moderators.map((m) => m.handle),
-      viewerCanManagePhoto: viewerIsSiteModerator || viewerIsCommunityModerator,
-      viewerIsSiteModerator,
-    }
+    return { ...withPhoto(row), moderators: moderators.map((m) => m.handle) }
   }
 
   private async idForSlug(slug: string, db: Queries = this.db): Promise<string | null> {
