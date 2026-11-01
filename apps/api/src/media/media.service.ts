@@ -499,7 +499,7 @@ export class MediaService {
       await tx.update(communities).set({ photoMediaId: row.id }).where(eq(communities.id, community.id))
       return current?.photoMediaId ?? null
     })
-    if (previous && previous !== row.id) await this.discard('community_photo', [previous])
+    if (previous && previous !== row.id) await this.discardCommunityPhoto(previous)
     return communityPhotoPath(row.id)!
   }
 
@@ -508,7 +508,22 @@ export class MediaService {
     const community = await this.photoManagerFor(memberId, slug)
     if (!community.photoMediaId) return
     await this.db.update(communities).set({ photoMediaId: null }).where(eq(communities.id, community.id))
-    await this.discard('community_photo', [community.photoMediaId])
+    await this.discardCommunityPhoto(community.photoMediaId)
+  }
+
+  /**
+   * Deletes the files of a community photo that was replaced or removed, unless
+   * it has an open report: then they are kept privately, so whoever set it
+   * cannot destroy what a moderator needs to judge. Idempotent.
+   */
+  private async discardCommunityPhoto(mediaId: string): Promise<void> {
+    const [reported] = await this.db
+      .select({ id: reports.id })
+      .from(reports)
+      .where(and(eq(reports.photoMediaId, mediaId), eq(reports.status, 'open')))
+      .limit(1)
+    if (reported) await this.quarantine('community_photo', [mediaId])
+    else await this.discard('community_photo', [mediaId])
   }
 
   /** Moves the files of a photo a site moderator took down. The decision itself clears the column. */

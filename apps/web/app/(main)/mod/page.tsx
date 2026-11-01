@@ -155,7 +155,7 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
             <Link href={`/c/${item.communityPhoto.slug}`} className="font-semibold hover:underline">
               {item.communityPhoto.name}
             </Link>
-            <span className="text-muted"> community photo{item.communityPhoto.photo ? '' : ' (no longer set)'}</span>
+            <span className="text-muted"> community photo{item.communityPhoto.photo ? '' : ' (since replaced or removed)'}</span>
           </p>
         </div>
       ) : null}

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { communities, members, moderationActions, notifications, posts, reports } from '@heynaija/db'
+import { communities, media, members, moderationActions, notifications, posts, reports } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { CommunitiesService } from '../communities/communities.service.js'
 import { PostsService } from '../posts/posts.service.js'
@@ -295,8 +295,15 @@ test('a report the upload scanner filed has no reporter, and closing it tells no
 // --- Reporting a community's photo ---
 
 const photo = randomUUID()
-const setPhoto = (slug: string, mediaId: string | null) =>
-  db.update(communities).set({ photoMediaId: mediaId }).where(eq(communities.slug, slug))
+const setPhoto = async (slug: string, mediaId: string | null) => {
+  if (mediaId) {
+    await db
+      .insert(media)
+      .values({ id: mediaId, ownerId: sam, kind: 'community_photo', status: 'ready', contentType: 'image/jpeg', bytes: 1 })
+      .onConflictDoNothing()
+  }
+  await db.update(communities).set({ photoMediaId: mediaId }).where(eq(communities.slug, slug))
+}
 
 test('photo reports: no duplicates, not for moderators, not for a community without a photo', async () => {
   await assert.rejects(service.report(ada, { communitySlug: 'lagos' }, 'other'), ModerationTargetError)

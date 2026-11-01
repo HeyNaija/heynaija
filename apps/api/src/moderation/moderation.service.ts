@@ -2,6 +2,7 @@ import {
   communities,
   communityMemberships,
   type Db,
+  media as mediaTable,
   members,
   moderationActions,
   posts,
@@ -46,7 +47,7 @@ export type QueueItem = {
   post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
   /** For reports about an account: what the moderator needs to judge it. */
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
-  /** For reports about a community's photo: the photo as it was reported, null path if it has since gone. */
+  /** For reports about a community's photo: the photo as reported; `photo` is null once it is no longer published (replaced or removed). */
   communityPhoto: { slug: string; name: string; photo: string | null } | null
 }
 
@@ -243,6 +244,7 @@ export class ModerationService {
       community_slug: string | null
       community_title: string | null
       photo_media_id: string | null
+      photo_status: string | null
     }>(sql`
       select r.id, r.reason, r.details, r.created_at, rep.handle as reporter_handle,
         (select count(*)::int from reports o where o.status = 'open'
@@ -252,7 +254,7 @@ export class ModerationService {
         p.id as post_id, p.text as post_text, ${imagesOf(sql`p.id`)} as post_images, pa.handle as post_author, c.name as community_name,
         tm.handle as member_handle, tm.active as member_active, tm.display_name as member_name,
         tm.bio as member_bio, tm.avatar_media_id as member_avatar,
-        rc.slug as community_slug, rc.name as community_title, r.photo_media_id
+        rc.slug as community_slug, rc.name as community_title, r.photo_media_id, pm.status as photo_status
       from reports r
       left join members rep on rep.id = r.reporter_id
       left join posts p on p.id = r.post_id
@@ -260,6 +262,7 @@ export class ModerationService {
       left join communities c on c.id = p.community_id
       left join members tm on tm.id = r.member_id
       left join communities rc on rc.id = r.community_id
+      left join media pm on pm.id = r.photo_media_id
       where r.status = 'open'
         and (${scope.siteWide} or p.community_id in ${scope.communityIds.length ? sql`(${sql.join(scope.communityIds.map((id) => sql`${id}`), sql`, `)})` : sql`(null)`})
       order by r.reason = 'illegal' desc, r.created_at asc
@@ -285,7 +288,7 @@ export class ModerationService {
           }
         : null,
       communityPhoto: r.community_slug
-        ? { slug: r.community_slug, name: r.community_title!, photo: communityPhotoPath(r.photo_media_id) }
+        ? { slug: r.community_slug, name: r.community_title!, photo: r.photo_status === 'ready' ? communityPhotoPath(r.photo_media_id) : null }
         : null,
     }))
   }
@@ -342,13 +345,21 @@ export class ModerationService {
           .from(communities)
           .where(eq(communities.id, report.communityId))
           .for('update')
-        // The photo may have been replaced or removed since: never take down a different one.
-        if (!community?.photoMediaId || community.photoMediaId !== report.photoMediaId) {
-          throw new ModerationTargetError('that photo has already been replaced or removed')
-        }
-        await tx.update(communities).set({ photoMediaId: null }).where(eq(communities.id, report.communityId))
         action = 'remove_community_photo'
-        removedCommunityPhoto = community.photoMediaId
+        if (community?.photoMediaId && community.photoMediaId === report.photoMediaId) {
+          await tx.update(communities).set({ photoMediaId: null }).where(eq(communities.id, report.communityId))
+          removedCommunityPhoto = community.photoMediaId
+        } else {
+          // Replaced or removed since. Never take down a different photo; but if the
+          // reported one is already out of public view, the report is settled by that.
+          const [gone] = await tx
+            .select({ status: mediaTable.status })
+            .from(mediaTable)
+            .where(eq(mediaTable.id, report.photoMediaId!))
+          if (gone?.status !== 'quarantined' && gone?.status !== 'deleted') {
+            throw new ModerationTargetError('that photo has already been replaced or removed')
+          }
+        }
       } else if (resolution === 'remove_avatar' || resolution === 'clear_profile') {
         // Changing someone's profile is for site moderators only, like suspension.
         if (!scope.siteWide) throw new NotAModeratorError()
@@ -458,10 +469,29 @@ export class ModerationService {
       if (!community) throw new ModerationTargetError(`no community "${slug}"`)
       if (!community.photoMediaId) throw new ModerationTargetError('that community has no photo')
       await tx.update(communities).set({ photoMediaId: null }).where(eq(communities.id, community.id))
+      // Reports about this photo are settled by its removal; their reporters hear.
+      const closed = await tx
+        .update(reports)
+        .set({ status: 'actioned', resolvedAt: new Date(), resolvedBy: moderatorId })
+        .where(
+          and(eq(reports.status, 'open'), eq(reports.communityId, community.id), eq(reports.photoMediaId, community.photoMediaId)),
+        )
+        .returning({ id: reports.id, reporterId: reports.reporterId })
+      const reporters = new Set(closed.flatMap((r) => (r.reporterId ? [r.reporterId] : [])))
+      await notify(
+        tx,
+        [...reporters].map((recipientId) => ({
+          recipientId,
+          kind: 'report_resolved' as const,
+          communityId: community.id,
+          detail: 'actioned',
+        })),
+      )
       await tx.insert(moderationActions).values({
         actorId: moderatorId,
         action: 'remove_community_photo',
         communityId: community.id,
+        reportId: closed[0]?.id,
         note,
       })
       return community.photoMediaId
