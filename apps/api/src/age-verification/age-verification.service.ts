@@ -174,26 +174,28 @@ export class AgeVerificationService {
    * is not counted. An age-estimation approval has no document: no key, no dedupe.
    */
   private async apply(memberId: string, decision: DiditDecision): Promise<void> {
-    let status = decision.status
-    let personKey: string | null = null
-    let outcome: string | null = decision.duplicate && status === 'Approved' ? 'duplicate_flagged' : null
-    if (status === 'Approved' && !decision.duplicate && decision.method === 'document') {
-      const secret = this.config?.personKeySecret
-      personKey = secret ? documentPersonKey(secret, decision.document) : null
-      if (!personKey) {
-        // A keyless approval says nothing against a member already verified on this session (a
-        // resent webhook whose decision lacks the document item): leave that row as it is, key
-        // included. Otherwise, pending, in review (a reviewer approved but the ID item is not
-        // approved) or expired, it cannot be counted: nothing tells it from anyone else's.
-        if ((await this.load(memberId))?.status === 'verified') return
-        status = 'Declined'
-        outcome = 'no_document_number'
-      }
-    }
-    const event: DiditStatusEvent = { sessionId: decision.sessionId, status, method: decision.method, duplicate: decision.duplicate, personKey }
+    const approvedByDocument = decision.status === 'Approved' && !decision.duplicate && decision.method === 'document'
+    const secret = this.config?.personKeySecret
+    const personKey = approvedByDocument && secret ? documentPersonKey(secret, decision.document) : null
+    const keyless = approvedByDocument && !personKey
 
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
       const current = await this.load(memberId)
+      let status = decision.status
+      let outcome: string | null = decision.duplicate && status === 'Approved' ? 'duplicate_flagged' : null
+      if (keyless) {
+        // Decided here, from the row this attempt will update, so the read and the guarded
+        // update go together and are redone on every retry. A keyless approval says nothing
+        // against a member already verified (a resent webhook whose decision lacks the document
+        // item, or one that raced a delivery which did verify): leave that row as it is, key
+        // included. Otherwise (pending, in review where a reviewer approved but the ID item is
+        // not approved, declined, expired) it cannot be counted: nothing tells it from
+        // anyone else's.
+        if (current?.status === 'verified') return
+        status = 'Declined'
+        outcome = 'no_document_number'
+      }
+      const event: DiditStatusEvent = { sessionId: decision.sessionId, status, method: decision.method, duplicate: decision.duplicate, personKey }
       const change = transition(current, event, new Date())
       if (change.change === 'none' || !current) return
       const set = {

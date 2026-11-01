@@ -411,6 +411,29 @@ test('a resent Approved with no readable document leaves an already verified mem
   assert.equal(await service.adultGate(ada), true)
 })
 
+test('a keyless Approved that read the row as pending cannot demote it when it became verified in between', async () => {
+  await service.start(ada)
+  const stale = await rowOf(ada) // pending
+  assert.equal(stale?.status, 'pending')
+  await approve('sess-1', ada, { document: sameDocument })
+  const verified = await rowOf(ada)
+  assert.equal(verified?.status, 'verified')
+  // The second read the keyless delivery makes (the first is the webhook's own session check) returns what it would have seen before the other
+  // delivery verified the row; every later read is the real one. (A stubbed read, not a real
+  // interleaving, so that the order is the same every run.)
+  const internals = service as unknown as { load: (id: string) => Promise<unknown> }
+  const real = internals.load.bind(service)
+  let reads = 0
+  internals.load = async (id) => (reads++ === 1 ? stale : real(id))
+  await approve('sess-1', ada, { document: null })
+  internals.load = real
+  const after = await rowOf(ada)
+  assert.equal(after?.status, 'verified')
+  assert.equal(after?.personKey, verified?.personKey)
+  assert.equal(after?.outcome, null)
+  assert.equal(await service.adultGate(ada), true)
+})
+
 test('a reviewer-approved session whose ID item is not approved, still open in review, is declined as having no document number', async () => {
   await service.start(ada)
   await deliver(delivery({ status: 'In Review' }))
