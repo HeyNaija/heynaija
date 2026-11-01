@@ -33,6 +33,11 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
   await host.getByRole('button', { name: 'Go live' }).click()
   await host.waitForURL(/\/gists\/[0-9a-f-]{36}$/)
   const url = host.url()
+  // Back on Home, which Next shows as it was left, the form is ready again, not stuck on Starting….
+  await host.goBack()
+  await expect(host.getByRole('button', { name: 'Go live' })).toBeEnabled()
+  await expect(host.getByLabel('Gist title')).toHaveValue('')
+  await host.goto(url)
   await host.getByRole('button', { name: 'Join the Gist' }).click()
   await expect(host.getByRole('button', { name: 'Microphone', exact: true, pressed: false })).toBeVisible()
 
