@@ -3,17 +3,22 @@
 # server to an age public key and copied off it with rclone. Run from cron:
 #   15 3 * * *  /srv/heynaija/infra/deploy/backup.sh >> /home/heynaija/backup.log 2>&1
 # The private key that can decrypt the backups is never on this server.
+# Before backing up it deletes the old sent emails Kratos keeps (kratos-cleanup.sh).
 #
 # Media is not copied here: R2 stores it redundantly. A deleted bucket would lose
 # it; see docs/deployment/staging.md, "What backups cover".
 set -euo pipefail
 cd "$(dirname "$0")"
 set -a; source .env; set +a
+stamp=$(date -u +%Y-%m-%dT%H%MZ)
+
+# First clear the old sent emails Kratos keeps, so no backup holds them. It does
+# not depend on backups being set up, and its failing does not stop the backup.
+bash kratos-cleanup.sh || echo "$stamp: clearing Kratos's old sent emails failed; backing up anyway"
 
 : "${BACKUP_AGE_RECIPIENT:?set BACKUP_AGE_RECIPIENT in .env}"
 : "${BACKUP_DESTINATION:?set BACKUP_DESTINATION in .env}"
 
-stamp=$(date -u +%Y-%m-%dT%H%MZ)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 

@@ -26,11 +26,21 @@ else
   export ROBOTS_HEADER='    # Indexed by search engines.'
 fi
 
+# Who may post LiveKit's webhook: the LiveKit server's addresses, comma-separated
+# with no spaces (.env is sourced by bash). Unset, the location only denies.
+LIVEKIT_WEBHOOK_ALLOW=''
+from=${LIVEKIT_WEBHOOK_FROM:-}
+for ip in ${from//,/ }; do
+  [[ $ip =~ ^[0-9a-fA-F:.]+(/[0-9]+)?$ ]] || { echo "LIVEKIT_WEBHOOK_FROM: $ip is not an IP address" >&2; exit 1; }
+  LIVEKIT_WEBHOOK_ALLOW+="        allow $ip;"$'\n'
+done
+export LIVEKIT_WEBHOOK_ALLOW=${LIVEKIT_WEBHOOK_ALLOW%$'\n'}
+
 ranges=$(for list in ips-v4 ips-v6; do curl -fsS --max-time 10 "https://www.cloudflare.com/$list"; echo; done | grep -E '^[0-9a-f:.]+/[0-9]+$')
 [[ $(wc -l <<< "$ranges") -gt 10 ]] || { echo "Could not fetch Cloudflare's IP ranges." >&2; exit 1; }
 CLOUDFLARE_REAL_IP=$(sed 's/.*/    set_real_ip_from &;/' <<< "$ranges")
 export CLOUDFLARE_REAL_IP
 
 # Only these placeholders are replaced; nginx's own $variables are left alone.
-envsubst '${SITE_ADDRESS} ${NGINX_CERT} ${NGINX_CERT_KEY} ${NGINX_CLIENT_CA} ${CLOUDFLARE_REAL_IP} ${ROBOTS_HEADER} ${MEDIA_ORIGIN} ${MEDIA_HOST} ${NGINX_RESOLVER} ${WEB_UPSTREAM}' \
+envsubst '${SITE_ADDRESS} ${NGINX_CERT} ${NGINX_CERT_KEY} ${NGINX_CLIENT_CA} ${CLOUDFLARE_REAL_IP} ${ROBOTS_HEADER} ${MEDIA_ORIGIN} ${MEDIA_HOST} ${NGINX_RESOLVER} ${WEB_UPSTREAM} ${LIVEKIT_WEBHOOK_ALLOW}' \
   < nginx/heynaija.conf.template

@@ -22,8 +22,14 @@ x-api-env: &api-env
   REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
   KRATOS_PUBLIC_URL: http://kratos:4433
   # Members' email addresses are kept by Kratos; the API asks its admin API, which
-  # is reachable only on this private network, when it sends a notification email.
+  # is reachable only on this private network, when it sends a notification email,
+  # and uses it to sign out and remove an account being deleted.
   KRATOS_ADMIN_URL: http://kratos:4434
+  # Account deletion (docs/adr/0016); empty means the API's defaults (14 and 30
+  # days, and deleted posts' text kept).
+  ACCOUNT_DELETION_GRACE_DAYS: ${ACCOUNT_DELETION_GRACE_DAYS:-}
+  PRIVACY_REQUEST_DUE_DAYS: ${PRIVACY_REQUEST_DUE_DAYS:-}
+  DELETED_CONTENT_RETENTION_DAYS: ${DELETED_CONTENT_RETENTION_DAYS:-}
   KRATOS_WEBHOOK_SECRET: ${KRATOS_WEBHOOK_SECRET:?}
   # Notification emails go out through the same account as Kratos's sign-in codes.
   SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:?}
@@ -34,6 +40,17 @@ x-api-env: &api-env
   PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
   PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
   WEB_PUBLIC_URL: ${SITE_URL:?}
+  # Calls and Gists (docs/adr/0017). All optional: empty means off, and with the
+  # switches false every Gists route answers 404. There is no media server on
+  # these hosts; LIVEKIT_URL points at its own server once one exists.
+  CALLS_ENABLED: ${CALLS_ENABLED:-false}
+  CALLS_GISTS_ENABLED: ${CALLS_GISTS_ENABLED:-false}
+  CALLS_MEMBERS: ${CALLS_MEMBERS:-}
+  LIVEKIT_URL: ${LIVEKIT_URL:-}
+  LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+  LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+  LIVEKIT_WEBHOOK_KEY: ${LIVEKIT_WEBHOOK_KEY:-}
+  LIVEKIT_WEBHOOK_SECRET: ${LIVEKIT_WEBHOOK_SECRET:-}
   # Safety (docs/safety/abuse-material-scanning.md): where alerts are emailed, the
   # PhotoDNA key once approved, and what purging Cloudflare's cache needs. Each
   # is optional; without them alerts are only logged, nothing is scanned and

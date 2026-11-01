@@ -2,6 +2,7 @@ import 'server-only'
 import { headers } from 'next/headers'
 import { cache } from 'react'
 import { getApiAuthHeaders, hasSessionCredentials } from './auth/server'
+import type { GistView } from './gists'
 import type { NotificationPreferences } from './notification-preferences'
 import type { ReplyAudience } from './reply-audience'
 import type { ReplyContext } from './reply-context'
@@ -23,6 +24,8 @@ export type Me = {
   moderates: boolean
   /** False until they finish or skip the welcome flow, which the home page sends them to. */
   onboarded: boolean
+  /** Switches the API turns on for this member (docs/adr/0017). All false when a feature is off or they are not on its list. */
+  features: { gists: boolean }
 }
 
 /** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
@@ -228,8 +231,9 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
 export type Viewer =
   | { state: 'anonymous' }
   | { state: 'member'; me: Me }
-  // Signed in to Kratos, but the API refuses them: suspended, or never invited.
-  | { state: 'blocked'; suspended: boolean }
+  // Signed in to Kratos, but the API refuses them: suspended, waiting for their
+  // account's deletion (`deletion`), or never invited.
+  | { state: 'blocked'; suspended: boolean; deletion: { scheduledFor: string } | null }
 
 // The shell, the side rail and the page all ask who is looking; `cache` makes that
 // one API call per request instead of three.
@@ -239,7 +243,14 @@ export const getViewer = cache(async (): Promise<Viewer> => {
   if (res.status === 401) return { state: 'anonymous' }
   if (res.status === 403) {
     const body = (await res.json().catch(() => ({}))) as { message?: string }
-    return { state: 'blocked', suspended: body.message === 'account_inactive' }
+    if (body.message !== 'account_inactive') return { state: 'blocked', suspended: false, deletion: null }
+    // Inactive: suspended, or waiting for deletion, which is what they need to know first.
+    // Not finding out is no reason to tell them they are suspended.
+    const deletion = await getAccountDeletion()
+    if (!deletion) throw new Error('API /v1/me/deletion did not answer')
+    return deletion.state === 'scheduled'
+      ? { state: 'blocked', suspended: false, deletion: { scheduledFor: deletion.scheduledFor } }
+      : { state: 'blocked', suspended: true, deletion: null }
   }
   if (!res.ok) throw new Error(`API /v1/me responded ${res.status}`)
   return { state: 'member', me: await res.json() }
@@ -352,6 +363,9 @@ async function getOrNull<T>(path: string): Promise<T | null> {
   if (!res.ok) throw new Error(`API ${path} responded ${res.status}`)
   return res.json()
 }
+
+/** A Gist the viewer may see; null for every refusal, which the API makes the same 404. */
+export const getGist = (id: string) => getOrNull<GistView>(`/v1/gists/${encodeURIComponent(id)}`)
 
 /**
  * A member's profile; or, for a handle its owner gave up recently, the handle they
@@ -479,6 +493,12 @@ export type SearchResults = {
   posts: Post[]
 }
 
+/** A member offered while typing an @mention; `following` ones come first. */
+export type MentionSuggestion = SearchResults['members'][number] & { following: boolean }
+
+/** A page of suggestions; `cursor` asks for the next, null at the end. */
+export type MentionPage = { members: MentionSuggestion[]; cursor: string | null }
+
 /** Null when the query is too short or too long to search for. */
 export async function search(q: string): Promise<SearchResults | null> {
   const res = await api(`/v1/search?q=${encodeURIComponent(q)}`)
@@ -497,6 +517,16 @@ export type QueueItem = {
   reportCount: number
   post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
+  /** A report about a Gist: what it is, and who was in it when it was reported. */
+  gist: {
+    id: string
+    title: string
+    status: 'scheduled' | 'live' | 'ended'
+    hostHandle: string
+    communityName: string | null
+    startedAt: string | null
+    participants: { handle: string; role: string }[]
+  } | null
 }
 
 export type LogEntry = {
@@ -508,6 +538,8 @@ export type LogEntry = {
   postId: string | null
   memberHandle: string | null
   communityName: string | null
+  /** Ending a Gist: its title. */
+  gistTitle: string | null
 }
 
 export type ModeratorRoster = { slug: string; name: string; moderators: { handle: string; displayName: string | null }[] }[]
@@ -553,7 +585,7 @@ export type Notification = {
   post: { id: string; excerpt: string } | null
   subjectHandle: string | null
   community: { slug: string; name: string } | null
-  /** report_resolved: 'actioned' or 'dismissed'. post_removed: the report reason. idea_status: the new status. */
+  /** report_resolved: 'actioned' or 'dismissed' ('gist_actioned', 'gist_dismissed' for a Gist). post_removed: the report reason. idea_status: the new status. */
   detail: string | null
   /** idea_status: an idea or a problem, and whether the reader sent it (or only voted for it). */
   idea?: { kind: IdeaKind; yours: boolean } | null
@@ -583,6 +615,19 @@ export async function getPushKey(): Promise<string | null> {
   if (!res?.ok) return null
   return ((await res.json()) as { publicKey: string | null }).publicKey
 }
+
+/** Whether the signed-in member's account is waiting to be deleted; if not, how long it would wait. */
+export type AccountDeletion = { state: 'none'; graceDays: number } | { state: 'scheduled'; scheduledFor: string }
+
+/**
+ * Null if it could not be found out. Suspended members and members waiting for
+ * deletion may ask. Once per request, like getViewer: the deletion page asks twice.
+ */
+export const getAccountDeletion = cache(async (): Promise<AccountDeletion | null> => {
+  const res = await api('/v1/me/deletion', { cache: 'no-store' }).catch(() => null)
+  if (!res?.ok) return null
+  return (await res.json()) as AccountDeletion
+})
 
 export type Appeal = { status: 'open' | 'actioned' | 'dismissed'; createdAt: string; resolvedAt: string | null }
 
