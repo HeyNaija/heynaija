@@ -1263,8 +1263,9 @@ export class PostsService {
       created_at: Date
       grp: 0 | 1
       cursor_timestamp: string
-      view: (Omit<PostView, 'images' | 'createdAt' | 'authorAvatar' | 'quote' | 'poll' | 'links' | 'linkPreview'> & {
+      view: (Omit<PostView, 'images' | 'video' | 'createdAt' | 'authorAvatar' | 'quote' | 'poll' | 'links' | 'linkPreview'> & {
         images: ImageRow[]
+        video: VideoRow | null
         createdAt: string
         authorAvatarId: string | null
         quote: QuoteRow | null
@@ -1306,7 +1307,7 @@ export class PostsService {
         case when page.unavailable then null else json_build_object(
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
           'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id, 'authorFounder', ${isFounder(sql`p.author_id`)},
-          'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
+          'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'video', ${videoOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
           'hashtags', ${hashtagsOf(sql`p.id`)},
           'linkPreview', ${linkPreviewOf(sql`p.link_url`)},
           'createdAt', p.created_at, 'replyParentId', p.reply_parent_id, 'replyTo', null,
@@ -1340,10 +1341,11 @@ export class PostsService {
             hasReplies: true,
           }
         }
-        const { images, createdAt, authorAvatarId, quote, poll, linkPreview, ...post } = row.view
+        const { images, video, createdAt, authorAvatarId, quote, poll, linkPreview, ...post } = row.view
         return {
           ...post,
           images: toPostImages(images),
+          video: toPostVideo(video),
           links: findLinks(post.text),
           linkPreview: toLinkPreview(linkPreview),
           createdAt: new Date(createdAt),
