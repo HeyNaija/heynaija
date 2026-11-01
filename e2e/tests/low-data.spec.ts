@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { gif } from '../lib/gif.ts'
 import { newMember } from '../lib/members.ts'
 import { png } from '../lib/png.ts'
 
@@ -60,6 +61,35 @@ test('a member saving data gets placeholders for pictures and loads one by tappi
   expect(quoteHtml).toContain('not loaded')
   expect(quoteHtml).not.toMatch(/<img[^>]+src="[^"]*\/media\/posts\//)
 
+  await context.close()
+})
+
+test('a held GIF plays as soon as it is tapped @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'gifsaver')
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.click()
+  const text = `Owambe moves, from ${handle}`
+  await box.fill(text)
+  await page.locator('#compose input[type="file"]').setInputFiles({ name: 'dance.gif', mimeType: 'image/gif', buffer: gif() })
+  const alt = 'Two colours swapping sides'
+  await page.getByLabel('Description of GIF 1').fill(alt)
+  const submit = page.getByRole('button', { name: 'Post', exact: true })
+  await expect(submit).toBeEnabled({ timeout: 45_000 })
+  await submit.click()
+  await expect(page.locator('article', { hasText: text }).getByRole('img', { name: alt })).toBeVisible({ timeout: 30_000 })
+
+  await page.goto('/settings')
+  const saveData = page.getByRole('group', { name: 'Data use' }).getByRole('button', { name: 'Save data' })
+  await saveData.click()
+  await expect(saveData).toHaveAttribute('aria-pressed', 'true')
+
+  // One tap loads it moving, not its first frame waiting for a second tap on Play.
+  await page.goto(`/u/${handle}`)
+  const article = page.locator('article', { hasText: text }).first()
+  await article.getByRole('link', { name: new RegExp(`^Tap to load GIF 1 of 1: ${alt}`) }).click()
+  await expect(article.getByRole('img', { name: alt })).toHaveAttribute('src', /\/640\.webp$/)
+  await expect(article.getByRole('button', { name: 'Pause GIF' })).toBeVisible()
   await context.close()
 })
 

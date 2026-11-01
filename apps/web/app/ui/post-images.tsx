@@ -20,11 +20,10 @@ const useReducedMotion = () =>
  * for less motion; either way the reader can change it, and anything that moves
  * for more than a few seconds must be pausable.
  */
-function useGif(saver: boolean): [playing: boolean, toggle: () => void] {
+function useGif(): [playing: boolean, toggle: () => void] {
   const reduced = useReducedMotion()
   const [chosen, setChosen] = useState<boolean | null>(null)
-  // Saving data also means no autoplay: the reader starts a GIF themselves.
-  const playing = chosen ?? (!reduced && !saver)
+  const playing = chosen ?? !reduced
   return [playing, () => setChosen(!playing)]
 }
 
@@ -69,9 +68,10 @@ export function PostImages({ images, compact = false, saver = false }: { images:
 
 /** One image in the grid; a GIF has a pause button beside its link, since a button cannot sit inside one. */
 function Tile({ image, label, sizes, saver, onOpen }: { image: PostImage; label: string; sizes: string; saver: boolean; onOpen: () => void }) {
-  const [playing, toggle] = useGif(saver)
+  const [playing, toggle] = useGif()
   // Saving data: nothing is fetched until the reader taps. Without JavaScript the
-  // placeholder is a plain link to the small version, so it still works.
+  // placeholder is a plain link to the small version, so it still works. The tap
+  // is the reader's own choice, so a GIF then plays as it would for anyone else.
   const [loaded, setLoaded] = useState(false)
   const still = image.animated && !playing
   if (saver && !loaded) {

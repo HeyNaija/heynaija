@@ -1010,7 +1010,7 @@
         "apps/web/app/ui/shrink-image.ts",
         "apps/web/app/(main)/settings/page.tsx"
       ],
-      "caveat": "Settings has a data-use choice (Automatic follows the browser's Save-Data hint, Save data, Always load) that holds back post pictures, link pictures and GIF autoplay until tapped. Avatars still load, the moderator queue is unchanged, video is not supported, and savings on real constrained networks are not measured."
+      "caveat": "Settings has a data-use choice (Automatic follows the browser's Save-Data hint, Save data, Always load) that holds post pictures and GIFs back until tapped and leaves link pictures out. Avatars still load, the moderator queue is unchanged, video is not supported, and savings on real constrained networks are not measured."
     },
     {
       "id": "social-polls",

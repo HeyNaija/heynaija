@@ -261,7 +261,7 @@ async function DataUse() {
         ))}
       </div>
       <p className="field-hint">
-        Save data keeps pictures, GIFs and link pictures back until you tap them, and nothing plays by itself.
+        Save data holds pictures and GIFs back until you tap them, and leaves link pictures out.
         Automatic follows your browser&apos;s data saver. This choice is saved on this device only.
       </p>
     </form>
