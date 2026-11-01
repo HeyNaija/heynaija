@@ -102,7 +102,7 @@ export const media = pgTable(
     ownerId: uuid('owner_id')
       .notNull()
       .references(() => members.id),
-    kind: text('kind', { enum: ['avatar', 'post_image'] }).notNull(),
+    kind: text('kind', { enum: ['avatar', 'post_image', 'community_photo'] }).notNull(),
     // pending: an upload URL was issued. processing: uploaded, waiting for the
     // background job. ready: processed and public. failed: it was not a usable
     // image. deleted: replaced or removed by its owner, or abandoned.
@@ -125,6 +125,9 @@ export const media = pgTable(
     postId: uuid('post_id').references(() => posts.id),
     position: integer('position'),
     alt: text('alt').notNull().default(''),
+    // Community photos only: the community the upload was started for, the only
+    // one it can become the photo of.
+    communityId: uuid('community_id').references(() => communities.id),
     createdAt: ts('created_at').notNull().defaultNow(),
     readyAt: ts('ready_at'),
   },
@@ -173,6 +176,8 @@ export const communities = pgTable('communities', {
   // A top-level post in the community its moderators keep at the top: a welcome,
   // or the guidance everyone should read. Shown only while it is live.
   pinnedPostId: uuid('pinned_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
+  // The community's square photo (a media row of kind community_photo); null shows the subject icon.
+  photoMediaId: uuid('photo_media_id'),
 })
 
 export const communityMemberships = pgTable(
@@ -453,7 +458,7 @@ export const mutes = pgTable(
 
 export const REPORT_REASONS = ['spam', 'harassment', 'hate', 'scam', 'illegal', 'other', 'appeal'] as const
 
-// A report about a post or an account. An appeal is a report a suspended member
+// A report about a post, an account, a Gist or a community's photo. An appeal is a report a suspended member
 // files about themselves (reason 'appeal'), so it lands in the same queue. A
 // report with no reporter was filed by the upload scanner, not by a person.
 export const reports = pgTable(
@@ -463,6 +468,10 @@ export const reports = pgTable(
     reporterId: uuid('reporter_id').references(() => members.id),
     postId: uuid('post_id').references(() => posts.id),
     memberId: uuid('member_id').references(() => members.id),
+    // A community photo report: the community, and the photo reported (a replaced
+    // photo is a different thing, so reports do not carry over to it).
+    communityId: uuid('community_id').references(() => communities.id),
+    photoMediaId: uuid('photo_media_id'),
     // A report about a Gist (docs/adr/0017): who was in it is in gist_report_participants.
     gistId: uuid('gist_id').references(() => gists.id),
     reason: text('reason', { enum: REPORT_REASONS }).notNull(),
@@ -483,6 +492,7 @@ export const MODERATION_ACTIONS = [
   'dismiss_report',
   'remove_avatar',
   'clear_profile',
+  'remove_community_photo',
   'grant_community_moderator',
   'revoke_community_moderator',
   'end_gist',

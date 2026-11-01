@@ -527,6 +527,42 @@ test('a photo is kept privately while a report about the account is still open',
   assert.equal((await member(xena)).avatarMediaId, null)
 })
 
+test('a community photo they uploaded is the community’s: it stays, reported or not', async () => {
+  const [lagos, abuja] = await db
+    .insert(communities)
+    .values([
+      { slug: 'lagos', name: 'Lagos', description: '' },
+      { slug: 'abuja', name: 'Abuja', description: '' },
+    ])
+    .returning({ id: communities.id })
+  const photoOf = async (communityId: string) => {
+    const [row] = await db
+      .insert(media)
+      .values({ ownerId: xena, kind: 'community_photo', status: 'ready', contentType: 'image/webp', bytes: 1, communityId, readyAt: now })
+      .returning({ id: media.id })
+    for (const px of [96, 256]) store.objects.set(`media/community-photos/${row!.id}/${px}.webp`, Buffer.from('img'))
+    await db.update(communities).set({ photoMediaId: row!.id }).where(eq(communities.id, communityId))
+    return row!.id
+  }
+  const plain = await photoOf(lagos!.id)
+  const reported = await photoOf(abuja!.id)
+  await moderation.report(yemi, { communitySlug: 'abuja' }, 'hate')
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  const statusOf = async (id: string) => (await db.select().from(media).where(eq(media.id, id)))[0]!.status
+  assert.deepEqual([await statusOf(plain), await statusOf(reported)], ['ready', 'ready'])
+  assert.equal(store.keys('media').filter((k) => k.startsWith('media/community-photos/')).length, 4)
+  assert.deepEqual(store.keys('uploads'), [])
+  assert.ok(!jobs.purged.some((k) => k.startsWith('community-photos/')), 'nothing purged from the CDN')
+  const photos = await db.select({ slug: communities.slug, photo: communities.photoMediaId }).from(communities)
+  assert.deepEqual(Object.fromEntries(photos.map((c) => [c.slug, c.photo])), { lagos: plain, abuja: reported })
+  // The report still reaches site moderators, who can take the photo down as before.
+  const [item] = await moderation.queue(sam)
+  assert.equal(item!.communityPhoto!.slug, 'abuja')
+})
+
 test('the handle is held for 30 days and leads nowhere; the tombstone cannot be found', async () => {
   await deletion.request(xena, { channel: 'self_service' }, now)
   await deletion.erase(xena, days(14))

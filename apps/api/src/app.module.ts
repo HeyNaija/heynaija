@@ -43,7 +43,7 @@ import { BullLinkJobs, LinkWorker } from './links/link-queue.js'
 import { LINK_JOBS, LinksService, PAGE_FETCHER } from './links/links.service.js'
 import { SafeFetcher } from './links/safe-fetch.js'
 import { CDN_PURGER, CloudflarePurger, NoPurger } from './media/cdn-purge.js'
-import { MediaController, PostImagesController } from './media/media.controller.js'
+import { CommunityPhotoController, MediaController, PostImagesController } from './media/media.controller.js'
 import { BullMediaJobs, MediaWorker } from './media/media-queue.js'
 import { CONTENT_SCANNER, MEDIA_JOBS, MediaService, NoScanner, OBJECT_STORE } from './media/media.service.js'
 import { S3ObjectStore } from './media/object-store.js'
@@ -79,7 +79,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController, AccountController, FlagsController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController, AccountController, FlagsController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },

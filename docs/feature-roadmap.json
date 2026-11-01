@@ -815,13 +815,28 @@
       "description": "Give communities their own uploaded visual identities.",
       "category": "discovery",
       "priority": "P1",
-      "status": "planned",
+      "status": "partial",
       "availability": "not_live",
       "evidence": [
+        "packages/db/drizzle/0034_community_photos.sql",
         "packages/db/src/schema.ts",
+        "apps/api/src/media/media.service.ts",
+        "apps/api/src/media/media.controller.ts",
+        "apps/api/src/communities/communities.service.ts",
+        "apps/api/src/communities/photo-managers.ts",
+        "apps/api/src/moderation/moderation.service.ts",
         "apps/web/app/ui/community-mark.tsx",
-        "apps/api/src/media/media.controller.ts"
-      ]
+        "apps/web/app/ui/community-photo-editor.tsx",
+        "apps/web/app/ui/use-square-photo-upload.ts",
+        "apps/web/app/(main)/c/[slug]/page.tsx",
+        "apps/web/app/(main)/report/page.tsx",
+        "apps/web/app/(main)/mod/page.tsx",
+        "apps/api/src/moderation/moderation.service.test.ts",
+        "apps/api/src/media/community-photo.test.ts",
+        "e2e/tests/community-photos.spec.ts"
+      ],
+      "caveat": "Moderators can add, replace, remove and take down a community photo in the API, covered by API tests; members can report a photo and site moderators remove it from the moderation queue, also covered by API tests. The web editor, the report page, the queue entry and the end-to-end test have not been run yet, and uploads are only as safe as upload scanning, which is still blocked.",
+      "notes": "One square photo per community (communities.photo_media_id), added, replaced or removed by that community's moderators and site moderators from the community page; the control needs JavaScript, while the photo and the subject-icon fallback show to everyone without it. It goes through the profile-photo pipeline (JPEG, PNG or WebP up to 5 MB, 96px and 256px WebP, location data dropped) and the same fail-closed upload scanner, so it depends on upload-scanning being completed before launch. Site moderators take a photo down from the community page: it is quarantined privately and logged as remove_community_photo, but the community's moderators can then upload another. Members who cannot manage the photo report it from a Report photo link on the community page (/report?community=slug), as they would a post or account: same reasons, rate limit and one open report per member per photo (reports.community_id and photo_media_id, migration 0034). The report reaches site moderators only, who can remove the photo from the queue (the photo is quarantined, logged and reporters told) or dismiss; a report about a photo since replaced can only be dismissed, and once its reports are dismissed its private copy is deleted. An upload can only become the photo of the community it was started for (media.community_id). The photo is the community's: erasing the account of the moderator who uploaded it leaves it in place."
     },
     {
       "id": "notification-preferences",

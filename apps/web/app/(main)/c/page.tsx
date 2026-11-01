@@ -50,7 +50,7 @@ async function CommunityList() {
       {communities.map((c) => (
         <li key={c.slug} className="community-card">
           <div className="flex items-start gap-3">
-            <CommunityMark slug={c.slug} large />
+            <CommunityMark slug={c.slug} photo={c.photo} large />
             <div className="min-w-0 flex-1">
               <h2 className="text-[15px] font-semibold">
                 <Link href={`/c/${c.slug}`} className="hover:underline">{c.name}</Link>

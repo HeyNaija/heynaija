@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { resolveReport, restorePost } from '@/app/actions'
 import { Avatar } from '@/app/ui/avatar'
+import { CommunityMark } from '@/app/ui/community-mark'
 import { EmptyState } from '@/app/ui/empty-state'
 import { ShieldIcon } from '@/app/ui/icons'
 import { LocalTime } from '@/app/ui/local-time'
@@ -34,6 +35,7 @@ const ACTIONS: Record<string, string> = {
   dismiss_report: 'dismissed a report',
   remove_avatar: 'removed the profile photo of',
   clear_profile: 'cleared the name and bio of',
+  remove_community_photo: 'removed the community photo',
   grant_community_moderator: 'made a moderator:',
   revoke_community_moderator: 'removed as moderator:',
   end_gist: 'ended the Gist',
@@ -200,6 +202,16 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
             {item.member.bio ? <p className="mt-1 whitespace-pre-wrap break-words">{item.member.bio}</p> : null}
           </div>
         </div>
+      ) : item.communityPhoto ? (
+        <div className="flex items-center gap-3 rounded-lg bg-panel p-4 text-sm">
+          <CommunityMark slug={item.communityPhoto.slug} photo={item.communityPhoto.photo} large />
+          <p>
+            <Link href={`/c/${item.communityPhoto.slug}`} className="font-semibold hover:underline">
+              {item.communityPhoto.name}
+            </Link>
+            <span className="text-muted"> community photo{item.communityPhoto.photo ? '' : ' (since replaced or removed)'}</span>
+          </p>
+        </div>
       ) : null}
 
       {item.details ? (
@@ -228,6 +240,11 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
                 Remove post
               </SubmitButton>
             ) : null}
+            {item.communityPhoto && siteWide ? (
+              <SubmitButton name="resolution" value="remove_community_photo" className={danger}>
+                Remove photo
+              </SubmitButton>
+            ) : null}
             {item.gist && item.gist.status !== 'ended' ? (
               <SubmitButton
                 name="resolution"
@@ -253,8 +270,8 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
                 Clear name and bio
               </SubmitButton>
             ) : null}
-            {/* A Gist report names no account; suspending its host is done from a report about them. */}
-            {item.gist ? null : (
+            {/* A Gist or community photo report names no account; suspending someone is done from a report about them. */}
+            {item.gist || item.communityPhoto ? null : (
               <SubmitButton
                 name="resolution"
                 value="suspend_member"

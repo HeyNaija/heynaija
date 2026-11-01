@@ -184,10 +184,17 @@ export type Community = {
   name: string
   description: string
   memberCount: number
+  /** Photo path without the size suffix; null for the subject icon. */
+  photo: string | null
   viewerIsMember: boolean
 }
 
-export type CommunityDetail = Community & { rules: string; moderators: string[] }
+export type CommunityDetail = Community & {
+  rules: string
+  moderators: string[]
+  viewerCanManagePhoto: boolean
+  viewerIsSiteModerator: boolean
+}
 
 export type Profile = {
   id: string
@@ -525,6 +532,8 @@ export type QueueItem = {
   reportCount: number
   post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
+  /** A reported community photo; `photo` is null if the community no longer has one. */
+  communityPhoto: { slug: string; name: string; photo: string | null } | null
   /** A report about a Gist: what it is, and who was in it when it was reported. */
   gist: {
     id: string

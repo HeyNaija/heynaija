@@ -335,22 +335,29 @@ export async function checkPushSubscription(endpoint: string): Promise<{ subscri
 
 export type UploadTicket = { mediaId: string; uploadUrl: string } | { error: string }
 
-export async function startAvatarUpload(contentType: string, bytes: number): Promise<UploadTicket> {
-  const res = await api('/v1/me/avatar/upload', {
+/**
+ * Step 1 of a square photo (a profile or community photo): the upload ticket, or
+ * what to tell the member. `forbidden` is said on a 403, for the community's.
+ */
+async function startSquarePhoto(path: string, contentType: string, bytes: number, say: { tooMany: string; forbidden?: string }): Promise<UploadTicket> {
+  const res = await api(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ contentType, bytes }),
   })
   if (res.status === 401) redirect('/login')
-  if (res.status === 429) return { error: 'You have changed your photo a lot. Try again in an hour.' }
+  if (res.status === 403 && say.forbidden) return { error: say.forbidden }
+  if (res.status === 429) return { error: say.tooMany }
   if (res.status === 400) return { error: 'Choose a JPEG, PNG or WebP image under 5 MB.' }
   if (!res.ok) return { error: 'Could not start the upload. Try again in a moment.' }
   return res.json()
 }
 
-export async function finishAvatarUpload(mediaId: string): Promise<{ error?: string }> {
-  const res = await api(`/v1/me/avatar/${encodeURIComponent(mediaId)}/complete`, { method: 'POST' })
+/** Step 2 of a square photo: published, or what to tell the member. */
+async function finishSquarePhoto(path: string, say: { failed: string; forbidden?: string }): Promise<{ error?: string }> {
+  const res = await api(path, { method: 'POST' })
   if (res.status === 401) redirect('/login')
+  if (res.status === 403 && say.forbidden) return { error: say.forbidden }
   if (res.status === 400) {
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     const messages: Record<string, string> = {
@@ -360,9 +367,18 @@ export async function finishAvatarUpload(mediaId: string): Promise<{ error?: str
     }
     return { error: messages[body.code ?? ''] ?? 'The upload did not finish. Try again.' }
   }
-  if (!res.ok) return { error: 'Could not save your photo. Try again in a moment.' }
+  if (res.status === 503) return { error: 'Images cannot be checked right now. Try again in a few minutes.' }
+  if (!res.ok) return { error: say.failed }
   refresh()
   return {}
+}
+
+export async function startAvatarUpload(contentType: string, bytes: number): Promise<UploadTicket> {
+  return startSquarePhoto('/v1/me/avatar/upload', contentType, bytes, { tooMany: 'You have changed your photo a lot. Try again in an hour.' })
+}
+
+export async function finishAvatarUpload(mediaId: string): Promise<{ error?: string }> {
+  return finishSquarePhoto(`/v1/me/avatar/${encodeURIComponent(mediaId)}/complete`, { failed: 'Could not save your photo. Try again in a moment.' })
 }
 
 // --- Post images: same two steps, then the browser waits for the background job. ---
@@ -408,14 +424,47 @@ export async function removeAvatar(): Promise<void> {
   refresh()
 }
 
+// --- Community photo: the same steps, for the community's moderators. ---
+
+const photoPath = (slug: string) => `/v1/communities/${encodeURIComponent(slug)}/photo`
+
+const notAModerator = 'Only the moderators of this community can change its photo.'
+
+export async function startCommunityPhotoUpload(slug: string, contentType: string, bytes: number): Promise<UploadTicket> {
+  return startSquarePhoto(`${photoPath(slug)}/upload`, contentType, bytes, {
+    tooMany: 'You have changed photos a lot. Try again in an hour.',
+    forbidden: notAModerator,
+  })
+}
+
+export async function finishCommunityPhotoUpload(slug: string, mediaId: string): Promise<{ error?: string }> {
+  return finishSquarePhoto(`${photoPath(slug)}/${encodeURIComponent(mediaId)}/complete`, {
+    failed: 'Could not save the photo. Try again in a moment.',
+    forbidden: notAModerator,
+  })
+}
+
+/** `takeDown` is a site moderator's logged decision; otherwise the photo is simply deleted. */
+export async function removeCommunityPhoto(slug: string, takeDown = false): Promise<{ error?: string }> {
+  const res = takeDown
+    ? await api(`/v1/moderation/communities/${encodeURIComponent(slug)}/photo/remove`, { method: 'POST' })
+    : await api(photoPath(slug), { method: 'DELETE' })
+  if (res.status === 401) redirect('/login')
+  if (res.status === 403) return { error: notAModerator }
+  if (!res.ok && res.status !== 400) return { error: 'Could not remove the photo. Try again in a moment.' }
+  refresh()
+  return {}
+}
+
 export async function submitReport(_prev: FormState, formData: FormData): Promise<FormState> {
   const postId = String(formData.get('postId') ?? '') || undefined
   const handle = String(formData.get('handle') ?? '') || undefined
+  const communitySlug = String(formData.get('community') ?? '') || undefined
   const res = await api('/v1/reports', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      ...(postId ? { postId } : { handle }),
+      ...(postId ? { postId } : communitySlug ? { communitySlug } : { handle }),
       reason: String(formData.get('reason') ?? ''),
       details: String(formData.get('details') ?? ''),
     }),
