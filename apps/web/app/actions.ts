@@ -23,6 +23,7 @@ import type { ThreadRow } from '@/lib/thread-state'
 import { POLL_OPTIONS_MAX } from '@/lib/polls'
 import { POST_MAX } from '@/lib/post-length'
 import { isReplyAudience } from '@/lib/reply-audience'
+import type { VideoRendition } from '@/lib/video'
 
 // The API is the authority on who is signed in and what they may do; these
 // functions only relay the visitor's own session cookie to it.
@@ -53,10 +54,13 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
     .map(String)
     .filter(Boolean)
     .map((id) => ({ id, alt: String(formData.get(`alt-${id}`) ?? '') }))
+  // One video, named by its upload, with its description in `videoDescription`.
+  const videoId = String(formData.get('video') ?? '')
+  const video = videoId ? { id: videoId, description: String(formData.get('videoDescription') ?? '') } : undefined
   const res = await api('/v1/posts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, replyTo, community, images, quote, poll, replyAudience }),
+    body: JSON.stringify({ text, replyTo, community, images, video, quote, poll, replyAudience }),
   }).catch(() => null)
 
   if (!res) return { error: 'Could not post. Check your connection and try again.' }
@@ -78,6 +82,8 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
     if (body.code === 'images_not_ready') {
       return { error: 'One of your images is no longer available. Remove it and add it again.' }
     }
+    if (body.code === 'video_not_ready') return { error: 'Your video is no longer available. Remove it and add it again.' }
+    if (video && !text.trim()) return { error: 'Could not post that video. Try again.' }
     if (poll) return { error: `Check the poll question and its choices. Use 2 to ${POLL_OPTIONS_MAX} different options.` }
     if (text.trim()) return { error: `That post is too long, or an image description is. The post limit is ${POST_MAX.toLocaleString('en-NG')} characters.` }
     return { error: images.length ? 'Could not post those images. Try again.' : 'Write something first.' }
@@ -416,6 +422,75 @@ export async function postImageStatus(mediaId: string): Promise<ImageStatus | nu
   if (res.status === 404) return null
   if (!res.ok) throw new Error(`API image status responded ${res.status}`)
   return ((await res.json()) as { status: ImageStatus }).status
+}
+
+// --- Post video (docs/adr/0019): parts go straight to storage, then the browser waits for the worker. ---
+
+export type VideoPlan = {
+  mediaId: string
+  partSize: number
+  totalParts: number
+  done: { partNumber: number; size: number }[]
+  parts: { partNumber: number; url: string; bytes: number }[]
+}
+export type VideoState = 'uploading' | 'processing' | 'quarantined' | 'ready' | 'rejected' | 'failed'
+export type VideoStatus = {
+  status: VideoState
+  reason: 'too_long' | 'too_short' | 'too_large' | 'too_big_picture' | 'not_a_video' | null
+  video: { id: string; src: string; durationMs: number; width: number; height: number; description: string; renditions: VideoRendition[] } | null
+}
+
+const VIDEO_REFUSALS: Record<string, string> = {
+  too_large: 'That video is too large. The limit is 100 MB.',
+  too_long: 'That video is too long. The limit is 60 seconds.',
+  bad_type: 'Choose an MP4, MOV or WebM video.',
+  too_many_videos: 'You have the most videos allowed. Delete a post with a video first.',
+  not_eligible: 'Video is not available to your account yet.',
+  bad_parts: 'The upload did not finish. Try again.',
+}
+
+async function refusal(res: Response): Promise<{ error: string }> {
+  if (res.status === 401) redirect('/login')
+  if (res.status === 404) return { error: 'Video is not available right now.' }
+  if (res.status === 429) return { error: 'You have started a lot of videos. Wait a while and try again.' }
+  const body = (await res.json().catch(() => ({}))) as { code?: string }
+  return { error: VIDEO_REFUSALS[body.code ?? ''] ?? 'Could not upload that video. Try again in a moment.' }
+}
+
+export async function startVideoUpload(contentType: string, bytes: number, durationMs?: number): Promise<VideoPlan | { error: string }> {
+  const res = await api('/v1/me/videos/upload', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ contentType, bytes, ...(durationMs === undefined ? {} : { durationMs: Math.round(durationMs) }) }),
+  }).catch(() => null)
+  if (!res) return { error: 'Could not start the upload. Check your connection and try again.' }
+  return res.ok ? res.json() : refusal(res)
+}
+
+/** After a lost connection: which parts storage already holds, and fresh addresses for the rest. */
+export async function resumeVideoUpload(mediaId: string): Promise<VideoPlan | { error: string }> {
+  const res = await api(`/v1/me/videos/${encodeURIComponent(mediaId)}/upload`).catch(() => null)
+  if (!res) return { error: 'Could not reach the server. Check your connection and try again.' }
+  return res.ok ? res.json() : refusal(res)
+}
+
+export async function completeVideoUpload(mediaId: string): Promise<VideoStatus | { error: string }> {
+  const res = await api(`/v1/me/videos/${encodeURIComponent(mediaId)}/complete`, { method: 'POST' }).catch(() => null)
+  if (!res) return { error: 'Could not finish the upload. Check your connection and try again.' }
+  return res.ok ? res.json() : refusal(res)
+}
+
+/** Null when the video is gone (abandoned, or never this member's). Throws on other failures. */
+export async function videoStatus(mediaId: string): Promise<VideoStatus | null> {
+  const res = await api(`/v1/me/videos/${encodeURIComponent(mediaId)}`)
+  if (res.status === 401) redirect('/login')
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`API video status responded ${res.status}`)
+  return res.json()
+}
+
+export async function removeVideo(mediaId: string): Promise<void> {
+  await api(`/v1/me/videos/${encodeURIComponent(mediaId)}`, { method: 'DELETE' }).catch(() => null)
 }
 
 export async function removeAvatar(): Promise<void> {

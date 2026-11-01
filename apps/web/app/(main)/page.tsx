@@ -218,6 +218,7 @@ async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) 
           choices={joined}
           polls={me.features?.polls ?? false}
           replyControls={me.features?.replyControls ?? false}
+          videoPosts={me.features?.videoPosts ?? false}
           placeholder={welcomed ? 'Introduce yourself: who are you, and what brings you here?' : undefined}
         />
       ) : null}
