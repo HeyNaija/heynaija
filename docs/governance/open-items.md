@@ -88,6 +88,12 @@ All of these, then a reviewed code change to `apps/api/src/env.ts`:
       loses access to it except through the code paths that need it. Column
       encryption for `person_key`. Separate admin and log access.
 - [ ] `IDENTITY_KEY_SECRET` generated, stored in the password manager, rotation plan.
+      It also keys the age check's one-document-one-account digest
+      (`restricted.age_verifications.person_key`, [age-verification.md](../deployment/age-verification.md)),
+      so rotating it breaks that check for existing results.
+- [ ] `/privacy` says that a keyed digest of an ID document (never the number) is kept to stop
+      one document verifying several accounts, before the `ageVerification` flag is turned on
+      in production. Column encryption for `age_verifications.person_key`, like `person_key` above.
 - [ ] The callback handler built per [identity-verification.md](identity-verification.md),
       with an independent security review.
 - [ ] A reviewer workflow for `reviewVerification` and an appeals route for

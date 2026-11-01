@@ -78,6 +78,19 @@ provider confirmation*), is not stored on this row. It becomes its own row in
 Revoking the verification withdraws it. A voting member needs a verified adult
 age from some check, not only a stated one.
 
+## Age verification by document (Didit) also keeps a person key
+
+Separate from NIN verification, the age check built on Didit
+([setup](../deployment/age-verification.md)) stores one row per member in
+`restricted.age_verifications`: a status, how it was reached, when, and Didit's session id.
+It also stores a **salted person identifier** (`person_key`) for an approval by document
+check: the same keyed HMAC as above (same `IDENTITY_KEY_SECRET`, its own label) over the
+issuing country and the normalised document number, never the number. The purpose is
+one document, one verified account, so that one adult cannot verify many accounts. It is
+personal data (Article 4.5) in the restricted schema, deleted with the account, never
+returned or exported. No document, image, face, date of birth, document number or provider
+payload is stored. Age-estimation approvals have no document and no key.
+
 ## Uniqueness
 
 A partial unique index on `(provider, person_key) where status = 'verified'`

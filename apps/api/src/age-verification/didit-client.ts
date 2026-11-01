@@ -1,4 +1,5 @@
 import { DIDIT_API_URL, type DiditConfig } from './config.js'
+import { type DocumentRef, documentFromDecision } from './person-key.js'
 import { methodFromDecision } from './state.js'
 
 export const DIDIT_CLIENT = Symbol('DIDIT_CLIENT')
@@ -11,6 +12,8 @@ export type DiditDecision = {
   method: string
   /** The decision carries a duplicated-face or duplicated-document risk. */
   duplicate: boolean
+  /** The approved ID document, if there is one: handed on only to be turned into a key at once, never stored or logged. */
+  document: DocumentRef | null
 }
 
 /** Didit's risk codes for one person appearing on several accounts or documents. */
@@ -73,6 +76,6 @@ export class HttpDiditClient implements DiditClient {
     const id = str(body.session_id)
     const status = str(body.status)
     if (!id || !status) throw new Error('Didit did not return a decision')
-    return { sessionId: id, status, vendorData: str(body.vendor_data) ?? '', method: methodFromDecision(body), duplicate: hasDuplicateRisk(body) }
+    return { sessionId: id, status, vendorData: str(body.vendor_data) ?? '', method: methodFromDecision(body), duplicate: hasDuplicateRisk(body), document: documentFromDecision(body) }
   }
 }

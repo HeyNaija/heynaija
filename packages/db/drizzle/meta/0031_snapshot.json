@@ -1,5 +1,5 @@
 {
-  "id": "8383ef65-57fe-461b-b120-19ddb27f6a4d",
+  "id": "028ca6a4-e7d5-4dca-94b5-1d4951b59290",
   "prevId": "beb73512-66c3-4eda-80ba-778c11999a68",
   "version": "7",
   "dialect": "postgresql",
@@ -160,6 +160,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "person_key": {
+          "name": "person_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -175,7 +187,24 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "age_verifications_person_idx": {
+          "name": "age_verifications_person_idx",
+          "columns": [
+            {
+              "expression": "person_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "status = 'verified' and person_key is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "age_verifications_member_id_members_id_fk": {
           "name": "age_verifications_member_id_members_id_fk",

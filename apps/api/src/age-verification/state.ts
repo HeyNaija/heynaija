@@ -17,9 +17,13 @@ export type DiditStatusEvent = {
   method?: string | undefined
   /** The decision flags a duplicated face or document: one person on several accounts. */
   duplicate?: boolean | undefined
+  /** For an approval by document check: the keyed digest of the document, from person-key.ts. */
+  personKey?: string | null | undefined
 }
 
-export type Change = { change: 'none' } | { change: 'update'; status: VerificationStatus; method: string | null; verifiedAt: Date | null }
+export type Change =
+  | { change: 'none' }
+  | { change: 'update'; status: VerificationStatus; method: string | null; verifiedAt: Date | null; personKey?: string }
 
 /**
  * Didit's status strings are exact and case-sensitive ("Kyc Expired" has one capital
@@ -70,7 +74,10 @@ export function transition(current: StoredVerification | undefined, event: Didit
   // an adult we can count, whatever the workflow decided (docs/deployment/age-verification.md).
   const next = event.duplicate && event.status === 'Approved' ? 'declined' : statusFromDidit(event.status)
   if (next === null || !MOVES[current.status].includes(next)) return { change: 'none' }
-  if (next === 'verified') return { change: 'update', status: 'verified', method: event.method ?? 'didit', verifiedAt: now }
+  if (next === 'verified') {
+    const approved = { change: 'update', status: 'verified', method: event.method ?? 'didit', verifiedAt: now } as const
+    return event.personKey ? { ...approved, personKey: event.personKey } : approved
+  }
   return { change: 'update', status: next, method: null, verifiedAt: null }
 }
 

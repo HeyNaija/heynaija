@@ -15,7 +15,13 @@ const base = {
   S3_UPLOADS_BUCKET: 'uploads',
   S3_MEDIA_BUCKET: 'media',
 }
-const full = { DIDIT_API_KEY: 'key', DIDIT_WORKFLOW_ID: '0d8a6a8e-4a1b-4a43-8d8f-111111111111', DIDIT_WEBHOOK_SECRET: 'whsec' }
+// IDENTITY_KEY_SECRET keys the duplicate-document check (person-key.ts); without it nothing is offered.
+const full = {
+  DIDIT_API_KEY: 'key',
+  DIDIT_WORKFLOW_ID: '0d8a6a8e-4a1b-4a43-8d8f-111111111111',
+  DIDIT_WEBHOOK_SECRET: 'whsec',
+  IDENTITY_KEY_SECRET: 'p'.repeat(32),
+}
 
 test('without any Didit settings the API still starts, and age verification is not configured', () => {
   const env = loadEnv(base)
@@ -23,16 +29,23 @@ test('without any Didit settings the API still starts, and age verification is n
 })
 
 test('empty Didit settings (compose passes empty strings) count as missing', () => {
-  const env = loadEnv({ ...base, DIDIT_API_KEY: '', DIDIT_WORKFLOW_ID: '', DIDIT_WEBHOOK_SECRET: '' })
+  const env = loadEnv({ ...base, DIDIT_API_KEY: '', DIDIT_WORKFLOW_ID: '', DIDIT_WEBHOOK_SECRET: '', IDENTITY_KEY_SECRET: '' })
   assert.equal(diditConfig(env), null)
 })
 
-test('all three settings give a config', () => {
+test('a full Didit setup without the person-key secret fails closed, and an empty one counts as missing', () => {
+  const { IDENTITY_KEY_SECRET: _drop, ...didit } = full
+  assert.equal(diditConfig(loadEnv({ ...base, ...didit })), null)
+  assert.equal(diditConfig(loadEnv({ ...base, ...didit, IDENTITY_KEY_SECRET: '' })), null)
+})
+
+test('all four settings give a config', () => {
   const env = loadEnv({ ...base, ...full })
   assert.deepEqual(diditConfig(env), {
     apiKey: 'key',
     workflowId: '0d8a6a8e-4a1b-4a43-8d8f-111111111111',
     webhookSecret: 'whsec',
+    personKeySecret: 'p'.repeat(32),
     callbackUrl: 'http://127.0.0.1:3000/settings/age-verification',
   })
 })

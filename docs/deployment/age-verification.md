@@ -14,9 +14,35 @@ against them and never run against the live API.
 
 One row per member in `restricted.age_verifications`: `status` (`pending`, `in_review`,
 `verified`, `declined`, `expired`), `method` (`document`, `age_estimation` or `didit`,
-set on approval), `verified_at`, and `didit_session_id`. Never the document, the face, a
-date of birth, a name, Didit's payload or its hosted URL. The row goes when the account
-does (`ON DELETE CASCADE`).
+set on approval), `verified_at`, `didit_session_id`, `outcome` (a short code saying why a
+result was declined, for support, never shown to the member) and `person_key`. Never the
+document, the face, a date of birth, a name, the document number, Didit's payload or its
+hosted URL. The row goes when the account does (`ON DELETE CASCADE`).
+
+**`person_key`: a salted person identifier, and why.** For an approval by document check, a
+keyed HMAC-SHA256 is stored of the issuing country and the document number (upper case,
+spaces and punctuation removed). It is keyed with `IDENTITY_KEY_SECRET` (the same secret and
+`derivePersonKey` helper as the NIN person key in `governance/rules.ts`, with its own label so
+the two cannot collide). The number itself is read from Didit's decision, turned into the key
+and dropped; it is not stored, logged or returned. The key exists for one reason: a unique
+index (`age_verifications_person_idx`, where status is `verified`) lets one document hold one
+verified account, so one adult cannot verify a string of accounts with the same ID. It is
+personal data: it lives in the `restricted` schema, is never returned by any API or put in an
+export, and needs the same care as `identity_verifications.person_key`.
+
+Limits to know:
+
+- **Age-estimation approvals have no document**, so they store no key and are not checked for
+  duplicates. If the workflow can approve by estimation alone, one face can still verify
+  several accounts that way (the Face Search settings in step 2 are the only guard).
+- **A document approval Didit sends without a readable number is declined** (`outcome`
+  `no_document_number`): without a number it cannot be told apart from anyone else's.
+- **Deleting the account deletes the key**, so a person who deletes an account can verify
+  another with the same document. Nothing keeps a record of a deleted account.
+- **A new document is a new key**: a renewed passport or a second kind of ID (passport,
+  then driver's licence) is a different number, so the same person can verify again with it.
+- **Rotating `IDENTITY_KEY_SECRET` breaks the check for existing results**, since new keys
+  no longer match old ones. Do not rotate without a plan (open-items.md).
 
 ## Setup steps
 
@@ -46,7 +72,10 @@ does (`ON DELETE CASCADE`).
    site is behind Cloudflare with rules that block unknown senders, allow Didit's address
    (18.203.201.92 at the time of writing).
 5. **Environment** (`infra/deploy/.env`, local `.env`): `DIDIT_API_KEY`,
-   `DIDIT_WORKFLOW_ID`, `DIDIT_WEBHOOK_SECRET`. Restart the API.
+   `DIDIT_WORKFLOW_ID`, `DIDIT_WEBHOOK_SECRET`, and `IDENTITY_KEY_SECRET` (32 or more random
+   characters, `openssl rand -hex 32`; store it in the password manager). It keys the
+   duplicate-document check below and is the same secret NIN verification will use, so
+   generate it once. Restart the API.
 6. **Flag**: `ageVerification` is on in development and staging and off in production. In
    production an admin turns it on from Moderation, Feature flags, first as an allow-list
    of a few named members ([feature-flags.md](../feature-flags.md)).
@@ -57,7 +86,8 @@ used.
 
 ## Behaviour to know
 
-- **Fails closed.** With any of the three settings missing, no check is offered
+- **Fails closed.** With any of the four settings missing (the three Didit ones and
+  `IDENTITY_KEY_SECRET`), no check is offered
   (`GET /v1/me/age-verification` says `available: false`), `POST .../session` answers 503,
   and the webhook answers 404. The API still starts. A missing webhook secret never means
   "accept anything".
@@ -84,7 +114,13 @@ used.
   approval). Two moves are deliberate and come only from Didit's current decision: a
   reviewer in Didit's console can approve a declined or expired session, and can reverse an
   approval.
-- **Duplicates.** An `Approved` decision that carries `DUPLICATED_FACE`,
+- **One document, one account.** If the key of an approved document already belongs to
+  another member's verified row, this member's result ends `declined` (`outcome`
+  `duplicate_person`), on webhook and polling alike. The member is told only "Not verified,
+  try again"; neither the person nor the other account is named in the response, logs or
+  any notification. The unique index decides, so two members verifying the same document at
+  the same moment also resolve cleanly: one verifies, the other is declined, no error.
+- **Duplicates flagged by Didit.** An `Approved` decision that carries `DUPLICATED_FACE`,
   `POSSIBLE_DUPLICATED_FACE`, `FRONT_CAMERA_DUPLICATED_FACE` or `DUPLICATED_DOCUMENT`
   anywhere in it is recorded as `declined`, never `verified`. This is a second line behind
   the workflow settings in step 2.
@@ -100,7 +136,7 @@ used.
 
 ## Trying it on staging
 
-1. Set the three settings, restart, sign in, open Settings: **Verify your age** shows.
+1. Set the four settings, restart, sign in, open Settings: **Verify your age** shows.
 2. Press it: you are sent to a `verify.didit.me` page. Complete a sandbox scenario.
 3. Back on `/settings/age-verification` the state moves to **Verified** (webhook) or after
    a refresh (polling). Declined and expired scenarios show **Not verified, try again**.

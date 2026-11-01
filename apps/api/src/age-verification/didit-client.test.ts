@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import type { DiditConfig } from './config.js'
 import { HttpDiditClient } from './didit-client.js'
 
-const config: DiditConfig = { apiKey: 'key-123', workflowId: 'wf-9', webhookSecret: 's', callbackUrl: 'https://heynaija.test/settings/age-verification' }
+const config: DiditConfig = { apiKey: 'key-123', workflowId: 'wf-9', webhookSecret: 's', personKeySecret: 'p'.repeat(32), callbackUrl: 'https://heynaija.test/settings/age-verification' }
 
 type Call = { url: string; init: RequestInit }
 const fakeFetch = (reply: { status?: number; body: unknown }) => {
@@ -57,11 +57,21 @@ test('a decision is read from GET /v3/session/{id}/decision/ and cut down to sta
       status: 'Approved',
       vendor_data: 'm-1',
       features: ['ID_VERIFICATION'],
-      id_verifications: [{ status: 'Approved', full_name: 'Ada Obi', date_of_birth: '1990-01-01', front_image: 'https://x/y.jpg' }],
+      id_verifications: [
+        { status: 'Approved', full_name: 'Ada Obi', date_of_birth: '1990-01-01', front_image: 'https://x/y.jpg', document_number: 'A1 2345', issuing_state: 'NGA' },
+      ],
     },
   })
   const decision = await new HttpDiditClient(config, impl).getDecision('sess-1')
-  assert.deepEqual(decision, { sessionId: 'sess-1', status: 'Approved', vendorData: 'm-1', method: 'document', duplicate: false })
+  // Name, birth date and images are dropped; the document is passed on only to be turned into a key at once.
+  assert.deepEqual(decision, {
+    sessionId: 'sess-1',
+    status: 'Approved',
+    vendorData: 'm-1',
+    method: 'document',
+    duplicate: false,
+    document: { issuingState: 'NGA', number: 'A1 2345' },
+  })
   assert.equal(calls[0]?.url, 'https://verification.didit.me/v3/session/sess-1/decision/')
   assert.equal(calls[0]?.init.method ?? 'GET', 'GET')
   assert.equal((calls[0]?.init.headers as Record<string, string>)['x-api-key'], 'key-123')

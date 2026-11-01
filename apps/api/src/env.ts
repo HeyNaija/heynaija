@@ -67,8 +67,10 @@ const schema = z.object({
   // until docs/governance/under-18-rollout.md is approved and built.
   UNDER_18_ACCOUNTS_ENABLED: lockedOff('UNDER_18_ACCOUNTS_ENABLED'),
   // Key for deriving private person keys from a provider's identifier
-  // (governance/rules.ts). Only needed once NIN verification exists.
-  IDENTITY_KEY_SECRET: z.string().min(32).optional(),
+  // (governance/rules.ts), and, for age verification, the keyed digest of a document
+  // that stops one document verifying two accounts (age-verification/person-key.ts).
+  // Age verification is not offered without it. Empty means unset.
+  IDENTITY_KEY_SECRET: optional(z.string().min(32)),
   // Notification emails. They go out over the same SMTP account Kratos uses for
   // sign-in codes (Resend in staging and production, Mailpit locally, see
   // docs/deployment), under the same variable names as infra/deploy/.env.example.
@@ -136,7 +138,7 @@ const schema = z.object({
   LIVEKIT_WEBHOOK_KEY: optional(z.string().min(1)),
   LIVEKIT_WEBHOOK_SECRET: optional(z.string().min(32)),
   // Age verification through Didit (docs/adr/0018, docs/deployment/age-verification.md).
-  // All three are needed; with any missing, no check is offered and the webhook
+  // All three, and IDENTITY_KEY_SECRET below, are needed; with any missing, no check is offered and the webhook
   // refuses everything, and the API still starts. Whether the feature is on at all is
   // the `ageVerification` flag, not these.
   DIDIT_API_KEY: optional(z.string().min(1)),

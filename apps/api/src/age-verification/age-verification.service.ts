@@ -6,6 +6,7 @@ import { FeatureFlags } from '../flags/feature-flags.js'
 import { DB } from '../tokens.js'
 import type { DiditConfig } from './config.js'
 import { DIDIT_CLIENT, type DiditClient, type DiditDecision } from './didit-client.js'
+import { documentPersonKey } from './person-key.js'
 import { verifyDiditSignature } from './signature.js'
 import { type DiditStatusEvent, type StoredVerification, type VerificationStatus, isVerifiedAdult, sessionAction, statusFromDidit, transition } from './state.js'
 
@@ -38,6 +39,15 @@ const webhookBody = z.object({
   status: z.string(),
   vendor_data: z.string().optional(),
 })
+
+/** Whether an error is the unique index on the person key being hit (drizzle wraps the driver's error as `cause`). */
+function isPersonKeyConflict(err: unknown): boolean {
+  for (let e: unknown = err, depth = 0; e && typeof e === 'object' && depth < 4; e = (e as { cause?: unknown }).cause, depth++) {
+    const { code, constraint } = e as { code?: unknown; constraint?: unknown }
+    if (code === '23505' && constraint === 'age_verifications_person_idx') return true
+  }
+  return false
+}
 
 /** How many times a change is retried when another delivery changed the same row first. */
 const ATTEMPTS = 3
@@ -114,7 +124,7 @@ export class AgeVerificationService {
         const decision = await this.didit.getDecision(row.diditSessionId)
         // A decision about someone else's session must never change this member's result.
         if (decision.vendorData === memberId) {
-          await this.apply(memberId, { sessionId: decision.sessionId, status: decision.status, method: decision.method, duplicate: decision.duplicate })
+          await this.apply(memberId, decision)
         }
       } catch (err) {
         this.logger.warn(`Didit decision could not be read: ${err instanceof Error ? err.message : String(err)}`)
@@ -153,26 +163,60 @@ export class AgeVerificationService {
       throw new WebhookUpstreamError()
     }
     if (decision.vendorData !== memberId || decision.sessionId !== sessionId) return
-    await this.apply(memberId, { sessionId, status: decision.status, method: decision.method, duplicate: decision.duplicate })
+    await this.apply(memberId, decision)
   }
 
-  private async apply(memberId: string, event: DiditStatusEvent): Promise<void> {
+  /**
+   * What Didit's decision means for this member, by the state rules, plus the duplicate-
+   * document rule: an approval by document check is keyed on the document (person-key.ts)
+   * and the unique index on that key lets one document hold one verified account.
+   * An approval with no usable document number cannot be told from anyone else's, so it
+   * is not counted. An age-estimation approval has no document: no key, no dedupe.
+   */
+  private async apply(memberId: string, decision: DiditDecision): Promise<void> {
+    let status = decision.status
+    let personKey: string | null = null
+    let outcome: string | null = decision.duplicate && status === 'Approved' ? 'duplicate_flagged' : null
+    if (status === 'Approved' && !decision.duplicate && decision.method === 'document') {
+      const secret = this.config?.personKeySecret
+      personKey = secret ? documentPersonKey(secret, decision.document) : null
+      if (!personKey) {
+        status = 'Declined'
+        outcome = 'no_document_number'
+      }
+    }
+    const event: DiditStatusEvent = { sessionId: decision.sessionId, status, method: decision.method, duplicate: decision.duplicate, personKey }
+
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
       const current = await this.load(memberId)
       const change = transition(current, event, new Date())
       if (change.change === 'none' || !current) return
-      const updated = await this.db
-        .update(ageVerifications)
-        .set({ status: change.status, method: change.method, verifiedAt: change.verifiedAt, updatedAt: new Date() })
-        .where(
-          and(
-            eq(ageVerifications.memberId, memberId),
-            eq(ageVerifications.diditSessionId, event.sessionId),
-            // Only if nothing changed it since it was read; otherwise read again and decide again.
-            eq(ageVerifications.status, current.status),
-          ),
-        )
-        .returning({ memberId: ageVerifications.memberId })
+      const set = {
+        status: change.status,
+        method: change.method,
+        verifiedAt: change.verifiedAt,
+        personKey: change.personKey ?? null,
+        // Why a result is declined, for support; nothing for any other status.
+        outcome: change.status === 'declined' ? outcome : null,
+        updatedAt: new Date(),
+      }
+      // Only if nothing changed it since it was read; otherwise read again and decide again.
+      const where = and(eq(ageVerifications.memberId, memberId), eq(ageVerifications.diditSessionId, decision.sessionId), eq(ageVerifications.status, current.status))
+      let updated: unknown[]
+      try {
+        updated = await this.db.update(ageVerifications).set(set).where(where).returning({ memberId: ageVerifications.memberId })
+      } catch (err) {
+        if (!isPersonKeyConflict(err)) throw err
+        // The document is already some other account's verified one (including a race with
+        // that account being approved at this moment). This account is declined. Nothing
+        // that identifies the person or the other account goes in the log or the outcome.
+        this.logger.warn('A document that is already verified on another account was used again; the second account was declined')
+        updated = await this.db
+          .update(ageVerifications)
+          .set({ status: 'declined', method: null, verifiedAt: null, personKey: null, outcome: 'duplicate_person', updatedAt: new Date() })
+          .where(where)
+          .returning({ memberId: ageVerifications.memberId })
+      }
       if (updated.length > 0) return
     }
     this.logger.warn(`Age verification result for ${memberId} kept changing; one event was dropped`)

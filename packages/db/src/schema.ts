@@ -733,17 +733,35 @@ export const VERIFICATION_STATUSES = ['pending', 'verified', 'rejected', 'expire
 // start a new session. Nothing here is the member's declared age (age_assurances).
 export const AGE_VERIFICATION_STATUSES = ['pending', 'in_review', 'verified', 'declined', 'expired'] as const
 
-export const ageVerifications = restricted.table('age_verifications', {
-  memberId: uuid('member_id')
-    .primaryKey()
-    .references(() => members.id, { onDelete: 'cascade' }),
-  status: text('status', { enum: AGE_VERIFICATION_STATUSES }).notNull(),
-  method: text('method'),
-  verifiedAt: ts('verified_at'),
-  diditSessionId: text('didit_session_id').notNull(),
-  createdAt: ts('created_at').notNull().defaultNow(),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
-})
+//
+// `personKey` is, for an approval by document check, a keyed HMAC-SHA256 (server
+// secret, never the number itself) of the issuing country and the document number.
+// It is personal data and stays here, never returned by any API, in logs or in an
+// export. Its unique index lets one document verify one account at a time; a second
+// account is declined (`outcome` 'duplicate_person'). `outcome` is a short code
+// saying why a result is declined, for support; it is never shown to a member.
+// Null for age-estimation approvals (no document) and for every result but
+// `verified`. It goes with the row when the account is deleted.
+export const ageVerifications = restricted.table(
+  'age_verifications',
+  {
+    memberId: uuid('member_id')
+      .primaryKey()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    status: text('status', { enum: AGE_VERIFICATION_STATUSES }).notNull(),
+    method: text('method'),
+    verifiedAt: ts('verified_at'),
+    diditSessionId: text('didit_session_id').notNull(),
+    personKey: text('person_key'),
+    outcome: text('outcome'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    // Mirrors identity_verifications_person_idx (0014_governance_groundwork).
+    uniqueIndex('age_verifications_person_idx').on(t.personKey).where(sql`status = 'verified' and person_key is not null`),
+  ],
+)
 
 export const identityVerifications = restricted.table(
   'identity_verifications',

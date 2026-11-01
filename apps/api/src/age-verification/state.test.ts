@@ -11,7 +11,7 @@ const row = (status: VerificationStatus, over: Partial<StoredVerification> = {})
   verifiedAt: status === 'verified' ? new Date('2026-10-31T10:00:00Z') : null,
   ...over,
 })
-const event = (status: string, over: { sessionId?: string; method?: string } = {}) => ({ sessionId: SESSION, status, ...over })
+const event = (status: string, over: { sessionId?: string; method?: string; personKey?: string } = {}) => ({ sessionId: SESSION, status, ...over })
 
 test('Didit statuses map to ours; statuses that are not an outcome map to nothing', () => {
   assert.equal(statusFromDidit('Approved'), 'verified')
@@ -33,6 +33,19 @@ test('an approval sets verified, the method and the date', () => {
     verifiedAt: NOW,
   })
   assert.equal(transition(row('in_review'), event('Approved'), NOW).change, 'update')
+})
+
+test('an approval carries the person key to be stored; nothing else carries one', () => {
+  assert.deepEqual(transition(row('pending'), { ...event('Approved', { method: 'document' }), personKey: 'k1' }, NOW), {
+    change: 'update',
+    status: 'verified',
+    method: 'document',
+    verifiedAt: NOW,
+    personKey: 'k1',
+  })
+  // A decline never keeps one, even if one was passed; a withdrawn approval frees its key.
+  assert.deepEqual(transition(row('pending'), { ...event('Declined'), personKey: 'k1' }, NOW), { change: 'update', status: 'declined', method: null, verifiedAt: null })
+  assert.deepEqual(transition(row('verified'), { ...event('Declined'), personKey: 'k1' }, NOW), { change: 'update', status: 'declined', method: null, verifiedAt: null })
 })
 
 test('declined and expired are recorded, with no method and no date', () => {

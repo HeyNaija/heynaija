@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import { ageVerifications, members } from '@heynaija/db'
+import { Logger } from '@nestjs/common'
 import { eq } from 'drizzle-orm'
 import { FeatureFlags } from '../flags/feature-flags.js'
 import { db, migrate, pool, reset } from '../test-db.js'
@@ -13,7 +14,15 @@ import { signDiditBody } from './signature.js'
 const ada = randomUUID()
 const bayo = randomUUID()
 const SECRET = 'whsec_test'
-const config: DiditConfig = { apiKey: 'k', workflowId: 'wf', webhookSecret: SECRET, callbackUrl: 'https://heynaija.test/settings/age-verification' }
+const config: DiditConfig = {
+  apiKey: 'k',
+  workflowId: 'wf',
+  webhookSecret: SECRET,
+  personKeySecret: 'p'.repeat(32),
+  callbackUrl: 'https://heynaija.test/settings/age-verification',
+}
+/** A number the tests look for in rows, logs and errors, and must never find. */
+const RAW_NUMBER = 'SECRET-DOC-777'
 
 class FakeDidit implements DiditClient {
   created: { memberId: string; callbackUrl: string }[] = []
@@ -79,7 +88,16 @@ const delivery = (over: Record<string, unknown> = {}, secret = SECRET) => {
  */
 const deliver = (d: ReturnType<typeof delivery>, truth: Partial<DiditDecision> = {}) => {
   const body = d.body as { session_id: string; status: string; vendor_data: string }
-  didit.decisions.set(body.session_id, { sessionId: body.session_id, status: body.status, vendorData: body.vendor_data, method: 'document', duplicate: false, ...truth })
+  didit.decisions.set(body.session_id, {
+    sessionId: body.session_id,
+    status: body.status,
+    vendorData: body.vendor_data,
+    method: 'document',
+    duplicate: false,
+    // Each member has a document of their own unless a test says otherwise.
+    document: { issuingState: 'NGA', number: `DOC-${body.vendor_data}` },
+    ...truth,
+  })
   return service.handleWebhook(d.body, d.headers)
 }
 
@@ -127,7 +145,7 @@ test('an approved delivery sets verified with a method and a date, and nothing e
   assert.equal(row?.status, 'verified')
   assert.equal(row?.method, 'document')
   assert.ok(row?.verifiedAt instanceof Date)
-  assert.deepEqual(Object.keys(row ?? {}).sort(), ['createdAt', 'diditSessionId', 'memberId', 'method', 'status', 'updatedAt', 'verifiedAt'])
+  assert.deepEqual(Object.keys(row ?? {}).sort(), ['createdAt', 'diditSessionId', 'memberId', 'method', 'outcome', 'personKey', 'status', 'updatedAt', 'verifiedAt'])
   assert.doesNotMatch(JSON.stringify(row), /Ada Obi|1990/)
   assert.deepEqual(await service.status(ada), { available: true, status: 'verified', verified: true })
 })
@@ -195,14 +213,14 @@ test('a delivery is not trusted for someone else: the member in vendor_data must
 
 test('polling fetches the decision and records an approval', async () => {
   await service.start(ada)
-  didit.decisions.set('sess-1', { sessionId: 'sess-1', status: 'Approved', vendorData: ada, method: 'age_estimation', duplicate: false })
+  didit.decisions.set('sess-1', { sessionId: 'sess-1', status: 'Approved', vendorData: ada, method: 'age_estimation', duplicate: false, document: null })
   assert.deepEqual(await service.refresh(ada), { available: true, status: 'verified', verified: true })
   assert.equal((await rowOf(ada))?.method, 'age_estimation')
 })
 
 test('polling ignores a decision that is not about this member, and survives Didit being down', async () => {
   await service.start(ada)
-  didit.decisions.set('sess-1', { sessionId: 'sess-1', status: 'Approved', vendorData: bayo, method: 'document', duplicate: false })
+  didit.decisions.set('sess-1', { sessionId: 'sess-1', status: 'Approved', vendorData: bayo, method: 'document', duplicate: false, document: null })
   assert.equal((await service.refresh(ada)).status, 'pending')
   didit.failing = true
   assert.equal((await service.refresh(ada)).status, 'pending')
@@ -280,8 +298,133 @@ test('an approval whose decision flags a duplicated face or document is recorded
 
 test('polling applies the same duplicate rule', async () => {
   await service.start(ada)
-  didit.decisions.set('sess-1', { sessionId: 'sess-1', status: 'Approved', vendorData: ada, method: 'document', duplicate: true })
+  didit.decisions.set('sess-1', { sessionId: 'sess-1', status: 'Approved', vendorData: ada, method: 'document', duplicate: true, document: null })
   assert.equal((await service.refresh(ada)).status, 'declined')
+})
+
+/** Both members have a started session; ada's is sess-1 and bayo's sess-2. */
+const startBoth = async () => {
+  await service.start(ada)
+  await service.start(bayo)
+}
+const sameDocument = { issuingState: 'NGA', number: RAW_NUMBER }
+const approve = (session: string, member: string, truth: Partial<DiditDecision> = {}) =>
+  deliver(delivery({ session_id: session, vendor_data: member, status: 'Approved' }), truth)
+
+test('the same document verifying a second account ends that account declined, without saying whose document it was', async () => {
+  await startBoth()
+  await approve('sess-1', ada, { document: sameDocument })
+  await approve('sess-2', bayo, { document: sameDocument })
+  assert.equal((await rowOf(ada))?.status, 'verified')
+  const second = await rowOf(bayo)
+  assert.equal(second?.status, 'declined')
+  assert.equal(second?.outcome, 'duplicate_person')
+  assert.equal(second?.verifiedAt, null)
+  assert.equal(second?.personKey, null)
+  assert.equal(await service.adultGate(bayo), false)
+  // What the member is told: a status and nothing about a person or another member.
+  const told = JSON.stringify(await service.status(bayo))
+  assert.equal(told, JSON.stringify({ available: true, status: 'declined', verified: false }))
+})
+
+test('the same rule applies when the second account is found by polling', async () => {
+  await startBoth()
+  await approve('sess-1', ada, { document: sameDocument })
+  didit.decisions.set('sess-2', { sessionId: 'sess-2', status: 'Approved', vendorData: bayo, method: 'document', duplicate: false, document: sameDocument })
+  assert.equal((await service.refresh(bayo)).status, 'declined')
+  assert.equal((await rowOf(bayo))?.outcome, 'duplicate_person')
+})
+
+test('different documents both verify', async () => {
+  await startBoth()
+  await approve('sess-1', ada, { document: { issuingState: 'NGA', number: 'A111' } })
+  await approve('sess-2', bayo, { document: { issuingState: 'NGA', number: 'A222' } })
+  assert.equal((await rowOf(ada))?.status, 'verified')
+  assert.equal((await rowOf(bayo))?.status, 'verified')
+})
+
+test('the same number in another country is another document', async () => {
+  await startBoth()
+  await approve('sess-1', ada, { document: { issuingState: 'NGA', number: 'A111' } })
+  await approve('sess-2', bayo, { document: { issuingState: 'GHA', number: 'A111' } })
+  assert.equal((await rowOf(bayo))?.status, 'verified')
+})
+
+test('case and spacing of a number do not make it another document', async () => {
+  await startBoth()
+  await approve('sess-1', ada, { document: { issuingState: 'NGA', number: 'ab 12-34' } })
+  await approve('sess-2', bayo, { document: { issuingState: 'nga', number: 'AB1234' } })
+  assert.equal((await rowOf(ada))?.status, 'verified')
+  assert.equal((await rowOf(bayo))?.status, 'declined')
+})
+
+test('two members verifying one document at the same moment: one wins, the other declines, nobody gets an error', async () => {
+  await startBoth()
+  const results = await Promise.allSettled([approve('sess-1', ada, { document: sameDocument }), approve('sess-2', bayo, { document: sameDocument })])
+  assert.deepEqual(results.map((r) => r.status), ['fulfilled', 'fulfilled'])
+  const statuses = [(await rowOf(ada))?.status, (await rowOf(bayo))?.status].sort()
+  assert.deepEqual(statuses, ['declined', 'verified'])
+  const keys = (await db.select().from(ageVerifications)).filter((r) => r.personKey !== null)
+  assert.equal(keys.length, 1)
+})
+
+test('a declined account frees nothing it never held, and the winner keeps the key', async () => {
+  await startBoth()
+  await approve('sess-1', ada, { document: sameDocument })
+  await approve('sess-2', bayo, { document: sameDocument })
+  // Ada's approval is later reversed in Didit's console: the key is free again for a fresh attempt.
+  await deliver(delivery({ session_id: 'sess-1', vendor_data: ada, status: 'Declined' }), { document: sameDocument })
+  assert.equal((await rowOf(ada))?.personKey, null)
+  await service.start(bayo)
+  await approve('sess-3', bayo, { document: sameDocument })
+  assert.equal((await rowOf(bayo))?.status, 'verified')
+})
+
+test('an age-estimation approval has no document, so no key is stored and no duplicate check is made', async () => {
+  await startBoth()
+  await approve('sess-1', ada, { method: 'age_estimation', document: null })
+  await approve('sess-2', bayo, { method: 'age_estimation', document: null })
+  assert.equal((await rowOf(ada))?.status, 'verified')
+  assert.equal((await rowOf(bayo))?.status, 'verified')
+  assert.equal((await rowOf(ada))?.personKey, null)
+})
+
+test('a document approval with no readable number is not counted: nothing to tell one person from another', async () => {
+  await service.start(ada)
+  await approve('sess-1', ada, { document: null })
+  const row = await rowOf(ada)
+  assert.equal(row?.status, 'declined')
+  assert.equal(row?.outcome, 'no_document_number')
+})
+
+test('a duplicate-flagged approval records why, and stores no key', async () => {
+  await service.start(ada)
+  await approve('sess-1', ada, { duplicate: true })
+  assert.equal((await rowOf(ada))?.outcome, 'duplicate_flagged')
+  assert.equal((await rowOf(ada))?.personKey, null)
+})
+
+test('the raw document number is in no row, no log line and no error', async () => {
+  const lines: string[] = []
+  const capture = { log: (m: unknown) => lines.push(String(m)), error: (m: unknown) => lines.push(String(m)), warn: (m: unknown) => lines.push(String(m)), debug: (m: unknown) => lines.push(String(m)), verbose: (m: unknown) => lines.push(String(m)) }
+  Logger.overrideLogger(capture)
+  try {
+    await startBoth()
+    await approve('sess-1', ada, { document: sameDocument })
+    await approve('sess-2', bayo, { document: sameDocument }) // the duplicate path
+    didit.failing = true
+    const failing = delivery({ session_id: 'sess-2', vendor_data: bayo, status: 'Approved' })
+    await service.handleWebhook(failing.body, failing.headers).catch((err: unknown) => lines.push(String(err), (err as Error).stack ?? ''))
+    didit.failing = false
+    await service.refresh(bayo)
+  } finally {
+    Logger.overrideLogger(['error', 'warn', 'log'])
+  }
+  const rows = JSON.stringify(await db.select().from(ageVerifications))
+  for (const text of [rows, lines.join('\n')]) {
+    assert.doesNotMatch(text, /SECRET-DOC-777/i)
+    assert.doesNotMatch(text, /SECRETDOC777/i)
+  }
 })
 
 test('a result stays on record when the flag is turned off', async () => {
