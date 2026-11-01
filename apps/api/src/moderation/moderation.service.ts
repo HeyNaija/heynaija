@@ -19,6 +19,7 @@ import { GistsService } from '../gists/gists.service.js'
 import { avatarPath, communityPhotoPath, MediaService } from '../media/media.service.js'
 import { type NewNotification, notify } from '../notifications/notifications.service.js'
 import { imagesOf, type PostImage, toPostImages } from '../posts/posts.service.js'
+import { VideoService } from '../video/video.service.js'
 import { DB } from '../tokens.js'
 import { SAFETY_ALERTS, type SafetyAlerts } from './safety-alerts.js'
 
@@ -100,6 +101,8 @@ export class ModerationService {
     @Optional() @Inject(SAFETY_ALERTS) private readonly alerts?: SafetyAlerts,
     // Ends a reported Gist. Optional so tests of other decisions need no LiveKit.
     @Optional() @Inject(GistsService) private readonly gists?: Pick<GistsService, 'endNow'>,
+    // Takes a post's video down with it (ADR 0019 section 4.3). Optional like media.
+    @Optional() @Inject(VideoService) private readonly videos?: VideoService,
   ) {}
 
   /**
@@ -205,6 +208,8 @@ export class ModerationService {
     // Illegal content may need taking down and reporting quickly, so a person
     // hears about it rather than waiting for a moderator to open the queue.
     if (reason === 'illegal') {
+      // Unlike an image, a video reported as illegal is hidden at once, pending review (ADR 0019 open question 6).
+      if (postId) await this.afterwards(`hiding the video of reported post ${postId}`, async () => void (await this.videos?.hideReportedVideos(postId)))
       await this.alerts?.alert('A member reported illegal content', [
         postId
           ? `A post (${postId}) was reported as illegal.`
@@ -557,6 +562,7 @@ export class ModerationService {
     if (removedPost) {
       const postId = removedPost
       await this.afterwards(`quarantining images of post ${postId}`, () => this.media!.quarantinePostImages(postId))
+      await this.afterwards(`quarantining the video of post ${postId}`, async () => void (await this.videos?.quarantinePostVideos(postId)))
     }
     if (removedCommunityPhoto) {
       const mediaId = removedCommunityPhoto
@@ -658,6 +664,7 @@ export class ModerationService {
     await this.db.insert(moderationActions).values({ actorId: moderatorId, action: 'restore_post', postId, note })
     await notify(this.db, [{ recipientId: restored[0]!.authorId, kind: 'post_restored', postId }])
     await this.afterwards(`releasing images of post ${postId}`, () => this.media!.releasePostImages(postId))
+    await this.afterwards(`releasing the video of post ${postId}`, async () => void (await this.videos?.releasePostVideos(postId)))
   }
 
   /**
