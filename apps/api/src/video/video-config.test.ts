@@ -53,3 +53,9 @@ test('rate limits: uploads 3 an hour and 10 a day, parts 120 a minute', () => {
   ])
   assert.deepEqual(LIMITS.videoPart, [{ max: 120, windowMs: 60_000 }])
 })
+
+test('the length limit cannot exceed what the 80-frame scan sample can cover (one frame a second and the last)', () => {
+  assert.equal(videoConfig(loadEnv({ ...base, VIDEO_MAX_SECONDS: '78' })).maxSeconds, 78)
+  assert.throws(() => loadEnv({ ...base, VIDEO_MAX_SECONDS: '79' }))
+  assert.throws(() => loadEnv({ ...base, VIDEO_MAX_SECONDS: '600' }))
+})

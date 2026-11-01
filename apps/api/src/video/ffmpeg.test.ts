@@ -7,7 +7,12 @@ import { after, before, test } from 'node:test'
 import sharp from 'sharp'
 import {
   checkLimits,
+  DurationMismatch,
+  FfmpegTimeout,
+  expiredDeadline,
   extractFrames,
+  frameArgs,
+  stillArgs,
   extractPoster,
   FFMPEG_SAFETY,
   parseProbe,
@@ -21,21 +26,19 @@ import {
 } from './ffmpeg.js'
 import { DEFAULT_VIDEO_CONFIG as cfg } from './video-config.js'
 
-const ffprobeJson = (over: { width?: number; height?: number; rotation?: number; duration?: string; audio?: boolean; format?: string; noVideo?: boolean } = {}) => ({
+const ffprobeJson = (over: { width?: number; height?: number; rotation?: number; duration?: string; audio?: boolean; format?: string; noVideo?: boolean; videoStreams?: number } = {}) => ({
   format: { format_name: over.format ?? 'mov,mp4,m4a,3gp,3g2,mj2', duration: over.duration ?? '12.5' },
   streams: [
     ...(over.noVideo
       ? []
-      : [
-          {
+      : Array.from({ length: over.videoStreams ?? 1 }, () => ({
             codec_type: 'video',
             codec_name: 'h264',
             width: over.width ?? 1920,
             height: over.height ?? 1080,
             avg_frame_rate: '30000/1001',
             ...(over.rotation === undefined ? {} : { side_data_list: [{ side_data_type: 'Display Matrix', rotation: over.rotation }] }),
-          },
-        ]),
+          }))),
     ...(over.audio === false ? [] : [{ codec_type: 'audio', codec_name: 'aac' }]),
   ],
 })
@@ -115,7 +118,38 @@ test('transcodeArgs: the invocation, with the safety flags and the ADR ladder se
   assert.ok(line.includes('-b:a 48k') && line.includes('-b:a 64k'))
   assert.ok(line.includes('fps=30'), 'a 60 fps source is capped to 30')
   // Never trust the probe's duration alone: stop encoding past the limit.
-  assert.equal(args[args.indexOf('-t') + 1], String(cfg.maxSeconds + 1))
+  // ... and stop at the same window the scan looked at: the probed length plus a second, never the file's own say.
+  assert.equal(args[args.indexOf('-t') + 1], String(12.5 + 1))
+})
+
+test('parseProbe: more than one video stream is refused, so the stream scanned is the stream published', () => {
+  assert.equal(parseProbe(ffprobeJson({ videoStreams: 2 })), null)
+  assert.ok(parseProbe(ffprobeJson({ videoStreams: 1 })))
+})
+
+test('every read of the input maps the first video stream: the scan, the poster and the encode see the same one', () => {
+  const frames = frameArgs('/in/o.mp4', '/work/frames', 12_500, 60)
+  for (const [name, args] of Object.entries(frames)) {
+    const i = args.indexOf('-map')
+    assert.ok(i > args.indexOf('-i'), `${name} maps after its input`)
+    assert.equal(args[i + 1], '0:v:0', name)
+  }
+  const still = stillArgs('/in/o.mp4', 1000, '/work/p.jpg', 'scale=640:640')
+  assert.equal(still[still.indexOf('-map') + 1], '0:v:0')
+  assert.ok(transcodeArgs('/in', ['/a', '/b', '/c'], probed(), cfg).join(' ').includes('[0:v:0]'))
+})
+
+test('the scan reads at most the limit plus a second, whatever the container claims', () => {
+  const frames = frameArgs('/in/o.mp4', '/work/frames', 4_000, 60)
+  assert.equal(frames.seconds[frames.seconds.indexOf('-t') + 1], '61')
+  assert.equal(frames.scenes[frames.scenes.indexOf('-t') + 1], '61')
+})
+
+test('checkLimits: a frame rate over 60, or more frames than the limit allows at 60 a second, is refused', () => {
+  assert.equal(checkLimits(probed({ fps: 60 }), 1000, cfg), null)
+  assert.equal(checkLimits(probed({ fps: 120 }), 1000, cfg), 'too_long')
+  assert.equal(checkLimits(probed({ fps: 30, frameCount: cfg.maxSeconds * 60 + 1 }), 1000, cfg), 'too_long')
+  assert.equal(checkLimits(probed({ fps: 30, frameCount: cfg.maxSeconds * 60 }), 1000, cfg), null)
 })
 
 test('transcodeArgs: no audio track in, none out; a 24 fps source is not resampled', () => {
@@ -229,4 +263,51 @@ test('probe says null for a file that is not a video, rather than throwing', { s
   const junk = join(dir, 'junk.mp4')
   await writeFile(junk, Buffer.from('this is not a video'))
   assert.equal(await probe(junk), null)
+})
+
+test('an expired deadline stops a run before it starts, as a timeout', { skip }, async () => {
+  const input = clip('deadline.mp4', '320x240', 3)
+  await assert.rejects(() => probe(input, expiredDeadline()), FfmpegTimeout)
+})
+
+// A WebM that says it is 4 seconds long and holds 30: the container's claim is the Segment's Duration float.
+const lyingWebm = (name: string, realSeconds: number, claimSeconds: number) => {
+  const path = join(dir, name)
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', `testsrc2=size=320x240:rate=10:duration=${realSeconds}`, '-c:v', 'libvpx', '-b:v', '50k', '-an', path], { stdio: 'ignore' })
+  return { path, patch: async () => {
+    const d = await readFile(path)
+    for (let i = d.indexOf(Buffer.from([0x44, 0x89])); i >= 0; i = d.indexOf(Buffer.from([0x44, 0x89]), i + 1)) {
+      if (d[i + 2] === 0x88) d.writeDoubleBE(claimSeconds * 1000, i + 3)
+      else if (d[i + 2] === 0x84) d.writeFloatBE(claimSeconds * 1000, i + 3)
+      else continue
+      const out = join(dir, `lie-${name}`)
+      await (await import('node:fs/promises')).writeFile(out, d)
+      return out
+    }
+    throw new Error('no Duration element found to patch')
+  } }
+}
+const hasVp8 = (() => {
+  try {
+    return execFileSync('ffmpeg', ['-hide_banner', '-encoders']).toString().includes('libvpx ')
+  } catch {
+    return false
+  }
+})()
+const skipVp8 = skip || (!hasVp8 && 'this ffmpeg has no libvpx encoder, so the lying WebM cannot be generated')
+
+test('a WebM that claims 4 s and holds 30 is refused by the sampler, not scanned for 5 s and published for 30', { skip: skipVp8, timeout: 120_000 }, async () => {
+  const lie = await lyingWebm('lie.webm', 30, 4).patch()
+  const p = (await probe(lie))!
+  assert.ok(p.durationMs < 5000, `the container claims ${p.durationMs} ms`)
+  assert.equal(checkLimits(p, 1000, { ...cfg, minSeconds: 0 }), null, 'the probe alone believes it')
+  await assert.rejects(() => extractFrames(lie, join(dir, 'lie-frames'), p.durationMs), DurationMismatch)
+})
+
+test('a file with two video streams, default on the second, is refused at the probe', { skip, timeout: 120_000 }, async () => {
+  const a = clip('a.mp4', '320x240', 3, { audio: false })
+  const b = clip('b.mp4', '320x240', 3, { audio: false })
+  const two = join(dir, 'two.mkv')
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', a, '-i', b, '-map', '0:v', '-map', '1:v', '-c', 'copy', '-disposition:v:0', '0', '-disposition:v:1', 'default', two], { stdio: 'ignore' })
+  assert.equal(await probe(two), null)
 })

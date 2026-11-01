@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, beforeEach, test } from 'node:test'
 import { media, members, reports, videoDetails, videoRenditions } from '@heynaija/db'
+import { UnrecoverableError } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { type ContentScanner, type FrameScan, NoScanner } from '../media/media.service.js'
 import type { SafetyAlerts } from '../moderation/safety-alerts.js'
@@ -75,7 +76,7 @@ const queued = async (body: Buffer = clipBytes) => {
   store.putOriginal(originalKey(row!.id), body)
   return row!.id
 }
-const processor = (scanner: ContentScanner, cfg = defaults) => new VideoProcessor(db, store, scanner, cfg, safety, dir)
+const processor = (scanner: ContentScanner, cfg = defaults, jobTimeoutMs?: number) => new VideoProcessor(db, store, scanner, cfg, safety, dir, jobTimeoutMs)
 const rowOf = async (id: string) => (await db.select().from(media).where(eq(media.id, id)))[0]!
 const detailsOf = async (id: string) => (await db.select().from(videoDetails).where(eq(videoDetails.mediaId, id)))[0]!
 
@@ -213,4 +214,36 @@ test('a rerun after success changes nothing (idempotent)', { skip, timeout: 120_
   await processor(clear()).process(id, { lastAttempt: false })
   assert.deepEqual(store.keys('media'), before)
   assert.equal((await rowOf(id)).status, 'ready')
+})
+
+test('a timeout is permanent: the video is failed at once, the job is unrecoverable (no three retries of a five minute encode)', { skip, timeout: 60_000 }, async () => {
+  const id = await queued()
+  const scanner = clear()
+  await assert.rejects(() => processor(scanner, defaults, 1).process(id, { lastAttempt: false }), (err: Error) => err instanceof UnrecoverableError && /timed out/.test(err.message))
+  assert.equal((await rowOf(id)).status, 'failed')
+  assert.match((await detailsOf(id)).failureReason!, /timed out/)
+  assert.deepEqual(store.keys('uploads'), [])
+  assert.equal(scanner.seen.length, 0)
+})
+
+test('a file whose container lies about its length is rejected, never scanned short and published long', { skip, timeout: 120_000 }, async () => {
+  const raw = join(dir, 'long.webm')
+  try {
+    execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x240:rate=10:duration=30', '-c:v', 'libvpx', '-b:v', '50k', '-an', raw], { stdio: 'ignore' })
+  } catch {
+    return // no libvpx here: the same behaviour is pinned in ffmpeg.test.ts where it can be generated
+  }
+  const d = await readFile(raw)
+  let patched = false
+  for (let i = d.indexOf(Buffer.from([0x44, 0x89])); i >= 0 && !patched; i = d.indexOf(Buffer.from([0x44, 0x89]), i + 1)) {
+    if (d[i + 2] === 0x88) (d.writeDoubleBE(4000, i + 3), (patched = true))
+    else if (d[i + 2] === 0x84) (d.writeFloatBE(4000, i + 3), (patched = true))
+  }
+  assert.ok(patched)
+  const id = await queued(d)
+  const scanner = clear()
+  await processor(scanner, { ...defaults, minSeconds: 0 }).process(id, { lastAttempt: false })
+  assert.equal((await rowOf(id)).status, 'rejected')
+  assert.equal(scanner.seen.length, 0)
+  assert.deepEqual(store.keys('media'), [])
 })

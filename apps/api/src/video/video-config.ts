@@ -13,7 +13,8 @@ const num = (min: number, max: number, def: number) =>
  */
 export const videoEnvShape = {
   // Open question 2: 60 seconds, 100 MB, 1080p (longest edge), one video per post.
-  VIDEO_MAX_SECONDS: num(1, 600, 60),
+  // At most 78: the scan samples one frame a second plus the last in 80 frames, so a longer clip could not be covered.
+  VIDEO_MAX_SECONDS: num(1, 78, 60),
   VIDEO_MIN_SECONDS: num(0, 60, 3),
   VIDEO_MAX_BYTES: num(1 * MIB, 2048 * MIB, 100 * MIB),
   VIDEO_MAX_EDGE: num(240, 7680, 1920),

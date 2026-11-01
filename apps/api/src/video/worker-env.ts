@@ -5,9 +5,10 @@ const optional = <T extends z.ZodType>(type: T) => z.preprocess((value) => (valu
 
 /**
  * What the video worker reads: storage, the database, Redis, the scanner and the
- * safety alert address. Deliberately not the API's whole environment (no Kratos,
- * no session or push secrets), so the container that parses untrusted video holds
- * as little as it can.
+ * safety alert address. The code asks for no more than this and fails to start without
+ * the required ones; it does not stop other variables being present. What the
+ * container is actually given is set by the `video-worker` service in
+ * `infra/deploy/compose.yml`, which lists exactly these and nothing else.
  */
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
