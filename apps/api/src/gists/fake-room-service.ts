@@ -30,7 +30,7 @@ export class FakeRoomService implements RoomService {
   readonly deleted: string[] = []
   readonly calls: string[] = []
   /** Make the next call of this kind fail. */
-  failNext: 'createRoom' | 'setPermissions' | 'removeParticipant' | undefined
+  failNext: 'createRoom' | 'deleteRoom' | 'setPermissions' | 'removeParticipant' | undefined
   /**
    * Makes the next setPermissions call wait until released before it takes effect,
    * the way a slow request reaches the server after a later one.
@@ -66,6 +66,7 @@ export class FakeRoomService implements RoomService {
 
   async deleteRoom(room: string): Promise<void> {
     this.calls.push('deleteRoom')
+    this.failIf('deleteRoom')
     this.deleted.push(room)
     this.rooms.delete(room)
   }

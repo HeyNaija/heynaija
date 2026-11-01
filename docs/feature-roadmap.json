@@ -767,7 +767,7 @@
         "apps/api/src/notifications/notifications.service.test.ts",
         "e2e/tests/mentions.spec.ts"
       ],
-      "notes": "Mentions are stored by member ID with their place in the text, so they follow renames; held handles lead to their previous owner. At most 10 members per post are notified; blocked members either way are not, mutes hide the notification, and deleting or removing the post hides it. No composer handle autocomplete yet."
+      "notes": "Mentions are stored by member ID with their place in the text, so they follow renames; held handles lead to their previous owner. At most 10 members per post are notified; blocked members either way are not, mutes hide the notification, and deleting or removing the post hides it. The composer suggests members after @ and at least one character (GET /v1/search/mentions), but not inside a web address: the member whose handle is exactly what was typed first, then people the viewer follows, by handle or any word of their name, then everyone else by handle start, then by name start, never blocked either way; pages of 10 continue along each index from a cursor (migration 0031), loaded as the list is scrolled or arrowed to its end, and the browser debounces and caches answers. The list is fixed to the window, under the box or over it near the bottom, so the phone reply bar does not clip it."
     },
     {
       "id": "profile-pins",
@@ -1336,18 +1336,25 @@
       "description": "Provide a usable route to delete an account and handle privacy requests.",
       "category": "safety",
       "priority": "P0",
-      "status": "blocked",
+      "status": "partial",
       "availability": "not_live",
       "evidence": [
+        "apps/web/app/(main)/settings/delete/page.tsx",
         "apps/web/app/(main)/privacy/page.tsx",
-        "apps/web/app/(main)/settings/page.tsx",
-        "docs/governance/open-items.md"
+        "apps/api/src/account/account-deletion.service.ts",
+        "apps/api/src/account/account-deletion.service.test.ts",
+        "apps/api/src/account/account.controller.ts",
+        "apps/api/src/account/account-queue.ts",
+        "apps/api/src/cli/privacy-request.ts",
+        "e2e/tests/account-deletion.spec.ts",
+        "docs/adr/0016-account-deletion.md",
+        "docs/governance/privacy-requests.md"
       ],
-      "caveat": "Members can ask for deletion through the contact address, but the time it takes is still to be set and self-service account deletion is absent.",
+      "caveat": "Members can delete their account in Settings, and requests by email are recorded and answered. The operator's name and address, and how long deletion records and moderation evidence are kept, are still placeholders for the operator and counsel.",
       "dependency": [
         "operator-disclosure"
       ],
-      "notes": "Promoted from the initial P2 proposal: a working privacy-rights route is a public-beta prerequisite. The privacy contact is contact@heynaija.ng (apps/web/app/ui/policy-page.tsx); the deletion period is a placeholder on /privacy, and there is no tool for an operator to delete an account."
+      "notes": "Built on 30 October 2026 (ADR 0016): an account leaves the site at once and is erased after 14 days unless its owner keeps it; an hourly job erases due accounts; members are emailed at both steps; `pnpm privacy-request` records and closes requests made by email. Waiting on counsel's retention periods (counsel log C-01 to C-15) and on operator-disclosure."
     },
     {
       "id": "creator-analytics",
@@ -1379,16 +1386,22 @@
     {
       "id": "long-form",
       "name": "Long-form writing",
-      "description": "Support writing beyond the current short-post limit.",
+      "description": "Write posts longer than a short post, up to 1,000 characters, with longer pieces to follow.",
       "category": "expansion",
       "priority": "P2",
-      "status": "planned",
+      "status": "partial",
       "availability": "not_live",
       "evidence": [
-        "packages/db/src/schema.ts",
-        "apps/api/src/posts/posts.controller.ts",
-        "apps/web/app/ui/composer.tsx"
-      ]
+        "apps/api/src/posts/posts.service.ts",
+        "apps/web/app/ui/composer.tsx",
+        "apps/web/lib/post-length.ts",
+        "apps/web/app/ui/post-item.tsx",
+        "apps/api/src/posts/posts.service.test.ts",
+        "apps/web/tests/post-length.test.mjs",
+        "e2e/tests/posting.spec.ts"
+      ],
+      "caveat": "Posts can be up to 1,000 characters, and lists show the start of a long one with Show more; longer articles with formatting are not built yet.",
+      "notes": "PR #72 (1 November 2026) raised the limit from 300 to 1,000 graphemes (POST_MAX_GRAPHEMES in the API, POST_MAX in apps/web/lib/post-length.ts). In lists a post past 400 characters or 10 lines shows about its first 300 characters and 8 lines, then a Show more link to its page; mentions, hashtags and links are never cut. Not built: articles longer than a post, formatting, drafts. Availability stays not_live until the change reaches production."
     },
     {
       "id": "video",

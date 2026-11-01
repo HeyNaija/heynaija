@@ -4,6 +4,7 @@ import { afterEach, mock, test } from 'node:test'
 import { type ExecutionContext, ServiceUnavailableException } from '@nestjs/common'
 import { AuthService } from './auth.service.js'
 import { AuthProviderError, type AuthSessionProvider } from './auth-session.provider.js'
+import { KratosAdmin } from './kratos-admin.js'
 import { KratosSessionProvider } from './kratos-session.provider.js'
 import { KratosService } from './kratos.service.js'
 import { OptionalSessionGuard, SessionGuard } from './session.guard.js'
@@ -20,8 +21,9 @@ function setup() {
     delete: async (key: string) => { entries.delete(key) },
   }
   const kratos = new KratosService({ KRATOS_PUBLIC_URL: 'http://kratos.test', WHOAMI_CACHE_TTL_S: 30 }, cache)
-  return new AuthService(new KratosSessionProvider(kratos))
+  return new AuthService(new KratosSessionProvider(kratos, admin))
 }
+const admin = new KratosAdmin({ KRATOS_ADMIN_URL: 'http://kratos-admin.test' })
 const valid = () => Response.json({ active: true, identity: { id: identity.id, traits: { handle: identity.handle } } })
 
 test('only the session cookie reaches Kratos, byte for byte', async () => {
@@ -88,6 +90,11 @@ test('a provider failure stops the protected guard; the optional guard still ser
     identityForRequest: async () => { throw new AuthProviderError('unavailable') },
     invalidateSessionCache: async () => {},
     emailForRequest: async () => null,
+    authenticatedAtForRequest: async () => null,
+    revokeAllSessions: async () => {},
+    deactivateIdentity: async () => {},
+    deleteIdentity: async () => {},
+    identityIdByEmail: async () => null,
   }
   const auth = new AuthService(provider)
   // Neither guard may reach membership storage when the provider fails.
@@ -106,6 +113,50 @@ test('errors that are not the provider’s pass through unchanged', async () => 
     identityForSession: async () => { throw failure },
     forgetSession: async () => {},
     emailForSession: async () => null,
-  }))
+    authenticatedAtForSession: async () => null,
+  }, admin))
   await assert.rejects(auth.identityForRequest({ cookieHeader: 'hn_session=good' }), (error: unknown) => error === failure)
+})
+
+test('the account operations go through the Kratos admin API and fail as a 503 when Kratos cannot answer', async () => {
+  const memberId = randomUUID()
+  const fetch = mock.method(globalThis, 'fetch', async (url: string) =>
+    url.includes('credentials_identifier')
+      ? Response.json([{ id: memberId, traits: { email: 'ada@example.test', handle: 'ada' } }])
+      : new Response(null, { status: 204 }))
+  const auth = setup()
+  await auth.revokeAllSessions(memberId)
+  await auth.deactivateIdentity(memberId)
+  await auth.deleteIdentity(memberId)
+  assert.equal(await auth.identityIdByEmail('ada@example.test'), memberId)
+  assert.deepEqual(fetch.mock.calls.map((c) => String(c.arguments[0]).replace(/\?.*/, '')), [
+    `http://kratos-admin.test/admin/identities/${memberId}/sessions`,
+    `http://kratos-admin.test/admin/identities/${memberId}`,
+    `http://kratos-admin.test/admin/identities/${memberId}`,
+    'http://kratos-admin.test/admin/identities',
+  ])
+  mock.restoreAll()
+
+  mock.method(globalThis, 'fetch', async () => new Response(null, { status: 502 }))
+  for (const operation of [
+    () => auth.revokeAllSessions(memberId),
+    () => auth.deactivateIdentity(memberId),
+    () => auth.deleteIdentity(memberId),
+    () => auth.identityIdByEmail('ada@example.test'),
+    () => auth.authenticatedAtForRequest({ cookieHeader: 'hn_session=good' }),
+  ]) {
+    await assert.rejects(operation(), (error: unknown) => {
+      assert.ok(error instanceof ServiceUnavailableException)
+      assert.equal((error.getResponse() as { code: string }).code, 'auth_provider_unavailable')
+      return true
+    })
+  }
+})
+
+test('without a session cookie there is no sign-in time, and Kratos is not asked', async () => {
+  const fetch = mock.method(globalThis, 'fetch', async () => valid())
+  for (const cookieHeader of [undefined, 'hn_session=', 'hn_session=a; hn_session=b']) {
+    assert.equal(await setup().authenticatedAtForRequest({ cookieHeader }), null)
+  }
+  assert.equal(fetch.mock.callCount(), 0)
 })

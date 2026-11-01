@@ -102,23 +102,30 @@ answers `OK`.
 
 ## 5. Turn Gists on in staging
 
-On the staging server, as your admin user, in `/srv/heynaija/infra/deploy/.env`,
-add the lines `gen-env.sh` printed and the switches:
+On the staging server, as your admin user, at the end of
+`/srv/heynaija/infra/deploy/.env`:
 
-```
-CALLS_ENABLED=true
-CALLS_GISTS_ENABLED=true
-CALLS_MEMBERS=<handles allowed to use Gists, comma-separated>
-LIVEKIT_URL=wss://rtc-staging.heynaija.ng
-LIVEKIT_API_KEY=...
-LIVEKIT_API_SECRET=...
-LIVEKIT_WEBHOOK_KEY=...
-LIVEKIT_WEBHOOK_SECRET=...
-LIVEKIT_WEBHOOK_FROM=<the LiveKit server's IPv4>[,<its IPv6>]
+1. Paste the six lines `gen-env.sh` printed as they are: `LIVEKIT_URL`, the four
+   keys and `LIVEKIT_WEBHOOK_FROM` (for nginx; the LiveKit server's address).
+2. Add the switches, with your own handles in place of the example ones:
+
+   ```
+   CALLS_ENABLED=true
+   CALLS_GISTS_ENABLED=true
+   CALLS_MEMBERS=ada,bayo
+   ```
+
+Every value is plain: **no quotes, spaces or angle brackets.** The deploy reads
+this file with bash, so a stray `'` or `<` stops it before it deploys anything
+(`.env: line N: unexpected EOF while looking for matching`). Lists such as
+`CALLS_MEMBERS`, and `LIVEKIT_WEBHOOK_FROM` with an IPv6 address after the IPv4,
+are comma-separated with no spaces. Check the file before deploying:
+
+```bash
+bash -c 'set -a; source /srv/heynaija/infra/deploy/.env' && echo ok
 ```
 
-`LIVEKIT_WEBHOOK_FROM` is for nginx: comma-separated, no spaces. Then, in
-`/srv/heynaija/infra/deploy`:
+Then, in `/srv/heynaija/infra/deploy`:
 
 ```bash
 ./deploy.sh

@@ -80,18 +80,20 @@ async function sweep(page: Page) {
   return wrong
 }
 
-test('a visitor on a tall window sees the everyday links and keeps Progress and Settings in More', async ({ page }) => {
+test('a visitor on a tall window sees every link, including the ideas board, without More', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1080 })
   await page.goto('/')
   await expect(page.locator('a.sidebar-compose')).toBeVisible()
   const now = await look(page)
   expect(now.problems).toEqual([])
-  expect(now.listed).toEqual(['Home', 'Communities', 'About HeyNaija', 'Governance', 'Bookmarks'])
-  expect(now.moved).toEqual(['Progress', 'Settings'])
-  expect(now.more).toBe(true)
+  expect(now.listed).toEqual(['Home', 'Communities', 'About HeyNaija', 'Progress', 'Governance', 'Ideas board', 'Bookmarks', 'Settings'])
+  expect(now.moved).toEqual([])
+  expect(now.more).toBe(false)
   expect(now.card).toBe(true)
   expect(now.picture).toBe(108)
   await expectOnScreen(page.locator('.square-sidebar').getByText('Real people. Real conversations.'))
+  await page.locator('.square-sidebar').getByRole('link', { name: 'Ideas board' }).click()
+  await page.waitForURL((url) => url.pathname === '/ideas')
 })
 
 test('a member on 1280×720 sees the everyday links and the compose button', async ({ browser }) => {
@@ -103,9 +105,9 @@ test('a member on 1280×720 sees the everyday links and the compose button', asy
     await expect(page.locator('a.sidebar-compose')).toBeVisible()
     const now = await look(page)
     expect(now.problems).toEqual([])
-    expect(now.listed).toEqual(['Home', 'Communities', 'Notifications', 'About HeyNaija', 'Governance', 'Bookmarks'])
-    expect(now.moved).toEqual(['Progress', 'Settings'])
-    expect(now.more).toBe(true)
+    expect(now.listed).toEqual(['Home', 'Communities', 'Notifications', 'About HeyNaija', 'Progress', 'Governance', 'Ideas board', 'Bookmarks', 'Settings'])
+    expect(now.moved).toEqual([])
+    expect(now.more).toBe(false)
     expect(now.card).toBe(false)
     await expectOnScreen(page.locator('.square-sidebar').getByRole('link', { name: 'New post' }))
   } finally {
@@ -115,20 +117,32 @@ test('a member on 1280×720 sees the everyday links and the compose button', asy
 
 test('at any window height the sidebar fits, loses no link and keeps the order of what gives way', async ({ browser }) => {
   const member = await newMember(browser, 'fits')
+  try {
+    await member.page.goto('/')
+    await expect(member.page.locator('a.sidebar-compose')).toBeVisible()
+    expect(await sweep(member.page)).toEqual([])
+  } finally {
+    await member.context.close()
+  }
+})
+
+test('a moderator has a member’s sidebar, and Moderation in the account menu', async ({ browser }) => {
   const moderator = await newMember(browser, 'fitsmod')
   try {
     grantModerator(moderator.handle)
-    for (const { page } of [member, moderator]) {
-      await page.goto('/')
-      await expect(page.locator('a.sidebar-compose')).toBeVisible()
-    }
-    // A moderator has a ninth link, Moderation, which lives in More with Settings.
-    const first = await look(moderator.page)
-    expect(first.moved).toEqual(['Progress', 'Settings', 'Moderation'])
-    expect(await sweep(member.page)).toEqual([])
-    expect(await sweep(moderator.page)).toEqual([])
+    const { page } = moderator
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await page.goto('/')
+    await expect(page.locator('a.sidebar-compose')).toBeVisible()
+    // The same rows as the first paint, which is drawn for a member (shell.tsx).
+    const now = await look(page)
+    expect(now.problems).toEqual([])
+    expect(now.listed).toEqual(['Home', 'Communities', 'Notifications', 'About HeyNaija', 'Progress', 'Governance', 'Ideas board', 'Bookmarks', 'Settings'])
+    expect(now.more).toBe(false)
+    await page.getByLabel('Account menu').click()
+    await page.locator('.account-menu-panel').getByRole('link', { name: 'Moderation' }).click()
+    await page.waitForURL((url) => url.pathname === '/mod')
   } finally {
-    await member.context.close()
     await moderator.context.close()
   }
 })
@@ -142,10 +156,13 @@ test('More holds the links that do not fit and opens above its button', async ({
     const sidebar = page.locator('.square-sidebar')
     const more = sidebar.getByLabel('More', { exact: true })
     await expect(more).toBeVisible()
-    // The least needed link has joined Progress and Settings; Home and the rest are still in the list.
+    // Several lower-priority links moved together; Home and the essentials remain in the list.
     await expect(sidebar.getByRole('link', { name: 'About HeyNaija' })).toHaveCount(0)
     await expect(sidebar.getByRole('link', { name: 'Home', exact: true })).toBeVisible()
+    await expect(sidebar.getByRole('link', { name: 'Ideas board' })).toBeVisible()
     await expectOnScreen(sidebar.getByRole('link', { name: 'New post' }))
+    // Home is in the list, so More is not the current page.
+    await expect(more).toHaveCSS('font-weight', '500')
 
     await more.click()
     const panel = sidebar.locator('.sidebar-more-panel')
@@ -163,6 +180,8 @@ test('More holds the links that do not fit and opens above its button', async ({
     await panel.getByRole('link', { name: 'Progress' }).click()
     await page.waitForURL((url) => url.pathname === '/progress')
     await expect(panel).toBeHidden()
+    // Progress is in More, so More is marked as the current page.
+    await expect(more).toHaveCSS('font-weight', '700')
     await more.click()
     await expect(panel.getByRole('link', { name: 'Progress' })).toHaveAttribute('aria-current', 'page')
   } finally {

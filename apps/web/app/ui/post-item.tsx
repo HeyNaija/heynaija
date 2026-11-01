@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { deletePost, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin, setReplyAudience } from '@/app/actions'
 import type { Post } from '@/lib/api'
 import { textParts } from '@/lib/mentions'
+import { previewParts } from '@/lib/post-length'
 import { excerpt } from '@/lib/previews'
 import { REPLY_AUDIENCES } from '@/lib/reply-audience'
 import { replyContextView } from '@/lib/reply-context'
@@ -88,6 +89,8 @@ export function PostItem({
   const compact = inThread && !focused
   const openLabel = `Open ${post.replyParentId ? 'reply' : 'post'} by @${post.authorHandle}`
   const parts = textParts(post.text, post.mentions, post.links, post.hashtags)
+  // A long post shows only its start in a list; its own page shows all of it.
+  const shown = focused ? { parts, cut: false } : previewParts(parts)
   // Text with links of its own cannot sit inside the post's permalink.
   const rich = parts.some((part) => part.handle || part.tag || part.href)
   const likes = post.likeCount === 1 ? '1 like' : `${post.likeCount} likes`
@@ -299,13 +302,20 @@ export function PostItem({
             <PostText parts={parts} />
           ) : rich ? (
             <PostPermalink href={href} label={openLabel} beside>
-              <PostText parts={parts} />
+              <PostText parts={shown.parts} />
             </PostPermalink>
           ) : (
-            <PostPermalink href={href}>{post.text}</PostPermalink>
+            <PostPermalink href={href}>{shown.cut ? shown.parts.map((part) => part.text).join('') : post.text}</PostPermalink>
           )}
         </p>
       ) : !focused ? <PostPermalink href={href} label={openLabel}><span className="sr-only">Open conversation</span></PostPermalink> : null}
+      {shown.cut ? (
+        <p className="mt-1">
+          <Link prefetch={false} href={href} className="post-more">
+            Show more<span className="sr-only"> of this {post.replyParentId ? 'reply' : 'post'} by @{post.authorHandle}</span>
+          </Link>
+        </p>
+      ) : null}
       {post.poll ? <PollCard postId={post.id} poll={post.poll} member={viewerId !== null} /> : null}
       {post.images.length ? (
         <div className="mt-3">

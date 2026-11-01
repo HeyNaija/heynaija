@@ -7,6 +7,7 @@ import { ExportController } from '../export/export.controller.js'
 import type { ExportService } from '../export/export.service.js'
 import { AuthController } from './auth.controller.js'
 import { AuthService } from './auth.service.js'
+import { KratosAdmin } from './kratos-admin.js'
 import { KratosSessionProvider } from './kratos-session.provider.js'
 import { KratosService } from './kratos.service.js'
 import type { AuthedRequest } from './session.guard.js'
@@ -26,7 +27,8 @@ function setup() {
     delete: async (key: string) => { entries.delete(key) },
   }
   const kratos = new KratosService({ KRATOS_PUBLIC_URL: 'http://kratos.test', WHOAMI_CACHE_TTL_S: 30 }, cache)
-  return { auth: new AuthService(new KratosSessionProvider(kratos)), entries }
+  const admin = new KratosAdmin({ KRATOS_ADMIN_URL: 'http://kratos-admin.test' })
+  return { auth: new AuthService(new KratosSessionProvider(kratos, admin)), entries }
 }
 
 // Logout uses only AuthService; the registration webhooks' services are not touched.

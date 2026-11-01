@@ -12,7 +12,9 @@ export function pool() {
  * Removes every member these tests created, everything they did and everything
  * done to them, their invites and their Kratos identities. A member counts only
  * if their handle starts with e2e_ and their Kratos email ends in @e2e.test, so a
- * real member who picked an e2e_ handle is left alone.
+ * real member who picked an e2e_ handle is left alone. An erased member has
+ * neither any more, so the privacy request that erased them, marked as ours, is
+ * what finds them; tombstones are never picked out by their handle.
  */
 export async function cleanTestData(log = (_: string) => {}) {
   const db = pool()
@@ -21,7 +23,14 @@ export async function cleanTestData(log = (_: string) => {}) {
       `${MARK.handlePrefix.replace('_', '\\_')}%`,
     ])
     const ids: string[] = []
+    // Erased through our mark, and Kratos has forgotten them: ours without asking it.
+    const { rows: erased } = await db.query<{ id: string }>(
+      `select distinct member_id as id from privacy_requests where notes = $1 and member_id is not null`,
+      [MARK.inviteNote],
+    )
+    for (const { id } of erased) ids.push(id)
     for (const { id } of rows) {
+      if (ids.includes(id)) continue
       const res = await fetch(`${env.kratosAdminUrl}/admin/identities/${id}`)
       if (res.status === 404) {
         ids.push(id) // Kratos already forgot it; the app rows are still ours to remove.
@@ -37,14 +46,19 @@ export async function cleanTestData(log = (_: string) => {}) {
       await client.query('begin')
       await client.query(`create temp table e2e_m on commit drop as select unnest($1::uuid[]) as id`, [ids])
       await client.query(`create temp table e2e_p on commit drop as select id from posts where author_id in (select id from e2e_m)`)
+      await client.query(`create temp table e2e_g on commit drop as select id from gists where host_id in (select id from e2e_m)`)
       const steps: [string, string][] = [
         ['notifications', `delete from notifications where recipient_id in (select id from e2e_m) or actor_id in (select id from e2e_m)
            or subject_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
+        ['gist report records', `delete from gist_report_participants where member_id in (select id from e2e_m)
+           or report_id in (select id from reports where reporter_id in (select id from e2e_m) or member_id in (select id from e2e_m)
+           or post_id in (select id from e2e_p) or resolved_by in (select id from e2e_m) or gist_id in (select id from e2e_g))`],
         ['moderation actions', `delete from moderation_actions where actor_id in (select id from e2e_m) or member_id in (select id from e2e_m)
-           or post_id in (select id from e2e_p) or report_id in (select id from reports where reporter_id in (select id from e2e_m)
-           or member_id in (select id from e2e_m) or post_id in (select id from e2e_p))`],
+           or post_id in (select id from e2e_p) or gist_id in (select id from e2e_g) or report_id in (select id from reports
+           where reporter_id in (select id from e2e_m) or member_id in (select id from e2e_m) or post_id in (select id from e2e_p)
+           or gist_id in (select id from e2e_g))`],
         ['reports', `delete from reports where reporter_id in (select id from e2e_m) or member_id in (select id from e2e_m)
-           or post_id in (select id from e2e_p) or resolved_by in (select id from e2e_m)`],
+           or post_id in (select id from e2e_p) or resolved_by in (select id from e2e_m) or gist_id in (select id from e2e_g)`],
         ['notification settings', `delete from notification_opt_outs where member_id in (select id from e2e_m)`],
         ['push subscriptions', `delete from push_subscriptions where member_id in (select id from e2e_m)`],
         ['link previews', `delete from link_previews where url like 'https://links.e2e.test/%'`],
@@ -64,7 +78,7 @@ export async function cleanTestData(log = (_: string) => {}) {
            or gist_id in (select id from gists where host_id in (select id from e2e_m))`],
         ['gist role changes', `update gist_members set role_changed_by = null where role_changed_by in (select id from e2e_m)`],
         ['gist removals', `update gist_members set removed_by = null where removed_by in (select id from e2e_m)`],
-        ['gists', `delete from gists where host_id in (select id from e2e_m)`],
+        ['gists', `delete from gists where id in (select id from e2e_g)`],
         ['media', `delete from media where owner_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         // Replies by others to these posts would be orphaned; tests only reply among themselves.
         ['idea votes', `delete from idea_votes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
@@ -82,6 +96,7 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['voting memberships', `delete from restricted.governance_memberships where member_id in (select id from e2e_m)`],
         ['age records', `delete from restricted.age_assurances where member_id in (select id from e2e_m)`],
         ['governance audit', `delete from restricted.governance_audit_log where subject_id in (select id from e2e_m)`],
+        ['privacy requests', `delete from privacy_requests where member_id in (select id from e2e_m) or handled_by in (select id from e2e_m)`],
         ['members', `delete from members where id in (select id from e2e_m)`],
         ['invites', `delete from invites where note = $1`],
       ]

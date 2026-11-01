@@ -45,6 +45,7 @@ export type NewNotification = {
  * Records notifications in one statement, inside the caller's transaction when
  * given one. Nobody is notified about their own actions or about a kind they
  * turned off, and a like, repost, quote, mention or follow notifies only once.
+ * An erased account (docs/adr/0016) is notified of nothing: nobody can read it.
  */
 export async function notify(db: Pick<Db, 'execute'>, rows: NewNotification[]): Promise<void> {
   const wanted = rows.filter((r) => r.actorId !== r.recipientId)
@@ -60,6 +61,7 @@ export async function notify(db: Pick<Db, 'execute'>, rows: NewNotification[]): 
     insert into notifications (recipient_id, kind, actor_id, post_id, subject_id, community_id, detail)
     select * from (values ${values}) as v(recipient_id, kind, actor_id, post_id, subject_id, community_id, detail)
     where not exists(select 1 from notification_opt_outs o where o.member_id = v.recipient_id and o.kind = v.kind)
+      and not exists(select 1 from members m where m.id = v.recipient_id and m.deleted_at is not null)
     on conflict do nothing`)
 }
 

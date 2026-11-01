@@ -25,8 +25,14 @@ x-api-env: &api-env
   REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
   KRATOS_PUBLIC_URL: http://kratos:4433
   # Members' email addresses are kept by Kratos; the API asks its admin API, which
-  # is reachable only on this private network, when it sends a notification email.
+  # is reachable only on this private network, when it sends a notification email,
+  # and uses it to sign out and remove an account being deleted.
   KRATOS_ADMIN_URL: http://kratos:4434
+  # Account deletion (docs/adr/0016); empty means the API's defaults (14 and 30
+  # days, and deleted posts' text kept).
+  ACCOUNT_DELETION_GRACE_DAYS: ${ACCOUNT_DELETION_GRACE_DAYS:-}
+  PRIVACY_REQUEST_DUE_DAYS: ${PRIVACY_REQUEST_DUE_DAYS:-}
+  DELETED_CONTENT_RETENTION_DAYS: ${DELETED_CONTENT_RETENTION_DAYS:-}
   KRATOS_WEBHOOK_SECRET: ${KRATOS_WEBHOOK_SECRET:?}
   # Notification emails go out through the same account as Kratos's sign-in codes.
   SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:?}

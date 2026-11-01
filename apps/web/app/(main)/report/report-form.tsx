@@ -3,15 +3,7 @@
 import Link from 'next/link'
 import { useActionState } from 'react'
 import { type FormState, submitReport } from '@/app/actions'
-
-const REASONS = [
-  ['spam', 'Spam'],
-  ['harassment', 'Harassment or bullying'],
-  ['hate', 'Hate speech'],
-  ['scam', 'Scam or fraud'],
-  ['illegal', 'Illegal content'],
-  ['other', 'Something else'],
-] as const
+import { REPORT_REASONS as REASONS } from '@/lib/report-reasons'
 
 export function ReportForm({ postId, handle }: { postId?: string; handle?: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(submitReport, {})

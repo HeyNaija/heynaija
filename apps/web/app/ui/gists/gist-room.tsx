@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { GearIcon, HandIcon, LeaveIcon, LockIcon, MicIcon, MicOffIcon, PeopleIcon } from '@/app/ui/icons'
+import { FlagIcon, GearIcon, HandIcon, LeaveIcon, LockIcon, MicIcon, MicOffIcon, PeopleIcon } from '@/app/ui/icons'
 import {
   chooseDevice,
   createSpeakingAnnouncer,
@@ -37,6 +37,7 @@ import { gistCall } from './api'
 import type { GistAudio } from './audio'
 import { HostPanel } from './host-panel'
 import { MicPanel } from './mic-panel'
+import { ReportGist } from './report-gist'
 import { Sheet } from './sheet'
 import { Elapsed, StageGrid, type StagePerson } from './stage'
 
@@ -62,6 +63,7 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
   const [noDevice, setNoDevice] = useState(false)
   const [listenersOpen, setListenersOpen] = useState(false)
   const [micSheet, setMicSheet] = useState(false)
+  const [reportSheet, setReportSheet] = useState(false)
   const [speakingNote, setSpeakingNote] = useState('')
 
   const audio = useRef<GistAudio | null>(null)
@@ -466,17 +468,26 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
           ) : null}
         </p>
         {!ended ? (
-          <button
-            type="button"
-            className="btn btn-secondary gist-btn gist-count mt-3"
-            aria-haspopup="dialog"
-            // A host or co-host's list is in the host panel, which appears once they have joined.
-            disabled={moderator && !polling}
-            onClick={() => setListenersOpen(true)}
-          >
-            <PeopleIcon size={18} />
-            {listenerLabel(view.listenerCount)}
-          </button>
+          <div className="gist-actions mt-3">
+            <button
+              type="button"
+              className="btn btn-secondary gist-btn gist-count"
+              aria-haspopup="dialog"
+              // A host or co-host's list is in the host panel, which appears once they have joined.
+              disabled={moderator && !polling}
+              onClick={() => setListenersOpen(true)}
+            >
+              <PeopleIcon size={18} />
+              {listenerLabel(view.listenerCount)}
+            </button>
+            {/* Anyone in the room may report it, except its host (docs/adr/0017). */}
+            {polling && role !== 'host' ? (
+              <button type="button" className="btn btn-secondary gist-btn" aria-haspopup="dialog" onClick={() => setReportSheet(true)}>
+                <FlagIcon size={18} />
+                Report
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </header>
 
@@ -659,6 +670,9 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
         </Sheet>
       ) : null}
 
+      <Sheet open={reportSheet} onClose={() => setReportSheet(false)} title="Report this Gist">
+        <ReportGist gistId={id} onDone={() => setReportSheet(false)} />
+      </Sheet>
       <Sheet open={micSheet} onClose={() => setMicSheet(false)} title="Microphone settings">
         <MicPanel
           settings={micSettings}

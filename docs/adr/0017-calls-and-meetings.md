@@ -479,13 +479,23 @@ not. Nobody can use presence to tell what a particular member is listening to.
 - **Who is shown a Gist.** The Live now card, the join page and a shared link
   all require `canListen` (not `canCall`). A minor, an
   unverified or opted-out member, and a logged-out visitor get nothing: no card,
-  and the link shows the same not-found page as any other missing page. A **Gist
+  and the link shows the same not-found page as any other missing page. **Changed
+  (1 November 2026):** while Gists are on, a logged-out visitor is first asked to
+  sign in, at the link's own address, and comes back to it afterwards to get the
+  Gist or the not-found page like anyone else; before, a member who was on the
+  list but signed out had no way back to a shared link. The prompt is the same
+  at every Gist address, real or not, so it says nothing about any Gist, and a
+  link preview (fetched signed out) shows only what a Gist is. With Gists off it is
+  still the not-found page. A **Gist
   card inside a post** (stage 5, section 4b) shows an ineligible viewer exactly
   the deleted-post placeholder, byte for byte, with no title, host, time or
   Live/Ended state, so the card cannot be told apart from a deleted post. A Gist
   can be public (any eligible member) or **community-only** (members of one
   community); never invite-only, never guests without accounts. "Public" here
-  means open to any eligible member, not discoverable by strangers.
+  means open to any eligible member, not discoverable by strangers. **Built
+  (31 October 2026):** the Live now card on Home, from `GET /v1/gists/live`,
+  which lists a Gist only when opening it would succeed (allow-list, community,
+  removed list, the block rule); community pages and profiles come later.
 - **Blocks in a Gist are not section 3's meeting rule.** That rule refuses any
   join that puts a blocker and a blocked member in one room, which in a
   200-person room lets one early joiner lock others out. In a Gist a block is
@@ -513,7 +523,14 @@ not. Nobody can use presence to tell what a particular member is listening to.
   a moderator can **end a Gist** and revoke its link on the metadata alone;
   reports from distinct, long-standing members count more than a burst from new
   accounts; and a Gist with several such reports is hidden from the Live now
-  card and queued for a moderator (a proposal, tuned by use).
+  card and queued for a moderator (a proposal, tuned by use). **Built (31
+  October 2026):** Report in the room, for everyone in it but the host; the
+  report records who is in the room then (`gist_report_participants`); the
+  moderation queue shows it to site moderators and to the Gist's community
+  moderators, with **End the Gist** (the room is closed first, then the decision
+  logged). Account deletion keeps a reported Gist as evidence. Not yet: hiding a
+  much-reported Gist from Live now, weighting reports by account age, and the
+  host standing rule.
 - **Raids and hosts.** The host can **lock the room** (no new listeners), set a
   lower listener cap for that Gist, and require that listeners follow the host
   or are in the community. Joins are rate-limited per member and per Gist, so a

@@ -36,7 +36,10 @@ const ACTIONS: Record<string, string> = {
   clear_profile: 'cleared the name and bio of',
   grant_community_moderator: 'made a moderator:',
   revoke_community_moderator: 'removed as moderator:',
+  end_gist: 'ended the Gist',
 }
+
+const GIST_ROLES: Record<string, string> = { host: 'Host', cohost: 'Co-host', speaker: 'Speaker', listener: 'Listener' }
 
 export default function ModerationPage() {
   return (
@@ -146,6 +149,42 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
             </div>
           ) : null}
         </blockquote>
+      ) : item.gist ? (
+        <div className="rounded-lg bg-panel p-4 text-sm">
+          <p>
+            <span className="font-semibold">{item.gist.title}</span>
+            <span className="text-muted">
+              {' '}
+              · a Gist hosted by{' '}
+              <Link href={`/u/${item.gist.hostHandle}`} className="hover:underline">
+                @{item.gist.hostHandle}
+              </Link>
+              {item.gist.communityName ? ` in ${item.gist.communityName}` : ''} · {item.gist.status === 'ended' ? 'ended' : item.gist.status}
+              {item.gist.startedAt ? (
+                <>
+                  {' '}
+                  · started <LocalTime at={item.gist.startedAt} now={now} />
+                </>
+              ) : null}
+            </span>
+          </p>
+          {/* No audio is kept: who was in the room when it was reported is the record. */}
+          <p className="mt-2 text-muted">In the room when reported:</p>
+          {item.gist.participants.length ? (
+            <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+              {item.gist.participants.map((p) => (
+                <li key={p.handle}>
+                  <Link href={`/u/${p.handle}`} className="font-medium hover:underline">
+                    @{p.handle}
+                  </Link>{' '}
+                  <span className="text-muted">{GIST_ROLES[p.role] ?? p.role}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1">Nobody but the reporter.</p>
+          )}
+        </div>
       ) : item.member ? (
         // The account as others see it: photo, name and bio are what get reported.
         <div className="flex gap-3 rounded-lg bg-panel p-4 text-sm">
@@ -189,6 +228,21 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
                 Remove post
               </SubmitButton>
             ) : null}
+            {item.gist && item.gist.status !== 'ended' ? (
+              <SubmitButton
+                name="resolution"
+                value="end_gist"
+                className={danger}
+                confirmMessage="End this Gist now? Everyone in it is disconnected and its link stops working."
+              >
+                End the Gist
+              </SubmitButton>
+            ) : null}
+            {item.gist && item.gist.status === 'ended' ? (
+              <SubmitButton name="resolution" value="end_gist" className={button}>
+                Uphold (already ended)
+              </SubmitButton>
+            ) : null}
             {item.member && !item.post && siteWide && item.member.avatar ? (
               <SubmitButton name="resolution" value="remove_avatar" className={button}>
                 Remove photo
@@ -199,14 +253,17 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
                 Clear name and bio
               </SubmitButton>
             ) : null}
-            <SubmitButton
-              name="resolution"
-              value="suspend_member"
-              className={danger}
-              confirmMessage="Suspend this account? They will not be able to post until reinstated."
-            >
-              Suspend account
-            </SubmitButton>
+            {/* A Gist report names no account; suspending its host is done from a report about them. */}
+            {item.gist ? null : (
+              <SubmitButton
+                name="resolution"
+                value="suspend_member"
+                className={danger}
+                confirmMessage="Suspend this account? They will not be able to post until reinstated."
+              >
+                Suspend account
+              </SubmitButton>
+            )}
           </>
         )}
         <SubmitButton name="resolution" value="dismiss" className={button}>
@@ -229,6 +286,7 @@ function Decision({ entry, now }: { entry: LogEntry; now: number }) {
           </>
         ) : null}
         {entry.communityName ? ` in ${entry.communityName}` : null}
+        {entry.gistTitle ? <> “{entry.gistTitle}”</> : null}
       </span>
       <LocalTime at={entry.createdAt} now={now} className="text-muted" />
       {entry.note ? <span className="w-full text-muted">“{entry.note}”</span> : null}
