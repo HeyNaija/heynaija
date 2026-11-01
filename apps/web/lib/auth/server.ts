@@ -12,6 +12,7 @@ export const getLogoutUrl = provider.getLogoutUrl
 export const isLogoutUrl = provider.isLogoutUrl
 export const forgetEndedSession = provider.forgetEndedSession
 export const reauthUrl = provider.reauthUrl
+export const signInUrl = provider.signInUrl
 export const getFlowError = provider.getFlowError
 export const getApiAuthHeaders = provider.getApiAuthHeaders
 export const hasSessionCredentials = provider.hasSessionCredentials

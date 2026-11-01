@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { MARK } from '../lib/env.ts'
+import { codeFor } from '../lib/mailpit.ts'
 import { signUpOverHttp } from '../lib/members.ts'
 
 // Gists need a LiveKit server and an API started with the Gists switches on, so
@@ -37,7 +38,25 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
 
   const earContext = await browser.newContext()
   const ear = await earContext.newPage()
-  await signUpOverHttp(ear, EAR)
+  const earEmail = await signUpOverHttp(ear, EAR)
+
+  // Sent the link while signed out (another device): asked to sign in first, with
+  // nothing about this Gist on the page, then brought straight back to the room.
+  const phoneContext = await browser.newContext()
+  const phone = await phoneContext.newPage()
+  await phone.goto(url)
+  await expect(phone.getByRole('heading', { name: 'Sign in to join this Gist' })).toBeVisible()
+  await expect(phone.getByText('Jollof, settled')).toHaveCount(0)
+  await phone.getByRole('link', { name: 'Sign in', exact: true }).click()
+  await phone.getByLabel('Email address').fill(earEmail)
+  const asked = new Date()
+  await phone.getByRole('button', { name: 'Email me a code' }).click()
+  await phone.getByLabel('Code from the email').fill(await codeFor(earEmail, asked))
+  await phone.getByRole('button', { name: 'Continue' }).click()
+  await phone.waitForURL(url)
+  await expect(phone.getByRole('heading', { name: 'Jollof, settled' })).toBeVisible()
+  await phoneContext.close()
+
   // The listener finds it in Home's Live now list, not from a shared link.
   await ear.goto('/')
   await ear.getByRole('link', { name: /Jollof, settled/ }).click()
