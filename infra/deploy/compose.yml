@@ -121,6 +121,25 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  # Transcodes and scans uploaded videos. Off unless started with `--profile video`:
+  # nothing enqueues work while the videoPosts flag is off, and with no scanner it holds
+  # every video quarantined (docs/safety/video-scanning.md).
+  video-worker:
+    image: ${IMAGE_PREFIX:-heynaija}-video-worker:${RELEASE:-latest}
+    profiles: ["video"]
+    build:
+      context: ../..
+      target: video-worker
+    environment: *api-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 1g
+    logging: *logging
+
   # Applies the app's database migrations, then exits. Runs on every deploy.
   migrate:
     image: ${IMAGE_PREFIX:-heynaija}-api:${RELEASE:-latest}

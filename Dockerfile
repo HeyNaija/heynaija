@@ -35,6 +35,17 @@ WORKDIR /app
 EXPOSE 4000
 CMD ["node", "dist/main.js"]
 
+# --- Video worker: the API's code plus ffmpeg, running only the video queue consumer.
+# ffmpeg lives here and nowhere else, so the API image never decodes untrusted video.
+# The worker holds videos "quarantined" until a scanner is set: docs/safety/video-scanning.md.
+FROM api AS video-worker
+USER root
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
+USER node
+CMD ["node", "dist/video/worker-main.js"]
+
 # --- Web app: Next.js's standalone server and its static files ---
 FROM node:22.23-bookworm-slim AS web
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000

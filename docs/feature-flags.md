@@ -55,6 +55,15 @@ and the other locked-off settings in `apps/api/src/env.ts`) are deliberately not
 they cannot be turned on from the database, only by building the feature and changing
 the code in review.
 
+## Flags with a code rule on top: `videoPosts`
+
+`videoPosts` (off in production, on in staging and development) is also gated in code,
+which an admin cannot flip: it is effective only when the flag is on **and** (an
+upload scanner other than `NoScanner` is bound **or** `APP_ENV` is not `production`).
+Every video route (`/v1/me/videos/...`) answers the same 404 as a route that does not
+exist when it is not effective, signed in or not, and `/v1/me` reports
+`features.videoPosts` as the effective value. See `docs/safety/video-scanning.md`.
+
 ## Flipping a flag
 
 Site moderators (the site-wide role) use **Moderation, Feature flags** in the web app,
