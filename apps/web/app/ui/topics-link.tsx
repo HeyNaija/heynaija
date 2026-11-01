@@ -1,19 +1,19 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
-import { getViewer } from '@/lib/api'
+import { getTrendingTopics } from '@/lib/api'
 
 async function Linked({ children, className }: { children: ReactNode; className?: string }) {
-  const viewer = await getViewer()
-  // Signed-out visitors, and anyone while trending topics are switched off, get the words without the link.
-  if (viewer.state === 'member' && viewer.me.features?.topicDiscovery) {
-    return (
-      <Link href="/topics" className={className}>
-        {children}
-      </Link>
-    )
-  }
-  return <>{children}</>
+  // The same question /topics asks, so the link is there exactly when the page is: for
+  // signed-out visitors too, and for nobody while trending topics are switched off.
+  // If the API cannot be reached, the words go without the link.
+  const trending = await getTrendingTopics().catch(() => null)
+  if (!trending) return <>{children}</>
+  return (
+    <Link href="/topics" className={className}>
+      {children}
+    </Link>
+  )
 }
 
 /** A link to /topics that exists only while the topicDiscovery flag is on for the viewer. */

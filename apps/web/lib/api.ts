@@ -459,13 +459,16 @@ export type TopicRules = { windowDays: number; minMembers: number; refreshSecond
 
 export type TrendingTopics = { topics: TrendingTopic[]; rules: TopicRules }
 
-/** Null when trending topics are switched off (the API answers 404). */
-export async function getTrendingTopics(): Promise<TrendingTopics | null> {
+/**
+ * Null when trending topics are switched off for the viewer (the API answers 404).
+ * The side rail and a page's links to /topics both ask; `cache` makes that one call.
+ */
+export const getTrendingTopics = cache(async (): Promise<TrendingTopics | null> => {
   const res = await api('/v1/topics/trending')
   if (res.status === 404) return null
   if (!res.ok) throw new Error(`API /v1/topics/trending responded ${res.status}`)
   return res.json()
-}
+})
 
 export async function getTrending(): Promise<Post[]> {
   const res = await api('/v1/trending')
