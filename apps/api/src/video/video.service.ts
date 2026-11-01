@@ -8,7 +8,7 @@ import type { Rejection } from './ffmpeg.js'
 import { type VideoConfig, VIDEO_TYPES, type VideoType } from './video-config.js'
 import { assertVideoEligible } from './video-eligibility.js'
 import { VideoError } from './video-error.js'
-import { originalKey, posterKey, quarantinedKey, renditionKey } from './video-keys.js'
+import { originalKey, posterKey, quarantineOriginalKey, quarantinedKey, renditionKey } from './video-keys.js'
 import { type PostVideo, toPostVideo } from './video-view.js'
 
 export const VIDEO_STORE = Symbol('VIDEO_STORE')
@@ -286,6 +286,37 @@ export class VideoService {
         await this.db.update(media).set({ status: 'deleted' }).where(eq(media.id, id))
         await this.erase(id, null)
       }
+    }
+  }
+
+  /**
+   * Account erase (docs/adr/0016): a member's videos leave storage. The ones erase marked `deleted` lose
+   * every file (an open multipart upload, the original, the public renditions and poster, any quarantined
+   * copies) and then their scan and rendition rows; a still-public one on a post kept as evidence is moved
+   * to the private bucket instead. Blocked and already-quarantined videos stay as they are, privately.
+   * Safe to repeat: the rows go last, so a retry finds the same keys.
+   */
+  async eraseFilesOf(ownerId: string): Promise<void> {
+    const rows = await this.db
+      .select({ id: media.id, status: media.status, uploadId: videoDetails.uploadId })
+      .from(media)
+      .leftJoin(videoDetails, eq(videoDetails.mediaId, media.id))
+      .where(and(eq(media.ownerId, ownerId), eq(media.kind, 'post_video'), inArray(media.status, ['deleted', 'ready'])))
+    for (const { id, status, uploadId } of rows) {
+      if (status === 'ready') {
+        await this.quarantine(id)
+        continue
+      }
+      // An upload that was completed or aborted already has nothing to abort.
+      if (uploadId) await this.store.abortMultipart(originalKey(id), uploadId).catch(() => undefined)
+      const keys = await this.publishedKeys(id)
+      await this.erase(id, null)
+      // The CDN may still hold what was public.
+      await this.jobs.purgeCdn(keys)
+      for (const key of keys) await this.store.remove('uploads', quarantinedKey(key))
+      await this.store.remove('uploads', quarantineOriginalKey(id))
+      await this.db.delete(videoRenditions).where(eq(videoRenditions.mediaId, id))
+      await this.db.delete(videoDetails).where(eq(videoDetails.mediaId, id))
     }
   }
 

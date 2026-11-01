@@ -43,7 +43,7 @@ beforeEach(async () => {
   ])
   store = new FlakyStore()
   videos = new VideoService(db, store, jobs, DEFAULT_VIDEO_CONFIG)
-  moderation = new ModerationService(db, undefined, undefined, videos)
+  moderation = new ModerationService(db, undefined, undefined, undefined, videos)
   await moderation.setSiteModerator('sam', true)
 })
 after(() => pool.end())

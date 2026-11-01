@@ -39,6 +39,8 @@ import {
   releasedHandles,
   reports,
   reposts,
+  videoDetails,
+  videoRenditions,
 } from '@heynaija/db'
 import { and, eq, isNull, or, type SQL, sql } from 'drizzle-orm'
 import type { PgTable } from 'drizzle-orm/pg-core'
@@ -51,6 +53,10 @@ import { MembersService } from '../members/members.service.js'
 import { ModerationService, ModerationTargetError } from '../moderation/moderation.service.js'
 import { notify } from '../notifications/notifications.service.js'
 import { PostsService } from '../posts/posts.service.js'
+import { MemoryVideoStore } from '../video/memory-video-store.js'
+import { DEFAULT_VIDEO_CONFIG } from '../video/video-config.js'
+import { originalKey, posterKey, quarantineOriginalKey, renditionKey } from '../video/video-keys.js'
+import { VideoService } from '../video/video.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { AccountDeletionError, AccountDeletionService, type DeletionNotices, tombstoneHandle } from './account-deletion.service.js'
 
@@ -135,6 +141,8 @@ let notices: RecordingNotices
 let failFiles: boolean
 let gistsEnded: string[]
 let deletion: AccountDeletionService
+let videoStore: MemoryVideoStore
+const videoPurged: string[] = []
 const postsService = new PostsService(db)
 const membersService = new MembersService(db)
 const moderation = new ModerationService(db)
@@ -161,6 +169,8 @@ beforeEach(async () => {
   failFiles = false
   gistsEnded = []
   const mediaService = new MediaService(db, store, jobs)
+  videoStore = new MemoryVideoStore()
+  videoPurged.length = 0
   deletion = new AccountDeletionService(
     db,
     env,
@@ -171,6 +181,7 @@ beforeEach(async () => {
     // GistsService.endHostedBy has its own tests; here, that the erase asks for it before the rows go.
     { endHostedBy: async (id) => void gistsEnded.push(`${id} with ${await count(gists, eq(gists.hostId, id))} Gists`) },
     notices,
+    new VideoService(db, videoStore, { processVideo: async () => {}, purgeCdn: async (keys) => void videoPurged.push(...keys) }, DEFAULT_VIDEO_CONFIG),
   )
 })
 after(() => pool.end())
@@ -811,4 +822,74 @@ test('feature flags: they leave every allow-list; one that held only them goes o
   // Safe to repeat.
   await removeFromAllowLists(db, xena)
   assert.equal(await count(featureFlagChanges, isNull(featureFlagChanges.actorId)), 2)
+})
+
+// --- Video (ADR 0019): the new tables are covered by the erase inventory ---
+
+/** A video of `owner`'s in `status`, with the files that state has, and the scan rows. */
+async function video(owner: string, status: typeof media.$inferInsert['status'], postId: string | null = null) {
+  const [row] = await db
+    .insert(media)
+    .values({ ownerId: owner, kind: 'post_video', status, contentType: 'video/mp4', bytes: 1000, width: 640, height: 360, postId, position: postId ? 0 : null, readyAt: now })
+    .returning({ id: media.id })
+  const id = row!.id
+  await db.insert(videoDetails).values({ mediaId: id, durationMs: 9000, width: 640, height: 360, scanResult: status === 'ready' ? 'clear' : 'unscanned', originalSha256: 'ab'.repeat(32), uploadId: status === 'uploading' ? `up-${id}` : null, partSize: 5 * 1024 * 1024 })
+  if (status === 'ready') {
+    await db.insert(videoRenditions).values({ mediaId: id, height: 360, width: 640, bytes: 3000, bitrateKbps: 600 })
+    for (const key of [renditionKey(id, 360), posterKey(id)]) videoStore.objects.set(`media/${key}`, Buffer.from(key))
+  }
+  if (status === 'quarantined' || status === 'blocked') videoStore.objects.set(`uploads/${quarantineOriginalKey(id)}`, Buffer.from('original'))
+  if (status === 'processing') videoStore.objects.set(`uploads/${originalKey(id)}`, Buffer.from('original'))
+  if (status === 'uploading') videoStore.uploads.set(`up-${id}`, { key: originalKey(id), parts: new Map([[1, Buffer.alloc(10)]]) })
+  return id
+}
+
+test('erasing an account takes its videos with it: files, open uploads, scan results; evidence and blocked ones stay private', async () => {
+  const { id: ordinaryPost } = await postsService.create(xena, 'my clip')
+  const { id: reportedPost } = await postsService.create(xena, 'reported clip')
+  const ordinary = await video(xena, 'ready', ordinaryPost)
+  const evidence = await video(xena, 'ready', reportedPost)
+  const held = await video(xena, 'quarantined')
+  const uploading = await video(xena, 'uploading')
+  const processing = await video(xena, 'processing')
+  const blocked = await video(xena, 'blocked')
+  const others = await video(yemi, 'ready')
+  await moderation.report(yemi, { postId: reportedPost }, 'harassment')
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  assert.equal(await deletion.erase(xena, days(14)), 'erased')
+
+  const status = async (id: string) => (await db.select().from(media).where(eq(media.id, id)))[0]!.status
+  assert.deepEqual(
+    [await status(ordinary), await status(evidence), await status(held), await status(uploading), await status(processing), await status(blocked), await status(others)],
+    ['deleted', 'quarantined', 'deleted', 'deleted', 'deleted', 'blocked', 'ready'],
+  )
+  // Storage: nothing of hers is public; her evidence and the blocked original are private; nobody else's is touched.
+  assert.deepEqual(
+    videoStore.keys('media').filter((k) => k.includes(ordinary) || k.includes(evidence)),
+    [],
+  )
+  assert.deepEqual(
+    videoStore.keys('uploads').sort(),
+    [`quarantine/${renditionKey(evidence, 360)}`, `quarantine/${posterKey(evidence)}`, quarantineOriginalKey(blocked)].sort(),
+  )
+  assert.ok(videoStore.keys('media').some((k) => k.includes(others)), 'another member’s video is untouched')
+  assert.ok(videoStore.aborted.includes(`up-${uploading}`), 'the open multipart upload was aborted')
+  assert.ok(videoPurged.includes(renditionKey(ordinary, 360)), 'the CDN was purged')
+  // Scan results and renditions: gone for what was deleted, kept with the evidence and the blocked one.
+  const detailIds = (await db.select().from(videoDetails)).map((d) => d.mediaId).sort()
+  assert.deepEqual(detailIds, [evidence, blocked, others].sort())
+  assert.equal(await count(videoRenditions, eq(videoRenditions.mediaId, ordinary)), 0)
+})
+
+test('the video erase can be repeated after a failure (rows go last)', async () => {
+  const { id: postId } = await postsService.create(xena, 'my clip')
+  const ready = await video(xena, 'ready', postId)
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  failFiles = true
+  await assert.rejects(() => deletion.erase(xena, days(14)), /R2 is down/)
+  failFiles = false
+  assert.equal(await deletion.erase(xena, days(14)), 'erased')
+  assert.deepEqual(videoStore.keys('media'), [])
+  assert.equal(await count(videoDetails, eq(videoDetails.mediaId, ready)), 0)
 })
