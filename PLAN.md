@@ -137,7 +137,7 @@ Browser ──> Next.js web app
 - [x] Data export ("download my data"): Settings → Your data, one JSON file (15 October 2026; format 2 adds age confirmation and verification status, 16 October; format 3 adds reposts and quote posts, 16 October)
 
 ### Social
-- [x] Text posts (300 characters), threaded replies, likes, private bookmarks
+- [x] Text posts (1,000 characters since 1 November 2026, 300 before; lists show the start of a long one with Show more), threaded replies, likes, private bookmarks
 - [x] Follow and unfollow; Latest, Following, profile, community and trending feeds
 - [x] Profile tabs: Posts, Replies, and Media (posts and replies with images) (16 October 2026)
 - [x] Following feed says why each post is there

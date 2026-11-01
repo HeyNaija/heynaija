@@ -21,6 +21,7 @@ import { PUSH_COOKIE } from '@/lib/push'
 import { choicesFromForm, welcomePath } from '@/lib/onboarding'
 import type { ThreadRow } from '@/lib/thread-state'
 import { POLL_OPTIONS_MAX } from '@/lib/polls'
+import { POST_MAX } from '@/lib/post-length'
 import { isReplyAudience } from '@/lib/reply-audience'
 
 // The API is the authority on who is signed in and what they may do; these
@@ -77,7 +78,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
       return { error: 'One of your images is no longer available. Remove it and add it again.' }
     }
     if (poll) return { error: `Check the poll question and its choices. Use 2 to ${POLL_OPTIONS_MAX} different options.` }
-    if (text.trim()) return { error: 'That post is too long, or an image description is. The post limit is 300 characters.' }
+    if (text.trim()) return { error: `That post is too long, or an image description is. The post limit is ${POST_MAX.toLocaleString('en-NG')} characters.` }
     return { error: images.length ? 'Could not post those images. Try again.' : 'Write something first.' }
   }
   if (!res.ok) return { error: 'Could not post. Check your connection and try again.' }
