@@ -37,7 +37,11 @@ test('a community moderator adds a photo that everyone sees, then removes it', a
   await guest.reload()
   const shown = guest.locator('.community-header .community-mark img')
   await expect(shown).toHaveAttribute('src', /^\/media\/community-photos\/[0-9a-f-]+\/256\.webp$/)
-  expect(await shown.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(256)
+  // The browser picks the 96px or 256px file for the screen; whichever it loaded is a square of that size.
+  await expect.poll(() => shown.evaluate((img: HTMLImageElement) => (img.complete ? img.naturalWidth : 0))).toBeGreaterThan(0)
+  const loaded = await shown.evaluate((img: HTMLImageElement) => ({ src: img.currentSrc, width: img.naturalWidth, height: img.naturalHeight }))
+  expect(loaded.src).toMatch(new RegExp(`/${loaded.width}\\.webp$`))
+  expect([[96, 96], [256, 256]]).toContainEqual([loaded.width, loaded.height])
   await guest.goto('/c')
   await expect(guest.locator('li.community-card', { hasText: name }).locator('.community-mark img')).toHaveAttribute('src', /^\/media\/community-photos\/[0-9a-f-]+\/256\.webp$/)
 

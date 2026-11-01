@@ -1,60 +1,18 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { finishAvatarUpload, removeAvatar, startAvatarUpload } from '@/app/actions'
 import { Avatar } from './avatar'
-import { IMAGE_TYPES, shrinkImage } from './shrink-image'
-
-const MAX_BYTES = 5 * 1024 * 1024
+import { IMAGE_TYPES } from './shrink-image'
+import { useSquarePhotoUpload } from './use-square-photo-upload'
 
 export function AvatarUploader({ handle, avatar }: { handle: string; avatar: string | null }) {
   const input = useRef<HTMLInputElement>(null)
-  const [status, setStatus] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  // Plain state, not a transition: each step's message must show as it happens.
-  const [busy, setBusy] = useState(false)
-
-  const upload = async (file: File) => {
-    setError(null)
-    if (!IMAGE_TYPES.includes(file.type)) return setError('Choose a JPEG, PNG or WebP image.')
-
-    setBusy(true)
-    try {
-      setStatus('Preparing…')
-      const image = await shrinkImage(file, { max: 512, square: true })
-      if (image.size > MAX_BYTES) return setError('That image is too large. The limit is 5 MB.')
-
-      setStatus('Uploading…')
-      const ticket = await startAvatarUpload(image.type, image.size)
-      if ('error' in ticket) return setError(ticket.error)
-      try {
-        // Straight to storage: the image never passes through our servers on the way in.
-        const put = await fetch(ticket.uploadUrl, { method: 'PUT', headers: { 'content-type': image.type }, body: image })
-        if (!put.ok) throw new Error(String(put.status))
-      } catch {
-        return setError('The upload did not go through. Check your connection and try again.')
-      }
-
-      setStatus('Saving…')
-      const result = await finishAvatarUpload(ticket.mediaId)
-      if (result.error) setError(result.error)
-    } finally {
-      setStatus(null)
-      setBusy(false)
-    }
-  }
-
-  const remove = async () => {
-    setError(null)
-    setBusy(true)
-    try {
-      setStatus('Removing…')
-      await removeAvatar()
-    } finally {
-      setStatus(null)
-      setBusy(false)
-    }
-  }
+  const { status, error, busy, choose, remove } = useSquarePhotoUpload({
+    start: startAvatarUpload,
+    finish: finishAvatarUpload,
+    remove: removeAvatar,
+  })
 
   return (
     <div className="flex items-center gap-4">
@@ -82,11 +40,7 @@ export function AvatarUploader({ handle, avatar }: { handle: string; avatar: str
           className="sr-only"
           aria-label="Profile photo"
           tabIndex={-1}
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            e.target.value = '' // so choosing the same file again still fires
-            if (file) void upload(file)
-          }}
+          onChange={choose}
         />
         <p role="status" className="field-hint mt-2">
           {status ?? 'JPEG, PNG or WebP. It is cropped to a square.'}

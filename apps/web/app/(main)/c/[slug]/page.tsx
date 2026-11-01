@@ -40,7 +40,7 @@ async function CommunityView({ params, searchParams }: Props) {
         </Link>
         <div className="mt-3 flex flex-wrap items-start gap-4">
           <div className="flex min-w-0 grow basis-52 items-center gap-4">
-            <CommunityMark slug={community.slug} photo={community.photo} large />
+            <CommunityMark slug={community.slug} photo={community.photo} large priority />
             <div className="min-w-0 flex-1">
               <h1 className="page-title break-words">{community.name}</h1>
               <p className="mt-1 text-xs text-muted">Public community</p>
