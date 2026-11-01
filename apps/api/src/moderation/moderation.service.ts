@@ -13,7 +13,7 @@ import {
   reports,
 } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
-import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, ne, or, sql } from 'drizzle-orm'
 import { managesPhoto } from '../communities/photo-managers.js'
 import { GistsService } from '../gists/gists.service.js'
 import { avatarPath, communityPhotoPath, MediaService } from '../media/media.service.js'
@@ -519,7 +519,17 @@ export class ModerationService {
       const closed = await tx
         .update(reports)
         .set({ status: resolution === 'dismiss' ? 'dismissed' : 'actioned', resolvedAt: new Date(), resolvedBy: moderatorId })
-        .where(and(eq(reports.status, 'open'), or(eq(reports.id, report.id), sameTarget)))
+        .where(
+          and(
+            eq(reports.status, 'open'),
+            or(
+              eq(reports.id, report.id),
+              // Dismissing a report that is not about illegal content must not close an illegal report on the
+              // same post: that one is decided on its own, and the video it hid stays hidden until then.
+              resolution === 'dismiss' && report.reason !== 'illegal' ? and(sameTarget, ne(reports.reason, 'illegal')) : sameTarget,
+            ),
+          ),
+        )
         .returning({ reporterId: reports.reporterId, reason: reports.reason })
 
       // Tell the people affected. A suspended member cannot read notifications, so

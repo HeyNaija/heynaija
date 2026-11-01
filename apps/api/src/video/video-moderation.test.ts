@@ -128,3 +128,23 @@ test('the moderator queue says a post has a video, even when it is hidden, and a
   const items = await moderation.queue(sam)
   assert.equal(items.find((i) => i.post!.id === none[0]!.id)!.post!.hasVideo, false)
 })
+
+test('dismissing a spam report leaves an illegal report open and the video hidden; dismissing the illegal one releases it', async () => {
+  const { postId, mediaId } = await livePost()
+  await moderation.report(bayo, { postId }, 'illegal')
+  await moderation.report(sam, { postId }, 'spam')
+  assert.equal(await statusOf(mediaId), 'quarantined')
+
+  const spam = (await db.select().from(reports).where(eq(reports.postId, postId))).find((r) => r.reason === 'spam')!
+  await moderation.resolve(sam, spam.id, 'dismiss')
+  const after = await db.select().from(reports).where(eq(reports.postId, postId))
+  assert.equal(after.find((r) => r.reason === 'illegal')!.status, 'open', 'the illegal report is still open')
+  assert.equal(after.find((r) => r.reason === 'spam')!.status, 'dismissed')
+  assert.equal(await statusOf(mediaId), 'quarantined', 'the video stays hidden')
+  const { notifications } = await import('@heynaija/db')
+  const told = await db.select().from(notifications).where(eq(notifications.recipientId, bayo))
+  assert.equal(told.length, 0, 'the illegal reporter is not told their report was dismissed')
+
+  await moderation.resolve(sam, after.find((r) => r.reason === 'illegal')!.id, 'dismiss')
+  assert.equal(await statusOf(mediaId), 'ready')
+})

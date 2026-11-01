@@ -1510,9 +1510,12 @@ export class PostsService {
         if (attached.length === 0) throw new ImagesNotReadyError('an image is missing, still processing or already used')
       }
       if (video) {
-        // Lock the member's row so two creates cannot both count 49 live videos and both pass, then re-check
+        // Serialise this member's creates so two cannot both count 49 live videos and both pass, then re-check
         // the rules the upload was checked against: the cap, the account's age and any upheld action since.
-        await tx.select({ id: members.id }).from(members).where(eq(members.id, authorId)).for('update')
+        // NO KEY UPDATE, not UPDATE: the post insert above already holds FOR KEY SHARE on this row (the author
+        // foreign key), and FOR UPDATE conflicts with that, so two creates would deadlock. NO KEY UPDATE
+        // conflicts with itself but not with KEY SHARE. Do not move the lock before the insert.
+        await tx.select({ id: members.id }).from(members).where(eq(members.id, authorId)).for('no key update')
         await assertVideoEligible(tx, authorId, this.videoCfg)
         const attached = await tx
           .update(media)

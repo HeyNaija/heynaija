@@ -165,13 +165,19 @@ test('attach: the live-video cap is checked at attach, so uploads started at cap
   assert.equal((await db.select().from(posts).where(eq(posts.authorId, ada))).length, 2, 'and no post was made')
 })
 
-test('attach: two creates racing at cap-1 let exactly one through (the member row is locked before counting)', async () => {
-  await capped.create(ada, 'one', { video: { id: await video(), description: '' } }) // 1 live, cap 2
-  const [a, b] = [await video(), await video()]
-  const results = await Promise.allSettled([capped.create(ada, 'a', { video: { id: a, description: '' } }), capped.create(ada, 'b', { video: { id: b, description: '' } })])
-  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1)
-  const refused = results.find((r) => r.status === 'rejected') as PromiseRejectedResult
-  assert.ok(refused.reason instanceof VideoError && refused.reason.code === 'too_many_videos')
+test('attach: creates racing at the cap let exactly the cap through, the rest get too_many_videos, and none deadlocks', async () => {
+  // Each create inserts its post (a key-share lock on the member row through the FK) and then locks the
+  // member before counting. FOR UPDATE there makes two creates deadlock; FOR NO KEY UPDATE makes them queue.
+  // Timing decides how many overlap, so it is repeated and many run at once.
+  for (let round = 0; round < 3; round++) {
+    await reset()
+    await db.insert(members).values({ id: ada, handle: 'ada', createdAt: new Date(Date.now() - 30 * 86_400_000) })
+    const ids = await Promise.all(Array.from({ length: 8 }, () => video()))
+    const results = await Promise.allSettled(ids.map((id, i) => capped.create(ada, `r${round}-${i}`, { video: { id, description: '' } })))
+    const refused = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+    assert.equal(results.length - refused.length, 2, `round ${round}: exactly the cap (2) got in`)
+    for (const r of refused) assert.ok(r.reason instanceof VideoError && r.reason.code === 'too_many_videos', String(r.reason))
+  }
 })
 
 test('attach: an upheld action between the upload and the post refuses the post', async () => {

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { loadEnv } from '../env.js'
 import { LIMITS } from '../rate-limit.js'
 import { DEFAULT_VIDEO_CONFIG, videoConfig } from './video-config.js'
+import { loadWorkerEnv, workerVideoConfig } from './worker-env.js'
 
 const base = {
   DATABASE_URL: 'postgres://localhost/heynaija',
@@ -58,4 +60,31 @@ test('the length limit cannot exceed what the 80-frame scan sample can cover (on
   assert.equal(videoConfig(loadEnv({ ...base, VIDEO_MAX_SECONDS: '78' })).maxSeconds, 78)
   assert.throws(() => loadEnv({ ...base, VIDEO_MAX_SECONDS: '79' }))
   assert.throws(() => loadEnv({ ...base, VIDEO_MAX_SECONDS: '600' }))
+})
+
+test('VIDEO_KEEP_ORIGINALS empty (what compose passes when it is unset) is the default, false, for the API and the worker', () => {
+  assert.equal(videoConfig(loadEnv({ ...base, VIDEO_KEEP_ORIGINALS: '' })).keepOriginals, false)
+  assert.equal(workerVideoConfig(loadWorkerEnv({ ...workerBase, VIDEO_KEEP_ORIGINALS: '' })).keepOriginals, false)
+  assert.equal(videoConfig(loadEnv({ ...base, VIDEO_KEEP_ORIGINALS: 'true' })).keepOriginals, true)
+})
+
+const workerBase = { DATABASE_URL: base.DATABASE_URL, REDIS_URL: base.REDIS_URL, S3_ENDPOINT: base.S3_ENDPOINT, S3_REGION: 'auto', S3_ACCESS_KEY_ID: 'k', S3_SECRET_ACCESS_KEY: 's', S3_UPLOADS_BUCKET: 'u', S3_MEDIA_BUCKET: 'm' }
+
+/** Every `NAME: ${NAME:-}` in infra/deploy/compose.yml: what compose passes as "" when .env leaves it unset. */
+const emptyFromCompose = (service: 'api' | 'video-worker'): Record<string, string> => {
+  const text = readFileSync(new URL('../../../../infra/deploy/compose.yml', import.meta.url), 'utf8')
+  // The API's variables are the shared `x-api-env` anchor; the worker's are its own block.
+  const start = service === 'api' ? text.indexOf('x-api-env:') : text.indexOf('  video-worker:')
+  const end = service === 'api' ? text.indexOf('\nservices:') : text.indexOf('\n  migrate:')
+  const out: Record<string, string> = {}
+  for (const m of text.slice(start, end).matchAll(/^\s+([A-Z][A-Z0-9_]*): \$\{[A-Z0-9_]+:-\}\s*$/gm)) out[m[1]!] = ''
+  return out
+}
+
+test('the exact environment compose passes with every optional setting unset (all empty) boots the API and the worker', () => {
+  const api = emptyFromCompose('api')
+  const worker = emptyFromCompose('video-worker')
+  assert.ok('VIDEO_KEEP_ORIGINALS' in api && 'VIDEO_KEEP_ORIGINALS' in worker && Object.keys(api).length > 10, 'the compose file was read')
+  assert.doesNotThrow(() => loadEnv({ ...base, ...api }))
+  assert.doesNotThrow(() => loadWorkerEnv({ ...workerBase, ...worker }))
 })

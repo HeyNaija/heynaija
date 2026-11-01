@@ -28,9 +28,9 @@ export const videoEnvShape = {
   VIDEO_UPHELD_LOOKBACK_DAYS: num(0, 3650, 90),
   VIDEO_MAX_LIVE_PER_MEMBER: num(1, 10_000, 50),
   // Open question 1: delete the original once the renditions are ready (yes). Blocked ones are always kept.
+  // Empty is unset: compose passes `${VIDEO_KEEP_ORIGINALS:-}` as "".
   VIDEO_KEEP_ORIGINALS: z
-    .enum(['false', 'true'])
-    .default('false')
+    .preprocess((v) => (v === '' ? undefined : v), z.enum(['false', 'true']).default('false'))
     .transform((v) => v === 'true'),
 }
 
