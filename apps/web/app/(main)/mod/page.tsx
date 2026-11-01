@@ -11,7 +11,8 @@ import { ModeratorRoster } from '@/app/ui/moderator-roster'
 import { PostImages } from '@/app/ui/post-images'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
-import { getModeration, type LogEntry, type QueueItem } from '@/lib/api'
+import { FlagControls } from '@/app/ui/flag-controls'
+import { getFlags, getModeration, type LogEntry, type QueueItem } from '@/lib/api'
 
 export const metadata: Metadata = { title: 'Moderation' }
 
@@ -59,6 +60,8 @@ async function Moderation() {
   const data = await getModeration()
   // To anyone who is not a moderator this page does not exist.
   if (!data) notFound()
+  // Site moderators only: everyone else gets null.
+  const flags = data.roster ? await getFlags() : null
   const now = Date.now()
 
   return (
@@ -81,6 +84,18 @@ async function Moderation() {
           <h2 className="section-title">Community moderators</h2>
           <div className="mt-3">
             <ModeratorRoster roster={data.roster} />
+          </div>
+        </section>
+      ) : null}
+
+      {flags ? (
+        <section aria-label="Feature flags" className="content-panel">
+          <h2 className="section-title">Feature flags</h2>
+          <p className="mt-1 text-sm text-muted">
+            This is the {flags.env} environment. A change reaches every server within seconds and is kept in the log below.
+          </p>
+          <div className="mt-3">
+            <FlagControls flags={flags} />
           </div>
         </section>
       ) : null}

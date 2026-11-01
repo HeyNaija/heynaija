@@ -42,9 +42,12 @@ type Props = {
   /** The Composer stays mounted when its form moves to another reply row. */
   portalTarget?: HTMLElement | null
   focusRequest?: number
+  /** From `me.features`: whether polls and reply limits are switched on. Off hides them. */
+  polls?: boolean
+  replyControls?: boolean
 }
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0 }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -196,7 +199,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
       {replyHandle ? <input type="hidden" name="replyHandle" value={replyHandle} /> : null}
       {community ? <input type="hidden" name="community" value={community} /> : null}
       {quote ? <input type="hidden" name="quote" value={quote.id} /> : null}
-      {!replyTo ? <input type="hidden" name="replyAudience" value={replyAudience} /> : null}
+      {!replyTo && replyControls ? <input type="hidden" name="replyAudience" value={replyAudience} /> : null}
       {pollOpen ? <input type="hidden" name="poll" value="1" /> : null}
 
       {replyTo && replyHandle ? (
@@ -405,7 +408,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
             setTooMany(images.add(files) > 0)
           }}
         />
-        {!replyTo ? (
+        {!replyTo && polls ? (
           <button
             type="button"
             className="icon-btn composer-photo"
@@ -441,7 +444,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
             {community ? 'This community' : 'Public'}
           </span>
         )}
-        {!replyTo ? (
+        {!replyTo && replyControls ? (
           <label className="composer-audience">
             <BubbleIcon size={16} />
             <span className="sr-only">Who can reply</span>

@@ -6,6 +6,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgSchema,
   pgTable,
   primaryKey,
@@ -1077,4 +1078,49 @@ export const gistReportParticipants = pgTable(
     primaryKey({ columns: [t.reportId, t.memberId] }),
     check('gist_report_participants_role_check', sql.raw(`role in (${GIST_ROLES.map((value) => `'${value}'`).join(', ')})`)),
   ],
+)
+
+// Runtime feature flags (docs/feature-flags.md). The flags themselves are defined
+// in code (apps/api/src/flags/registry.ts); this table holds only the overrides an
+// admin has set. No row, or a null `enabled` with no allow-list, means "follow the
+// default for this environment". A key the code does not know is ignored on read.
+export const featureFlags = pgTable('feature_flags', {
+  key: text('key').primaryKey(),
+  // True or false forces the flag on or off for everyone; null is no override.
+  enabled: boolean('enabled'),
+  updatedBy: uuid('updated_by').references(() => members.id, { onDelete: 'set null' }),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+})
+
+// An allow-list: while a flag has any rows here it is on for these members only and
+// off for everyone else, whatever `enabled` and the default say. Members, not
+// handles, because a handle can change.
+export const featureFlagMembers = pgTable(
+  'feature_flag_members',
+  {
+    flagKey: text('flag_key')
+      .notNull()
+      .references(() => featureFlags.key, { onDelete: 'cascade' }),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.flagKey, t.memberId] })],
+)
+
+// Append-only audit of every change to an override: who, and the override before
+// and after as { enabled: boolean | null, memberIds: string[] }. Members, not
+// handles, so an erased account shows as its tombstone (docs/adr/0016).
+export const featureFlagChanges = pgTable(
+  'feature_flag_changes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    flagKey: text('flag_key').notNull(),
+    // The admin who made the change; null for one an account's erase made.
+    actorId: uuid('actor_id').references(() => members.id, { onDelete: 'set null' }),
+    before: jsonb('before').notNull(),
+    after: jsonb('after').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('feature_flag_changes_key_created_idx').on(t.flagKey, t.createdAt)],
 )

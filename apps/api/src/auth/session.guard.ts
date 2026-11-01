@@ -6,11 +6,13 @@ import {
   HttpException,
   Inject,
   Injectable,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common'
 import { eq } from 'drizzle-orm'
 import type { FastifyRequest } from 'fastify'
 import type { Env } from '../env.js'
+import { FeatureFlags } from '../flags/feature-flags.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { DB, ENV } from '../tokens.js'
 import { AuthService, authRequest, type MemberIdentity } from './auth.service.js'
@@ -33,7 +35,12 @@ export class SessionGuard implements CanActivate {
     @Inject(ENV) private readonly env: Pick<Env, 'WEB_PUBLIC_URL'>,
     @Inject(DB) private readonly db: Db,
     @Inject(InvitesService) private readonly invites: Pick<InvitesService, 'hasRedeemed'>,
+    @Inject(FeatureFlags) @Optional() private readonly flags?: Pick<FeatureFlags, 'isEnabled'>,
   ) {}
+
+  private async skipsWelcome(memberId: string): Promise<Date | undefined> {
+    return this.flags && !(await this.flags.isEnabled('onboarding', memberId)) ? new Date() : undefined
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<AuthedRequest>()
@@ -68,7 +75,9 @@ export class SessionGuard implements CanActivate {
       }
       ;[member] = await this.db
         .insert(members)
-        .values({ id: identity.id, handle: identity.handle, lastSeenAt: new Date() })
+        // While the welcome flow is switched off a newcomer is counted as having done it, so
+        // switching it on later sends only people who join after.
+        .values({ id: identity.id, handle: identity.handle, lastSeenAt: new Date(), onboardedAt: await this.skipsWelcome(identity.id) })
         .onConflictDoUpdate({ target: members.id, set: { lastSeenAt: new Date() } })
         .returning({
           active: members.active,

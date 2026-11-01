@@ -4,6 +4,7 @@ import { and, asc, eq, inArray, isNull, lte, or, type SQL, sql } from 'drizzle-o
 import { AuthService } from '../auth/auth.service.js'
 import { EMAIL_ADDRESSES, type EmailAddresses } from '../email/addresses.js'
 import type { Env } from '../env.js'
+import { removeFromAllowLists } from '../flags/feature-flags.js'
 import { GistsService } from '../gists/gists.service.js'
 import { MediaService } from '../media/media.service.js'
 import { HANDLE_HOLD_DAYS, MembersService } from '../members/members.service.js'
@@ -365,6 +366,10 @@ export class AccountDeletionService {
       await run(sql`delete from push_subscriptions where member_id = ${memberId}`)
       await run(sql`delete from profile_badges where member_id = ${memberId}`)
       await run(sql`delete from invite_redemptions where identity_id = ${memberId}`)
+      // Their place on feature flags' allow-lists goes. Flag changes they made as a
+      // site moderator stay in the flag log, which names members by ID, so it shows
+      // the tombstone.
+      await removeFromAllowLists(tx, memberId)
       // Reports about them and the ones they made stay, as evidence. An appeal
       // still open has nothing left to decide.
       await run(sql`update reports set status = 'dismissed', resolved_at = ${now}
