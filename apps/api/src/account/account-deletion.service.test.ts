@@ -6,6 +6,9 @@ import {
   bookmarks,
   communities,
   communityMemberships,
+  featureFlagChanges,
+  featureFlagMembers,
+  featureFlags,
   follows,
   gistMembers,
   gistReportParticipants,
@@ -37,9 +40,10 @@ import {
   reports,
   reposts,
 } from '@heynaija/db'
-import { and, eq, or, type SQL, sql } from 'drizzle-orm'
+import { and, eq, isNull, or, type SQL, sql } from 'drizzle-orm'
 import type { PgTable } from 'drizzle-orm/pg-core'
 import { ExportService } from '../export/export.service.js'
+import { FeatureFlags, removeFromAllowLists } from '../flags/feature-flags.js'
 import type { MediaJobs } from '../media/media.service.js'
 import { MediaService } from '../media/media.service.js'
 import type { Bucket, ObjectStore } from '../media/object-store.js'
@@ -728,4 +732,47 @@ test('Gists: one they hosted that was reported stays as evidence, with the repor
   assert.equal(await count(gistMembers, eq(gistMembers.gistId, reported!.id)), 0, 'places in it go; the report keeps its own record')
   assert.equal(await count(gistReportParticipants, eq(gistReportParticipants.reportId, report!.id)), 2)
   assert.equal(await count(reports, eq(reports.id, report!.id)), 1)
+})
+
+test('feature flags: they leave every allow-list; one that held only them goes off for everyone, and the log shows the tombstone', async () => {
+  const flags = new FeatureFlags(db, 'production')
+  await flags.set(sam, 'polls', { enabled: null, handles: ['xena'] })
+  await flags.set(sam, 'reposts', { enabled: null, handles: ['xena', 'yemi'] })
+  // A change she made, as a site moderator would.
+  await flags.set(xena, 'quotePosts', { enabled: false })
+  assert.equal(await flags.isEnabled('polls', yemi), false, 'on for her only')
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  assert.equal(await count(featureFlagMembers, eq(featureFlagMembers.memberId, xena)), 0)
+  assert.deepEqual(
+    (await db.select().from(featureFlagMembers).where(eq(featureFlagMembers.flagKey, 'reposts'))).map((r) => r.memberId),
+    [yemi],
+    'a list with others on it keeps them',
+  )
+  const [polls] = await db.select().from(featureFlags).where(eq(featureFlags.key, 'polls'))
+  assert.equal(polls?.enabled, false, 'off for everyone, as it was for everyone but her, not back to its default (on)')
+  const fresh = new FeatureFlags(db, 'production')
+  assert.equal(await fresh.isEnabled('polls', yemi), false)
+  assert.equal(await fresh.isEnabled('reposts', yemi), true)
+  assert.equal(await fresh.isEnabled('reposts', zara), false)
+
+  const erased = await db.select().from(featureFlagChanges).where(isNull(featureFlagChanges.actorId))
+  assert.deepEqual(
+    erased.map((c) => [c.flagKey, c.before, c.after]).sort(),
+    [
+      ['polls', { enabled: null, memberIds: [xena] }, { enabled: false, memberIds: [] }],
+      ['reposts', { enabled: null, memberIds: [xena, yemi].sort() }, { enabled: null, memberIds: [yemi] }],
+    ],
+    'each change the erase made is logged, with no admin named',
+  )
+  const log = (await fresh.describe()).changes
+  assert.ok(!JSON.stringify(log).includes('xena'), 'her handle is nowhere in the log')
+  assert.equal(log.find((c) => c.flagKey === 'quotePosts')?.actorHandle, tombstoneHandle(xena), 'a change she made shows the tombstone')
+  assert.deepEqual(log.find((c) => c.flagKey === 'polls' && c.actorHandle === null)?.before.handles, [tombstoneHandle(xena)])
+
+  // Safe to repeat.
+  await removeFromAllowLists(db, xena)
+  assert.equal(await count(featureFlagChanges, isNull(featureFlagChanges.actorId)), 2)
 })

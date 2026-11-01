@@ -551,7 +551,8 @@ export type FlagOverrideView = { enabled: boolean | null; handles: string[] }
 export type FlagsAdmin = {
   env: 'development' | 'staging' | 'production'
   flags: { key: string; description: string; owner: string; default: boolean; override: FlagOverrideView | null; updatedBy: string | null; updatedAt: string | null }[]
-  changes: { flagKey: string; actorHandle: string; before: FlagOverrideView; after: FlagOverrideView; createdAt: string }[]
+  /** `actorHandle` is null for a change made by erasing an account, not by an admin. */
+  changes: { flagKey: string; actorHandle: string | null; before: FlagOverrideView; after: FlagOverrideView; createdAt: string }[]
 }
 
 /** Feature flags and their latest changes; null unless the viewer is a site moderator. */

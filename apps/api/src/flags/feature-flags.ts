@@ -1,6 +1,6 @@
 import { type Db, featureFlagChanges, featureFlagMembers, featureFlags, members } from '@heynaija/db'
 import { Logger } from '@nestjs/common'
-import { desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import type { AppEnv } from '../env.js'
 import { FLAGS, type FlagDefinition, type FlagKey, type FlagOverride, flagKeys, isFlagKey, resolveFlag } from './registry.js'
 
@@ -28,8 +28,14 @@ export class FlagChangeError extends Error {
 
 export type FlagChange = { enabled: boolean | null; handles?: string[] }
 
-/** An override as shown to admins and recorded in the audit table. */
+/** An override as shown to admins. */
 export type OverrideView = { enabled: boolean | null; handles: string[] }
+
+/**
+ * An override as the audit table records it: members by ID, never handle, so a
+ * renamed member shows as they are now and an erased one as the tombstone.
+ */
+export type RecordedOverride = { enabled: boolean | null; memberIds: string[] }
 
 export type FlagView = {
   key: FlagKey
@@ -44,7 +50,42 @@ export type FlagView = {
   updatedAt: Date | null
 }
 
-export type ChangeView = { flagKey: string; actorHandle: string; before: OverrideView; after: OverrideView; createdAt: Date }
+/** `actorHandle` is null for a change an account's erase made, with no admin behind it. */
+export type ChangeView = { flagKey: string; actorHandle: string | null; before: OverrideView; after: OverrideView; createdAt: Date }
+
+type Queries = Pick<Db, 'select' | 'insert' | 'update' | 'delete' | 'execute'>
+
+/** Serialises changes to one flag, so each audit row's "before" is the previous one's "after". */
+const lockFlag = (tx: Queries, key: string) => tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`feature_flag:${key}`}))`)
+
+async function recordedOverride(tx: Pick<Db, 'select'>, key: string): Promise<RecordedOverride> {
+  const [row] = await tx.select({ enabled: featureFlags.enabled }).from(featureFlags).where(eq(featureFlags.key, key))
+  const listed = await tx.select({ memberId: featureFlagMembers.memberId }).from(featureFlagMembers).where(eq(featureFlagMembers.flagKey, key))
+  return { enabled: row?.enabled ?? null, memberIds: listed.map((l) => l.memberId).sort() }
+}
+
+/**
+ * Takes a member off every allow-list, in the transaction that erases their
+ * account (docs/adr/0016). A list that held only them was on for nobody else, so
+ * that flag goes off for everyone rather than back to its default, which may be
+ * on. Each change is audited with no admin named. Running it twice changes nothing.
+ */
+export async function removeFromAllowLists(tx: Queries, memberId: string): Promise<void> {
+  const listed = await tx.select({ key: featureFlagMembers.flagKey }).from(featureFlagMembers).where(eq(featureFlagMembers.memberId, memberId))
+  // In key order, so two erases running at once take the locks in the same order.
+  for (const key of listed.map((l) => l.key).sort()) {
+    await lockFlag(tx, key)
+    const before = await recordedOverride(tx, key)
+    if (!before.memberIds.includes(memberId)) continue // an admin changed the list meanwhile
+    const after: RecordedOverride = { enabled: before.enabled, memberIds: before.memberIds.filter((id) => id !== memberId) }
+    if (after.memberIds.length === 0 && after.enabled === null) after.enabled = false
+    await tx.delete(featureFlagMembers).where(and(eq(featureFlagMembers.flagKey, key), eq(featureFlagMembers.memberId, memberId)))
+    if (after.enabled !== before.enabled) {
+      await tx.update(featureFlags).set({ enabled: after.enabled, updatedBy: null, updatedAt: sql`now()` }).where(eq(featureFlags.key, key))
+    }
+    await tx.insert(featureFlagChanges).values({ flagKey: key, actorId: null, before, after })
+  }
+}
 
 type Options = {
   ttlMs?: number
@@ -166,6 +207,18 @@ export class FeatureFlags {
       .innerJoin(members, eq(members.id, featureFlagMembers.memberId))
       .orderBy(members.handle)
     const changes = await this.db.select().from(featureFlagChanges).orderBy(desc(featureFlagChanges.createdAt)).limit(changeLimit)
+    // The log names members by ID; each shows under the handle they have now.
+    const named = new Set(changes.flatMap((c) => [c.actorId, ...(c.before as RecordedOverride).memberIds, ...(c.after as RecordedOverride).memberIds]))
+    named.delete(null)
+    const handleOf = new Map(
+      named.size > 0
+        ? (await this.db.select({ id: members.id, handle: members.handle }).from(members).where(inArray(members.id, [...named] as string[]))).map((m) => [m.id, m.handle])
+        : [],
+    )
+    const shown = (o: RecordedOverride): OverrideView => ({
+      enabled: o.enabled,
+      handles: o.memberIds.flatMap((id) => handleOf.get(id) ?? []).sort(),
+    })
 
     const flags = flagKeys.map((key): FlagView => {
       const row = rows.find((r) => r.key === key)
@@ -187,9 +240,9 @@ export class FeatureFlags {
       flags,
       changes: changes.map((c) => ({
         flagKey: c.flagKey,
-        actorHandle: c.actorHandle,
-        before: c.before as OverrideView,
-        after: c.after as OverrideView,
+        actorHandle: c.actorId ? (handleOf.get(c.actorId) ?? null) : null,
+        before: shown(c.before as RecordedOverride),
+        after: shown(c.after as RecordedOverride),
         createdAt: c.createdAt,
       })),
     }
@@ -209,45 +262,34 @@ export class FeatureFlags {
     }
 
     await this.db.transaction(async (tx) => {
-      const ids: { id: string; handle: string }[] = []
+      const ids: string[] = []
       const missing: string[] = []
       for (const handle of wanted) {
         const [found] = await tx
-          .select({ id: members.id, handle: members.handle })
+          .select({ id: members.id })
           .from(members)
-          .where(eq(sql`lower(${members.handle})`, handle))
+          // An erased account is nobody to list (docs/adr/0016).
+          .where(and(eq(sql`lower(${members.handle})`, handle), isNull(members.deletedAt)))
           .orderBy(sql`${members.lastSeenAt} desc nulls last`)
           .limit(1)
-        if (found) ids.push(found)
+        if (found) ids.push(found.id)
         else missing.push(handle)
       }
       if (missing.length > 0) throw new FlagChangeError('unknown_handles', `no member called ${missing.map((h) => `@${h}`).join(', ')}`)
 
-      const [actor] = await tx.select({ handle: members.handle }).from(members).where(eq(members.id, actorId))
-      // Serialises two admins changing the same flag, so each audit row's "before" is the other's "after".
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`feature_flag:${key}`}))`)
-      const before = await this.override(tx, key)
+      await lockFlag(tx, key)
+      const before = await recordedOverride(tx, key)
 
       await tx
         .insert(featureFlags)
         .values({ key, enabled: change.enabled, updatedBy: actorId })
         .onConflictDoUpdate({ target: featureFlags.key, set: { enabled: change.enabled, updatedBy: actorId, updatedAt: sql`now()` } })
       await tx.delete(featureFlagMembers).where(eq(featureFlagMembers.flagKey, key))
-      if (ids.length > 0) await tx.insert(featureFlagMembers).values(ids.map((m) => ({ flagKey: key, memberId: m.id })))
+      if (ids.length > 0) await tx.insert(featureFlagMembers).values(ids.map((memberId) => ({ flagKey: key, memberId })))
 
-      const after: OverrideView = { enabled: change.enabled, handles: ids.map((m) => m.handle).sort() }
-      await tx.insert(featureFlagChanges).values({ flagKey: key, actorId, actorHandle: actor?.handle ?? 'unknown', before, after })
+      const after: RecordedOverride = { enabled: change.enabled, memberIds: [...ids].sort() }
+      await tx.insert(featureFlagChanges).values({ flagKey: key, actorId, before, after })
     })
     this.invalidate()
-  }
-
-  private async override(tx: Pick<Db, 'select'>, key: string): Promise<OverrideView> {
-    const [row] = await tx.select({ enabled: featureFlags.enabled }).from(featureFlags).where(eq(featureFlags.key, key))
-    const listed = await tx
-      .select({ handle: members.handle })
-      .from(featureFlagMembers)
-      .innerJoin(members, eq(members.id, featureFlagMembers.memberId))
-      .where(eq(featureFlagMembers.flagKey, key))
-    return { enabled: row?.enabled ?? null, handles: listed.map((l) => l.handle).sort() }
   }
 }

@@ -1109,15 +1109,15 @@ export const featureFlagMembers = pgTable(
 )
 
 // Append-only audit of every change to an override: who, and the override before
-// and after as { enabled: boolean | null, handles: string[] }.
+// and after as { enabled: boolean | null, memberIds: string[] }. Members, not
+// handles, so an erased account shows as its tombstone (docs/adr/0016).
 export const featureFlagChanges = pgTable(
   'feature_flag_changes',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     flagKey: text('flag_key').notNull(),
-    // Kept if the admin's account is later removed.
+    // The admin who made the change; null for one an account's erase made.
     actorId: uuid('actor_id').references(() => members.id, { onDelete: 'set null' }),
-    actorHandle: text('actor_handle').notNull(),
     before: jsonb('before').notNull(),
     after: jsonb('after').notNull(),
     createdAt: ts('created_at').notNull().defaultNow(),

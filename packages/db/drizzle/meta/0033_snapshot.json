@@ -1,5 +1,5 @@
 {
-  "id": "40737071-fc19-4c44-89ac-73d51f84e46b",
+  "id": "0652cd54-e30b-49e1-a6e8-5ae3b8a4ec2a",
   "prevId": "5630f62e-27f7-4891-9992-7b65d2a8c890",
   "version": "7",
   "dialect": "postgresql",
@@ -475,12 +475,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
-        },
-        "actor_handle": {
-          "name": "actor_handle",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
         },
         "before": {
           "name": "before",

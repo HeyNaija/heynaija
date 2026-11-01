@@ -2,7 +2,6 @@ CREATE TABLE "feature_flag_changes" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"flag_key" text NOT NULL,
 	"actor_id" uuid,
-	"actor_handle" text NOT NULL,
 	"before" jsonb NOT NULL,
 	"after" jsonb NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL

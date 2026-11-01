@@ -72,8 +72,18 @@ before, the override after), in the same transaction as the change. The page sho
 latest changes. There is no separate "recent sign-in" check: admin writes elsewhere in
 the API (moderation) rely on the session alone, and so do these.
 
-Allow-lists hold member ids (resolved from handles when saved), so a later handle
-change does not break them.
+Allow-lists and the log hold member ids (resolved from handles when saved), so a
+later handle change does not break them; the page shows each member's handle as it is
+now. An erased account cannot be listed.
+
+## Erasing an account
+
+When an account is erased ([ADR 0016](adr/0016-account-deletion.md)) the erase takes it
+off every allow-list, in the same transaction. A list that held only that member was on
+for nobody else, so the flag is switched off for everyone instead of falling back to its
+default, which may be on. Each of these changes is in the log with no admin named
+("Erasing an account changed …"). Changes the member made as a site moderator stay in
+the log, which shows them as the tombstone (`deleted-…`): the log never stores a handle.
 
 ## Reading, caching and failure
 
@@ -108,9 +118,8 @@ in the env.
 ## Known limits
 
 - The kill switches (`reposts`, `quotePosts`, `linkPreviews`) are on in production, so a
-  failed first read after a restart (or an allow-list whose members were all deleted,
-  leaving `enabled` null with an empty list) answers with the production default, which
-  is on, for one TTL. Fail-closed means "production default", not "off".
+  failed first read after a restart answers with the production default, which is on,
+  for one TTL. Fail-closed means "production default", not "off".
 - The web app does not hide the pin, community-pin, reply-audience and quote buttons
   while their flags are off; the click does nothing (the API answers 404 or 400).
   Composer polls and reply controls, the welcome flow and trending topics (page and

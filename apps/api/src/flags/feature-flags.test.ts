@@ -268,26 +268,44 @@ test('fail closed: when the database cannot be read the last good answer is kept
   assert.equal(await recovering.isEnabled('polls'), true)
 })
 
-test('audit: every change records who, the override before and the override after', async () => {
+test('audit: every change records who, the override before and the override after, naming members by ID', async () => {
   const flags = new FeatureFlags(db, 'production')
   await flags.set(ada, 'polls', { enabled: true })
   await flags.set(ada, 'polls', { enabled: null, handles: ['bayo', 'chi'] })
   await flags.set(ada, 'polls', { enabled: false })
   const rows = (await db.select().from(featureFlagChanges).orderBy(featureFlagChanges.createdAt)).filter((r) => r.flagKey === 'polls')
+  const listed = [bayo, chi].sort()
   assert.equal(rows.length, 3)
-  assert.deepEqual(rows[0]!.before, { enabled: null, handles: [] })
-  assert.deepEqual(rows[0]!.after, { enabled: true, handles: [] })
-  assert.deepEqual(rows[1]!.before, { enabled: true, handles: [] })
-  assert.deepEqual(rows[1]!.after, { enabled: null, handles: ['bayo', 'chi'] })
-  assert.deepEqual(rows[2]!.before, { enabled: null, handles: ['bayo', 'chi'] })
-  assert.deepEqual(rows[2]!.after, { enabled: false, handles: [] })
-  for (const row of rows) {
-    assert.equal(row.actorId, ada)
-    assert.equal(row.actorHandle, 'ada')
-  }
+  assert.deepEqual(rows[0]!.before, { enabled: null, memberIds: [] })
+  assert.deepEqual(rows[0]!.after, { enabled: true, memberIds: [] })
+  assert.deepEqual(rows[1]!.before, { enabled: true, memberIds: [] })
+  assert.deepEqual(rows[1]!.after, { enabled: null, memberIds: listed })
+  assert.deepEqual(rows[2]!.before, { enabled: null, memberIds: listed })
+  assert.deepEqual(rows[2]!.after, { enabled: false, memberIds: [] })
+  for (const row of rows) assert.equal(row.actorId, ada)
   const [row] = await db.select().from(featureFlags).where(eq(featureFlags.key, 'polls'))
   assert.equal(row?.updatedBy, ada)
   assert.equal((await db.select().from(featureFlagMembers)).length, 0)
+})
+
+test('audit: the log shows each member under the handle they have now', async () => {
+  const flags = new FeatureFlags(db, 'production')
+  await flags.set(ada, 'polls', { enabled: null, handles: ['bayo'] })
+  await db.update(members).set({ handle: 'bayo_new' }).where(eq(members.id, bayo))
+  await db.update(members).set({ handle: 'ada_new' }).where(eq(members.id, ada))
+  const [change] = (await flags.describe()).changes
+  assert.equal(change?.actorHandle, 'ada_new')
+  assert.deepEqual(change?.after, { enabled: null, handles: ['bayo_new'] })
+})
+
+test('writes: an erased account cannot be put on an allow-list', async () => {
+  const flags = new FeatureFlags(db, 'production')
+  await db.update(members).set({ handle: 'deleted-0000beef', deletedAt: new Date() }).where(eq(members.id, chi))
+  await assert.rejects(
+    () => flags.set(ada, 'polls', { enabled: null, handles: ['deleted-0000beef'] }),
+    (e: unknown) => e instanceof FlagChangeError && e.reason === 'unknown_handles',
+  )
+  assert.equal((await db.select().from(featureFlagChanges)).length, 0)
 })
 
 test('writes: unknown flags and handles, and an on/off together with an allow-list, are refused and change nothing', async () => {

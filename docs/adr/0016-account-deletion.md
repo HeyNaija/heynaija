@@ -193,6 +193,8 @@ processed; `quarantine/…` for what is kept.
 | `invites` | — | nothing: there is no column for who made an invite (operators make them from the command line) | — |
 | `privacy_requests` | a row (`deletion`) | completed; kept as the record that the request was handled, with `member_id` pointing at the tombstone | keep ([period] on `/privacy`) |
 | `link_previews` | — | kept: shared by every post linking to a URL, nobody's in particular | keep |
+| Their place on feature flags' allow-lists (`feature_flag_members`) | — (an inactive member is shut out of every flag anyway) | deleted. A list that held only them goes off for everyone (`feature_flags.enabled` false) rather than back to its default, which may be on; each change is logged in `feature_flag_changes` with no admin named | delete |
+| Flag changes they made as a site moderator, and log entries listing them (`feature_flag_changes`, `feature_flags.updated_by`) | — | kept: the log names members by ID only, never by handle, so they show as the tombstone | keep |
 
 ## Outside the app's database
 

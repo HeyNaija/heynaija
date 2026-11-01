@@ -53,8 +53,8 @@ test('a site moderator turns a live flag off, and the next read sees it, with th
   await controller.put(as(ada), 'polls', { enabled: false })
   assert.equal(await flags.isEnabled('polls'), false)
   const [change] = await db.select().from(featureFlagChanges)
-  assert.equal(change?.actorHandle, 'ada')
-  assert.deepEqual(change?.after, { enabled: false, handles: [] })
+  assert.equal(change?.actorId, ada)
+  assert.deepEqual(change?.after, { enabled: false, memberIds: [] })
 })
 
 test('a member who is not an admin cannot change a flag, and nothing is recorded', async () => {

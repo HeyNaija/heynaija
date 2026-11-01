@@ -75,7 +75,7 @@ export function FlagControls({ flags }: { flags: FlagsAdmin }) {
           <ul className="mt-2 flex flex-col gap-1 text-sm">
             {flags.changes.map((c, i) => (
               <li key={i}>
-                @{c.actorHandle} changed <span className="font-semibold">{c.flagKey}</span> from {describe(c.before)} to {describe(c.after)} on{' '}
+                {c.actorHandle ? `@${c.actorHandle}` : 'Erasing an account'} changed <span className="font-semibold">{c.flagKey}</span> from {describe(c.before)} to {describe(c.after)} on{' '}
                 {new Date(c.createdAt).toISOString().slice(0, 16).replace('T', ' ')} UTC
               </li>
             ))}
