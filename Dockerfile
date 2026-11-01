@@ -35,6 +35,20 @@ WORKDIR /app
 EXPOSE 4000
 CMD ["node", "dist/main.js"]
 
+# --- Video worker: the API's code plus ffmpeg, running only the video queue consumer.
+# ffmpeg lives here and nowhere else, so the API image never decodes untrusted video.
+# The worker holds videos "quarantined" until a scanner is set: docs/safety/video-scanning.md.
+FROM api AS video-worker
+USER root
+# Pinned (ADR 0019 section 3.4). Debian drops a superseded version, so a security release
+# makes this build fail until someone bumps it and re-runs the video tests: that is the point.
+ARG FFMPEG_VERSION=7:5.1.9-0+deb12u1
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg=${FFMPEG_VERSION} \
+ && rm -rf /var/lib/apt/lists/*
+USER node
+CMD ["node", "dist/video/worker-main.js"]
+
 # --- Web app: Next.js's standalone server and its static files ---
 FROM node:22.23-bookworm-slim AS web
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000

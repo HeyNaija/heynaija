@@ -39,6 +39,13 @@ export const LIMITS = {
     { max: 12, windowMs: MINUTE },
     { max: 60, windowMs: HOUR },
   ],
+  // Video (docs/adr/0019 section 4.7): starting uploads is the scarce thing; part URLs
+  // and resume lookups are cheap but are one request per 5 MiB.
+  videoUpload: [
+    { max: 3, windowMs: HOUR },
+    { max: 10, windowMs: 24 * HOUR },
+  ],
+  videoPart: [{ max: 120, windowMs: MINUTE }],
   // Gists (docs/adr/0017): starting one, joining (per member, and per Gist so a
   // group cannot fill the room in a burst), asking to speak.
   gistCreate: [{ max: 5, windowMs: HOUR }],

@@ -51,6 +51,7 @@ import {
   UserPlus,
   Users,
   Vote,
+  Video,
   Wallet,
   X,
 } from 'lucide-react'
@@ -99,6 +100,7 @@ export const PinIcon = icon(Pin)
 export const ShieldIcon = icon(Shield)
 export const VoteIcon = icon(Vote)
 export const ImageIcon = icon(ImagePlus)
+export const VideoIcon = icon(Video)
 export const CloseIcon = icon(X)
 export const PlayIcon = icon(Play)
 export const PauseIcon = icon(Pause)

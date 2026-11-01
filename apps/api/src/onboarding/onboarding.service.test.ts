@@ -197,6 +197,7 @@ const auth = new AuthController(
   membersService,
   {} as never,
   new FeatureFlags(db, 'development'),
+  { effective: (on: boolean) => on },
 )
 const meFor = (id: string, handle: string) => auth.me({ member: { id, handle } } as AuthedRequest)
 

@@ -1,5 +1,5 @@
 import sharp from 'sharp'
-import type { ContentScanner } from './media.service.js'
+import type { ContentScanner, FrameScan } from './media.service.js'
 
 /**
  * The Match operation of Microsoft's PhotoDNA Cloud Service, as its public
@@ -37,6 +37,21 @@ export class PhotoDnaScanner implements ContentScanner {
     return 'clear'
   }
 
+  /**
+   * Sampled frames of a video, two requests at a time (PhotoDNA's rate limit is not
+   * published). Stops at the first batch with a match. A frame that gets no clear
+   * answer throws, and the video is not published.
+   */
+  async scanFrames(frames: Buffer[]): Promise<FrameScan> {
+    for (let i = 0; i < frames.length; i += 2) {
+      const batch = frames.slice(i, i + 2)
+      const results = await Promise.all(batch.map(async (frame) => this.matches(await normaliseFrame(frame))))
+      const hit = results.indexOf(true)
+      if (hit >= 0) return { verdict: 'match', matchIndex: i + hit }
+    }
+    return { verdict: 'clear', matchIndex: null }
+  }
+
   private async matches(jpeg: Buffer): Promise<boolean> {
     const res = await this.fetchFn(`${this.url}?enhance=false`, {
       method: 'POST',
@@ -57,6 +72,15 @@ export class PhotoDnaScanner implements ContentScanner {
  * animation as a spread of its frames (the first always among them, since that
  * is also the still we publish). Each is upright and within the service's sizes.
  */
+/** One still frame as a JPEG within the service's sizes. */
+export async function normaliseFrame(image: Buffer): Promise<Buffer> {
+  const { data, info } = await sharp(image, { limitInputPixels: 40_000_000 }).rotate().png().toBuffer({ resolveWithObject: true })
+  const sized = sharp(data)
+  if (Math.min(info.width, info.height) < MIN_EDGE) sized.resize(MIN_EDGE, MIN_EDGE, { fit: 'outside' })
+  else if (Math.max(info.width, info.height) > MAX_EDGE) sized.resize(MAX_EDGE, MAX_EDGE, { fit: 'inside' })
+  return sized.jpeg({ quality: 90 }).toBuffer()
+}
+
 export async function framesToScan(image: Buffer): Promise<Buffer[]> {
   const limitInputPixels = 40_000_000
   const pages = (await sharp(image, { limitInputPixels }).metadata()).pages ?? 1

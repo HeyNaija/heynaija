@@ -1,7 +1,8 @@
-import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
+import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy, Optional } from '@nestjs/common'
 import { type ConnectionOptions, Queue, Worker } from 'bullmq'
 import type { Env } from '../env.js'
 import { ENV } from '../tokens.js'
+import { VideoService } from '../video/video.service.js'
 import { CDN_PURGER, type CdnPurger } from './cdn-purge.js'
 import { MEDIA_JOBS, type MediaJobs, MediaService } from './media.service.js'
 
@@ -71,6 +72,8 @@ export class MediaWorker implements OnApplicationBootstrap, OnModuleDestroy {
     @Inject(MediaService) private readonly media: MediaService,
     @Inject(MEDIA_JOBS) private readonly jobs: BullMediaJobs,
     @Inject(CDN_PURGER) private readonly purger: CdnPurger,
+    // The hourly sweep also clears abandoned video uploads (the worker that encodes them is a separate process).
+    @Optional() @Inject(VideoService) private readonly videos?: VideoService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -81,7 +84,10 @@ export class MediaWorker implements OnApplicationBootstrap, OnModuleDestroy {
         const { name, data } = job as unknown as Job
         if (name === 'post-image') await this.media.processPostImage(data.mediaId)
         else if (name === 'purge-cdn') await this.purger.purge(data.keys)
-        else if (name === 'sweep') await this.media.sweepAbandoned()
+        else if (name === 'sweep') {
+          await this.media.sweepAbandoned()
+          await this.videos?.sweepAbandoned()
+        }
       },
       { connection: connection(this.env), concurrency: CONCURRENCY },
     )

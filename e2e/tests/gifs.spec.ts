@@ -9,7 +9,7 @@ async function postGif(page: import('@playwright/test').Page, text: string, alt:
   const box = page.getByRole('textbox', { name: 'New post' })
   await box.click()
   await box.fill(text)
-  await page.locator('#compose input[type="file"]').setInputFiles({ name: 'dance.gif', mimeType: 'image/gif', buffer: gif() })
+  await page.locator('#compose input[type="file"]:not([accept*="video"])').setInputFiles({ name: 'dance.gif', mimeType: 'image/gif', buffer: gif() })
   await page.getByLabel('Description of GIF 1').fill(alt)
   const submit = page.getByRole('button', { name: 'Post', exact: true })
   await expect(submit).toBeEnabled({ timeout: 45_000 })
@@ -87,7 +87,7 @@ test('a GIF over 10 MB is refused before it is sent', async ({ browser }) => {
   const { page, context } = await newMember(browser, 'bigif')
   await page.goto('/')
   await page.getByRole('textbox', { name: 'New post' }).click()
-  await page.locator('#compose input[type="file"]').setInputFiles({
+  await page.locator('#compose input[type="file"]:not([accept*="video"])').setInputFiles({
     name: 'huge.gif',
     mimeType: 'image/gif',
     buffer: Buffer.concat([gif(), Buffer.alloc(10 * 1024 * 1024)]),
@@ -100,7 +100,7 @@ test('GIFs have a button of their own, which offers only GIFs, apart from the ph
   const { page, context } = await newMember(browser, 'gifbutton')
   await page.goto('/')
   await page.getByRole('textbox', { name: 'New post' }).click()
-  const picker = page.locator('#compose input[type="file"]')
+  const picker = page.locator('#compose input[type="file"]:not([accept*="video"])')
 
   const photo = page.getByRole('button', { name: /^Add images/ })
   const gifButton = page.getByRole('button', { name: /^Add a GIF/ })

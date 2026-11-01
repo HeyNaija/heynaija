@@ -12,7 +12,7 @@ test('posts an image with a description and opens it full screen @mobile', async
   await box.fill(text)
 
   // The image button opens a hidden file input; set the file on it directly.
-  await page.locator('#compose input[type="file"]').setInputFiles({
+  await page.locator('#compose input[type="file"]:not([accept*="video"])').setInputFiles({
     name: 'sunset.png',
     mimeType: 'image/png',
     buffer: png(),
@@ -49,7 +49,7 @@ for (const count of [2, 3, 4]) {
       const text = `${count} photos from ${handle}`
       await page.getByRole('textbox', { name: 'New post' }).fill(text)
       const shapes = [[400, 1000], [1280, 360], [600, 600], [360, 900]]
-      await page.locator('#compose input[type="file"]').setInputFiles(shapes.slice(0, count).map(([width, height], i) => ({
+      await page.locator('#compose input[type="file"]:not([accept*="video"])').setInputFiles(shapes.slice(0, count).map(([width, height], i) => ({
         name: `photo-${i}.png`, mimeType: 'image/png', buffer: png(width, height),
       })))
       const alts = Array.from({ length: count }, (_, i) => i === 0 ? 'Portrait photo. '.repeat(60) : `Photo ${i + 1}`)

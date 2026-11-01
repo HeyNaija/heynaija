@@ -41,6 +41,18 @@ export type PostImage = {
   animated: boolean
 }
 
+/** A post's one video, once it is ready. `src` is a path without the file: `/poster.webp` and `/<height>.mp4` go on the end. */
+export type PostVideo = {
+  id: string
+  src: string
+  durationMs: number
+  width: number
+  height: number
+  description: string
+  /** Smallest first. `height` is the short edge: 240, 360 or 480. */
+  renditions: { height: number; width: number; bytes: number }[]
+}
+
 /** The post a quote post quotes, or a placeholder when the reader cannot see it. */
 export type QuotedPost =
   | {
@@ -106,6 +118,8 @@ export type Post = {
   authorFounder: boolean
   text: string
   images: PostImage[]
+  /** The post's video once it is ready; a held or unfinished one is never sent. */
+  video: PostVideo | null
   /** Mentions of members the viewer can see, in order. Other @text stays plain. */
   mentions: PostMention[]
   /** Hashtags in the text, in order. */
@@ -530,7 +544,7 @@ export type QueueItem = {
   /** Null when the upload scanner filed it. */
   reporterHandle: string | null
   reportCount: number
-  post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
+  post: { id: string; text: string; images: PostImage[]; hasVideo: boolean; authorHandle: string; communityName: string | null } | null
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
   /** A reported community photo; `photo` is null if the community no longer has one. */
   communityPhoto: { slug: string; name: string; photo: string | null } | null

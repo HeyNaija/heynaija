@@ -19,6 +19,7 @@ import { Menu } from './menu'
 import { MorePosts } from './more-posts'
 import { PollCard } from './poll-card'
 import { PostImages } from './post-images'
+import { PostVideo } from './post-video'
 import { PostPermalink } from './post-permalink'
 import { PostText } from './post-text'
 import { QuotedPostCard } from './quoted-post'
@@ -322,13 +323,18 @@ export function PostItem({
           <PostImages images={post.images} />
         </div>
       ) : null}
+      {post.video ? (
+        <div className="mt-3">
+          <PostVideo video={post.video} />
+        </div>
+      ) : null}
       {post.quote ? (
         <div className="mt-3">
           <QuotedPostCard quote={post.quote} now={now} />
         </div>
       ) : null}
       {/* A card for the first address, unless the post already has pictures or a quote to show. */}
-      {post.linkPreview && !post.images.length && !post.quote ? (
+      {post.linkPreview && !post.images.length && !post.video && !post.quote ? (
         <div className="mt-3">
           <LinkCard preview={post.linkPreview} />
         </div>
