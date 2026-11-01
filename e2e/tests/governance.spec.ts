@@ -165,7 +165,7 @@ test('a member downloads their data as JSON', async ({ browser }) => {
   ])
   expect(download.suggestedFilename()).toMatch(new RegExp(`^heynaija-${handle}-\\d{4}-\\d{2}-\\d{2}\\.json$`))
   const data = JSON.parse(await readFile((await download.path())!, 'utf8'))
-  expect(data.format).toBe('heynaija-export/11')
+  expect(data.format).toBe('heynaija-export/12')
   expect(data.account).toMatchObject({ handle, email })
   // They skipped the welcome flow on joining (newMember does), and the export says when.
   expect(Date.parse(data.account.onboardedAt)).not.toBeNaN()
