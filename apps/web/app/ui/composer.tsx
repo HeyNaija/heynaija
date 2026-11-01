@@ -16,10 +16,9 @@ import { useAutoGrow } from './use-auto-grow'
 import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
 import { useFixedPlacement } from './use-fixed-placement'
 import { useMentionSuggestions } from './use-mention-suggestions'
+import { graphemes, POST_MAX } from '@/lib/post-length'
 
-const LIMIT = 300
-const segmenter = new Intl.Segmenter()
-const graphemes = (text: string) => [...segmenter.segment(text)].length
+const LIMIT = POST_MAX
 
 type Props = {
   /** The member writing; shown as their avatar. */

@@ -3,7 +3,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { and, eq, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { notify } from '../notifications/notifications.service.js'
-import { PostsService, postText, visibleAuthor } from '../posts/posts.service.js'
+import { POST_MAX_GRAPHEMES, PostsService, postText, visibleAuthor } from '../posts/posts.service.js'
 import { cleanLine, cleanLines, graphemes } from '../text.js'
 import { DB } from '../tokens.js'
 
@@ -44,7 +44,7 @@ export const newIdea = z
   .transform((idea) => ({ ...idea, text: idea.details ? `${idea.title}\n\n${idea.details}` : idea.title }))
   .superRefine((idea, ctx) => {
     if (!postText.safeParse(idea.text).success) {
-      ctx.addIssue({ code: 'custom', path: ['details'], message: 'the title and details together are longer than 300 characters' })
+      ctx.addIssue({ code: 'custom', path: ['details'], message: `the title and details together are longer than ${POST_MAX_GRAPHEMES} characters` })
     }
   })
 export type NewIdea = z.infer<typeof newIdea>

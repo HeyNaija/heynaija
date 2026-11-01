@@ -1242,6 +1242,9 @@ summary.menu::-webkit-details-marker {
 .post-hashtag { color: var(--accent-strong); font-weight: 500; }
 .post-hashtag:hover { text-decoration: underline; }
 .post-link { color: var(--accent-strong); overflow-wrap: anywhere; }
+/* Under a long post shortened in a list: the rest is on its own page. Above the card-wide link, like a mention. */
+.post-more { position: relative; z-index: 2; display: inline-flex; min-height: var(--touch-target); align-items: center; color: var(--accent-strong); font-size: 14px; font-weight: 600; }
+.post-more:hover { text-decoration: underline; }
 .post-link:hover { text-decoration: underline; }
 /* A page the post links to: its picture, its own host name (never only what the page
    calls itself), and the title and start of its text. One link, so one tab stop. */

@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm'
 import { linesFor } from '../email/digest.js'
 import { ExportService } from '../export/export.service.js'
 import { NotificationsService } from '../notifications/notifications.service.js'
-import { PostsService } from '../posts/posts.service.js'
+import { POST_MAX_GRAPHEMES, PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import {
   BadDuplicateError,
@@ -72,8 +72,10 @@ test('a title is one clean line of at most 80 characters, and with its details f
   assert.equal(newIdea.parse({ kind: 'idea', title: '  Two\nlines‮  ' }).title, 'Two lines')
   assert.equal(newIdea.safeParse({ kind: 'idea', title: '   ' }).success, false)
   assert.equal(newIdea.safeParse({ kind: 'idea', title: 'x'.repeat(81) }).success, false)
-  assert.equal(newIdea.safeParse({ kind: 'idea', title: 'x'.repeat(80), details: 'y'.repeat(218) }).success, true)
-  assert.equal(newIdea.safeParse({ kind: 'idea', title: 'x'.repeat(80), details: 'y'.repeat(219) }).success, false)
+  // The post is the title, a blank line, then the details: 80 + 2 + the rest of the post limit.
+  const room = POST_MAX_GRAPHEMES - 82
+  assert.equal(newIdea.safeParse({ kind: 'idea', title: 'x'.repeat(80), details: 'y'.repeat(room) }).success, true)
+  assert.equal(newIdea.safeParse({ kind: 'idea', title: 'x'.repeat(80), details: 'y'.repeat(room + 1) }).success, false)
   assert.equal(newIdea.safeParse({ kind: 'question', title: 'What?' }).success, false)
 })
 

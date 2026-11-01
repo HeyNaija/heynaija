@@ -39,7 +39,8 @@ import { hashtagsOf, type PostHashtag, recordHashtags } from './hashtags.js'
 import { MENTIONS_NOTIFIED_MAX, mentionsOf, type PostMention, recordMentions } from './mentions.js'
 import { decodeReplyCursor, encodeReplyCursor, type ReplyOrder } from './reply-cursor.js'
 
-export const POST_MAX_GRAPHEMES = 300
+// Lists show only the start of a post past 400 characters (apps/web/lib/post-length.ts).
+export const POST_MAX_GRAPHEMES = 1000
 export const POLL_OPTION_MAX_GRAPHEMES = 80
 export const POLL_OPTIONS_MAX = 10
 export const POLL_EXPIRIES = ['1_day', '3_days', '7_days', '30_days', 'never'] as const

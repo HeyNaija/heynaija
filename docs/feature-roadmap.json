@@ -1386,16 +1386,22 @@
     {
       "id": "long-form",
       "name": "Long-form writing",
-      "description": "Support writing beyond the current short-post limit.",
+      "description": "Write posts longer than a short post, up to 1,000 characters, with longer pieces to follow.",
       "category": "expansion",
       "priority": "P2",
-      "status": "planned",
+      "status": "partial",
       "availability": "not_live",
       "evidence": [
-        "packages/db/src/schema.ts",
-        "apps/api/src/posts/posts.controller.ts",
-        "apps/web/app/ui/composer.tsx"
-      ]
+        "apps/api/src/posts/posts.service.ts",
+        "apps/web/app/ui/composer.tsx",
+        "apps/web/lib/post-length.ts",
+        "apps/web/app/ui/post-item.tsx",
+        "apps/api/src/posts/posts.service.test.ts",
+        "apps/web/tests/post-length.test.mjs",
+        "e2e/tests/posting.spec.ts"
+      ],
+      "caveat": "Posts can be up to 1,000 characters, and lists show the start of a long one with Show more; longer articles with formatting are not built yet.",
+      "notes": "PR #72 (1 November 2026) raised the limit from 300 to 1,000 graphemes (POST_MAX_GRAPHEMES in the API, POST_MAX in apps/web/lib/post-length.ts). In lists a post past 400 characters or 10 lines shows about its first 300 characters and 8 lines, then a Show more link to its page; mentions, hashtags and links are never cut. Not built: articles longer than a post, formatting, drafts. Availability stays not_live until the change reaches production."
     },
     {
       "id": "video",
