@@ -397,6 +397,29 @@ test('a document approval with no readable number is not counted: nothing to tel
   assert.equal(row?.outcome, 'no_document_number')
 })
 
+test('a resent Approved with no readable document leaves an already verified member verified, key kept', async () => {
+  await service.start(ada)
+  await approve('sess-1', ada, { document: sameDocument })
+  const before = await rowOf(ada)
+  assert.equal(before?.status, 'verified')
+  assert.ok(before?.personKey)
+  await approve('sess-1', ada, { document: null })
+  const after = await rowOf(ada)
+  assert.equal(after?.status, 'verified')
+  assert.equal(after?.personKey, before?.personKey)
+  assert.equal(after?.outcome, null)
+  assert.equal(await service.adultGate(ada), true)
+})
+
+test('a reviewer-approved session whose ID item is not approved, still open in review, is declined as having no document number', async () => {
+  await service.start(ada)
+  await deliver(delivery({ status: 'In Review' }))
+  assert.equal((await rowOf(ada))?.status, 'in_review')
+  await approve('sess-1', ada, { document: null })
+  assert.equal((await rowOf(ada))?.status, 'declined')
+  assert.equal((await rowOf(ada))?.outcome, 'no_document_number')
+})
+
 test('a duplicate-flagged approval records why, and stores no key', async () => {
   await service.start(ada)
   await approve('sess-1', ada, { duplicate: true })

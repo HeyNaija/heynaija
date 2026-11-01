@@ -39,6 +39,19 @@ Limits to know:
   `no_document_number`): without a number it cannot be told apart from anyone else's.
 - **Deleting the account deletes the key**, so a person who deletes an account can verify
   another with the same document. Nothing keeps a record of a deleted account.
+- **Whoever verifies first with a document holds it.** If someone else verifies with your
+  document first (a stolen or borrowed ID), you, the real owner, are declined as
+  `duplicate_person` and see only "Not verified, try again". That is inherent to any
+  one-document-one-account rule. The key is deliberately not kept on declined rows, so the
+  declined row alone does not say who the holder is.
+
+  *Support runbook.* (1) Find the holder: in the Didit console, the declined session's
+  duplicate match points to the other session (and its `vendor_data` is the holder's member
+  id); or derive the key from the owner's document number with `IDENTITY_KEY_SECRET`
+  (`documentPersonKey` in `person-key.ts`: issuing country, then the number) and look for it
+  in `restricted.age_verifications.person_key`. (2) Reverse the holder's approval in Didit.
+  The webhook turns `verified` into `declined`, which clears the key. (3) The owner starts a
+  new check.
 - **A new document is a new key**: a renewed passport or a second kind of ID (passport,
   then driver's licence) is a different number, so the same person can verify again with it.
 - **Rotating `IDENTITY_KEY_SECRET` breaks the check for existing results**, since new keys

@@ -181,6 +181,11 @@ export class AgeVerificationService {
       const secret = this.config?.personKeySecret
       personKey = secret ? documentPersonKey(secret, decision.document) : null
       if (!personKey) {
+        // A keyless approval says nothing against a member already verified on this session (a
+        // resent webhook whose decision lacks the document item): leave that row as it is, key
+        // included. Otherwise, pending, in review (a reviewer approved but the ID item is not
+        // approved) or expired, it cannot be counted: nothing tells it from anyone else's.
+        if ((await this.load(memberId))?.status === 'verified') return
         status = 'Declined'
         outcome = 'no_document_number'
       }
