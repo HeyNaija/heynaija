@@ -19,6 +19,9 @@ vapid_public() { printf '%s\n' "$1" | openssl ec -pubout -outform DER 2>/dev/nul
 get() { grep -E "^$1=" "$env_file" | head -1 | cut -d= -f2- || true; }
 ensure() {
   if [[ -z "$(get "$1")" ]]; then
+    # A .env edited by hand may not end in a newline, and the new line would then join
+    # the last one (CALLS_GISTS_ENABLED=trueLIVEKIT_URL=...), breaking both.
+    if [[ -s "$env_file" && -n "$(tail -c 1 "$env_file")" ]]; then echo >> "$env_file"; fi
     echo "$1=$2" >> "$env_file"
     echo "  added $1"
   fi
@@ -63,5 +66,14 @@ ensure PUSH_CONTACT "mailto:no-reply@heynaija.test"
 # The end-to-end tests stand in for the push service on 127.0.0.1; look every two seconds.
 ensure PUSH_ALLOW_LOOPBACK "true"
 ensure PUSH_SWEEP_EVERY_S "2"
+
+# LiveKit for Gists (docs/adr/0017). The server starts with `pnpm infra:livekit`; the
+# API uses these only when CALLS_ENABLED and CALLS_GISTS_ENABLED are also true and the
+# handle is in CALLS_MEMBERS, none of which this script switches on.
+ensure LIVEKIT_URL "ws://127.0.0.1:7880"
+ensure LIVEKIT_API_KEY "devkey"
+ensure LIVEKIT_API_SECRET "$(hex 20)"
+ensure LIVEKIT_WEBHOOK_KEY "devhook"
+ensure LIVEKIT_WEBHOOK_SECRET "$(hex 20)"
 
 echo "$env_file is up to date"

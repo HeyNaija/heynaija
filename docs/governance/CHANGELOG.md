@@ -1,5 +1,22 @@
 # Governance draft history
 
+## Privacy policy — 30 October 2026 — published
+
+- `/privacy#rights`: members can delete their account in Settings. It leaves
+  HeyNaija at once and is erased after 14 days, during which they can sign in
+  and keep it. Other requests by email are answered within 30 days. It used to
+  say deletion was not in the app yet.
+- `/privacy#keep`: what happens to an account when it is erased and what is
+  kept (a blank placeholder, reports and moderation decisions, posts kept as
+  moderation evidence, the record of an 18+ declaration, the record of the
+  request), that backups of both databases age out within 30 days, and that
+  copies of sign-in emails are kept 7 days. Periods counsel must set stay as
+  placeholders.
+- `/privacy#cookies`: `hn_deletion`, which holds the erase date for an hour
+  after someone asks.
+- Not yet reviewed by counsel: what a member is told is entry C-15 in the
+  [counsel log](counsel-log.md).
+
 ## v0.3.2 — 29 October 2026 — proposed; not adopted
 
 - Article 12 said the repository was private and source publication planned.

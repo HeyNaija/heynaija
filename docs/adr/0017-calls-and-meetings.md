@@ -78,6 +78,13 @@ use.**
 
 **One dedicated small VPS, one node, no Redis at first.**
 
+**Built for staging (31 October 2026).** `infra/livekit/` and
+[`docs/deployment/livekit.md`](../deployment/livekit.md): a Contabo Cloud VPS 4 in
+the EU (4 vCPU, 8 GB RAM, a 200 Mbit/s port), `rtc-staging.heynaija.ng` and `turn-staging.heynaija.ng` (DNS only),
+LiveKit v1.13.11 and Caddy with its layer-4 module, both on the host network. It
+differs from the sketches below in two ways, both noted where they apply: TURN
+runs on 443 behind Caddy, and the webhook comes through Cloudflare.
+
 - **Not behind Cloudflare.** The media host gets a **DNS-only** (grey cloud)
   record, for example `rtc.heynaija.ng`, and `turn.heynaija.ng` (names are
   placeholders). The orange-cloud proxy would break UDP.
@@ -95,7 +102,10 @@ use.**
 - **Staging and production:** LiveKit's webhook config takes one signing key
   and a list of URLs, so two environments on one server would each receive the
   other's events. Recommend **one server per environment**: staging first, a
-  second for production when the beta leaves the allow-list.
+  second for production when the beta leaves the allow-list. **Owner decision
+  (31 October 2026):** staging's is a Contabo Cloud VPS 4; production's is a
+  netcup VPS 1000 ARM G12.5 of its own, not the production app server, which
+  should not carry media.
 
 ### Ports
 
@@ -125,7 +135,10 @@ accept that some networks block it; (b) a second public IP, Caddy on one and
 TURN on 443 on the other; (c) TURN on 443 and a TCP-level router in front. **Recommendation:
 (a) to start,** because most mobile carriers pass 5349 and 7881/TCP covers a
 good share of the rest, and measure how many calls need relay. Move to (b) if
-relay failures show up. TURN needs its own domain and a CA-issued certificate
+relay failures show up. **Built: (c).** LiveKit's own VM setup already puts a
+layer-4 Caddy on 443 that routes by name: TLS for `turn-` is ended there and
+passed to LiveKit's TURN as plain TCP (`turn.external_tls`), so TURN gets 443 on
+one address with no certificate files to share. TURN needs its own domain and a CA-issued certificate
 (self-signed does not work); LiveKit needs `turn.domain`, `turn.tls_port`,
 `turn.cert_file` and `turn.key_file`
 ([deployment](https://docs.livekit.io/transport/self-hosting/deployment/)).
@@ -137,11 +150,11 @@ this is LiveKit's recommended mode)**, so ufw rules are the real rules.
 ### TLS
 
 Caddy obtains and renews Let's Encrypt certificates for `rtc.` and `turn.` and
-proxies 443 to `127.0.0.1:7880`. LiveKit's TURN reads certificate files, so
-Caddy's certificate directory is mounted read-only into LiveKit, and LiveKit is
-restarted after a renewal **(verify whether it reloads files itself)**.
+proxies 443 to `127.0.0.1:7880`. **Built:** Caddy also ends TLS for `turn.` and
+passes TURN on as plain TCP (above), so LiveKit reads no certificate files and
+needs no restart after a renewal.
 
-### Config sketch (`infra/livekit/livekit.yaml`, not final)
+### Config sketch (`infra/livekit/livekit.yaml`, not final; built as the `livekit` config in `infra/livekit/compose.yml`)
 
 ```yaml
 port: 7880                       # behind Caddy; never published
@@ -170,7 +183,7 @@ webhook:
 prometheus_port: 6789            # bound to a private interface (verify the setting)
 ```
 
-### Compose sketch (`infra/livekit/compose.yml`, consistent with `infra/deploy/`)
+### Compose sketch (`infra/livekit/compose.yml`, consistent with `infra/deploy/`; built)
 
 Same conventions as `infra/deploy/compose.yml`: a `name:`, the shared `logging`
 anchor (10 MB x 5), `restart: unless-stopped`, settings and secrets from an
@@ -215,6 +228,16 @@ servers; (c) no webhooks, and the API polls LiveKit's room API. **Recommendation
 (a).** (c) is the fallback if webhooks prove unreliable, which they may: LiveKit
 says delivery is not guaranteed
 ([webhooks](https://docs.livekit.io/intro/basics/rooms-participants-tracks/webhooks-events/)).
+
+**Built instead (31 October 2026): (d), through Cloudflare.** (a) needs a DNS-only
+name pointing at the web server, which would publish the address Cloudflare
+hides. So LiveKit posts to `https://<site>/api/internal/livekit/webhook` like any
+other client; Cloudflare connects to the origin with its client certificate as
+for every request; nginx lets only the LiveKit server's own address
+(`LIVEKIT_WEBHOOK_FROM`, read from `CF-Connecting-IP`) reach that one path; a Next
+rewrite passes the body unchanged to the API; and the API checks the signature.
+A once-a-minute reconcile against LiveKit's room API (the API's `gist-queue.ts`)
+covers lost deliveries, so (c) is already half there.
 
 ### Sizing and bandwidth (estimates, verify with a load test)
 
@@ -462,7 +485,10 @@ not. Nobody can use presence to tell what a particular member is listening to.
   Live/Ended state, so the card cannot be told apart from a deleted post. A Gist
   can be public (any eligible member) or **community-only** (members of one
   community); never invite-only, never guests without accounts. "Public" here
-  means open to any eligible member, not discoverable by strangers.
+  means open to any eligible member, not discoverable by strangers. **Built
+  (31 October 2026):** the Live now card on Home, from `GET /v1/gists/live`,
+  which lists a Gist only when opening it would succeed (allow-list, community,
+  removed list, the block rule); community pages and profiles come later.
 - **Blocks in a Gist are not section 3's meeting rule.** That rule refuses any
   join that puts a blocker and a blocked member in one room, which in a
   200-person room lets one early joiner lock others out. In a Gist a block is
@@ -490,7 +516,14 @@ not. Nobody can use presence to tell what a particular member is listening to.
   a moderator can **end a Gist** and revoke its link on the metadata alone;
   reports from distinct, long-standing members count more than a burst from new
   accounts; and a Gist with several such reports is hidden from the Live now
-  card and queued for a moderator (a proposal, tuned by use).
+  card and queued for a moderator (a proposal, tuned by use). **Built (31
+  October 2026):** Report in the room, for everyone in it but the host; the
+  report records who is in the room then (`gist_report_participants`); the
+  moderation queue shows it to site moderators and to the Gist's community
+  moderators, with **End the Gist** (the room is closed first, then the decision
+  logged). Account deletion keeps a reported Gist as evidence. Not yet: hiding a
+  much-reported Gist from Live now, weighting reports by account age, and the
+  host standing rule.
 - **Raids and hosts.** The host can **lock the room** (no new listeners), set a
   lower listener cap for that Gist, and require that listeners follow the host
   or are in the community. Joins are rate-limited per member and per Gist, so a
@@ -787,7 +820,10 @@ Each has a recommendation; the PR description repeats them.
    built (and fallback if the VPS fails)? Recommend yes for dev and staging
    experiments only, never production, because the code is the same.
 2. **Where is the server, and which provider?** Needs a measured Lagos test.
-   Recommend choosing on measured loss and RTT, not on price.
+   Recommend choosing on measured loss and RTT, not on price. *Provider decided
+   (31 October 2026): netcup for production (its own VPS 1000 ARM G12.5),
+   Contabo for staging. Still open: which netcup location, chosen on the Lagos
+   measurement.*
 3. **TURN on 443 (second IP) or 5349?** Recommend 5349 first, measure.
 4. **Moderator access to live or past calls?** Recommend none; metadata from
    reports only. Governance decision.
@@ -834,3 +870,13 @@ Each has a recommendation; the PR description repeats them.
 19. **Captions for Gists.** Is the "captions by the host" stopgap enough to
     start, or must server transcription (open question 8) come first? Recommend
     the stopgap for the allow-list, a decision before widening.
+20. **Voice effects (pitch shifting, voice changers, "voice masks") in Gists
+    and calls.** Not built, and the audio path is a clean pass-through: the web
+    client offers only the browser's own noise suppression, echo cancellation and
+    automatic gain control. A disguised voice in a live public room is a
+    means of impersonating someone and of evading a mute, a removal or a
+    report, and a room that leaves no recording cannot be corrected afterwards.
+    Recommend: do not offer any effect that changes who a voice sounds like,
+    until governance decides; if one is ever allowed, say so in the room to
+    everyone ("this speaker is using a voice effect"), and let a host switch it
+    off for their Gist.

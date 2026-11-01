@@ -355,6 +355,27 @@ sudo install -m 600 heynaija-origin-key.pem /etc/ssl/cloudflare/
    To roll back by running the workflow on a tag, allow tags too
    (`-f name='*' -f type=tag`). `ssh-deploy.sh` still deploys only commits on
    `staging`.
+5. **Only `staging` goes to `main`.** Make `staging` the default branch, so pull
+   requests open against it:
+
+   ```bash
+   gh api -X PATCH repos/HeyNaija/heynaija -f default_branch=staging
+   ```
+
+   `.github/workflows/main-takes-staging.yml` moves a pull request into `main`
+   from any other branch to `staging`, and fails where it cannot. Require its
+   check on `main` (15368 is GitHub Actions; admins can still bypass, for a fix
+   that cannot wait for staging):
+
+   ```bash
+   gh api repos/HeyNaija/heynaija/rulesets --input - <<'EOF'
+   {"name": "Main takes staging only", "target": "branch", "enforcement": "active",
+    "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+    "bypass_actors": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}],
+    "rules": [{"type": "required_status_checks", "parameters": {"strict_required_status_checks_policy": false,
+      "required_status_checks": [{"context": "Only staging goes to main", "integration_id": 15368}]}}]}
+   EOF
+   ```
 
 ## 5. First deploy
 
@@ -485,6 +506,13 @@ Recommended: a free healthchecks.io check expecting a daily ping, its URL in
 Backups cover both databases (members, posts, moderation; accounts and
 sessions). Media lives only in R2.
 
+Before each backup, `backup.sh` runs `kratos-cleanup.sh`, which deletes Kratos's
+copies of the emails it sent once they are older than
+`KRATOS_SENT_MAIL_KEEP_DAYS` (7 by default). Kratos would otherwise keep every
+sign-in code email, with its address, for good, even after the account is
+deleted (docs/adr/0016). It runs from the same cron line; nothing else to set up.
+To run it by hand: `bash /srv/heynaija/infra/deploy/kratos-cleanup.sh`.
+
 **Rehearse a restore** before inviting anyone: on a laptop or spare machine with
 the same setup and the key, `./restore.sh latest ~/heynaija-backup.key`. It asks
 you to type `restore`, replaces both databases and restarts. Then sign in with an
@@ -529,6 +557,7 @@ existing account.
 | Logs                  | `docker compose logs -f --tail 100 api` (or `web`, `kratos`)                                                                                 |
 | Invite people         | `docker compose exec api node dist/cli/create-invite.js --uses 5 --days 14`                                                              |
 | Change the nginx site | edit `infra/deploy/nginx/heynaija.conf.template`, deploy, then `sudo ./install-nginx.sh`                                                     |
+| Gists (LiveKit)       | its own server: [livekit.md](livekit.md); turning Gists on here is its step 5                                                                |
 
 The server keeps the last five releases' images, so a rollback to one of them
 needs no registry. For an older one, `deploy.sh` pulls from GitHub's registry,

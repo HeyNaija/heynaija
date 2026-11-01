@@ -17,6 +17,7 @@
     "db:check": "bash scripts/db-check.sh",
     "infra:env": "infra/scripts/gen-dev-env.sh",
     "infra:up": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml up -d --remove-orphans",
+    "infra:livekit": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml --profile calls up -d livekit",
     "infra:down": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml down",
     "infra:logs": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml logs -f",
     "build": "pnpm -r build",
@@ -34,6 +35,7 @@
     "mod:revoke": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api moderator revoke",
     "founder:grant": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api founder grant",
     "founder:revoke": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api founder revoke",
+    "privacy-request": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api privacy-request",
     "media:init": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api media:init",
     "demo:seed": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api demo:seed",
     "demo:clean": "pnpm --silent --filter @heynaija/api build && pnpm --silent --filter @heynaija/api demo:clean"
