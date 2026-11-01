@@ -12,6 +12,7 @@ import {
   Post,
   Put,
   Query,
+  Optional,
   Req,
   UseGuards,
 } from '@nestjs/common'
@@ -30,6 +31,8 @@ import { LinksService } from '../links/links.service.js'
 import { MediaService } from '../media/media.service.js'
 import type { FlagKey } from '../flags/registry.js'
 import { RateLimiter } from '../rate-limit.js'
+import { VideoGate } from '../video/video-gate.js'
+import { VideoService } from '../video/video.service.js'
 import {
   CommunityNotFoundError,
   ImagesNotReadyError,
@@ -44,6 +47,7 @@ import {
   PostsService,
   QuotedPostNotFoundError,
   ReplyNotAllowedError,
+  VideoNotReadyError,
 } from './posts.service.js'
 import { DISCOVER_RULES, discoverPageQuery } from './discover.js'
 import { parseHashtag } from './hashtags.js'
@@ -77,6 +81,9 @@ export class PostsController {
     @Inject(LinksService) private readonly links: LinksService,
     @Inject(RateLimiter) private readonly limits: RateLimiter,
     @Inject(FeatureFlags) private readonly flags: FeatureFlags,
+    // Video (ADR 0019). Without the gate video is closed: a post cannot be made with one.
+    @Optional() @Inject(VideoGate) private readonly videoGate?: VideoGate,
+    @Optional() @Inject(VideoService) private readonly videos?: VideoService,
   ) {}
 
   /** A new post using something that is switched off is refused, not quietly stripped of it. */
@@ -166,7 +173,10 @@ export class PostsController {
   @Post('posts')
   @UseGuards(SessionGuard)
   async create(@Req() req: AuthedRequest, @Body() body: unknown) {
-    const { text, replyTo, community, images, quote, poll, replyAudience } = parse(createPostBody, body)
+    const { text, replyTo, community, images, video, quote, poll, replyAudience } = parse(createPostBody, body)
+    if (video && !(await this.videoGate?.isOpen(req.member.id))) {
+      throw new BadRequestException({ code: 'feature_unavailable', message: 'Videos are not available yet' })
+    }
     if (poll) await this.requireFeature(req, 'polls', 'Polls')
     if (replyAudience !== 'everyone') await this.requireFeature(req, 'replyControls', 'Reply controls')
     if (quote) await this.requireFeature(req, 'quotePosts', 'Quote posts')
@@ -176,6 +186,7 @@ export class PostsController {
         replyTo,
         communitySlug: community,
         images,
+        video,
         quote,
         poll,
         replyAudience,
@@ -198,6 +209,8 @@ export class PostsController {
               ? 'not_a_member'
               : err instanceof ImagesNotReadyError
                 ? 'images_not_ready'
+                : err instanceof VideoNotReadyError
+                  ? 'video_not_ready'
                 : err instanceof PollOptionsError
                   ? 'poll_options_invalid'
                   : null
@@ -250,6 +263,7 @@ export class PostsController {
     if (!(await this.posts.remove(req.member.id, postId(id)))) throw new NotFoundException()
     // Deleting a post takes its images down too.
     await this.media.discardPostImages(id)
+    await this.videos?.discardPostVideos(id)
   }
 
   @Put('posts/:id/like')

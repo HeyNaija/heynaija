@@ -15,7 +15,7 @@ export type PostVideo = {
   renditions: { height: number; width: number; bytes: number }[]
 }
 
-type VideoRow = {
+export type VideoRow = {
   id: string
   alt: string
   durationMs: number
