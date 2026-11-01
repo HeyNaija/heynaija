@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { members } from '@heynaija/db'
+import { media, members } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { GovernanceService } from '../governance/governance.service.js'
 import { MembersService } from '../members/members.service.js'
@@ -175,4 +175,22 @@ test('an export includes the age confirmation and verification history, but neve
   const text = JSON.stringify(data)
   assert.equal(text.includes('personKey'), false)
   assert.equal(text.includes('person-ada'), false)
+})
+
+test('an export lists a post’s ready video (path and poster); held, unattached and others’ videos stay out', async () => {
+  const withVideo = await postsService.create(ada, 'my clip')
+  const plain = await postsService.create(ada, 'no clip')
+  const other = await postsService.create(bayo, 'theirs')
+  const row = (ownerId: string, status: typeof media.$inferInsert['status'], postId: string | null) =>
+    db.insert(media).values({ ownerId, kind: 'post_video', status, contentType: 'video/mp4', bytes: 1, postId, position: postId ? 0 : null }).returning({ id: media.id }).then((r) => r[0]!.id)
+  const ready = await row(ada, 'ready', withVideo.id)
+  await row(ada, 'quarantined', plain.id)
+  await row(ada, 'ready', null)
+  await row(bayo, 'ready', other.id)
+
+  const data = (await service.export(ada, null))!
+  assert.equal(data.format, 'heynaija-export/12')
+  const byText = (text: string) => data.posts.find((p) => p.text === text)!
+  assert.deepEqual(byText('my clip').videos, [{ url: `/media/videos/${ready}`, poster: `/media/videos/${ready}/poster.webp` }])
+  assert.deepEqual(byText('no clip').videos, [])
 })

@@ -9,6 +9,18 @@ export class MemoryVideoStore implements VideoStore {
   readonly objects = new Map<string, Buffer>()
   readonly uploads = new Map<string, { key: string; parts: Map<number, Buffer> }>()
   readonly aborted: string[] = []
+  /** Test hook: the next call of `op` whose key contains `match` throws once, then works. */
+  private failing: { op: 'remove' | 'abortMultipart'; match: string }[] = []
+  failOnce(op: 'remove' | 'abortMultipart', match: string) {
+    this.failing.push({ op, match })
+  }
+  private maybeFail(op: 'remove' | 'abortMultipart', key: string) {
+    const i = this.failing.findIndex((f) => f.op === op && key.includes(f.match))
+    if (i >= 0) {
+      this.failing.splice(i, 1)
+      throw new Error(`storage failed on ${op} ${key}`)
+    }
+  }
   private n = 0
   private k = (bucket: Bucket, key: string) => `${bucket}/${key}`
 
@@ -27,6 +39,7 @@ export class MemoryVideoStore implements VideoStore {
     this.objects.set(this.k(bucket, key), body)
   }
   async remove(bucket: Bucket, key: string) {
+    this.maybeFail('remove', key)
     this.objects.delete(this.k(bucket, key))
   }
   async createMultipart(key: string) {
@@ -48,7 +61,8 @@ export class MemoryVideoStore implements VideoStore {
     this.objects.set(this.k('uploads', key), Buffer.concat(parts.map((p) => u.parts.get(p.partNumber)!)))
     this.uploads.delete(uploadId)
   }
-  async abortMultipart(_key: string, uploadId: string) {
+  async abortMultipart(key: string, uploadId: string) {
+    this.maybeFail('abortMultipart', key)
     this.uploads.delete(uploadId)
     this.aborted.push(uploadId)
   }

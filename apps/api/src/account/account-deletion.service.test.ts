@@ -142,6 +142,8 @@ let failFiles: boolean
 let gistsEnded: string[]
 let deletion: AccountDeletionService
 let videoStore: MemoryVideoStore
+let videoService: VideoService
+let moderationWithVideo: ModerationService
 const videoPurged: string[] = []
 const postsService = new PostsService(db)
 const membersService = new MembersService(db)
@@ -171,6 +173,7 @@ beforeEach(async () => {
   const mediaService = new MediaService(db, store, jobs)
   videoStore = new MemoryVideoStore()
   videoPurged.length = 0
+  videoService = new VideoService(db, videoStore, { processVideo: async () => {}, purgeCdn: async (keys) => void videoPurged.push(...keys) }, DEFAULT_VIDEO_CONFIG)
   deletion = new AccountDeletionService(
     db,
     env,
@@ -181,8 +184,9 @@ beforeEach(async () => {
     // GistsService.endHostedBy has its own tests; here, that the erase asks for it before the rows go.
     { endHostedBy: async (id) => void gistsEnded.push(`${id} with ${await count(gists, eq(gists.hostId, id))} Gists`) },
     notices,
-    new VideoService(db, videoStore, { processVideo: async () => {}, purgeCdn: async (keys) => void videoPurged.push(...keys) }, DEFAULT_VIDEO_CONFIG),
+    videoService,
   )
+  moderationWithVideo = new ModerationService(db, undefined, undefined, undefined, videoService)
 })
 after(() => pool.end())
 
@@ -892,4 +896,50 @@ test('the video erase can be repeated after a failure (rows go last)', async () 
   assert.equal(await deletion.erase(xena, days(14)), 'erased')
   assert.deepEqual(videoStore.keys('media'), [])
   assert.equal(await count(videoDetails, eq(videoDetails.mediaId, ready)), 0)
+})
+
+test('a failed video erase leaves its rows, so the retry finds the same files; the retry removes them, then the rows', async () => {
+  const { id: postId } = await postsService.create(xena, 'my clip')
+  const ready = await video(xena, 'ready', postId)
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  videoStore.failOnce('remove', renditionKey(ready, 360))
+  await assert.rejects(() => deletion.erase(xena, days(14)), /storage failed on remove/)
+  assert.equal(await count(videoDetails, eq(videoDetails.mediaId, ready)), 1, 'the scan row survives the failure')
+  assert.equal(await count(videoRenditions, eq(videoRenditions.mediaId, ready)), 1, 'and so do the renditions that name the files')
+  assert.equal((await member(xena)).deletedAt, null, 'the erase is not marked done')
+
+  assert.equal(await deletion.erase(xena, days(14)), 'erased')
+  assert.deepEqual(videoStore.keys('media'), [])
+  assert.equal(await count(videoDetails, eq(videoDetails.mediaId, ready)), 0)
+  assert.equal(await count(videoRenditions, eq(videoRenditions.mediaId, ready)), 0)
+})
+
+test('a failed abort of an open upload is not swallowed: the upload id survives and the retry aborts it', async () => {
+  const uploading = await video(xena, 'uploading')
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  videoStore.failOnce('abortMultipart', originalKey(uploading))
+  await assert.rejects(() => deletion.erase(xena, days(14)), /storage failed on abortMultipart/)
+  assert.equal((await db.select().from(videoDetails).where(eq(videoDetails.mediaId, uploading)))[0]!.uploadId, `up-${uploading}`)
+  assert.deepEqual(videoStore.aborted, [])
+
+  assert.equal(await deletion.erase(xena, days(14)), 'erased')
+  assert.deepEqual(videoStore.aborted, [`up-${uploading}`])
+  assert.equal(await count(videoDetails, eq(videoDetails.mediaId, uploading)), 0)
+})
+
+test('restoring a removed post whose author was erased does not republish the video: it stays private', async () => {
+  const { id: postId } = await postsService.create(xena, 'my clip')
+  const id = await video(xena, 'ready', postId)
+  await moderationWithVideo.report(yemi, { postId }, 'spam')
+  const [report] = await db.select().from(reports).where(eq(reports.postId, postId))
+  await moderationWithVideo.resolve(sam, report!.id, 'remove_post')
+  assert.equal((await db.select().from(media).where(eq(media.id, id)))[0]!.status, 'quarantined')
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  assert.equal(await deletion.erase(xena, days(14)), 'erased')
+  await moderationWithVideo.restorePost(sam, postId)
+
+  assert.equal((await db.select().from(media).where(eq(media.id, id)))[0]!.status, 'quarantined')
+  assert.deepEqual(videoStore.keys('media'), [])
+  assert.ok(videoStore.keys('uploads').includes(`quarantine/${renditionKey(id, 360)}`))
 })

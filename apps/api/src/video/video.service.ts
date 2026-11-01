@@ -254,7 +254,9 @@ export class VideoService {
       .select({ id: media.id })
       .from(media)
       .innerJoin(videoDetails, eq(videoDetails.mediaId, media.id))
-      .where(and(eq(media.postId, postId), eq(media.kind, 'post_video'), eq(media.status, 'quarantined'), eq(videoDetails.scanResult, 'clear')))
+      .innerJoin(posts, eq(posts.id, media.postId))
+      // Never a deleted post's (an erased author's evidence stays private), as for images.
+      .where(and(eq(media.postId, postId), eq(media.kind, 'post_video'), eq(media.status, 'quarantined'), eq(videoDetails.scanResult, 'clear'), isNull(posts.deletedAt)))
     for (const { id } of rows) {
       for (const key of await this.publishedKeys(id)) {
         if ((await this.store.size('uploads', quarantinedKey(key))) === null) continue
@@ -307,8 +309,9 @@ export class VideoService {
         await this.quarantine(id)
         continue
       }
-      // An upload that was completed or aborted already has nothing to abort.
-      if (uploadId) await this.store.abortMultipart(originalKey(id), uploadId).catch(() => undefined)
+      // Not swallowed: the store already tolerates an upload that is gone, and a real failure must fail the
+      // erase while this row still holds the upload id, so the retry can abort it.
+      if (uploadId) await this.store.abortMultipart(originalKey(id), uploadId)
       const keys = await this.publishedKeys(id)
       await this.erase(id, null)
       // The CDN may still hold what was public.
