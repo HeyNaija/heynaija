@@ -28,6 +28,8 @@ test('a community moderator adds a photo that everyone sees, then removes it', a
   await expect(guest.getByRole('button', { name: /community photo/i })).toHaveCount(0)
 
   await mod.page.goto(`/c/${slug}`)
+  // The control is disabled until the page has hydrated; a file chosen before then goes nowhere.
+  await expect(mod.page.getByRole('button', { name: 'Add a community photo' })).toBeEnabled()
   await mod.page.getByLabel('Community photo').setInputFiles({ name: 'lagos.png', mimeType: 'image/png', buffer: png(600, 400) })
   const photo = mod.page.locator('.community-header .community-mark img')
   await expect(photo).toBeVisible({ timeout: 30_000 })
@@ -37,11 +39,17 @@ test('a community moderator adds a photo that everyone sees, then removes it', a
   await guest.reload()
   const shown = guest.locator('.community-header .community-mark img')
   await expect(shown).toHaveAttribute('src', /^\/media\/community-photos\/[0-9a-f-]+\/256\.webp$/)
-  // The browser picks the 96px or 256px file for the screen; whichever it loaded is a square of that size.
+  // The browser picks the 96px or 256px file for the screen, and whichever it loaded is a
+  // square of that size. The srcset scales naturalWidth to the 52px tile, so the file is
+  // measured on its own.
   await expect.poll(() => shown.evaluate((img: HTMLImageElement) => (img.complete ? img.naturalWidth : 0))).toBeGreaterThan(0)
-  const loaded = await shown.evaluate((img: HTMLImageElement) => ({ src: img.currentSrc, width: img.naturalWidth, height: img.naturalHeight }))
-  expect(loaded.src).toMatch(new RegExp(`/${loaded.width}\\.webp$`))
-  expect([[96, 96], [256, 256]]).toContainEqual([loaded.width, loaded.height])
+  const file = await shown.evaluate(async (img: HTMLImageElement) => {
+    const alone = new Image()
+    alone.src = img.currentSrc
+    await alone.decode()
+    return [img.currentSrc.split('/').pop(), alone.naturalWidth, alone.naturalHeight]
+  })
+  expect([['96.webp', 96, 96], ['256.webp', 256, 256]]).toContainEqual(file)
   await guest.goto('/c')
   await expect(guest.locator('li.community-card', { hasText: name }).locator('.community-mark img')).toHaveAttribute('src', /^\/media\/community-photos\/[0-9a-f-]+\/256\.webp$/)
 

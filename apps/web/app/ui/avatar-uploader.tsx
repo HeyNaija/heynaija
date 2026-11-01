@@ -8,7 +8,7 @@ import { useSquarePhotoUpload } from './use-square-photo-upload'
 
 export function AvatarUploader({ handle, avatar }: { handle: string; avatar: string | null }) {
   const input = useRef<HTMLInputElement>(null)
-  const { status, error, busy, choose, remove } = useSquarePhotoUpload({
+  const { status, error, disabled, choose, remove } = useSquarePhotoUpload({
     start: startAvatarUpload,
     finish: finishAvatarUpload,
     remove: removeAvatar,
@@ -19,14 +19,14 @@ export function AvatarUploader({ handle, avatar }: { handle: string; avatar: str
       <Avatar handle={handle} src={avatar} size={72} />
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => input.current?.click()}>
+          <button type="button" className="btn btn-secondary btn-sm" disabled={disabled} onClick={() => input.current?.click()}>
             {avatar ? 'Change photo' : 'Add a photo'}
           </button>
           {avatar ? (
             <button
               type="button"
               className="btn btn-ghost btn-sm"
-              disabled={busy}
+              disabled={disabled}
               onClick={remove}
             >
               Remove photo

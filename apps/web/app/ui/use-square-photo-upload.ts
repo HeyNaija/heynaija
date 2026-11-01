@@ -1,10 +1,11 @@
 'use client'
 
-import { type ChangeEvent, useState } from 'react'
+import { type ChangeEvent, useState, useSyncExternalStore } from 'react'
 import type { UploadTicket } from '@/app/actions'
 import { IMAGE_TYPES, shrinkImage } from './shrink-image'
 
 const MAX_BYTES = 5 * 1024 * 1024
+const unchanging = () => () => {}
 
 /**
  * The steps of a square photo, a profile or a community photo: shrunk in the
@@ -25,6 +26,9 @@ export function useSquarePhotoUpload({
   const [error, setError] = useState<string | null>(null)
   // Plain state, not a transition: each step's message must show as it happens.
   const [busy, setBusy] = useState(false)
+  // False in the server's HTML and until hydration: a photo chosen before then
+  // would go nowhere, so the controls wait (`disabled`) until it can be handled.
+  const ready = useSyncExternalStore(unchanging, () => true, () => false)
 
   /** Runs `work` with the controls disabled; what it returns, or a throw, becomes the error line. */
   const run = async (work: () => Promise<string | null | undefined>) => {
@@ -63,7 +67,8 @@ export function useSquarePhotoUpload({
   return {
     status,
     error,
-    busy,
+    /** The controls cannot be used: not hydrated yet, or a step is running. */
+    disabled: busy || !ready,
     /** For the file input's onChange. */
     choose: (e: ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]

@@ -21,11 +21,11 @@ export function CommunityPhotoEditor({ slug, hasPhoto, siteModerator }: { slug: 
   return (
     <div className="mt-4">
       <div className="community-photo-editor">
-        <button type="button" className="btn btn-secondary btn-sm" disabled={photo.busy} onClick={() => input.current?.click()}>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={photo.disabled} onClick={() => input.current?.click()}>
           {hasPhoto ? 'Change community photo' : 'Add a community photo'}
         </button>
         {hasPhoto ? (
-          <button type="button" className="btn btn-ghost btn-sm" disabled={photo.busy} onClick={photo.remove}>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={photo.disabled} onClick={photo.remove}>
             Remove photo
           </button>
         ) : null}
