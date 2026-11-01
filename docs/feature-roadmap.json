@@ -1413,12 +1413,14 @@
       "availability": "not_live",
       "evidence": [
         "apps/api/src/media/media.service.ts",
-        "apps/web/app/ui/post-images.tsx"
+        "apps/web/app/ui/post-images.tsx",
+        "docs/adr/0019-video-posts.md"
       ],
       "dependency": [
-        "upload-scanning"
+        "upload-scanning",
+        "low-data-controls"
       ],
-      "notes": "Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built."
+      "notes": "Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built. Designed in ADR 0019 (proposed): one 60-second clip a post, uploaded in parts, scanned by sampled frames and transcoded by a self-hosted ffmpeg worker, behind a videoPosts flag that stays off in production until the scanner is real and a named person signs off."
     },
     {
       "id": "live-audio",

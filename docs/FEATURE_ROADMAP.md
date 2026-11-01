@@ -737,9 +737,9 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `video`
 - **Priority:** P2 · **Status:** Planned · **Availability:** Not live
 - **Description:** Support video with accessible playback and appropriate safety processing.
-- **Dependencies:** `upload-scanning`
-- **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`
-- **Audit notes:** Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built.
+- **Dependencies:** `upload-scanning`, `low-data-controls`
+- **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`, `docs/adr/0019-video-posts.md`
+- **Audit notes:** Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built. Designed in ADR 0019 (proposed): one 60-second clip a post, uploaded in parts, scanned by sampled frames and transcoded by a self-hosted ffmpeg worker, behind a videoPosts flag that stays off in production until the scanner is real and a named person signs off.
 
 ## P3 — Later experiments
 
