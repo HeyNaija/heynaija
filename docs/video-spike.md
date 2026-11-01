@@ -64,6 +64,29 @@ This is a synthetic test pattern, which encodes far faster than real footage, so
 **treat it as a floor, not a forecast**. The ADR's capacity question should be
 answered on staging hardware with real clips.
 
+## What the worker's container does and does not do
+
+`video-worker` in `infra/deploy/compose.yml` (ADR 0019 section 3.4). Written, **not
+run**: no Docker from a worktree, so the compose file was only parsed, and the image
+build only ran if CI's `images` job did.
+
+Does: its own environment, listing exactly what `worker-env.ts` reads (no Kratos
+webhook secret or admin URL, no VAPID key, no LiveKit or Cloudflare secrets); read-only
+root with a 2 GB `/tmp` tmpfs; `cap_drop: ALL`; `no-new-privileges`; `cpus` and memory
+from `.env` (2 and 1.5g by default, as the ADR; set 1 and 1g on staging); a PID limit;
+non-root user (the `api` image's `node`); a pinned ffmpeg (`7:5.1.9-0+deb12u1`, bumped
+by hand with security releases: the build fails when Debian drops it); a network of
+its own holding only Postgres and Redis, so it cannot reach Kratos, the API or the web
+app. Postgres and Redis are now on that network as well as the default one (a change
+to two running services: they are recreated on the next deploy).
+
+Does **not**: filter outbound traffic. The worker must reach object storage, PhotoDNA
+and SMTP over the internet, and Docker has no per-host egress rule, so a compromised
+ffmpeg could still call out to the internet and to Postgres and Redis. Restricting
+that is a host firewall job. `-protocol_whitelist file,pipe` and the job deadline are
+ffmpeg flags, not container confinement. It is also not `nice`d, and the
+`video-worker` is not started by default (`--profile video`).
+
 ## Not verified
 
 - Anything on R2 (above).

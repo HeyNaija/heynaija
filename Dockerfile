@@ -40,8 +40,11 @@ CMD ["node", "dist/main.js"]
 # The worker holds videos "quarantined" until a scanner is set: docs/safety/video-scanning.md.
 FROM api AS video-worker
 USER root
+# Pinned (ADR 0019 section 3.4). Debian drops a superseded version, so a security release
+# makes this build fail until someone bumps it and re-runs the video tests: that is the point.
+ARG FFMPEG_VERSION=7:5.1.9-0+deb12u1
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg \
+ && apt-get install -y --no-install-recommends ffmpeg=${FFMPEG_VERSION} \
  && rm -rf /var/lib/apt/lists/*
 USER node
 CMD ["node", "dist/video/worker-main.js"]
