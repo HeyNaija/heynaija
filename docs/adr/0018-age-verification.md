@@ -1,7 +1,10 @@
 # ADR 0018 — Age verification: how a member proves they are an adult
 
 **Date:** 31 October 2026 · **Status:** Proposed, design only. Nothing is built:
-no schema, no migration, no endpoint, no provider account, no UI. ·
+no schema, no migration, no endpoint, no provider account, no UI. (A Didit
+integration was built in PR #69 and parked on 1 November 2026; it is not merged,
+and the choice of provider is open again. This ADR keeps the Didit analysis because
+the price and coverage facts still stand.) ·
 **Roadmap:** `age-verification` (blocks `direct-messages`, and through it
 `calls-and-meetings`) · **Related:** [ADR 0006](0006-age-status-model.md),
 [ADR 0016](0016-direct-messages.md), [ADR 0017](0017-calls-and-meetings.md),
@@ -20,14 +23,18 @@ document coverage, run only when a member chooses to verify, and keep three fact
 about the result: when, which provider reference, and the band (`18_plus`).** Never
 the document, the selfie, the date of birth or the document number.
 
-- **Recommended: Smile ID**, because it is the only candidate whose published
-  documentation lists Nigerian driver's licence, passport, voter's card and
-  national ID as document types, and it also does government-database NIN and BVN
-  lookups. **Its price is not published, so this is conditional on a written
+- **Recommended: Smile ID**, because its published documentation lists Nigerian
+  driver's licence, passport, voter's card and national ID as document types, and
+  it also does government-database NIN and BVN lookups. Youverify also lists
+  driver's licence, ID card, passport and voter ID (Option A table), so it is a
+  second candidate to get a quote from, not ruled out. **Its price is not published, so this is conditional on a written
   quote, a data processing agreement and the answers in section 8.**
 - **Runner-up: Didit**, which publishes prices (about $0.33 per full check, 500 free
   a month, $0.10 for age estimation only, NIN $0.20 and BVN $0.35 by database
-  lookup). It is cheapest and the easiest to try on staging. Its depth on Nigerian
+  lookup). It is the cheapest of the prices actually published, and the easiest to
+  try on staging; Dojah ("from $0.06 per call") and Prembly (about $0.12) are
+  lower on paper but both figures are unverified. A Didit build (PR #69) was
+  parked on 1 November 2026, so nothing here is a commitment to it. Its depth on Nigerian
   documents, accuracy on Nigerian faces and data residency are unverified.
 - **Not recommended as the only route: facial age estimation alone** (Yoti and
   similar). It gives an estimate with a margin of error, not a proof, and nobody
@@ -110,8 +117,11 @@ Nigerian adults can complete, because nearly everyone has a NIN or a BVN.
   opened); resellers ₦30 to ₦250 (not opened). Smile ID, Dojah, Prembly and
   Youverify: not published.
 - **Policy conflict.** The rollout doc says the provider must not *require* a
-  NIN. A provider that offers the NIN lookup as one of several routes does not
-  require it, and the provider, not HeyNaija, holds the NIMC access. Direct NIMC
+  NIN. For a member who has only a NIN slip, a document route that has no NIN-slip
+  type (Smile ID, above) leaves the NIN or BVN lookup as the only way in, so for
+  the most common case this route *does* require a NIN or BVN. It is optional only
+  for members holding a driver's licence, passport or voter's card. The provider,
+  not HeyNaija, holds the NIMC access. Direct NIMC
   access needs a formal request and an MOU (NIMC verification service page) and
   is the NINAuth work still locked in `open-items.md`. **Do not go direct.**
   Whether a provider-run NIN lookup is acceptable alongside the locked NIN flag
@@ -130,7 +140,7 @@ not a per-check price). Onfido/Entrust and Incode: not checked. Nigerian
 document coverage for all of these: **not confirmed** from the vendors' own
 pages (Veriff's help page lists document types only in general). Data
 residency: Veriff's page gives no region. Choose these only if A fails; they
-cost three to eight times Didit and cover Nigeria less certainly.
+cost about 2.4 to 5.7 times Didit per check ($0.80 to $1.89 against $0.33) and cover Nigeria less certainly.
 
 ### Option D: Facial age estimation only (Yoti and others)
 
@@ -195,16 +205,19 @@ day, which I have not assumed. Price inputs are in section 1 and the Sources sec
 | Cost to verify (one-off) | 200 members | 2,000 | 20,000 |
 | --- | --- | --- | --- |
 | Didit full check, $0.33, nothing free | $86 | $858 | $8,580 |
-| Didit full check, with 500 free a month (cumulative signups spread over 6 months or more) | about $0 | about $0 to $400 | about $8,000 |
+| Didit full check, with 500 free a month, signups spread evenly over 6 months | $0 | $0 | about $7,600 |
+| The same, if all signups bunch into one month | $0 | about $690 | about $8,400 |
 | Didit age estimate only, $0.10 | $26 | $260 | $2,600 |
 | Didit NIN lookup, $0.20 | $52 | $520 | $5,200 |
-| Veriff Essential, $0.80 | $160 (the $49 monthly minimum applies) | $1,600 | $16,000 (above the 10,000 sessions a month self-serve cap if signups bunch; enterprise quote) |
-| Veriff Premium, $1.89 | $378 | $3,780 | $37,800 |
+| Veriff Essential, $0.80 | $294 (6 months of the $49 minimum; usage is only $160) | $1,600 | $16,000 (above the 10,000 sessions a month self-serve cap if signups bunch; enterprise quote) |
+| Veriff Premium, $1.89 | $1,254 (6 months of the $209 minimum; usage is only $378) | $3,780 | $37,800 |
 | Smile ID, Dojah, Prembly, Youverify, Persona, Yoti | **not published** | | |
 
-Reading it. At the pilot sizes the money does not decide the choice: even
-Veriff Premium is under $400 at 200 members. At 20,000 it is $8,000 to $38,000 a
-year-equivalent, which is large for a nonprofit, so we negotiate volume pricing
+Reading it. Veriff's monthly minimums, not usage, set its cost at 200 members
+(the Veriff rows assume the same 6 months as the Didit free-tier row). At the
+pilot sizes the money is small beside the other work, but it is not zero: Veriff
+Premium is about $1,250 at 200 members. At 20,000 members the one-off cost is
+$7,600 to $37,800, which is large for a nonprofit, so we negotiate volume pricing
 with Smile ID before 2,000 and compare it to Didit's. Operator time, review of
 refused members and provider support are real costs not modelled. Re-verification
 (for example after a lapse) is extra and not modelled.
@@ -222,7 +235,8 @@ access). Section numbers for the Act below are from secondary summaries and are
   biometric data used to identify a person as sensitive **(unverified section)**.
   Our check is optional, so **explicit, withdrawable consent** is both workable
   and the safest basis. Consent text should be versioned like
-  `identity_verifications.consentVersion`.
+  `identity_verifications.consentVersion`, and the version and time the member
+  agreed are stored (section 5).
 - **Data minimisation and storage limitation** are NDPA principles
   **(section unverified)**: the design in section 5 follows them.
 - **Children.** GAID Article 18 requires consent for children's data, and one
@@ -282,24 +296,58 @@ verified row, see section 5).
 | --- | --- |
 | `band` | `18_plus` (never `under_18` from this path) |
 | `method` | `age_assurance_provider` |
-| `assuredAt` | the `ageVerifiedAt` time |
+| `assuredAt` | when the check passed |
 | `provider` (new, text) | for example `smileid` |
-| `providerRef` (new, text) | the provider's job or session id, so we can ask them to delete it or answer an appeal |
+| `providerRef` (new, text) | the provider's job or session id, so we can ask them to delete it or answer an appeal. Unique per (`provider`, `providerRef`) |
+| `consentVersion` (new, text) | the version of the consent text the member agreed to |
+| `consentedAt` (new, timestamp) | when they agreed |
 | `withdrawnAt` | existing |
 
 Nothing else: no selfie, no document image, no document number, no date of
-birth, no name from the document, no raw provider response. If the provider
-returns a mismatch or an under-18, we record **no** under-18 row (the rollout doc
-says below-minimum is refused with no age record) and keep only a short
-`age_verification_attempts` count per member for rate limiting (counter and
-last attempt time, deleted with the account).
+birth, no name from the document, no raw provider response.
+
+**Who works out 18+.** These providers return a date of birth or an "Approved"
+status, not a band. "Approved" means 18+ only if the hosted workflow's minimum-age
+rule is set to 18, which must be configured and tested, not assumed. Our webhook
+handler works out 18+ from the date of birth (or checks that the workflow's
+minimum-age rule is the thing that approved it), writes the band, and drops the date
+of birth immediately, before anything is logged or stored. The handler accepts
+only a document check, or a database lookup with a face match. An estimate-only
+result is never accepted, because the row would count as `verified` (see
+"The API seam").
+
+**Attempts.** A table `age_verification_attempts`, one row per attempt
+(`memberId`, `startedAt`, `outcome`, `consentVersion`, `consentedAt`), including
+refused ones, so refusals leave a record of what the member agreed to. It is
+what the retry limits in section 6 count, and it is deleted with the account. It
+holds no date of birth and no reason beyond the outcome.
+
+**A refused or under-18 result.** A mismatch or low-confidence result is refused
+with no age record (the rollout doc's rule for refusing a signup). But a member
+already has an account with a self-declared 18+ row, so a *confirmed* under-18
+result (a date of birth under 18 from a document or registry, not a low-confidence
+or mismatch refusal) is not dropped: the handler raises an operator alert, and a
+moderator opens the mistaken-age process below. The date of birth is still not
+stored; the alert says only "provider confirmed under 18" and the `providerRef`.
+The provider handler itself never writes an `under_18` row.
 
 **Where the data lives while the check runs.** The member's browser talks to the
 provider's hosted flow or SDK; images go from the phone to the provider and
-never through our API or storage. We receive a signed webhook (or fetch the
-result with a server key) containing a pass/fail and a band; the handler checks
-the signature, the reference and that the over-18 result belongs to the member
-who started it (a state value we generate), then writes the row.
+never through our API or storage. We receive a signed webhook, and the handler
+treats it only as a prompt to act: it
+- checks the signature and a timestamp window (a stale signed message is
+  rejected);
+- re-fetches the decision from the provider with a server key instead of trusting
+  the body;
+- checks the reference and that the result belongs to the member who started it
+  (a state value we generate);
+- relies on a unique index on (`provider`, `providerRef`), so a duplicate delivery
+  writes nothing;
+- never creates a row for a `providerRef` whose row was withdrawn: a replayed
+  "approved" must not re-verify a member a moderator has withdrawn. A member who
+  needs to verify again starts a new session with a new `providerRef`.
+
+Only then does it write the row.
 
 **Retention at the provider.** Set to the shortest the contract allows
 (Veriff Essential's default is 3 months; Smile ID and Didit: **unverified**),
@@ -311,40 +359,72 @@ train models.
 the live proof; a withdrawn row is kept as history (ADR 0006), except on
 account deletion.
 
-**Deletion on account deletion.** Delete the member's `age_assurances` rows (all,
-including withdrawn), call the provider's delete API for each `providerRef`,
-and delete the attempts counter. The existing account-deletion process (30-day
-window, confirm in code) runs this. A deletion failure at the provider goes
-to a retry queue and an operator alert; the member is told in `/privacy`. This
-conflicts with "history" in ADR 0006 and needs counsel to settle for fraud and
-safeguarding records.
+**Deletion on account deletion.** The account-deletion process (ADR 0016,
+account deletion: a 14-day grace period, `ACCOUNT_DELETION_GRACE_DAYS`) already
+deletes the member's `age_assurances` rows, withdrawn ones included, inside its
+erase transaction (`account-deletion.service.ts`); that is decided and built. This
+work adds two things to it. It deletes the `age_verification_attempts` rows. And
+it reads the `providerRef`s **before** that transaction deletes the rows, then calls
+the provider's delete API for each; otherwise the provider-delete retry queue has
+nothing to retry. A deletion failure at the provider goes to the retry queue and an
+operator alert; the member is told in `/privacy`.
 
 **The API seam.** Today the only age test is `isAdultFor(ageStatus(records), purpose)`.
 ADR 0016 adds a purpose; this ADR names the wrapper:
 
 ```ts
 // ADULT_ASSURANCE_REQUIRED gains: direct_messages: 'verified'
-isAgeVerifiedAdult(memberId): Promise<boolean>
-// = isAdultFor(await ageStatusOf(memberId), 'direct_messages')
+// stays synchronous: callers load the status up front
+isAgeVerifiedAdult(member, { ...config }): boolean
+// = isAdultFor(member.ageStatus, 'direct_messages')
 ```
 
-It reads live rows on every call, never caches across requests, and returns false
-when the feature flag is off, when nothing is on record and for `reviewed` or
-`declared` only. Routes, `canMessage` and `canCall` call it; nothing reads
+The calls branches (#54, #62) already call a synchronous
+`isAgeVerifiedAdult(member, { callsMembers })`, as `if (!isAgeVerifiedAdult(me, this.config))`.
+Making it `Promise<boolean>` would turn any call site missed in the conversion into
+`!promise`, which is always false, so the gate would never refuse. So the
+function stays synchronous and the member's `ageStatus` (from live rows, loaded
+once per request, never cached across requests) is loaded up front where the
+member is loaded. If an async form is ever needed, add the
+`@typescript-eslint/no-misused-promises` lint rule first.
+
+It returns false when nothing is on record and for `reviewed` or `declared` only.
+The flag does not make it return false on its own: while
+`AGE_VERIFICATION_ENABLED` is off, the existing `CALLS_MEMBERS` allow-list
+decides, as today, so testers on staging keep Gists. The Gists seam is
+`isCallsMember` in `apps/api/src/gists/eligibility.ts`, which its comment names as
+the one place to replace; it is replaced by this function when the flag goes on.
+Routes, `canMessage`, `canCall` and the Gists eligibility call it; nothing reads
 `provider` or `providerRef`. `GET /v1/me` exposes only a yes/no for the member's
 own state.
 
+**Does it count for voting?** Today every `age_assurance_provider` row maps to
+`verified`, which also satisfies `ADULT_ASSURANCE_REQUIRED.governance_vote`, so a
+commercial age check would clear the draft constitution's "verified adult" bar for
+voting. This ADR's position: it must not. Recommendation: map the provider method
+to a separate assurance level (or add a separate method) that satisfies
+`direct_messages` and age-restricted content but not `governance_vote`, which
+stays on `identity_provider`. Counsel and the owner to confirm (smaller open
+items).
+
 **Revocation.** An operator or a moderator who finds a verified member is a minor
-withdraws the row (`withdrawnAt`), after which `ageStatus` falls back to
-`declared`, matching the lapse rules in ADR 0016 section 2. The "mistaken-age
-hook" ADR 0016 names (a way to withdraw a verified row) is a part of this work.
+withdraws the row (`withdrawnAt`). On its own that is not enough: `ageStatus()`
+picks the strongest *live* row, so the member's `self_declared` 18+ row wins again
+(band `18_plus`, assurance `declared`), they still count as adult for
+`age_restricted_content`, and the account stays active in an 18+-only beta. (An
+account from before 16 October with no declaration falls to `unknown`, not
+`declared`.) So the mistaken-age path withdraws the verified row **and** records a
+`moderator_review` `under_18` statement, which outranks the declaration, then
+follows `/rules#age` (suspension, notice, appeal). The "mistaken-age hook" ADR 0016
+names (a way to withdraw a verified row) is a part of this work.
 
 **Duplicate use.** The strict-minimum design keeps nothing that detects one adult
 verifying ten accounts. The alternative is an HMAC of the document number kept
 as `person_key` for the age provider, like `identity_verifications.personKey`;
 that is still personal data (`open-items.md` section 2) and moves us toward the
 identity records we are avoiding. **Recommendation: do not keep it, rely on the
-provider's duplicate flag if it has one, and cap attempts.** Open question 5.
+provider's duplicate flag if it has one, and cap attempts.** See the smaller open
+items.
 
 ## 6. Failure, retries and appeals
 
@@ -352,13 +432,17 @@ provider's duplicate flag if it has one, and cap attempts.** Open question 5.
   Your messages stay off. You can try again with a different document."
   Never say "you are under 18". Nothing is recorded as under-18.
 - **Retries.** Three attempts a day, ten a month, per member, enforced on our
-  side (add to `LIMITS` in `apps/api/src/rate-limit.ts`) so a refusal cannot be
-  ground down.
+  side so a refusal cannot be ground down. One mechanism, not two: count rows in
+  `age_verification_attempts` (section 5), which has a timestamp per attempt and
+  so can enforce both windows, and which is deleted on erase. We do not use Redis
+  `LIMITS` for this: a 30-day `hn:limit:*:<memberId>` key would outlive the erase,
+  and ADR 0016 (account deletion) lists rate-limit keys as lasting "an hour at
+  most".
 - **A wrongly refused adult.** Typical causes: a NIN record with a wrong date of
   birth, an expired document, a camera too poor for liveness. Routes: another
   document or route (A then B), then provider manual review if offered
-  **(unverified)**, then an appeal to the safety contact (placeholder in
-  `/rules#appeals`). A human may **not** mark someone `verified` by moderator
+  **(unverified)**, then an appeal to the safety contact (`/rules#appeals` already names
+  contact@heynaija.ng). A human may **not** mark someone `verified` by moderator
   decision (that is `reviewed`, and ADR 0016 rules it out). An appeal either
   re-runs the provider check with support's help or is declined.
 - **Wrongly accepted.** The usual moderation path: report, review, withdraw the
@@ -380,17 +464,19 @@ can create `under_18` or if the flag is on with no webhook signature check.
 `NIN_VERIFICATION_ENABLED` and `UNDER_18_ACCOUNTS_ENABLED` stay locked and are
 untouched.
 
-1. **Decide.** Owner picks the provider on the basis of a written quote from
-   Smile ID and a Didit trial; counsel answers section 8.
+1. **Decide.** Owner picks the provider on the basis of written quotes from
+   Smile ID and Youverify and a trial of the shortlist (Didit included, if wanted); counsel answers section 8.
 2. **DPIA and contract.** DPIA drafted and reviewed; data processing agreement
    signed; `/privacy#identity` drafted. Nothing live before these.
-3. **Build behind the flag** (staging only): schema (two columns and the attempts
-   counter), webhook, `isAgeVerifiedAdult`, rate limits, deletion hook, Settings
+3. **Build behind the flag** (staging only): schema (`provider`, `providerRef`, `consentVersion`, `consentedAt` and the
+   `age_verification_attempts` table), webhook, `isAgeVerifiedAdult`, rate limits, deletion hook, Settings
    "Verify your age" button, tests first. The provider's **sandbox** and team
-   members' own documents only; no real member data on staging.
+   members' own documents only, each with their consent; no real member data on
+   staging.
 4. **Staging allow-list:** five named adults, including at least one who must be
-   refused (a team member, with their consent, using a document they are not
-   entitled to) and one who needs route B. Measure completion rate on a
+   refused (use the provider's sandbox test identities, or a team member's own
+   document with a selfie from a different, consenting team member; never someone
+   else's ID sent without their consent) and one who needs route B. Measure completion rate on a
    low-end Android over mobile data.
 5. **Production allow-list** of named adults, two weeks. Watch completion rate,
    refusal rate, appeals and provider cost per verified member.
@@ -408,8 +494,9 @@ untouched.
    own `NIN_VERIFICATION_ENABLED` is locked, given the rollout doc line "must not
    require a NIN", and whether NIMC or NIBSS terms restrict a reseller's
    customers.
-4. Retention and deletion: whether withdrawn rows may be kept as history, and
-   for how long a provider may keep a failed attempt.
+4. Retention: whether withdrawn rows may be kept as history while the account
+   exists (deletion at account erase is already decided), and for how long a
+   provider may keep a failed attempt.
 5. Whether "verified adult" for DMs is a standard the NDPC or the NITDA Code of
    Practice would call "appropriate age verification", and what happens to
    children's data in a refused selfie.
@@ -429,7 +516,8 @@ untouched.
 - Members without a registry record or a usable ID cannot use DMs or calls.
 - Without a stored document identifier we cannot prevent one adult verifying
   several accounts.
-- Cost scales with members at $0.33 or more each; negotiate before 2,000.
+- Cost scales with members at about $0.43 each (Didit's $0.33 with the 1.3
+  attempts factor); negotiate before 2,000.
 - No code change to `NIN_VERIFICATION_ENABLED` or `UNDER_18_ACCOUNTS_ENABLED`.
 - Staging needs a provider sandbox account and care that no real document is used.
 
@@ -442,10 +530,13 @@ answer gets written back here). Each has a recommendation so "agreed" is a
 complete answer. Until questions 1 to 3 and 6 are answered nothing in this ADR is
 accepted, and the age check stays a placeholder (the `CALLS_MEMBERS` allow-list).
 
-1. **May a provider run a NIN or BVN check as one optional route while our own NIN
-   verification is locked?** The rollout doc says the age provider "must not
-   require a NIN". Recommendation: yes, as one optional route and never the only
-   one, subject to counsel's confirmation (section 8, question 3).
+1. **May a member who has only a NIN slip verify with a NIN or BVN lookup, while our
+   own NIN verification is locked?** The rollout doc says the age provider "must not
+   require a NIN". For NIN-slip holders, the largest group, the only way to verify
+   is to give a NIN or BVN, so this route does require one for them. For a member
+   with a driver's licence, passport or voter's card it is optional. This is a
+   question for counsel and the owner (section 8, question 3). Recommendation: yes,
+   because without it most members cannot verify at all, provided counsel confirms.
    - Answer:
    - Answered by / date:
 
@@ -461,10 +552,11 @@ accepted, and the age check stays a placeholder (the `CALLS_MEMBERS` allow-list)
    - Answer:
    - Answered by / date:
 
-4. **Who answers age-verification appeals, how fast, and what is the safety contact
-   address?** Needs the moderator runbook (ADR 0016 open question 8).
-   Recommendation: a named moderator, first reply within 2 working days, and a
-   dedicated safety address that is not a personal inbox.
+4. **Who answers age-verification appeals, and how fast?** The address is already
+   set: `/rules#appeals` names contact@heynaija.ng, the same address as
+   `SAFETY_ALERT_EMAIL` in `docs/safety/abuse-material-scanning.md`. Needs the
+   moderator runbook (ADR 0016 open question 8). Recommendation: a named moderator,
+   first reply within 2 working days.
    - Answer:
    - Answered by / date:
 
@@ -475,10 +567,11 @@ accepted, and the age check stays a placeholder (the `CALLS_MEMBERS` allow-list)
    - Answer:
    - Answered by / date:
 
-6. **Provider: Smile ID (recommended, price unpublished) or Didit (price published,
-   Nigerian coverage unverified), and do we run a trial on staging first?**
-   Recommendation: get a written quote from Smile ID, then run the same five people
-   through both on staging before choosing.
+6. **Provider: Smile ID (recommended, price unpublished), Youverify (similar
+   document list, price unpublished) or Didit (price published, Nigerian coverage
+   unverified; the build in PR #69 is parked), and do we run a trial on staging
+   first?** Recommendation: get written quotes from Smile ID and Youverify, then run
+   the same five people through the shortlisted providers on staging before choosing.
    - Answer:
    - Answered by / date:
 
@@ -488,6 +581,8 @@ accepted, and the age check stays a placeholder (the `CALLS_MEMBERS` allow-list)
   confirm the numbers when we have a quote.
 - **Keep a document-derived key to stop one adult verifying many accounts?**
   Recommend no (section 5); revisit if abuse shows up.
+- **Should a provider age check count for `governance_vote`?** Recommend no
+  (section 5, "The API seam"); owner and counsel to confirm.
 - **Roadmap.** `age-verification` notes remain accurate; add this ADR to its
   evidence when this is accepted. ADR 0017 still calls ADR 0016 "PR #42, not yet on
   `staging`"; that is now out of date.
@@ -514,5 +609,5 @@ accepted, and the age check stays a placeholder (the `CALLS_MEMBERS` allow-list)
 Incode per-check price; latency for any provider; data residency for any
 provider; Nigerian-face accuracy for any model; the NDPA section numbers;
 whether any provider offers injection-attack detection or duplicate detection;
-the VASP claim and the "NIMC discontinued NIN verification" claim (a vendor
+the "NIMC discontinued NIN verification" claim (a vendor
 blog, unconfirmed); exchange rate; card, carrier and BVN-OTP behaviour in Nigeria.
