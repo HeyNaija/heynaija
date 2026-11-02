@@ -121,7 +121,10 @@ test('the browser Save-Data hint is the default until the member chooses @mobile
 
   // An explicit "Always load" beats the hint.
   await phone.goto('/settings')
-  await phone.getByRole('group', { name: 'Data use' }).getByRole('button', { name: 'Always load' }).click()
+  const always = phone.getByRole('group', { name: 'Data use' }).getByRole('button', { name: 'Always load' })
+  await always.click()
+  // Wait for the choice to be saved (the page comes back showing it) before leaving, or the navigation cancels the save.
+  await expect(always).toHaveAttribute('aria-pressed', 'true')
   await phone.goto(`/u/${handle}`)
   await expect(phone.locator('article', { hasText: text }).locator('img[src$="640.webp"]')).toBeVisible({ timeout: 30_000 })
   await hinted.close()
