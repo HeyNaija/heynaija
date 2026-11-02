@@ -10,7 +10,7 @@ test('a member saving data gets placeholders for pictures and loads one by tappi
   await box.click()
   const text = `Danfo at dusk, from ${handle}`
   await box.fill(text)
-  await page.locator('#compose input[type="file"]').setInputFiles({ name: 'danfo.png', mimeType: 'image/png', buffer: png() })
+  await page.locator('#compose input[type="file"]:not([accept*="video"])').setInputFiles({ name: 'danfo.png', mimeType: 'image/png', buffer: png() })
   const alt = 'A yellow bus, in two greens'
   await page.getByLabel('Description of image 1').fill(alt)
   const submit = page.getByRole('button', { name: 'Post', exact: true })
@@ -71,7 +71,7 @@ test('a held GIF plays as soon as it is tapped @mobile', async ({ browser }) => 
   await box.click()
   const text = `Owambe moves, from ${handle}`
   await box.fill(text)
-  await page.locator('#compose input[type="file"]').setInputFiles({ name: 'dance.gif', mimeType: 'image/gif', buffer: gif() })
+  await page.locator('#compose input[type="file"]:not([accept*="video"])').setInputFiles({ name: 'dance.gif', mimeType: 'image/gif', buffer: gif() })
   const alt = 'Two colours swapping sides'
   await page.getByLabel('Description of GIF 1').fill(alt)
   const submit = page.getByRole('button', { name: 'Post', exact: true })
@@ -100,7 +100,7 @@ test('the browser Save-Data hint is the default until the member chooses @mobile
   await box.click()
   const text = `Okada ride, from ${handle}`
   await box.fill(text)
-  await page.locator('#compose input[type="file"]').setInputFiles({ name: 'okada.png', mimeType: 'image/png', buffer: png() })
+  await page.locator('#compose input[type="file"]:not([accept*="video"])').setInputFiles({ name: 'okada.png', mimeType: 'image/png', buffer: png() })
   const submit = page.getByRole('button', { name: 'Post', exact: true })
   await expect(submit).toBeEnabled({ timeout: 45_000 })
   await submit.click()
