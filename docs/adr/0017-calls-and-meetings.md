@@ -363,7 +363,7 @@ the participant identity and grants (`roomJoin`, `canPublish`, `canSubscribe`,
 ## 4. Product scope, in stages
 
 Stages 1 to 4 (1:1 calls, meetings, screen share, recording) are parked since
-2026-11-01 and kept as design; stage 5 (Gists) is built.
+2026-11-01 and kept as design; stage 5 (Gists) is built; section 4b says which of its gaps shipped.
 
 Each stage ships behind the flag and is switched on for allow-listed adults
 before widening, as in `0016-direct-messages.md`.
@@ -595,11 +595,22 @@ reach, and the page works with a mic denied (listen only).
 ## 4b. Gaps in the first design, and what stage 5 does about each
 
 These came out of a review of 4a against X Spaces and against how our members
-use the web. Each has a recommendation. Gists are built, but only part of this list shipped
-with `0029_gists.sql`: its schema carries the host tools `locked`,
-`listener_cap` and `requests_open` (gap 6) and a one-live-Gist-per-host index
-(gap 7). The other gaps were not checked one by one against the code; treat them
-as design unless the code shows otherwise.
+use the web. Each has a recommendation. Gists are
+built, and this is what shipped, checked against `staging` on 2026-11-02:
+
+| Gap | State | Evidence |
+|---|---|---|
+| 1 Phone audio | shipped | screen wake lock and Media Session entry, "keep this screen open" note (`gist-room.tsx`) |
+| 2 Captions | not checked | |
+| 3 Listener data use | partly | a text data-use hint (`apps/web/lib/gists.ts` `dataUseHint`); sound starts only when the member taps Join; no data-saver choice |
+| 4 Testing | partly | the e2e spec uses Chromium's fake-media flags (`e2e/tests/gists.spec.ts`); the rest was not checked |
+| 5 Sharing | partly | Live now card on Home (`live-now.tsx`); no Gist card in a post |
+| 6 Host tools | partly | shipped: speaker queue (`requests_open`, `gist_members.speak_requested_at`, `requestToSpeak`) and visible muted state (`stage.tsx`, `audio.ts`); design only: pinned links, host handover |
+| 7 Abuse | partly | shipped: reports and moderator end (`0032_gist_reports.sql`, `end_gist`, `report-gist.tsx`), one live Gist per host (`gists_one_live_per_host_idx`), 5 starts an hour (`rate-limit.ts`), lock-room and lower-cap tools (`locked`, `listener_cap`, `settings()`, `host-panel.tsx`); design only: daily cap for accounts under 30 days, "Notify my followers" and its rate limit, category, host-standing rule |
+| 8 Operations | not checked | |
+| 9 Cost | not checked | |
+
+The text below is the original recommendation for each gap.
 
 1. **Phone audio.** A web page can lose its audio when the screen locks or the
    member switches apps, most of all on iOS Safari. Gists are listened to with
