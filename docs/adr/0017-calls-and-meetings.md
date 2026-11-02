@@ -1,13 +1,16 @@
 # ADR 0017 — Calls, meetings, Gists and screen sharing on a self-hosted LiveKit server
 
 **Date:** 30 October 2026 · **Status:** Proposed. Partly built: the staging
-LiveKit server (section 2) and the Gists work behind `CALLS_GISTS_ENABLED`
-(section 4a) exist; 1:1 calls, meetings and screen sharing are design only. · **Roadmap:**
+LiveKit server (section 2) and Gists (section 4a, migration
+`packages/db/drizzle/0029_gists.sql`, behind `CALLS_GISTS_ENABLED`) are built
+and live on `staging`. On 2026-11-01 the owner dropped 1:1 calls and meetings
+(PRs #54 and #62 closed, work parked); 1:1 calls, meetings and screen sharing
+are design only and parked, not live work. · **Roadmap:**
 `calls-and-meetings` (depends on `direct-messages` and `age-verification`, see
 the note in the roadmap entry) · **UI spec:** `apps/web/DESIGN.md`, "Calls and
 meetings" · **Related:** [ADR 0006](0006-age-status-model.md),
 [ADR 0009](0009-notification-emails.md), [ADR 0011](0011-push-notifications.md),
-ADR 0016 (direct messages; its design is on `staging`, the feature is not built),
+[ADR 0016, direct messages](0016-direct-messages.md) (its design is on `staging`, the feature is not built),
 `docs/governance/under-18-rollout.md`
 
 ## Decision
@@ -40,7 +43,7 @@ must be checked before it is relied on. Prices and version numbers change.
   WebSockets, not WebRTC UDP, so the media server cannot sit behind it
   (**verify** against Cloudflare's current product list; Cloudflare's separate
   TURN/Calls products are not used here).
-- ADR 0016 already defines the contact rules (opt-in, verified adults, requests,
+- `0016-direct-messages.md` already defines the contact rules (opt-in, verified adults, requests,
   blocks, mutes). Calls reuse them rather than invent a second set.
 
 ## 1. Why LiveKit, self-hosted
@@ -358,8 +361,11 @@ the participant identity and grants (`roomJoin`, `canPublish`, `canSubscribe`,
 
 ## 4. Product scope, in stages
 
+Stages 1 to 4 (1:1 calls, meetings, screen share, recording) are parked since
+2026-11-01 and kept as design; stage 5 (Gists) is built.
+
 Each stage ships behind the flag and is switched on for allow-listed adults
-before widening, as in ADR 0016.
+before widening, as in `0016-direct-messages.md`.
 
 1. **1:1 calls (voice, optional video).** Call from a DM thread or an accepted
    conversation's header. Ring for 30 seconds, then "missed call" in the thread.
@@ -563,7 +569,7 @@ this and offers a data-saver choice (section 4b, gap 3). A bigger audience means
 second node and LiveKit's distributed mode, which needs Redis (section 2); that
 is a later decision.
 
-**Data (design only, no migration).** `gists` (id, host, optional community,
+**Data (built; migration `0029_gists.sql`).** `gists` (id, host, optional community,
 title, `scheduled | live | ended`, scheduled and started and ended times, peak
 listeners) and `gist_members` (gist, member, role, joined and left times, who
 changed their role). Ended Gists keep these rows and no audio. Retention is
@@ -656,7 +662,7 @@ use the web. Each has a recommendation; none is built.
 Calls are live and leave no text for a moderator to read, so the gate is
 tighter, not looser.
 
-**1:1 calls follow the DM gate (ADR 0016), and are built on it.** A member is
+**1:1 calls follow the DM gate (`0016-direct-messages.md`), and are built on it.** A member is
 **call-eligible** only when they are DM-eligible (active, age-verified at
 `verified`, DMs opted in) **and** have turned on a separate "Allow calls" switch
 (default off). Both sides must be eligible on every call, checked server-side
@@ -665,7 +671,7 @@ from live data in one function (`canCall`), the way `canMessage` is.
 - **No calls from strangers.** A call rings only inside a conversation that is
   in the recipient's inbox: the recipient follows the caller, or the
   conversation is accepted. Otherwise the caller can only send a **call
-  request**, which is a message request (ADR 0016 section 2): the recipient sees
+  request**, which is a message request (`0016-direct-messages.md` section 2): the recipient sees
   "[name] would like to call you" in Requests with Accept, Decline and
   Block-and-report. Accepting opens the conversation; it does not start a call.
   The caller is told only "Waiting for [name]". Muted senders' requests go to
@@ -696,7 +702,7 @@ from live data in one function (`canCall`), the way `canMessage` is.
 - **Report.** In-call "Report" on a participant or the meeting. With no
   recording the evidence is metadata only: the call id, who was present, join
   and leave times, and the reporter's note. This feeds the existing reports queue
-  with a `call` target and the `child_safety` reason from ADR 0016. Block and
+  with a `call` target and the `child_safety` reason from `0016-direct-messages.md`. Block and
   Leave in the same step.
 - **Moderator access** to a live or past call is an **open question for
   governance** (question 4). Recommendation: no moderator ever joins a call
@@ -718,7 +724,7 @@ are not like a phone: a web push is a notification, not a ringing screen, and a
 browser tab that is closed cannot ring. The call UI says so ("keep HeyNaija open
 to receive calls") and the design does not promise reliable ringing.
 
-**Privacy copy** (for counsel, as in ADR 0016 section 8): calls pass through our
+**Privacy copy** (for counsel, as in `0016-direct-messages.md` section 8): calls pass through our
 server and are not end-to-end encrypted; media is not recorded or stored unless
 a recording is announced; the server sees who called whom and when.
 
@@ -815,7 +821,7 @@ CPU, not modelled.
 - A second server to run, patch, monitor and pay for, with UDP exposed to the
   internet; one more thing that can be down.
 - Calls inherit DM's dependencies: nothing is switchable until an age check
-  yields `verified` and DMs exist. Until then this feature is design only.
+  yields `verified` and DMs exist. Until then the calls and meetings parts stay design only (and are parked); Gists are built.
 - The webhook path needs a deliberate hole in the Cloudflare-only origin rule.
 - Moderators cannot see calls; abuse handling depends on reports and metadata.
 - Web ringing is weaker than a phone's; some members will miss calls. We say so.
@@ -850,10 +856,10 @@ Each has a recommendation; the PR description repeats them.
 10. **Is "no calls without an existing conversation" too strict?** It means
     first contact is always a request. Recommend keep: it is the same rule as
     DMs and the safe default.
-11. **Dependencies on ADR 0016.** ADR 0016 is on `staging` and the roadmap has
-    `direct-messages` and `age-verification` entries. Still to do: list them as
-    dependencies of the `calls-and-meetings` roadmap entry, which names them
-    only in its notes.
+11. **Dependencies on the direct-messages ADR (`0016-direct-messages.md`).** It is on `staging` and the roadmap has
+    `direct-messages` and `age-verification` entries. This matters only if
+    calls and meetings are un-parked (the owner dropped them on 2026-11-01); the
+    `calls-and-meetings` roadmap entry names them only in its notes.
 12. **Who may listen?** Recommend verified adults, the same age rule as calls,
     through `canListen` (section 4a), without the DM opt-in or "Allow calls"
     that `canCall` needs. Opening it to unverified adults or to minors is a
