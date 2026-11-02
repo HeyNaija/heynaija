@@ -1468,11 +1468,11 @@
         "docs/adr/0017-calls-and-meetings.md",
         "docs/governance/under-18-rollout.md"
       ],
-      "caveat": "Design only. Needs direct messages and age verification first; recording, moderator access and retention need counsel and governance.",
+      "caveat": "Gists are built and dark behind CALLS_GISTS_ENABLED (with CALLS_ENABLED and LIVEKIT_*); not confirmed on in any environment. 1:1 calls, meetings and screen sharing are design only and parked; they need direct messages and age verification first, and recording, moderator access and retention need counsel and governance.",
       "dependency": [
         "minor-safeguards"
       ],
-      "notes": "Depends on direct-messages and age-verification (ADR 0016, direct messages); 1:1 calls and meetings were dropped by the owner on 2026-11-01 (PRs #54 and #62 closed, work parked), while Gists are built and live on staging. Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers)."
+      "notes": "Depends on direct-messages and age-verification (ADR 0016, direct messages); 1:1 calls and meetings were dropped by the owner on 2026-11-01 (PRs #54 and #62 closed, work parked), while Gists are built and dark behind CALLS_GISTS_ENABLED. Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers)."
     },
     {
       "id": "native-apps",

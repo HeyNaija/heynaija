@@ -760,10 +760,10 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `calls-and-meetings`
 - **Priority:** P3 · **Status:** Blocked · **Availability:** Not live
 - **Description:** Voice and video calls between age-verified adults, then small group meetings, screen sharing and Gists (live audio rooms with a few speakers and a large audience), on a self-hosted LiveKit server.
-- **Remaining work / caveat:** Design only. Needs direct messages and age verification first; recording, moderator access and retention need counsel and governance.
+- **Remaining work / caveat:** Gists are built and dark behind CALLS_GISTS_ENABLED (with CALLS_ENABLED and LIVEKIT_*); not confirmed on in any environment. 1:1 calls, meetings and screen sharing are design only and parked; they need direct messages and age verification first, and recording, moderator access and retention need counsel and governance.
 - **Dependencies:** `minor-safeguards`
 - **Inspected evidence:** `docs/adr/0017-calls-and-meetings.md`, `docs/governance/under-18-rollout.md`
-- **Audit notes:** Depends on direct-messages and age-verification (ADR 0016, direct messages); 1:1 calls and meetings were dropped by the owner on 2026-11-01 (PRs #54 and #62 closed, work parked), while Gists are built and live on staging. Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers).
+- **Audit notes:** Depends on direct-messages and age-verification (ADR 0016, direct messages); 1:1 calls and meetings were dropped by the owner on 2026-11-01 (PRs #54 and #62 closed, work parked), while Gists are built and dark behind CALLS_GISTS_ENABLED. Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers).
 
 #### Native mobile apps
 

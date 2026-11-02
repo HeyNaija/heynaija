@@ -2,8 +2,9 @@
 
 **Date:** 30 October 2026 · **Status:** Proposed. Partly built: the staging
 LiveKit server (section 2) and Gists (section 4a, migration
-`packages/db/drizzle/0029_gists.sql`, behind `CALLS_GISTS_ENABLED`) are built
-and live on `staging`. On 2026-11-01 the owner dropped 1:1 calls and meetings
+`packages/db/drizzle/0029_gists.sql`) are built and dark behind
+`CALLS_GISTS_ENABLED` (with `CALLS_ENABLED` and `LIVEKIT_*`); whether staging
+sets them is not known. On 2026-11-01 the owner dropped 1:1 calls and meetings
 (PRs #54 and #62 closed, work parked); 1:1 calls, meetings and screen sharing
 are design only and parked, not live work. · **Roadmap:**
 `calls-and-meetings` (depends on `direct-messages` and `age-verification`, see
@@ -594,7 +595,11 @@ reach, and the page works with a mic denied (listen only).
 ## 4b. Gaps in the first design, and what stage 5 does about each
 
 These came out of a review of 4a against X Spaces and against how our members
-use the web. Each has a recommendation; none is built.
+use the web. Each has a recommendation. Gists are built, but only part of this list shipped
+with `0029_gists.sql`: its schema carries the host tools `locked`,
+`listener_cap` and `requests_open` (gap 6) and a one-live-Gist-per-host index
+(gap 7). The other gaps were not checked one by one against the code; treat them
+as design unless the code shows otherwise.
 
 1. **Phone audio.** A web page can lose its audio when the screen locks or the
    member switches apps, most of all on iOS Safari. Gists are listened to with
