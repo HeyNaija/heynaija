@@ -108,8 +108,11 @@ test('the browser Save-Data hint is the default until the member chooses @mobile
   const state = await context.storageState()
   await context.close()
 
+  // The same device as the project (a phone in @mobile), now asking to save data.
+  const use = test.info().project.use
   const hinted = await browser.newContext({
-    baseURL: test.info().project.use.baseURL,
+    baseURL: use.baseURL, viewport: use.viewport, userAgent: use.userAgent,
+    deviceScaleFactor: use.deviceScaleFactor, isMobile: use.isMobile, hasTouch: use.hasTouch,
     storageState: state,
     extraHTTPHeaders: { 'Save-Data': 'on' },
   })
@@ -121,10 +124,10 @@ test('the browser Save-Data hint is the default until the member chooses @mobile
 
   // An explicit "Always load" beats the hint.
   await phone.goto('/settings')
-  const always = phone.getByRole('group', { name: 'Data use' }).getByRole('button', { name: 'Always load' })
-  await always.click()
-  // Wait for the choice to be saved (the page comes back showing it) before leaving, or the navigation cancels the save.
-  await expect(always).toHaveAttribute('aria-pressed', 'true')
+  const alwaysLoad = phone.getByRole('group', { name: 'Data use' }).getByRole('button', { name: 'Always load' })
+  await alwaysLoad.click()
+  // Pressed only once the server has saved the choice: leaving sooner can cancel the save.
+  await expect(alwaysLoad).toHaveAttribute('aria-pressed', 'true')
   await phone.goto(`/u/${handle}`)
   await expect(phone.locator('article', { hasText: text }).locator('img[src$="640.webp"]')).toBeVisible({ timeout: 30_000 })
   await hinted.close()
