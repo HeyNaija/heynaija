@@ -111,7 +111,7 @@ real R2 (the project has so far only run against MinIO). **If R2 refuses, fall
 back to (c), tusd behind the API, writing to R2.** Do not start phase 2 before this
 is answered.
 
-Flow (state in a `media` row of kind `post_video`, status as today plus nothing new):
+Flow (state in a `media` row of kind `post_video`, status as for images, plus `uploading` and `rejected`, section 7):
 
 1. `POST /v1/me/videos/upload` with `{contentType, bytes, durationMs?}`: checks the
    flag, the gate, quotas and rate limits; creates the row; `CreateMultipartUpload`;
@@ -246,7 +246,7 @@ timeout, and a pinned version updated with security releases. Phase 4 reviews it
   and a scanner outage should not waste an encode. Nothing is written to the public
   bucket until the scan has cleared and the encode has finished.
 - **Bad file** (not a video, over limits, no decodable stream): permanent. Row
-  `failed`, original deleted, BullMQ `UnrecoverableError` so it is not retried. The
+  `rejected` (with a `rejection_reason`), original deleted, BullMQ `UnrecoverableError` so it is not retried. The
   uploader sees "That video could not be used" and a reason class (too long, too
   large, not a video).
 - **Scanner cannot answer, storage or Redis errors, ffmpeg killed:** the job throws and
@@ -257,7 +257,7 @@ timeout, and a pinned version updated with security releases. Phase 4 reviews it
   overwrite, `ready` is set last in a conditional update (as `processPostImage`
   does), and a job that finds the row no longer `processing` deletes any files it wrote.
 - **The original never reaches the public bucket.** It lives in `uploads/videos/<id>`
-  (private, signed access only) and is deleted when the row turns `ready` or `failed`.
+  (private, signed access only) and is deleted when the row turns `ready`, `failed` or `rejected`.
   A match moves it to `quarantine/originals/videos/<id>` by server-side copy.
   Public objects are only the renditions and poster the worker made.
 
@@ -272,8 +272,9 @@ timeout, and a pinned version updated with security releases. Phase 4 reviews it
 the scanner, extracts frames with ffmpeg from the **original** (not from our
 re-encode, which could blur a match away).
 
-Sampling (recommended): **one frame per second, plus the first and last frame, plus
-up to 20 extra frames at scene changes**, at most 80 frames for a 60 s clip. Any
+Sampling (recommended): **one frame per second (the first is at 0 s), plus the
+last frame, plus scene-change frames (up to 20) in whatever room is left, never
+more than 80 in all**. Any
 `match` on any frame blocks the whole video. The poster is one of the scanned frames.
 
 **Honest limits.**
@@ -316,8 +317,9 @@ policy says about frame sampling.
 
 ### 4.3 Takedown and quarantine
 
-Same states as images: `ready`, `quarantined` (moderator removal), `blocked`
-(scanner), `deleted`, `failed`. Removal moves the three MP4s and the poster to
+The states: `ready`, `quarantined` (moderator removal), `blocked`
+(scanner), `deleted`, `failed` (retries used up, or a timeout), and, for videos
+only, `uploading` and `rejected` (section 7). Removal moves the three MP4s and the poster to
 `quarantine/` **by server-side copy then delete** (the image code reads and
 re-writes whole buffers; that does not work for video), and queues a CDN purge
 for every file (four keys per video, under both the media host and `SITE_URL`
@@ -519,8 +521,9 @@ tables**, in one migration:
 
 Two `media.status` values exist for videos only, added to the enum (still no DDL):
 `uploading`, the video's `pending` (a multipart upload is open; see `upload_id`),
-and `rejected`, its `failed` for a permanent reason (too long, too large, not a
-video; see `rejection_reason`). A video no scanner has cleared stays `quarantined`;
+and `rejected`, a permanent refusal of the file (too long, too large, not a
+video; see `rejection_reason`). `failed` is kept for a job whose retries are used
+up or whose ffmpeg run timed out (`video-processor.ts`). A video no scanner has cleared stays `quarantined`;
 it is never made `ready` by default.
 
 One video per post, and no images beside it, is checked in the API when attaching
@@ -544,7 +547,7 @@ off stops new uploads and leaves published videos playing.
 style budget. Quotas as in section 4.7.
 
 **Retention.** Published renditions live until the post is deleted (or quarantined
-if reported). Originals are deleted on `ready` or `failed`. Quarantined video is
+if reported). Originals are deleted on `ready`, `failed` or `rejected`. Quarantined video is
 kept until counsel says how long and who may access it (section 4.2). **Account
 deletion and export (merged, PR #59; [ADR 0016](0016-account-deletion.md)).** Video
 is added to its inventory (rows for videos and for the media bucket, and step 5,
