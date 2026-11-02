@@ -1,7 +1,7 @@
 # ADR 0019 — Video posts: short clips, uploaded from the device, scanned before anyone sees them
 
-**Date:** 31 October 2026 · **Status:** Proposed, design only. Nothing is built:
-no schema, no migration, no endpoint, no worker, no UI. · **Roadmap:** `video`
+**Date:** 31 October 2026 · **Status:** Proposed. Phase 1 is implemented in PR #70
+(`feat/video-phase1`), not yet merged; nothing is in main. · **Roadmap:** `video`
 (depends on `upload-scanning`; this ADR adds `low-data-controls`) ·
 **Related:** [ADR 0017](0017-calls-and-meetings.md) (cost-model style),
 `docs/safety/abuse-material-scanning.md`, `docs/deployment/cloudflare-r2.md`,
@@ -503,12 +503,25 @@ existing table must be nullable or defaulted and must not be `NOT NULL` without 
 default; new indexes on `media` need a waiver. To avoid all of that, **only new
 tables**, in one migration:
 
-- `video_details`: `media_id` uuid primary key references `media`, `duration_ms`
-  integer, `width`, `height` (the poster's), `fps`, `original_sha256` text,
-  `frames_scanned` integer, `match_frame_ms` integer null, `failure_reason` text
-  null, `attempts` integer default 0.
-- `video_renditions`: `media_id`, `height` integer, `width` integer, `bytes` integer,
-  `bitrate_kbps` integer; primary key `(media_id, height)`.
+- `video_details` (migration `0035_video_posts.sql`): `media_id` uuid primary key,
+  references `media` (on delete cascade); all nullable unless noted: `upload_id`
+  text and `part_size` integer (the open multipart upload, so a reload can resume),
+  `duration_ms` integer, `width` and `height` integer (the poster's), `fps` real,
+  `original_sha256` text, `frames_scanned` integer, `match_frame_ms` integer (the
+  first matching frame), `scan_result` text, one of `clear`, `match`, `unscanned`
+  (no scanner configured: the video stays quarantined), `poster_key` text,
+  `rejection_reason` text, one of `too_long`, `too_short`, `too_large`,
+  `too_big_picture`, `not_a_video` (a class the uploader may be told),
+  `failure_reason` text (for the log), and `attempts` integer not null default 0.
+- `video_renditions`: `media_id` (references `media`, on delete cascade), `height`,
+  `width`, `bytes`, `bitrate_kbps`, all integer not null; primary key
+  `(media_id, height)`.
+
+Two `media.status` values exist for videos only, added to the enum (still no DDL):
+`uploading`, the video's `pending` (a multipart upload is open; see `upload_id`),
+and `rejected`, its `failed` for a permanent reason (too long, too large, not a
+video; see `rejection_reason`). A video no scanner has cleared stays `quarantined`;
+it is never made `ready` by default.
 
 One video per post, and no images beside it, is checked in the API when attaching
 (in the same transaction that locks the post), not by an index on `media`. Nothing
@@ -539,8 +552,8 @@ storage), and `VideoService.eraseFilesOf(ownerId)` runs right after the image
 erase:
 
 - Every video of theirs that the erase transaction marked deleted, in any state
-  but `blocked` (`uploading`, `processing`, `ready`, `quarantined`, `rejected`,
-  `failed`), on a post that is not evidence: an open multipart upload is aborted
+  but `blocked` (`pending`, `uploading`, `processing`, `ready`, `quarantined`,
+  `rejected`, `failed`), on a post that is not evidence: an open multipart upload is aborted
   (`AbortMultipartUpload`, using the upload ID in `video_details`); the original
   (`uploads` bucket, `videos/<id>`), the public renditions
   (`videos/<id>/{240,360,480}.mp4`) and poster (`videos/<id>/poster.webp`), and any
