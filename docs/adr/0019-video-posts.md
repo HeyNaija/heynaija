@@ -6,9 +6,9 @@ no schema, no migration, no endpoint, no worker, no UI. · **Roadmap:** `video`
 **Related:** [ADR 0017](0017-calls-and-meetings.md) (cost-model style),
 `docs/safety/abuse-material-scanning.md`, `docs/deployment/cloudflare-r2.md`,
 [ADR 0006](0006-age-status-model.md), `docs/governance/under-18-rollout.md`.
-Branches this builds on and does not assume are merged: `feat/low-data-controls`
-(PR #49), `feat/db-feature-flags` (PR #53, `docs/feature-flags.md`), account
-deletion (PR #59).
+Merged work this builds on: low-data controls (PR #49), database feature flags
+(PR #53, `docs/feature-flags.md`) and account deletion (PR #59,
+[ADR 0016](0016-account-deletion.md)). Still open: ADR 0018 (PR #61).
 
 Nothing here is legal advice; legal points are for Nigerian counsel (section 4.6).
 Outside facts are cited in Sources with the date read (31 October 2026). Anything
@@ -419,7 +419,7 @@ built and tested.
 
 ### 5.2 Data setting and quality
 
-The low-data work (PR #49; `apps/web/lib/low-data.ts`: `DATA_MODES` `auto` |
+The low-data work (merged, PR #49; `apps/web/lib/low-data.ts`: `DATA_MODES` `auto` |
 `saver` | `full`, the `hn_data` cookie, `dataSaver()`) already holds images back as
 a "Tap to load" placeholder (`media-held`). Video follows it:
 
@@ -521,7 +521,7 @@ rule):** `POST /v1/me/videos/upload`; `GET /v1/me/videos/:id/upload` (resume);
 Post payloads carry `{id, durationMs, width, height, posterUrl, renditions: [{height,
 url, bytes}], description}` for readers. Moderation adds a reported-videos filter.
 
-**Flag:** `videoPosts` in `apps/api/src/flags/registry.ts` (PR #53): staging and
+**Flag:** `videoPosts` in `apps/api/src/flags/registry.ts` (merged, PR #53): staging and
 development `true`, **production `false`** because the code is not in `main`;
 `LIVE_IN_MAIN.videoPosts = false`. "Gate creation, not existing data": turning it
 off stops new uploads and leaves published videos playing.
@@ -533,10 +533,36 @@ style budget. Quotas as in section 4.7.
 **Retention.** Published renditions live until the post is deleted (or quarantined
 if reported). Originals are deleted on `ready` or `failed`. Quarantined video is
 kept until counsel says how long and who may access it (section 4.2). **Account
-deletion (PR #59):** it must include `post_video` media and `video_details` in what
-it removes, and must not delete quarantined evidence. This ADR does not design
-around that; it only needs the deletion code to treat video as media and keep the
-quarantine prefix.
+deletion and export (merged, PR #59; [ADR 0016](0016-account-deletion.md)).** Video
+is added to its inventory (rows for videos and for the media bucket, and step 5,
+storage), and `VideoService.eraseFilesOf(ownerId)` runs right after the image
+erase:
+
+- Every video of theirs that the erase transaction marked deleted, in any state
+  but `blocked` (`uploading`, `processing`, `ready`, `quarantined`, `rejected`,
+  `failed`), on a post that is not evidence: an open multipart upload is aborted
+  (`AbortMultipartUpload`, using the upload ID in `video_details`); the original
+  (`uploads` bucket, `videos/<id>`), the public renditions
+  (`videos/<id>/{240,360,480}.mp4`) and poster (`videos/<id>/poster.webp`), and any
+  copies under `quarantine/` are removed; a CDN purge is queued for the public
+  keys; then their `video_renditions` and `video_details` rows (scan result,
+  original SHA-256, failure reason) are deleted. The `media` row stays, as for
+  images. A failed abort fails the erase while the row still holds the upload ID,
+  so the retry can abort it; the rows go last, so a retry finds the same keys.
+- A `ready` video on a post kept as report evidence is not deleted: its files are
+  copied to the private bucket (`quarantine/videos/<id>/…`), removed from the
+  public bucket, the CDN purged, and the row set to `quarantined`. Its
+  `video_details` stay with it.
+- `blocked` videos (a scanner match) and the original kept at
+  `quarantine/originals/videos/<id>` stay as they are: evidence, never swept.
+- **Export** (format `heynaija-export/12`): each post carries `videos: [{url,
+  poster}]`, the video path and `/poster.webp` under it, only for the member's own
+  videos that are `ready` and on a post, as for images. The export links to
+  files; it does not embed them.
+
+This is implemented in PR #70 (`feat/video-phase1`; `video.service.ts`,
+`export.service.ts`, `account-deletion.service.ts`), not yet merged, and its tests
+are the check that these rules hold.
 
 ## 8. Phased delivery (each shippable dark, behind the flag and the scanner rule)
 
@@ -546,7 +572,7 @@ Owner-sized days, not dates; one person; include tests.
 |---|---|---|
 | 1 | Flag and scanner rule, migration, streaming/copy/multipart in `ObjectStore`, `video-worker` image and compose, ffprobe, frame sampling, scan, ladder, poster, quarantine and purge, sweeper, tests against stand-ins; **spikes: R2 presigned `UploadPart`, R2 copy, range serving, encode timings.** No UI | 11 |
 | 2 | Composer upload with resume, status and draft, player, 320px layout, description field, quotes show poster, e2e (`newMember`, never the sign-up pages) | 9 |
-| 3 | Low-data integration (held placeholder, rendition choice, quality button, optional muted autoplay setting), moderator queue tooling, reporting and logs; needs PR #49 merged | 6 |
+| 3 | Low-data integration (held placeholder, rendition choice, quality button, optional muted autoplay setting), moderator queue tooling, reporting and logs; builds on the merged low-data work (PR #49) | 6 |
 | 4 | Load test (`docs/loadtest.md` style) of upload and worker on a production-sized box, security review of the ffmpeg container, drills (section 4.7 item 5), docs and runbook updates | 5 |
 
 About 31 days, say 37 with the usual surprises. The launch gate is separate from
@@ -570,8 +596,8 @@ the phases: the code can be finished and idle for weeks.
   moderator guide.
 - v1 has no captions. We say so, and ship a description field first.
 - Video is gated twice: by a flag, and by a code rule that no admin can flip.
-- The data setting becomes a feature of video, not decoration; the player depends
-  on PR #49 landing before phase 3.
+- The data setting becomes a feature of video, not decoration; the player builds on
+  the merged low-data work (PR #49).
 - Delivery depends on Cloudflare's confirmation. If it comes back "no", cost
   becomes Stream's.
 
@@ -627,6 +653,8 @@ Contabo traffic terms; browser keyboard behaviour in native video controls.
 - In-repo: `apps/api/src/media/*`, `docs/safety/abuse-material-scanning.md`,
   `docs/deployment/cloudflare-r2.md`, `docs/deployment/production.md`,
   `infra/deploy/nginx/heynaija.conf.template`, `scripts/migrations.mjs`,
-  `apps/api/src/rate-limit.ts`, `docs/feature-roadmap.json`; on branches:
-  `apps/web/lib/low-data.ts` and `apps/web/app/ui/post-images.tsx` (`feat/low-data-controls`),
-  `docs/feature-flags.md` (`feat/db-feature-flags`), ADR 0018 (`docs/age-verification`).
+  `apps/api/src/rate-limit.ts`, `docs/feature-roadmap.json`; merged:
+  `apps/web/lib/low-data.ts` and `apps/web/app/ui/post-images.tsx` (PR #49),
+  `docs/feature-flags.md` (PR #53), [ADR 0016](0016-account-deletion.md) (PR #59);
+  open: ADR 0018 (PR #61, `docs/age-verification`), and PR #70
+  (`feat/video-phase1`) for the erase and export details.
