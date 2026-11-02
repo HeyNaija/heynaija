@@ -8,7 +8,7 @@ import { PlayIcon } from './icons'
 // Video must be served from the media bucket's own domain, not through our nginx
 // (ADR 0019 section 3.3), once Cloudflare has confirmed it. Unset, files come from /media.
 const ORIGIN = process.env.NEXT_PUBLIC_VIDEO_ORIGIN ?? ''
-// Which rendition plays: 360 until the low-data setting (PR #49) picks one (240 saver, 480 full).
+// Which rendition plays: 360 until the low-data setting picks one (240 saver, 480 full); not wired yet.
 const QUALITY = 360
 const PLAYING = 'heynaija:video-playing'
 
@@ -18,8 +18,8 @@ const PLAYING = 'heynaija:video-playing'
  * give keyboard play, seek and focus.
  *
  * `held` is the low-data hold (ADR 0019 section 5.2): nothing, not even the poster, is
- * fetched until the reader taps. It is off here because the low-data setting is not
- * in this branch yet (PR #49); the placeholder is built and waits for it to be wired.
+ * fetched until the reader taps. PostItem sets it from the reader's low-data choice
+ * (`currentDataSaver()`), as it does for pictures.
  */
 export function PostVideo({ video, held = false }: { video: PostVideoData; held?: boolean }) {
   const id = useId()

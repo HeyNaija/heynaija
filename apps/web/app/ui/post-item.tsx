@@ -57,6 +57,9 @@ const replyAudienceNote = (post: Post, viewerId: string | null) =>
 async function SaverImages({ images }: { images: Post['images'] }) {
   return <PostImages images={images} saver={await currentDataSaver()} />
 }
+async function SaverVideo({ video }: { video: NonNullable<Post['video']> }) {
+  return <PostVideo video={video} held={await currentDataSaver()} />
+}
 async function SaverQuote({ quote, now }: { quote: NonNullable<Post['quote']>; now: number }) {
   return <QuotedPostCard quote={quote} now={now} saver={await currentDataSaver()} />
 }
@@ -338,7 +341,7 @@ export function PostItem({
       ) : null}
       {post.video ? (
         <div className="mt-3">
-          <PostVideo video={post.video} />
+          <SaverVideo video={post.video} />
         </div>
       ) : null}
       {post.quote ? (

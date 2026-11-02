@@ -44,7 +44,7 @@ Both are pinned by tests (`video-gate.test.ts`, `video.http.test.ts`,
 | Gate item | In code |
 |---|---|
 | Not on in production with `NoScanner` | Yes (above). |
-| Allow-list first, then everyone eligible | The flag's allow-list is the flag system's. Beyond it: accounts at least `VIDEO_MIN_ACCOUNT_AGE_DAYS` (7) old, with no upheld moderation action (post removed, suspension, photo removed, profile cleared) and no scanner block in the last `VIDEO_UPHELD_LOOKBACK_DAYS` (90), and at most `VIDEO_MAX_LIVE_PER_MEMBER` (50) live videos. |
+| Allow-list, and eligibility on top | The flag's allow-list decides who sees video; it does not bypass the rules. Everyone, allow-listed or not, also needs: accounts at least `VIDEO_MIN_ACCOUNT_AGE_DAYS` (7) old, with no upheld moderation action (post removed, suspension, photo removed, profile cleared) and no scanner block in the last `VIDEO_UPHELD_LOOKBACK_DAYS` (90), and at most `VIDEO_MAX_LIVE_PER_MEMBER` (50) live videos. |
 | Rate limits | 3 uploads an hour and 10 a day (`videoUpload`); 120 part/resume requests a minute (`videoPart`). |
 | Fail closed | A scanner that cannot answer throws: the job retries (3 attempts, exponential from 30 s), then the video is `failed`. Never published on "no answer". |
 | An illegal report hides the video at once | Yes: a report with reason `illegal` quarantines the post's video pending review (ADR open question 6, default yes). |

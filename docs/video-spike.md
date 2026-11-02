@@ -43,8 +43,8 @@ Found on MinIO (each is an assertion in the spike):
 
 - **Flag** `videoPosts`: off in production, on in staging and development. Effective
   only if the flag is on and (a scanner is bound or `APP_ENV` is not `production`).
-- **Migration** `0031_video_posts.sql`, additive. (The brief said 0030; the base branch
-  already has an 0030, so this is 0031. Renumber at merge as usual.)
+- **Migration** `0035_video_posts.sql`, additive (staging's last is 0034; renumber at
+  merge if another lands first).
 - **API** under `/v1/me/videos`: start an upload, resume, complete, status, delete.
   Owner-only while not `ready`. Every route is the uniform 404 when the gate is shut.
 - **Worker** (`pnpm --filter @heynaija/api video:worker`; the `video-worker` Docker
@@ -87,6 +87,19 @@ that is a host firewall job. `-protocol_whitelist file,pipe` and the job deadlin
 ffmpeg flags, not container confinement. It is also not `nice`d, and the
 `video-worker` is not started by default (`--profile video`).
 
+## Deploy of the worker is not wired in phase 1
+
+CI builds the `video-worker` image (no push), so a broken ffmpeg pin shows up there. Nothing
+else: `deploy-*.yml` pushes only `api` and `web`, and `deploy.sh` pulls only those. A human
+must add `video-worker` to the push loop and the pull, then start it with
+`docker compose --profile video up -d video-worker` on the server.
+
+## Testing on staging or development
+
+The 7-day account-age rule applies to allow-listed testers too. Use accounts at least
+`VIDEO_MIN_ACCOUNT_AGE_DAYS` old, or set it lower (0 allows new accounts) in the env;
+it is read in `video-config.ts` and passed through `infra/deploy/compose.yml`.
+
 ## Not verified
 
 - Anything on R2 (above).
@@ -94,8 +107,8 @@ ffmpeg flags, not container confinement. It is also not `nice`d, and the
   are tested).
 - The Docker image build (no Docker from a worktree, per the brief).
 - A real PhotoDNA call. The frame scan is tested against a stand-in.
-- Low-data holding: the player has a `held` prop, but the low-data setting (PR #49) is
-  not in this branch, so nothing sets it. The player is tap-to-play: the `<video>`
+- Low-data holding: `held` is set from the reader's low-data choice, as for pictures.
+  The rendition quality is still fixed at 360 (not chosen by the setting). The player is tap-to-play: the `<video>`
   element is not created until the tap, so no video bytes load before it, but the
   poster image does.
 
@@ -107,7 +120,7 @@ Each is an environment setting (`apps/api/src/video/video-config.ts`):
 |---|---|---|
 | Keep originals after processing | No: delete once renditions are ready. A blocked match is always kept. | `VIDEO_KEEP_ORIGINALS=false` |
 | Limits | 60 s, 100 MB, 1080p longest edge, one video per post | `VIDEO_MAX_SECONDS`, `VIDEO_MAX_BYTES`, `VIDEO_MAX_EDGE` |
-| Who may post first | Flag allow-list, then accounts 7 days old with nothing upheld in 90 days; 50 live videos at most | `VIDEO_MIN_ACCOUNT_AGE_DAYS`, `VIDEO_UPHELD_LOOKBACK_DAYS`, `VIDEO_MAX_LIVE_PER_MEMBER` |
+| Who may post first | The flag's allow-list decides who sees video at all; on top of that, everyone needs an account 7 days old with nothing upheld in 90 days, and 50 live videos at most | `VIDEO_MIN_ACCOUNT_AGE_DAYS`, `VIDEO_UPHELD_LOOKBACK_DAYS`, `VIDEO_MAX_LIVE_PER_MEMBER` |
 | An illegal report hides the video at once | Yes | (code) |
 | Upload window before an open upload is aborted | 24 hours | `VIDEO_UPLOAD_WINDOW_HOURS` |
 | Part size | 5 MiB | `VIDEO_PART_BYTES` |
