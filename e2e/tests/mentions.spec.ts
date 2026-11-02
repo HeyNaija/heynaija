@@ -39,3 +39,45 @@ test('a mention links to the member and tells them, and the notification leads b
   await author.context.close()
   await named.context.close()
 })
+
+test('typing @ and part of a handle offers members to mention, and picking one fills it in', async ({ browser }) => {
+  const author = await newMember(browser, 'suggester')
+  const named = await newMember(browser, 'suggested')
+
+  await author.page.goto('/')
+  const box = author.page.getByRole('textbox', { name: 'New post' })
+  await box.click()
+
+  // A bare @ offers nothing yet.
+  await box.pressSequentially('Ask @')
+  const list = author.page.getByRole('listbox', { name: 'Members to mention' })
+  await expect(list).toHaveCount(0)
+
+  // The rest of the handle narrows it to the member, picked with the keyboard.
+  await box.pressSequentially(named.handle)
+  await expect(list.getByRole('option', { name: `@${named.handle}` })).toBeVisible()
+  await box.press('Enter')
+  await expect(box).toHaveValue(`Ask @${named.handle} `)
+  await expect(list).toHaveCount(0)
+
+  // Escape closes the list without changing the text.
+  await box.pressSequentially(`and @${named.handle.slice(0, 6)}`)
+  await expect(list).toBeVisible()
+  await box.press('Escape')
+  await expect(list).toHaveCount(0)
+
+  // Clicking a member fills them in and leaves the caret in the box.
+  await box.fill('Ask ')
+  await box.pressSequentially(`@${named.handle}`)
+  await list.getByRole('option', { name: `@${named.handle}` }).click()
+  await expect(box).toHaveValue(`Ask @${named.handle} `)
+  await expect(box).toBeFocused()
+  await box.pressSequentially('about suya')
+
+  await author.page.getByRole('button', { name: 'Post', exact: true }).click()
+  const card = author.page.locator('article', { hasText: 'about suya' }).first()
+  await expect(card.getByRole('link', { name: `@${named.handle}`, exact: true })).toHaveAttribute('href', `/u/${named.handle}`)
+
+  await author.context.close()
+  await named.context.close()
+})

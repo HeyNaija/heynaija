@@ -8,6 +8,7 @@ import { and, eq } from 'drizzle-orm'
 import { AuthController } from '../auth/auth.controller.js'
 import { type AuthedRequest, SessionGuard } from '../auth/session.guard.js'
 import { CommunitiesService } from '../communities/communities.service.js'
+import { FeatureFlags } from '../flags/feature-flags.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { MembersService } from '../members/members.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
@@ -195,6 +196,7 @@ const auth = new AuthController(
   {} as never,
   membersService,
   {} as never,
+  new FeatureFlags(db, 'development'),
 )
 const meFor = (id: string, handle: string) => auth.me({ member: { id, handle } } as AuthedRequest)
 

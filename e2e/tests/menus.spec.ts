@@ -49,8 +49,11 @@ test('profile, post, repost and account menus stay inside the viewport @mobile',
 test('an open post menu stays below the sticky navigation while scrolling @mobile', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'layers')
   try {
-    const text = [`Scrolling post from ${handle}`, ...Array.from({ length: 14 }, (_, i) => `Line ${i + 1}`)].join('\n')
-    const card = await post(page, text)
+    const first = `Scrolling post from ${handle}`
+    const text = [first, ...Array.from({ length: 14 }, (_, i) => `Line ${i + 1}`)].join('\n')
+    // A list shows only the first 8 lines of a post this long (apps/web/lib/post-length.ts),
+    // still a tall card, so it is found by its first line.
+    const card = await post(page, text, undefined, first)
     for (const label of ['Repost or quote (0 reposts)', 'Post options']) {
       await card.evaluate((node) => window.scrollTo(0, window.scrollY + node.getBoundingClientRect().top - 150))
       await card.getByLabel(label, { exact: true }).click()

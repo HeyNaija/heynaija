@@ -88,6 +88,15 @@ export const getSessionEmail = cache(async (): Promise<string | null> => {
   return typeof email === 'string' ? email : null
 })
 
+/**
+ * Drops the session cookie once Kratos has ended the session some other way
+ * (deleting an account ends every one). Kratos's own logout refuses a session
+ * that has already ended. In a server action or route handler only.
+ */
+export async function forgetEndedSession(): Promise<void> {
+  ;(await cookies()).delete(SESSION_COOKIE)
+}
+
 /** The URL that ends the current session, or null if there is none. */
 export const getLogoutUrl = cache(async (): Promise<string | null> => {
   const res = await fetch(`${KRATOS_URL}/self-service/logout/browser`, {

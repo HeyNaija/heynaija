@@ -3,19 +3,16 @@
 // whole suite keeps every core busy for many minutes; CI runs it on every pull
 // request. E2E_ALL=1 runs it here anyway.
 import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
+import { isFileArg, withFileFilters } from './cli-args.ts'
 import { holdRunLock } from './lock.ts'
 
 const args = process.argv.slice(2)
 
-/** Options whose value is the next argument, so that value is not taken for a file. */
-const TAKES_VALUE = new Set([
-  '-c', '--config', '-j', '--workers', '--project', '--reporter', '--output', '--retries', '--repeat-each',
-  '--timeout', '--global-timeout', '--max-failures', '--shard', '--trace', '--tsconfig', '--grep-invert',
-])
 /** Options that pick tests by themselves (or let you pick them, in --ui). */
 const PICKS_TESTS = /^(-g|--grep|--last-failed|--only-changed|--ui)(=|$)/
 
-const named = args.filter((arg, i) => !arg.startsWith('-') && !TAKES_VALUE.has(args[i - 1] ?? ''))
+const named = args.filter((_, i) => isFileArg(args, i))
 const picked = named.length > 0 || args.some((arg) => PICKS_TESTS.test(arg))
 
 if (!picked && !process.env.CI && !process.env.E2E_ALL) {
@@ -40,8 +37,16 @@ if (projects.length && named.some((name) => /google/i.test(name))) {
   process.exit(2)
 }
 
+// Playwright's CLI script under this Node, as its bin shim runs it: on Windows the
+// shim is playwright.cmd, which Node spawns only through a shell, and the shell
+// would split arguments such as `-g "two words"` again.
+const cli = createRequire(import.meta.url).resolve('@playwright/test/cli')
+
+// A bare name matches spec file names only, never the folders above them (cli-args.ts).
+const playwrightArgs = withFileFilters(args)
+
 const release = await holdRunLock()
-const playwright = spawn('playwright', ['test', ...args, ...projects], {
+const playwright = spawn(process.execPath, [cli, 'test', ...playwrightArgs, ...projects], {
   stdio: 'inherit',
   // Tells global-setup.ts that this run already holds the lock.
   env: { ...process.env, E2E_RUN_LOCK: String(process.pid) },

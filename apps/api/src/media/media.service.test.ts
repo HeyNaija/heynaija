@@ -204,6 +204,7 @@ test('removing the avatar deletes its files and is safe to repeat', async () => 
   await service.removeAvatar(ada)
   assert.equal(await avatarOf(ada), null)
   assert.deepEqual([...store.objects.keys()], [])
+  assert.deepEqual(jobs.purged, [[`avatars/${mediaId}/96.webp`, `avatars/${mediaId}/256.webp`]])
 })
 
 test('uploads that were started and abandoned are cleared when the member starts another', async () => {
@@ -360,11 +361,23 @@ test("deleting a post deletes its images; a moderator's removal only hides them"
 
   assert.equal(await statusOf(gone), 'deleted')
   assert.deepEqual(store.keys('media'), [`media/posts/${kept}/1600.webp`, `media/posts/${kept}/640.webp`])
+  // Out of Cloudflare's cache too, which would otherwise serve the files for a year.
+  assert.deepEqual(jobs.purged, [[`posts/${gone}/640.webp`, `posts/${gone}/1600.webp`, `posts/${gone}/still.webp`]])
   assert.deepEqual((await postsService.byAuthor(null, ada, 10)).posts, [])
 
   // Restoring the removed post brings its image back.
   await db.update(posts).set({ removedAt: null }).where(eq(posts.id, removed))
   assert.deepEqual((await postsService.thread(null, removed))!.post.images.map((i) => i.src), [`/media/posts/${kept}`])
+})
+
+test('the images of a deleted post leave the CDN in one purge', async () => {
+  const postsService = new PostsService(db)
+  const [first, second] = [await readyPostImage(ada), await readyPostImage(ada)]
+  const { id: deleted } = await postsService.create(ada, 'two pictures', { images: [{ id: first, alt: '' }, { id: second, alt: '' }] })
+  await postsService.remove(ada, deleted)
+  await service.discardPostImages(deleted)
+  assert.equal(jobs.purged.length, 1)
+  assert.deepEqual([...jobs.purged[0]!].sort(), [first, second].flatMap((id) => [`posts/${id}/640.webp`, `posts/${id}/1600.webp`, `posts/${id}/still.webp`]).sort())
 })
 
 test('images never put on a post are swept after an hour, by the hourly job too', async () => {
@@ -430,6 +443,20 @@ test("a moderator's removal moves a post's images out of public view, and a rest
   assert.equal(await statusOf(image), 'ready')
   assert.deepEqual(store.keys('uploads'), [])
   assert.deepEqual((await postsService.thread(null, post))!.post.images.map((i) => i.src), [`/media/posts/${image}`])
+})
+
+test('restoring a removed post its author has since deleted, as an erase does, keeps its images private', async () => {
+  const moderation = await withModerator()
+  const postsService = new PostsService(db)
+  const image = await readyPostImage(bayo)
+  const { id: post } = await postsService.create(bayo, 'look', { images: [{ id: image, alt: '' }] })
+  await moderation.report(ada, { postId: post }, 'illegal')
+  await moderation.resolve(sam, (await reportOf(eq(reports.postId, post))).id, 'remove_post')
+  await db.update(posts).set({ deletedAt: new Date() }).where(eq(posts.id, post))
+
+  await moderation.restorePost(sam, post)
+  assert.equal(await statusOf(image), 'quarantined')
+  assert.deepEqual(store.keys('media'), [])
 })
 
 test('the hourly sweep takes down images of removed posts that are still public', async () => {

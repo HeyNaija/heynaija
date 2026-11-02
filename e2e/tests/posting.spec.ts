@@ -12,6 +12,26 @@ test('posts to everyone and the post shows in Latest', async ({ browser }) => {
   await context.close()
 })
 
+test('a long post shows its start in Latest with Show more, and all of it on its own page', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'longer')
+  const opening = `Long post from ${handle}.`
+  const ending = `The end of the long post from ${handle}.`
+  const text = `${opening} ${'More than the old limit, said plainly. '.repeat(16)}${ending}`
+  expect(text.length).toBeGreaterThan(400)
+  expect(text.length).toBeLessThanOrEqual(1000)
+
+  // In the feed: its start and Show more, not its end.
+  const article = await post(page, text, undefined, opening)
+  await expect(article).not.toContainText(ending)
+  await article.getByRole('link', { name: /Show more/ }).click()
+
+  // Its own page shows all of it.
+  await expect(page).toHaveURL(/\/p\/[0-9a-f-]{36}$/)
+  await expect(page.getByText(ending).first()).toBeVisible()
+  await expect(page.getByRole('link', { name: /Show more/ })).toHaveCount(0)
+  await context.close()
+})
+
 test('posts into a community it joined', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'local')
   await page.goto('/c/lagos')

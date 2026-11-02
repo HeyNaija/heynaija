@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { communities, members, moderationActions, notifications, posts, reports } from '@heynaija/db'
+import { communities, communityMemberships, gists, media, members, moderationActions, notifications, posts, reports } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { CommunitiesService } from '../communities/communities.service.js'
+import { FakeRoomService } from '../gists/fake-room-service.js'
+import { GistsService } from '../gists/gists.service.js'
 import { PostsService } from '../posts/posts.service.js'
+import { MemoryRateLimiter } from '../rate-limit.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { ModerationService, ModerationTargetError, NotAModeratorError } from './moderation.service.js'
 import type { SafetyAlerts } from './safety-alerts.js'
@@ -290,4 +293,187 @@ test('a report the upload scanner filed has no reporter, and closing it tells no
   await service.resolve(sam, item!.id, 'suspend_member')
   assert.equal((await db.select().from(members).where(eq(members.id, bayo)))[0]!.active, false)
   assert.deepEqual(await db.select().from(notifications), [])
+})
+
+// --- Reporting a community's photo ---
+
+const photo = randomUUID()
+const setPhoto = async (slug: string, mediaId: string | null) => {
+  if (mediaId) {
+    await db
+      .insert(media)
+      .values({ id: mediaId, ownerId: sam, kind: 'community_photo', status: 'ready', contentType: 'image/jpeg', bytes: 1 })
+      .onConflictDoNothing()
+  }
+  await db.update(communities).set({ photoMediaId: mediaId }).where(eq(communities.slug, slug))
+}
+
+test('photo reports: no duplicates, not for moderators, not for a community without a photo', async () => {
+  await assert.rejects(service.report(ada, { communitySlug: 'lagos' }, 'other'), ModerationTargetError)
+  await assert.rejects(service.report(ada, { communitySlug: 'nowhere' }, 'other'), ModerationTargetError)
+
+  await setPhoto('lagos', photo)
+  await service.report(ada, { communitySlug: 'lagos' }, 'hate', 'rude picture')
+  await service.report(ada, { communitySlug: 'lagos' }, 'spam')
+  assert.equal(await openReports(), 1)
+  await service.report(bayo, { communitySlug: 'lagos' }, 'spam')
+  assert.equal(await openReports(), 2)
+
+  // Whoever can change the photo can just remove it.
+  await assert.rejects(service.report(lola, { communitySlug: 'lagos' }, 'spam'), ModerationTargetError)
+  await assert.rejects(service.report(sam, { communitySlug: 'lagos' }, 'spam'), ModerationTargetError)
+
+  // A different photo is a different thing to report.
+  await setPhoto('lagos', randomUUID())
+  await service.report(ada, { communitySlug: 'lagos' }, 'spam')
+  assert.equal(await openReports(), 3)
+})
+
+test('a photo report reaches site moderators only, and an illegal one alerts safety', async () => {
+  await setPhoto('lagos', photo)
+  await service.report(ada, { communitySlug: 'lagos' }, 'illegal', 'rude')
+  assert.equal(alerts.length, 1)
+  assert.doesNotMatch(alerts[0]!.lines.join(' '), /rude/)
+
+  const [item] = await service.queue(sam)
+  assert.deepEqual(item!.communityPhoto, { slug: 'lagos', name: 'Lagos', photo: `/media/community-photos/${photo}` })
+  assert.equal(item!.post, null)
+  assert.equal(item!.member, null)
+  assert.deepEqual(await service.queue(lola), [])
+  await assert.rejects(service.resolve(lola, item!.id, 'remove_community_photo'), NotAModeratorError)
+  await assert.rejects(service.resolve(sam, item!.id, 'remove_post'), ModerationTargetError)
+  await assert.rejects(service.resolve(sam, item!.id, 'suspend_member'), ModerationTargetError)
+})
+
+test('removing a reported photo clears it, closes every report on it, tells reporters and is logged', async () => {
+  await setPhoto('lagos', photo)
+  await service.report(ada, { communitySlug: 'lagos' }, 'hate')
+  await service.report(bayo, { communitySlug: 'lagos' }, 'hate')
+  const [item] = await service.queue(sam)
+  assert.equal(item!.reportCount, 2)
+
+  await service.resolve(sam, item!.id, 'remove_community_photo', 'not ok')
+  assert.equal((await communitiesService.detail(null, 'lagos'))!.photo, null)
+  assert.equal(await openReports(), 0)
+  assert.deepEqual((await db.select().from(reports)).map((r) => r.status), ['actioned', 'actioned'])
+  const [entry] = await db.select().from(moderationActions)
+  assert.deepEqual([entry!.action, entry!.actorId, entry!.note], ['remove_community_photo', sam, 'not ok'])
+  assert.equal(entry!.communityId, (await db.select().from(communities).where(eq(communities.slug, 'lagos')))[0]!.id)
+  const told = await db.select().from(notifications)
+  assert.deepEqual(told.map((n) => [n.kind, n.detail]), [['report_resolved', 'actioned'], ['report_resolved', 'actioned']])
+  assert.ok(told.every((n) => n.communityId === entry!.communityId))
+})
+
+test('a photo report about a photo already replaced cannot remove the new one, but can be dismissed', async () => {
+  await setPhoto('lagos', photo)
+  await service.report(ada, { communitySlug: 'lagos' }, 'spam')
+  const newer = randomUUID()
+  await setPhoto('lagos', newer)
+  const [item] = await service.queue(sam)
+  await assert.rejects(service.resolve(sam, item!.id, 'remove_community_photo'), ModerationTargetError)
+  assert.equal((await db.select().from(communities).where(eq(communities.slug, 'lagos')))[0]!.photoMediaId, newer)
+  await service.resolve(sam, item!.id, 'dismiss')
+  assert.equal(await openReports(), 0)
+  assert.equal((await db.select().from(communities).where(eq(communities.slug, 'lagos')))[0]!.photoMediaId, newer)
+})
+
+// ---- Gists (docs/adr/0017) ------------------------------------------------------
+
+const rooms = new FakeRoomService()
+const gistsService = new GistsService(
+  db,
+  rooms,
+  { callsMembers: ['ada', 'bayo', 'sam', 'lola'], maxCohosts: 2, maxSpeakers: 2, listenerCap: 10, livekitUrl: 'wss://livekit.test' },
+  new MemoryRateLimiter(),
+)
+// With a way to end Gists, as the app has.
+const withGists = new ModerationService(db, undefined, recordingAlerts, gistsService)
+const as = (id: string, handle: string) => ({ id, handle })
+const gistQueueItem = async (moderator: string) => (await withGists.queue(moderator)).find((item) => item.gist)
+
+test('a Gist is reported by someone who has been in it, not its host, once, with who was there', async () => {
+  const gist = (await gistsService.create(as(ada, 'ada'), { title: 'Jollof wars' })).id
+  await gistsService.join(as(ada, 'ada'), gist)
+  await gistsService.join(as(bayo, 'bayo'), gist)
+
+  await assert.rejects(withGists.report(lola, { gistId: gist }, 'harassment'), /only report a Gist you have been in/)
+  await assert.rejects(withGists.report(ada, { gistId: gist }, 'harassment'), /your own Gist/)
+  await assert.rejects(withGists.report(bayo, { gistId: randomUUID() }, 'harassment'), /only report a Gist you have been in/)
+  await withGists.report(bayo, { gistId: gist }, 'harassment', 'shouting abuse')
+  await withGists.report(bayo, { gistId: gist }, 'harassment')
+  assert.equal(await openReports(), 1)
+
+  const item = await gistQueueItem(sam)
+  assert.ok(item)
+  assert.equal(item.details, 'shouting abuse')
+  assert.equal(item.post, null)
+  assert.equal(item.member, null)
+  assert.deepEqual(
+    { title: item.gist!.title, status: item.gist!.status, host: item.gist!.hostHandle, participants: item.gist!.participants },
+    { title: 'Jollof wars', status: 'live', host: 'ada', participants: [{ handle: 'ada', role: 'host' }, { handle: 'bayo', role: 'listener' }] },
+  )
+  // A later report records who is there then: bayo has left, sam came in.
+  await gistsService.leave(as(bayo, 'bayo'), gist)
+  await gistsService.join(as(sam, 'sam'), gist)
+  await withGists.report(sam, { gistId: gist }, 'other')
+  const records = (await withGists.queue(sam)).filter((i) => i.gist).map((i) => i.gist!.participants.map((p) => p.handle))
+  assert.deepEqual(records, [['ada', 'bayo'], ['ada', 'sam']])
+})
+
+test('a moderator ends a reported Gist: room gone, reports closed, logged, and the reporter told', async () => {
+  const gist = (await gistsService.create(as(ada, 'ada'), { title: 'Jollof wars' })).id
+  await gistsService.join(as(bayo, 'bayo'), gist)
+  await withGists.report(bayo, { gistId: gist }, 'harassment')
+  const item = await gistQueueItem(sam)
+  // A Gist outside any community is for site moderators only.
+  assert.equal(await gistQueueItem(lola), undefined)
+  await assert.rejects(withGists.resolve(lola, item!.id, 'end_gist'), NotAModeratorError)
+
+  await withGists.resolve(sam, item!.id, 'end_gist', 'abuse on the mic')
+  assert.equal((await db.select({ status: gists.status }).from(gists).where(eq(gists.id, gist)))[0]!.status, 'ended')
+  assert.ok(rooms.deleted.includes(gist), 'everyone is disconnected')
+  assert.equal(await openReports(), 0)
+  const told = await db.select().from(notifications).where(eq(notifications.recipientId, bayo))
+  assert.deepEqual(told.map((n) => [n.kind, n.detail]), [['report_resolved', 'gist_actioned']])
+  const [entry] = await withGists.log(sam)
+  assert.deepEqual({ action: entry!.action, gist: entry!.gistTitle, note: entry!.note }, { action: 'end_gist', gist: 'Jollof wars', note: 'abuse on the mic' })
+  await assert.rejects(withGists.resolve(sam, item!.id, 'end_gist'), /already resolved/)
+})
+
+test('a community Gist goes to that community’s moderators too; dismissing leaves it live and says so', async () => {
+  const [lagos] = await db.select({ id: communities.id }).from(communities).where(eq(communities.slug, 'lagos'))
+  await db.insert(communityMemberships).values([
+    { communityId: lagos!.id, memberId: ada },
+    { communityId: lagos!.id, memberId: bayo },
+  ])
+  const gist = (await gistsService.create(as(ada, 'ada'), { title: 'Lagos gist', communityId: lagos!.id })).id
+  await gistsService.join(as(bayo, 'bayo'), gist)
+  await withGists.report(bayo, { gistId: gist }, 'spam')
+  const item = await gistQueueItem(lola)
+  assert.equal(item?.gist?.communityName, 'Lagos')
+  await assert.rejects(withGists.resolve(ada, item!.id, 'dismiss'), NotAModeratorError)
+
+  await withGists.resolve(lola, item!.id, 'dismiss')
+  assert.equal((await db.select({ status: gists.status }).from(gists).where(eq(gists.id, gist)))[0]!.status, 'live')
+  const told = await db.select().from(notifications).where(eq(notifications.recipientId, bayo))
+  assert.deepEqual(told.map((n) => n.detail), ['gist_dismissed'])
+})
+
+test('End the Gist is only for a report about a Gist, and a LiveKit failure leaves the report open', async () => {
+  const post = await postsService.create(ada, 'a post')
+  await withGists.report(bayo, { postId: post.id }, 'spam')
+  const [postReport] = await withGists.queue(sam)
+  await assert.rejects(withGists.resolve(sam, postReport!.id, 'end_gist'), /not about a Gist/)
+
+  const gist = (await gistsService.create(as(ada, 'ada'), { title: 'Jollof wars' })).id
+  await gistsService.join(as(bayo, 'bayo'), gist)
+  await withGists.report(bayo, { gistId: gist }, 'harassment')
+  const item = await gistQueueItem(sam)
+  const failing = new ModerationService(db, undefined, recordingAlerts, {
+    endNow: async () => {
+      throw new Error('LiveKit is down')
+    },
+  })
+  await assert.rejects(failing.resolve(sam, item!.id, 'end_gist'), /LiveKit is down/)
+  assert.ok((await gistQueueItem(sam))?.id === item!.id, 'the report is still open to try again')
 })

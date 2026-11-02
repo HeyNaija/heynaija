@@ -933,14 +933,14 @@ test('search finds whole words in posts and replies, and treats input as text, n
   assert.equal((await db.select().from(posts)).length, 4)
 })
 
-test('post text: trimmed, non-empty, at most 300 characters as a person counts them', () => {
+test('post text: trimmed, non-empty, at most 1,000 characters as a person counts them', () => {
   assert.equal(postText.parse('  hi  '), 'hi')
   assert.equal(postText.safeParse('   ').success, false)
-  assert.equal(postText.safeParse('a'.repeat(300)).success, true)
-  assert.equal(postText.safeParse('a'.repeat(301)).success, false)
-  // 300 flag emoji are 300 characters to a person but 1,200 UTF-16 code units.
-  assert.equal(postText.safeParse('🇳🇬'.repeat(300)).success, true)
-  assert.equal(postText.safeParse('🇳🇬'.repeat(301)).success, false)
+  assert.equal(postText.safeParse('a'.repeat(1000)).success, true)
+  assert.equal(postText.safeParse('a'.repeat(1001)).success, false)
+  // 1,000 flag emoji are 1,000 characters to a person but 4,000 UTF-16 code units.
+  assert.equal(postText.safeParse('🇳🇬'.repeat(1000)).success, true)
+  assert.equal(postText.safeParse('🇳🇬'.repeat(1001)).success, false)
 })
 
 test('@handles are found where they stand alone, and read as lower case', () => {

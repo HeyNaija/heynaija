@@ -19,6 +19,9 @@ vapid_public() { printf '%s\n' "$1" | openssl ec -pubout -outform DER 2>/dev/nul
 get() { grep -E "^$1=" "$env_file" | head -1 | cut -d= -f2- || true; }
 ensure() {
   if [[ -z "$(get "$1")" ]]; then
+    # A .env edited by hand may not end in a newline, and the new line would then join
+    # the last one (CALLS_GISTS_ENABLED=trueLIVEKIT_URL=...), breaking both.
+    if [[ -s "$env_file" && -n "$(tail -c 1 "$env_file")" ]]; then echo >> "$env_file"; fi
     echo "$1=$2" >> "$env_file"
     echo "  added $1"
   fi

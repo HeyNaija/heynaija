@@ -133,3 +133,56 @@ test('the Redis cache round-trips, and fails soft when Redis is down', { skip: !
     down.onModuleDestroy()
   }
 })
+
+// Kratos's whoami for `identity`, as last signed in at `at`.
+const signedIn = (at: unknown) => Response.json({
+  active: true,
+  ...(at === undefined ? {} : { authenticated_at: at }),
+  identity: { id: identity.id, state: 'active', traits: { handle: identity.handle } },
+})
+
+test('when the member last signed in is asked of Kratos every time, never cached', async () => {
+  // Signing in again keeps the session and its cookie and moves authenticated_at forward
+  // (as the dev stack's Kratos does); a cached time would hide that.
+  const times = ['2026-10-29T23:12:17.47225Z', '2026-10-29T23:12:20.782697Z']
+  let call = 0
+  const fetch = mock.method(globalThis, 'fetch', async () => signedIn(times[Math.min(call++, 1)]))
+  const cache = new MemoryCache()
+  const kratos = service(cache)
+  assert.deepEqual(await kratos.identityForSession('good'), identity)
+  assert.deepEqual(await kratos.authenticatedAtForSession('good'), new Date(times[1]!))
+  assert.deepEqual(await kratos.authenticatedAtForSession('good'), new Date(times[1]!))
+  assert.equal(fetch.mock.callCount(), 3)
+  // The cached identity is untouched by these reads.
+  assert.deepEqual(JSON.parse(cache.entries.get('good')!), identity)
+})
+
+test('there is no sign-in time for a session that has ended', async () => {
+  for (const response of [new Response(null, { status: 401 }), Response.json({ active: false, authenticated_at: '2026-10-29T23:12:17Z', identity: { id: identity.id, traits: { handle: 'ada' } } })]) {
+    mock.method(globalThis, 'fetch', async () => response)
+    assert.equal(await service(new MemoryCache()).authenticatedAtForSession('good'), null)
+    mock.restoreAll()
+  }
+})
+
+test('a live session without a readable sign-in time is a protocol error, never "long ago" or "just now"', async () => {
+  for (const at of [undefined, 'yesterday', null, 0]) {
+    mock.method(globalThis, 'fetch', async () => signedIn(at))
+    await assert.rejects(service(new MemoryCache()).authenticatedAtForSession('good'),
+      (error: unknown) => error instanceof AuthProviderError && error.kind === 'protocol', String(at))
+    // Only this question fails: who is signed in is still answered.
+    assert.deepEqual(await service(new MemoryCache()).identityForSession('good'), identity)
+    mock.restoreAll()
+  }
+})
+
+test('a cookie that could smuggle another header never reaches Kratos, whatever is asked', async () => {
+  const fetch = mock.method(globalThis, 'fetch', async () => signedIn('2026-10-29T23:12:17Z'))
+  const kratos = service(new MemoryCache())
+  for (const cookie of ['good\r\nx-evil: 1', 'good; other=1', 'a b']) {
+    assert.equal(await kratos.identityForSession(cookie), null)
+    assert.equal(await kratos.emailForSession(cookie), null)
+    assert.equal(await kratos.authenticatedAtForSession(cookie), null)
+  }
+  assert.equal(fetch.mock.callCount(), 0)
+})

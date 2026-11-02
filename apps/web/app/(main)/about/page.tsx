@@ -41,6 +41,8 @@ const principles = [
   },
 ]
 
+import { TopicsLink } from '@/app/ui/topics-link'
+
 export default function AboutPage() {
   return (
     <article className="page-stack about-page">
@@ -109,7 +111,7 @@ export default function AboutPage() {
             explanations of why Following entries appear, and Home remembers the tab you chose. Under a post, its author&apos;s own
             replies come first, then everyone else&apos;s, newest first, or oldest first if you
             choose. Basic trending highlights recent
-            active conversations, and <Link href="/topics">trending topics</Link> are the hashtags most
+            active conversations, and <TopicsLink>trending topics</TopicsLink> are the hashtags most
             members are using, by rules published on that page. None of them guesses what you will
             engage with.
           </p>

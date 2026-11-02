@@ -19,6 +19,7 @@ import { eq } from 'drizzle-orm'
 import type { FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import type { Env } from '../env.js'
+import { FeatureFlags } from '../flags/feature-flags.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
 import { gistsFeatureFor } from '../gists/gists-enabled.guard.js'
@@ -60,18 +61,13 @@ const rejectSignup = (text: string) =>
 
 // The same, shown under the handle field in Settings. (At signup the field is
 // hidden by the time the hooks run, so the signup uses a message above the form.)
-const handleUnavailable = () =>
+const handleRefused = (id: number, text: string) =>
   new HttpException(
-    {
-      messages: [
-        {
-          instance_ptr: '#/traits/handle',
-          messages: [{ id: 4900002, text: 'That handle is not available.', type: 'error', context: {} }],
-        },
-      ],
-    },
+    { messages: [{ instance_ptr: '#/traits/handle', messages: [{ id, text, type: 'error', context: {} }] }] },
     400,
   )
+const handleUnavailable = () => handleRefused(4900002, 'That handle is not available.')
+const handleKept = () => handleRefused(4900003, 'Your account is being deleted, so its handle cannot change. Cancel the deletion first.')
 
 @Controller()
 export class AuthController {
@@ -87,14 +83,16 @@ export class AuthController {
     @Inject(AuthService) private readonly auth: Pick<AuthService, 'invalidateSessionCache'>,
     @Inject(MembersService) private readonly members: MembersService,
     @Inject(GovernanceService) private readonly governance: GovernanceService,
+    @Inject(FeatureFlags) private readonly flags: FeatureFlags,
   ) {}
 
   @Get('v1/me')
   @UseGuards(SessionGuard)
   async me(@Req() req: AuthedRequest) {
-    const [scope, unread, [row]] = await Promise.all([
+    const [scope, unread, features, [row]] = await Promise.all([
       this.moderation.scope(req.member.id),
       this.notifications.unreadCount(req.member.id),
+      this.flags.all(req.member.id),
       this.db
         .select({
           avatarMediaId: members.avatarMediaId,
@@ -116,9 +114,11 @@ export class AuthController {
       moderates: scope.siteWide || scope.communityIds.length > 0,
       // False until the member finishes or skips the welcome flow; the web app's
       // home page sends them to /welcome until then.
-      onboarded: Boolean(row?.onboardedAt),
-      // Switches the web app may show this member (docs/adr/0017); false when off.
-      features: { gists: gistsFeatureFor(this.env, req.member) },
+      // With the welcome flow switched off nobody is sent to it.
+      onboarded: !features.onboarding || Boolean(row?.onboardedAt),
+      // What is switched on for this member: the database-backed flags (docs/feature-flags.md),
+      // plus gists, still switched by env (docs/adr/0017) until it moves onto the flags.
+      features: { ...features, gists: gistsFeatureFor(this.env, req.member) },
     }
   }
 
@@ -178,7 +178,9 @@ export class AuthController {
   /**
    * Called by Kratos just before it saves a change a member made in Settings. A
    * handle someone else gave up recently is refused; one the member gives up is
-   * held for them. Kratos itself refuses a handle another account has now.
+   * held for them. Kratos itself refuses a handle another account has now. An
+   * account waiting to be deleted keeps its handle, which the erase holds
+   * (docs/adr/0016).
    */
   @Post('internal/kratos/settings')
   @HttpCode(200)
@@ -188,6 +190,11 @@ export class AuthController {
     if (!parsed.success) throw new BadRequestException()
     const { identity_id: memberId, handle, previous_handle: previous } = parsed.data
     if (handle === previous) return {}
+    const [member] = await this.db
+      .select({ deletionRequestedAt: members.deletionRequestedAt })
+      .from(members)
+      .where(eq(members.id, memberId))
+    if (member?.deletionRequestedAt) throw handleKept()
     if (await this.members.handleHeld(handle, memberId)) throw handleUnavailable()
     await this.members.holdHandle(memberId, previous)
     return {}

@@ -29,7 +29,7 @@ test('the sidebar sends its links and the room for its button before it knows wh
   const html = await (await page.request.get('/')).text()
   const sidebar = html.slice(html.indexOf('class="square-sidebar"'))
   const first = sidebar.slice(0, sidebar.indexOf('sidebar-card-slot'))
-  for (const href of ['/c', '/about', '/progress', '/governance', '/bookmarks', '/settings']) {
+  for (const href of ['/c', '/about', '/progress', '/governance', '/ideas', '/bookmarks', '/settings']) {
     expect(first, href).toContain(`href="${href}"`)
   }
   expect(first).toContain('sidebar-compose')
@@ -62,19 +62,23 @@ test('nothing in the sidebar moves when a member’s page fills in', async ({ br
   const member = await newMember(browser, 'steady')
   try {
     const { page } = member
-    await page.setViewportSize({ width: 1440, height: 1000 })
     const places = await watchPlaces(page, {
       more: '.sidebar-more summary',
       bookmarks: '.sidebar-nav-list a[href="/bookmarks"]',
+      settings: '.sidebar-nav-list a[href="/settings"]',
       compose: '.sidebar-compose',
     })
-    await page.goto('/')
-    // The real links are in once the current page is marked.
-    await expect(page.locator('.sidebar-nav-list > li[data-tier] a[aria-current="page"]')).toBeVisible()
-    await expect(page.locator('.sidebar-compose')).toHaveAttribute('href', '/#compose')
-    await page.waitForTimeout(300)
-    const seen = await places()
-    for (const name of ['more', 'bookmarks', 'compose']) expect(seen[name], name).toHaveLength(1)
+    // Every link is in the list at 1000px; at 570px the least needed are in More.
+    for (const [height, watched] of [[1000, ['bookmarks', 'settings', 'compose']], [570, ['more', 'bookmarks', 'settings', 'compose']]] as const) {
+      await page.setViewportSize({ width: 1440, height })
+      await page.goto('/')
+      // The real links are in once the current page is marked.
+      await expect(page.locator('.sidebar-nav-list > li[data-tier] a[aria-current="page"]')).toBeVisible()
+      await expect(page.locator('.sidebar-compose')).toHaveAttribute('href', '/#compose')
+      await page.waitForTimeout(300)
+      const seen = await places()
+      for (const name of watched) expect(seen[name], `${name} at ${height}px`).toHaveLength(1)
+    }
   } finally {
     await member.context.close()
   }

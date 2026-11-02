@@ -4,7 +4,15 @@ import { Suspense } from 'react'
 import { GistRoom } from '@/app/ui/gists/gist-room'
 import { getGist, getViewer } from '@/lib/api'
 
-export const metadata: Metadata = { title: 'Gist' }
+/**
+ * The tab shows the Gist's title. Only members on the Gists list get this far
+ * (proxy.ts); everyone else, link preview fetchers included, gets the sign-in page
+ * or the missing page, neither of which names the Gist.
+ */
+export async function generateMetadata({ params }: PageProps<'/gists/[id]'>): Promise<Metadata> {
+  const gist = await getGist((await params).id).catch(() => null)
+  return { title: gist?.title ?? 'Gist', robots: { index: false } }
+}
 
 export default function GistPage(props: PageProps<'/gists/[id]'>) {
   // The notice sits outside Suspense: without JavaScript the streamed page never replaces its fallback.

@@ -56,6 +56,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test deployment upgrades and rollbacks
         run: bash infra/deploy/deploy.test.sh
+      - name: Test the nightly clean-up of Kratos's sent emails
+        run: bash infra/deploy/kratos-cleanup.test.sh
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

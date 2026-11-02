@@ -547,3 +547,87 @@ test('reconcile: a Gist whose host has been gone two minutes ends, and so does o
   await service.reconcile(later(3 * MINUTE))
   assert.equal((await service.get(as('bayo'), other)).status, 'ended')
 })
+
+test('reconcile: a Gist whose host asked to delete their account (so is inactive) disconnects them and ends within minutes', async () => {
+  await enter('ada', gist)
+  await enter('bayo', gist)
+  await db.update(members).set({ active: false }).where(eq(members.id, id.ada)) // as AccountDeletionService.request does
+  await service.reconcile(later(MINUTE))
+  assert.ok(rooms.removed.includes(`${gist}/${id.ada}`))
+  await service.reconcile(later(2 * MINUTE)) // no longer connected: marked gone
+  assert.ok((await roleOf(gist, 'ada'))!.leftAt)
+  assert.equal((await service.get(as('bayo'), gist)).status, 'live')
+  await service.reconcile(later(5 * MINUTE)) // gone more than two minutes
+  assert.equal((await service.get(as('bayo'), gist)).status, 'ended')
+  assert.ok(rooms.deleted.includes(gist))
+})
+
+test('before an erase, the Gists the member hosts are ended with their rooms; one LiveKit cannot close stays live', async () => {
+  await enter('ada', gist)
+  await enter('bayo', gist)
+  const chis = (await service.create(as('chi'), { title: 'Not hers' })).id
+
+  rooms.failNext = 'deleteRoom'
+  await assert.rejects(service.endHostedBy(id.ada))
+  assert.equal((await service.get(as('bayo'), gist)).status, 'live', 'left for the retry, which the erase gets')
+
+  await service.endHostedBy(id.ada)
+  assert.equal((await service.get(as('bayo'), gist)).status, 'ended')
+  assert.ok(rooms.deleted.includes(gist))
+  assert.ok((await roleOf(gist, 'bayo'))!.leftAt)
+  assert.equal((await service.get(as('chi'), chis)).status, 'live', 'another host’s Gist is not hers to end')
+  await service.endHostedBy(id.ada) // nothing live left: nothing to do
+  assert.deepEqual(rooms.deleted.filter((r) => r === gist), [gist])
+})
+
+// ---- Live now -------------------------------------------------------------------
+
+const liveIds = async (p: (typeof people)[number]) => (await service.live(as(p))).map((g) => g.id)
+
+test('Live now lists the live Gists a member may see, newest first, with listener counts', async () => {
+  await db.update(gists).set({ startedAt: new Date(Date.now() - 60_000) }).where(eq(gists.id, gist))
+  const second = (await service.create(as('bayo'), { title: 'Second' })).id
+  await enter('chi', gist)
+  const list = await service.live(as('dayo'))
+  assert.deepEqual(list.map((g) => g.id), [second, gist])
+  assert.deepEqual(
+    { title: list[1]!.title, host: list[1]!.host.handle, community: list[1]!.community, listeners: list[1]!.listenerCount },
+    { title: 'Jollof wars', host: 'ada', community: null, listeners: 1 },
+  )
+  // Someone who may not use Gists gets the dark not-found, not an empty list.
+  assert.equal(await codeOf(service.live(as('outsider'))), 'not_found')
+  // An ended Gist leaves the list.
+  await service.end(as('ada'), gist)
+  assert.deepEqual(await liveIds('dayo'), [second])
+})
+
+test('Live now never lists a Gist the member would be refused: a block with its stage, removal, community', async () => {
+  await db.update(gists).set({ startedAt: new Date(Date.now() - 60_000) }).where(eq(gists.id, gist))
+  await enter('bayo', gist)
+  await service.setSpeaker(as('ada'), gist, id.bayo)
+  await db.insert(blocks).values([
+    { blockerId: id.chi, blockedId: id.ada }, // chi blocked the host
+    { blockerId: id.bayo, blockedId: id.dayo }, // the speaker blocked dayo
+  ])
+  assert.deepEqual(await liveIds('chi'), [])
+  assert.deepEqual(await liveIds('dayo'), [])
+  assert.deepEqual(await liveIds('efe'), [gist])
+  // The block rule is about joining as a listener: the host still sees their own Gist.
+  assert.deepEqual(await liveIds('ada'), [gist])
+
+  await enter('efe', gist)
+  await service.remove(as('ada'), gist, id.efe)
+  assert.deepEqual(await liveIds('efe'), [])
+
+  const [lagos] = await db.insert(communities).values({ slug: 'lagos', name: 'Lagos', description: 'x' }).returning()
+  await db.insert(communityMemberships).values([
+    { communityId: lagos!.id, memberId: id.femi },
+    { communityId: lagos!.id, memberId: id.gozie },
+  ])
+  const local = (await service.create(as('femi'), { title: 'Lagos only', communityId: lagos!.id })).id
+  const gozie = await service.live(as('gozie'))
+  assert.deepEqual(gozie.map((g) => g.id), [local, gist])
+  assert.equal(gozie[0]!.community!.slug, 'lagos')
+  // Not in the community: only the open Gist.
+  assert.deepEqual(await liveIds('bayo'), [gist])
+})

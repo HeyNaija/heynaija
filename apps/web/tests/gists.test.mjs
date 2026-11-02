@@ -6,6 +6,7 @@ import {
   dataUseHint,
   joinFailure,
   listenerLabel,
+  liveMeta,
   nextPollDelay,
   POLL_BASE_MS,
   POLL_MAX_MS,
@@ -115,4 +116,13 @@ test('a title is required and at most 120 characters, the most the API takes', (
   assert.equal(titleProblem(' Jollof debate '), null)
   assert.ok(titleProblem('x'.repeat(121)))
   assert.equal(titleProblem('x'.repeat(120)), null)
+})
+
+test('a Live now row says who hosts it, in which community, and how many listen', () => {
+  const host = { id: 'a', handle: 'ada', displayName: 'Ada Obi' }
+  assert.equal(liveMeta({ host, community: null, listenerCount: 0 }), 'Hosted by Ada Obi · No listeners yet')
+  assert.equal(
+    liveMeta({ host: { ...host, displayName: null }, community: { id: 'c', slug: 'lagos', name: 'Lagos' }, listenerCount: 3 }),
+    'Hosted by @ada · in Lagos · 3 listeners',
+  )
 })

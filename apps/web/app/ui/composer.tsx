@@ -1,21 +1,24 @@
 'use client'
 
-import { type ReactNode, useActionState, useEffect, useId, useRef, useState } from 'react'
+import { type KeyboardEvent, type ReactNode, useActionState, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { Globe } from 'lucide-react'
 import { type ComposeState, createPost } from '@/app/actions'
+import { insertMention, mentionBeforeCaret } from '@/lib/mention-suggest'
 import { POLL_OPTION_INPUT_MAX, POLL_OPTIONS_MAX } from '@/lib/polls'
 import type { ReplyAudience } from '@/lib/reply-audience'
 import { Avatar } from './avatar'
+import { FounderBadge } from './founder-badge'
 import { BubbleIcon, CloseIcon, GifIcon, ImageIcon, PeopleIcon, PlusIcon, VoteIcon } from './icons'
 import { IMAGE_TYPES } from './shrink-image'
 import { useAutoGrow } from './use-auto-grow'
 import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
+import { useFixedPlacement } from './use-fixed-placement'
+import { useMentionSuggestions } from './use-mention-suggestions'
+import { graphemes, POST_MAX } from '@/lib/post-length'
 
-const LIMIT = 300
-const segmenter = new Intl.Segmenter()
-const graphemes = (text: string) => [...segmenter.segment(text)].length
+const LIMIT = POST_MAX
 
 type Props = {
   /** The member writing; shown as their avatar. */
@@ -39,9 +42,12 @@ type Props = {
   /** The Composer stays mounted when its form moves to another reply row. */
   portalTarget?: HTMLElement | null
   focusRequest?: number
+  /** From `me.features`: whether polls and reply limits are switched on. Off hides them. */
+  polls?: boolean
+  replyControls?: boolean
 }
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0 }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -69,6 +75,66 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
   const rows = active ? (replyTo ? 2 : 3) : 1
   useAutoGrow(input, text, rows)
 
+  // The @mention being typed at the caret, and members to offer for it.
+  const mentionsId = `${inputId}-mentions`
+  const [caret, setCaret] = useState(0)
+  const [dismissed, setDismissed] = useState<number | null>(null)
+  // Who is highlighted, by handle, so the highlight stays on them when the list is replaced.
+  const [picked, setPicked] = useState<string | null>(null)
+  const typing = mentionBeforeCaret(text, caret)
+  const mentions = useMentionSuggestions(typing?.query ?? null)
+  const suggestions = mentions.list
+  const suggesting = !!typing && suggestions.length > 0 && dismissed !== typing.start && !pending
+  const choice = Math.max(0, suggestions.findIndex((m) => m.handle === picked))
+  const nextCaret = useRef<number | null>(null)
+  const writingRow = useRef<HTMLDivElement>(null)
+  const mentionList = useRef<HTMLUListElement>(null)
+  useFixedPlacement(writingRow, mentionList, suggesting)
+  useEffect(() => {
+    setPicked(null)
+    mentionList.current?.scrollTo({ top: 0 })
+  }, [typing?.query])
+  // Escape closes the list for that one mention; the next one offers members again.
+  useEffect(() => setDismissed(null), [typing?.start])
+  useLayoutEffect(() => {
+    if (nextCaret.current === null) return
+    input.current?.setSelectionRange(nextCaret.current, nextCaret.current)
+    nextCaret.current = null
+  }, [text])
+
+  const pickMention = (handle: string) => {
+    if (!typing) return
+    const next = insertMention(text, typing, caret, handle)
+    // The same text (the handle was already written out) renders nothing new, so the caret moves here.
+    if (next.text === text) input.current?.setSelectionRange(next.caret, next.caret)
+    else nextCaret.current = next.caret
+    setText(next.text)
+    setCaret(next.caret)
+  }
+
+  const onMentionKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!suggesting || !typing || e.nativeEvent.isComposing) return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      const step = e.key === 'ArrowDown' ? 1 : -1
+      // At the last row with more to come, loads them instead of wrapping to the top.
+      if (step === 1 && choice === suggestions.length - 1 && mentions.more) {
+        mentions.loadMore()
+        return
+      }
+      const next = (choice + step + suggestions.length) % suggestions.length
+      setPicked(suggestions[next]!.handle)
+      // Keeps the highlighted member in view, including the wrap from last to first.
+      mentionList.current?.children[next]?.scrollIntoView({ block: 'nearest' })
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault()
+      pickMention(suggestions[choice]!.handle)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setDismissed(typing.start)
+    }
+  }
+
   // Arriving through a "Reply" or "New post" link (…#compose) puts the cursor in the box.
   useEffect(() => {
     if (window.location.hash === '#compose' || focusRequest > 0) input.current?.focus({ preventScroll: true })
@@ -81,7 +147,8 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
   // the pointer and swallow a click on the image button.
   useEffect(() => {
     const outside = (e: PointerEvent) => {
-      if (!form.current?.contains(e.target as Node)) setExpanded(false)
+      // The @mention list is drawn outside the form, but belongs to it.
+      if (!form.current?.contains(e.target as Node) && !mentionList.current?.contains(e.target as Node)) setExpanded(false)
     }
     document.addEventListener('pointerdown', outside)
     return () => document.removeEventListener('pointerdown', outside)
@@ -132,7 +199,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
       {replyHandle ? <input type="hidden" name="replyHandle" value={replyHandle} /> : null}
       {community ? <input type="hidden" name="community" value={community} /> : null}
       {quote ? <input type="hidden" name="quote" value={quote.id} /> : null}
-      {!replyTo ? <input type="hidden" name="replyAudience" value={replyAudience} /> : null}
+      {!replyTo && replyControls ? <input type="hidden" name="replyAudience" value={replyAudience} /> : null}
       {pollOpen ? <input type="hidden" name="poll" value="1" /> : null}
 
       {replyTo && replyHandle ? (
@@ -151,7 +218,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
           <label htmlFor={inputId} className="sr-only">
             {replyTo ? 'Your reply' : 'New post'}
           </label>
-          <div className="composer-writing-row">
+          <div ref={writingRow} className="composer-writing-row">
             <textarea
               ref={input}
               id={inputId}
@@ -166,12 +233,66 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
               required={images.drafts.length === 0}
               disabled={pending}
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value)
+                setCaret(e.target.selectionStart)
+              }}
+              onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+              onKeyDown={onMentionKey}
               placeholder={prompt}
               className="composer-input"
               aria-describedby={replyTo && replyHandle ? `${recipientId} ${privacyId}` : privacyId}
               aria-invalid={left < 0 || undefined}
+              aria-autocomplete="list"
+              aria-controls={suggesting ? mentionsId : undefined}
+              aria-activedescendant={suggesting ? `${mentionsId}-${choice}` : undefined}
             />
+            {/* In the page's body, fixed to the window (useFixedPlacement), so no scrolling bar around the box clips it. */}
+            {suggesting ? createPortal(
+              <ul
+                ref={mentionList}
+                id={mentionsId}
+                role="listbox"
+                aria-label="Members to mention"
+                aria-busy={mentions.loading || undefined}
+                className="mention-list"
+                // Asks for the next page a couple of rows before the end.
+                onScroll={(e) => {
+                  const ul = e.currentTarget
+                  if (ul.scrollHeight - ul.scrollTop - ul.clientHeight < 120) mentions.loadMore()
+                }}
+              >
+                {suggestions.map((m, i) => (
+                  <li
+                    key={m.handle}
+                    id={`${mentionsId}-${i}`}
+                    role="option"
+                    aria-selected={i === choice}
+                    className="mention-option"
+                    // Keeps focus (and the caret) in the box.
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={() => pickMention(m.handle)}
+                    onPointerEnter={() => setPicked(m.handle)}
+                  >
+                    <Avatar handle={m.handle} src={m.avatar} size={36} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate font-semibold">{m.displayName ?? `@${m.handle}`}</span>
+                        {m.founder ? <FounderBadge plain size={14} /> : null}
+                      </span>
+                      {m.displayName ? <span className="block truncate text-[13px] text-muted">@{m.handle}</span> : null}
+                      {m.following ? <span className="block text-xs text-muted">Following</span> : null}
+                    </span>
+                  </li>
+                ))}
+                {mentions.loading ? (
+                  <li role="presentation" className="mention-loading">
+                    Loading…
+                  </li>
+                ) : null}
+              </ul>,
+              document.body,
+            ) : null}
           </div>
 
           {images.drafts.length ? (
@@ -287,7 +408,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
             setTooMany(images.add(files) > 0)
           }}
         />
-        {!replyTo ? (
+        {!replyTo && polls ? (
           <button
             type="button"
             className="icon-btn composer-photo"
@@ -323,7 +444,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
             {community ? 'This community' : 'Public'}
           </span>
         )}
-        {!replyTo ? (
+        {!replyTo && replyControls ? (
           <label className="composer-audience">
             <BubbleIcon size={16} />
             <span className="sr-only">Who can reply</span>

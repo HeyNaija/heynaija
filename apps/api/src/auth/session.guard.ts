@@ -6,11 +6,13 @@ import {
   HttpException,
   Inject,
   Injectable,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common'
 import { eq } from 'drizzle-orm'
 import type { FastifyRequest } from 'fastify'
 import type { Env } from '../env.js'
+import { FeatureFlags } from '../flags/feature-flags.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { DB, ENV } from '../tokens.js'
 import { AuthService, authRequest, type MemberIdentity } from './auth.service.js'
@@ -33,7 +35,12 @@ export class SessionGuard implements CanActivate {
     @Inject(ENV) private readonly env: Pick<Env, 'WEB_PUBLIC_URL'>,
     @Inject(DB) private readonly db: Db,
     @Inject(InvitesService) private readonly invites: Pick<InvitesService, 'hasRedeemed'>,
+    @Inject(FeatureFlags) @Optional() private readonly flags?: Pick<FeatureFlags, 'isEnabled'>,
   ) {}
+
+  private async skipsWelcome(memberId: string): Promise<Date | undefined> {
+    return this.flags && !(await this.flags.isEnabled('onboarding', memberId)) ? new Date() : undefined
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<AuthedRequest>()
@@ -50,7 +57,13 @@ export class SessionGuard implements CanActivate {
     // A plain primary-key read on every request: `active` is never cached, so a
     // suspension takes effect on the member's very next request.
     let [member] = await this.db
-      .select({ active: members.active, handle: members.handle, lastSeenAt: members.lastSeenAt })
+      .select({
+        active: members.active,
+        handle: members.handle,
+        lastSeenAt: members.lastSeenAt,
+        deletionRequestedAt: members.deletionRequestedAt,
+        deletedAt: members.deletedAt,
+      })
       .from(members)
       .where(eq(members.id, identity.id))
 
@@ -62,13 +75,25 @@ export class SessionGuard implements CanActivate {
       }
       ;[member] = await this.db
         .insert(members)
-        .values({ id: identity.id, handle: identity.handle, lastSeenAt: new Date() })
+        // While the welcome flow is switched off a newcomer is counted as having done it, so
+        // switching it on later sends only people who join after.
+        .values({ id: identity.id, handle: identity.handle, lastSeenAt: new Date(), onboardedAt: await this.skipsWelcome(identity.id) })
         .onConflictDoUpdate({ target: members.id, set: { lastSeenAt: new Date() } })
-        .returning({ active: members.active, handle: members.handle, lastSeenAt: members.lastSeenAt })
+        .returning({
+          active: members.active,
+          handle: members.handle,
+          lastSeenAt: members.lastSeenAt,
+          deletionRequestedAt: members.deletionRequestedAt,
+          deletedAt: members.deletedAt,
+        })
     } else if (
-      member.handle !== identity.handle ||
-      !member.lastSeenAt ||
-      Date.now() - member.lastSeenAt.getTime() >= LAST_SEEN_EVERY_MS
+      // Once deletion is asked for, the row is left alone: the erase holds the
+      // handle it has and then blanks it, and a cached session must not write
+      // the old one back (docs/adr/0016).
+      !member.deletionRequestedAt &&
+      (member.handle !== identity.handle ||
+        !member.lastSeenAt ||
+        Date.now() - member.lastSeenAt.getTime() >= LAST_SEEN_EVERY_MS)
     ) {
       // Writing last_seen_at on every call meant 3–5 row updates per page view;
       // "last seen" only needs to be right to within a few minutes.
@@ -78,6 +103,9 @@ export class SessionGuard implements CanActivate {
         .where(eq(members.id, identity.id))
     }
     if (!member) throw new ForbiddenException('account_inactive')
+    // An erased account is no account, even to a session Kratos has not yet
+    // forgotten: whoever holds it is signed out, not suspended.
+    if (member.deletedAt) throw new UnauthorizedException('sign in required')
     if (!member.active && this.requireActive) throw new ForbiddenException('account_inactive')
 
     req.member = identity
@@ -103,8 +131,10 @@ export class OptionalSessionGuard extends SessionGuard {
 }
 
 /**
- * Lets a suspended member through. Only for the one thing they are still allowed
- * to do: appeal.
+ * Lets an inactive member through: one who is suspended, or waiting for their
+ * account's deletion. Only for what they may still do: appeal, download their
+ * data, stop push on a device, and ask for or cancel the deletion. An erased
+ * account is still refused.
  */
 @Injectable()
 export class SuspendedAllowedGuard extends SessionGuard {

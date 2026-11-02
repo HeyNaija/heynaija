@@ -109,11 +109,12 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
     case 'post_restored':
       return { icon: <ShieldIcon size={18} />, text: <>A moderator restored your post.</> }
     case 'report_resolved': {
-      const about = n.subjectHandle ? `@${n.subjectHandle}` : 'a post'
+      const gist = n.detail?.startsWith('gist_') ?? false
+      const about = gist ? 'a Gist' : n.subjectHandle ? `@${n.subjectHandle}` : n.community ? `the photo of ${n.community.name}` : 'a post'
       return {
         icon: <FlagIcon size={20} />,
         text:
-          n.detail === 'actioned'
+          n.detail === 'actioned' || n.detail === 'gist_actioned'
             ? `Thanks for your report about ${about}. A moderator took action.`
             : `Thanks for your report about ${about}. A moderator looked and found no rule was broken.`,
       }

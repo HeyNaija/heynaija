@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import { StartGist } from '@/app/ui/gists/start-gist'
 import { getViewer } from '@/lib/api'
 
-export const metadata: Metadata = { title: 'Start a Gist' }
+export const metadata: Metadata = { title: 'Start a Gist', robots: { index: false } }
 
 export default function NewGistPage() {
   return (

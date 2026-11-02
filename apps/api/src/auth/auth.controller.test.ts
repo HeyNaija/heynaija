@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { ageAssurances } from '@heynaija/db'
+import { ageAssurances, members } from '@heynaija/db'
 import { HttpException } from '@nestjs/common'
 import { eq } from 'drizzle-orm'
 import type { Env } from '../env.js'
@@ -33,6 +33,7 @@ const controller = new AuthController(
   {} as never,
   new MembersService(db),
   new GovernanceService(db, env),
+  {} as never,
 )
 
 /** The message Kratos would show on the signup form, or null if the signup may go ahead. */
@@ -81,4 +82,30 @@ test('once the account exists, the age confirmation is recorded with the invite'
   assert.equal(row!.method, 'self_declared')
   assert.equal(row!.band, '18_plus')
   assert.equal((await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, older))).length, 0)
+})
+
+const settingsRefusal = async (body: object): Promise<string | null> => {
+  try {
+    await controller.settings(secret, body)
+    return null
+  } catch (err) {
+    assert.ok(err instanceof HttpException)
+    const response = err.getResponse() as { messages: { instance_ptr: string; messages: { text: string }[] }[] }
+    assert.equal(response.messages[0]!.instance_ptr, '#/traits/handle')
+    return response.messages[0]!.messages[0]!.text
+  }
+}
+
+test('a rename in Settings holds the old handle, except that an account waiting to be deleted keeps its own', async () => {
+  const id = randomUUID()
+  await db.insert(members).values({ id, handle: 'ada' })
+  assert.equal(await settingsRefusal({ identity_id: id, handle: 'ada', previous_handle: 'ada' }), null)
+  assert.equal(await settingsRefusal({ identity_id: id, handle: 'ada_new', previous_handle: 'ada' }), null)
+  assert.equal(await new MembersService(db).handleHeld('ada', null), true)
+
+  await db.update(members).set({ handle: 'ada_new', active: false, deletionRequestedAt: new Date() }).where(eq(members.id, id))
+  assert.match((await settingsRefusal({ identity_id: id, handle: 'ada_newer', previous_handle: 'ada_new' }))!, /being deleted/)
+  assert.equal(await new MembersService(db).handleHeld('ada_new', null), false, 'nothing was held for a rename that did not happen')
+  // Other changes in Settings still go through.
+  assert.equal(await settingsRefusal({ identity_id: id, handle: 'ada_new', previous_handle: 'ada_new' }), null)
 })

@@ -6,7 +6,7 @@ import { MARK, root } from './env.ts'
 const cli = (name: string) => `${root}apps/api/dist/cli/${name}.js`
 
 export function apiCliBuilt() {
-  return existsSync(cli('create-invite')) && existsSync(cli('moderator')) && existsSync(cli('founder'))
+  return existsSync(cli('create-invite')) && existsSync(cli('moderator')) && existsSync(cli('founder')) && existsSync(cli('privacy-request'))
 }
 
 function run(name: string, args: string[]) {
@@ -34,4 +34,20 @@ export function grantModerator(handle: string, community?: string) {
 /** Gives `handle` the Founder badge, or with `on` false takes it away. */
 export function setFounder(handle: string, on = true) {
   run('founder', [on ? 'grant' : 'revoke', handle])
+}
+
+/**
+ * Records a deletion request for `handle` and erases the account now, as an
+ * operator would once the person has confirmed it is them. The running API's
+ * worker does the erasing within seconds. The request carries the e2e mark, so
+ * cleaning can still find the member once their handle and identity are gone.
+ */
+export function eraseNow(handle: string): { requestId: string; memberId: string } {
+  const recorded = run('privacy-request', ['record', '--handle', handle, '--kind', 'deletion', '--notes', MARK.inviteNote])
+  const requestId = recorded.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/)?.[0]
+  if (!requestId) throw new Error(`privacy-request record printed ${JSON.stringify(recorded)}`)
+  const queued = run('privacy-request', ['delete-account', '--request', requestId, '--now'])
+  const memberId = queued.match(/\(member ([0-9a-f-]{36})\)/)?.[1]
+  if (!memberId) throw new Error(`privacy-request delete-account printed ${JSON.stringify(queued)}`)
+  return { requestId, memberId }
 }

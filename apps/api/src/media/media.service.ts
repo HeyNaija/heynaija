@@ -1,7 +1,8 @@
-import { type Db, media, members, posts, reports } from '@heynaija/db'
+import { communities, type Db, media, members, posts, reports } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, eq, inArray, isNotNull, isNull, lt, type SQL, sql } from 'drizzle-orm'
 import sharp from 'sharp'
+import { managesPhoto } from '../communities/photo-managers.js'
 import { SAFETY_ALERTS, type SafetyAlerts } from '../moderation/safety-alerts.js'
 import { DB } from '../tokens.js'
 import type { ObjectStore } from './object-store.js'
@@ -65,23 +66,29 @@ const ABANDONED_AFTER_MS = 60 * 60 * 1000
 
 export class MediaError extends Error {
   constructor(
-    readonly code: 'not_found' | 'not_uploaded' | 'too_large' | 'not_an_image' | 'blocked' | 'scan_unavailable',
+    readonly code: 'not_found' | 'not_uploaded' | 'too_large' | 'not_an_image' | 'blocked' | 'scan_unavailable' | 'forbidden',
     message: string,
   ) {
     super(message)
   }
 }
 
-type Kind = 'avatar' | 'post_image'
+type Kind = 'avatar' | 'post_image' | 'community_photo'
+export type { Kind as MediaKind }
 
-const folder: Record<Kind, string> = { avatar: 'avatars', post_image: 'posts' }
-const sizes: Record<Kind, readonly number[]> = { avatar: AVATAR_SIZES, post_image: POST_IMAGE_SIZES }
+const folder: Record<Kind, string> = { avatar: 'avatars', post_image: 'posts', community_photo: 'community-photos' }
+// Whether an image is its uploader's, and so goes when their account is erased.
+// A community's photo is the community's, whichever moderator uploaded it.
+const personal: Record<Kind, boolean> = { avatar: true, post_image: true, community_photo: false }
+/** The kinds erasing an account takes with it (AccountDeletionService, `eraseFilesOf`). */
+export const ACCOUNT_MEDIA_KINDS = (Object.keys(personal) as Kind[]).filter((kind) => personal[kind])
+const sizes: Record<Kind, readonly number[]> = { avatar: AVATAR_SIZES, post_image: POST_IMAGE_SIZES, community_photo: AVATAR_SIZES }
 const uploadKey = (kind: Kind, mediaId: string) => `${folder[kind]}/${mediaId}`
 const variantKey = (kind: Kind, mediaId: string, size: number) => `${folder[kind]}/${mediaId}/${size}.webp`
 // A GIF's first frame, so readers can pause it and quoted posts need not play it.
 const stillKey = (kind: Kind, mediaId: string) => `${folder[kind]}/${mediaId}/still.webp`
 /** Every file a published image may have: its sizes, and a still if it is animated. */
-const publishedKeys = (kind: Kind, mediaId: string) => [
+export const publishedKeys = (kind: Kind, mediaId: string) => [
   ...sizes[kind].map((px) => variantKey(kind, mediaId, px)),
   ...(kind === 'post_image' ? [stillKey(kind, mediaId)] : []),
 ]
@@ -97,6 +104,10 @@ const quarantineKey = (key: string) => `quarantine/${key}`
  */
 export const avatarPath = (mediaId: string | null): string | null =>
   mediaId ? `/media/avatars/${mediaId}` : null
+
+/** Same idea for a community's photo: `/96.webp` or `/256.webp` follows. */
+export const communityPhotoPath = (mediaId: string | null): string | null =>
+  mediaId ? `/media/community-photos/${mediaId}` : null
 
 /** Same idea for post images: the web app appends `/640.webp` or `/1600.webp`. */
 export const postImagePath = (mediaId: string): string => `/media/posts/${mediaId}`
@@ -206,7 +217,7 @@ export class MediaService {
     await this.store.write('uploads', quarantineKey(`originals/${key}`), original, 'application/octet-stream')
     await this.store.remove('uploads', key)
     await this.db.update(media).set({ status: 'blocked' }).where(eq(media.id, mediaId))
-    const what = kind === 'avatar' ? 'profile photo' : 'post image'
+    const what = kind === 'avatar' ? 'profile photo' : kind === 'community_photo' ? 'community photo' : 'post image'
     await this.db.insert(reports).values({
       reporterId: null,
       memberId: ownerId,
@@ -224,18 +235,19 @@ export class MediaService {
 
   /**
    * Step 1: reserves a media ID and returns a URL the browser uploads the file
-   * to directly. Nothing is public yet.
+   * to directly. Nothing is public yet. A community photo names its community.
    */
   async startUpload(
     ownerId: string,
     kind: Kind,
     contentType: PostImageType,
     bytes: number,
+    communityId: string | null = null,
   ): Promise<{ mediaId: string; uploadUrl: string }> {
     await this.sweepAbandoned(ownerId)
     const [row] = await this.db
       .insert(media)
-      .values({ ownerId, kind, contentType, bytes })
+      .values({ ownerId, kind, contentType, bytes, communityId })
       .returning({ id: media.id })
     const uploadUrl = await this.store.presignUpload(uploadKey(kind, row!.id), contentType, bytes)
     return { mediaId: row!.id, uploadUrl }
@@ -275,18 +287,13 @@ export class MediaService {
   }
 
   /**
-   * Step 2, after the browser has uploaded: checks the file really is an image,
-   * re-encodes it at our sizes (which drops any embedded location or camera data),
-   * publishes those, and makes it the member's avatar. Done inside the request:
-   * a 512px square is quick.
+   * The shared middle of a profile or community photo: checks the upload, makes
+   * square versions (dropping embedded location or camera data), runs the
+   * scanner, and publishes the versions. Throws a MediaError when it cannot.
    */
-  async finishAvatarUpload(ownerId: string, mediaId: string): Promise<string> {
-    const row = await this.ownUpload(ownerId, mediaId, 'avatar')
-    // Already done (a retried request): same answer, no second round of work.
-    if (row.status === 'ready') return avatarPath(row.id)!
-
-    await this.checkUploaded('avatar', row.id, AVATAR_MAX_BYTES)
-    const key = uploadKey('avatar', row.id)
+  private async publishSquare(kind: 'avatar' | 'community_photo', mediaId: string, ownerId: string): Promise<void> {
+    await this.checkUploaded(kind, mediaId, AVATAR_MAX_BYTES)
+    const key = uploadKey(kind, mediaId)
     const original = await this.store.read('uploads', key)
     let variants: { size: number; body: Buffer }[]
     try {
@@ -303,14 +310,28 @@ export class MediaService {
         })),
       )
     } catch {
-      return this.fail('avatar', row.id, new MediaError('not_an_image', 'that file is not a JPEG, PNG or WebP image'))
+      return this.fail(kind, mediaId, new MediaError('not_an_image', 'that file is not a JPEG, PNG or WebP image'))
     }
-    if (!(await this.screen('avatar', row.id, ownerId, original))) {
+    if (!(await this.screen(kind, mediaId, ownerId, original))) {
       throw new MediaError('blocked', 'that image cannot be used')
     }
 
-    for (const v of variants) await this.store.write('media', variantKey('avatar', row.id, v.size), v.body, 'image/webp')
+    for (const v of variants) await this.store.write('media', variantKey(kind, mediaId, v.size), v.body, 'image/webp')
     await this.store.remove('uploads', key)
+  }
+
+  /**
+   * Step 2, after the browser has uploaded: checks the file really is an image,
+   * re-encodes it at our sizes (which drops any embedded location or camera data),
+   * publishes those, and makes it the member's avatar. Done inside the request:
+   * a 512px square is quick.
+   */
+  async finishAvatarUpload(ownerId: string, mediaId: string): Promise<string> {
+    const row = await this.ownUpload(ownerId, mediaId, 'avatar')
+    // Already done (a retried request): same answer, no second round of work.
+    if (row.status === 'ready') return avatarPath(row.id)!
+
+    await this.publishSquare('avatar', row.id, ownerId)
 
     const previous = await this.db.transaction(async (tx) => {
       const [member] = await tx
@@ -419,12 +440,17 @@ export class MediaService {
     await this.quarantine('post_image', rows.map((r) => r.id))
   }
 
-  /** Puts a restored post's images back. Idempotent. */
+  /**
+   * Puts a restored post's images back, unless the post has been deleted: then
+   * they stay private, as the evidence images of an erased account must
+   * (docs/adr/0016). Idempotent.
+   */
   async releasePostImages(postId: string): Promise<void> {
     const rows = await this.db
       .select({ id: media.id })
       .from(media)
-      .where(and(eq(media.postId, postId), eq(media.status, 'quarantined')))
+      .innerJoin(posts, eq(posts.id, media.postId))
+      .where(and(eq(media.postId, postId), eq(media.status, 'quarantined'), isNull(posts.deletedAt)))
     for (const { id } of rows) {
       await this.moveVariants('post_image', id, 'release')
       await this.db.update(media).set({ status: 'ready' }).where(eq(media.id, id))
@@ -437,6 +463,105 @@ export class MediaService {
    */
   async quarantineAvatar(mediaId: string): Promise<void> {
     await this.quarantine('avatar', [mediaId])
+  }
+
+  // --- Community photos: the same steps as a profile photo, for moderators. ---
+
+  /**
+   * The community, if the member may change its photo (see photo-managers.ts).
+   * Throws not_found for an unknown or closed community, whoever asks, and
+   * forbidden for anyone who may not change it. Communities are public, so
+   * telling the two apart gives nothing away.
+   */
+  private async photoManagerFor(memberId: string, slug: string): Promise<{ id: string; photoMediaId: string | null }> {
+    const [community] = await this.db
+      .select({ id: communities.id, photoMediaId: communities.photoMediaId, allowed: managesPhoto(memberId) })
+      .from(communities)
+      .where(and(eq(communities.slug, slug), eq(communities.active, true)))
+    if (!community) throw new MediaError('not_found', 'no such community')
+    if (!community.allowed) throw new MediaError('forbidden', 'only the moderators of this community can change its photo')
+    return { id: community.id, photoMediaId: community.photoMediaId }
+  }
+
+  async startCommunityPhotoUpload(memberId: string, slug: string, contentType: ImageType, bytes: number) {
+    const community = await this.photoManagerFor(memberId, slug)
+    return this.startUpload(memberId, 'community_photo', contentType, bytes, community.id)
+  }
+
+  /** Publishes the upload as the community's photo and deletes the one it replaces. */
+  async finishCommunityPhotoUpload(memberId: string, slug: string, mediaId: string): Promise<string> {
+    const community = await this.photoManagerFor(memberId, slug)
+    const row = await this.ownUpload(memberId, mediaId, 'community_photo')
+    // Started for another community: it can only ever be that one's photo, so two
+    // communities never share one set of files.
+    if (row.communityId !== community.id) throw new MediaError('not_found', 'no such upload')
+    if (row.status === 'ready' && community.photoMediaId === row.id) return communityPhotoPath(row.id)!
+
+    await this.publishSquare('community_photo', row.id, memberId)
+    const previous = await this.db.transaction(async (tx) => {
+      const [current] = await tx
+        .select({ photoMediaId: communities.photoMediaId })
+        .from(communities)
+        .where(eq(communities.id, community.id))
+        .for('update')
+      await tx.update(media).set({ status: 'ready', readyAt: new Date() }).where(eq(media.id, row.id))
+      await tx.update(communities).set({ photoMediaId: row.id }).where(eq(communities.id, community.id))
+      return current?.photoMediaId ?? null
+    })
+    if (previous && previous !== row.id) await this.discardCommunityPhoto(previous)
+    return communityPhotoPath(row.id)!
+  }
+
+  /** Back to the subject icon. Idempotent. */
+  async removeCommunityPhoto(memberId: string, slug: string): Promise<void> {
+    const community = await this.photoManagerFor(memberId, slug)
+    if (!community.photoMediaId) return
+    await this.db.update(communities).set({ photoMediaId: null }).where(eq(communities.id, community.id))
+    await this.discardCommunityPhoto(community.photoMediaId)
+  }
+
+  /**
+   * Deletes the files of a community photo that was replaced or removed, unless
+   * it has an open report: then they are kept privately, so whoever set it
+   * cannot destroy what a moderator needs to judge. Idempotent.
+   */
+  private async discardCommunityPhoto(mediaId: string): Promise<void> {
+    const [reported] = await this.db
+      .select({ id: reports.id })
+      .from(reports)
+      .where(and(eq(reports.photoMediaId, mediaId), eq(reports.status, 'open')))
+      .limit(1)
+    if (reported) await this.quarantine('community_photo', [mediaId])
+    else await this.discard('community_photo', [mediaId])
+  }
+
+  /** Moves the files of a photo a site moderator took down. The decision itself clears the column. */
+  async quarantineCommunityPhoto(mediaId: string): Promise<void> {
+    await this.quarantine('community_photo', [mediaId])
+  }
+
+  /**
+   * A replaced or removed community photo kept privately only because it was
+   * reported: once every report about it has been dismissed, its private copies
+   * go, as a replaced photo's files do. Kept while it is still the community's
+   * photo, a report about it is open, or one was upheld. Idempotent.
+   */
+  async discardClearedCommunityPhoto(mediaId: string): Promise<void> {
+    const cleared = await this.db
+      .update(media)
+      .set({ status: 'deleted' })
+      .where(
+        and(
+          eq(media.id, mediaId),
+          eq(media.kind, 'community_photo'),
+          eq(media.status, 'quarantined'),
+          sql`not exists(select 1 from communities c where c.photo_media_id = ${media.id})`,
+          sql`not exists(select 1 from reports r where r.photo_media_id = ${media.id} and r.status <> 'dismissed')`,
+        ),
+      )
+      .returning({ id: media.id })
+    if (cleared.length === 0) return
+    for (const key of publishedKeys('community_photo', mediaId)) await this.store.remove('uploads', quarantineKey(key))
   }
 
   private async quarantine(kind: Kind, mediaIds: string[]): Promise<void> {
@@ -485,7 +610,32 @@ export class MediaService {
   private async discard(kind: Kind, mediaIds: string[]): Promise<void> {
     if (mediaIds.length === 0) return
     await this.db.update(media).set({ status: 'deleted' }).where(inArray(media.id, mediaIds))
-    for (const id of mediaIds) for (const key of publishedKeys(kind, id)) await this.store.remove('media', key)
+    const keys = mediaIds.flatMap((id) => publishedKeys(kind, id))
+    for (const key of keys) await this.store.remove('media', key)
+    // Gone from the bucket, but Cloudflare may still serve a cached copy for a year.
+    // One job for them all: the purger splits them into requests Cloudflare takes.
+    await this.jobs.purgeCdn(keys)
+  }
+
+  /**
+   * After an account's rows are erased (docs/adr/0016): deletes the files of
+   * every image of theirs marked deleted, unfinished uploads included, and takes
+   * what was kept as evidence (left 'ready') out of public view. Old deleted ones
+   * too: one deleted before deleting purged the CDN may still be cached there.
+   * A community photo they uploaded is the community's and is left alone.
+   * Safe to repeat: removing a file already gone changes nothing.
+   */
+  async eraseFilesOf(ownerId: string): Promise<void> {
+    const rows = await this.db
+      .select({ id: media.id, kind: media.kind, status: media.status })
+      .from(media)
+      .where(and(eq(media.ownerId, ownerId), inArray(media.kind, ACCOUNT_MEDIA_KINDS), inArray(media.status, ['deleted', 'ready'])))
+    for (const kind of ACCOUNT_MEDIA_KINDS) {
+      const ids = (status: 'deleted' | 'ready') => rows.filter((r) => r.kind === kind && r.status === status).map((r) => r.id)
+      for (const id of ids('deleted')) await this.store.remove('uploads', uploadKey(kind, id))
+      await this.discard(kind, ids('deleted'))
+      await this.quarantine(kind, ids('ready'))
+    }
   }
 
   /**
@@ -542,6 +692,17 @@ export class MediaService {
           ),
         )
       await this.quarantine('avatar', exposedAvatars.map((r) => r.id))
+      const exposedPhotos = await this.db
+        .select({ id: media.id })
+        .from(media)
+        .where(
+          and(
+            eq(media.kind, 'community_photo'),
+            eq(media.status, 'ready'),
+            sql`not exists(select 1 from communities c where c.photo_media_id = ${media.id})`,
+          ),
+        )
+      await this.quarantine('community_photo', exposedPhotos.map((r) => r.id))
     }
   }
 }

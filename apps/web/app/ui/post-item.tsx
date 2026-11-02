@@ -2,7 +2,9 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { deletePost, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin, setReplyAudience } from '@/app/actions'
 import type { Post } from '@/lib/api'
+import { currentDataSaver } from '@/lib/low-data-server'
 import { textParts } from '@/lib/mentions'
+import { previewParts } from '@/lib/post-length'
 import { excerpt } from '@/lib/previews'
 import { REPLY_AUDIENCES } from '@/lib/reply-audience'
 import { replyContextView } from '@/lib/reply-context'
@@ -49,6 +51,18 @@ const replyAudienceNote = (post: Post, viewerId: string | null) =>
     ? `People @${post.authorHandle} follows can reply`
     : REPLY_AUDIENCE_LABEL[post.replyAudience]
 
+// The media a post carries is held back for readers saving data. Each reads that
+// choice itself (cookie and Save-Data header), so PostItem and its callers stay as they were.
+async function SaverImages({ images }: { images: Post['images'] }) {
+  return <PostImages images={images} saver={await currentDataSaver()} />
+}
+async function SaverQuote({ quote, now }: { quote: NonNullable<Post['quote']>; now: number }) {
+  return <QuotedPostCard quote={quote} now={now} saver={await currentDataSaver()} />
+}
+async function SaverLinkCard({ preview }: { preview: NonNullable<Post['linkPreview']> }) {
+  return <LinkCard preview={preview} saver={await currentDataSaver()} />
+}
+
 export function PostItem({
   post,
   viewerId,
@@ -88,6 +102,8 @@ export function PostItem({
   const compact = inThread && !focused
   const openLabel = `Open ${post.replyParentId ? 'reply' : 'post'} by @${post.authorHandle}`
   const parts = textParts(post.text, post.mentions, post.links, post.hashtags)
+  // A long post shows only its start in a list; its own page shows all of it.
+  const shown = focused ? { parts, cut: false } : previewParts(parts)
   // Text with links of its own cannot sit inside the post's permalink.
   const rich = parts.some((part) => part.handle || part.tag || part.href)
   const likes = post.likeCount === 1 ? '1 like' : `${post.likeCount} likes`
@@ -299,28 +315,35 @@ export function PostItem({
             <PostText parts={parts} />
           ) : rich ? (
             <PostPermalink href={href} label={openLabel} beside>
-              <PostText parts={parts} />
+              <PostText parts={shown.parts} />
             </PostPermalink>
           ) : (
-            <PostPermalink href={href}>{post.text}</PostPermalink>
+            <PostPermalink href={href}>{shown.cut ? shown.parts.map((part) => part.text).join('') : post.text}</PostPermalink>
           )}
         </p>
       ) : !focused ? <PostPermalink href={href} label={openLabel}><span className="sr-only">Open conversation</span></PostPermalink> : null}
+      {shown.cut ? (
+        <p className="mt-1">
+          <Link prefetch={false} href={href} className="post-more">
+            Show more<span className="sr-only"> of this {post.replyParentId ? 'reply' : 'post'} by @{post.authorHandle}</span>
+          </Link>
+        </p>
+      ) : null}
       {post.poll ? <PollCard postId={post.id} poll={post.poll} member={viewerId !== null} /> : null}
       {post.images.length ? (
         <div className="mt-3">
-          <PostImages images={post.images} />
+          <SaverImages images={post.images} />
         </div>
       ) : null}
       {post.quote ? (
         <div className="mt-3">
-          <QuotedPostCard quote={post.quote} now={now} />
+          <SaverQuote quote={post.quote} now={now} />
         </div>
       ) : null}
       {/* A card for the first address, unless the post already has pictures or a quote to show. */}
       {post.linkPreview && !post.images.length && !post.quote ? (
         <div className="mt-3">
-          <LinkCard preview={post.linkPreview} />
+          <SaverLinkCard preview={post.linkPreview} />
         </div>
       ) : null}
       {!post.replyParentId && post.replyAudience !== 'everyone' ? (
