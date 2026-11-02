@@ -10,7 +10,7 @@ on:
   workflow_call:
     inputs:
       build_images:
-        description: Also check that the Docker images build (the deploy workflows build them anyway)
+        description: Also check that the api and web Docker images build. Always false today (PRs skip it; the deploy workflows pass false and build api and web themselves). The video-worker image is built by no workflow
         type: boolean
         default: true
       e2e:
@@ -173,5 +173,4 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - run: docker buildx build --target api .
       - run: docker buildx build --target web .
-      - run: docker buildx build --target video-worker .
       - run: docker buildx build infra/kratos

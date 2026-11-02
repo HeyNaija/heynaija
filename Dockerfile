@@ -42,6 +42,8 @@ FROM api AS video-worker
 USER root
 # Pinned (ADR 0019 section 3.4). Debian drops a superseded version, so a security release
 # makes this build fail until someone bumps it and re-runs the video tests: that is the point.
+# No workflow builds this target yet (build-images.yml builds only api and web), so the pin
+# is unverified until someone runs `docker buildx build --target video-worker .`.
 ARG FFMPEG_VERSION=7:5.1.9-0+deb12u1
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg=${FFMPEG_VERSION} \

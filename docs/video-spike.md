@@ -67,8 +67,9 @@ answered on staging hardware with real clips.
 ## What the worker's container does and does not do
 
 `video-worker` in `infra/deploy/compose.yml` (ADR 0019 section 3.4). Written, **not
-run**: no Docker from a worktree, so the compose file was only parsed, and the image
-build only ran if CI's `images` job did.
+run**: no Docker from a worktree, so the compose file was only parsed. No workflow builds
+the `video-worker` image (CI's `images` job is skipped everywhere and covers only api and web),
+so the ffmpeg pin is unverified until someone builds it.
 
 Does: its own environment, listing exactly what `worker-env.ts` reads (no Kratos
 webhook secret or admin URL, no VAPID key, no LiveKit or Cloudflare secrets); read-only
@@ -89,8 +90,8 @@ ffmpeg flags, not container confinement. It is also not `nice`d, and the
 
 ## Deploy of the worker is not wired in phase 1
 
-CI builds the `video-worker` image (no push), so a broken ffmpeg pin shows up there. Nothing
-else: `deploy-*.yml` pushes only `api` and `web`, and `deploy.sh` pulls only those. A human
+No workflow builds, pushes or pulls the `video-worker` image: `build-images.yml` builds only
+`api` and `web`, so a broken ffmpeg pin is not caught. `deploy-*.yml` pushes only `api` and `web`, and `deploy.sh` pulls only those. A human
 must add `video-worker` to the push loop and the pull, then start it with
 `docker compose --profile video up -d video-worker` on the server.
 
@@ -105,7 +106,7 @@ it is read in `video-config.ts` and passed through `infra/deploy/compose.yml`.
 - Anything on R2 (above).
 - Playback in real browsers (not run; the web typecheck passes and the pure helpers
   are tested).
-- The Docker image build (no Docker from a worktree, per the brief).
+- The Docker image build, including the ffmpeg pin (no Docker from a worktree, and no workflow builds it).
 - A real PhotoDNA call. The frame scan is tested against a stand-in.
 - Low-data holding: `held` is set from the reader's low-data choice, as for pictures.
   The rendition quality is still fixed at 360 (not chosen by the setting). The player is tap-to-play: the `<video>`
