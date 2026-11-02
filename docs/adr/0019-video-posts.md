@@ -124,8 +124,11 @@ Flow (state in a `media` row of kind `post_video`, status as for images, plus `u
 4. `POST /v1/me/videos/:id/complete` with the part ETags: the API completes the
    multipart upload, checks the size, sets `processing`, queues the job. The bucket
    CORS rule must add `ExposeHeaders: ["ETag"]` or the browser cannot read them.
-5. The browser polls `GET /v1/me/videos/:id` (as for images) until `ready` or
-   `failed`. Processing continues if the tab closes; the draft keeps the media ID.
+5. The browser polls `GET /v1/me/videos/:id` (as for images) until `ready`,
+   `rejected` or `failed`; `blocked` and `quarantined` are also final and are shown
+   as "That video cannot be used". For `rejected` it shows the `rejection_reason`
+   class (too long, too short, too large, too big a picture, not a video), for
+   `failed` a generic "could not be processed, try again". Processing continues if the tab closes; the draft keeps the media ID.
 
 **Client-side checks** are courtesy only: file type, size, and duration from the
 element's metadata (it may fail for formats the browser cannot decode, such as
@@ -155,8 +158,8 @@ For a landscape or portrait clip, with the **short edge** at 240, 360 and 480 px
 | 480 | 900 kbps | 64 kbps AAC | 3.6 MB |
 
 H.264 Main, `yuv420p`, 30 fps cap, `+faststart` (so playback starts before the
-file is loaded), closed GOP of 2 s. Plus `poster.webp` at 640 px (a frame 1 s in,
-or the middle for clips under 2 s) and `duration_ms`. The bitrates are
+file is loaded), closed GOP of 2 s. Plus `poster.webp` at 640 px (a frame 1 s in;
+clips are at least 3 s) and `duration_ms`. The bitrates are
 starting points to be tuned on real Nigerian phone footage in phase 1. Audio-less
 clips get no audio track. Location and device metadata are dropped (`-map_metadata -1`),
 as sharp drops EXIF for images.
@@ -248,8 +251,12 @@ timeout, and a pinned version updated with security releases. Phase 4 reviews it
 - **Bad file** (not a video, over limits, no decodable stream): permanent. Row
   `rejected` (with a `rejection_reason`), original deleted, BullMQ `UnrecoverableError` so it is not retried. The
   uploader sees "That video could not be used" and a reason class (too long, too
-  large, not a video).
-- **Scanner cannot answer, storage or Redis errors, ffmpeg killed:** the job throws and
+  short, too large, too big a picture, not a video: the five `rejection_reason`
+  values, section 7).
+- **ffmpeg runs past its time limit:** it would again with the same file, so the row
+  becomes `failed` at once (`failure_reason` set, original deleted) and the queue
+  is told not to retry (`UnrecoverableError`).
+- **Scanner cannot answer, storage or Redis errors, ffmpeg exits with an error:** the job throws and
   BullMQ retries (3 attempts, exponential from 30 s). After that the row is
   `failed` with `failure_reason`, an error-level log line, and the member can try again.
   Fail closed: no clear verdict means no publication.
@@ -301,7 +308,7 @@ Same posture as images: on a match, keep the original privately in
 content" report naming the media ID, an email alert (`SAFETY_ALERT_EMAIL`), the
 uploader told only that the video cannot be used. Additions for video, all
 additive columns on a new table (section 7): the SHA-256 of the original, the
-index and timestamp of the first matching frame, and the number of frames scanned.
+timestamp (`match_frame_ms`) of the first matching frame, and the number of frames scanned.
 Still **no IP addresses** (we do not store them; the existing doc says Kratos
 session data may help law enforcement). The matching frame itself is not stored
 separately: it can be re-extracted from the preserved original by authorised people.
@@ -318,7 +325,7 @@ policy says about frame sampling.
 ### 4.3 Takedown and quarantine
 
 The states: `ready`, `quarantined` (moderator removal), `blocked`
-(scanner), `deleted`, `failed` (retries used up, or a timeout), and, for videos
+(scanner), `deleted`, `failed` (retries used up, or an ffmpeg timeout, which is not retried), and, for videos
 only, `uploading` and `rejected` (section 7). Removal moves the three MP4s and the poster to
 `quarantine/` **by server-side copy then delete** (the image code reads and
 re-writes whole buffers; that does not work for video), and queues a CDN purge
@@ -555,8 +562,8 @@ storage), and `VideoService.eraseFilesOf(ownerId)` runs right after the image
 erase:
 
 - Every video of theirs that the erase transaction marked deleted, in any state
-  but `blocked` (`pending`, `uploading`, `processing`, `ready`, `quarantined`,
-  `rejected`, `failed`), on a post that is not evidence: an open multipart upload is aborted
+  but `blocked` (`uploading`, `processing`, `ready`, `quarantined`,
+  `rejected`, `failed`; the erase SQL also takes a `pending` row, which videos do not use), on a post that is not evidence: an open multipart upload is aborted
   (`AbortMultipartUpload`, using the upload ID in `video_details`); the original
   (`uploads` bucket, `videos/<id>`), the public renditions
   (`videos/<id>/{240,360,480}.mp4`) and poster (`videos/<id>/poster.webp`), and any
