@@ -6,7 +6,17 @@ name: CI
 # workflows, which deploy only if it passes.
 on:
   pull_request:
+  # A manual run needs the inputs too: without them `inputs.e2e` is empty and the e2e job is skipped.
   workflow_dispatch:
+    inputs:
+      build_images:
+        description: Also check that the Docker images build (the deploy workflows build them anyway)
+        type: boolean
+        default: true
+      e2e:
+        description: Also run the browser end-to-end tests (docs/e2e.md)
+        type: boolean
+        default: true
   workflow_call:
     inputs:
       build_images:
