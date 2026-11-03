@@ -15,7 +15,7 @@ given and orders them; it does not repeat that checklist.
 ## Decision (recommended)
 
 **Owner decision, 3 November 2026:** the 18+ beta rule is to be taken out, so that
-people from the minimum age can join. Signup asks for a date of birth, and posts
+people from 13 can join (question 1). Signup asks for a date of birth, and posts
 (with their media) carry an 18+ label set by the poster, which keeps that content
 from anyone not known to be an adult.
 
@@ -29,7 +29,7 @@ ship first and are proven before any minor arrives:
   are still refused, so no child's data is processed.
 - **Phase 2, opening to minors.** Only after counsel has answered section 7, the
   rest of the under-18 rollout checklist is built and tested, and a named person
-  has signed off: minors from the minimum age get `under_18` accounts with the
+  has signed off: minors from 13 get `under_18` accounts with the
   protections in section 4, and `UNDER_18_ACCOUNTS_ENABLED` is changed in review.
 
 A date of birth is the member's own word, so it gives `declared`, never `verified`.
@@ -82,7 +82,7 @@ messages, calls or Gists, which need the check in ADR 0018, and never counts for
   the form after a refusal, not in error reports or analytics. ADR 0006 decision 5
   (only a band is stored) stands (question 5).
 - **Below the age limit.** In phase 1 that is anyone under 18; in phase 2, anyone
-  under the minimum age (question 1). Refused with a kind message, keeping no age
+  under 13 (question 1). Refused with a kind message, keeping no age
   record (rollout doc section 2). The refusal is held for a day in a cookie that
   says only "refused", so changing the year and sending again does not work
   straight away; that stops only the laziest retry and is not a control.
@@ -181,9 +181,10 @@ member, from the rollout doc and ADR 0019, with phase 1 already in place:
   they turn 18, rounded up (ADR 0006). When it passes, they are asked to confirm
   they are now 18, which writes a fresh `18_plus` statement; nothing moves them
   silently.
-- **Guardian consent**, if counsel says 13 to 17 need it (question 2): the
-  separate consent record in rollout doc section 3; the account stays pending
-  until consent is complete.
+- **Guardian consent.** Not asked for, for now (question 2). If counsel's answer
+  to section 7 item 1 says 13 to 17 need it, phase 2 also waits for the separate
+  consent record in rollout doc section 3, and an account stays pending until
+  consent is complete.
 - **Content.** No 18+ posts or adult-only communities, anywhere (section 3). A
   minor cannot set the label; a minor's post that needs it is removed, not
   labelled.
@@ -197,7 +198,8 @@ member, from the rollout doc and ADR 0019, with phase 1 already in place:
 
 ## 5. What phase 2 waits for
 
-1. Counsel's answers to section 7, and questions 1, 2 and 7 answered.
+1. Counsel's answers to section 7, with question 2 revisited if the answer on
+   consent requires it. Questions 1, 2 and 7 are answered.
 2. Phase 1 live in production: dates of birth at signup, every `unknown` member
    asked, labels enforced and the read-path test passing, labelled media private.
 3. Hash-matching of known abuse material on every upload (PhotoDNA or equivalent,
@@ -277,35 +279,42 @@ world with minors), `/privacy` for children's data, Terms, and ADR 0019 section 
 
 Answer under each question (edit this file in a PR, or reply on the PR and the
 answer gets written back here). Each has a recommendation, so "agreed" is a complete
-answer. Phase 1 can start once questions 3 to 6 and 8 are answered.
+answer. Phase 1 can start once question 5 is answered; its other questions (3, 4, 6
+and 8) are.
 
 1. **What is the minimum age?** Recommendation: 13, subject to counsel (section 7,
    item 1); nobody under it, ever.
-   - Answer:
-   - Answered by / date:
+   - Answer: Yes, 13.
+   - Answered by / date: Psami-wondah, 3 November 2026
 
 2. **Do 13 to 17 year olds need a guardian's consent?** Recommendation: follow
    counsel. If yes, phase 2 includes the consent record in rollout doc section 3,
    and an account stays pending until consent is complete.
-   - Answer:
-   - Answered by / date:
+   - Answer: No, not for now. Revisit if counsel's answer to section 7 item 1 says
+     the law requires it; phase 2 waits for that answer anyway (section 5).
+   - Answered by / date: Psami-wondah, 3 November 2026
 
 3. **What must be marked 18+, and what is not allowed at all?** Recommendation: not
    allowed anywhere: explicit sexual images or video, and anything already illegal.
    Marked 18+: graphic violence or injury (news footage included), non-sexual nudity,
    sexual talk without explicit images. When in doubt, mark it.
-   - Answer:
-   - Answered by / date:
+   - Answer: Agreed.
+   - Answered by / date: Psami-wondah, 3 November 2026
 
 4. **How do adults see labelled posts?** Recommendation: behind a "Marked 18+" cover,
    tap to show, with a Settings switch to show them straight away.
-   - Answer:
-   - Answered by / date:
+   - Answer: Agreed.
+   - Answered by / date: Psami-wondah, 3 November 2026
 
-5. **Keep the date of birth, or only what it gives?** Keeping it would let a later
-   provider result be compared with it. Recommendation: only the band, plus
-   `review_after` for a minor. Content needs nothing more, ADR 0006 and `/privacy`
-   promise it, and the rollout doc says not to keep the date.
+5. **Keep the date of birth, or only the age band it gives?** The band is the age
+   group, `under_18` or `18_plus`, the only two values `age_assurances` holds.
+   Keeping only the band means the database records "18 or older, stated at signup
+   on 3 November 2026", never the birthday itself. For a minor it also keeps the
+   month they turn 18 (`review_after`), so they can be asked to confirm then.
+   Keeping the date would let a later provider result be compared with it.
+   Recommendation: only the band, plus `review_after` for a minor. Content needs
+   nothing more, ADR 0006 and `/privacy` promise it, and the rollout doc says not to
+   keep the date.
    - Answer:
    - Answered by / date:
 
@@ -313,26 +322,29 @@ answer. Phase 1 can start once questions 3 to 6 and 8 are answered.
    member with no age on record; members who already ticked "18 or older" are not
    asked again, because a second statement at the same level (`declared`) adds
    nothing.
-   - Answer:
-   - Answered by / date:
+   - Answer: Agreed.
+   - Answered by / date: Psami-wondah, 3 November 2026
 
 7. **Are minors' posts public?** Recommendation: shown to signed-in members only,
    never to signed-out visitors or search engines, with replies limited to people
    they follow by default.
-   - Answer:
-   - Answered by / date:
+   - Answer: Agreed.
+   - Answered by / date: Psami-wondah, 3 November 2026
 
 8. **Can a whole community be marked 18+?** Recommendation: yes, by its moderators
    or a site moderator; every post in it counts as labelled, and minors cannot see
    or join it.
-   - Answer:
-   - Answered by / date:
+   - Answer: Agreed.
+   - Answered by / date: Psami-wondah, 3 November 2026
 
-9. **Who signs off phase 2?** Recommendation: a named person, in writing, after
-   section 5 items 1 to 4 are met; the change to `UNDER_18_ACCOUNTS_ENABLED` is
-   reviewed like any locked-off setting.
-   - Answer:
-   - Answered by / date:
+9. **Who signs off phase 2?** Phase 2 is the step that lets children in, and it
+   rests on work spread across counsel, scanning, moderation and code. The sign-off
+   is the dated record that someone accountable checked every item in section 5
+   before that happened, as ADR 0019 does for video's launch gate. Recommendation:
+   a named person, in writing, after section 5 items 1 to 4 are met; the change to
+   `UNDER_18_ACCOUNTS_ENABLED` is reviewed like any locked-off setting.
+   - Answer: Psami-wondah.
+   - Answered by / date: Psami-wondah, 3 November 2026
 
 ### Smaller open items
 
