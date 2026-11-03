@@ -229,6 +229,14 @@ test('the hourly sweep takes down a community photo nothing uses any more', asyn
   assert.deepEqual(store.keys('media'), [])
 })
 
+test('an upload of a community photo never finished is cleared by the sweep, like any image', async () => {
+  const { mediaId } = await upload(lola)
+  await db.update(media).set({ createdAt: new Date(Date.now() - 2 * 3_600_000) }).where(eq(media.id, mediaId))
+  await service.sweepAbandoned()
+  assert.equal(await statusOf(mediaId), 'deleted')
+  assert.deepEqual(store.keys('uploads'), [])
+})
+
 test('a reported photo that is replaced or removed is kept privately, not deleted', async () => {
   const first = await upload(lola)
   await first.finish()

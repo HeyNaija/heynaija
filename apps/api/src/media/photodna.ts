@@ -67,11 +67,6 @@ export class PhotoDnaScanner implements ContentScanner {
   }
 }
 
-/**
- * The image as the JPEGs that are sent for matching: a still image once, an
- * animation as a spread of its frames (the first always among them, since that
- * is also the still we publish). Each is upright and within the service's sizes.
- */
 /** One still frame as a JPEG within the service's sizes. */
 export async function normaliseFrame(image: Buffer): Promise<Buffer> {
   const { data, info } = await sharp(image, { limitInputPixels: 40_000_000 }).rotate().png().toBuffer({ resolveWithObject: true })
@@ -81,6 +76,11 @@ export async function normaliseFrame(image: Buffer): Promise<Buffer> {
   return sized.jpeg({ quality: 90 }).toBuffer()
 }
 
+/**
+ * The image as the JPEGs that are sent for matching: a still image once, an
+ * animation as a spread of its frames (the first always among them, since that
+ * is also the still we publish). Each is upright and within the service's sizes.
+ */
 export async function framesToScan(image: Buffer): Promise<Buffer[]> {
   const limitInputPixels = 40_000_000
   const pages = (await sharp(image, { limitInputPixels }).metadata()).pages ?? 1

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -102,8 +102,9 @@ test('download and upload stream a file to and from disk; copy is server-side be
   await writeFile(src, body)
   await store.upload('uploads', 'videos/spike-4', src, 'video/mp4')
   const out = join(dir, 'out.bin')
-  await store.download('uploads', 'videos/spike-4', out)
+  const sha256 = await store.download('uploads', 'videos/spike-4', out)
   assert.ok(body.equals(await readFile(out)))
+  assert.equal(sha256, createHash('sha256').update(body).digest('hex'), 'the hash is taken on the way')
 
   await store.copy('uploads', 'videos/spike-4', 'media', 'copy/spike-4.mp4')
   assert.equal(await store.size('media', 'copy/spike-4.mp4'), body.length)

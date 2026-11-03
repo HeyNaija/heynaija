@@ -1,12 +1,10 @@
-import { createHash } from 'node:crypto'
-import { createReadStream } from 'node:fs'
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type Db, media, reports, videoDetails, videoRenditions } from '@heynaija/db'
 import { Logger } from '@nestjs/common'
 import { UnrecoverableError } from 'bullmq'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { type ContentScanner, type FrameScan } from '../media/media.service.js'
 import type { VideoStore } from '../media/object-store.js'
 import type { SafetyAlerts } from '../moderation/safety-alerts.js'
@@ -73,9 +71,8 @@ export class VideoProcessor {
 
   private async run(mediaId: string, ownerId: string, work: string, deadline: Deadline): Promise<void> {
     const original = join(work, 'original')
-    await this.store.download('uploads', originalKey(mediaId), original)
+    const sha256 = await this.store.download('uploads', originalKey(mediaId), original)
     const bytes = (await stat(original)).size
-    const sha256 = await sha256Of(original)
 
     const p = await probe(original, deadline)
     const refusal = checkLimits(p, bytes, this.cfg)
@@ -100,7 +97,7 @@ export class VideoProcessor {
       .set({ originalSha256: sha256, durationMs: p.durationMs, width: p.width, height: p.height, fps: p.fps, framesScanned: frames.length, scanResult: scan.verdict })
       .where(eq(videoDetails.mediaId, mediaId))
 
-    if (scan.verdict === 'match') return this.block(mediaId, ownerId, frames[scan.matchIndex ?? 0]?.ms ?? null)
+    if (scan.verdict === 'match') return this.block(mediaId, ownerId, original, frames[scan.matchIndex ?? 0]?.ms ?? null)
     if (scan.verdict !== 'clear') return this.hold(mediaId)
     return this.publish(mediaId, original, p, work, deadline)
   }
@@ -113,32 +110,56 @@ export class VideoProcessor {
     this.log.log(`video ${mediaId} rejected: ${reason}`)
   }
 
-  /** Keeps the original privately, where evidence belongs, by server-side copy. */
+  /**
+   * Keeps the original privately, where evidence belongs, by server-side copy. The original itself is
+   * removed only once the rows say what happened (`dropOriginal`): until then a failure leaves it where a
+   * retry of the job reads it.
+   */
   private async keepPrivately(mediaId: string): Promise<void> {
     await this.store.copy('uploads', originalKey(mediaId), 'uploads', quarantineOriginalKey(mediaId))
+  }
+
+  private async dropOriginal(mediaId: string): Promise<void> {
     await this.store.remove('uploads', originalKey(mediaId))
   }
 
   /** No scanner has cleared it: held quarantined. Never made ready, whatever else is true. */
   private async hold(mediaId: string): Promise<void> {
     await this.keepPrivately(mediaId)
-    await this.db.update(media).set({ status: 'quarantined' }).where(and(eq(media.id, mediaId), eq(media.status, 'processing')))
-    this.log.warn(`video ${mediaId} is held in quarantine: NO UPLOAD SCANNER IS CONFIGURED, so no video can be published (docs/safety/video-scanning.md)`)
+    const held = await this.db
+      .update(media)
+      .set({ status: 'quarantined' })
+      .where(and(eq(media.id, mediaId), eq(media.status, 'processing')))
+      .returning({ id: media.id })
+    // Removed or erased while we worked: nothing to hold, so the private copy goes too.
+    if (held.length === 0) await this.store.remove('uploads', quarantineOriginalKey(mediaId))
+    await this.dropOriginal(mediaId)
+    if (held.length > 0) {
+      this.log.warn(`video ${mediaId} is held in quarantine: NO UPLOAD SCANNER IS CONFIGURED, so no video can be published (docs/safety/video-scanning.md)`)
+    }
   }
 
-  /** A match: as for images, the original is kept, the account goes to the moderation queue and safety is alerted. */
-  private async block(mediaId: string, ownerId: string, frameMs: number | null): Promise<void> {
-    await this.keepPrivately(mediaId)
-    await this.db.update(videoDetails).set({ matchFrameMs: frameMs }).where(eq(videoDetails.mediaId, mediaId))
-    await this.db.update(media).set({ status: 'blocked' }).where(and(eq(media.id, mediaId), eq(media.status, 'processing')))
-    await this.db.insert(reports).values({
-      reporterId: null,
-      memberId: ownerId,
-      reason: 'illegal',
-      details:
-        `The upload scanner matched a frame of a video this account uploaded (media ${mediaId}) with known child sexual abuse material. ` +
-        'It was never published, and the original is kept privately. Do not try to view it: suspend the account and follow the safety runbook.',
+  /**
+   * A match: as for images, the original is kept, the account goes to the moderation queue and safety is alerted.
+   * The private copy is sent from the file the scan read, not copied in storage, so an uploader who deletes the
+   * video while it is scanned cannot take the evidence with it; the video is blocked all the same. The status and
+   * the report are written together, so a retry never finds one without the other.
+   */
+  private async block(mediaId: string, ownerId: string, original: string, frameMs: number | null): Promise<void> {
+    await this.store.upload('uploads', quarantineOriginalKey(mediaId), original, 'application/octet-stream')
+    await this.db.transaction(async (tx) => {
+      await tx.update(videoDetails).set({ matchFrameMs: frameMs }).where(eq(videoDetails.mediaId, mediaId))
+      await tx.update(media).set({ status: 'blocked' }).where(and(eq(media.id, mediaId), inArray(media.status, ['processing', 'deleted'])))
+      await tx.insert(reports).values({
+        reporterId: null,
+        memberId: ownerId,
+        reason: 'illegal',
+        details:
+          `The upload scanner matched a frame of a video this account uploaded (media ${mediaId}) with known child sexual abuse material. ` +
+          'It was never published, and the original is kept privately. Do not try to view it: suspend the account and follow the safety runbook.',
+      })
     })
+    await this.dropOriginal(mediaId)
     await this.alerts?.alert('An upload matched known abuse material', [
       `The scanner blocked a video (media ${mediaId}) uploaded by member ${ownerId}. It was not published.`,
       'The account is waiting in the moderation queue.',
@@ -182,10 +203,4 @@ export class VideoProcessor {
     }
     if (!this.cfg.keepOriginals) await this.store.remove('uploads', originalKey(mediaId))
   }
-}
-
-async function sha256Of(path: string): Promise<string> {
-  const hash = createHash('sha256')
-  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer)
-  return hash.digest('hex')
 }

@@ -144,7 +144,7 @@ export class ModerationService {
   /**
    * Files a report about a post, an account, a Gist or a community's photo.
    * Reporting the same thing again while the first report is still open changes
-   * nothing.
+   * nothing, unless the new report says it is illegal and the open one did not.
    */
   async report(
     reporterId: string,
@@ -189,7 +189,7 @@ export class ModerationService {
     }
 
     const [existing] = await this.db
-      .select({ id: reports.id })
+      .select({ id: reports.id, reason: reports.reason })
       .from(reports)
       .where(
         and(
@@ -202,8 +202,17 @@ export class ModerationService {
               : eq(reports.memberId, memberId!),
         ),
       )
-    if (existing) return
-    await this.db.insert(reports).values({ reporterId, postId, memberId, communityId, photoMediaId, reason, details })
+    if (existing) {
+      // The same report again changes nothing, except one now saying the content is illegal: that is
+      // decided apart and hides a post's video at once, so the open report becomes an illegal one.
+      if (reason !== 'illegal' || existing.reason === 'illegal') return
+      await this.db
+        .update(reports)
+        .set({ reason, ...(details ? { details } : {}) })
+        .where(and(eq(reports.id, existing.id), eq(reports.status, 'open')))
+    } else {
+      await this.db.insert(reports).values({ reporterId, postId, memberId, communityId, photoMediaId, reason, details })
+    }
     // Illegal content may need taking down and reporting quickly, so a person
     // hears about it rather than waiting for a moderator to open the queue.
     if (reason === 'illegal') {
@@ -579,7 +588,7 @@ export class ModerationService {
     }
     if (removedCommunityPhoto) {
       const mediaId = removedCommunityPhoto
-      await this.afterwards(`quarantining community photo ${mediaId}`, () => this.media!.quarantineCommunityPhoto(mediaId))
+      await this.afterwards(`quarantining community photo ${mediaId}`, async () => void (await this.media?.quarantineCommunityPhoto(mediaId)))
     }
     if (dismissedCommunityPhoto && this.media) {
       // A photo replaced or removed while reported was kept only for this decision.
@@ -643,7 +652,7 @@ export class ModerationService {
       })
       return community.photoMediaId
     })
-    await this.afterwards(`quarantining community photo ${removed}`, () => this.media!.quarantineCommunityPhoto(removed))
+    await this.afterwards(`quarantining community photo ${removed}`, async () => void (await this.media?.quarantineCommunityPhoto(removed)))
   }
 
   /** Ends the Gist a report is about, if this moderator may decide that report. */

@@ -72,6 +72,8 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
     // The session itself can be refused with a 403 too (a suspension, say).
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     if (body.code === 'reply_not_allowed') return { error: 'The author has limited who can reply to this conversation.' }
+    // The video rules, checked again when the video goes on the post.
+    if (video && body.code === 'not_eligible') return { error: VIDEO_REFUSALS.not_eligible! }
   }
   if (res.status === 400) {
     const body = (await res.json().catch(() => ({}))) as { code?: string }
@@ -84,6 +86,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
       return { error: 'One of your images is no longer available. Remove it and add it again.' }
     }
     if (body.code === 'video_not_ready') return { error: 'Your video is no longer available. Remove it and add it again.' }
+    if (video && body.code === 'too_many_videos') return { error: VIDEO_REFUSALS.too_many_videos! }
     if (video && !text.trim()) return { error: 'Could not post that video. Try again.' }
     if (poll) return { error: `Check the poll question and its choices. Use 2 to ${POLL_OPTIONS_MAX} different options.` }
     if (text.trim()) return { error: `That post is too long, or an image description is. The post limit is ${POST_MAX.toLocaleString('en-NG')} characters.` }
@@ -441,9 +444,10 @@ export type VideoStatus = {
   video: { id: string; src: string; durationMs: number; width: number; height: number; description: string; renditions: VideoRendition[] } | null
 }
 
+// The limits themselves are told before sending, from the API's own (lib/video.ts); these are the server's backstop.
 const VIDEO_REFUSALS: Record<string, string> = {
-  too_large: 'That video is too large. The limit is 100 MB.',
-  too_long: 'That video is too long. The limit is 60 seconds.',
+  too_large: 'That video is too large to post.',
+  too_long: 'That video is too long to post.',
   bad_type: 'Choose an MP4, MOV or WebM video.',
   too_many_videos: 'You have the most videos allowed. Delete a post with a video first.',
   not_eligible: 'Video is not available to your account yet.',

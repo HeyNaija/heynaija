@@ -1,6 +1,6 @@
 import { communities, type Db, media, members, posts, reports } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
-import { and, eq, inArray, isNotNull, isNull, lt, type SQL, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lt, ne, type SQL, sql } from 'drizzle-orm'
 import sharp from 'sharp'
 import { managesPhoto } from '../communities/photo-managers.js'
 import { SAFETY_ALERTS, type SafetyAlerts } from '../moderation/safety-alerts.js'
@@ -668,8 +668,8 @@ export class MediaService {
     const unfinished = await this.db
       .update(media)
       .set({ status: 'deleted' })
-      // Images only: a video has its own, longer window and its own clean-up (VideoService).
-      .where(and(whose, inArray(media.kind, ['avatar', 'post_image']), inArray(media.status, ['pending', 'processing']), lt(media.createdAt, cutoff)))
+      // Every kind of image: a video has its own, longer window and its own clean-up (VideoService).
+      .where(and(whose, ne(media.kind, 'post_video'), inArray(media.status, ['pending', 'processing']), lt(media.createdAt, cutoff)))
       .returning({ id: media.id, kind: media.kind })
     for (const row of unfinished) await this.store.remove('uploads', uploadKey(row.kind as Kind, row.id))
 

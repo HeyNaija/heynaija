@@ -289,6 +289,21 @@ test('deleting a post removes its video, unless the post is under report: then i
   assert.equal(store.keys('uploads').length, 3)
 })
 
+test('deleting a post purges the CDN of every file the video had, as for images, and its rows go', async () => {
+  const postId = await post()
+  const id = await publish(ada, { postId })
+  await service.discardPostVideos(postId)
+  assert.deepEqual(jobs.purged.flat().sort(), [renditionKey(id, 240), renditionKey(id, 360), posterKey(id)].sort())
+  assert.deepEqual(await db.select().from(videoDetails).where(eq(videoDetails.mediaId, id)), [])
+  assert.deepEqual(await db.select().from(videoRenditions).where(eq(videoRenditions.mediaId, id)), [])
+})
+
+test('removing an unattached ready video purges the CDN too', async () => {
+  const id = await publish()
+  await service.remove(ada, id)
+  assert.deepEqual(jobs.purged.flat().sort(), [renditionKey(id, 240), renditionKey(id, 360), posterKey(id)].sort())
+})
+
 test('an illegal report hides the video at once, pending review (ADR open question 6)', async () => {
   const postId = await post()
   const id = await publish(ada, { postId })
@@ -329,6 +344,57 @@ test('sweep: a video whose post was removed but is still public is quarantined',
   const id = await publish(ada, { postId: removed })
   await service.sweepAbandoned()
   assert.equal((await db.select().from(media).where(eq(media.id, id)))[0]!.status, 'quarantined')
+})
+
+test('sweep: a removal storage failed part-way is finished on the next run, not left behind', async () => {
+  const postId = await post()
+  const id = await publish(ada, { postId })
+  store.failOnce('remove', renditionKey(id, 360))
+  await assert.rejects(service.discardPostVideos(postId), /storage failed/)
+  assert.equal((await db.select().from(media).where(eq(media.id, id)))[0]!.status, 'deleted')
+  assert.ok(store.keys('media').includes(renditionKey(id, 360)), 'the file the failure left')
+
+  await service.sweepAbandoned()
+  assert.deepEqual(store.keys('media'), [])
+  assert.deepEqual(await db.select().from(videoDetails).where(eq(videoDetails.mediaId, id)), [])
+})
+
+test('sweep: one upload that cannot be aborted does not stop the others, and is tried again next run', async () => {
+  const first = await upload(ada)
+  const second = await upload(bayo)
+  const long = new Date(Date.now() - 25 * 3_600_000)
+  await db.update(media).set({ createdAt: long })
+  store.failOnce('abortMultipart', originalKey(first.mediaId))
+  await service.sweepAbandoned()
+  assert.deepEqual(store.aborted, [second.uploadId])
+  await service.sweepAbandoned()
+  assert.deepEqual(store.aborted, [second.uploadId, first.uploadId])
+})
+
+test('sweep: the original the scanner matched is never cleared, even on a row marked deleted', async () => {
+  const id = await publish(ada, { status: 'deleted' })
+  await db.update(videoDetails).set({ scanResult: 'match' }).where(eq(videoDetails.mediaId, id))
+  store.objects.set(`uploads/${quarantineOriginalKey(id)}`, Buffer.from('evidence'))
+  await service.sweepAbandoned()
+  assert.ok(store.keys('uploads').includes(quarantineOriginalKey(id)))
+})
+
+test('sweep: a video still public on a post its author deleted is taken down; an erasing author\'s is kept privately', async () => {
+  const deleted = await post()
+  await db.update(posts).set({ deletedAt: new Date() }).where(eq(posts.id, deleted))
+  const gone = await publish(ada, { postId: deleted })
+
+  await db.update(members).set({ active: false, deletionRequestedAt: new Date() }).where(eq(members.id, bayo))
+  const evidence = await post(bayo)
+  await db.update(posts).set({ deletedAt: new Date() }).where(eq(posts.id, evidence))
+  const kept = await publish(bayo, { postId: evidence })
+
+  await service.sweepAbandoned()
+  const status = async (id: string) => (await db.select().from(media).where(eq(media.id, id)))[0]!.status
+  assert.equal(await status(gone), 'deleted')
+  assert.equal(await status(kept), 'quarantined')
+  assert.deepEqual(store.keys('media'), [])
+  assert.ok(store.keys('uploads').includes(`quarantine/${posterKey(kept)}`))
 })
 
 test('the original of a quarantined upload is kept where the evidence belongs', () => {

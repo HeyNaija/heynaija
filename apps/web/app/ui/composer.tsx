@@ -8,6 +8,7 @@ import { type ComposeState, createPost } from '@/app/actions'
 import { insertMention, mentionBeforeCaret } from '@/lib/mention-suggest'
 import { POLL_OPTION_INPUT_MAX, POLL_OPTIONS_MAX } from '@/lib/polls'
 import type { ReplyAudience } from '@/lib/reply-audience'
+import { limitSize, type VideoLimits } from '@/lib/video'
 import { Avatar } from './avatar'
 import { FounderBadge } from './founder-badge'
 import { BubbleIcon, CloseIcon, GifIcon, ImageIcon, PeopleIcon, PlusIcon, VideoIcon, VoteIcon } from './icons'
@@ -46,11 +47,14 @@ type Props = {
   /** From `me.features`: whether polls and reply limits are switched on. Off hides them. */
   polls?: boolean
   replyControls?: boolean
-  /** From `me.features.videoPosts` (the flag and, in production, a bound scanner). Off hides the button. */
-  videoPosts?: boolean
+  /**
+   * From `me.videoLimits`: the API's video limits, present only while video is open to this member
+   * (the videoPosts flag and, in production, a bound scanner). Null hides the button.
+   */
+  videoLimits?: VideoLimits | null
 }
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, videoPosts = false }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, videoLimits = null }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -70,7 +74,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
   useEffect(() => setLive(true), [])
   const images = useImageDrafts()
   const { clear: clearImages } = images
-  const video = useVideoDraft()
+  const video = useVideoDraft(videoLimits ?? undefined)
   const { clear: clearVideo } = video
   const clear = useCallback(() => {
     clearImages()
@@ -424,12 +428,12 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
             setTooMany(images.add(files) > 0)
           }}
         />
-        {videoPosts && !replyTo && !pollOpen ? (
+        {videoLimits && !replyTo && !pollOpen ? (
           <>
             <button
               type="button"
               className="icon-btn composer-photo"
-              aria-label="Add a video (up to 60 seconds and 100 MB)"
+              aria-label={`Add a video (up to ${videoLimits.maxSeconds} seconds and ${limitSize(videoLimits.maxBytes)})`}
               title="Add a video"
               disabled={images.drafts.length > 0 || !!video.draft}
               onClick={() => videoPicker.current?.click()}

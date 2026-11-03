@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
-import { Readable } from 'node:stream'
+import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import {
   AbortMultipartUploadCommand,
@@ -54,8 +55,8 @@ export interface VideoStore extends ObjectStore {
   completeMultipart(key: string, uploadId: string, parts: { partNumber: number; etag: string }[]): Promise<void>
   /** Safe to call for an upload that is already gone. */
   abortMultipart(key: string, uploadId: string): Promise<void>
-  /** Streams an object to a file, never holding it in memory. */
-  download(bucket: Bucket, key: string, path: string): Promise<void>
+  /** Streams an object to a file, never holding it in memory. Returns the file's SHA-256 (hex), taken on the way. */
+  download(bucket: Bucket, key: string, path: string): Promise<string>
   /** Streams a file to an object. */
   upload(bucket: Bucket, key: string, path: string, contentType: string): Promise<void>
   /** Server-side copy, between buckets or within one; the bytes do not pass through us. */
@@ -183,9 +184,17 @@ export class S3ObjectStore implements VideoStore {
     }
   }
 
-  async download(bucket: Bucket, key: string, path: string): Promise<void> {
+  async download(bucket: Bucket, key: string, path: string): Promise<string> {
     const res = await this.client.send(new GetObjectCommand({ Bucket: this.buckets[bucket], Key: key }))
-    await pipeline(res.Body as Readable, createWriteStream(path))
+    const hash = createHash('sha256')
+    const hashing = new Transform({
+      transform(chunk: Buffer, _encoding, done) {
+        hash.update(chunk)
+        done(null, chunk)
+      },
+    })
+    await pipeline(res.Body as Readable, hashing, createWriteStream(path))
+    return hash.digest('hex')
   }
 
   async upload(bucket: Bucket, key: string, path: string, contentType: string): Promise<void> {

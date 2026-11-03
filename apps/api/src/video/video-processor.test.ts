@@ -139,6 +139,48 @@ test('a match blocks the video: original kept privately, a report and an alert, 
   assert.ok(alerts[0]!.lines.join(' ').includes(id))
 })
 
+test('a database failure while blocking a match leaves the original for the retry, which blocks it and files the report', { skip, timeout: 120_000 }, async () => {
+  const id = await queued()
+  const match = new Scanner(() => ({ verdict: 'match', matchIndex: 0 }))
+  // The same database, except that writing the block fails (a dropped connection, say).
+  const flaky = Object.create(db, { transaction: { value: async () => Promise.reject(new Error('connection reset')) } }) as typeof db
+  await assert.rejects(() => new VideoProcessor(flaky, store, match, defaults, safety, dir).process(id, { lastAttempt: false }), /connection reset/)
+  assert.equal((await rowOf(id)).status, 'processing')
+  assert.ok(store.keys('uploads').includes(originalKey(id)), 'the original is still where the retry reads it')
+  assert.deepEqual(await db.select().from(reports), [])
+
+  await processor(match).process(id, { lastAttempt: true })
+  assert.equal((await rowOf(id)).status, 'blocked')
+  assert.deepEqual(store.keys('uploads'), [quarantineOriginalKey(id)])
+  assert.equal((await db.select().from(reports)).length, 1)
+  assert.equal(alerts.length, 1)
+})
+
+test('a match is blocked even if the uploader deleted the video while it was scanned: deleting it destroys no evidence', { skip, timeout: 120_000 }, async () => {
+  const id = await queued()
+  // What removing it does meanwhile: the row marked deleted, the stored original gone.
+  const match = new Scanner(async () => {
+    await db.update(media).set({ status: 'deleted' }).where(eq(media.id, id))
+    await store.remove('uploads', originalKey(id))
+    return { verdict: 'match', matchIndex: 0 }
+  })
+  await processor(match).process(id, { lastAttempt: false })
+  assert.equal((await rowOf(id)).status, 'blocked')
+  assert.deepEqual(store.keys('uploads'), [quarantineOriginalKey(id)])
+  assert.equal((await db.select().from(reports)).length, 1)
+})
+
+test('a video removed while no scanner looked at it leaves no private copy behind', { skip, timeout: 120_000 }, async () => {
+  const id = await queued()
+  const removing = new Scanner(async () => {
+    await db.update(media).set({ status: 'deleted' }).where(eq(media.id, id))
+    return { verdict: 'unscanned', matchIndex: null }
+  })
+  await processor(removing).process(id, { lastAttempt: false })
+  assert.equal((await rowOf(id)).status, 'deleted')
+  assert.deepEqual(store.keys('uploads'), [])
+})
+
 test('over a limit is rejected for good: a reason class, original deleted, no retry (it returns, it does not throw)', { skip, timeout: 120_000 }, async () => {
   const id = await queued()
   const scanner = clear()

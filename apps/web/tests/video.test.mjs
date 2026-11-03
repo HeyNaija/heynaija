@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { checkVideoFile, formatDuration, formatSize, pickRendition, videoFiles, VIDEO_LIMITS } from '../lib/video.ts'
+import { checkVideoFile, DEFAULT_VIDEO_LIMITS, formatDuration, formatSize, pickRendition, rejectionText, videoFiles } from '../lib/video.ts'
 
 const ladder = [
   { height: 240, width: 426, bytes: 1_300_000 },
@@ -47,11 +47,25 @@ test('the courtesy checks before upload: type and size (the server decides for r
   assert.equal(checkVideoFile({ type: 'video/quicktime', size: 5_000_000 }), null)
   assert.equal(checkVideoFile({ type: 'video/webm', size: 5_000_000 }), null)
   assert.match(checkVideoFile({ type: 'image/png', size: 100 }) ?? '', /MP4, MOV or WebM/)
-  assert.match(checkVideoFile({ type: 'video/mp4', size: VIDEO_LIMITS.maxBytes + 1 }) ?? '', /100 MB/)
+  assert.match(checkVideoFile({ type: 'video/mp4', size: DEFAULT_VIDEO_LIMITS.maxBytes + 1 }) ?? '', /100 MB/)
   assert.match(checkVideoFile({ type: 'video/mp4', size: 0 }) ?? '', /empty/)
   // A browser that cannot name the type gets to try: the server probes anyway.
   assert.equal(checkVideoFile({ type: '', size: 5_000_000, name: 'clip.mov' }), null)
   assert.match(checkVideoFile({ type: 'video/mp4', size: 100 }, 61_000) ?? '', /60 seconds/)
   assert.match(checkVideoFile({ type: 'video/mp4', size: 100 }, 1_000) ?? '', /3 seconds/)
   assert.equal(checkVideoFile({ type: 'video/mp4', size: 100 }, undefined), null, 'duration unknown: let the server decide')
+})
+
+test('the checks and the refusals use the limits the API sends, not numbers of their own', () => {
+  const limits = { maxBytes: 50 * 1024 * 1024, maxSeconds: 30, minSeconds: 2, maxEdge: 1280 }
+  assert.match(checkVideoFile({ type: 'video/mp4', size: 60 * 1024 * 1024 }, undefined, limits) ?? '', /The limit is 50 MB/)
+  assert.match(checkVideoFile({ type: 'video/mp4', size: 100 }, 45_000, limits) ?? '', /The limit is 30 seconds/)
+  assert.equal(checkVideoFile({ type: 'video/mp4', size: 100 }, 61_000, { ...limits, maxSeconds: 78 }), null, 'a longer limit lets a longer clip through')
+  assert.match(checkVideoFile({ type: 'video/mp4', size: 100 }, 1_500, limits) ?? '', /The least is 2 seconds/)
+  assert.match(rejectionText('too_long', limits), /30 seconds/)
+  assert.match(rejectionText('too_short', limits), /2 seconds/)
+  assert.match(rejectionText('too_large', limits), /50 MB/)
+  assert.match(rejectionText('too_big_picture', limits), /1280 pixels/)
+  assert.match(rejectionText('too_big_picture', DEFAULT_VIDEO_LIMITS), /1080p/)
+  assert.equal(rejectionText(null, limits), 'That video could not be used.')
 })

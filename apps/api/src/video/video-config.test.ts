@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { loadEnv } from '../env.js'
 import { LIMITS } from '../rate-limit.js'
-import { DEFAULT_VIDEO_CONFIG, videoConfig } from './video-config.js'
+import { DEFAULT_VIDEO_CONFIG, videoConfig, videoLimitsOf } from './video-config.js'
 import { loadWorkerEnv, workerVideoConfig } from './worker-env.js'
 
 const base = {
@@ -43,6 +43,11 @@ test('each limit can be set from the environment, and empty means the default (c
   assert.equal(cfg.minAccountAgeDays, 0)
   assert.equal(cfg.keepOriginals, true)
   assert.equal(cfg.maxBytes, DEFAULT_VIDEO_CONFIG.maxBytes)
+})
+
+test('the browser is told the limits from these same settings, so its checks match the server (/v1/me videoLimits)', () => {
+  const cfg = videoConfig(loadEnv({ ...base, VIDEO_MAX_SECONDS: '30', VIDEO_MAX_BYTES: String(50 * 1024 * 1024) }))
+  assert.deepEqual(videoLimitsOf(cfg), { maxBytes: 50 * 1024 * 1024, maxSeconds: 30, minSeconds: 3, maxEdge: 1920 })
 })
 
 test('a part size under storage’s 5 MiB minimum is refused', () => {

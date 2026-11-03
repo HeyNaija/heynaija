@@ -3,7 +3,6 @@ import {
   Body,
   Controller,
   Delete,
-  ForbiddenException,
   Get,
   HttpCode,
   Inject,
@@ -18,6 +17,7 @@ import { type AuthedRequest, OptionalSessionGuard, SessionGuard } from '../auth/
 import { parse } from '../http.js'
 import { RateLimiter } from '../rate-limit.js'
 import { VIDEO_TYPES } from './video-config.js'
+import { videoHttpError } from './video-error.js'
 import { VideoPostsGuard } from './video-gate.js'
 import { VideoError, VideoService } from './video.service.js'
 
@@ -38,12 +38,7 @@ async function answer<T>(work: () => Promise<T>): Promise<T> {
   try {
     return await work()
   } catch (err) {
-    if (err instanceof VideoError) {
-      if (err.code === 'not_found') throw new NotFoundException()
-      if (err.code === 'not_eligible') throw new ForbiddenException({ code: err.code, message: err.message })
-      throw new BadRequestException({ code: err.code, message: err.message })
-    }
-    throw err
+    throw err instanceof VideoError ? videoHttpError(err) : err
   }
 }
 

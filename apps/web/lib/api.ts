@@ -6,6 +6,7 @@ import type { GistView } from './gists'
 import type { NotificationPreferences } from './notification-preferences'
 import type { ReplyAudience } from './reply-audience'
 import type { ReplyContext } from './reply-context'
+import type { VideoLimits } from './video'
 import type { ReplyOrder } from './thread-state'
 
 // Server-to-server address of the NestJS API. Browsers never use this; they go
@@ -29,6 +30,8 @@ export type Me = {
    * `gists` (docs/adr/0017). A missing key counts as off.
    */
   features: { gists: boolean } & Record<string, boolean>
+  /** The API's limits for a post's video while video is open to this member (`features.videoPosts`); null otherwise. */
+  videoLimits?: VideoLimits | null
 }
 
 /** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */

@@ -62,6 +62,9 @@ export const videoConfig = (env: VideoEnv): VideoConfig => ({
   keepOriginals: env.VIDEO_KEEP_ORIGINALS,
 })
 
+/** What the browser is told, so its checks before sending match the server's (apps/web/lib/video.ts). */
+export const videoLimitsOf = (cfg: VideoConfig) => ({ maxBytes: cfg.maxBytes, maxSeconds: cfg.maxSeconds, minSeconds: cfg.minSeconds, maxEdge: cfg.maxEdge })
+
 /** The ADR's defaults, for tests and for code that has no environment. */
 export const DEFAULT_VIDEO_CONFIG: VideoConfig = videoConfig(z.object(videoEnvShape).parse({}))
 

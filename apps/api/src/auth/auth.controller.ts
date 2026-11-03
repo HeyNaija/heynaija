@@ -26,6 +26,7 @@ import { gistsFeatureFor } from '../gists/gists-enabled.guard.js'
 import { signupAgeDecision } from '../governance/age.js'
 import { GovernanceService } from '../governance/governance.service.js'
 import { avatarPath } from '../media/media.service.js'
+import { videoConfig, videoLimitsOf } from '../video/video-config.js'
 import { VideoGate } from '../video/video-gate.js'
 import { MembersService } from '../members/members.service.js'
 import { NotificationsService } from '../notifications/notifications.service.js'
@@ -105,6 +106,8 @@ export class AuthController {
         .from(members)
         .where(eq(members.id, req.member.id)),
     ])
+    // videoPosts is the flag AND the scanner rule (ADR 0019 section 4.7), never the flag alone.
+    const videoPosts = this.videoGate.effective(features.videoPosts)
     // `moderates` only decides whether the web app shows the moderation link; every
     // moderation endpoint checks the role again.
     return {
@@ -120,8 +123,9 @@ export class AuthController {
       onboarded: !features.onboarding || Boolean(row?.onboardedAt),
       // What is switched on for this member: the database-backed flags (docs/feature-flags.md),
       // plus gists, still switched by env (docs/adr/0017) until it moves onto the flags.
-      // videoPosts is the flag AND the scanner rule (ADR 0019 section 4.7), never the flag alone.
-      features: { ...features, videoPosts: this.videoGate.effective(features.videoPosts), gists: gistsFeatureFor(this.env, req.member) },
+      features: { ...features, videoPosts, gists: gistsFeatureFor(this.env, req.member) },
+      // The limits the composer checks a chosen video against before sending it: this server's own settings.
+      videoLimits: videoPosts ? videoLimitsOf(videoConfig(this.env)) : null,
     }
   }
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { completeVideoUpload, removeVideo, resumeVideoUpload, startVideoUpload, type VideoPlan, videoStatus, type VideoStatus } from '@/app/actions'
-import { checkVideoFile, formatSize } from '@/lib/video'
+import { checkVideoFile, DEFAULT_VIDEO_LIMITS, formatSize, rejectionText, type VideoLimits } from '@/lib/video'
 
 /** A video being attached to a post, from choosing it to the worker having published it. */
 export type VideoDraft = {
@@ -22,14 +22,6 @@ export type VideoDraft = {
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 const PARALLEL = 2
 const RETRIES = 3
-
-const REASONS: Record<string, string> = {
-  too_long: 'That video is too long. The limit is 60 seconds.',
-  too_short: 'That video is too short. The least is 3 seconds.',
-  too_large: 'That video is too large. The limit is 100 MB.',
-  too_big_picture: 'That video is bigger than 1080p. Record it at a lower quality.',
-  not_a_video: 'That file could not be read as a video.',
-}
 
 /** The clip's length from the browser's own player, or undefined when it cannot read this format (HEVC on some browsers). */
 function readDuration(file: File): Promise<number | undefined> {
@@ -73,9 +65,10 @@ function putPart(url: string, body: Blob, onProgress: (sent: number) => void, si
  * Sends a chosen video straight to storage in parts (two at a time, each retried
  * three times), so a dropped connection costs one part; then waits for the worker.
  * Only a ready video can go on a post. A held one (no safety scan has cleared it)
- * never becomes ready.
+ * never becomes ready. `limits` are the API's (/v1/me), so what the member is told
+ * before sending matches what the server will decide.
  */
-export function useVideoDraft() {
+export function useVideoDraft(limits: VideoLimits = DEFAULT_VIDEO_LIMITS) {
   const [draft, setDraft] = useState<VideoDraft | null>(null)
   const file = useRef<File | null>(null)
   const abort = useRef<AbortController | null>(null)
@@ -94,7 +87,7 @@ export function useVideoDraft() {
     if (result.status === 'quarantined') {
       return patch(g, { status: 'held', error: 'This video is being held for a safety check, so it cannot be posted yet.' })
     }
-    if (result.status === 'rejected') return patch(g, { status: 'rejected', error: REASONS[result.reason ?? ''] ?? 'That video could not be used.' })
+    if (result.status === 'rejected') return patch(g, { status: 'rejected', error: rejectionText(result.reason, limits) })
     if (result.status === 'failed') return patch(g, { status: 'failed', error: 'We could not process that video. Remove it and try again.', canRetry: false })
   }
 
@@ -174,11 +167,11 @@ export function useVideoDraft() {
     abort.current?.abort()
     file.current = f
     const fresh = { name: f.name, size: f.size, mediaId: null, status: 'uploading', progress: 0, error: null, canRetry: false, description: '' } satisfies VideoDraft
-    const early = checkVideoFile(f)
+    const early = checkVideoFile(f, undefined, limits)
     if (early) return setDraft({ ...fresh, status: 'failed', error: early })
     setDraft(fresh)
     const duration = await readDuration(f)
-    const refused = checkVideoFile(f, duration)
+    const refused = checkVideoFile(f, duration, limits)
     if (refused) return patch(g, { status: 'failed', error: refused })
     const plan = await startVideoUpload(f.type || 'video/mp4', f.size, duration)
     if ('error' in plan) return patch(g, { status: 'failed', error: plan.error })
@@ -186,15 +179,15 @@ export function useVideoDraft() {
     await run(g, plan, f)
   }
 
+  // Outside the state update: an updater must not send anything (React may run it twice).
+  const mediaId = draft?.mediaId ?? null
   const remove = useCallback(() => {
     generation.current++
     abort.current?.abort()
     file.current = null
-    setDraft((d) => {
-      if (d?.mediaId) void removeVideo(d.mediaId)
-      return null
-    })
-  }, [])
+    if (mediaId) void removeVideo(mediaId)
+    setDraft(null)
+  }, [mediaId])
 
   /** After a post, or a reset: forget the draft without deleting what the post now owns. */
   const clear = useCallback(() => {

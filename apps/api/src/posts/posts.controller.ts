@@ -31,7 +31,7 @@ import { LinksService } from '../links/links.service.js'
 import { MediaService } from '../media/media.service.js'
 import type { FlagKey } from '../flags/registry.js'
 import { RateLimiter } from '../rate-limit.js'
-import { VideoError } from '../video/video-error.js'
+import { VideoError, videoHttpError } from '../video/video-error.js'
 import { VideoGate } from '../video/video-gate.js'
 import { VideoService } from '../video/video.service.js'
 import {
@@ -197,10 +197,7 @@ export class PostsController {
       return { id }
     } catch (err) {
       // The trust rules, re-checked at attach: same answers as starting an upload.
-      if (err instanceof VideoError) {
-        if (err.code === 'not_eligible') throw new ForbiddenException({ code: err.code, message: err.message })
-        throw new BadRequestException({ code: err.code, message: err.message })
-      }
+      if (err instanceof VideoError) throw videoHttpError(err)
       if (err instanceof ReplyNotAllowedError) {
         throw new ForbiddenException({ code: 'reply_not_allowed', message: err.message })
       }
@@ -267,9 +264,13 @@ export class PostsController {
   @UseGuards(SessionGuard)
   async remove(@Req() req: AuthedRequest, @Param('id') id: string) {
     if (!(await this.posts.remove(req.member.id, postId(id)))) throw new NotFoundException()
-    // Deleting a post takes its images down too.
-    await this.media.discardPostImages(id)
-    await this.videos?.discardPostVideos(id)
+    // Deleting a post takes its images and its video down too; one failing does not stop the other,
+    // and the hourly sweep finishes a video whose clean-up failed.
+    try {
+      await this.media.discardPostImages(id)
+    } finally {
+      await this.videos?.discardPostVideos(id)
+    }
   }
 
   @Put('posts/:id/like')

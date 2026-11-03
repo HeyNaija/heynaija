@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
 import type { Bucket, UploadedPart, VideoStore } from '../media/object-store.js'
 
@@ -67,7 +68,9 @@ export class MemoryVideoStore implements VideoStore {
     this.aborted.push(uploadId)
   }
   async download(bucket: Bucket, key: string, path: string) {
-    await writeFile(path, await this.read(bucket, key))
+    const body = await this.read(bucket, key)
+    await writeFile(path, body)
+    return createHash('sha256').update(body).digest('hex')
   }
   async upload(bucket: Bucket, key: string, path: string) {
     this.objects.set(this.k(bucket, key), await readFile(path))

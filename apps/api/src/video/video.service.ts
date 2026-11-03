@@ -120,8 +120,7 @@ export class VideoService {
     const total = Math.ceil(row.bytes / partSize)
     const parts = await this.store.listParts(originalKey(mediaId), details.uploadId!).catch(() => null)
     if (!parts) throw new VideoError('bad_parts', 'that upload is no longer open; start again')
-    const sizeOf = (n: number) => (n < total ? partSize : row.bytes - partSize * (total - 1))
-    const exact = parts.length === total && parts.every((p, i) => p.partNumber === i + 1 && p.size === sizeOf(p.partNumber))
+    const exact = parts.length === total && parts.every((p, i) => p.partNumber === i + 1 && p.size === partBytes(p.partNumber, row.bytes, partSize))
     if (!exact) throw new VideoError('bad_parts', 'the upload is incomplete; send the missing parts, then finish')
 
     await this.store.completeMultipart(originalKey(mediaId), details.uploadId!, parts)
@@ -209,7 +208,7 @@ export class VideoService {
       .where(and(eq(media.id, mediaId), isNull(media.postId), inArray(media.status, ['pending', 'uploading', 'processing', 'ready', 'failed', 'rejected'])))
       .returning({ id: media.id })
     if (claimed.length === 0) return false
-    await this.erase(mediaId, row.uploadId)
+    await this.eraseDeleted(mediaId, row.uploadId)
     return true
   }
 
@@ -234,17 +233,19 @@ export class VideoService {
 
   /**
    * After a dismissed report: puts the video back if nothing else keeps it down. The post must be
-   * neither removed nor deleted, and no other open illegal report may be on it.
+   * neither removed nor deleted, and no other illegal report on it may be open or acted on: a
+   * moderator who upheld one without removing the post (by suspending the author, say) left the video
+   * down, and a later dismissal of some other report must not undo that.
    */
   async releaseIfCleared(postId: string): Promise<void> {
     const [post] = await this.db.select({ removedAt: posts.removedAt, deletedAt: posts.deletedAt }).from(posts).where(eq(posts.id, postId))
     if (!post || post.removedAt || post.deletedAt) return
-    const [open] = await this.db
+    const [held] = await this.db
       .select({ id: reports.id })
       .from(reports)
-      .where(and(eq(reports.postId, postId), eq(reports.status, 'open'), eq(reports.reason, 'illegal')))
+      .where(and(eq(reports.postId, postId), inArray(reports.status, ['open', 'actioned']), eq(reports.reason, 'illegal')))
       .limit(1)
-    if (open) return
+    if (held) return
     await this.releasePostVideos(postId)
   }
 
@@ -286,7 +287,7 @@ export class VideoService {
       if (reported) await this.quarantine(id)
       else {
         await this.db.update(media).set({ status: 'deleted' }).where(eq(media.id, id))
-        await this.erase(id, null)
+        await this.eraseDeleted(id, null)
       }
     }
   }
@@ -305,21 +306,10 @@ export class VideoService {
       .leftJoin(videoDetails, eq(videoDetails.mediaId, media.id))
       .where(and(eq(media.ownerId, ownerId), eq(media.kind, 'post_video'), inArray(media.status, ['deleted', 'ready'])))
     for (const { id, status, uploadId } of rows) {
-      if (status === 'ready') {
-        await this.quarantine(id)
-        continue
-      }
+      if (status === 'ready') await this.quarantine(id)
       // Not swallowed: the store already tolerates an upload that is gone, and a real failure must fail the
       // erase while this row still holds the upload id, so the retry can abort it.
-      if (uploadId) await this.store.abortMultipart(originalKey(id), uploadId)
-      const keys = await this.publishedKeys(id)
-      await this.erase(id, null)
-      // The CDN may still hold what was public.
-      await this.jobs.purgeCdn(keys)
-      for (const key of keys) await this.store.remove('uploads', quarantinedKey(key))
-      await this.store.remove('uploads', quarantineOriginalKey(id))
-      await this.db.delete(videoRenditions).where(eq(videoRenditions.mediaId, id))
-      await this.db.delete(videoDetails).where(eq(videoDetails.mediaId, id))
+      else await this.eraseDeleted(id, uploadId)
     }
   }
 
@@ -343,20 +333,55 @@ export class VideoService {
     return [...rows.map((r) => renditionKey(mediaId, r.height)), posterKey(mediaId)]
   }
 
-  /** Deletes every file of a video that is no longer wanted: an open upload, the original, the public files. */
-  private async erase(mediaId: string, uploadId: string | null): Promise<void> {
+  /**
+   * Deletes every file of a video marked deleted: an open upload, the original, the public files (and the
+   * CDN's cached copies of them), any private copies; then its rendition and details rows. The rows go last,
+   * so a removal storage failed part-way still has them, and the sweep finishes it (`finishDeleted`).
+   */
+  private async eraseDeleted(mediaId: string, uploadId: string | null): Promise<void> {
     if (uploadId) await this.store.abortMultipart(originalKey(mediaId), uploadId)
     await this.store.remove('uploads', originalKey(mediaId))
-    for (const key of await this.publishedKeys(mediaId)) await this.store.remove('media', key)
+    const keys = await this.publishedKeys(mediaId)
+    for (const key of keys) await this.store.remove('media', key)
+    // Gone from the bucket, but they were served `immutable` for a year, so Cloudflare may still have them.
+    await this.jobs.purgeCdn(keys)
+    for (const key of keys) await this.store.remove('uploads', quarantinedKey(key))
+    await this.store.remove('uploads', quarantineOriginalKey(mediaId))
+    await this.db.delete(videoRenditions).where(eq(videoRenditions.mediaId, mediaId))
+    await this.db.delete(videoDetails).where(eq(videoDetails.mediaId, mediaId))
+  }
+
+  /**
+   * Finishes every removal that storage failed part-way: a video marked deleted whose details row is still
+   * there. Never one the scanner matched, whose original is evidence. One failure is logged and the rest go
+   * on; it stays for the next run. Returns how many were finished.
+   */
+  private async finishDeleted(): Promise<number> {
+    const rows = await this.db
+      .select({ id: media.id, uploadId: videoDetails.uploadId })
+      .from(media)
+      .innerJoin(videoDetails, eq(videoDetails.mediaId, media.id))
+      .where(and(eq(media.kind, 'post_video'), eq(media.status, 'deleted'), sql`${videoDetails.scanResult} is distinct from 'match'`))
+    let finished = 0
+    for (const { id, uploadId } of rows) {
+      try {
+        await this.eraseDeleted(id, uploadId)
+        finished++
+      } catch (err) {
+        this.log.warn(`video sweep: removing the files of video ${id} failed; next run tries again: ${(err as Error).message}`)
+      }
+    }
+    return finished
   }
 
   // --- The hourly sweep ---
 
   /**
    * Clears uploads nobody finished within the window (aborting the open multipart
-   * upload), videos never put on a post, and re-quarantines a video whose post was
-   * removed but whose files are still public. `processing` is never swept: the
-   * worker owns it, and a stuck one shows up in its logs.
+   * upload), videos never put on a post, and the files of any removal that failed
+   * part-way; takes down a video still public on a post that was removed or deleted,
+   * or that is under an open illegal report. `processing` is never swept: the worker
+   * owns it, and a stuck one shows up in its logs.
    */
   async sweepAbandoned(): Promise<void> {
     const stale = await this.db
@@ -364,10 +389,6 @@ export class VideoService {
       .set({ status: 'deleted' })
       .where(and(eq(media.kind, 'post_video'), inArray(media.status, ['pending', 'uploading']), lt(media.createdAt, new Date(Date.now() - this.cfg.uploadWindowMs))))
       .returning({ id: media.id })
-    for (const { id } of stale) {
-      const [d] = await this.db.select({ uploadId: videoDetails.uploadId }).from(videoDetails).where(eq(videoDetails.mediaId, id))
-      await this.erase(id, d?.uploadId ?? null)
-    }
 
     // One conditional update, so a video being attached to a post right now is attached or swept, never both.
     const unused = await this.db
@@ -375,7 +396,19 @@ export class VideoService {
       .set({ status: 'deleted' })
       .where(and(eq(media.kind, 'post_video'), eq(media.status, 'ready'), isNull(media.postId), lt(media.readyAt, new Date(Date.now() - UNATTACHED_AFTER_MS))))
       .returning({ id: media.id })
-    for (const { id } of unused) await this.erase(id, null)
+
+    // Their files, and those of any earlier removal that storage failed part-way. Marked first, erased after.
+    const erased = await this.finishDeleted()
+
+    // A post its author deleted while storage was down, so its video was never taken down: done now, as it
+    // would have been then. An erased (or erasing) author's is evidence the erase decides on: kept privately.
+    const orphaned = await this.db
+      .selectDistinct({ postId: posts.id, erasing: sql<boolean>`${members.deletionRequestedAt} is not null or ${members.deletedAt} is not null` })
+      .from(media)
+      .innerJoin(posts, eq(posts.id, media.postId))
+      .innerJoin(members, eq(members.id, posts.authorId))
+      .where(and(eq(media.kind, 'post_video'), eq(media.status, 'ready'), isNotNull(posts.deletedAt)))
+    for (const { postId, erasing } of orphaned) await (erasing ? this.quarantinePostVideos(postId) : this.discardPostVideos(postId))
 
     const exposed = await this.db
       .select({ id: media.id })
@@ -397,8 +430,11 @@ export class VideoService {
       )
     for (const { id } of reported) await this.quarantine(id)
     const hidden = exposed.length + reported.length
-    if (stale.length + unused.length + hidden > 0) {
-      this.log.log(`video sweep: ${stale.length} abandoned uploads, ${unused.length} unused videos, ${hidden} re-quarantined`)
+    if (stale.length + unused.length + erased + orphaned.length + hidden > 0) {
+      this.log.log(
+        `video sweep: ${stale.length} abandoned uploads, ${unused.length} unused videos, ${erased} removals finished, ` +
+          `${orphaned.length} deleted posts' videos taken down, ${hidden} re-quarantined`,
+      )
     }
   }
 
@@ -421,10 +457,9 @@ export class VideoService {
   }
 
   private async sign(mediaId: string, uploadId: string, bytes: number, partSize: number, numbers: number[]): Promise<SignedPart[]> {
-    const total = Math.ceil(bytes / partSize)
     return Promise.all(
       numbers.map(async (partNumber) => {
-        const size = partNumber < total ? partSize : bytes - partSize * (total - 1)
+        const size = partBytes(partNumber, bytes, partSize)
         return { partNumber, bytes: size, url: await this.store.presignPart(originalKey(mediaId), uploadId, partNumber, size) }
       }),
     )
@@ -432,3 +467,9 @@ export class VideoService {
 }
 
 const range = (n: number) => Array.from({ length: n }, (_, i) => i + 1)
+
+/** The size of part `n` of `bytes` sent in parts of `partSize`: every part full but the last. */
+const partBytes = (n: number, bytes: number, partSize: number) => {
+  const total = Math.ceil(bytes / partSize)
+  return n < total ? partSize : bytes - partSize * (total - 1)
+}

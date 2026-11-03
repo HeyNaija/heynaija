@@ -148,3 +148,34 @@ test('dismissing a spam report leaves an illegal report open and the video hidde
   await moderation.resolve(sam, after.find((r) => r.reason === 'illegal')!.id, 'dismiss')
   assert.equal(await statusOf(mediaId), 'ready')
 })
+
+test('an illegal report acted on without removing the post keeps the video down when a later report is dismissed', async () => {
+  const { postId, mediaId } = await livePost()
+  await moderation.report(bayo, { postId }, 'illegal')
+  const [illegal] = await db.select().from(reports).where(eq(reports.postId, postId))
+  // Upheld by suspending the author: the post stays, the report is closed as actioned, the video stays hidden.
+  await moderation.resolve(sam, illegal!.id, 'suspend_member')
+  assert.equal(await statusOf(mediaId), 'quarantined')
+
+  await moderation.report(sam, { postId }, 'spam')
+  const spam = (await db.select().from(reports).where(eq(reports.postId, postId))).find((r) => r.status === 'open')!
+  await moderation.resolve(sam, spam.id, 'dismiss')
+  assert.equal(await statusOf(mediaId), 'quarantined', 'dismissing something else does not undo the upheld report')
+  assert.deepEqual(store.keys('media'), [])
+})
+
+test('a reporter whose open report said spam and who now says illegal turns it into an illegal report, which hides the video', async () => {
+  const { postId, mediaId } = await livePost()
+  await moderation.report(bayo, { postId }, 'spam')
+  assert.equal(await statusOf(mediaId), 'ready')
+
+  await moderation.report(bayo, { postId }, 'illegal', 'this is abuse')
+  const rows = await db.select().from(reports).where(eq(reports.postId, postId))
+  assert.deepEqual(rows.map((r) => [r.reason, r.status, r.details]), [['illegal', 'open', 'this is abuse']])
+  assert.equal(await statusOf(mediaId), 'quarantined')
+
+  // Reporting again, for anything, changes nothing more.
+  await moderation.report(bayo, { postId }, 'spam')
+  const again = await db.select().from(reports).where(eq(reports.postId, postId))
+  assert.deepEqual(again.map((r) => r.reason), ['illegal'])
+})
