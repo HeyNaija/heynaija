@@ -1526,7 +1526,8 @@ a.notification-row:hover {
 .notification-icon.is-repost,
 .notification-icon.is-quote,
 .notification-icon.is-mention,
-.notification-icon.is-follow {
+.notification-icon.is-follow,
+.notification-icon.is-chess_challenge {
   color: var(--accent-strong);
 }
 .notification-dot {
@@ -2179,3 +2180,15 @@ a.result-row:hover { color: var(--accent-strong); }
 @keyframes gist-ring { 0%, 100% { box-shadow: 0 0 0 3px var(--accent); } 50% { box-shadow: 0 0 0 7px var(--accent-soft); } }
 @keyframes gist-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .gist-mic-state { padding: 0 6px; border-radius: var(--r-chip); background: color-mix(in srgb, currentColor 14%, transparent); font-size: 12px; font-weight: 700; }
+
+/* Chess on Lichess (docs/adr/0018): ratings as quiet inset tiles, and challenges as rows divided by hairlines inside their card. */
+.chess-ratings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 14px 0 8px; }
+@media (min-width: 640px) { .chess-ratings { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.chess-ratings > div { min-width: 0; border-radius: var(--r-control); background: var(--panel); padding: 10px 12px; }
+.chess-ratings dt { color: var(--muted); font-size: 12px; font-weight: 600; }
+.chess-ratings dd { margin: 2px 0 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.chess-challenges { display: flex; flex-direction: column; margin-top: 8px; }
+.chess-challenge { border-top: 1px solid var(--line); padding: 12px 0; scroll-margin-top: 96px; }
+.chess-challenge:first-child { border-top: 0; }
+.chess-challenge-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-left: 48px; }
+@media (max-width: 419px) { .chess-challenge-actions { padding-left: 0; } }

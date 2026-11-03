@@ -46,6 +46,11 @@ export const LIMITS = {
   gistJoinBurst: [{ max: 120, windowMs: MINUTE }],
   gistRequest: [{ max: 10, windowMs: MINUTE }],
   gistSync: [{ max: 20, windowMs: MINUTE }],
+  // Chess on Lichess (docs/adr/0018): linking an account, reading ratings again
+  // on demand, and challenging. Each asks Lichess on the member's behalf.
+  lichessLink: [{ max: 10, windowMs: HOUR }],
+  lichessRefresh: [{ max: 6, windowMs: HOUR }],
+  chessChallenge: [{ max: 20, windowMs: HOUR }],
 } satisfies Record<string, { max: number; windowMs: number }[]>
 
 export type LimitKind = keyof typeof LIMITS

@@ -8,7 +8,7 @@ export const chessManifest: GameManifest = {
   description:
     'Link your Lichess account, challenge other members and follow their games here. Lichess runs the games and the ratings.',
   cover: null,
-  status: 'coming_soon',
+  status: 'beta',
   rankingType: 'rating',
   supportsCompetitions: true,
 }

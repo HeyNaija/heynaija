@@ -111,17 +111,21 @@ member foreign key cascades.
 Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
 
 1. **Linking:** Lichess OAuth2 with PKCE. Lichess needs no client secret or app
-   registration. The callback goes through the web app's single origin to the
+   registration; the client ID is the site's host. The callback is
+   `/games/chess/callback` on the web app's single origin, which passes it to the
    API. Request only the scopes needed: challenge:read, challenge:write and
    board:play first; team and tournament scopes only when community tournaments
-   are built. Unlinking deletes the token.
+   are built. Tokens are sealed with `GAMES_TOKEN_KEY`. Unlinking revokes and
+   deletes the token. Linking lives on /games/chess only.
 2. **Profile:** the Lichess username, plus Blitz, Rapid, Classical and
    Correspondence ratings, cached and refreshed on a schedule and on demand.
-3. **Challenges:** a member challenges another member who has linked Lichess.
-   Rated or casual. Time controls are limited to what the Board API allows (no
-   Bullet; Blitz only for direct challenges), enforced in the UI and the API. The
-   challenged member gets an in-app notification through a new notification
-   kind, with an opt-out like the others.
+3. **Challenges:** a member challenges another member who has linked Lichess
+   (both with Games, no block either way). Rated or casual. Time controls are a
+   fixed list of what the Board API allows (no Bullet; Blitz only for direct
+   challenges), in `chess/time-controls.ts`, enforced in the API and offered as
+   is in the UI. The challenge is made on Lichess only when accepted, with both
+   members' tokens (ADR 0018). The challenged member is notified in the app, by
+   email and by push (`chess_challenge`), with an opt-out like the others.
 4. **Play inside HeyNaija** through the Board API: stream game state, move, offer
    or accept draws, resign, and reconnect cleanly. Respect Lichess rate limits:
    one request at a time per member, and back off on 429. Use chessground and

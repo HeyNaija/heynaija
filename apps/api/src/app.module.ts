@@ -1,6 +1,6 @@
 import { Controller, Get, Module } from '@nestjs/common'
 import { AccountController } from './account/account.controller.js'
-import { AccountDeletionService, DELETION_NOTICES } from './account/account-deletion.service.js'
+import { AccountDeletionService, DELETION_NOTICES, GAMES_ERASER } from './account/account-deletion.service.js'
 import { AccountWorker, BullAccountJobs } from './account/account-queue.js'
 import { EmailDeletionNotices } from './account/deletion-notices.js'
 import { PrivacyRequestsService } from './account/privacy-requests.service.js'
@@ -18,6 +18,7 @@ import type { Env } from './env.js'
 import { FlagsController } from './flags/flags.controller.js'
 import { ExportController } from './export/export.controller.js'
 import { ExportService } from './export/export.service.js'
+import { ChessService } from './games/chess/chess.service.js'
 import { GamesModule } from './games/games.module.js'
 import { GistReconciler } from './gists/gist-queue.js'
 import { GistsController, LiveKitWebhookController } from './gists/gists.controller.js'
@@ -145,6 +146,7 @@ class HealthController {
       useFactory: (env: Env, mailer: Mailer | null, addresses: EmailAddresses) => new EmailDeletionNotices(mailer, addresses, env.WEB_PUBLIC_URL),
       inject: [ENV, MAILER, EMAIL_ADDRESSES],
     },
+    { provide: GAMES_ERASER, useExisting: ChessService },
     AccountDeletionService,
     PrivacyRequestsService,
     RetentionService,

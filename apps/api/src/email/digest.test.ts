@@ -96,3 +96,9 @@ test('what members wrote cannot add markup or links to the HTML', () => {
   // The text part is plain text, so it is left as written.
   assert.match(mail.text, /<script>alert\(1\)<\/script> & "quotes"/)
 })
+
+test('a chess challenge says who, what game, and links to the challenge', () => {
+  const mail = render([item({ kind: 'chess_challenge', postId: null, challenge: { id: 'c1', phrase: 'a rated Rapid game (10+5)' } })])
+  assert.equal(mail.subject, '@bayo challenged you to a rated Rapid game (10+5)')
+  assert.match(mail.text, /https:\/\/heynaija\.test\/games\/chess#challenge-c1/)
+})

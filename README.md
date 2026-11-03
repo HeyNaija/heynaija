@@ -108,6 +108,10 @@ Games ([docs/games/GAMES.md](docs/games/GAMES.md), [ADR 0018](docs/adr/0018-game
 is behind the `games` feature flag ([docs/feature-flags.md](docs/feature-flags.md)):
 on in development and staging, off in production until launch. A site moderator can
 turn it on, off, or on for named members only, from Moderation, Feature flags.
+Connecting a Lichess account for chess needs `GAMES_TOKEN_KEY` (64 hex characters,
+which `pnpm infra:env` adds), the key that encrypts members' Lichess tokens; without
+it the chess page says connecting is not available. Locally, connecting goes to the
+real lichess.org (set `LICHESS_URL` to point the API somewhere else).
 
 The demo members can sign in as `<handle>@demo.heynaija.test` with the code
 Mailpit catches; `pnpm demo:clean` removes them and everything they did.

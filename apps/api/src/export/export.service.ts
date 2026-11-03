@@ -13,6 +13,7 @@ import {
   governanceMemberships,
   ideas,
   ideaVotes,
+  lichessAccounts,
   identityVerifications,
   likes,
   media,
@@ -33,13 +34,14 @@ import {
   seasonScores,
 } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
-import { aliasedTable, and, asc, eq, isNotNull, or } from 'drizzle-orm'
+import { aliasedTable, and, asc, eq, isNotNull, or, sql } from 'drizzle-orm'
 import { avatarPath, postImagePath } from '../media/media.service.js'
 import { preferencesWithout } from '../notifications/notifications.service.js'
+import { describeTime } from '../games/chess/time-controls.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/12'
+export const EXPORT_FORMAT = 'heynaija-export/13'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -339,7 +341,7 @@ export class ExportService {
   }
 
   private async games(memberId: string) {
-    const [profiles, scores, entries] = await Promise.all([
+    const [profiles, scores, entries, [lichess], challenges] = await Promise.all([
       this.db
         .select({ game: gameProfiles.game, stats: gameProfiles.stats, since: gameProfiles.createdAt, updatedAt: gameProfiles.updatedAt })
         .from(gameProfiles)
@@ -363,7 +365,48 @@ export class ExportService {
         .innerJoin(competitions, eq(competitions.id, competitionEntries.competitionId))
         .where(eq(competitionEntries.memberId, memberId))
         .orderBy(asc(competitionEntries.enteredAt)),
+      // The linked Lichess account, never its token.
+      this.db
+        .select({ username: lichessAccounts.username, linkedAt: lichessAccounts.linkedAt, ratings: lichessAccounts.ratings, ratingsRefreshedAt: lichessAccounts.ratingsRefreshedAt })
+        .from(lichessAccounts)
+        .where(eq(lichessAccounts.memberId, memberId)),
+      this.db.execute<{
+        sent: boolean
+        opponent: string
+        rated: boolean
+        clock_limit: number | null
+        clock_increment: number | null
+        days: number | null
+        color: string
+        status: string
+        lichess_game_id: string | null
+        created_at: Date
+        responded_at: Date | null
+      }>(sql`
+        select c.challenger_id = ${memberId} as sent, o.handle as opponent, c.rated, c.clock_limit, c.clock_increment, c.days,
+          c.color, c.status, c.lichess_game_id, c.created_at, c.responded_at
+        from games.chess_challenges c
+        join members o on o.id = case when c.challenger_id = ${memberId} then c.challenged_id else c.challenger_id end
+        where c.challenger_id = ${memberId} or c.challenged_id = ${memberId}
+        order by c.created_at`),
     ])
-    return { profiles, seasonScores: scores, competitionEntries: entries }
+    return {
+      profiles,
+      seasonScores: scores,
+      competitionEntries: entries,
+      lichess: lichess ?? null,
+      // Chess challenges you sent or got; `color` is what the challenger asked to play.
+      chessChallenges: challenges.rows.map((c) => ({
+        sent: c.sent,
+        opponent: c.opponent,
+        rated: c.rated,
+        time: describeTime({ clockLimit: c.clock_limit, clockIncrement: c.clock_increment, days: c.days }).label,
+        color: c.color,
+        status: c.status,
+        lichessGameId: c.lichess_game_id,
+        at: new Date(c.created_at),
+        answeredAt: c.responded_at ? new Date(c.responded_at) : null,
+      })),
+    }
   }
 }

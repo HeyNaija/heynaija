@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { setBlock, setFollow, setMute } from '@/app/actions'
+import { LichessLine } from '@/app/(main)/games/chess/_components/lichess-line'
 import { Avatar } from '@/app/ui/avatar'
 import { FounderBadge } from '@/app/ui/founder-badge'
 import { IdentityBadge } from '@/app/ui/identity-badge'
@@ -146,6 +147,12 @@ async function ProfileView({ params, searchParams }: Props) {
         <p className="mt-4 text-xs text-muted">
           Joined <LocalTime at={profile.joinedAt} as="month" />
         </p>
+        {/* Chess (docs/adr/0018): only for members with Games, and loaded on its own so a slow answer never holds up the profile. */}
+        {viewer.state === 'member' && viewer.me.features.games && !profile.viewerBlocks ? (
+          <Suspense fallback={null}>
+            <LichessLine handle={profile.handle} />
+          </Suspense>
+        ) : null}
         <p className="profile-stats mt-5 flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-4 text-sm text-muted">
           {count(profile.postCount, 'post', 'posts')}
           {count(profile.followerCount, 'follower', 'followers')}

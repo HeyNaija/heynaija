@@ -79,6 +79,10 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['gist role changes', `update gist_members set role_changed_by = null where role_changed_by in (select id from e2e_m)`],
         ['gist removals', `update gist_members set removed_by = null where removed_by in (select id from e2e_m)`],
         ['gists', `delete from gists where id in (select id from e2e_g)`],
+        // Chess (docs/adr/0018): challenges (their notifications cascade) and Lichess accounts.
+        ['chess challenges', `delete from games.chess_challenges where challenger_id in (select id from e2e_m) or challenged_id in (select id from e2e_m)`],
+        ['lichess linking', `delete from games.lichess_link_attempts where member_id in (select id from e2e_m)`],
+        ['lichess accounts', `delete from games.lichess_accounts where member_id in (select id from e2e_m)`],
         // Games (docs/adr/0018): competitions test members created go whole, entries and events with them.
         ['game events', `delete from games.game_events where member_id in (select id from e2e_m)
            or competition_id in (select id from games.competitions where created_by in (select id from e2e_m))`],

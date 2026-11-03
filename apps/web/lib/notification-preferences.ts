@@ -10,7 +10,22 @@ export const NOTIFICATION_SETTINGS = [
   { kind: 'repost', label: 'Someone reposts your post' },
   { kind: 'quote', label: 'Someone quotes your post' },
   { kind: 'follow', label: 'Someone follows you' },
+  // Shown only to members with Games (docs/adr/0018); see `settingsFor`.
+  { kind: 'chess_challenge', label: 'Someone challenges you to chess' },
 ] as const
+
+/** Kinds that belong to a feature behind a flag: the box shows only where the flag is on. */
+const BEHIND_GAMES: readonly OptionalNotificationKind[] = ['chess_challenge']
+
+/**
+ * The boxes to show a member, and the kinds left out. A kind left out keeps what
+ * it was, through a hidden field, so saving the form never changes it unseen.
+ */
+export function settingsFor(features: { games?: boolean }) {
+  const shown = NOTIFICATION_SETTINGS.filter(({ kind }) => features.games || !BEHIND_GAMES.includes(kind))
+  const hidden = NOTIFICATION_SETTINGS.filter((s) => !shown.includes(s)).map(({ kind }) => kind)
+  return { shown, hidden }
+}
 
 export type OptionalNotificationKind = (typeof NOTIFICATION_SETTINGS)[number]['kind']
 

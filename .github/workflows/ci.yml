@@ -129,7 +129,9 @@ jobs:
 
       - name: Start the API and the web app
         run: |
-          pnpm --filter @heynaija/api start > api.log 2>&1 &
+          # A stand-in for lichess.org (e2e/lib/fake-lichess.ts) for the chess tests.
+          node --experimental-strip-types e2e/lib/fake-lichess.ts > lichess.log 2>&1 &
+          LICHESS_URL=http://127.0.0.1:8790 pnpm --filter @heynaija/api start > api.log 2>&1 &
           pnpm --filter @heynaija/web start > web.log 2>&1 &
           for i in $(seq 1 60); do
             curl -fsS http://127.0.0.1:4000/healthz >/dev/null && curl -fsS -o /dev/null http://127.0.0.1:3000/ && exit 0
@@ -144,6 +146,7 @@ jobs:
       - run: pnpm e2e
         env:
           CI: true
+          E2E_LICHESS: 1
 
       # `failure()` alone skips a run that hit the time limit, which is the run whose
       # logs and traces are most wanted, so a cancelled one keeps them too.

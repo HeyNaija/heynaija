@@ -27,7 +27,7 @@ test('GET /v1/games lists the registry, without the providers', () => {
   assert.deepEqual(
     games.map((game) => [game.slug, game.status]),
     [
-      ['chess', 'coming_soon'],
+      ['chess', 'beta'],
       ['keno', 'coming_soon'],
     ],
   )

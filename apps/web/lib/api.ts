@@ -389,6 +389,47 @@ export type GameManifest = {
 /** The games in registry order; null while Games is off or the member is not on its list (the API answers 404). */
 export const getGames = () => getOrNull<{ games: GameManifest[] }>('/v1/games')
 
+/** Lichess ratings by speed, as Lichess last said (docs/adr/0018). */
+export type ChessRatings = Partial<Record<'blitz' | 'rapid' | 'classical' | 'correspondence', { rating: number; games: number; provisional: boolean }>>
+
+export type ChessTimeControl =
+  | { id: string; speed: 'blitz' | 'rapid' | 'classical'; limit: number; increment: number }
+  | { id: string; speed: 'correspondence'; days: number }
+
+export type ChessChallenge = {
+  id: string
+  opponent: { handle: string; displayName: string | null; avatar: string | null }
+  /** Whether the viewer sent it. */
+  sent: boolean
+  rated: boolean
+  speed: 'blitz' | 'rapid' | 'classical' | 'correspondence'
+  /** "10+5", "3 days a move". */
+  time: string
+  /** The colour the viewer plays. */
+  color: 'random' | 'white' | 'black'
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'failed' | 'expired'
+  createdAt: string
+  expiresAt: string
+  gameUrl: string | null
+}
+
+export type ChessOverview = {
+  /** False where no token key is set: linking cannot be offered. */
+  linkingAvailable: boolean
+  account: { username: string; ratings: ChessRatings; ratingsRefreshedAt: string | null; linkedAt: string; url: string } | null
+  timeControls: ChessTimeControl[]
+  incoming: ChessChallenge[]
+  outgoing: ChessChallenge[]
+  recent: ChessChallenge[]
+}
+
+/** The chess page; null when Games is off for the member (the API answers 404). */
+export const getChessOverview = () => getOrNull<ChessOverview>('/v1/games/chess')
+
+/** A member's Lichess account for their profile; null if they have none, the viewer cannot see them, or Games is off. */
+export const getChessMember = (handle: string) =>
+  getOrNull<{ username: string; ratings: ChessRatings; url: string; canChallenge: boolean }>(`/v1/games/chess/members/${encodeURIComponent(handle)}`)
+
 /** A Gist the viewer may see; null for every refusal, which the API makes the same 404. */
 export const getGist = (id: string) => getOrNull<GistView>(`/v1/gists/${encodeURIComponent(id)}`)
 
@@ -620,6 +661,7 @@ export type NotificationKind =
   | 'moderator_granted'
   | 'moderator_revoked'
   | 'idea_status'
+  | 'chess_challenge'
 
 export type Notification = {
   id: string
@@ -635,6 +677,8 @@ export type Notification = {
   detail: string | null
   /** idea_status: an idea or a problem, and whether the reader sent it (or only voted for it). */
   idea?: { kind: IdeaKind; yours: boolean } | null
+  /** chess_challenge: the challenge, and how it reads ("a rated Rapid game (10+5)"). */
+  challenge?: { id: string; phrase: string } | null
 }
 
 /** Null when the visitor is not a signed-in member. */

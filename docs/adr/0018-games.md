@@ -119,14 +119,87 @@ Turning the flag off deletes nothing.
   id, and a public page lets anyone check a round.
 - A daily cap uses the existing Redis rate limiter.
 
+## Phase 2: linking Lichess, ratings and challenges (3 November 2026)
+
+Built on the decisions above, with these choices made by the owner before it
+started: tokens encrypted with a key from the environment, the challenge
+notification in the app, by email and by push (and optional, like the others),
+any two members who have both linked Lichess may challenge each other, linking
+only on the chess page, and Chess marked Beta on /games.
+
+### Linking (OAuth2 with PKCE)
+
+- "Connect Lichess" on /games/chess asks the API for an address
+  (`POST /v1/games/chess/link`) and sends the member there. Lichess knows
+  HeyNaija by its host (`client_id` is the host of `WEB_PUBLIC_URL`: heynaija.ng
+  in production), with no secret and no registration, and asks only for
+  `challenge:read`, `challenge:write` and `board:play`.
+- Lichess sends the member back to `/games/chess/callback`, a route handler in the
+  web app, which passes the code and state to the API with the member's session.
+  The browser never holds a token.
+- The state and the PKCE verifier are kept in Postgres
+  (`games.lichess_link_attempts`), not a cookie or Redis: the state only as a
+  SHA-256 hash, the verifier sealed, for ten minutes, deleted as it is used, and
+  only for the member who started it. A replayed or someone else's callback does
+  nothing.
+- One Lichess account belongs to one member. Unlinking revokes the token at
+  Lichess where it can, and forgets it either way.
+
+### Tokens at rest
+
+`GAMES_TOKEN_KEY` (32 bytes as 64 hex characters, made by `pnpm infra:env` and
+`infra/deploy/gen-env.sh`) seals tokens with AES-256-GCM (`TokenBox`), with the
+member's id bound in, so a sealed token copied to another member's row does not
+open. Boxes carry a version (`v1.`) so the key can be changed later. Without the
+key, linking is simply not offered. **Losing the key loses nothing but the
+links:** every member connects Lichess again.
+
+### Ratings
+
+Blitz, Rapid, Classical and Correspondence ratings are read when an account is
+linked, on demand (a Refresh button, six times an hour), and every six hours by a
+BullMQ job that reads up to 300 accounts in one call to Lichess's public
+`/api/users`, which needs no token. They are shown on the chess page and, to
+members with Games, on profiles, with the Lichess username: it is public on
+Lichess already.
+
+### Challenges, made on Lichess only when accepted
+
+A challenge is a row here (`games.chess_challenges`) until the challenged member
+accepts. Then the API makes the challenge on Lichess with the challenger's token
+and accepts it straight away with the other's; the Lichess challenge id is the
+game. If accepting fails it withdraws the Lichess challenge and the one here stays
+open. Why: an unaccepted challenge on Lichess runs out on Lichess's own timetable,
+and a member deciding tomorrow would find nothing there; holding both tokens, the
+API can make the game at the moment both have said yes.
+
+- Rated or casual, a colour, and one of a fixed list of time controls the Board
+  API allows for direct challenges: Blitz 3+2, 5+0, 5+3; Rapid 10+0, 10+5, 15+10;
+  Classical 30+0, 30+20; Correspondence 1, 3, 5 or 7 days a move. No Bullet. The
+  API refuses anything else, and the page offers exactly this list.
+- Both members must have linked Lichess and have Games, and neither may block the
+  other; a blocked member reads as one who has not linked. One open challenge per
+  pair. An open challenge runs out after a day (a week for correspondence),
+  worked out when read: nothing sweeps it.
+- One Lichess request at a time per member: each member's calls take a Postgres
+  advisory lock. A 429 from Lichess is passed on as "try again in a minute", and
+  the scheduled job stops until its next run.
+- The notification (`chess_challenge`) says who and what game, links to the
+  challenge, and disappears once the challenge is settled or runs out, so it is
+  never emailed or pushed late.
+
 ## Data export and account deletion
 
-- The export is `heynaija-export/12`: a `games` section with the member's game
-  profiles, season scores and competition entries. Keno tickets and the linked
-  Lichess username join it in their phases; tokens never do.
+- The export is `heynaija-export/13`: a `games` section with the member's game
+  profiles, season scores and competition entries, the linked Lichess account
+  (username, when linked, ratings; never the token) and their chess challenges.
+  Keno tickets join it in their phase.
 - No member foreign key in `games` cascades (ADR 0016). Erasing an account
   deletes the member's game profiles, season scores, competition entries and game
-  events; competitions a moderator created stay, pointing at the tombstone.
+  events; competitions a moderator created stay, pointing at the tombstone. A
+  linked Lichess account's token is revoked at Lichess before the erase, and the
+  account, any linking under way and every challenge the member was in are
+  deleted (their notifications go with them).
 
 ## Known limitations
 
@@ -138,12 +211,18 @@ Turning the flag off deletes nothing.
 - Only site moderators can create competitions for now.
 - Signed-out visitors cannot see Games at all; whether `/games` should be public
   once it is launched is decided then.
-- On staging every member sees Games (with both games coming soon) unless a
-  moderator limits the flag, by the flag policy.
+- On staging every member sees Games unless a moderator limits the flag, by the
+  flag policy. Connecting Lichess there needs `GAMES_TOKEN_KEY` in its `.env`.
+- Until phase 3 an accepted game is played on lichess.org, not inside HeyNaija.
+- A challenge is not withdrawn when one member blocks the other; it is hidden from
+  both and runs out.
 
 ## Rollback
 
 Revert the code. Then, before any real game data exists:
-`drop schema games cascade;` and delete the `0035_games_core` entry from
-`drizzle.__drizzle_migrations` (and `packages/db/drizzle/meta/_journal.json`).
+`alter table notifications drop column challenge_id;`, put
+`notification_opt_outs_kind_check` back without `chess_challenge` (after deleting
+those rows), `drop schema games cascade;`, and delete the `0035_games_core` and
+`0036_chess_linking` entries from `drizzle.__drizzle_migrations` (and
+`packages/db/drizzle/meta/_journal.json`).
 Put `EXPORT_FORMAT` back only together with the code that reads the tables.

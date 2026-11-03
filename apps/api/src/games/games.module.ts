@@ -10,5 +10,7 @@ import { KenoModule } from './keno/keno.module.js'
  */
 @Module({
   imports: [GamesCoreModule, ChessModule, KenoModule],
+  // Account erasure (AppModule) asks chess to give back a member's Lichess token.
+  exports: [ChessModule],
 })
 export class GamesModule {}

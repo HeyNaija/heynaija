@@ -5,6 +5,7 @@ import {
   ageAssurances,
   bookmarks,
   communities,
+  chessChallenges,
   communityMemberships,
   competitionEntries,
   competitions,
@@ -21,6 +22,8 @@ import {
   governanceAuditLog,
   ideas,
   ideaVotes,
+  lichessAccounts,
+  lichessLinkAttempts,
   inviteRedemptions,
   invites,
   likes,
@@ -859,4 +862,28 @@ test('Games: their stats, scores, entries and history go; a competition they cre
     assert.equal(await count(table, eq(column, yemi)), 1, 'another member’s rows stay')
   }
   assert.equal(await count(competitions, eq(competitions.createdBy, xena)), 1, 'the competition stays, pointing at the tombstone')
+})
+
+test('Chess: their Lichess account, any linking under way and every challenge they were in go, notifications with them', async () => {
+  await db.insert(lichessAccounts).values([
+    { memberId: xena, lichessId: 'xena', username: 'Xena', tokenBox: 'v1.sealed', scopes: 'challenge:write' },
+    { memberId: yemi, lichessId: 'yemi', username: 'Yemi', tokenBox: 'v1.sealed', scopes: 'challenge:write' },
+  ])
+  await db.insert(lichessLinkAttempts).values({ stateHash: 'h', memberId: xena, verifierBox: 'v1.sealed', expiresAt: days(1) })
+  const [theirs] = await db
+    .insert(chessChallenges)
+    .values({ challengerId: xena, challengedId: yemi, rated: true, clockLimit: 600, clockIncrement: 5, expiresAt: days(1) })
+    .returning({ id: chessChallenges.id })
+  await db.insert(chessChallenges).values({ challengerId: yemi, challengedId: zara, rated: false, days: 3, expiresAt: days(7) })
+  await db.insert(notifications).values({ recipientId: yemi, kind: 'chess_challenge', actorId: xena, challengeId: theirs!.id })
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  assert.equal(await count(lichessAccounts, eq(lichessAccounts.memberId, xena)), 0)
+  assert.equal(await count(lichessAccounts, eq(lichessAccounts.memberId, yemi)), 1)
+  assert.equal(await count(lichessLinkAttempts, eq(lichessLinkAttempts.memberId, xena)), 0)
+  assert.equal(await count(chessChallenges, eq(chessChallenges.challengerId, xena)), 0)
+  assert.equal(await count(chessChallenges, eq(chessChallenges.challengerId, yemi)), 1, 'other members’ challenges stay')
+  assert.equal(await count(notifications, eq(notifications.kind, 'chess_challenge')), 0)
 })

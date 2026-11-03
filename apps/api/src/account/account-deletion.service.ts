@@ -30,6 +30,12 @@ export class AccountDeletionError extends Error {
 
 export const DELETION_NOTICES = Symbol('DELETION_NOTICES')
 
+/** What Games does before an account's rows go (docs/adr/0018): gives its Lichess token back to Lichess. */
+export const GAMES_ERASER = Symbol('GAMES_ERASER')
+export interface GamesEraser {
+  revokeFor(memberId: string): Promise<void>
+}
+
 /** Emails about a deletion. Optional: without them nothing is emailed. */
 export interface DeletionNotices {
   /** The deletion was asked for: when the account will be erased, and how to cancel. */
@@ -59,6 +65,7 @@ export class AccountDeletionService {
     @Inject(MembersService) private readonly memberships: Pick<MembersService, 'holdHandle'>,
     @Inject(GistsService) private readonly gists: Pick<GistsService, 'endHostedBy'>,
     @Optional() @Inject(DELETION_NOTICES) private readonly notices?: DeletionNotices,
+    @Optional() @Inject(GAMES_ERASER) private readonly games?: GamesEraser,
   ) {}
 
   async state(memberId: string): Promise<DeletionState> {
@@ -244,6 +251,8 @@ export class AccountDeletionService {
     await this.auth.revokeAllSessions(memberId)
     // 3. A live Gist they host ends, room and all: once its rows go, nothing would close the room.
     await this.gists.endHostedBy(memberId)
+    //    And a linked Lichess account's token goes back to Lichess, while it can still be read.
+    await this.games?.revokeFor(memberId)
     // 4. Everything in the app's database.
     const erased = await this.eraseRows(memberId, now)
     if (!erased) return 'cancelled'
@@ -370,6 +379,11 @@ export class AccountDeletionService {
       await run(sql`delete from games.competition_entries where member_id = ${memberId}`)
       await run(sql`delete from games.season_scores where member_id = ${memberId}`)
       await run(sql`delete from games.game_profiles where member_id = ${memberId}`)
+      // Chess (docs/adr/0018): the linked Lichess account and any linking under way, and
+      // every challenge they sent or got (their notifications go with them).
+      await run(sql`delete from games.chess_challenges where challenger_id = ${memberId} or challenged_id = ${memberId}`)
+      await run(sql`delete from games.lichess_link_attempts where member_id = ${memberId}`)
+      await run(sql`delete from games.lichess_accounts where member_id = ${memberId}`)
 
       await run(sql`delete from notifications where recipient_id = ${memberId} or actor_id = ${memberId}`)
       await run(sql`delete from notification_opt_outs where member_id = ${memberId}`)

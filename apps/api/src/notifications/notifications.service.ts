@@ -4,6 +4,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { decodeCursor, encodeCursor } from '../cursor.js'
 import { avatarPath } from '../media/media.service.js'
 import { isFounder } from '../members/badges.js'
+import { challengePhrase } from '../games/chess/time-controls.js'
 import { DB } from '../tokens.js'
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]
@@ -39,6 +40,8 @@ export type NewNotification = {
   subjectId?: string | null
   communityId?: string | null
   detail?: string | null
+  /** chess_challenge: the challenge. */
+  challengeId?: string | null
 }
 
 /**
@@ -53,13 +56,13 @@ export async function notify(db: Pick<Db, 'execute'>, rows: NewNotification[]): 
   const values = sql.join(
     wanted.map(
       (r) => sql`(${r.recipientId}::uuid, ${r.kind}::text, ${r.actorId ?? null}::uuid, ${r.postId ?? null}::uuid,
-        ${r.subjectId ?? null}::uuid, ${r.communityId ?? null}::uuid, ${r.detail ?? null}::text)`,
+        ${r.subjectId ?? null}::uuid, ${r.communityId ?? null}::uuid, ${r.detail ?? null}::text, ${r.challengeId ?? null}::uuid)`,
     ),
     sql`, `,
   )
   await db.execute(sql`
-    insert into notifications (recipient_id, kind, actor_id, post_id, subject_id, community_id, detail)
-    select * from (values ${values}) as v(recipient_id, kind, actor_id, post_id, subject_id, community_id, detail)
+    insert into notifications (recipient_id, kind, actor_id, post_id, subject_id, community_id, detail, challenge_id)
+    select * from (values ${values}) as v(recipient_id, kind, actor_id, post_id, subject_id, community_id, detail, challenge_id)
     where not exists(select 1 from notification_opt_outs o where o.member_id = v.recipient_id and o.kind = v.kind)
       and not exists(select 1 from members m where m.id = v.recipient_id and m.deleted_at is not null)
     on conflict do nothing`)
@@ -82,6 +85,8 @@ export type NotificationView = {
   detail: string | null
   /** idea_status: an idea or a problem, and whether the recipient sent it (or voted for it). */
   idea: { kind: 'idea' | 'problem'; yours: boolean } | null
+  /** chess_challenge: the challenge, and how it reads ("a rated Rapid game (10+5)"). */
+  challenge: { id: string; phrase: string } | null
 }
 
 export type NotificationPage = { notifications: NotificationView[]; cursor: string | null }
@@ -103,7 +108,8 @@ export const visible = (viewerId: string) => sql`
   and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'idea_status') or (p.deleted_at is null and p.removed_at is null))
   and (n.kind <> 'like' or exists(select 1 from likes l where l.post_id = n.post_id and l.member_id = n.actor_id))
   and (n.kind <> 'repost' or exists(select 1 from reposts r where r.post_id = n.post_id and r.member_id = n.actor_id))
-  and (n.kind <> 'follow' or exists(select 1 from follows f where f.follower_id = n.actor_id and f.followee_id = ${viewerId}))`
+  and (n.kind <> 'follow' or exists(select 1 from follows f where f.follower_id = n.actor_id and f.followee_id = ${viewerId}))
+  and (n.kind <> 'chess_challenge' or (ch.status = 'pending' and ch.expires_at > now()))`
 
 export const joins = sql`
   from notifications n
@@ -111,7 +117,34 @@ export const joins = sql`
   left join posts p on p.id = n.post_id
   left join members s on s.id = n.subject_id
   left join communities c on c.id = n.community_id
-  left join ideas i on i.post_id = n.post_id`
+  left join ideas i on i.post_id = n.post_id
+  left join games.chess_challenges ch on ch.id = n.challenge_id`
+
+/** The challenge's columns, for `challengeOf`. */
+export const challengeColumns = sql`ch.id as challenge_id, ch.rated as challenge_rated,
+  ch.clock_limit as challenge_clock_limit, ch.clock_increment as challenge_clock_increment, ch.days as challenge_days`
+
+export type ChallengeColumns = {
+  challenge_id: string | null
+  challenge_rated: boolean | null
+  challenge_clock_limit: number | null
+  challenge_clock_increment: number | null
+  challenge_days: number | null
+}
+
+/** A chess challenge as a notification shows it, from `challengeColumns`. */
+export const challengeOf = (r: ChallengeColumns): { id: string; phrase: string } | null =>
+  r.challenge_id
+    ? {
+        id: r.challenge_id,
+        phrase: challengePhrase({
+          rated: Boolean(r.challenge_rated),
+          clockLimit: r.challenge_clock_limit,
+          clockIncrement: r.challenge_clock_increment,
+          days: r.challenge_days,
+        }),
+      }
+    : null
 
 @Injectable()
 export class NotificationsService {
@@ -141,13 +174,13 @@ export class NotificationsService {
       community_name: string | null
       idea_kind: 'idea' | 'problem' | null
       idea_yours: boolean
-    }>(sql`
+    } & ChallengeColumns>(sql`
       select n.id, n.kind, n.created_at, n.read_at, n.detail,
         a.handle as actor_handle, a.display_name as actor_name, a.avatar_media_id as actor_avatar,
         ${isFounder(sql`a.id`)} as actor_founder,
         p.id as post_id, p.text as post_text, s.handle as subject_handle,
         c.slug as community_slug, c.name as community_name,
-        i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours
+        i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, ${challengeColumns}
       ${joins}
       where ${visible(viewerId)} and ${before}
       order by n.created_at desc, n.id desc
@@ -167,6 +200,7 @@ export class NotificationsService {
         community: r.community_slug ? { slug: r.community_slug, name: r.community_name! } : null,
         detail: r.detail,
         idea: r.kind === 'idea_status' && r.idea_kind ? { kind: r.idea_kind, yours: r.idea_yours } : null,
+        challenge: challengeOf(r),
       }),
     )
     const last = page.at(-1)

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { competitionEntries, competitions, gameProfiles, gameSeasons, members, seasonScores } from '@heynaija/db'
+import { chessChallenges, competitionEntries, competitions, gameProfiles, gameSeasons, lichessAccounts, members, seasonScores } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { GovernanceService } from '../governance/governance.service.js'
 import { MembersService } from '../members/members.service.js'
@@ -129,7 +129,7 @@ test('an export includes reply boundaries, polls the member created and their pu
 })
 
 test('an export says which kinds of activity the member is notified about', async () => {
-  const allOn = { reply: true, like: true, repost: true, quote: true, mention: true, follow: true }
+  const allOn = { reply: true, like: true, repost: true, quote: true, mention: true, follow: true, chess_challenge: true }
   assert.deepEqual((await service.export(ada, null))!.notificationPreferences, allOn)
   await notificationsService.setPreferences(ada, { like: false, follow: false })
   assert.deepEqual((await service.export(ada, null))!.notificationPreferences, { ...allOn, like: false, follow: false })
@@ -178,7 +178,7 @@ test('an export includes the age confirmation and verification history, but neve
 })
 
 test('an export includes the member’s games: stats, season scores and competition entries', async () => {
-  assert.deepEqual((await service.export(ada, null))!.games, { profiles: [], seasonScores: [], competitionEntries: [] })
+  assert.deepEqual((await service.export(ada, null))!.games, { profiles: [], seasonScores: [], competitionEntries: [], lichess: null, chessChallenges: [] })
 
   const [season] = await db
     .insert(gameSeasons)
@@ -215,5 +215,25 @@ test('an export includes the member’s games: stats, season scores and competit
   assert.deepEqual(
     games.competitionEntries.map((e) => [e.competition, e.game, e.placement, e.score]),
     [['November draw', 'keno', 2, 12]],
+  )
+})
+
+test('an export includes the linked Lichess account, never its token, and the chess challenges', async () => {
+  await db.insert(lichessAccounts).values({
+    memberId: ada,
+    lichessId: 'ada',
+    username: 'Ada',
+    tokenBox: 'v1.SEALED-TOKEN',
+    scopes: 'challenge:write',
+    ratings: { rapid: { rating: 1500, games: 20, provisional: false } },
+  })
+  await db.insert(chessChallenges).values({ challengerId: bayo, challengedId: ada, rated: true, clockLimit: 600, clockIncrement: 5, expiresAt: new Date() })
+  const { games } = (await service.export(ada, null))!
+  assert.equal(games.lichess!.username, 'Ada')
+  assert.deepEqual(games.lichess!.ratings, { rapid: { rating: 1500, games: 20, provisional: false } })
+  assert.ok(!JSON.stringify(games).includes('SEALED-TOKEN'))
+  assert.deepEqual(
+    games.chessChallenges.map((c) => [c.sent, c.opponent, c.rated, c.time, c.status]),
+    [[false, 'bayo', true, '10+5', 'pending']],
   )
 })

@@ -145,6 +145,8 @@ does nothing for an inactive author. The text search index follows the text.
 | `community_memberships`, including moderator roles | — | deleted | delete |
 | Their games ([ADR 0018](0018-games.md)): `games.game_profiles`, `games.season_scores`, `games.competition_entries`, and `games.game_events` about them | — | deleted. Games is dark and no rows exist yet | delete |
 | Competitions they created as a site moderator (`games.competitions.created_by`) | — | kept, pointing at the tombstone, like other moderators' records; result posts are posts | keep |
+| Their linked Lichess account (`games.lichess_accounts`, the token sealed) and any linking under way (`games.lichess_link_attempts`) | — | the token is revoked at Lichess first where it can be, then both deleted | delete |
+| Chess challenges they sent or got (`games.chess_challenges`), with their notifications | — | deleted, both sides: a challenge is between the two of them | delete |
 
 ### Notifications and devices
 

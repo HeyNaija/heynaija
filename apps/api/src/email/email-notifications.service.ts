@@ -1,7 +1,7 @@
 import { type Db, members, notifications, OPTIONAL_NOTIFICATION_KINDS } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { eq, inArray, sql } from 'drizzle-orm'
-import { excerpt, joins, type NotificationKind, visible } from '../notifications/notifications.service.js'
+import { type ChallengeColumns, challengeColumns, challengeOf, excerpt, joins, type NotificationKind, visible } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 import { EMAIL_ADDRESSES, type EmailAddresses } from './addresses.js'
 import { type DigestItem, EXCERPT_MAX, KINDS_WITH_EXCERPT, renderDigest } from './digest.js'
@@ -201,11 +201,11 @@ export class EmailNotificationsService {
       idea_kind: string | null
       idea_yours: boolean
       total: number
-    }>(sql`
+    } & ChallengeColumns>(sql`
       select n.kind, a.handle as actor_handle, n.post_id,
         -- The text of a post is read only for the kinds that quote it.
         case when n.kind in (${excerptKinds}) then p.text end as post_text,
-        c.name as community_name, n.detail, i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, count(*) over ()::int as total
+        c.name as community_name, n.detail, i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, ${challengeColumns}, count(*) over ()::int as total
       ${joins}
       where ${visible(memberId)} and n.id in (${waiting}) and n.read_at is null and n.pushed_at is null
         and (n.kind not in (${optional})
@@ -221,6 +221,7 @@ export class EmailNotificationsService {
         excerpt: r.post_text ? excerpt(r.post_text, EXCERPT_MAX) : null,
         community: r.community_name,
         idea: r.idea_kind ? { status: r.detail, kind: r.idea_kind, yours: r.idea_yours } : null,
+        challenge: challengeOf(r),
       })),
     }
   }

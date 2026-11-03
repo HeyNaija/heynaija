@@ -537,6 +537,8 @@ export const NOTIFICATION_KINDS = [
   'moderator_revoked',
   // An idea you sent or voted for changed status; detail is the new status.
   'idea_status',
+  // Another member challenged you to a chess game (docs/adr/0018); challenge_id is the challenge.
+  'chess_challenge',
 ] as const
 
 // Something that happened to a member: a reply, like, repost, quote, mention or follow by
@@ -563,6 +565,8 @@ export const notifications = pgTable(
     communityId: uuid('community_id').references(() => communities.id),
     // report_resolved: 'actioned' or 'dismissed'. post_removed: the report reason.
     detail: text('detail'),
+    // chess_challenge: the challenge. Goes with it when it is deleted.
+    challengeId: uuid('challenge_id').references((): AnyPgColumn => chessChallenges.id, { onDelete: 'cascade' }),
     createdAt: ts('created_at').notNull().defaultNow(),
     readAt: ts('read_at'),
     // Null until the email side has dealt with it: sent in a digest, or passed
@@ -608,6 +612,10 @@ export const notifications = pgTable(
     uniqueIndex('notifications_follow_once_idx')
       .on(t.recipientId, t.actorId)
       .where(sql`kind = 'follow'`),
+    // One notification per chess challenge, and deleting a challenge finds its notification.
+    uniqueIndex('notifications_challenge_once_idx')
+      .on(t.challengeId)
+      .where(sql`kind = 'chess_challenge'`),
   ],
 )
 
@@ -621,6 +629,7 @@ export const OPTIONAL_NOTIFICATION_KINDS = [
   'quote',
   'mention',
   'follow',
+  'chess_challenge',
 ] as const satisfies readonly (typeof NOTIFICATION_KINDS)[number][]
 
 // A kind of notification a member has turned off. Everything is on until they
@@ -1268,5 +1277,89 @@ export const gameEvents = gamesSchema.table(
   (t) => [
     index('game_events_member_created_idx').on(t.memberId, t.createdAt),
     index('game_events_game_created_idx').on(t.game, t.createdAt),
+  ],
+)
+
+// ---------------------------------------------------------------------------
+// Chess on Lichess (docs/adr/0018, phase 2).
+// ---------------------------------------------------------------------------
+
+// A member's linked Lichess account: one Lichess account per member and one member
+// per Lichess account. The token is sealed with GAMES_TOKEN_KEY (TokenBox in
+// apps/api/src/games/core/token-box.ts), never stored or returned in the clear.
+export const lichessAccounts = gamesSchema.table('lichess_accounts', {
+  memberId: uuid('member_id')
+    .primaryKey()
+    .references(() => members.id),
+  // Lichess's id for the account: the username in lower case.
+  lichessId: text('lichess_id').notNull().unique(),
+  username: text('username').notNull(),
+  tokenBox: text('token_box').notNull(),
+  tokenExpiresAt: ts('token_expires_at'),
+  scopes: text('scopes').notNull(),
+  // Blitz, rapid, classical and correspondence: { rating, games, provisional } each, as Lichess last said.
+  ratings: jsonb('ratings').$type<Record<string, { rating: number; games: number; provisional: boolean }>>().notNull().default({}),
+  ratingsRefreshedAt: ts('ratings_refreshed_at'),
+  linkedAt: ts('linked_at').notNull().defaultNow(),
+})
+
+// One step of linking a Lichess account (OAuth with PKCE): the state's hash, who
+// started it and the sealed code verifier. Used once, within ten minutes, and
+// deleted as it is used.
+export const lichessLinkAttempts = gamesSchema.table(
+  'lichess_link_attempts',
+  {
+    stateHash: text('state_hash').primaryKey(),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    verifierBox: text('verifier_box').notNull(),
+    expiresAt: ts('expires_at').notNull(),
+  },
+  (t) => [index('lichess_link_attempts_member_idx').on(t.memberId)],
+)
+
+export const CHESS_CHALLENGE_STATUSES = ['pending', 'accepted', 'declined', 'cancelled', 'failed'] as const
+export const CHESS_COLORS = ['random', 'white', 'black'] as const
+
+// A challenge from one member to another. It exists only here until it is
+// accepted; then the game is made on Lichess and its id kept. A pending challenge
+// past expires_at counts as expired; nothing sweeps it.
+export const chessChallenges = gamesSchema.table(
+  'chess_challenges',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    challengerId: uuid('challenger_id')
+      .notNull()
+      .references(() => members.id),
+    challengedId: uuid('challenged_id')
+      .notNull()
+      .references(() => members.id),
+    rated: boolean('rated').notNull(),
+    // A clock game: seconds, plus seconds added per move. A correspondence game: days per move.
+    clockLimit: integer('clock_limit'),
+    clockIncrement: integer('clock_increment'),
+    days: integer('days'),
+    color: text('color', { enum: CHESS_COLORS }).notNull().default('random'),
+    status: text('status', { enum: CHESS_CHALLENGE_STATUSES }).notNull().default('pending'),
+    lichessGameId: text('lichess_game_id'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    expiresAt: ts('expires_at').notNull(),
+    respondedAt: ts('responded_at'),
+  },
+  (t) => [
+    // One open challenge at a time between the same two members, in that direction.
+    uniqueIndex('chess_challenges_pending_pair_idx')
+      .on(t.challengerId, t.challengedId)
+      .where(sql`status = 'pending'`),
+    index('chess_challenges_challenged_idx').on(t.challengedId, t.status),
+    index('chess_challenges_challenger_idx').on(t.challengerId, t.status),
+    check('chess_challenges_status_check', sql.raw(`status in (${inList(CHESS_CHALLENGE_STATUSES)})`)),
+    check('chess_challenges_color_check', sql.raw(`color in (${inList(CHESS_COLORS)})`)),
+    check(
+      'chess_challenges_time_check',
+      sql.raw('(clock_limit is not null and clock_increment is not null and days is null) or (clock_limit is null and clock_increment is null and days is not null)'),
+    ),
+    check('chess_challenges_self_check', sql.raw('challenger_id <> challenged_id')),
   ],
 )
