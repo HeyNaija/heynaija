@@ -162,7 +162,7 @@ Same roles, set on `:root[data-theme="dark"]`: ground-dark for the ground, card-
 
 ## Typography
 
-**Body Font:** Plus Jakarta Sans (self-hosted by next/font, weights 400–700), falling back to system-ui.
+**Body Font:** Plus Jakarta Sans (self-hosted from `app/fonts` by next/font/local, weights 400–700), falling back to system-ui.
 
 **Character:** One friendly geometric sans for everything. Rounded enough to sit beside the bubbly wordmark, and plain enough to read at 13px on a cheap phone.
 

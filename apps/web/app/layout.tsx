@@ -1,15 +1,18 @@
 import type { Metadata, Viewport } from 'next'
-import { Plus_Jakarta_Sans } from 'next/font/google'
+import localFont from 'next/font/local'
 import { siteOpenGraph, siteOrigin } from '@/lib/previews'
 import { installScript } from '@/lib/install'
 import { themeScript } from '@/lib/theme'
 import './globals.css'
 
-// Downloaded at build time and served from our own origin: no request to Google
-// from a member's browser, and the text shows in a system font until it arrives.
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
+// Served from our own origin: no request to Google from a member's browser, and
+// the text shows in a system font until it arrives. The file is in the repo
+// (Google Fonts' latin subset, one variable font for every weight; OFL licence
+// beside it) because downloading it at build time failed often enough on CI to
+// break staging deploys.
+const jakarta = localFont({
+  src: './fonts/plus-jakarta-sans-latin.woff2',
+  weight: '400 700',
   variable: '--font-jakarta',
   display: 'swap',
 })
