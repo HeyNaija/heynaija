@@ -1462,17 +1462,22 @@
       "description": "Voice and video calls between age-verified adults, then small group meetings, screen sharing and Gists (live audio rooms with a few speakers and a large audience), on a self-hosted LiveKit server.",
       "category": "expansion",
       "priority": "P3",
-      "status": "blocked",
+      "status": "partial",
       "availability": "not_live",
       "evidence": [
         "docs/adr/0017-calls-and-meetings.md",
-        "docs/governance/under-18-rollout.md"
+        "docs/governance/under-18-rollout.md",
+        "apps/api/src/gists/gists.service.ts",
+        "apps/api/src/gists/eligibility.ts",
+        "apps/web/app/ui/gists/gist-room.tsx"
       ],
-      "caveat": "Gists are built and dark behind CALLS_GISTS_ENABLED (with CALLS_ENABLED and LIVEKIT_*); not confirmed on in any environment. 1:1 calls, meetings and screen sharing are design only and parked; they need direct messages and age verification first, and recording, moderator access and retention need counsel and governance.",
+      "caveat": "Gists (live audio rooms) are built and being tested with a small list of members; they are not available to everyone yet. 1:1 calls, meetings and screen sharing are paused and remain a design: they need direct messages and age verification first, and recording, moderator access and retention need counsel and governance.",
       "dependency": [
-        "minor-safeguards"
+        "minor-safeguards",
+        "direct-messages",
+        "age-verification"
       ],
-      "notes": "Depends on direct-messages and age-verification (ADR 0016, direct messages); 1:1 calls and meetings were dropped by the owner on 2026-11-01 (PRs #54 and #62 closed, work parked), while Gists are built and dark behind CALLS_GISTS_ENABLED. Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers)."
+      "notes": "Gists are built and in main: off unless CALLS_ENABLED, CALLS_GISTS_ENABLED and LIVEKIT_* are set, then open only to the CALLS_MEMBERS handles, a temporary gate with no age check (apps/api/src/gists/eligibility.ts). On in staging for that list since 31 Oct 2026 (the owner tested them there). 1:1 calls and meetings were dropped by the owner on 1 Nov 2026 (PRs #54 and #62 closed, work parked); they, not Gists, need direct-messages and age-verification (docs/adr/0016-direct-messages.md). Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers)."
     },
     {
       "id": "native-apps",
