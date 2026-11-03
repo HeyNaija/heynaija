@@ -5,6 +5,7 @@ import { members } from '@heynaija/db'
 import { type ExecutionContext, HttpException } from '@nestjs/common'
 import { AuthController } from '../auth/auth.controller.js'
 import { type AuthedRequest, SessionGuard } from '../auth/session.guard.js'
+import { GistsGate } from '../gists/gists-enabled.guard.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { OnboardingController } from '../onboarding/onboarding.controller.js'
 import { PostsController } from '../posts/posts.controller.js'
@@ -22,6 +23,8 @@ const bayo = randomUUID()
 const production = new FeatureFlags(db, 'production')
 const development = new FeatureFlags(db, 'development')
 
+const livekit = { LIVEKIT_URL: 'ws://127.0.0.1:7880', LIVEKIT_API_KEY: 'key', LIVEKIT_API_SECRET: 's'.repeat(32) }
+
 const auth = (flags: FeatureFlags) =>
   new AuthController(
     {} as never,
@@ -35,6 +38,7 @@ const auth = (flags: FeatureFlags) =>
     {} as never,
     flags,
     { effective: (on: boolean) => on },
+    new GistsGate(flags, { APP_ENV: flags === production ? 'production' : 'development', ...livekit }),
   )
 const as = (id: string, handle: string) => ({ member: { id, handle } }) as AuthedRequest
 
@@ -71,8 +75,7 @@ after(() => pool.end())
 
 test('/v1/me: `features` has one boolean per registry flag, and the rest of the shape is unchanged', async () => {
   const me = await auth(development).me(as(ada, 'ada'))
-  // The database-backed flags, plus `gists`, which is still switched by env (docs/feature-flags.md).
-  assert.deepEqual(Object.keys(me.features).sort(), [...flagKeys, 'gists'].sort())
+  assert.deepEqual(Object.keys(me.features).sort(), [...flagKeys].sort())
   for (const key of flagKeys) assert.equal(me.features[key], FLAGS[key].defaults.development, key)
   for (const field of ['id', 'handle', 'avatar', 'displayName', 'bio', 'unreadNotifications', 'moderates', 'onboarded']) {
     assert.ok(field in me, field)
@@ -88,6 +91,15 @@ test('/v1/me: features follow the environment and the viewer', async () => {
   assert.equal((await auth(production).me(as(ada, 'ada'))).features.polls, false)
   await production.set(ada, 'reposts', { enabled: false })
   assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.reposts, false)
+})
+
+test('/v1/me: in production Gists show only for members on the allow-list, never for everyone', async () => {
+  assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.gists, false, 'off by default')
+  await production.set(ada, 'gists', { enabled: true })
+  assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.gists, false, 'on for everyone opens it to nobody')
+  await production.set(ada, 'gists', { enabled: null, handles: ['bayo'] })
+  assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.gists, true)
+  assert.equal((await auth(production).me(as(ada, 'ada'))).features.gists, false)
 })
 
 test('/v1/me: with the welcome flow off nobody is sent to it', async () => {

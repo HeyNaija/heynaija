@@ -64,6 +64,34 @@ Every video route (`/v1/me/videos/...`) answers the same 404 as a route that doe
 exist when it is not effective, signed in or not, and `/v1/me` reports
 `features.videoPosts` as the effective value. See `docs/safety/video-scanning.md`.
 
+## Flags with a code rule on top: `gists`
+
+`gists` (off in production, on in staging and development) replaced the env switches
+`CALLS_ENABLED`, `CALLS_GISTS_ENABLED` and `CALLS_MEMBERS` on 3 November 2026; the
+handle list became the flag's allow-list, set from the admin page. Its code is in
+`main`, but production never had Gists switched on, so `LIVE_IN_MAIN` says `false`.
+
+Two rules in code (`gistsAccess` in `apps/api/src/gists/gists-enabled.guard.ts`) sit
+on top of it, and an admin cannot flip either:
+
+- **No LiveKit, no Gists.** Without the `LIVEKIT_*` settings Gists are off whatever
+  the flag says.
+- **In production, an allow-list or nothing.** On for everyone, by override or
+  default, opens Gists to nobody there. This is ADR 0017's temporary gate: until the
+  age check exists (`apps/api/src/gists/eligibility.ts`), Gists are for named members.
+
+For a member Gists are not open to, every `/v1/gists` route answers the 404 of a
+route that does not exist. A signed-out caller is let on to the sign-in 401 while
+Gists are open to anyone, so a shared Gist link asks them to sign in. `/v1/me` reports
+`features.gists` as the effective value, and every eligibility check in the Gists
+service reads the flag again (once per request, so the checks stay synchronous).
+LiveKit's webhook and the once-a-minute reconcile run while LiveKit is configured,
+whatever the flag says: turning `gists` off, or taking a member off its list, takes
+people out of Gists already live within a minute, and the empty rooms then end.
+
+The `GISTS_*` numbers (co-host, speaker and listener caps) are limits, not switches,
+and stay in the env.
+
 ## Flipping a flag
 
 Site moderators (the site-wide role) use **Moderation, Feature flags** in the web app,
@@ -105,24 +133,6 @@ in mind: after flipping a flag from another process, wait a few seconds.
 **Fail closed.** If the database cannot be read, the last good values keep answering.
 If there never was a good read, the **production** defaults answer (never staging's)
 until a read works. Failures are logged and retried once per TTL.
-
-## Moving the env switches onto flags (follow-up)
-
-Staging has env switches that predate this system (`CALLS_ENABLED`,
-`CALLS_GISTS_ENABLED`, `CALLS_MEMBERS` in `apps/api/src/env.ts`, read by
-`gistsFeatureFor` and the calls code). They are not flags yet. When they move:
-
-| Env | Flag | Production default | Notes |
-|---|---|---|---|
-| `CALLS_ENABLED` | `calls` | OFF | Master switch; `@Feature('calls')` on call routes. |
-| `CALLS_GISTS_ENABLED` | `callsGists` | OFF | On only when `calls` is on too (`calls && callsGists`). |
-| `CALLS_MEMBERS` (handle list) | allow-list on `calls` | n/a | Set from the admin page; the env var goes away. |
-
-Gists code is in staging but not in `main`, so by the rule above both flags default to
-**off in production** (and on in staging and development), with a `false` entry in
-`LIVE_IN_MAIN`. `/v1/me` `features.gists` would then come from `callsGists`. The
-`GISTS_*` numbers (cohost, speaker and listener caps) are limits, not switches, and stay
-in the env.
 
 ## Known limits
 

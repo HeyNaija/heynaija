@@ -2,11 +2,12 @@ import { type APIRequestContext, expect, test } from '@playwright/test'
 import { newMember } from '../lib/members.ts'
 
 // The Gist routes for anyone who may not use them, which needs no LiveKit, so CI
-// runs it (gists.spec.ts, the live room, does not). In CI the Gists switches are
-// off; locally they may be on with a short allow-list. Either way these members
-// are not on it, and every /gists URL must look like one that does not exist.
-// Signed out, it depends on the switch: off, the same; on, a sign-in prompt at
-// every Gist address, real or not (docs/adr/0017 section 4a).
+// runs it (gists.spec.ts, the live room, does not). CI has no LiveKit, so Gists are
+// off there. Locally, with LiveKit in .env, the gists flag decides: on for everyone in
+// development, unless an admin limited it to a list. A member not on it must find
+// every /gists URL looking like one that does not exist. Signed out, it depends on
+// whether Gists are on for anyone: off, the same; on, a sign-in prompt at every Gist
+// address, real or not (docs/adr/0017 section 4a).
 
 const MISSING = '/gists/00000000-0000-4000-8000-000000000000'
 
@@ -15,6 +16,11 @@ const gistsOn = async (request: APIRequestContext) => (await request.get('/api/v
 
 test('a member who may not use Gists gets the normal not-found page', async ({ browser }) => {
   const { page, context } = await newMember(browser, 'gist_out')
+  const me = (await (await page.request.get('/api/v1/me')).json()) as { features: { gists: boolean } }
+  if (me.features.gists) {
+    await context.close()
+    test.skip(true, 'Gists are on for every member here (the gists flag, on by default in development)')
+  }
   for (const path of [MISSING, '/gists/new']) {
     const res = await page.goto(path)
     expect(res?.status(), path).toBe(404)
