@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 16 | 15 | 12 | 88 |
+| 45 | 16 | 16 | 12 | 89 |
 
 ## Priority order
 
@@ -575,13 +575,23 @@ This tracks product development, not formal governance decisions. Priority means
 
 ### Safety and privacy
 
+#### Date of birth at signup and 18+ labels
+
+- **ID:** `adult-content-labels`
+- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
+- **Description:** Ask for a date of birth at signup and keep only the age band; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.
+- **Inspected evidence:** `docs/adr/0020-under-18-accounts-and-adult-labels.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`
+- **Audit notes:** Phase 1 of ADR 0020 (proposed, 3 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs.
+
 #### Safeguards for under-18 access
 
 - **ID:** `minor-safeguards`
 - **Priority:** P2 · **Status:** Blocked · **Availability:** Not live
 - **Description:** Prepare approved age assurance, consent, content and contact safeguards before opening younger accounts.
 - **Remaining work / caveat:** Child-safety decisions, approvals and implementation must precede any change to the temporary adult-only beta.
-- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`
+- **Dependencies:** `adult-content-labels`
+- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`, `docs/adr/0020-under-18-accounts-and-adult-labels.md`
+- **Audit notes:** Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Waits for counsel (minimum age, guardian consent), phase 1 in production, upload hash-matching and the rest of the under-18 rollout checklist, then a written sign-off.
 
 #### Age verification for adults
 
@@ -739,9 +749,9 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `video`
 - **Priority:** P2 · **Status:** Planned · **Availability:** Not live
 - **Description:** Support video with accessible playback and appropriate safety processing.
-- **Dependencies:** `upload-scanning`
-- **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`
-- **Audit notes:** Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built.
+- **Dependencies:** `upload-scanning`, `low-data-controls`
+- **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`, `docs/adr/0019-video-posts.md`
+- **Audit notes:** Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built. Designed in ADR 0019 (proposed): one 60-second clip a post, uploaded in parts, scanned by sampled frames and transcoded by a self-hosted ffmpeg worker, behind a videoPosts flag that stays off in production until the scanner is real and a named person signs off.
 
 ## P3 — Later experiments
 
