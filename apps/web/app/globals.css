@@ -115,7 +115,7 @@
   --color-warm: var(--warm);
   --shadow-pop: var(--shadow-pop);
   --shadow-card: var(--shadow-card);
-  /* Plus Jakarta Sans is self-hosted by next/font (one small file, cached). */
+  /* Plus Jakarta Sans is self-hosted by next/font/local (one small file in app/fonts, cached). */
   --font-sans: var(--font-jakarta), system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
 }
 
