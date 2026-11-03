@@ -1,12 +1,21 @@
 # ADR 0017 — Calls, meetings, Gists and screen sharing on a self-hosted LiveKit server
 
-**Date:** 30 October 2026 · **Status:** Proposed, design only. Nothing is built:
-no schema, no migration, no endpoint, no server, no UI. · **Roadmap:**
-`calls-and-meetings` (depends on `direct-messages` and `age-verification`, see
-the note in the roadmap entry) · **UI spec:** `apps/web/DESIGN.md`, "Calls and
+**Date:** 30 October 2026 · **Status:** Proposed. Partly built: the staging
+LiveKit server (section 2) and Gists (section 4a; migrations
+`packages/db/drizzle/0029_gists.sql` and `0032_gist_reports.sql`). Gists are off
+unless `CALLS_ENABLED`, `CALLS_GISTS_ENABLED` and the `LIVEKIT_*` settings are
+all set, and then open only to the handles on `CALLS_MEMBERS`: a **temporary
+gate with no age check**, not the verified-adult gate this ADR designs (section
+4a). They are on in staging for that list (the owner tested them there on 31
+October 2026). The code is in `main`, so production has it too, off unless its
+`.env` sets the switches. On 1 November 2026 the owner dropped 1:1 calls and
+meetings (PRs #54 and #62 closed, work parked); 1:1 calls, meetings and screen
+sharing are design only and parked, not live work. · **Roadmap:**
+`calls-and-meetings` (its dependencies include `direct-messages` and
+`age-verification`, which gate calls and meetings, not Gists) · **UI spec:** `apps/web/DESIGN.md`, "Calls and
 meetings" · **Related:** [ADR 0006](0006-age-status-model.md),
 [ADR 0009](0009-notification-emails.md), [ADR 0011](0011-push-notifications.md),
-ADR 0016 (direct messages; PR #42, not yet on `staging`),
+[ADR 0016, direct messages](0016-direct-messages.md) (its design is on `staging`, the feature is not built),
 `docs/governance/under-18-rollout.md`
 
 ## Decision
@@ -23,7 +32,10 @@ and mints short-lived tokens; LiveKit only moves media.
 a proposal. The feature ships dark (off by default everywhere), and calls follow
 the same gate as direct messages: 18 or over, age-verified, opted in, both
 sides. Gists have their own gate (section 4a): verified adults, with no DM
-opt-in. **Minors are never in a call or a Gist.**
+opt-in. Until age verification exists, the built Gists use a temporary gate
+instead: an active account whose handle is on the `CALLS_MEMBERS` allow-list,
+with no age check (`apps/api/src/gists/eligibility.ts`); every account is an
+adult's today (ADR 0006). **Minors are never in a call or a Gist.**
 
 Facts about LiveKit below come from its documentation, read on 30 October 2026
 and cited inline. Anything marked **(verify)** is from memory or an estimate and
@@ -31,7 +43,8 @@ must be checked before it is relied on. Prices and version numbers change.
 
 ## Context
 
-- No calls, no realtime layer, no private content exist today. Phones are
+- When this was written there were no calls, no realtime layer and no private
+  content; Gists have since added the realtime layer (see Status). Phones are
   low-end Android on patchy, metered data (`apps/web/DESIGN.md`). Staging shares
   a Contabo box with Koinovera (`docs/deployment/staging.md`); production is its
   own netcup server. Neither should carry media.
@@ -39,7 +52,7 @@ must be checked before it is relied on. Prices and version numbers change.
   WebSockets, not WebRTC UDP, so the media server cannot sit behind it
   (**verify** against Cloudflare's current product list; Cloudflare's separate
   TURN/Calls products are not used here).
-- ADR 0016 already defines the contact rules (opt-in, verified adults, requests,
+- [ADR 0016, direct messages](0016-direct-messages.md) already defines the contact rules (opt-in, verified adults, requests,
   blocks, mutes). Calls reuse them rather than invent a second set.
 
 ## 1. Why LiveKit, self-hosted
@@ -357,8 +370,11 @@ the participant identity and grants (`roomJoin`, `canPublish`, `canSubscribe`,
 
 ## 4. Product scope, in stages
 
+Stages 1 to 4 (1:1 calls, meetings, screen share, recording) are parked since
+1 November 2026 and kept as design; stage 5 (Gists) is built; section 4b says which of its gaps shipped.
+
 Each stage ships behind the flag and is switched on for allow-listed adults
-before widening, as in ADR 0016.
+before widening, as in [ADR 0016, direct messages](0016-direct-messages.md).
 
 1. **1:1 calls (voice, optional video).** Call from a DM thread or an accepted
    conversation's header. Ring for 30 seconds, then "missed call" in the thread.
@@ -465,7 +481,13 @@ not. Nobody can use presence to tell what a particular member is listening to.
   age-verified at `verified`, not suspended; no DM opt-in and no "Allow calls")
   and **`canHostGist`** (everything in `canListen`, plus the standing rule
   below). A **speaker** needs `canListen` plus `canHostGist`'s standing check; a
-  member's own choice to speak is still made by tapping Request.
+  member's own choice to speak is still made by tapping Request. **Built
+  instead, for now:** `canJoinGist` (the design's `canListen`) and `canHostGist`
+  in `apps/api/src/gists/eligibility.ts` both end in one temporary check: the
+  account is active and its handle is on the `CALLS_MEMBERS` allow-list. There is
+  no age check, because age verification does not exist yet (ADR 0018), and no
+  standing rule. When age verification exists, that one check is replaced by this
+  section's gate.
 - **Host and speakers: verified adults in good standing** (the gate above).
   Hosting also needs a clean standing: no active suspension and no
   upheld report for abuse in a Gist in the last 90 days (a proposal). The same
@@ -532,8 +554,9 @@ not. Nobody can use presence to tell what a particular member is listening to.
   much-reported Gist from Live now, weighting reports by account age, and the
   host standing rule.
 - **Raids and hosts.** The host can **lock the room** (no new listeners), set a
-  lower listener cap for that Gist, and require that listeners follow the host
-  or are in the community. Joins are rate-limited per member and per Gist, so a
+  lower listener cap for that Gist (both built), and require that listeners
+  follow the host or are in the community (design only: not built). Joins are
+  rate-limited per member and per Gist, so a
   group cannot fill the cap in a burst; the cap counts only eligible, joined
   members. A host who repeatedly has Gists ended is barred from hosting by
   the standing rule above.
@@ -558,20 +581,27 @@ Build tier's 5,000 minutes. Section 7's finding that Cloud is "cheaper or free
 through the growth stage" holds for meetings and calls, not for Gists, so Gists
 are costed against the self-hosted server's bandwidth quota instead. Listeners
 download about 43 MB an hour of audio, more with packet overhead; the room shows
-this and offers a data-saver choice (section 4b, gap 3). A bigger audience means a
+this, and the design adds a data-saver choice (section 4b, gap 3: the hint is
+built, the choice is not). A bigger audience means a
 second node and LiveKit's distributed mode, which needs Redis (section 2); that
 is a later decision.
 
-**Data (design only, no migration).** `gists` (id, host, optional community,
-title, `scheduled | live | ended`, scheduled and started and ended times, peak
-listeners) and `gist_members` (gist, member, role, joined and left times, who
-changed their role). Ended Gists keep these rows and no audio. Retention is
-open question 13.
+**Data (built; migrations `0029_gists.sql` and `0032_gist_reports.sql`).**
+`gists`: id, host, optional community, title, status (`scheduled | live |
+ended`), `scheduled_for`, started and ended times, peak listeners, and the host's
+room settings (`locked`, `listener_cap`, `requests_open`). `gist_members`: gist,
+member, role (`host | cohost | speaker | listener`), joined and left times, the
+LiveKit connection, `speak_requested_at`, who changed their role and when, and
+who removed them and when. Reports on a Gist use `reports.gist_id`, with
+`gist_report_participants` recording who was in the room. Ended Gists keep these
+rows and no audio. Retention is open question 13. **Scheduling is design only:**
+the `scheduled` status and `scheduled_for` exist in the schema, but nothing
+creates a scheduled Gist yet; every Gist starts live.
 
-**Notifications.** A scheduled Gist reminds followers who asked. A live Gist
-notifies **no one** by default beyond the Live now card; "Notify my followers"
-is a host option limited to once per Gist and rate-limited per host, so a Gist
-cannot become a broadcast tool.
+**Notifications (design only: not built).** A scheduled Gist reminds followers
+who asked. A live Gist notifies **no one** by default beyond the Live now card;
+"Notify my followers" is a host option limited to once per Gist and
+rate-limited per host, so a Gist cannot become a broadcast tool.
 
 **Feature flag.** Gists have their own switch, `CALLS_GISTS_ENABLED`,
 separate from meetings and screen share (section 7), off by default, and stage
@@ -579,15 +609,31 @@ separate from meetings and screen share (section 7), off by default, and stage
 are scope labels, not release order.
 
 **Web client.** The Live now card and the Gist room are in
-`apps/web/DESIGN.md`, "Calls and meetings", which gets a "Gists" subsection
-when this is built. On a phone the room is a bottom sheet that stays when the
+`apps/web/DESIGN.md`, "Calls and meetings", which has a "Gists" subsection
+for what is built. On a phone the room is a bottom sheet that stays when the
 reader leaves the page, with a mini bar to return; mute and leave are always in
 reach, and the page works with a mic denied (listen only).
 
 ## 4b. Gaps in the first design, and what stage 5 does about each
 
 These came out of a review of 4a against X Spaces and against how our members
-use the web. Each has a recommendation; none is built.
+use the web. Each has a recommendation. Gists are
+built, and this is what shipped, checked against `staging` on 2 November 2026
+(rows 2, 4, 8 and 9 rechecked on 3 November 2026):
+
+| Gap | State | Evidence |
+|---|---|---|
+| 1 Phone audio | shipped | screen wake lock and Media Session entry, "keep this screen open" note (`gist-room.tsx`) |
+| 2 Captions | not shipped | the room neither says it has no captions nor offers "Captions by the host" |
+| 3 Listener data use | partly | a text data-use hint (`apps/web/lib/gists.ts` `dataUseHint`); sound starts only when the member taps Join; no data-saver choice |
+| 4 Testing | partly | shipped: unit tests of the gate (`apps/api/src/gists/eligibility.test.ts`); one e2e test with Chromium's fake-media flags against a local LiveKit container (host goes live, a listener asks to speak and is given the mic: `e2e/tests/gists.spec.ts`, skipped in CI, which has no LiveKit) and the switched-off cases (`gists-dark.spec.ts`); not shipped: e2e tests for a removed or a blocked member |
+| 5 Sharing | partly | Live now card on Home (`live-now.tsx`); no Gist card in a post |
+| 6 Host tools | partly | shipped: speaker queue (`requests_open`, `gist_members.speak_requested_at`, `requestToSpeak`) and visible muted state (`stage.tsx`, `audio.ts`); design only: pinned links, host handover |
+| 7 Abuse | partly | shipped: reports and moderator end (`0032_gist_reports.sql`, `end_gist`, `report-gist.tsx`), one live Gist per host (`gists_one_live_per_host_idx`), 5 starts an hour (`rate-limit.ts`), lock-room and lower-cap tools (`locked`, `listener_cap`, `settings()`, `host-panel.tsx`); design only: daily cap for accounts under 30 days, "Notify my followers" and its rate limit, category, host-standing rule |
+| 8 Operations | partly | shipped: a setup runbook and day-to-day table with status, logs and an off switch (`docs/deployment/livekit.md`); not shipped: bandwidth alerts, node metrics, a webhook-silence alert, an on-call name |
+| 9 Cost | not shipped | no Gist-hours counter in the admin view; a provider-account bandwidth cap, if any, is not recorded in the repo |
+
+The text below is the original recommendation for each gap.
 
 1. **Phone audio.** A web page can lose its audio when the screen locks or the
    member switches apps, most of all on iOS Safari. Gists are listened to with
@@ -655,7 +701,7 @@ use the web. Each has a recommendation; none is built.
 Calls are live and leave no text for a moderator to read, so the gate is
 tighter, not looser.
 
-**1:1 calls follow the DM gate (ADR 0016), and are built on it.** A member is
+**1:1 calls follow the DM gate ([ADR 0016, direct messages](0016-direct-messages.md)), and would be built on it (they are parked).** A member is
 **call-eligible** only when they are DM-eligible (active, age-verified at
 `verified`, DMs opted in) **and** have turned on a separate "Allow calls" switch
 (default off). Both sides must be eligible on every call, checked server-side
@@ -664,7 +710,7 @@ from live data in one function (`canCall`), the way `canMessage` is.
 - **No calls from strangers.** A call rings only inside a conversation that is
   in the recipient's inbox: the recipient follows the caller, or the
   conversation is accepted. Otherwise the caller can only send a **call
-  request**, which is a message request (ADR 0016 section 2): the recipient sees
+  request**, which is a message request ([ADR 0016, direct messages](0016-direct-messages.md) section 2): the recipient sees
   "[name] would like to call you" in Requests with Accept, Decline and
   Block-and-report. Accepting opens the conversation; it does not start a call.
   The caller is told only "Waiting for [name]". Muted senders' requests go to
@@ -695,7 +741,7 @@ from live data in one function (`canCall`), the way `canMessage` is.
 - **Report.** In-call "Report" on a participant or the meeting. With no
   recording the evidence is metadata only: the call id, who was present, join
   and leave times, and the reporter's note. This feeds the existing reports queue
-  with a `call` target and the `child_safety` reason from ADR 0016. Block and
+  with a `call` target and the `child_safety` reason from [ADR 0016, direct messages](0016-direct-messages.md). Block and
   Leave in the same step.
 - **Moderator access** to a live or past call is an **open question for
   governance** (question 4). Recommendation: no moderator ever joins a call
@@ -717,7 +763,7 @@ are not like a phone: a web push is a notification, not a ringing screen, and a
 browser tab that is closed cannot ring. The call UI says so ("keep HeyNaija open
 to receive calls") and the design does not promise reliable ringing.
 
-**Privacy copy** (for counsel, as in ADR 0016 section 8): calls pass through our
+**Privacy copy** (for counsel, as in [ADR 0016, direct messages](0016-direct-messages.md) section 8): calls pass through our
 server and are not end-to-end encrypted; media is not recorded or stored unless
 a recording is announced; the server sees who called whom and when.
 
@@ -814,7 +860,7 @@ CPU, not modelled.
 - A second server to run, patch, monitor and pay for, with UDP exposed to the
   internet; one more thing that can be down.
 - Calls inherit DM's dependencies: nothing is switchable until an age check
-  yields `verified` and DMs exist. Until then this feature is design only.
+  yields `verified` and DMs exist. Until then the calls and meetings parts stay design only (and are parked); Gists are built.
 - The webhook path needs a deliberate hole in the Cloudflare-only origin rule.
 - Moderators cannot see calls; abuse handling depends on reports and metadata.
 - Web ringing is weaker than a phone's; some members will miss calls. We say so.
@@ -849,14 +895,18 @@ Each has a recommendation; the PR description repeats them.
 10. **Is "no calls without an existing conversation" too strict?** It means
     first contact is always a request. Recommend keep: it is the same rule as
     DMs and the safe default.
-11. **Dependencies on PR #42.** `direct-messages` and `age-verification` are
-    added to the roadmap when ADR 0016 merges; until then the roadmap entry
-    names them in its notes.
+11. **Roadmap dependencies.** *Closed (3 November 2026):* [ADR 0016, direct
+    messages](0016-direct-messages.md) is on `staging`, and `direct-messages` and
+    `age-verification` are now in the `calls-and-meetings` roadmap entry's
+    dependencies. They gate 1:1 calls and meetings, which are parked since
+    1 November 2026, not the built Gists.
 12. **Who may listen?** Recommend verified adults, the same age rule as calls,
     through `canListen` (section 4a), without the DM opt-in or "Allow calls"
     that `canCall` needs. Opening it to unverified adults or to minors is a
     governance decision, and a public live audio room cannot be moderated
-    beforehand.
+    beforehand. Until age verification exists, the built Gists answer this with
+    the temporary `CALLS_MEMBERS` allow-list (section 4a), so this question is
+    still open for when Gists leave that beta.
 13. **How long are Gist records kept?** Metadata only (no audio). Recommend 90
     days, longer for a Gist under a report.
 14. **Audience cap and node size.** Recommend 200 listeners and, on the mic,
