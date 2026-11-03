@@ -39,11 +39,13 @@ the document, the selfie, the date of birth or the document number.
 - **Not recommended as the only route: facial age estimation alone** (Yoti and
   similar). It gives an estimate with a margin of error, not a proof, and nobody
   has published accuracy for Nigerian faces that I could find. It is good as a
-  cheap first step in front of a document check later, not as the `verified` level.
+  cheap first step in front of a document check later, not as the `checked` level.
 
 The seam stays as ADR 0006 built it: one provider writes an `age_assurances` row
 with `method = 'age_assurance_provider'`, and `ageStatus()` / `isAdultFor()` do
-the rest. What changes is described in section 5.
+the rest. What changes is described in section 5, including a new assurance level,
+`checked`, for a provider's result: enough for direct messages, calls and Gists,
+not for voting.
 
 ## Context
 
@@ -53,7 +55,9 @@ the rest. What changes is described in section 5.
   assurance level `verified` in `apps/api/src/governance/age.ts`: a statement made
   by `identity_provider` or `age_assurance_provider`. Today **no member can have
   it**: every adult is `declared` at best, and `age_assurance_provider` has no
-  writer.
+  writer. This ADR gives a provider's result its own level, `checked`, below
+  `verified`, so that it opens direct messages without also counting for voting
+  (section 5, "Does it count for voting?").
 - **Why the NIN route is not the answer.** NIN verification
   (`NIN_VERIFICATION_ENABLED`) is locked off in `apps/api/src/env.ts` (`lockedOff`,
   which refuses to start if set to `true`). The reason is written in
@@ -67,7 +71,8 @@ the rest. What changes is described in section 5.
   (section 2) says the age provider "must not require a NIN".
 - **Why under-18 accounts are locked.** `UNDER_18_ACCOUNTS_ENABLED` is locked off
   until `docs/governance/under-18-rollout.md` is approved and built (ADR 0006,
-  decision 1). This ADR only has to prove "adult"; it never writes `under_18`.
+  decision 1). This ADR only has to prove "adult": the provider path never writes
+  `under_18`. Only a moderator does, in the mistaken-age process (section 5).
 - **Date of birth at signup and 18+ labels** are ADR 0020 (proposed, 3 November
   2026, branch `docs/under-18-accounts`): signup asks for a date of birth, keeps
   only the band, and posts carry an 18+ label, before the 18+ rule is taken out.
@@ -170,7 +175,7 @@ the provider says it keeps no image. Cheap and fast for the member.
 - **Abuse.** Easily beaten by a borrowed face, an edited selfie or an injected
   video (section 4). A July 2026 study of seven models found simple changes such
   as stubble, a moustache or make-up could shift the estimate.
-- **Use.** A free or cheap first filter in front of A. Not `verified` on its own,
+- **Use.** A free or cheap first filter in front of A. Not `checked` on its own,
   because a lawyer asked "what did you do to confirm 18?" would be answered "a model
   guessed".
 
@@ -181,7 +186,7 @@ on what it proves.
 
 - **Self-declaration with a parental flow.** Proves nothing about the adult; it is
   what we have today (`declared`). A parental-consent flow is a different job
-  (under-18 rollout section 3). Not a `verified` level.
+  (under-18 rollout section 3). It stays `declared`.
 - **Payment-card check.** A card shows someone with a bank relationship; it does
   not show 18, because Nigerian banks issue cards to teenagers' accounts **(unverified)**,
   and a card costs money and excludes members without one. Weak. Not recommended.
@@ -194,7 +199,7 @@ on what it proves.
   Cheap and fits HeyNaija's community shape, but it proves only that the
   members trust each other: a teenager among adult friends gets vouched. It also
   puts adults at legal and social risk for others' ages. It belongs in the
-  *appeal* path (section 6), never as the primary `verified` route.
+  *appeal* path (section 6), never as the primary `checked` route.
 - **Moderator review** is already modelled as `reviewed`, and ADR 0016 rules it
   out for DMs: a correction mechanism, not a check anyone can audit.
 
@@ -291,7 +296,7 @@ remain a component of a broader verification process". These are vendors' and
 journalists' reports. **No source I found tested a parent's Nigerian ID.**
 Accept that no remote check is proof; the layered defence is: a real check, then
 reports, then the existing moderator process (`reviewed` can *withdraw* a bad
-verified row, see section 5).
+provider row, see section 5).
 
 ## 5. Data-minimisation design (whichever provider wins)
 
@@ -318,14 +323,17 @@ handler works out 18+ from the date of birth (or checks that the workflow's
 minimum-age rule is the thing that approved it), writes the band, and drops the date
 of birth immediately, before anything is logged or stored. The handler accepts
 only a document check, or a database lookup with a face match. An estimate-only
-result is never accepted, because the row would count as `verified` (see
+result is never accepted, because the row would count as `checked` (see
 "The API seam").
 
 **Attempts.** A table `age_verification_attempts`, one row per attempt
 (`memberId`, `startedAt`, `outcome`, `consentVersion`, `consentedAt`), including
 refused ones, so refusals leave a record of what the member agreed to. It is
 what the retry limits in section 6 count, and it is deleted with the account. It
-holds no date of birth and no reason beyond the outcome.
+holds no date of birth and no reason beyond the outcome. The build adds it to ADR
+0016's account-deletion inventory, and to the data export (start time, outcome,
+consent version), because ADR 0006 decision 6 says the export lists every age
+record.
 
 **A refused or under-18 result.** A mismatch or low-confidence result is refused
 with no age record (the rollout doc's rule for refusing a signup). But a member
@@ -350,7 +358,8 @@ treats it only as a prompt to act: it
   writes nothing;
 - never creates a row for a `providerRef` whose row was withdrawn: a replayed
   "approved" must not re-verify a member a moderator has withdrawn. A member who
-  needs to verify again starts a new session with a new `providerRef`.
+  needs to verify again starts a new session with a new `providerRef`, unless
+  revocation has closed self-serve checks for them (below).
 
 Only then does it write the row.
 
@@ -378,50 +387,77 @@ operator alert; the member is told in `/privacy`.
 ADR 0016 adds a purpose; this ADR names the wrapper:
 
 ```ts
-// ADULT_ASSURANCE_REQUIRED gains: direct_messages: 'verified'
+// AgeAssurance gains a level between reviewed and verified:
+//   'none' | 'declared' | 'reviewed' | 'checked' | 'verified'
+// ASSURANCE_OF.age_assurance_provider: 'checked' (was 'verified')
+// ADULT_ASSURANCE_REQUIRED gains: direct_messages: 'checked'
+// governance_vote stays 'verified', which only identity_provider gives
 // stays synchronous: callers load the status up front
 isAgeVerifiedAdult(member, { ...config }): boolean
 // = isAdultFor(member.ageStatus, 'direct_messages')
 ```
 
-The calls branches (#54, #62) already call a synchronous
-`isAgeVerifiedAdult(member, { callsMembers })`, as `if (!isAgeVerifiedAdult(me, this.config))`.
-Making it `Promise<boolean>` would turn any call site missed in the conversion into
+The calls PRs (#54, #62) had a synchronous
+`isAgeVerifiedAdult(member, { callsMembers })`, called as
+`if (!isAgeVerifiedAdult(me, this.config))`. Both are closed, and nothing on
+`staging` has the function yet; it keeps that shape when it is written. Making it
+`Promise<boolean>` would turn any call site missed in a conversion into
 `!promise`, which is always false, so the gate would never refuse. So the
 function stays synchronous and the member's `ageStatus` (from live rows, loaded
 once per request, never cached across requests) is loaded up front where the
 member is loaded. If an async form is ever needed, add the
 `@typescript-eslint/no-misused-promises` lint rule first.
 
-It returns false when nothing is on record and for `reviewed` or `declared` only.
-The flag does not make it return false on its own: while
-`AGE_VERIFICATION_ENABLED` is off, the existing `CALLS_MEMBERS` allow-list
-decides, as today, so testers on staging keep Gists. The Gists seam is
-`isCallsMember` in `apps/api/src/gists/eligibility.ts`, which its comment names as
-the one place to replace; it is replaced by this function when the flag goes on.
-Routes, `canMessage`, `canCall` and the Gists eligibility call it; nothing reads
+It returns true for `checked` and `verified`, and false when nothing is on record
+and for `reviewed` or `declared` only. The flag does not make it return false on
+its own: for a member the `ageVerification` flag is off for (everyone in
+production at first, and everyone off the staging allow-list, section 7), the
+existing `CALLS_MEMBERS` allow-list decides, as today, so testers on staging keep
+Gists.
+
+The live seam on `staging` is `isCallsMember` in `apps/api/src/gists/eligibility.ts`,
+which its comment names as the one place to replace: `canJoinGist` and
+`canHostGist` both end in it, and its body becomes this function. Its callers then
+need the member's age status, and one of them has no member to load it for:
+`gistsFeatureFor` in `apps/api/src/gists/gists-enabled.guard.ts`, which decides
+what `GET /v1/me` reports, builds `{ id: '', handle, active: true }` from a handle
+alone. It must be changed to pass the real member and their age status, or every
+member would look as if no age were on record and `/v1/me` would hide Gists from
+all of them. Later, `canMessage` and `canCall` call it too; nothing reads
 `provider` or `providerRef`. `GET /v1/me` exposes only a yes/no for the member's
 own state.
 
-**Does it count for voting?** Today every `age_assurance_provider` row maps to
+**Does it count for voting?** No. Today every `age_assurance_provider` row maps to
 `verified`, which also satisfies `ADULT_ASSURANCE_REQUIRED.governance_vote`, so a
 commercial age check would clear the draft constitution's "verified adult" bar for
-voting. This ADR's position: it must not. Recommendation: map the provider method
-to a separate assurance level (or add a separate method) that satisfies
-`direct_messages` and age-restricted content but not `governance_vote`, which
-stays on `identity_provider`. Counsel and the owner to confirm (smaller open
-items).
+voting. `RANK` in `age.ts` is a single line, so a level that opens direct messages
+but not voting has to rank below `verified`. Hence `checked`, between `reviewed`
+and `verified` (the code block above): `age_assurance_provider` maps to it,
+`direct_messages` requires it, and `governance_vote` stays on `verified`, which
+only `identity_provider` gives. A check still beats a moderator's decision, as
+ADR 0006 says. ADR 0016 sets the direct-messages purpose to `verified`; it means
+"age-verified", which a provider check is, so that becomes `checked` when this ADR
+is accepted. Left at `verified`, it would refuse every member who passed the
+provider check and open direct messages only to NIN-verified members, of whom
+there are none. Counsel and the owner to confirm that a provider check is enough
+for direct messages and not for voting (smaller open items).
 
-**Revocation.** An operator or a moderator who finds a verified member is a minor
+**Revocation.** An operator or a moderator who finds a checked member is a minor
 withdraws the row (`withdrawnAt`). On its own that is not enough: `ageStatus()`
 picks the strongest *live* row, so the member's `self_declared` 18+ row wins again
 (band `18_plus`, assurance `declared`), they still count as adult for
 `age_restricted_content`, and the account stays active in an 18+-only beta. (An
 account from before 16 October with no declaration falls to `unknown`, not
-`declared`.) So the mistaken-age path withdraws the verified row **and** records a
+`declared`.) So the mistaken-age path withdraws the provider row **and** records a
 `moderator_review` `under_18` statement, which outranks the declaration, then
 follows `/rules#age` (suspension, notice, appeal). The "mistaken-age hook" ADR 0016
-names (a way to withdraw a verified row) is a part of this work.
+names (a way to withdraw a provider row) is a part of this work.
+
+A new provider row would outrank that `moderator_review` statement (a check beats a
+moderator), so a minor could undo it with a parent's ID. So while a member has a
+live `moderator_review` `under_18` statement, the Verify button and the session
+endpoint refuse them; only the support-assisted appeal in section 6 re-runs the
+check.
 
 **Duplicate use.** The strict-minimum design keeps nothing that detects one adult
 verifying ten accounts. The alternative is an HMAC of the document number kept
@@ -433,9 +469,11 @@ items.
 
 ## 6. Failure, retries and appeals
 
-- **Refused (under 18 or low confidence).** Say "We could not confirm your age.
-  Your messages stay off. You can try again with a different document."
-  Never say "you are under 18". Nothing is recorded as under-18.
+- **Refused (a mismatch, low confidence, or under 18).** Say "We could not
+  confirm your age. Your messages stay off. You can try again with a different
+  document." Never say "you are under 18". The provider path records nothing as
+  under-18; a confirmed under-18 result goes to the mistaken-age process
+  (section 5), where a moderator may record it.
 - **Retries.** Three attempts a day, ten a month, per member, enforced on our
   side so a refusal cannot be ground down. One mechanism, not two: count rows in
   `age_verification_attempts` (section 5), which has a timestamp per attempt and
@@ -447,7 +485,7 @@ items.
   birth, an expired document, a camera too poor for liveness. Routes: another
   document or route (A then B), then provider manual review if offered
   **(unverified)**, then an appeal to the safety contact (`/rules#appeals` already names
-  contact@heynaija.ng). A human may **not** mark someone `verified` by moderator
+  contact@heynaija.ng). A human may **not** mark someone `checked` by moderator
   decision (that is `reviewed`, and ADR 0016 rules it out). An appeal either
   re-runs the provider check with support's help or is declined.
 - **Wrongly accepted.** The usual moderation path: report, review, withdraw the
@@ -458,16 +496,23 @@ items.
 - **Outages.** Provider down: the Verify button shows a plain error, nothing
   else breaks. No fallback to `declared`.
 
-## 7. Rollout (existing feature-flag pattern)
+## 7. Rollout (database feature flag)
 
-New flag `AGE_VERIFICATION_ENABLED`, default `false` in every environment,
-plus an allow-list `AGE_VERIFICATION_MEMBERS` (handles) like
-`DIRECT_MESSAGES_MEMBERS`. It is *not* `lockedOff`: the age rule lives in code
-(the table writer and `isAgeVerifiedAdult`), so the flag may be switched on once
-the steps below are met, but a test must fail the build if the provider writer
-can create `under_18` or if the flag is on with no webhook signature check.
-`NIN_VERIFICATION_ENABLED` and `UNDER_18_ACCOUNTS_ENABLED` stay locked and are
-untouched.
+A database flag, `ageVerification`, in `apps/api/src/flags/registry.ts`
+(`docs/feature-flags.md`), as PR #69 used. It gates starting a check: the Verify
+button, the session endpoint and the webhook. The flag policy turns every flag on
+in staging and development, and a flag with an allow-list is on only for the
+members listed. So before this reaches staging, an admin sets an allow-list on
+`ageVerification` there (the people in step 4). Everyone off the list sees the
+flag off and keeps the `CALLS_MEMBERS` gate, so Gists testers do not lose Gists.
+Production defaults to off, like any feature whose code is not in `main`.
+
+It is a flag, not a locked-off setting: the age rule lives in code (the table
+writer and `isAgeVerifiedAdult`), so the flag may be switched on once the steps
+below are met. Tests fail the build if the provider writer can create `under_18`,
+and if the Verify button or the webhook is offered while the webhook secret is
+unset. `NIN_VERIFICATION_ENABLED` and `UNDER_18_ACCOUNTS_ENABLED` stay locked and
+are untouched.
 
 1. **Decide.** Owner picks the provider on the basis of written quotes from
    Smile ID and Youverify and a trial of the shortlist (Didit included, if wanted); counsel answers section 8.
@@ -586,8 +631,10 @@ accepted, and the age check stays a placeholder (the `CALLS_MEMBERS` allow-list)
   confirm the numbers when we have a quote.
 - **Keep a document-derived key to stop one adult verifying many accounts?**
   Recommend no (section 5); revisit if abuse shows up.
-- **Should a provider age check count for `governance_vote`?** Recommend no
-  (section 5, "The API seam"); owner and counsel to confirm.
+- **Should a provider age check count for `governance_vote`?** Recommend no: it
+  maps to `checked`, which voting does not accept (section 5, "Does it count for
+  voting?"); owner and counsel to confirm. On acceptance, ADR 0016's
+  direct-messages purpose changes from `verified` to `checked`.
 - **Roadmap.** `age-verification` notes remain accurate; add this ADR to its
   evidence when this is accepted. ADR 0017 still calls ADR 0016 "PR #42, not yet on
   `staging`"; that is now out of date.
