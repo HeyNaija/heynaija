@@ -1083,7 +1083,7 @@
         "apps/api/src/governance/age.ts",
         "docs/governance/under-18-rollout.md"
       ],
-      "notes": "Phase 1 of ADR 0020 (proposed, 3 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth is used once and dropped; labelled media is served privately by short-lived signed URLs."
+      "notes": "Phase 1 of ADR 0020 (proposed, 3 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs."
     },
     {
       "id": "minor-safeguards",

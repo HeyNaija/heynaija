@@ -60,8 +60,9 @@ including for members who live outside Nigeria.
 - [ ] Signup asks which band someone is in, never a full birth date, unless counsel
       says a birth date is necessary. If it is, document why, derive the band and
       `review_after` from it, and do not keep the date. Owner decision, 3 November
-      2026: signup asks for a date of birth, derives the band and keeps nothing else
-      (ADR 0020, section 1); counsel to confirm (ADR 0020, section 7, item 3).
+      2026: signup asks for a date of birth, derives the band from it, and keeps the
+      date with the age record, seen only by the member (ADR 0020, section 1, with
+      the reasons in question 5); counsel to confirm (ADR 0020, section 7, item 3).
 - [ ] Below the minimum age: refuse, explain kindly, keep no age record.
 - [ ] Minors get `review_after` (the month they turn 18, rounded up, or a periodic
       re-check) and move to adult only after a fresh statement or check.

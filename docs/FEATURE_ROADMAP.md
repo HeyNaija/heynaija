@@ -581,7 +581,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P2 · **Status:** Planned · **Availability:** Not live
 - **Description:** Ask for a date of birth at signup and keep only the age band; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.
 - **Inspected evidence:** `docs/adr/0020-under-18-accounts-and-adult-labels.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`
-- **Audit notes:** Phase 1 of ADR 0020 (proposed, 3 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth is used once and dropped; labelled media is served privately by short-lived signed URLs.
+- **Audit notes:** Phase 1 of ADR 0020 (proposed, 3 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs.
 
 #### Safeguards for under-18 access
 

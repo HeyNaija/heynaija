@@ -23,7 +23,8 @@ This ADR does that in two phases, so the parts that do not involve children's da
 ship first and are proven before any minor arrives:
 
 - **Phase 1, with the 18+ rule kept.** A date of birth at signup in place of the
-  "I am 18 or older" tick; only the band is kept. An 18+ label on posts and
+  "I am 18 or older" tick, kept with the age record (question 5 gives the
+  reasons). An 18+ label on posts and
   communities, enforced on the server in every read path, with labelled media
   served privately. Members whose age is not on record are asked for it. Under-18s
   are still refused, so no child's data is processed.
@@ -71,16 +72,38 @@ messages, calls or Gists, which need the check in ADR 0018, and never counts for
 - **The form.** `/join` replaces the tick with a date of birth (day, month, year).
   It is still only the person's word, but a child has to make up a date instead of
   ticking the box the form asks for.
-- **The band, worked out once.** The `/join` server action (`acceptInvite`) works
-  out the age on the day, in Lagos time, and sets the existing `hn_age` cookie.
-  The registration webhook checks the cookie (`signupAgeDecision`), and
-  `recordAgeDeclaration` writes a `self_declared` row. In phase 1 that is always
-  `18_plus`; in phase 2 the cookie carries the band and, for a minor, the month
-  for `review_after`.
-- **Nothing new is kept.** The date is used for that sum and dropped: not stored,
-  not logged, not in a cookie, not sent to Kratos or the API, not echoed back into
-  the form after a refusal, not in error reports or analytics. ADR 0006 decision 5
-  (only a band is stored) stands (question 5).
+- **The band, worked out on the server.** The `/join` server action
+  (`acceptInvite`) works out the age on the day, in Lagos time, only to refuse
+  early (below). If the date passes, the existing `hn_age` cookie carries it in
+  place of `18-plus` (httpOnly, for up to an hour, as today), and
+  `infra/kratos/invite-check.jsonnet` passes it to the registration webhook as
+  `birth_date` in place of `adult_declared`. The API works the age out again
+  (`signupAgeDecision`) instead of trusting the web app, and
+  `recordAgeDeclaration` writes a `self_declared` row with the band and the date.
+  In phase 1 the band is always `18_plus`; in phase 2 a minor's row also gets
+  `review_after`, their 18th birthday. For one release the webhook also accepts
+  `adult_declared`, so signups in flight across the deploy still work.
+- **The date is kept, with the age record** (question 5 gives the reasons).
+  `restricted.age_assurances` gains `birth_date` (a date, nullable), set only on a
+  `self_declared` row made from a date of birth. Rows from the old tick have none.
+  - The rules still read only the band, so `ageStatus()` and `isAdultFor()` do not
+    change. If an age in the rules changes (counsel's age of a child, the minimum
+    age, or separate protections for 13 to 15), new rows are worked out from the
+    dates already given and the old ones are withdrawn.
+  - Only the member sees it: in Settings next to their age status, and in the data
+    export. Moderators don't; they see minor or adult only (rollout doc section 6).
+    Nor do the admin pages, profiles or any public API.
+  - Not logged, not in error reports or analytics, never a Kratos trait, and not
+    echoed back into the form after a refusal. The `hn_age` cookie is cleared when
+    signup finishes.
+  - Given once. A member cannot change it themselves. A correction goes through
+    support (contact@heynaija.ng) and is a new row, with the old one withdrawn, so
+    nobody can try dates until one gets past the limit.
+  - Deleted with the account: ADR 0016's account deletion already deletes the age
+    rows.
+  - In phase 1 only a date that gives 18 or older is kept. A refused signup keeps
+    nothing, and an existing member's under-18 date is not kept (below), so no
+    child's data is held before phase 2.
 - **Below the age limit.** In phase 1 that is anyone under 18; in phase 2, anyone
   under 13 (question 1). Refused with a kind message, keeping no age
   record (rollout doc section 2). The refusal is held for a day in a cookie that
@@ -99,7 +122,8 @@ messages, calls or Gists, which need the check in ADR 0018, and never counts for
   (question 6).
 - **No flag.** It replaces one field and ships through staging like any change.
   The e2e `submitSignUp` helper (`e2e/lib/members.ts`) ticks the box today and must
-  type a date; `signUpOverHttp` and `newMember` set `hn_age` directly.
+  type a date. `signUpOverHttp` and `newMember` set `hn_age` to `18-plus` directly
+  and must set a date instead.
 
 ## 2. The 18+ label (phase 1)
 
@@ -177,10 +201,10 @@ is not a control: anyone allowed to see it can share it.
 Starts only when every item in section 5 is met. What changes for an `under_18`
 member, from the rollout doc and ADR 0019, with phase 1 already in place:
 
-- **Age.** A `self_declared` `under_18` row with `review_after` set to the month
-  they turn 18, rounded up (ADR 0006). When it passes, they are asked to confirm
-  they are now 18, which writes a fresh `18_plus` statement; nothing moves them
-  silently.
+- **Age.** A `self_declared` `under_18` row with their date of birth and
+  `review_after` set to their 18th birthday. When it passes, they are asked to
+  confirm they are now 18, which writes a fresh `18_plus` statement; nothing moves
+  them silently.
 - **Guardian consent.** Not asked for, for now (question 2). If counsel's answer
   to section 7 item 1 says 13 to 17 need it, phase 2 also waits for the separate
   consent record in rollout doc section 3, and an account stays pending until
@@ -221,19 +245,29 @@ Phase 1, in the same changes as the code:
 - `/join`: the hint "We don't ask for your date of birth or any ID."
 - `/privacy`: "Your age confirmation" ("We do not ask for your date of birth"), the
   identity section ("does not collect … dates of birth"), and the cookie list
-  (`hn_age`, and the new refusal cookie). "Never your date of birth" stays true of
-  what is kept; say that we ask for it at signup and do not keep it.
+  (`hn_age` now carries the date for up to an hour; the new refusal cookie). Say
+  that we ask for the date at signup and keep it with the age record, why (question
+  5), that only the member sees it, and that it is deleted with the account.
+- ADR 0006 decision 5 ("never a birth date"): on acceptance, a note that a stated
+  date of birth is now kept (this ADR). No exact age or document is kept, and the
+  rules still read only the band.
 - `/rules`: what must be marked 18+, what is not allowed at all, and that
   mislabelling is a breach (question 3).
-- `docs/governance/under-18-rollout.md` section 2, first item: this takes its
-  "derive the band and do not keep the date" path by owner decision; record that
-  there, with counsel's answer (section 7, item 3) when it comes.
+- `docs/governance/under-18-rollout.md` section 2, first item: it says to derive the
+  band and not keep the date. By owner decision this asks for a date and keeps it
+  (question 5); record that there, with counsel's answer (section 7, item 3) when it
+  comes.
 - The draft constitution, Article 3.2 (extra age data needs "a documented purpose,
   lawful basis, safeguards and retention schedule") and Article 4.3. This ADR is
-  meant to be that design: the purpose is keeping 18+ content from minors and
-  applying the age limit at signup; the basis is section 7 item 3; the safeguard is
-  that the date is dropped at once; the retention is none. It counts only once
-  accepted.
+  meant to be that design:
+  - the purpose is applying the age limit at signup, keeping 18+ content from
+    minors, and the reasons in question 5;
+  - the basis is section 7 item 3;
+  - the safeguards are in section 1 (the restricted schema, only the member sees it,
+    never logged, given once);
+  - the retention is the life of the account.
+
+  It counts only once accepted.
 
 Phase 2: `/rules#age` (the 18+ rule and the mistaken-age process, rewritten for a
 world with minors), `/privacy` for children's data, Terms, and ADR 0019 section 4.6
@@ -246,9 +280,10 @@ world with minors), `/privacy` for children's data, Terms, and ADR 0019 section 
    or guardian's consent, and how that consent must be confirmed.
 2. Whether a typed date of birth is "appropriate age verification" for keeping 18+
    content from minors, or whether that needs a check (ADR 0018).
-3. Whether asking every new member for a date of birth, used once and dropped,
-   needs more than a notice on `/privacy`, and whether it meets the rollout doc's
-   "unless counsel says a birth date is necessary".
+3. Whether asking every new member for a date of birth and keeping it (question 5)
+   is lawful and in proportion under the NDPA's data minimisation principle, what
+   notice it needs on `/privacy`, and whether it meets the rollout doc's "unless
+   counsel says a birth date is necessary".
 4. What 18+ content may lawfully be hosted at all, and what extra duties hosting it
    brings once minors are members (including the NITDA Code of Practice).
 5. Minors living outside Nigeria: whether their country's law (for example the UK
@@ -259,8 +294,11 @@ world with minors), `/privacy` for children's data, Terms, and ADR 0019 section 
 
 ## Consequences
 
-- New members give a date of birth; HeyNaija keeps only the band. It cannot later
-  be compared with a provider's result (ADR 0018).
+- New members give a date of birth, and HeyNaija keeps it. A later check can be
+  compared with it, and bands can be worked out again if an age in the rules
+  changes (question 5). The cost is a birthday for every new member, a detail
+  fraudsters use to answer identity questions, so a leak of the restricted schema
+  is worth more than before.
 - Phase 1 changes what signed-out visitors see: labelled posts become placeholders,
   and links to them preview as nothing.
 - Every new read path must use the shared condition; the read-path test is what
@@ -279,8 +317,7 @@ world with minors), `/privacy` for children's data, Terms, and ADR 0019 section 
 
 Answer under each question (edit this file in a PR, or reply on the PR and the
 answer gets written back here). Each has a recommendation, so "agreed" is a complete
-answer. Phase 1 can start once question 5 is answered; its other questions (3, 4, 6
-and 8) are.
+answer. All nine are answered, so phase 1 can start once this ADR is accepted.
 
 1. **What is the minimum age?** Recommendation: 13, subject to counsel (section 7,
    item 1); nobody under it, ever.
@@ -315,8 +352,23 @@ and 8) are.
    Recommendation: only the band, plus `review_after` for a minor. Content needs
    nothing more, ADR 0006 and `/privacy` promise it, and the rollout doc says not to
    keep the date.
-   - Answer:
-   - Answered by / date:
+   - Answer: Keep the date of birth, with the safeguards in section 1. Why:
+     - **The ages may change, and asking again doesn't work.** Counsel may set the
+       age of a child at 18 rather than 13, the minimum age may move, or 13 to 15
+       may need different protections from 16 to 17 (rollout doc section 1). With
+       the dates kept, bands are worked out again from what members already said.
+       With only the band, everyone would have to be asked again, after the
+       thresholds are known, so the answers would be worth less.
+     - **A later check has something to be compared with.** ADR 0018's provider
+       result, an appeal, or the mistaken-age process can be set against the exact
+       date the member gave, not only a band.
+     - **Minors' protections change on the right day.** A minor's 18th birthday
+       (and 16th, if protections differ) is known exactly, not rounded up to a
+       month.
+     - **The member's own statement is on record.** If a regulator or a parent asks
+       what someone said about their age, the answer is the date they gave and
+       when.
+   - Answered by / date: Psami-wondah, 3 November 2026
 
 6. **Who is asked for a date of birth?** Recommendation: every new signup, and every
    member with no age on record; members who already ticked "18 or older" are not
@@ -351,3 +403,5 @@ and 8) are.
 - **Gists.** Gist titles cannot be labelled; a live room for adults only is out of
   scope until Gists leave the `CALLS_MEMBERS` beta.
 - **Retention of `needs_label` reports** follows the other report reasons.
+- **A stated date that a check contradicts.** How it is handled belongs in ADR 0018
+  (PR #61). It is a reason for review, never an automatic change.
