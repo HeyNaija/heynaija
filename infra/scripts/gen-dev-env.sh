@@ -25,7 +25,7 @@ get() { grep -E "^$1=" "$env_file" | head -1 | cut -d= -f2- || true; }
 ensure() {
   if [[ -z "$(get "$1")" ]]; then
     # A .env edited by hand may not end in a newline, and the new line would then join
-    # the last one (CALLS_GISTS_ENABLED=trueLIVEKIT_URL=...), breaking both.
+    # the last one (PUSH_SWEEP_EVERY_S=2LIVEKIT_URL=...), breaking both.
     if [[ -s "$env_file" && -n "$(tail -c 1 "$env_file")" ]]; then echo >> "$env_file"; fi
     echo "$1=$2" >> "$env_file"
     echo "  added $1"
@@ -72,9 +72,9 @@ ensure PUSH_CONTACT "mailto:no-reply@heynaija.test"
 ensure PUSH_ALLOW_LOOPBACK "true"
 ensure PUSH_SWEEP_EVERY_S "2"
 
-# LiveKit for Gists (docs/adr/0017). The server starts with `pnpm infra:livekit`; the
-# API uses these only when CALLS_ENABLED and CALLS_GISTS_ENABLED are also true and the
-# handle is in CALLS_MEMBERS, none of which this script switches on.
+# LiveKit for Gists (docs/adr/0017). The server starts with `pnpm infra:livekit`. With
+# these set the API has Gists for whoever the gists feature flag is on for, which in
+# development is everyone until an admin changes it.
 ensure LIVEKIT_URL "ws://127.0.0.1:7880"
 ensure LIVEKIT_API_KEY "devkey"
 ensure LIVEKIT_API_SECRET "$(hex 20)"

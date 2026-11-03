@@ -50,6 +50,14 @@ export type FlagView = {
   updatedAt: Date | null
 }
 
+/** A flag read once: see `FeatureFlags.reading`. */
+export type FlagReading = {
+  /** Whether it is on for this member, or for a signed-out visitor when null. */
+  isEnabled: (viewerId: string | null) => boolean
+  /** Whether it is limited to an allow-list, so on for the members listed and nobody else. */
+  listed: boolean
+}
+
 /** `actorHandle` is null for a change an account's erase made, with no admin behind it. */
 export type ChangeView = { flagKey: string; actorHandle: string | null; before: OverrideView; after: OverrideView; createdAt: Date }
 
@@ -139,6 +147,20 @@ export class FeatureFlags {
     if (!isFlagKey(key)) return false
     const snapshot = await this.current()
     return snapshot ? resolveFlag(key, this.appEnv, snapshot.get(key), viewerId, this.registry) : resolveFlag(key, 'production', undefined, viewerId, this.registry)
+  }
+
+  /**
+   * One flag as it stands now, for code that asks about several members in one
+   * go: every answer comes from the same read, and none is awaited.
+   */
+  async reading(key: FlagKey): Promise<FlagReading> {
+    const snapshot = await this.current()
+    const env: AppEnv = snapshot ? this.appEnv : 'production'
+    const override = snapshot?.get(key)
+    return {
+      isEnabled: (viewerId) => isFlagKey(key) && resolveFlag(key, env, override, viewerId, this.registry),
+      listed: (override?.allow.size ?? 0) > 0,
+    }
   }
 
   /** Every flag for the viewer, keyed by registry key. */

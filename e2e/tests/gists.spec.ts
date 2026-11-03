@@ -3,18 +3,17 @@ import { MARK } from '../lib/env.ts'
 import { codeFor } from '../lib/mailpit.ts'
 import { signUpOverHttp } from '../lib/members.ts'
 
-// Gists need a LiveKit server and an API started with the Gists switches on, so
-// CI (which has neither) skips this file. To run it locally, on your own stack:
+// Gists need a LiveKit server and an API that knows it, so CI (which has neither)
+// skips this file. To run it locally, on your own stack:
 //
 //   pnpm infra:livekit
-//   CALLS_ENABLED=true CALLS_GISTS_ENABLED=true \
-//   CALLS_MEMBERS=e2e_gist_host,e2e_gist_ear \
-//   LIVEKIT_URL=ws://127.0.0.1:7880 (and the LIVEKIT_* keys from .env) pnpm dev:api
+//   pnpm dev:api, with the LIVEKIT_* settings `pnpm infra:env` put in .env
 //   E2E_GISTS=1 pnpm e2e gists
 //
-// The allow-list takes exact handles (ADR 0017's gate is temporary), hence the
-// fixed ones below. Chromium's fake-media flags stand in for a microphone.
-test.skip(!process.env.E2E_GISTS, 'needs LiveKit and the API with CALLS_* set; see the comment at the top of this file')
+// The gists flag is on for everyone in development; if it has been limited to a
+// list, add the two fixed handles below to it (or set it back to the default).
+// Chromium's fake-media flags stand in for a microphone.
+test.skip(!process.env.E2E_GISTS, 'needs LiveKit and the API configured for it; see the comment at the top of this file')
 
 test.use({
   launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },

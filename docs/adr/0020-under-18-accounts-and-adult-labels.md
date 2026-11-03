@@ -401,7 +401,7 @@ answer. All nine are answered, so phase 1 can start once this ADR is accepted.
 ### Smaller open items
 
 - **Gists.** Gist titles cannot be labelled; a live room for adults only is out of
-  scope until Gists leave the `CALLS_MEMBERS` beta.
+  scope until Gists leave the allow-list beta (the `gists` flag's list).
 - **Retention of `needs_label` reports** follows the other report reasons.
 - **A stated date that a check contradicts.** How it is handled belongs in ADR 0018
   (PR #61). It is a reason for review, never an automatic change.

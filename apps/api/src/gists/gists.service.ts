@@ -3,12 +3,11 @@ import { Inject, Injectable, Logger } from '@nestjs/common'
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lt, ne, notInArray, or, sql } from 'drizzle-orm'
 import { RateLimiter } from '../rate-limit.js'
 import { DB } from '../tokens.js'
-import { type GistViewer, canHostGist, canJoinGist } from './eligibility.js'
+import { type EligibilityConfig, type GistViewer, canHostGist, canJoinGist } from './eligibility.js'
+import { GistsGate } from './gists-enabled.guard.js'
 import { ParticipantNotFoundError, ROOM_SERVICE, type RoomPermissions, type RoomService } from './room-service.js'
 
 export type GistsConfig = {
-  /** CALLS_MEMBERS: the beta allow-list of handles (see eligibility.ts). */
-  callsMembers: readonly string[]
   maxCohosts: number
   maxSpeakers: number
   /** The most listeners one Gist takes. A host may set it lower for their Gist. */
@@ -141,6 +140,7 @@ export class GistsService {
     @Inject(ROOM_SERVICE) private readonly rooms: RoomService,
     @Inject(GISTS_CONFIG) private readonly config: GistsConfig,
     @Inject(RateLimiter) private readonly limits: RateLimiter,
+    @Inject(GistsGate) private readonly gate: Pick<GistsGate, 'access'>,
   ) {}
 
   // ---- reading -------------------------------------------------------------
@@ -179,8 +179,9 @@ export class GistsService {
    */
   async live(viewer: { id: string; handle: string }): Promise<LiveGist[]> {
     const me = await this.viewer(this.db, viewer.id)
+    const eligibility = await this.eligibility()
     // Someone who may not use Gists gets the not-found of a dark feature, not an empty list.
-    if (!me || !canJoinGist(me, { status: 'live', communityId: null }, { ...this.config, inCommunity: false })) throw new GistError('not_found')
+    if (!me || !canJoinGist(me, { status: 'live', communityId: null }, { ...eligibility, inCommunity: false })) throw new GistError('not_found')
 
     // More than the list shows, since some will be filtered out.
     const rows = await this.db
@@ -238,7 +239,7 @@ export class GistsService {
       .filter(({ gist }) => {
         const mineHere = own.get(gist.id)
         if (mineHere?.removedAt) return false
-        if (!canJoinGist(me, gist, { ...this.config, inCommunity: gist.communityId !== null && inCommunity.has(gist.communityId) })) return false
+        if (!canJoinGist(me, gist, { ...eligibility, inCommunity: gist.communityId !== null && inCommunity.has(gist.communityId) })) return false
         return (mineHere !== undefined && STAGE.includes(mineHere.role)) || !blocked.has(gist.id)
       })
       .slice(0, LIVE_LIST_MAX)
@@ -267,7 +268,7 @@ export class GistsService {
 
   async create(host: { id: string; handle: string }, input: { title: string; communityId?: string | null }): Promise<GistView> {
     const me = await this.viewer(this.db, host.id)
-    if (!me || !canHostGist(me, this.config)) throw new GistError('not_found')
+    if (!me || !canHostGist(me, await this.eligibility())) throw new GistError('not_found')
     const title = input.title.trim()
     if (title.length < 1 || title.length > 120) throw new GistError('invalid', 'The title must be 1 to 120 characters.')
 
@@ -707,6 +708,11 @@ export class GistsService {
     return row?.n ?? 0
   }
 
+  /** Who Gists are open to (the `gists` flag), read once for the checks that follow. */
+  private async eligibility(): Promise<EligibilityConfig> {
+    return { allowed: (await this.gate.access()).member }
+  }
+
   private async viewer(q: Q, memberId: string): Promise<GistViewer | undefined> {
     const [row] = await q.select({ id: members.id, handle: members.handle, active: members.active }).from(members).where(eq(members.id, memberId))
     return row
@@ -751,7 +757,7 @@ export class GistsService {
     const viewer = await this.viewer(q, who.id)
     if (!gist || !viewer) throw new GistError('not_found')
     const inCommunity = gist.communityId ? await this.inCommunity(q, who.id, gist.communityId) : false
-    if (!canJoinGist(viewer, gist, { ...this.config, inCommunity })) throw new GistError('not_found')
+    if (!canJoinGist(viewer, gist, { ...(await this.eligibility()), inCommunity })) throw new GistError('not_found')
     const [me] = await q
       .select()
       .from(gistMembers)
@@ -805,7 +811,7 @@ export class GistsService {
 
       // Nobody is promoted past the eligibility and block checks, which are re-run here on live data.
       const candidate = await this.viewer(tx, targetId)
-      if (!candidate || !canHostGist(candidate, this.config) || (await this.blockedOnStage(tx, gist.id, targetId))) {
+      if (!candidate || !canHostGist(candidate, await this.eligibility()) || (await this.blockedOnStage(tx, gist.id, targetId))) {
         throw new GistError('not_eligible')
       }
 
@@ -901,7 +907,7 @@ export class GistsService {
     const viewer = await this.viewer(this.db, memberId)
     if (!viewer) return false
     const inCommunity = gist.communityId ? await this.inCommunity(this.db, memberId, gist.communityId) : false
-    if (!canJoinGist(viewer, gist, { ...this.config, inCommunity })) return false
+    if (!canJoinGist(viewer, gist, { ...(await this.eligibility()), inCommunity })) return false
     const [row] = await this.db
       .select()
       .from(gistMembers)

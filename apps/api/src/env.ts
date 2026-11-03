@@ -15,13 +15,6 @@ const lockedOff = (name: string) =>
     .transform((value) => value === 'true')
     .refine((on) => !on, { error: `${name} cannot be enabled yet; see docs/governance/open-items.md` })
 
-/** A plain on/off switch: absent or "false" is off, "true" is on, anything else is refused. */
-const flag = () =>
-  z
-    .enum(['false', 'true'])
-    .default('false')
-    .transform((value) => value === 'true')
-
 /** An optional setting that may also be given empty (compose passes `${NAME:-}`), which means unset. */
 const optional = <T extends z.ZodType>(type: T) => z.preprocess((value) => (value === '' ? undefined : value), type.optional())
 
@@ -133,21 +126,11 @@ const schema = z.object({
   MEDIA_ORIGIN: optional(z.url().transform((u) => u.replace(/\/$/, ''))),
   // Video posts (docs/adr/0019): limits and trust rules, defaults as the ADR recommends.
   ...videoEnvShape,
-  // Calls and Gists (docs/adr/0017). Everything ships dark: both switches default
-  // to false, and with either off (or LiveKit not configured) every Gists route
-  // answers 404 exactly like a route that does not exist.
-  CALLS_ENABLED: flag(),
-  CALLS_GISTS_ENABLED: flag(),
-  // Handles allowed to use calls and Gists during the beta, comma-separated. Empty
-  // means nobody. Temporary: replaced by the real age-verified, opted-in gate (see
-  // gists/eligibility.ts).
-  CALLS_MEMBERS: z
-    .string()
-    .default('')
-    .transform((raw) => raw.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean)),
+  // Gists (docs/adr/0017) are switched by the `gists` feature flag
+  // (docs/feature-flags.md), and only ever on with LiveKit configured.
   // The LiveKit server. The URL is what browsers connect to (ws:// or wss://), and
   // the key and secret sign tokens and server calls. Webhooks may be signed with a
-  // key of their own; without one the API key is used. Empty means calls are off.
+  // key of their own; without one the API key is used. Empty means Gists are off.
   LIVEKIT_URL: optional(z.string().regex(/^wss?:\/\/\S+$/, 'a ws:// or wss:// address').transform((u) => u.replace(/\/$/, ''))),
   LIVEKIT_API_KEY: optional(z.string().min(1)),
   LIVEKIT_API_SECRET: optional(z.string().min(32)),

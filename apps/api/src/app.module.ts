@@ -31,7 +31,7 @@ import { ExportService } from './export/export.service.js'
 import { GistReconciler } from './gists/gist-queue.js'
 import { GistsController, LiveKitWebhookController } from './gists/gists.controller.js'
 import { GISTS_CONFIG, GistsService } from './gists/gists.service.js'
-import { GistsEnabledGuard } from './gists/gists-enabled.guard.js'
+import { GistsEnabledGuard, GistsGate, LiveKitConfiguredGuard } from './gists/gists-enabled.guard.js'
 import { roomServiceFor } from './gists/livekit-room-service.js'
 import { ROOM_SERVICE } from './gists/room-service.js'
 import { GovernanceController } from './governance/governance.controller.js'
@@ -178,12 +178,11 @@ class HealthController {
     RetentionService,
     BullAccountJobs,
     AccountWorker,
-    // Gists (docs/adr/0017): dark unless CALLS_ENABLED, CALLS_GISTS_ENABLED and the LIVEKIT_* settings are all set.
+    // Gists (docs/adr/0017): dark unless the gists flag is on and the LIVEKIT_* settings are all set.
     { provide: ROOM_SERVICE, useFactory: roomServiceFor, inject: [ENV] },
     {
       provide: GISTS_CONFIG,
       useFactory: (env: Env) => ({
-        callsMembers: env.CALLS_MEMBERS,
         maxCohosts: env.GISTS_MAX_COHOSTS,
         maxSpeakers: env.GISTS_MAX_SPEAKERS,
         listenerCap: env.GISTS_LISTENER_CAP,
@@ -191,8 +190,10 @@ class HealthController {
       }),
       inject: [ENV],
     },
+    GistsGate,
     GistsService,
     GistsEnabledGuard,
+    LiveKitConfiguredGuard,
     GistReconciler,
     // Video posts (docs/adr/0019): dark behind the videoPosts flag and, in production, a bound scanner.
     // The encoding runs in the separate video-worker process; these are the API's half.

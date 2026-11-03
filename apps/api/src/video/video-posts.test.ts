@@ -119,13 +119,14 @@ const meWith = (flags: FeatureFlags, appEnv: 'production' | 'staging', scanner: 
     { scope: async () => ({ siteWide: false, communityIds: [] }) } as never,
     { unreadCount: async () => 0 } as never,
     {} as never,
-    { APP_ENV: appEnv, CALLS_ENABLED: false, CALLS_GISTS_ENABLED: false, CALLS_MEMBERS: [] } as never,
+    { APP_ENV: appEnv } as never,
     db,
     {} as never,
     {} as never,
     {} as never,
     flags,
     new VideoGate(flags, { APP_ENV: appEnv }, scanner),
+    { access: async () => ({ member: () => false, anyone: false }) },
   )
 const asAda = { member: { id: ada, handle: 'ada' } } as AuthedRequest
 

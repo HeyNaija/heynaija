@@ -42,8 +42,8 @@ if [[ $made == 1 ]]; then
   cat <<EOF
 
 # LiveKit for Gists (docs/deployment/livekit.md, step 5). Paste these lines at the
-# end of infra/deploy/.env on the staging server, then add CALLS_ENABLED=true,
-# CALLS_GISTS_ENABLED=true and CALLS_MEMBERS (handles, comma-separated, no spaces).
+# end of infra/deploy/.env on the staging server; who has Gists is then the gists
+# feature flag, set from Moderation, Feature flags.
 LIVEKIT_URL=wss://${LIVEKIT_DOMAIN}
 LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
 LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}

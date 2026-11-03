@@ -383,8 +383,9 @@ const rooms = new FakeRoomService()
 const gistsService = new GistsService(
   db,
   rooms,
-  { callsMembers: ['ada', 'bayo', 'sam', 'lola'], maxCohosts: 2, maxSpeakers: 2, listenerCap: 10, livekitUrl: 'wss://livekit.test' },
+  { maxCohosts: 2, maxSpeakers: 2, listenerCap: 10, livekitUrl: 'wss://livekit.test' },
   new MemoryRateLimiter(),
+  { access: async () => ({ member: (memberId) => [ada, bayo, sam, lola].some((id) => id === memberId), anyone: true }) },
 )
 // With a way to end Gists, as the app has.
 const withGists = new ModerationService(db, undefined, recordingAlerts, gistsService)

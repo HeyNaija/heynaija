@@ -412,15 +412,15 @@ It returns true for `checked` and `verified`, and false when nothing is on recor
 and for `reviewed` or `declared` only. The flag does not make it return false on
 its own: for a member the `ageVerification` flag is off for (everyone in
 production at first, and everyone off the staging allow-list, section 7), the
-existing `CALLS_MEMBERS` allow-list decides, as today, so testers on staging keep
-Gists.
+`gists` feature flag and its allow-list decide, as today (they replaced
+`CALLS_MEMBERS` on 3 November 2026), so testers on staging keep Gists.
 
 The live seam on `staging` is `isCallsMember` in `apps/api/src/gists/eligibility.ts`,
 which its comment names as the one place to replace: `canJoinGist` and
 `canHostGist` both end in it, and its body becomes this function. Its callers then
 need the member's age status, and one of them has no member to load it for:
-`gistsFeatureFor` in `apps/api/src/gists/gists-enabled.guard.ts`, which decides
-what `GET /v1/me` reports, builds `{ id: '', handle, active: true }` from a handle
+`gistsShownTo` in `apps/api/src/gists/gists-enabled.guard.ts`, which decides
+what `GET /v1/me` reports, builds `{ id, handle, active: true }` from the session
 alone. It must be changed to pass the real member and their age status, or every
 member would look as if no age were on record and `/v1/me` would hide Gists from
 all of them. Later, `canMessage` and `canCall` call it too; nothing reads
@@ -504,7 +504,7 @@ button, the session endpoint and the webhook. The flag policy turns every flag o
 in staging and development, and a flag with an allow-list is on only for the
 members listed. So before this reaches staging, an admin sets an allow-list on
 `ageVerification` there (the people in step 4). Everyone off the list sees the
-flag off and keeps the `CALLS_MEMBERS` gate, so Gists testers do not lose Gists.
+flag off and keeps the `gists` flag's gate, so Gists testers do not lose Gists.
 Production defaults to off, like any feature whose code is not in `main`.
 
 It is a flag, not a locked-off setting: the age rule lives in code (the table
@@ -578,7 +578,7 @@ are untouched.
 Answer under each question (edit this file in a PR, or reply on the PR and the
 answer gets written back here). Each has a recommendation so "agreed" is a
 complete answer. Until questions 1 to 3 and 6 are answered nothing in this ADR is
-accepted, and the age check stays a placeholder (the `CALLS_MEMBERS` allow-list).
+accepted, and the age check stays a placeholder (the `gists` flag's allow-list).
 
 1. **May a member who has only a NIN slip verify with a NIN or BVN lookup, while our
    own NIN verification is locked?** The rollout doc says the age provider "must not
