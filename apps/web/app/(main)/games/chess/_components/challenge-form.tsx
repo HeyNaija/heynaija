@@ -97,6 +97,11 @@ export function ChallengeForm({ timeControls, opponent }: { timeControls: ChessT
         </label>
       </div>
 
+      <label className="settings-check">
+        <input type="checkbox" name="openThread" defaultChecked />
+        <span>Open a public thread in Chess Arena when the game starts, so members can watch and talk about it</span>
+      </label>
+
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" className="btn btn-primary" disabled={pending}>
           {pending ? 'Sending…' : 'Send challenge'}

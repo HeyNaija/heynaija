@@ -6,10 +6,11 @@ import { ChessIcon } from '@/app/ui/icons'
 import { LocalTime } from '@/app/ui/local-time'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
-import { type ChessOverview, getChessOverview, getViewer } from '@/lib/api'
+import { type ChessOverview, getChessOverview, getLiveChessGames, getViewer } from '@/lib/api'
 import { connectLichess, disconnectLichess, refreshRatings } from './actions'
 import { ChallengeForm } from './_components/challenge-form'
 import { ChallengeList } from './_components/challenge-list'
+import { LiveGames } from './_components/live-games'
 
 export const metadata: Metadata = { title: 'Chess', robots: { index: false } }
 
@@ -17,7 +18,7 @@ export const metadata: Metadata = { title: 'Chess', robots: { index: false } }
 const NOTICES: Record<string, { text: string; danger?: boolean }> = {
   linked: { text: 'Your Lichess account is connected.' },
   unlinked: { text: 'Your Lichess account is disconnected. HeyNaija no longer holds its key.' },
-  accepted: { text: 'Challenge accepted. The game is ready on lichess.org.' },
+  accepted: { text: 'Challenge accepted. Your game is ready: open it below.' },
   link_declined: { text: 'Lichess was not connected: you said no on Lichess.', danger: true },
   link_expired: { text: 'That link to Lichess ran out or was not yours. Start again.', danger: true },
   link_failed: { text: 'Lichess could not be connected. Try again in a moment.', danger: true },
@@ -47,8 +48,8 @@ export default function ChessPage({ searchParams }: PageProps<'/games/chess'>) {
         <p className="page-eyebrow">Games</p>
         <h1 className="page-title">Chess</h1>
         <p className="page-description">
-          Play other members on Lichess, the free and open chess site. Lichess runs the games, the ratings and fair play;
-          for now an accepted challenge opens on lichess.org.
+          Play other members right here, on Lichess, the free and open chess site: Lichess runs the games, the ratings
+          and fair play. Watch games being played, and talk about them in Chess Arena.
         </p>
       </header>
       <Suspense fallback={<PostsSkeleton />}>
@@ -61,7 +62,7 @@ export default function ChessPage({ searchParams }: PageProps<'/games/chess'>) {
 async function Chess({ searchParams }: Pick<PageProps<'/games/chess'>, 'searchParams'>) {
   const [params, viewer] = await Promise.all([searchParams, getViewer()])
   if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
-  const chess = await getChessOverview()
+  const [chess, live] = await Promise.all([getChessOverview(), getLiveChessGames()])
   if (!chess) notFound()
   const notice = typeof params.notice === 'string' ? NOTICES[params.notice] : undefined
   const opponent = typeof params.opponent === 'string' ? params.opponent.replace(/[^a-z0-9_]/gi, '').slice(0, 20) : undefined
@@ -75,6 +76,11 @@ async function Chess({ searchParams }: Pick<PageProps<'/games/chess'>, 'searchPa
         </p>
       ) : null}
       <LichessCard chess={chess} now={now} />
+
+      <section className="content-panel" aria-labelledby="chess-live">
+        <h2 id="chess-live" className="section-title">Live now</h2>
+        <LiveGames initial={live} />
+      </section>
 
       <section className="content-panel" aria-labelledby="chess-incoming">
         <h2 id="chess-incoming" className="section-title">Challenges to you</h2>

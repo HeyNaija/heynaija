@@ -50,7 +50,6 @@ import { NotificationsService } from './notifications/notifications.service.js'
 import { OnboardingController } from './onboarding/onboarding.controller.js'
 import { OnboardingService } from './onboarding/onboarding.service.js'
 import { PostsController } from './posts/posts.controller.js'
-import { PostsService } from './posts/posts.service.js'
 import { PushController } from './push/push.controller.js'
 import { PUSH_JOBS, PushNotificationsService } from './push/push-notifications.service.js'
 import { BullPushJobs, PushWorker } from './push/push-queue.js'
@@ -110,7 +109,6 @@ class HealthController {
     LinkWorker,
     MembersService,
     CommunitiesService,
-    PostsService,
     TopicsService,
     IdeasService,
     NotificationsService,

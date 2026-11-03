@@ -28,6 +28,11 @@ export async function LichessLine({ handle }: { handle: string }) {
       {ratings.map((r) => (
         <span key={r}>· {r}</span>
       ))}
+      {account.playing ? (
+        <Link href={`/games/chess/games/${account.playing.id}`} className="font-semibold text-accent-strong hover:underline">
+          · Playing now: watch
+        </Link>
+      ) : null}
       {account.canChallenge ? (
         <Link href={`/games/chess?opponent=${encodeURIComponent(handle)}#chess-challenge`} className="font-semibold text-accent-strong hover:underline">
           · Challenge to chess

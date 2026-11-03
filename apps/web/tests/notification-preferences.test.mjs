@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { NOTIFICATION_SETTINGS, preferencesFromForm, settingsFor } from '../lib/notification-preferences.ts'
+import { NOTIFICATION_SETTINGS, OPTIONAL_KINDS, preferencesFromForm, settingsFor } from '../lib/notification-preferences.ts'
 
 const form = (...on) => {
   const data = new FormData()
@@ -18,6 +18,7 @@ test('the Settings form saves every kind: ticked boxes on, the rest off', () => 
     quote: false,
     follow: false,
     chess_challenge: false,
+    chess_game_started: false,
   })
   // No boxes ticked turns everything off, rather than changing nothing.
   assert.ok(Object.values(preferencesFromForm(form())).every((on) => on === false))
@@ -35,13 +36,13 @@ test('the email box is saved on its own: ticking it does not turn any kind on', 
 
 test('a kind that cannot be turned off is never sent, even if a form names it', () => {
   const sent = preferencesFromForm(form('like', 'post_removed', 'report_resolved'))
-  assert.deepEqual(Object.keys(sent).sort(), ['email', ...NOTIFICATION_SETTINGS.map(({ kind }) => kind)].sort())
+  assert.deepEqual(Object.keys(sent).sort(), ['email', ...OPTIONAL_KINDS].sort())
   assert.equal(sent.like, true)
 })
 
 test('only other members’ activity is offered, each with a plain label', () => {
   assert.deepEqual(NOTIFICATION_SETTINGS.map(({ kind }) => kind).sort(), ['chess_challenge', 'follow', 'like', 'mention', 'quote', 'reply', 'repost'])
-  for (const { label } of NOTIFICATION_SETTINGS) assert.match(label, /^Someone .+ (you|your post|you to chess)$/)
+  for (const { label } of NOTIFICATION_SETTINGS) assert.match(label, /^Someone .+ (you|your post|your game starts)$/)
 })
 
 test('the chess box shows only to members with Games; for others it keeps its setting through a hidden field', () => {
@@ -49,5 +50,9 @@ test('the chess box shows only to members with Games; for others it keeps its se
   assert.deepEqual(settingsFor({ games: true }).hidden, [])
   const without = settingsFor({})
   assert.ok(!without.shown.some(({ kind }) => kind === 'chess_challenge'))
-  assert.deepEqual(without.hidden, ['chess_challenge'])
+  assert.deepEqual(without.hidden, ['chess_challenge', 'chess_game_started'])
+})
+
+test('the chess box turns both chess kinds on or off together', () => {
+  assert.deepEqual([preferencesFromForm(form('chess_challenge')).chess_game_started, preferencesFromForm(form()).chess_game_started], [true, false])
 })

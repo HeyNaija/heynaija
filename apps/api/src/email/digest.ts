@@ -16,6 +16,8 @@ export type DigestItem = {
   idea?: { status: string | null; kind: string; yours: boolean } | null
   /** chess_challenge: the challenge and how it reads ("a rated Rapid game (10+5)"). */
   challenge?: { id: string; phrase: string } | null
+  /** chess_game_started: the game. */
+  game?: { id: string } | null
 }
 
 export type Digest = { subject: string; text: string; html: string }
@@ -59,6 +61,7 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
       case 'quote':
       case 'mention':
       case 'chess_challenge':
+      case 'chess_game_started':
         return `${item.kind}:${i}`
       case 'moderator_granted':
       case 'moderator_revoked':
@@ -122,6 +125,12 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
           headline: `${who} challenged you to ${item.challenge?.phrase ?? 'a game of chess'}`,
           quote: null,
           href: item.challenge ? `${webUrl}/games/chess#challenge-${item.challenge.id}` : `${webUrl}/games/chess`,
+        }
+      case 'chess_game_started':
+        return {
+          headline: `${who} accepted your challenge. Your game has started`,
+          quote: null,
+          href: item.game ? `${webUrl}/games/chess/games/${item.game.id}` : `${webUrl}/games/chess`,
         }
     }
   }

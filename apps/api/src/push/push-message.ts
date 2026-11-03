@@ -31,6 +31,8 @@ const tagOf = (item: DigestItem): string => {
       return `${item.kind}:${item.community}`
     case 'chess_challenge':
       return `${item.kind}:${item.challenge?.id}`
+    case 'chess_game_started':
+      return `${item.kind}:${item.game?.id}`
     default:
       return item.kind
   }

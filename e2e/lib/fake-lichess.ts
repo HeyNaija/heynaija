@@ -15,7 +15,27 @@ type Grant = { username: string; challenge: string; redirectUri: string }
 
 export function fakeLichess() {
   const grants = new Map<string, Grant>()
-  const challenges = new Map<string, { from: string; to: string; status: string }>()
+  const challenges = new Map<string, { from: string; to: string; status: string; color: string; days: boolean }>()
+  // Games once a challenge is accepted: moves are recorded as sent, not checked (Lichess checks; this stands in).
+  type Game = { white: string; black: string; moves: string[]; status: string; winner?: 'white' | 'black'; wdraw: boolean; bdraw: boolean; watchers: Set<ServerResponse> }
+  const games = new Map<string, Game>()
+  const stateOf = (g: Game) => ({
+    type: 'gameState',
+    moves: g.moves.join(' '),
+    wtime: 600_000,
+    btime: 600_000,
+    status: g.status,
+    ...(g.winner ? { winner: g.winner } : {}),
+    wdraw: g.wdraw,
+    bdraw: g.bdraw,
+  })
+  const tell = (g: Game) => {
+    for (const watcher of g.watchers) {
+      watcher.write(`${JSON.stringify(stateOf(g))}\n`)
+      if (g.status !== 'started') watcher.end()
+    }
+    if (g.status !== 'started') g.watchers.clear()
+  }
   const user = (name: string) => ({ id: name.toLowerCase(), username: name, perfs: FAKE_RATINGS })
   const bearer = (req: IncomingMessage) => /^Bearer tok_(.+)$/.exec(req.headers.authorization ?? '')?.[1] ?? null
 
@@ -83,7 +103,7 @@ export function fakeLichess() {
       const from = bearer(req)
       if (!from) return send(res, 401, { error: 'no token' })
       const id = randomBytes(4).toString('hex')
-      challenges.set(id, { from, to: decodeURIComponent(made[1]!).toLowerCase(), status: 'created' })
+      challenges.set(id, { from: from.toLowerCase(), to: decodeURIComponent(made[1]!).toLowerCase(), status: 'created', color: form.get('color') ?? 'white', days: form.has('days') })
       return send(res, 200, { id, url: `http://fake/${id}`, status: 'created' })
     }
     const answer = /^\/api\/challenge\/([^/]+)\/(accept|cancel)$/.exec(path)
@@ -93,6 +113,52 @@ export function fakeLichess() {
       if (!c || !who) return send(res, 404, { error: 'not found' })
       if (answer[2] === 'accept' && who !== c.to) return send(res, 400, { error: 'not yours' })
       c.status = answer[2] === 'accept' ? 'accepted' : 'canceled'
+      if (answer[2] === 'accept') {
+        const challengerWhite = c.color !== 'black'
+        games.set(answer[1]!, { white: challengerWhite ? c.from : c.to, black: challengerWhite ? c.to : c.from, moves: [], status: 'started', wdraw: false, bdraw: false, watchers: new Set() })
+      }
+      return send(res, 200, { ok: true })
+    }
+
+    // The Board API: a game's stream, and the players' moves and decisions.
+    const stream = /^\/api\/board\/game\/stream\/([^/]+)$/.exec(path)
+    if (req.method === 'GET' && stream) {
+      const g = games.get(stream[1]!)
+      if (!bearer(req)) return send(res, 401, { error: 'no token' })
+      if (!g) return send(res, 404, { error: 'no such game' })
+      res.writeHead(200, { 'content-type': 'application/x-ndjson' })
+      res.write(`${JSON.stringify({ type: 'gameFull', id: stream[1], state: stateOf(g) })}\n`)
+      if (g.status !== 'started') return res.end()
+      g.watchers.add(res)
+      req.on('close', () => g.watchers.delete(res))
+      return
+    }
+    const board = /^\/api\/board\/game\/([^/]+)\/(move|draw|resign|abort)(?:\/([^/]+))?$/.exec(path)
+    if (req.method === 'POST' && board) {
+      const g = games.get(board[1]!)
+      const who = bearer(req)?.toLowerCase()
+      if (!g || !who) return send(res, 404, { error: 'not found' })
+      const side = who === g.white ? 'white' : who === g.black ? 'black' : null
+      if (!side || g.status !== 'started') return send(res, 400, { error: 'not now' })
+      const other = side === 'white' ? 'black' : 'white'
+      if (board[2] === 'move') {
+        if ((g.moves.length % 2 === 0 ? 'white' : 'black') !== side) return send(res, 400, { error: 'not your turn' })
+        g.moves.push(board[3]!)
+        g.wdraw = g.bdraw = false
+      } else if (board[2] === 'draw') {
+        if (board[3] === 'yes') {
+          if (side === 'white' ? g.bdraw : g.wdraw) g.status = 'draw'
+          else if (side === 'white') g.wdraw = true
+          else g.bdraw = true
+        } else g.wdraw = g.bdraw = false
+      } else if (board[2] === 'resign') {
+        g.status = 'resign'
+        g.winner = other
+      } else {
+        if (g.moves.length >= 2) return send(res, 400, { error: 'too late to abort' })
+        g.status = 'aborted'
+      }
+      tell(g)
       return send(res, 200, { ok: true })
     }
     // The game page an accepted challenge links to.

@@ -54,6 +54,7 @@ const steps = [
   ['mutes', `delete from mutes where muter_id in (select id from lt_m) or muted_id in (select id from lt_m)`],
   ['community memberships', `delete from community_memberships where member_id in (select id from lt_m)`],
   // Games (docs/adr/0018): chess challenges (their notifications cascade), Lichess accounts, then the shared tables.
+  ['chess games', `delete from games.chess_games where white_id in (select id from lt_m) or black_id in (select id from lt_m)`],
   ['chess challenges', `delete from games.chess_challenges where challenger_id in (select id from lt_m) or challenged_id in (select id from lt_m)`],
   ['lichess linking', `delete from games.lichess_link_attempts where member_id in (select id from lt_m)`],
   ['lichess accounts', `delete from games.lichess_accounts where member_id in (select id from lt_m)`],

@@ -18,6 +18,26 @@ export type ChallengeRequest = {
   color: 'random' | 'white' | 'black'
 } & ({ clockLimit: number; clockIncrement: number } | { days: number })
 
+/** A game's state, from the Board API stream (`gameState`, or the `state` inside `gameFull`). */
+export type BoardState = {
+  /** Every move so far, in UCI, separated by spaces. */
+  moves: string
+  /** Milliseconds left on each clock (absent for correspondence). */
+  wtime?: number
+  btime?: number
+  /** 'created' or 'started' while it runs; then how it ended: mate, resign, draw, outoftime, aborted, ... */
+  status: string
+  winner?: 'white' | 'black'
+  /** A draw offer from that side is open. */
+  wdraw?: boolean
+  bdraw?: boolean
+}
+
+export type BoardEvent = { type: 'gameFull'; state: BoardState } | ({ type: 'gameState' } & BoardState)
+
+/** Statuses of a game still being played; anything else means it is over. */
+export const RUNNING_STATUSES = ['created', 'started'] as const
+
 export type LichessErrorKind =
   /** The token was refused: revoked or expired. The member links again. */
   | 'unauthorized'
@@ -50,6 +70,19 @@ export interface LichessApi {
   createChallenge(accessToken: string, username: string, request: ChallengeRequest): Promise<{ id: string }>
   acceptChallenge(accessToken: string, challengeId: string): Promise<void>
   cancelChallenge(accessToken: string, challengeId: string): Promise<void>
+  /**
+   * The Board API's stream of one game, with a player's token: the whole game
+   * first, then each change, until the game ends and Lichess closes it. `signal`
+   * stops it. No timeout: it is meant to stay open.
+   */
+  streamGame(accessToken: string, gameId: string, signal: AbortSignal): AsyncIterable<BoardEvent>
+  /** A move in UCI (e2e4, e7e8q). Lichess refuses an illegal one ('rejected'). */
+  move(accessToken: string, gameId: string, uci: string): Promise<void>
+  /** Offers or accepts a draw (yes), or declines one (no). */
+  draw(accessToken: string, gameId: string, answer: 'yes' | 'no'): Promise<void>
+  resign(accessToken: string, gameId: string): Promise<void>
+  /** Only before both players have moved. */
+  abort(accessToken: string, gameId: string): Promise<void>
 }
 
 export const USERS_MAX = 300
@@ -141,6 +174,66 @@ export class HttpLichess implements LichessApi {
     await this.call('POST', `/api/challenge/${encodeURIComponent(challengeId)}/cancel`, { token: accessToken })
   }
 
+  async *streamGame(accessToken: string, gameId: string, signal: AbortSignal): AsyncIterable<BoardEvent> {
+    const path = `/api/board/game/stream/${encodeURIComponent(gameId)}`
+    let res: Response
+    try {
+      res = await this.fetchFn(`${this.baseUrl}${path}`, {
+        headers: { accept: 'application/x-ndjson', authorization: `Bearer ${accessToken}` },
+        redirect: 'error',
+        signal,
+      })
+    } catch {
+      throw new LichessError('unavailable', `Lichess did not answer GET ${path}`)
+    }
+    this.check(res, path)
+    if (!res.body) return
+    const decoder = new TextDecoder()
+    let buffer = ''
+    try {
+      for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+        buffer += decoder.decode(chunk, { stream: true })
+        let newline = buffer.indexOf('\n')
+        while (newline >= 0) {
+          const line = buffer.slice(0, newline).trim()
+          buffer = buffer.slice(newline + 1)
+          newline = buffer.indexOf('\n')
+          // Lichess sends an empty line every few seconds to keep the connection open.
+          if (!line) continue
+          const event = parseBoardEvent(line)
+          if (event) yield event
+        }
+      }
+    } catch (err) {
+      if (signal.aborted) return
+      throw new LichessError('unavailable', `the stream of ${path} broke off: ${(err as Error).message}`)
+    }
+  }
+
+  async move(accessToken: string, gameId: string, uci: string): Promise<void> {
+    await this.call('POST', `/api/board/game/${encodeURIComponent(gameId)}/move/${encodeURIComponent(uci)}`, { token: accessToken })
+  }
+
+  async draw(accessToken: string, gameId: string, answer: 'yes' | 'no'): Promise<void> {
+    await this.call('POST', `/api/board/game/${encodeURIComponent(gameId)}/draw/${answer}`, { token: accessToken })
+  }
+
+  async resign(accessToken: string, gameId: string): Promise<void> {
+    await this.call('POST', `/api/board/game/${encodeURIComponent(gameId)}/resign`, { token: accessToken })
+  }
+
+  async abort(accessToken: string, gameId: string): Promise<void> {
+    await this.call('POST', `/api/board/game/${encodeURIComponent(gameId)}/abort`, { token: accessToken })
+  }
+
+  /** Turns an answer that is not a success into a LichessError. */
+  private check(res: Response, path: string) {
+    if (res.status === 401 || res.status === 403) throw new LichessError('unauthorized', `Lichess refused the token for ${path}`)
+    if (res.status === 429) throw new LichessError('rate_limited', 'Lichess asked us to slow down', RATE_LIMIT_WAIT_MS)
+    if (res.status >= 500) throw new LichessError('unavailable', `Lichess answered ${res.status} for ${path}`)
+    if (!res.ok) throw new LichessError('rejected', `Lichess said no (${res.status}) to ${path}`)
+  }
+
   private async call(
     method: string,
     path: string,
@@ -163,10 +256,7 @@ export class HttpLichess implements LichessApi {
       // The path only; never the token or the code.
       throw new LichessError('unavailable', `Lichess did not answer ${method} ${path}`)
     }
-    if (res.status === 401 || res.status === 403) throw new LichessError('unauthorized', `Lichess refused the token for ${path}`)
-    if (res.status === 429) throw new LichessError('rate_limited', 'Lichess asked us to slow down', RATE_LIMIT_WAIT_MS)
-    if (res.status >= 500) throw new LichessError('unavailable', `Lichess answered ${res.status} for ${path}`)
-    if (!res.ok) throw new LichessError('rejected', `Lichess said no (${res.status}) to ${path}`)
+    this.check(res, path)
     if (res.status === 204) return null
     const raw = await res.text()
     if (!raw) return null
@@ -176,4 +266,35 @@ export class HttpLichess implements LichessApi {
       throw new LichessError('unavailable', `Lichess sent something that is not JSON for ${path}`)
     }
   }
+}
+
+/** One line of the Board API stream, or null for one this code does not use (chat, opponentGone). */
+export function parseBoardEvent(line: string): BoardEvent | null {
+  let raw: { type?: string; state?: Partial<BoardState> } & Partial<BoardState>
+  try {
+    raw = JSON.parse(line)
+  } catch {
+    return null
+  }
+  const state = (s: Partial<BoardState> | undefined): BoardState | null =>
+    s && typeof s.moves === 'string' && typeof s.status === 'string'
+      ? {
+          moves: s.moves,
+          status: s.status,
+          ...(typeof s.wtime === 'number' ? { wtime: s.wtime } : {}),
+          ...(typeof s.btime === 'number' ? { btime: s.btime } : {}),
+          ...(s.winner === 'white' || s.winner === 'black' ? { winner: s.winner } : {}),
+          wdraw: Boolean(s.wdraw),
+          bdraw: Boolean(s.bdraw),
+        }
+      : null
+  if (raw.type === 'gameFull') {
+    const s = state(raw.state)
+    return s ? { type: 'gameFull', state: s } : null
+  }
+  if (raw.type === 'gameState') {
+    const s = state(raw)
+    return s ? { type: 'gameState', ...s } : null
+  }
+  return null
 }

@@ -1,6 +1,6 @@
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, randomBytes, randomInt } from 'node:crypto'
 import { chessChallenges, type Db, lichessAccounts, lichessLinkAttempts, members } from '@heynaija/db'
-import { Inject, Injectable, Logger } from '@nestjs/common'
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, eq, isNull, lt, or, sql } from 'drizzle-orm'
 import type { Env } from '../../env.js'
 import { FeatureFlags } from '../../flags/feature-flags.js'
@@ -11,10 +11,9 @@ import { DB, ENV } from '../../tokens.js'
 import type { TokenBox } from '../core/token-box.js'
 import { type ChallengeRequest, LichessError, type LichessApi, type Ratings, USERS_MAX } from './lichess.js'
 import { describeTime, TIME_CONTROLS, timeControlById } from './time-controls.js'
+import { type AcceptedChallenge, ChessError, GAME_STARTER, type GameStarter, LICHESS, TOKEN_BOX } from './chess-tokens.js'
 
-export const LICHESS = Symbol('LICHESS')
-/** The TokenBox for GAMES_TOKEN_KEY, or null when no key is set and linking is not available. */
-export const TOKEN_BOX = Symbol('TOKEN_BOX')
+export { ChessError, type ChessErrorCode, LICHESS, TOKEN_BOX } from './chess-tokens.js'
 
 /** How long a linking step may take, from leaving for Lichess to coming back. */
 export const LINK_ATTEMPT_MS = 10 * 60_000
@@ -24,30 +23,6 @@ export const CHALLENGE_WAIT_MS = { clock: 24 * 3600_000, correspondence: 7 * 24 
 export const RATINGS_STALE_MS = 6 * 3600_000
 /** How far back "recent" challenges go on the chess page. */
 const RECENT_MAX = 10
-
-export type ChessErrorCode =
-  | 'not_available'
-  | 'not_linked'
-  | 'opponent_not_linked'
-  | 'not_found'
-  | 'invalid'
-  | 'self'
-  | 'duplicate'
-  | 'link_expired'
-  | 'already_linked'
-  | 'reconnect'
-  | 'lichess_busy'
-  | 'lichess_unavailable'
-  | 'lichess_rejected'
-
-export class ChessError extends Error {
-  constructor(
-    readonly code: ChessErrorCode,
-    message: string,
-  ) {
-    super(message)
-  }
-}
 
 type Person = { handle: string; displayName: string | null; avatar: string | null }
 export type ChallengeStatus = 'pending' | 'accepted' | 'declined' | 'cancelled' | 'failed' | 'expired'
@@ -65,8 +40,12 @@ export type ChallengeView = {
   status: ChallengeStatus
   createdAt: Date
   expiresAt: Date
-  /** Once accepted: where the game is played. */
+  /** Once accepted: the game's page on lichess.org. */
   gameUrl: string | null
+  /** Once accepted: the game's id, for its page here (/games/chess/games/<id>). */
+  gameId: string | null
+  /** Whether The Arbiter opens a public thread in Chess Arena when the game starts. */
+  openThread: boolean
 }
 
 export type LinkedAccount = { username: string; ratings: Ratings; ratingsRefreshedAt: Date | null; linkedAt: Date; url: string }
@@ -90,6 +69,7 @@ export class ChessService {
     @Inject(LICHESS) private readonly lichess: LichessApi,
     @Inject(TOKEN_BOX) private readonly box: TokenBox | null,
     @Inject(FeatureFlags) private readonly flags: Pick<FeatureFlags, 'isEnabled'>,
+    @Optional() @Inject(GAME_STARTER) private readonly starter?: GameStarter,
   ) {}
 
   /** Lichess knows HeyNaija by its address: heynaija.ng in production. */
@@ -308,7 +288,7 @@ export class ChessService {
   /** Challenges `handle`. Both must have linked Lichess and have Games; neither may block the other. */
   async challenge(
     memberId: string,
-    input: { handle: string; rated: boolean; timeControl: string; color: 'random' | 'white' | 'black' },
+    input: { handle: string; rated: boolean; timeControl: string; color: 'random' | 'white' | 'black'; openThread?: boolean },
     now = new Date(),
   ): Promise<ChallengeView> {
     const tc = timeControlById(input.timeControl)
@@ -340,7 +320,7 @@ export class ChessService {
         .where(and(eq(chessChallenges.challengerId, memberId), eq(chessChallenges.challengedId, target.id), eq(chessChallenges.status, 'pending'), lt(chessChallenges.expiresAt, now)))
       const [made] = await tx
         .insert(chessChallenges)
-        .values({ challengerId: memberId, challengedId: target.id, rated: input.rated, color: input.color, ...time, createdAt: now, expiresAt: new Date(now.getTime() + wait) })
+        .values({ challengerId: memberId, challengedId: target.id, rated: input.rated, color: input.color, openThread: input.openThread ?? true, ...time, createdAt: now, expiresAt: new Date(now.getTime() + wait) })
         .onConflictDoNothing()
         .returning({ id: chessChallenges.id })
       if (!made) throw new ChessError('duplicate', 'You have already challenged them; wait for their answer.')
@@ -357,6 +337,7 @@ export class ChessService {
    */
   async accept(memberId: string, challengeId: string, now = new Date()): Promise<ChallengeView> {
     const box = this.sealer()
+    const out: { started?: { challenge: AcceptedChallenge; gameId: string; color: 'white' | 'black' } } = {}
     await this.db.transaction(async (tx) => {
       const [c] = await tx.select().from(chessChallenges).where(eq(chessChallenges.id, challengeId)).for('update')
       if (!c || c.challengedId !== memberId) throw new ChessError('not_found', 'That challenge is not there any more.')
@@ -370,8 +351,10 @@ export class ChessService {
         await tx.update(chessChallenges).set({ status: 'failed', respondedAt: now }).where(eq(chessChallenges.id, c.id))
         return
       }
+      // "Either colour" is settled here, so HeyNaija knows who is white before Lichess says.
+      const color: 'white' | 'black' = c.color === 'random' ? (randomInt(2) ? 'white' : 'black') : c.color
       const request: ChallengeRequest =
-        c.days != null ? { rated: c.rated, color: c.color, days: c.days } : { rated: c.rated, color: c.color, clockLimit: c.clockLimit!, clockIncrement: c.clockIncrement! }
+        c.days != null ? { rated: c.rated, color, days: c.days } : { rated: c.rated, color, clockLimit: c.clockLimit!, clockIncrement: c.clockIncrement! }
       let gameId: string
       try {
         ;({ id: gameId } = await this.lichess.createChallenge(box.open(theirs.tokenBox, theirs.memberId), mine.username, request))
@@ -393,7 +376,10 @@ export class ChessService {
         throw this.translate(err)
       }
       await tx.update(chessChallenges).set({ status: 'accepted', lichessGameId: gameId, respondedAt: now }).where(eq(chessChallenges.id, c.id))
+      out.started = { challenge: c, gameId, color }
     })
+    // Once the acceptance is saved: the game here, its watcher, and the challenger told.
+    if (out.started && this.starter) await this.starter.begin(out.started.challenge, out.started.gameId, out.started.color)
     const [view] = await this.challengesOf(memberId, now, challengeId)
     if (view?.status === 'failed') throw new ChessError('lichess_rejected', 'Their Lichess link no longer works, so this game cannot be made. They can link again and challenge you anew.')
     return view!
@@ -467,12 +453,13 @@ export class ChessService {
       lichess_game_id: string | null
       created_at: Date
       expires_at: Date
+      open_thread: boolean
       handle: string
       display_name: string | null
       avatar_media_id: string | null
     }>(sql`
       select c.id, c.challenger_id, c.rated, c.clock_limit, c.clock_increment, c.days, c.color, c.status,
-        c.lichess_game_id, c.created_at, c.expires_at, o.handle, o.display_name, o.avatar_media_id
+        c.lichess_game_id, c.created_at, c.expires_at, c.open_thread, o.handle, o.display_name, o.avatar_media_id
       from games.chess_challenges c
       join members o on o.id = case when c.challenger_id = ${memberId} then c.challenged_id else c.challenger_id end
       where (c.challenger_id = ${memberId} or c.challenged_id = ${memberId})
@@ -497,6 +484,8 @@ export class ChessService {
         createdAt: new Date(r.created_at),
         expiresAt: new Date(r.expires_at),
         gameUrl: r.lichess_game_id ? this.gameUrl(r.lichess_game_id) : null,
+        gameId: r.lichess_game_id,
+        openThread: r.open_thread,
       }
     })
   }

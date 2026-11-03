@@ -41,7 +41,7 @@ import { describeTime } from '../games/chess/time-controls.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/13'
+export const EXPORT_FORMAT = 'heynaija-export/14'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -341,7 +341,7 @@ export class ExportService {
   }
 
   private async games(memberId: string) {
-    const [profiles, scores, entries, [lichess], challenges] = await Promise.all([
+    const [profiles, scores, entries, [lichess], challenges, played] = await Promise.all([
       this.db
         .select({ game: gameProfiles.game, stats: gameProfiles.stats, since: gameProfiles.createdAt, updatedAt: gameProfiles.updatedAt })
         .from(gameProfiles)
@@ -389,6 +389,26 @@ export class ExportService {
         join members o on o.id = case when c.challenger_id = ${memberId} then c.challenged_id else c.challenger_id end
         where c.challenger_id = ${memberId} or c.challenged_id = ${memberId}
         order by c.created_at`),
+      this.db.execute<{
+        id: string
+        white: boolean
+        opponent: string
+        rated: boolean
+        clock_limit: number | null
+        clock_increment: number | null
+        days: number | null
+        status: string
+        winner: string | null
+        moves: string
+        started_at: Date
+        finished_at: Date | null
+      }>(sql`
+        select g.id, g.white_id = ${memberId} as white, o.handle as opponent, g.rated, g.clock_limit, g.clock_increment, g.days,
+          g.status, g.winner, g.moves, g.started_at, g.finished_at
+        from games.chess_games g
+        join members o on o.id = case when g.white_id = ${memberId} then g.black_id else g.white_id end
+        where g.white_id = ${memberId} or g.black_id = ${memberId}
+        order by g.started_at`),
     ])
     return {
       profiles,
@@ -406,6 +426,19 @@ export class ExportService {
         lichessGameId: c.lichess_game_id,
         at: new Date(c.created_at),
         answeredAt: c.responded_at ? new Date(c.responded_at) : null,
+      })),
+      // Chess games you played here, with every move (UCI) and how each ended.
+      chessGames: played.rows.map((g) => ({
+        lichessGameId: g.id,
+        colour: g.white ? 'white' : 'black',
+        opponent: g.opponent,
+        rated: g.rated,
+        time: describeTime({ clockLimit: g.clock_limit, clockIncrement: g.clock_increment, days: g.days }).label,
+        status: g.status,
+        result: g.finished_at ? (g.winner ? (g.winner === (g.white ? 'white' : 'black') ? 'won' : 'lost') : 'no winner') : 'in progress',
+        moves: g.moves ? g.moves.split(' ') : [],
+        startedAt: new Date(g.started_at),
+        finishedAt: g.finished_at ? new Date(g.finished_at) : null,
       })),
     }
   }

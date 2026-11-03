@@ -1527,7 +1527,8 @@ a.notification-row:hover {
 .notification-icon.is-quote,
 .notification-icon.is-mention,
 .notification-icon.is-follow,
-.notification-icon.is-chess_challenge {
+.notification-icon.is-chess_challenge,
+.notification-icon.is-chess_game_started {
   color: var(--accent-strong);
 }
 .notification-dot {
@@ -2192,3 +2193,28 @@ a.result-row:hover { color: var(--accent-strong); }
 .chess-challenge:first-child { border-top: 0; }
 .chess-challenge-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-left: 48px; }
 @media (max-width: 419px) { .chess-challenge-actions { padding-left: 0; } }
+
+/* The chess board (docs/adr/0018, phase 3). Squares from the existing tokens, no new colours: light squares are the
+   inset fill, dark ones the accent mixed into it. The checker is drawn with hard stops, so it reads as squares, not a
+   gradient. As wide as the column, at most 560px, square. */
+.chess-game { display: flex; flex-direction: column; gap: 12px; }
+.chess-board-wrap { width: 100%; max-width: 560px; margin: 0 auto; }
+.chess-board { width: 100%; aspect-ratio: 1; --chess-dark: color-mix(in srgb, var(--accent) 38%, var(--panel)); }
+.chess-board cg-board {
+  background-color: var(--panel);
+  background-image: conic-gradient(var(--chess-dark) 25%, transparent 0 50%, var(--chess-dark) 0 75%, transparent 0);
+  background-size: 25% 25%;
+  border-radius: var(--r-control);
+}
+.chess-board cg-board square.last-move { background-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.chess-board cg-board square.selected { background-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.chess-board cg-board square.move-dest { background: radial-gradient(color-mix(in srgb, var(--accent) 55%, transparent) 22%, transparent 23%); }
+.chess-board cg-board square.oc.move-dest { background: none; box-shadow: inset 0 0 0 4px color-mix(in srgb, var(--accent) 55%, transparent); }
+.chess-board cg-board square.check { background: color-mix(in srgb, var(--danger) 45%, transparent); }
+.chess-board coords { color: var(--muted); font-size: 10px; }
+.chess-player { display: flex; align-items: center; gap: 10px; border-radius: var(--r-control); padding: 6px 8px; }
+.chess-player.is-turn { background: var(--panel); }
+.chess-clock { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 16px; }
+.chess-player.is-turn .chess-clock { color: var(--accent-strong); }
+.chess-status { font-weight: 600; }
+.chess-moves { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px; font-variant-numeric: tabular-nums; }

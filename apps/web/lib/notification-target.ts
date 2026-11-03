@@ -1,7 +1,7 @@
 import type { Notification } from './api'
 
 /** Open the actual item, including its position in a conversation. */
-export function notificationTarget(n: Pick<Notification, 'kind' | 'post' | 'actor' | 'community' | 'challenge'>): string | null {
+export function notificationTarget(n: Pick<Notification, 'kind' | 'post' | 'actor' | 'community' | 'challenge' | 'game'>): string | null {
   switch (n.kind) {
     case 'reply':
     case 'like':
@@ -22,6 +22,8 @@ export function notificationTarget(n: Pick<Notification, 'kind' | 'post' | 'acto
       return n.community ? `/c/${n.community.slug}` : null
     case 'chess_challenge':
       return n.challenge ? `/games/chess#challenge-${n.challenge.id}` : '/games/chess'
+    case 'chess_game_started':
+      return n.game ? `/games/chess/games/${n.game.id}` : '/games/chess'
     default:
       return null
   }

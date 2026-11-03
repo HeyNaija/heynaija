@@ -539,6 +539,8 @@ export const NOTIFICATION_KINDS = [
   'idea_status',
   // Another member challenged you to a chess game (docs/adr/0018); challenge_id is the challenge.
   'chess_challenge',
+  // Your chess challenge was accepted and the game has begun; game_id is the game.
+  'chess_game_started',
 ] as const
 
 // Something that happened to a member: a reply, like, repost, quote, mention or follow by
@@ -567,6 +569,8 @@ export const notifications = pgTable(
     detail: text('detail'),
     // chess_challenge: the challenge. Goes with it when it is deleted.
     challengeId: uuid('challenge_id').references((): AnyPgColumn => chessChallenges.id, { onDelete: 'cascade' }),
+    // chess_game_started: the game. Goes with it when it is deleted.
+    gameId: text('game_id').references((): AnyPgColumn => chessGames.id, { onDelete: 'cascade' }),
     createdAt: ts('created_at').notNull().defaultNow(),
     readAt: ts('read_at'),
     // Null until the email side has dealt with it: sent in a digest, or passed
@@ -616,6 +620,9 @@ export const notifications = pgTable(
     uniqueIndex('notifications_challenge_once_idx')
       .on(t.challengeId)
       .where(sql`kind = 'chess_challenge'`),
+    uniqueIndex('notifications_game_started_once_idx')
+      .on(t.gameId)
+      .where(sql`kind = 'chess_game_started'`),
   ],
 )
 
@@ -630,6 +637,7 @@ export const OPTIONAL_NOTIFICATION_KINDS = [
   'mention',
   'follow',
   'chess_challenge',
+  'chess_game_started',
 ] as const satisfies readonly (typeof NOTIFICATION_KINDS)[number][]
 
 // A kind of notification a member has turned off. Everything is on until they
@@ -864,7 +872,8 @@ export const governanceAuditLog = restricted.table(
 
 // The green identity tick, and Founder: one of the people who founded HeyNaija,
 // given by hand with `pnpm founder:grant` and kept for good (it says nothing about identity).
-export const PROFILE_BADGES = ['nin_identity_verified', 'founder'] as const
+// Automated: an account run by HeyNaija itself, not a person (The Arbiter, docs/adr/0018).
+export const PROFILE_BADGES = ['nin_identity_verified', 'founder', 'automated'] as const
 
 // Badges shown on public profiles and next to authors' names. A tick row exists
 // only while the tick may be shown and its owner chose to show it; the API also
@@ -1341,6 +1350,8 @@ export const chessChallenges = gamesSchema.table(
     clockIncrement: integer('clock_increment'),
     days: integer('days'),
     color: text('color', { enum: CHESS_COLORS }).notNull().default('random'),
+    // Whether The Arbiter opens a public thread in Chess Arena when the game starts.
+    openThread: boolean('open_thread').notNull().default(true),
     status: text('status', { enum: CHESS_CHALLENGE_STATUSES }).notNull().default('pending'),
     lichessGameId: text('lichess_game_id'),
     createdAt: ts('created_at').notNull().defaultNow(),
@@ -1361,5 +1372,54 @@ export const chessChallenges = gamesSchema.table(
       sql.raw('(clock_limit is not null and clock_increment is not null and days is null) or (clock_limit is null and clock_increment is null and days is not null)'),
     ),
     check('chess_challenges_self_check', sql.raw('challenger_id <> challenged_id')),
+  ],
+)
+
+// A game made from an accepted challenge, as Lichess last told us (phase 3). Lichess
+// is the source of truth; GameWatcher keeps this row up to date from the Board API
+// stream, and `version` goes up by one on every change, which is what the page
+// asks after. Unfinished while `finished_at` is null.
+export const chessGames = gamesSchema.table(
+  'chess_games',
+  {
+    // Lichess's game id.
+    id: text('id').primaryKey(),
+    challengeId: uuid('challenge_id').references(() => chessChallenges.id, { onDelete: 'set null' }),
+    whiteId: uuid('white_id')
+      .notNull()
+      .references(() => members.id),
+    blackId: uuid('black_id')
+      .notNull()
+      .references(() => members.id),
+    rated: boolean('rated').notNull(),
+    clockLimit: integer('clock_limit'),
+    clockIncrement: integer('clock_increment'),
+    days: integer('days'),
+    // 'created' or 'started' while it runs; then Lichess's word for how it ended (mate, resign, draw, ...).
+    status: text('status').notNull().default('created'),
+    winner: text('winner', { enum: ['white', 'black'] }),
+    // Every move so far, in UCI, separated by spaces.
+    moves: text('moves').notNull().default(''),
+    // Milliseconds left on each clock when `clock_at` was read.
+    whiteMs: integer('white_ms'),
+    blackMs: integer('black_ms'),
+    clockAt: ts('clock_at'),
+    // Who has offered a draw that is still open.
+    drawOffer: text('draw_offer', { enum: ['white', 'black'] }),
+    version: integer('version').notNull().default(0),
+    startedAt: ts('started_at').notNull().defaultNow(),
+    finishedAt: ts('finished_at'),
+    // The Arbiter's thread in Chess Arena, and its reply with the result.
+    threadPostId: uuid('thread_post_id').references(() => posts.id, { onDelete: 'set null' }),
+    resultPostId: uuid('result_post_id').references(() => posts.id, { onDelete: 'set null' }),
+    // Both players' ratings for this speed once it ended: { white: { before, after }, black: ... }.
+    ratingsAfter: jsonb('ratings_after').$type<Record<string, { before: number | null; after: number | null }>>(),
+  },
+  (t) => [
+    index('chess_games_white_idx').on(t.whiteId, t.finishedAt),
+    index('chess_games_black_idx').on(t.blackId, t.finishedAt),
+    index('chess_games_live_idx').on(t.startedAt).where(sql`finished_at is null`),
+    uniqueIndex('chess_games_thread_idx').on(t.threadPostId),
+    check('chess_games_players_check', sql.raw('white_id <> black_id')),
   ],
 )

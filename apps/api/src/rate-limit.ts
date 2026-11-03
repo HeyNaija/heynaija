@@ -51,6 +51,8 @@ export const LIMITS = {
   lichessLink: [{ max: 10, windowMs: HOUR }],
   lichessRefresh: [{ max: 6, windowMs: HOUR }],
   chessChallenge: [{ max: 20, windowMs: HOUR }],
+  // Moves, draw offers and resignations in a game (docs/adr/0018, phase 3).
+  chessMove: [{ max: 120, windowMs: MINUTE }],
 } satisfies Record<string, { max: number; windowMs: number }[]>
 
 export type LimitKind = keyof typeof LIMITS

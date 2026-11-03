@@ -46,6 +46,12 @@ export async function cleanTestData(log = (_: string) => {}) {
       await client.query('begin')
       await client.query(`create temp table e2e_m on commit drop as select unnest($1::uuid[]) as id`, [ids])
       await client.query(`create temp table e2e_p on commit drop as select id from posts where author_id in (select id from e2e_m)`)
+      // The Arbiter's threads and results for test members' games (docs/adr/0018), and every reply under them.
+      await client.query(`insert into e2e_p select p.id from posts p where (p.id in (select thread_post_id from games.chess_games
+           where white_id in (select id from e2e_m) or black_id in (select id from e2e_m))
+         or p.root_id in (select thread_post_id from games.chess_games
+           where white_id in (select id from e2e_m) or black_id in (select id from e2e_m)))
+         and p.id not in (select id from e2e_p)`)
       await client.query(`create temp table e2e_g on commit drop as select id from gists where host_id in (select id from e2e_m)`)
       const steps: [string, string][] = [
         ['notifications', `delete from notifications where recipient_id in (select id from e2e_m) or actor_id in (select id from e2e_m)
@@ -80,6 +86,7 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['gist removals', `update gist_members set removed_by = null where removed_by in (select id from e2e_m)`],
         ['gists', `delete from gists where id in (select id from e2e_g)`],
         // Chess (docs/adr/0018): challenges (their notifications cascade) and Lichess accounts.
+        ['chess games', `delete from games.chess_games where white_id in (select id from e2e_m) or black_id in (select id from e2e_m)`],
         ['chess challenges', `delete from games.chess_challenges where challenger_id in (select id from e2e_m) or challenged_id in (select id from e2e_m)`],
         ['lichess linking', `delete from games.lichess_link_attempts where member_id in (select id from e2e_m)`],
         ['lichess accounts', `delete from games.lichess_accounts where member_id in (select id from e2e_m)`],

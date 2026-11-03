@@ -6,6 +6,7 @@ import {
   bookmarks,
   communities,
   chessChallenges,
+  chessGames,
   communityMemberships,
   competitionEntries,
   competitions,
@@ -876,6 +877,8 @@ test('Chess: their Lichess account, any linking under way and every challenge th
     .returning({ id: chessChallenges.id })
   await db.insert(chessChallenges).values({ challengerId: yemi, challengedId: zara, rated: false, days: 3, expiresAt: days(7) })
   await db.insert(notifications).values({ recipientId: yemi, kind: 'chess_challenge', actorId: xena, challengeId: theirs!.id })
+  await db.insert(chessGames).values({ id: 'gm000001', whiteId: xena, blackId: yemi, rated: true, clockLimit: 600, clockIncrement: 5, challengeId: theirs!.id })
+  await db.insert(notifications).values({ recipientId: xena, kind: 'chess_game_started', actorId: yemi, gameId: 'gm000001' })
 
   await deletion.request(xena, { channel: 'self_service' }, now)
   await deletion.erase(xena, days(14))
@@ -886,4 +889,5 @@ test('Chess: their Lichess account, any linking under way and every challenge th
   assert.equal(await count(chessChallenges, eq(chessChallenges.challengerId, xena)), 0)
   assert.equal(await count(chessChallenges, eq(chessChallenges.challengerId, yemi)), 1, 'other members’ challenges stay')
   assert.equal(await count(notifications, eq(notifications.kind, 'chess_challenge')), 0)
+  assert.equal(await count(chessGames, eq(chessGames.whiteId, xena)), 0, 'their games go too')
 })

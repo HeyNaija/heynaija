@@ -35,6 +35,9 @@ function ChallengeRow({ challenge: c, now }: { challenge: ChessChallenge; now: n
             {c.sent ? '' : ' challenged you'}
           </p>
           <p className="text-[13px] text-muted">{game}</p>
+          {c.status === 'pending' && c.openThread ? (
+            <p className="text-[13px] text-muted">This game will get a public thread in Chess Arena.</p>
+          ) : null}
           <p className="mt-0.5 text-xs text-muted">
             {c.status === 'pending' ? (
               <>
@@ -66,11 +69,16 @@ function ChallengeRow({ challenge: c, now }: { challenge: ChessChallenge; now: n
             </>
           )}
         </form>
-      ) : c.gameUrl ? (
+      ) : c.gameId ? (
         <div className="chess-challenge-actions">
-          <a href={c.gameUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm">
-            Open on lichess.org
-          </a>
+          <Link href={`/games/chess/games/${c.gameId}`} className="btn btn-primary btn-sm">
+            Open the game
+          </Link>
+          {c.gameUrl ? (
+            <a href={c.gameUrl} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">
+              On lichess.org
+            </a>
+          ) : null}
         </div>
       ) : null}
     </li>

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { CHESS_ARENA } from '@/lib/chess-arena'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { Composer } from '@/app/ui/composer'
@@ -99,7 +100,10 @@ async function CommunityView({ params, searchParams }: Props) {
         ) : null}
       </header>
 
-      {viewer.state === 'member' && community.viewerIsMember ? (
+      {community.slug === CHESS_ARENA ? (
+        // Chess Arena (docs/adr/0018): The Arbiter starts one thread per game; members reply in them.
+        <p className="notice">Threads here are started by The Arbiter, one for each game played on HeyNaija. Reply in one to join the talk.</p>
+      ) : viewer.state === 'member' && community.viewerIsMember ? (
         <Composer
           handle={viewer.me.handle}
           avatar={viewer.me.avatar}

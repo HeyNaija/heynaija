@@ -259,7 +259,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Download your own profile, posts, social choices and account-status records as JSON.
 - **Inspected evidence:** `apps/api/src/export/export.service.ts`, `apps/api/src/export/export.controller.ts`, `apps/web/app/(main)/settings/export/route.ts`, `apps/api/src/export/export.service.test.ts`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** Format 13: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, since format 11 reply boundaries, polls you created and your public poll ballots, since format 12 a games section (stats, season scores, competition entries), and since format 13 the linked Lichess account (never its token) and chess challenges; restricted person keys and reports about someone stay excluded.
+- **Audit notes:** Format 14: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, since format 11 reply boundaries, polls you created and your public poll ballots, since format 12 a games section (stats, season scores, competition entries), since format 13 the linked Lichess account (never its token) and chess challenges, and since format 14 the chess games played; restricted person keys and reports about someone stay excluded.
 
 #### Account deletion and privacy requests
 
@@ -758,10 +758,10 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `games-chess`
 - **Priority:** P2 · **Status:** Partial · **Availability:** Not live
 - **Description:** Link your Lichess account, challenge other members, play and watch games inside HeyNaija, and share results as posts.
-- **Remaining work / caveat:** Linking, ratings and challenges are built (phase 2); an accepted game is played on lichess.org until playing inside HeyNaija is built. Behind the games flag; connecting needs GAMES_TOKEN_KEY.
+- **Remaining work / caveat:** Linking, ratings, challenges, playing and watching inside HeyNaija, Chess Arena and result posts are built (phases 2 and 3). Community tournaments are not. Behind the games flag; connecting needs GAMES_TOKEN_KEY.
 - **Dependencies:** `games-core`
-- **Inspected evidence:** `apps/api/src/games/chess/chess.service.ts`, `apps/api/src/games/chess/chess.controller.ts`, `apps/api/src/games/chess/lichess.ts`, `packages/db/drizzle/0036_chess_linking.sql`, `apps/web/app/(main)/games/chess/page.tsx`, `apps/api/src/games/chess/chess.service.test.ts`, `apps/api/src/games/chess/lichess.test.ts`, `e2e/tests/chess.spec.ts`, `docs/adr/0018-games.md`
-- **Audit notes:** Phase 2 built 3 Nov 2026 (ADR 0018): connect a Lichess account (OAuth with PKCE, token sealed at rest), Lichess ratings on the chess page and profiles, and challenges between members who have both connected, notified in the app, by email and by push. Lichess runs the games, ratings and fair-play checks. Still to come: playing and watching inside HeyNaija, result posts, community tournaments.
+- **Inspected evidence:** `apps/api/src/games/chess/chess.service.ts`, `apps/api/src/games/chess/chess.controller.ts`, `apps/api/src/games/chess/lichess.ts`, `packages/db/drizzle/0036_chess_linking.sql`, `apps/web/app/(main)/games/chess/page.tsx`, `apps/api/src/games/chess/chess.service.test.ts`, `apps/api/src/games/chess/lichess.test.ts`, `e2e/tests/chess.spec.ts`, `docs/adr/0018-games.md`, `apps/api/src/games/chess/chess-games.service.ts`, `apps/api/src/games/chess/game-watcher.ts`, `packages/db/drizzle/0037_chess_play.sql`, `apps/web/app/(main)/games/chess/games/[id]/page.tsx`, `apps/api/src/games/chess/chess-games.service.test.ts`
+- **Audit notes:** Phase 2 built 3 Nov 2026: connect Lichess, ratings, challenges. Phase 3 built 3 Nov 2026: play and watch inside HeyNaija through the Lichess Board API (the browser long-polls; one watcher per game), Chess Arena threads by The Arbiter (an automated account) with spectators’ replies hidden from the players until the end, and the result posted there. Lichess runs the games, ratings and fair play. Still to come: community tournaments.
 
 #### Keno (free to play)
 

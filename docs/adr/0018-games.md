@@ -188,18 +188,89 @@ API can make the game at the moment both have said yes.
   challenge, and disappears once the challenge is settled or runs out, so it is
   never emailed or pushed late.
 
+## Phase 3: playing and watching here, Chess Arena and results (3 November 2026)
+
+Owner's choices before it started: game threads grouped in a community of their
+own, **Chess Arena**, looked after by an automated account, **The Arbiter
+(`@arbiter`)**; a thread only when the challenger asks (a box, ticked by default);
+the result as The Arbiter's reply in that thread; live games listed on the chess
+page and shown on profiles.
+
+### Live games without a stream to the browser
+
+Nothing in HeyNaija streamed to the browser, and in deployment it would not get
+through unchanged: nginx buffers responses and closes one with nothing sent for 60
+seconds, and the web app compresses what it passes on. So the browser **long-polls**:
+`GET /v1/games/chess/games/:id?after=<version>` answers at once if the game has
+changed since that version, and otherwise waits up to 25 seconds for the next
+change. One plain answer at a time; nginx, Cloudflare and the web app need nothing
+new.
+
+The streaming happens between servers. For each game being played, one BullMQ job
+(`GameWatcher`, with the game's id as the job id, so one per game however many API
+processes there are) holds the Board API stream open with a player's token, keeps
+`games.chess_games` up to date and raises `version`, and sends
+`pg_notify('chess_game', id)`. Each API process keeps one `LISTEN` connection
+(`GameEvents`) and wakes its waiting requests. A dropped stream is opened again,
+backing off; when the API starts it picks up every unfinished game.
+
+Players move, offer, accept or decline draws, resign and abort with their own
+token (`/move`, `/draw`, `/resign`, `/abort`); Lichess decides what is legal and the
+board goes back if it says no. "Either colour" is settled before the game is made
+on Lichess, so HeyNaija knows who is white. The board is chessground and chessops,
+loaded only on a game page (`import()`), as the Gists audio library is; they are
+GPL-3.0-or-later and named on `/licence`. The board's squares use the existing
+tokens. A challenger is told when their game starts (`chess_game_started`, in the
+app, by email and by push, under the same Settings box as challenges).
+
+### The Arbiter, HeyNaija's first automated account
+
+Every post has a member as its author, and there is no system account. Posting a
+game's thread in a player's name would have them say something they did not
+write; a person moderating Chess Arena is not needed yet. So HeyNaija has its first
+automated account: The Arbiter. It is a member row with a fixed id, made when the
+API starts (`ensureArena`) together with Chess Arena and its place as Chess Arena's
+moderator. It has no sign-in: nothing in Kratos, so nobody can sign in to it, and
+its handle is reserved (`RESERVED_HANDLES`), so nobody can take it. It carries an
+`automated` badge, shown as "Automated" beside its name on posts and "Automated
+account" on its profile, and is notified of nothing. If someone already had
+`@arbiter`, it takes `@arbiter_hn` and leaves theirs alone.
+
+In Chess Arena only The Arbiter starts posts; members reply, without joining. The
+Arbiter never takes moderation actions: reports about Chess Arena reach the site
+moderators, who already cover every community, until a person is appointed.
+
+### Spectators' replies hidden from the players
+
+While a game is on, replies in its thread by anyone but the two players are
+hidden from the two players: one predicate (`hiddenFromPlayer`) in the query every
+post goes through for display, in thread replies, in reply previews and quotes,
+and in reply and mention notifications, which wait until the game ends rather than
+being lost. Once it ends, everything shows. The page says plainly it is a courtesy,
+not anti-cheat: anyone can watch on lichess.org. Known limit: a post's reply count
+includes the hidden replies, so the players can see that people are talking, not
+what they say.
+
+### When a game ends
+
+The watcher sees Lichess's final status and, once: marks the game finished, reads
+both players' new ratings, writes a `chess_game_finished` event per player (what
+phase 5 will score) and the all-time tallies in `game_profiles`, and has The Arbiter
+reply in the thread with the result and the rating changes.
+
 ## Data export and account deletion
 
-- The export is `heynaija-export/13`: a `games` section with the member's game
+- The export is `heynaija-export/14`: a `games` section with the member's game
   profiles, season scores and competition entries, the linked Lichess account
-  (username, when linked, ratings; never the token) and their chess challenges.
-  Keno tickets join it in their phase.
+  (username, when linked, ratings; never the token), their chess challenges and the
+  games they played, with every move. Keno tickets join it in their phase.
 - No member foreign key in `games` cascades (ADR 0016). Erasing an account
   deletes the member's game profiles, season scores, competition entries and game
   events; competitions a moderator created stay, pointing at the tombstone. A
   linked Lichess account's token is revoked at Lichess before the erase, and the
-  account, any linking under way and every challenge the member was in are
-  deleted (their notifications go with them).
+  account, any linking under way, every challenge and every game the member was in
+  are deleted (their notifications go with them). The Arbiter's threads and results
+  stay, as posts that name the tombstone.
 
 ## Known limitations
 
@@ -213,7 +284,11 @@ API can make the game at the moment both have said yes.
   once it is launched is decided then.
 - On staging every member sees Games unless a moderator limits the flag, by the
   flag policy. Connecting Lichess there needs `GAMES_TOKEN_KEY` in its `.env`.
-- Until phase 3 an accepted game is played on lichess.org, not inside HeyNaija.
+- Long correspondence games keep a stream open for days, and every game being
+  played holds one connection to Lichess from one API process; measure before
+  growth.
+- The board's move dots are drawn with a hard-stop circle; nothing else on the
+  board uses a gradient.
 - A challenge is not withdrawn when one member blocks the other; it is hidden from
   both and runs out.
 
@@ -221,8 +296,10 @@ API can make the game at the moment both have said yes.
 
 Revert the code. Then, before any real game data exists:
 `alter table notifications drop column challenge_id;`, put
-`notification_opt_outs_kind_check` back without `chess_challenge` (after deleting
-those rows), `drop schema games cascade;`, and delete the `0035_games_core` and
-`0036_chess_linking` entries from `drizzle.__drizzle_migrations` (and
-`packages/db/drizzle/meta/_journal.json`).
+`notification_opt_outs_kind_check` back without `chess_challenge` and
+`chess_game_started` (after deleting those rows), `alter table notifications drop
+column game_id;`, `drop schema games cascade;`, delete The Arbiter's posts and
+membership, Chess Arena and The Arbiter's member row, and delete the
+`0035_games_core`, `0036_chess_linking` and `0037_chess_play` entries from
+`drizzle.__drizzle_migrations` (and `packages/db/drizzle/meta/_journal.json`).
 Put `EXPORT_FORMAT` back only together with the code that reads the tables.

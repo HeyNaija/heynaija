@@ -131,13 +131,18 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
    one request at a time per member, and back off on 429. Use chessground and
    chessops (GPL-3, which can be combined with our AGPL licence). Lichess is the
    source of truth for legality and results.
-5. **Spectating:** a live board fed by Lichess's public game stream, plus a
-   discussion thread. Spectator replies are hidden from both players until the
-   game ends. The UI says this is courtesy, not anti-cheat, since anyone can
-   watch the game on lichess.org.
+5. **Spectating:** a live board, plus a discussion thread. Threads live in the
+   **Chess Arena** community and are started by **The Arbiter (`@arbiter`)**, an
+   automated account with no sign-in, when the challenger ticks "Open a public
+   thread". Only The Arbiter starts threads there; members reply. Spectator replies
+   are hidden from both players until the game ends. The UI says this is courtesy,
+   not anti-cheat, since anyone can watch the game on lichess.org. Live games are
+   listed on /games/chess and linked from profiles. The browser long-polls the API
+   (no stream to the browser); one watcher per game reads the Board API stream
+   (ADR 0018).
 6. **Results:** on game end, fetch the result and new ratings from Lichess, write
-   a game_event, award XP, and create a result post linked to the match
-   discussion.
+   a game_event (XP is awarded from these in phase 5), and The Arbiter replies in
+   the game's thread with the result.
 7. **Community tournaments:** existing HeyNaija communities can link to a Lichess
    team, enabling Arena and Swiss tournaments created through the API.
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { HttpLichess, LichessError, ratingsOf } from './lichess.js'
+import { HttpLichess, LichessError, parseBoardEvent, ratingsOf } from './lichess.js'
 
 type Call = { url: string; method: string; headers: Record<string, string>; body: string | undefined }
 
@@ -125,4 +125,68 @@ test('an error never carries the token or the code', async () => {
 test('a speed never played is left out', () => {
   assert.deepEqual(ratingsOf({ classical: { games: 0 } }), {})
   assert.deepEqual(ratingsOf(undefined), {})
+})
+
+/** A streamed answer made of `chunks`, as Lichess sends NDJSON a piece at a time. */
+const streamed = (chunks: string[], fail = false) =>
+  new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk))
+        if (fail) controller.error(new Error('connection reset'))
+        else controller.close()
+      },
+    }),
+    { status: 200, headers: { 'content-type': 'application/x-ndjson' } },
+  )
+
+test('a game’s stream is read line by line, across chunks, skipping keep-alive blank lines and chat', async () => {
+  const full = JSON.stringify({ type: 'gameFull', id: 'g', state: { type: 'gameState', moves: 'e2e4', wtime: 600000, btime: 600000, status: 'started' } })
+  const { client, calls } = fake(() =>
+    streamed([full.slice(0, 20), `${full.slice(20)}\n\n`, '{"type":"chatLine","text":"hi"}\n', '{"type":"gameState","moves":"e2e4 e7e5","wtime":599000,"btime":600000,"status":"started","bdraw":true}\n']),
+  )
+  const events = []
+  for await (const event of client.streamGame('tok', 'g', new AbortController().signal)) events.push(event)
+  assert.equal(calls[0]!.url, 'https://lichess.test/api/board/game/stream/g')
+  assert.equal(calls[0]!.headers.authorization, 'Bearer tok')
+  assert.deepEqual(events, [
+    { type: 'gameFull', state: { moves: 'e2e4', status: 'started', wtime: 600000, btime: 600000, wdraw: false, bdraw: false } },
+    { type: 'gameState', moves: 'e2e4 e7e5', status: 'started', wtime: 599000, btime: 600000, wdraw: false, bdraw: true },
+  ])
+})
+
+test('a stream that breaks off is an error the watcher can retry; a refused one is said plainly', async () => {
+  const broken = fake(() => streamed(['{"type":"gameState","moves":"","status":"started"}\n'], true)).client
+  await assert.rejects(
+    (async () => {
+      for await (const _ of broken.streamGame('t', 'g', new AbortController().signal)) void _
+    })(),
+    (err: LichessError) => err.kind === 'unavailable',
+  )
+  const refused = fake(() => json({}, 401)).client
+  await assert.rejects(
+    (async () => {
+      for await (const _ of refused.streamGame('t', 'g', new AbortController().signal)) void _
+    })(),
+    (err: LichessError) => err.kind === 'unauthorized',
+  )
+})
+
+test('moves, draws, resigning and aborting go to the Board API with the player’s token', async () => {
+  const { client, calls } = fake(() => json({ ok: true }))
+  await client.move('tok', 'g', 'e7e8q')
+  await client.draw('tok', 'g', 'yes')
+  await client.resign('tok', 'g')
+  await client.abort('tok', 'g')
+  assert.deepEqual(
+    calls.map((c) => `${c.method} ${c.url.replace('https://lichess.test', '')}`),
+    ['POST /api/board/game/g/move/e7e8q', 'POST /api/board/game/g/draw/yes', 'POST /api/board/game/g/resign', 'POST /api/board/game/g/abort'],
+  )
+  assert.ok(calls.every((c) => c.headers.authorization === 'Bearer tok'))
+})
+
+test('stream lines this code does not use, or cannot read, are left out', () => {
+  assert.equal(parseBoardEvent('not json'), null)
+  assert.equal(parseBoardEvent('{"type":"opponentGone","gone":true}'), null)
+  assert.equal(parseBoardEvent('{"type":"gameState"}'), null)
 })

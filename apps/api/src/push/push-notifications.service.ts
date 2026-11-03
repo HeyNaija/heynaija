@@ -268,6 +268,7 @@ export class PushNotificationsService {
       community: r.community_name,
       idea: r.idea_kind ? { status: r.detail, kind: r.idea_kind, yours: r.idea_yours } : null,
       challenge: challengeOf(r),
+      game: r.game_id ? { id: r.game_id } : null,
     }))
   }
 }

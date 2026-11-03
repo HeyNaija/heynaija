@@ -145,6 +145,8 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
       return { icon: <IdeaIcon size={18} />, text: <>{ideaNews(n.idea ?? { kind: 'idea', yours: false }, n.detail)}.</> }
     case 'chess_challenge':
       return { icon: <ChessIcon size={18} />, text: <>{who} challenged you to {n.challenge?.phrase ?? 'a game of chess'}.</> }
+    case 'chess_game_started':
+      return { icon: <ChessIcon size={18} />, text: <>{who} accepted your challenge. Your game has started.</> }
   }
 }
 
@@ -174,7 +176,7 @@ function NotificationRow({ notification: n, now }: { notification: Notification;
         )}
       </div>
       {n.post?.excerpt ? <p className="line-clamp-2 break-words text-[13px] leading-5 text-muted">{n.post.excerpt}</p> : null}
-      {href ? <span className="notification-destination">{n.kind === 'reply' ? 'View reply' : n.kind === 'quote' ? 'View quote' : n.kind === 'mention' ? 'View mention' : n.kind === 'follow' ? 'View profile' : n.kind === 'chess_challenge' ? 'View challenge' : n.post ? 'View post' : 'View details'} →</span> : null}
+      {href ? <span className="notification-destination">{n.kind === 'reply' ? 'View reply' : n.kind === 'quote' ? 'View quote' : n.kind === 'mention' ? 'View mention' : n.kind === 'follow' ? 'View profile' : n.kind === 'chess_challenge' ? 'View challenge' : n.kind === 'chess_game_started' ? 'Play' : n.post ? 'View post' : 'View details'} →</span> : null}
     </>
   )
   const className = `notification-row ${n.read ? '' : 'is-unread'}`

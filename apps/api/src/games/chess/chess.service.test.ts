@@ -6,54 +6,12 @@ import { NotificationsService } from '../../notifications/notifications.service.
 import { db, migrate, pool, reset } from '../../test-db.js'
 import { TokenBox } from '../core/token-box.js'
 import { ChessError, ChessService, LINK_ATTEMPT_MS, RATINGS_STALE_MS } from './chess.service.js'
-import { type ChallengeRequest, LichessError, type LichessApi, type LichessUser } from './lichess.js'
+import { LichessError } from './lichess.js'
+import { FakeLichess } from './testing.js'
 
 const env = { WEB_PUBLIC_URL: 'https://heynaija.test', LICHESS_URL: 'https://lichess.test' }
 const key = 'c'.repeat(64)
 const box = new TokenBox(key)
-
-/** Lichess, as far as these tests need it: a token per code, an account per token, and a record of every call. */
-class FakeLichess implements LichessApi {
-  calls: string[] = []
-  accounts = new Map<string, LichessUser>()
-  fail: Partial<Record<'token' | 'revoke' | 'users' | 'create' | 'accept', LichessError>> = {}
-  next = 1
-
-  authorizeUrl({ clientId, redirectUri, codeChallenge, state }: Parameters<LichessApi['authorizeUrl']>[0]) {
-    return `https://lichess.test/oauth?${new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, code_challenge: codeChallenge, state })}`
-  }
-  async token({ code }: { code: string }) {
-    this.calls.push(`token:${code}`)
-    if (this.fail.token) throw this.fail.token
-    return { accessToken: `tok-${code}`, expiresAt: null }
-  }
-  async revoke(token: string) {
-    this.calls.push(`revoke:${token}`)
-    if (this.fail.revoke) throw this.fail.revoke
-  }
-  async account(token: string) {
-    const user = this.accounts.get(token)
-    if (!user) throw new LichessError('unauthorized', 'no')
-    return user
-  }
-  async users(ids: string[]) {
-    this.calls.push(`users:${ids.join(',')}`)
-    if (this.fail.users) throw this.fail.users
-    return ids.map((id) => ({ id, username: id.toUpperCase(), ratings: { blitz: { rating: 1600, games: 10, provisional: false } } }))
-  }
-  async createChallenge(token: string, username: string, request: ChallengeRequest) {
-    this.calls.push(`create:${token}->${username}:${JSON.stringify(request)}`)
-    if (this.fail.create) throw this.fail.create
-    return { id: `game${this.next++}` }
-  }
-  async acceptChallenge(token: string, id: string) {
-    this.calls.push(`accept:${token}:${id}`)
-    if (this.fail.accept) throw this.fail.accept
-  }
-  async cancelChallenge(token: string, id: string) {
-    this.calls.push(`cancel:${token}:${id}`)
-  }
-}
 
 let lichess: FakeLichess
 let gamesOff: Set<string>
@@ -206,10 +164,10 @@ test('accepting makes the game on Lichess with the challenger’s token and acce
   const made = await service.challenge(ada, { handle: 'bayo', rated: true, timeControl: '5+3', color: 'black' })
   const accepted = await service.accept(bayo, made.id)
   assert.equal(accepted.status, 'accepted')
-  assert.equal(accepted.gameUrl, 'https://lichess.test/game1')
+  assert.equal(accepted.gameUrl, 'https://lichess.test/gm000001')
   assert.deepEqual(lichess.calls.slice(-2), [
     `create:tok-Ada->Bayo:${JSON.stringify({ rated: true, color: 'black', clockLimit: 300, clockIncrement: 3 })}`,
-    'accept:tok-Bayo:game1',
+    'accept:tok-Bayo:gm000001',
   ])
   assert.equal(await refusal(() => service.accept(bayo, made.id)), 'not_found', 'only once')
   assert.equal(await refusal(() => service.decline(ada, made.id)), 'not_found')
@@ -221,7 +179,7 @@ test('if accepting fails on Lichess the challenge there is withdrawn and this on
   const made = await service.challenge(ada, { handle: 'bayo', rated: true, timeControl: '10+0', color: 'random' })
   lichess.fail.accept = new LichessError('unavailable', 'down')
   assert.equal(await refusal(() => service.accept(bayo, made.id)), 'lichess_unavailable')
-  assert.ok(lichess.calls.includes('cancel:tok-Ada:game1'))
+  assert.ok(lichess.calls.includes('cancel:tok-Ada:gm000001'))
   assert.equal((await service.overview(bayo)).incoming.length, 1)
 
   lichess.fail.accept = new LichessError('unauthorized', 'revoked')

@@ -61,7 +61,14 @@ export async function sendChallenge(_: ChallengeFormState, form: FormData): Prom
   if (!handle) return { error: 'Who would you like to challenge? Type their handle.' }
   const res = await call(
     '/challenges',
-    json({ handle, rated: form.get('rated') === 'rated', timeControl: String(form.get('timeControl') ?? ''), color: String(form.get('color') ?? 'random') }),
+    json({
+      handle,
+      rated: form.get('rated') === 'rated',
+      timeControl: String(form.get('timeControl') ?? ''),
+      color: String(form.get('color') ?? 'random'),
+      // A public thread in Chess Arena when the game starts: ticked unless the member unticks it.
+      openThread: form.get('openThread') === 'on',
+    }),
   )
   if (res?.status === 401) redirect('/login')
   if (!res?.ok) {
@@ -80,5 +87,10 @@ export async function answerChallenge(form: FormData) {
   const res = await call(`/challenges/${id}/${action}`, { method: 'POST' })
   if (res?.status === 401) redirect('/login')
   if (!res?.ok) redirect(`${CHESS}?notice=${await codeOf(res)}#challenge-${id}`)
-  redirect(action === 'accept' ? `${CHESS}?notice=accepted#challenge-${id}` : `${CHESS}#challenge-${id}`)
+  if (action === 'accept') {
+    // Straight to the game, to play.
+    const accepted = (await res.json().catch(() => null)) as { gameId?: string | null } | null
+    redirect(accepted?.gameId ? `${CHESS}/games/${accepted.gameId}` : `${CHESS}?notice=accepted#challenge-${id}`)
+  }
+  redirect(`${CHESS}#challenge-${id}`)
 }

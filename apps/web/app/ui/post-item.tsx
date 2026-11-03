@@ -217,6 +217,12 @@ export function PostItem({
                   <span className="truncate font-semibold">{post.authorName ?? `@${post.authorHandle}`}</span>
                 </Link>
                 {post.authorFounder ? <FounderBadge /> : null}
+                {/* HeyNaija's own accounts say so on every post (The Arbiter, docs/adr/0018). */}
+                {post.authorAutomated ? (
+                  <span className="chip shrink-0" title="An automated HeyNaija account. Nobody signs in to it.">
+                    Automated
+                  </span>
+                ) : null}
               </p>
               {compact ? <ThreadAuthorLabel authorId={post.authorId} /> : null}
               <p className="post-meta">

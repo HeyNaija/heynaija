@@ -104,6 +104,8 @@ export type Post = {
   authorAvatar: string | null
   /** The author has the Founder badge: one of the people who founded HeyNaija. */
   authorFounder: boolean
+  /** The author is one of HeyNaija's automated accounts (The Arbiter); nobody signs in to it. */
+  authorAutomated?: boolean
   text: string
   images: PostImage[]
   /** Mentions of members the viewer can see, in order. Other @text stays plain. */
@@ -217,6 +219,8 @@ export type Profile = {
   identityBadge: boolean
   /** Show the Founder badge: one of the people who founded HeyNaija, granted by hand. */
   founderBadge: boolean
+  /** One of HeyNaija's automated accounts (The Arbiter, docs/adr/0018). */
+  automatedBadge?: boolean
 }
 
 /**
@@ -410,7 +414,12 @@ export type ChessChallenge = {
   status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'failed' | 'expired'
   createdAt: string
   expiresAt: string
+  /** The game on lichess.org, once accepted. */
   gameUrl: string | null
+  /** The game's id, for its page here, once accepted. */
+  gameId: string | null
+  /** Whether The Arbiter opens a public thread in Chess Arena when it starts. */
+  openThread: boolean
 }
 
 export type ChessOverview = {
@@ -428,7 +437,51 @@ export const getChessOverview = () => getOrNull<ChessOverview>('/v1/games/chess'
 
 /** A member's Lichess account for their profile; null if they have none, the viewer cannot see them, or Games is off. */
 export const getChessMember = (handle: string) =>
-  getOrNull<{ username: string; ratings: ChessRatings; url: string; canChallenge: boolean }>(`/v1/games/chess/members/${encodeURIComponent(handle)}`)
+  getOrNull<{ username: string; ratings: ChessRatings; url: string; canChallenge: boolean; playing: { id: string } | null }>(
+    `/v1/games/chess/members/${encodeURIComponent(handle)}`,
+  )
+
+export type ChessPlayer = { handle: string; displayName: string | null; avatar: string | null; rating: number | null; provisional: boolean }
+
+/** A game as the API shows it (docs/adr/0018, phase 3). `version` goes up with every change. */
+export type ChessGame = {
+  id: string
+  white: ChessPlayer
+  black: ChessPlayer
+  /** The colour the viewer plays; null for a spectator. */
+  you: 'white' | 'black' | null
+  rated: boolean
+  speed: 'blitz' | 'rapid' | 'classical' | 'correspondence'
+  time: string
+  clock: { limit: number; increment: number } | null
+  days: number | null
+  status: string
+  finished: boolean
+  winner: 'white' | 'black' | null
+  /** Every move so far, in UCI. */
+  moves: string[]
+  whiteMs: number | null
+  blackMs: number | null
+  clockAt: string | null
+  drawOffer: 'white' | 'black' | null
+  version: number
+  startedAt: string
+  finishedAt: string | null
+  threadPostId: string | null
+  resultPostId: string | null
+  ratingsAfter: Record<'white' | 'black', { before: number | null; after: number | null }> | null
+  lichessUrl: string
+}
+
+export type LiveChessGame = { id: string; white: ChessPlayer; black: ChessPlayer; speed: ChessGame['speed']; time: string; rated: boolean; startedAt: string; moveCount: number }
+
+/** A game the viewer may watch; null when it is not there, or they may not see it. */
+export const getChessGame = (id: string) => getOrNull<ChessGame>(`/v1/games/chess/games/${encodeURIComponent(id)}`)
+
+export async function getLiveChessGames(): Promise<LiveChessGame[]> {
+  const live = await getOrNull<{ games: LiveChessGame[] }>('/v1/games/chess/games/live')
+  return live?.games ?? []
+}
 
 /** A Gist the viewer may see; null for every refusal, which the API makes the same 404. */
 export const getGist = (id: string) => getOrNull<GistView>(`/v1/gists/${encodeURIComponent(id)}`)
@@ -662,6 +715,7 @@ export type NotificationKind =
   | 'moderator_revoked'
   | 'idea_status'
   | 'chess_challenge'
+  | 'chess_game_started'
 
 export type Notification = {
   id: string
@@ -679,6 +733,8 @@ export type Notification = {
   idea?: { kind: IdeaKind; yours: boolean } | null
   /** chess_challenge: the challenge, and how it reads ("a rated Rapid game (10+5)"). */
   challenge?: { id: string; phrase: string } | null
+  /** chess_game_started: the game. */
+  game?: { id: string } | null
 }
 
 /** Null when the visitor is not a signed-in member. */

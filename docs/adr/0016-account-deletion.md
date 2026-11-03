@@ -147,6 +147,7 @@ does nothing for an inactive author. The text search index follows the text.
 | Competitions they created as a site moderator (`games.competitions.created_by`) | — | kept, pointing at the tombstone, like other moderators' records; result posts are posts | keep |
 | Their linked Lichess account (`games.lichess_accounts`, the token sealed) and any linking under way (`games.lichess_link_attempts`) | — | the token is revoked at Lichess first where it can be, then both deleted | delete |
 | Chess challenges they sent or got (`games.chess_challenges`), with their notifications | — | deleted, both sides: a challenge is between the two of them | delete |
+| Chess games they played (`games.chess_games`), with their notifications | — | deleted, both sides; The Arbiter's thread and result posts about the game stay, naming the tombstone | delete |
 
 ### Notifications and devices
 

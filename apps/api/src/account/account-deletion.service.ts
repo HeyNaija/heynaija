@@ -381,6 +381,9 @@ export class AccountDeletionService {
       await run(sql`delete from games.game_profiles where member_id = ${memberId}`)
       // Chess (docs/adr/0018): the linked Lichess account and any linking under way, and
       // every challenge they sent or got (their notifications go with them).
+      // Their games go too (notifications with them); The Arbiter's threads and results stay, as
+      // posts naming the tombstone.
+      await run(sql`delete from games.chess_games where white_id = ${memberId} or black_id = ${memberId}`)
       await run(sql`delete from games.chess_challenges where challenger_id = ${memberId} or challenged_id = ${memberId}`)
       await run(sql`delete from games.lichess_link_attempts where member_id = ${memberId}`)
       await run(sql`delete from games.lichess_accounts where member_id = ${memberId}`)
