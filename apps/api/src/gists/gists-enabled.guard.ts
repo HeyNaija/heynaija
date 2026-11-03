@@ -1,6 +1,7 @@
-import { type CanActivate, type ExecutionContext, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@nestjs/common'
 import type { FastifyRequest } from 'fastify'
 import type { Env } from '../env.js'
+import { routeNotFound } from '../http.js'
 import { ENV } from '../tokens.js'
 import { canHostGist } from './eligibility.js'
 
@@ -9,9 +10,6 @@ export const gistsEnabled = (
   env: Pick<Env, 'CALLS_ENABLED' | 'CALLS_GISTS_ENABLED' | 'LIVEKIT_URL' | 'LIVEKIT_API_KEY' | 'LIVEKIT_API_SECRET'>,
 ): boolean =>
   env.CALLS_ENABLED && env.CALLS_GISTS_ENABLED && Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET)
-
-/** What Fastify answers for a route that does not exist, so a dark feature cannot be told from no feature. */
-export const routeNotFound = (req: Pick<FastifyRequest, 'method' | 'url'>) => new NotFoundException(`Cannot ${req.method} ${req.url}`)
 
 /**
  * First guard on every Gists route (before sign-in, so a signed-out caller

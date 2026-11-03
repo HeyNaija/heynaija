@@ -143,6 +143,8 @@ does nothing for an inactive author. The text search index follows the text.
 | Gists they hosted (`gists.host_id`, title) with everyone's `gist_members` rows in them | a live one ends (see Edge cases) | deleted, members first. No audio is stored; a Gist without its host and title is nothing | delete |
 | `follows`, `blocks`, `mutes`, both ways | hidden | deleted | delete |
 | `community_memberships`, including moderator roles | — | deleted | delete |
+| Their games ([ADR 0018](0018-games.md)): `games.game_profiles`, `games.season_scores`, `games.competition_entries`, and `games.game_events` about them | — | deleted. Games is dark and no rows exist yet | delete |
+| Competitions they created as a site moderator (`games.competitions.created_by`) | — | kept, pointing at the tombstone, like other moderators' records; result posts are posts | keep |
 
 ### Notifications and devices
 

@@ -2,7 +2,7 @@
 
 The standing specification for HeyNaija's Games section. Every person and coding
 agent working on games code reads this first: `apps/api/src/games`,
-`apps/web/app/games`, and the `games` database schema. If a change conflicts with
+`apps/web/app/(main)/games`, and the `games` database schema. If a change conflicts with
 this document, stop and ask rather than working around it. Change this document
 in the same pull request as any agreed change to the rules.
 
@@ -10,7 +10,7 @@ Progress and status are not tracked here. They live in `docs/feature-roadmap.jso
 (rendered at `/progress`), like every other feature.
 
 Also read before starting: PLAN.md, PRODUCT.md, AGENTS.md, apps/web/DESIGN.md,
-the games ADR, and ADRs 0002, 0005 and 0014.
+the games ADR ([0018](../adr/0018-games.md)), and ADRs 0002, 0005 and 0014.
 
 ## Purpose
 
@@ -34,7 +34,7 @@ apps/api/src/games/
                        challenges, results
   keno/                draw engine, provably fair RNG, payout table,
                        BullMQ draw job, tickets
-apps/web/app/games/
+apps/web/app/(main)/games/   inside the (main) route group, for the normal shell
   page.tsx             games homepage
   AGENTS.md, CLAUDE.md pointers to this document
   _components/         shared game UI: cards, leaderboard, competition strip
@@ -44,6 +44,10 @@ apps/web/app/games/
                        ticket history, verify page)
 ```
 
+`GamesModule` is built on the global `PlatformModule`
+(`apps/api/src/platform.module.ts`), which provides the settings, database,
+sign-in guards and rate limiter to every feature module.
+
 The pointer files: `AGENTS.md` says "Read docs/games/GAMES.md before changing
 anything in this folder." `CLAUDE.md` contains `@AGENTS.md`.
 
@@ -51,9 +55,15 @@ Database: game tables live in a separate Postgres schema, `games`, mirroring how
 `restricted.*` is kept apart, with Drizzle migrations in `packages/db/drizzle`.
 Lichess OAuth tokens are encrypted at rest and never returned to the browser.
 
-The game registry and manifests live in the API, which is the source of truth for
-each game's status (live, beta, coming_soon). The web app reads them through
-`/api/v1/games`.
+The game registry and manifests live in the API (`core/registry.ts`), which is the
+source of truth for each game's status (live, beta, coming_soon). The web app reads
+them through `/api/v1/games`. Because the registry is code, `game` columns in the
+`games` schema are plain slugs with no database constraint: adding a game needs no
+migration. Services check slugs against the registry.
+
+Every member-keyed table in `games` is covered by account erasure
+(`account-deletion.service.ts`, ADR 0016's inventory) and by the data export; no
+member foreign key cascades.
 
 ## Shared core
 
@@ -154,8 +164,11 @@ as posts. Only site moderators can create competitions for now.
 
 ## Feature flag, roadmap and docs
 
-- **Feature flag:** the whole Games module sits behind a flag, following however
-  the repo already gates features. Off by default.
+- **Feature flag:** the whole Games module sits behind `GAMES_ENABLED` (off by
+  default) and a `GAMES_MEMBERS` list of handles (empty means nobody), the way Gists
+  are gated. Off means invisible: the API answers 404 like a missing route, the web
+  proxy serves the missing page, and the Games link (last in the sidebar, and
+  in the account menu on phones) is hidden. Only `gamesFeatureFor` decides.
 - **Roadmap:** Games entries live in `docs/feature-roadmap.json` as P2. After
   edits, run pnpm roadmap:generate, roadmap:check and roadmap:test.
 - **ADR:** one ADR records the games architecture, the Lichess dependency, keno

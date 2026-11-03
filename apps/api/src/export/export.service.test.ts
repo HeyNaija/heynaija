@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { members } from '@heynaija/db'
+import { competitionEntries, competitions, gameProfiles, gameSeasons, members, seasonScores } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { GovernanceService } from '../governance/governance.service.js'
 import { MembersService } from '../members/members.service.js'
@@ -175,4 +175,45 @@ test('an export includes the age confirmation and verification history, but neve
   const text = JSON.stringify(data)
   assert.equal(text.includes('personKey'), false)
   assert.equal(text.includes('person-ada'), false)
+})
+
+test('an export includes the member’s games: stats, season scores and competition entries', async () => {
+  assert.deepEqual((await service.export(ada, null))!.games, { profiles: [], seasonScores: [], competitionEntries: [] })
+
+  const [season] = await db
+    .insert(gameSeasons)
+    .values({ slug: '2026-11', startsAt: new Date('2026-11-01T00:00:00Z'), endsAt: new Date('2026-12-01T00:00:00Z') })
+    .returning({ id: gameSeasons.id })
+  const [competition] = await db
+    .insert(competitions)
+    .values({
+      game: 'keno',
+      name: 'November draw',
+      format: 'points',
+      eligibility: 'open',
+      entryOpensAt: new Date('2026-11-01T00:00:00Z'),
+      entryClosesAt: new Date('2026-11-10T00:00:00Z'),
+      startsAt: new Date('2026-11-10T00:00:00Z'),
+      endsAt: new Date('2026-11-20T00:00:00Z'),
+      standingsSource: 'keno_points',
+      createdBy: bayo,
+    })
+    .returning({ id: competitions.id })
+  await db.insert(gameProfiles).values([
+    { memberId: ada, game: 'keno', stats: { rounds: 4 } },
+    { memberId: bayo, game: 'keno', stats: { rounds: 9 } },
+  ])
+  await db.insert(seasonScores).values({ seasonId: season!.id, memberId: ada, game: 'keno', points: 12, xp: 6 })
+  await db.insert(competitionEntries).values({ competitionId: competition!.id, memberId: ada, placement: 2, score: 12 })
+
+  const { games } = (await service.export(ada, null))!
+  assert.deepEqual(
+    games.profiles.map((p) => [p.game, p.stats]),
+    [['keno', { rounds: 4 }]],
+  )
+  assert.deepEqual(games.seasonScores, [{ season: '2026-11', game: 'keno', points: 12, xp: 6 }])
+  assert.deepEqual(
+    games.competitionEntries.map((e) => [e.competition, e.game, e.placement, e.score]),
+    [['November draw', 'keno', 2, 12]],
+  )
 })

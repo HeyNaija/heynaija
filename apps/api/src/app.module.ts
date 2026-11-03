@@ -1,4 +1,3 @@
-import { createDb } from '@heynaija/db'
 import { Controller, Get, Module } from '@nestjs/common'
 import { AccountController } from './account/account.controller.js'
 import { AccountDeletionService, DELETION_NOTICES } from './account/account-deletion.service.js'
@@ -7,13 +6,6 @@ import { EmailDeletionNotices } from './account/deletion-notices.js'
 import { PrivacyRequestsService } from './account/privacy-requests.service.js'
 import { RetentionService } from './account/retention.service.js'
 import { AuthController } from './auth/auth.controller.js'
-import { AuthService } from './auth/auth.service.js'
-import { AUTH_SESSION_PROVIDER } from './auth/auth-session.provider.js'
-import { KratosAdmin } from './auth/kratos-admin.js'
-import { KratosSessionProvider } from './auth/kratos-session.provider.js'
-import { KratosService } from './auth/kratos.service.js'
-import { RedisSessionCache, SESSION_CACHE } from './auth/session-cache.js'
-import { OptionalSessionGuard, SessionGuard, SuspendedAllowedGuard } from './auth/session.guard.js'
 import { CommunitiesController } from './communities/communities.controller.js'
 import { CommunitiesService } from './communities/communities.service.js'
 import { EMAIL_ADDRESSES, type EmailAddresses, KratosAddresses } from './email/addresses.js'
@@ -22,9 +14,10 @@ import { BullEmailJobs, EmailWorker } from './email/email-queue.js'
 import { EMAIL_JOBS, EMAIL_SETTINGS, EmailNotificationsService } from './email/email-notifications.service.js'
 import { MAILER, type Mailer, smtpMailer } from './email/mailer.js'
 import { unsubscribeKey } from './email/unsubscribe-token.js'
-import { type Env, loadEnv } from './env.js'
+import type { Env } from './env.js'
 import { ExportController } from './export/export.controller.js'
 import { ExportService } from './export/export.service.js'
+import { GamesModule } from './games/games.module.js'
 import { GistReconciler } from './gists/gist-queue.js'
 import { GistsController, LiveKitWebhookController } from './gists/gists.controller.js'
 import { GISTS_CONFIG, GistsService } from './gists/gists.service.js'
@@ -35,7 +28,6 @@ import { GovernanceController } from './governance/governance.controller.js'
 import { GovernanceService } from './governance/governance.service.js'
 import { IdeasController } from './ideas/ideas.controller.js'
 import { IdeasService } from './ideas/ideas.service.js'
-import { InvitesService } from './invites/invites.service.js'
 import { BullLinkJobs, LinkWorker } from './links/link-queue.js'
 import { LINK_JOBS, LinksService, PAGE_FETCHER } from './links/links.service.js'
 import { SafeFetcher } from './links/safe-fetch.js'
@@ -60,10 +52,10 @@ import { PostsService } from './posts/posts.service.js'
 import { PushController } from './push/push.controller.js'
 import { PUSH_JOBS, PushNotificationsService } from './push/push-notifications.service.js'
 import { BullPushJobs, PushWorker } from './push/push-queue.js'
+import { PlatformModule } from './platform.module.js'
 import { PUSH_SENDER, webPushSender } from './push/push-sender.js'
-import { RateLimiter, RedisRateLimiter } from './rate-limit.js'
 import { SearchController } from './search/search.controller.js'
-import { DB, ENV } from './tokens.js'
+import { ENV } from './tokens.js'
 import { TopicsController } from './topics/topics.controller.js'
 import { TopicsService } from './topics/topics.service.js'
 
@@ -76,19 +68,10 @@ class HealthController {
 }
 
 @Module({
+  // Settings, the database, sign-in and rate limits; then the modules built on them.
+  imports: [PlatformModule, GamesModule],
   controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController, AccountController],
   providers: [
-    { provide: ENV, useFactory: loadEnv },
-    { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
-    { provide: SESSION_CACHE, useClass: RedisSessionCache },
-    KratosService,
-    KratosAdmin,
-    { provide: AUTH_SESSION_PROVIDER, useClass: KratosSessionProvider },
-    AuthService,
-    SessionGuard,
-    OptionalSessionGuard,
-    SuspendedAllowedGuard,
-    { provide: RateLimiter, useClass: RedisRateLimiter },
     ModerationService,
     { provide: OBJECT_STORE, useFactory: (env: Env) => new S3ObjectStore(s3Config(env)), inject: [ENV] },
     { provide: MEDIA_JOBS, useClass: BullMediaJobs },
@@ -125,7 +108,6 @@ class HealthController {
     LinkWorker,
     MembersService,
     CommunitiesService,
-    InvitesService,
     PostsService,
     TopicsService,
     IdeasService,

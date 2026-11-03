@@ -6,6 +6,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgSchema,
   pgTable,
   primaryKey,
@@ -1076,5 +1077,141 @@ export const gistReportParticipants = pgTable(
   (t) => [
     primaryKey({ columns: [t.reportId, t.memberId] }),
     check('gist_report_participants_role_check', sql.raw(`role in (${GIST_ROLES.map((value) => `'${value}'`).join(', ')})`)),
+  ],
+)
+
+// ---------------------------------------------------------------------------
+// Games (docs/games/GAMES.md, docs/adr/0018). Their own Postgres schema, kept
+// apart from the social tables the way `restricted` is, though unlike it this
+// is not a privacy boundary. Which games exist is decided by the registry in
+// apps/api/src/games/core/registry.ts, so `game` columns are plain slugs with no
+// constraint: a new game needs a folder and a registry entry, not a migration.
+// No member foreign key cascades (docs/adr/0016-account-deletion.md); erasing an
+// account deletes its rows here by hand.
+// ---------------------------------------------------------------------------
+export const gamesSchema = pgSchema('games')
+
+// One row per member per game they have played: the game's own stats
+// (for chess, later, the cached Lichess ratings).
+export const gameProfiles = gamesSchema.table(
+  'game_profiles',
+  {
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    game: text('game').notNull(),
+    stats: jsonb('stats').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.memberId, t.game] })],
+)
+
+// Monthly seasons for the Game Score. All-time stats are kept apart, in game_profiles.
+export const gameSeasons = gamesSchema.table(
+  'seasons',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // The month it covers, e.g. "2026-11".
+    slug: text('slug').notNull().unique(),
+    startsAt: ts('starts_at').notNull(),
+    endsAt: ts('ends_at').notNull(),
+  },
+  (t) => [check('seasons_range_check', sql.raw('ends_at > starts_at'))],
+)
+
+// A member's points and Game Score XP in one game for one season. Leaderboards
+// read these precomputed rows; they are never worked out on page load.
+export const seasonScores = gamesSchema.table(
+  'season_scores',
+  {
+    seasonId: uuid('season_id')
+      .notNull()
+      .references(() => gameSeasons.id),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    game: text('game').notNull(),
+    points: integer('points').notNull().default(0),
+    xp: integer('xp').notNull().default(0),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.seasonId, t.memberId, t.game] }),
+    index('season_scores_rank_idx').on(t.seasonId, t.game, t.points.desc()),
+  ],
+)
+
+export const COMPETITION_ELIGIBILITY = ['open', 'community', 'invite'] as const
+export const COMPETITION_STATUSES = ['draft', 'open', 'live', 'finished', 'cancelled'] as const
+
+// A competition in one game, created by a site moderator. Its results are
+// published as an ordinary post.
+export const competitions = gamesSchema.table(
+  'competitions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    game: text('game').notNull(),
+    name: text('name').notNull(),
+    format: text('format').notNull(),
+    eligibility: text('eligibility', { enum: COMPETITION_ELIGIBILITY }).notNull(),
+    // Set exactly when eligibility is "community".
+    communityId: uuid('community_id').references(() => communities.id),
+    entryOpensAt: ts('entry_opens_at').notNull(),
+    entryClosesAt: ts('entry_closes_at').notNull(),
+    startsAt: ts('starts_at').notNull(),
+    endsAt: ts('ends_at').notNull(),
+    status: text('status', { enum: COMPETITION_STATUSES }).notNull().default('draft'),
+    // Where standings come from, e.g. a Lichess tournament or keno points in a draw window.
+    standingsSource: text('standings_source').notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => members.id),
+    resultPostId: uuid('result_post_id').references(() => posts.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('competitions_status_starts_idx').on(t.status, t.startsAt),
+    check('competitions_eligibility_check', sql.raw(`eligibility in (${inList(COMPETITION_ELIGIBILITY)})`)),
+    check('competitions_status_check', sql.raw(`status in (${inList(COMPETITION_STATUSES)})`)),
+    check('competitions_community_check', sql.raw(`(eligibility = 'community') = (community_id is not null)`)),
+    check('competitions_schedule_check', sql.raw('entry_closes_at >= entry_opens_at and ends_at > starts_at')),
+  ],
+)
+
+export const competitionEntries = gamesSchema.table(
+  'competition_entries',
+  {
+    competitionId: uuid('competition_id')
+      .notNull()
+      .references(() => competitions.id, { onDelete: 'cascade' }),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    enteredAt: ts('entered_at').notNull().defaultNow(),
+    placement: integer('placement'),
+    score: integer('score'),
+  },
+  (t) => [primaryKey({ columns: [t.competitionId, t.memberId] }), index('competition_entries_member_idx').on(t.memberId)],
+)
+
+// Append-only: what happened in a game (a result, a win, a placement), for the
+// audit trail and as the source of game posts. Nothing updates a row; only
+// erasing an account deletes its own.
+export const gameEvents = gamesSchema.table(
+  'game_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    game: text('game').notNull(),
+    kind: text('kind').notNull(),
+    memberId: uuid('member_id').references(() => members.id),
+    competitionId: uuid('competition_id').references(() => competitions.id),
+    postId: uuid('post_id').references(() => posts.id, { onDelete: 'set null' }),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('game_events_member_created_idx').on(t.memberId, t.createdAt),
+    index('game_events_game_created_idx').on(t.game, t.createdAt),
   ],
 )

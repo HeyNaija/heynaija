@@ -360,6 +360,14 @@ export class AccountDeletionService {
         and id not in (select gist_id from moderation_actions where gist_id is not null)`)
       await run(sql`delete from gist_members where member_id = ${memberId}`)
 
+      // Games (docs/adr/0018): their stats, scores, entries and game history go.
+      // Competitions they created as a moderator stay, pointing at the tombstone,
+      // like other moderators' records; so do the result posts, as posts.
+      await run(sql`delete from games.game_events where member_id = ${memberId}`)
+      await run(sql`delete from games.competition_entries where member_id = ${memberId}`)
+      await run(sql`delete from games.season_scores where member_id = ${memberId}`)
+      await run(sql`delete from games.game_profiles where member_id = ${memberId}`)
+
       await run(sql`delete from notifications where recipient_id = ${memberId} or actor_id = ${memberId}`)
       await run(sql`delete from notification_opt_outs where member_id = ${memberId}`)
       await run(sql`delete from push_subscriptions where member_id = ${memberId}`)

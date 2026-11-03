@@ -6,7 +6,12 @@ import {
   bookmarks,
   communities,
   communityMemberships,
+  competitionEntries,
+  competitions,
   follows,
+  gameEvents,
+  gameProfiles,
+  gameSeasons,
   gistMembers,
   gistReportParticipants,
   gists,
@@ -28,6 +33,7 @@ import {
   postPolls,
   postHashtags,
   postMentions,
+  seasonScores,
   posts,
   privacyRequests,
   problemDetails,
@@ -728,4 +734,46 @@ test('Gists: one they hosted that was reported stays as evidence, with the repor
   assert.equal(await count(gistMembers, eq(gistMembers.gistId, reported!.id)), 0, 'places in it go; the report keeps its own record')
   assert.equal(await count(gistReportParticipants, eq(gistReportParticipants.reportId, report!.id)), 2)
   assert.equal(await count(reports, eq(reports.id, report!.id)), 1)
+})
+
+test('Games: their stats, scores, entries and history go; a competition they created stays', async () => {
+  const [season] = await db
+    .insert(gameSeasons)
+    .values({ slug: '2026-10', startsAt: new Date('2026-10-01T00:00:00Z'), endsAt: new Date('2026-11-01T00:00:00Z') })
+    .returning({ id: gameSeasons.id })
+  const [competition] = await db
+    .insert(competitions)
+    .values({
+      game: 'keno',
+      name: 'October draw',
+      format: 'points',
+      eligibility: 'open',
+      entryOpensAt: days(-10),
+      entryClosesAt: days(-5),
+      startsAt: days(-5),
+      endsAt: days(-1),
+      standingsSource: 'keno_points',
+      createdBy: xena,
+    })
+    .returning({ id: competitions.id })
+  for (const id of [xena, yemi]) {
+    await db.insert(gameProfiles).values({ memberId: id, game: 'keno', stats: { rounds: 3 } })
+    await db.insert(seasonScores).values({ seasonId: season!.id, memberId: id, game: 'keno', points: 10, xp: 5 })
+    await db.insert(competitionEntries).values({ competitionId: competition!.id, memberId: id })
+    await db.insert(gameEvents).values({ game: 'keno', kind: 'round_played', memberId: id, competitionId: competition!.id })
+  }
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  for (const [table, column] of [
+    [gameProfiles, gameProfiles.memberId],
+    [seasonScores, seasonScores.memberId],
+    [competitionEntries, competitionEntries.memberId],
+    [gameEvents, gameEvents.memberId],
+  ] as const) {
+    assert.equal(await count(table, eq(column, xena)), 0)
+    assert.equal(await count(table, eq(column, yemi)), 1, 'another member’s rows stay')
+  }
+  assert.equal(await count(competitions, eq(competitions.createdBy, xena)), 1, 'the competition stays, pointing at the tombstone')
 })

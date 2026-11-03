@@ -17,11 +17,11 @@ import {
 } from '@nestjs/common'
 import { z } from 'zod'
 import { type AuthedRequest, SessionGuard } from '../auth/session.guard.js'
-import { parse } from '../http.js'
+import { parse, routeNotFound } from '../http.js'
 import { RateLimiter } from '../rate-limit.js'
 import { WebhookRejectedError } from './room-service.js'
 import { GistError, GistsService } from './gists.service.js'
-import { GistsEnabledGuard, routeNotFound } from './gists-enabled.guard.js'
+import { GistsEnabledGuard } from './gists-enabled.guard.js'
 
 const createBody = z.object({
   title: z.string().min(1).max(200),

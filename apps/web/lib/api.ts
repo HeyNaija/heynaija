@@ -24,8 +24,8 @@ export type Me = {
   moderates: boolean
   /** False until they finish or skip the welcome flow, which the home page sends them to. */
   onboarded: boolean
-  /** Switches the API turns on for this member (docs/adr/0017). All false when a feature is off or they are not on its list. */
-  features: { gists: boolean }
+  /** Switches the API turns on for this member (docs/adr/0017, 0018). All false when a feature is off or they are not on its list. */
+  features: { gists: boolean; games: boolean }
 }
 
 /** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
@@ -363,6 +363,21 @@ async function getOrNull<T>(path: string): Promise<T | null> {
   if (!res.ok) throw new Error(`API ${path} responded ${res.status}`)
   return res.json()
 }
+
+/** One game from the API's registry (docs/games/GAMES.md); `cover` is null until approved art exists. */
+export type GameManifest = {
+  slug: string
+  name: string
+  tagline: string
+  description: string
+  cover: string | null
+  status: 'live' | 'beta' | 'coming_soon'
+  rankingType: 'rating' | 'points'
+  supportsCompetitions: boolean
+}
+
+/** The games in registry order; null while Games is off or the member is not on its list (the API answers 404). */
+export const getGames = () => getOrNull<{ games: GameManifest[] }>('/v1/games')
 
 /** A Gist the viewer may see; null for every refusal, which the API makes the same 404. */
 export const getGist = (id: string) => getOrNull<GistView>(`/v1/gists/${encodeURIComponent(id)}`)

@@ -22,7 +22,7 @@ here, and the whole of it keeps every core busy for many minutes. So:
 
 ## Games module
 
-Before working on anything under `apps/api/src/games`, `apps/web/app/games`,
+Before working on anything under `apps/api/src/games`, `apps/web/app/(main)/games`,
 or the `games` database schema, read [docs/games/GAMES.md](docs/games/GAMES.md)
 and follow it. If a change conflicts with it, stop and ask rather than
 working around it.

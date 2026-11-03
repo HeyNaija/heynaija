@@ -21,6 +21,7 @@ import { z } from 'zod'
 import type { Env } from '../env.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
+import { gamesFeatureFor } from '../games/core/games-enabled.js'
 import { gistsFeatureFor } from '../gists/gists-enabled.guard.js'
 import { signupAgeDecision } from '../governance/age.js'
 import { GovernanceService } from '../governance/governance.service.js'
@@ -112,8 +113,8 @@ export class AuthController {
       // False until the member finishes or skips the welcome flow; the web app's
       // home page sends them to /welcome until then.
       onboarded: Boolean(row?.onboardedAt),
-      // Switches the web app may show this member (docs/adr/0017); false when off.
-      features: { gists: gistsFeatureFor(this.env, req.member) },
+      // Switches the web app may show this member (docs/adr/0017, 0018); false when off.
+      features: { gists: gistsFeatureFor(this.env, req.member), games: gamesFeatureFor(this.env, req.member) },
     }
   }
 

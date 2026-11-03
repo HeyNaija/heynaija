@@ -79,6 +79,13 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['gist role changes', `update gist_members set role_changed_by = null where role_changed_by in (select id from e2e_m)`],
         ['gist removals', `update gist_members set removed_by = null where removed_by in (select id from e2e_m)`],
         ['gists', `delete from gists where id in (select id from e2e_g)`],
+        // Games (docs/adr/0018): competitions test members created go whole, entries and events with them.
+        ['game events', `delete from games.game_events where member_id in (select id from e2e_m)
+           or competition_id in (select id from games.competitions where created_by in (select id from e2e_m))`],
+        ['competition entries', `delete from games.competition_entries where member_id in (select id from e2e_m)`],
+        ['competitions', `delete from games.competitions where created_by in (select id from e2e_m)`],
+        ['season scores', `delete from games.season_scores where member_id in (select id from e2e_m)`],
+        ['game profiles', `delete from games.game_profiles where member_id in (select id from e2e_m)`],
         ['media', `delete from media where owner_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         // Replies by others to these posts would be orphaned; tests only reply among themselves.
         ['idea votes', `delete from idea_votes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],

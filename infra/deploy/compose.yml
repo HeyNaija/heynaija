@@ -51,6 +51,9 @@ x-api-env: &api-env
   LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
   LIVEKIT_WEBHOOK_KEY: ${LIVEKIT_WEBHOOK_KEY:-}
   LIVEKIT_WEBHOOK_SECRET: ${LIVEKIT_WEBHOOK_SECRET:-}
+  # Games (docs/adr/0018). Off unless switched on, and then only for the handles listed.
+  GAMES_ENABLED: ${GAMES_ENABLED:-false}
+  GAMES_MEMBERS: ${GAMES_MEMBERS:-}
   # Safety (docs/safety/abuse-material-scanning.md): where alerts are emailed, the
   # PhotoDNA key once approved, and what purging Cloudflare's cache needs. Each
   # is optional; without them alerts are only logged, nothing is scanned and

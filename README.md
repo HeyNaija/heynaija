@@ -104,6 +104,12 @@ signalling, `:7881` TCP and `:7882` UDP for media; not started by `infra:up`), t
 the config in `docker-compose.dev.yml` advertises `127.0.0.1` for media. Servers for
 staging and production are a separate piece of work.
 
+Games ([docs/games/GAMES.md](docs/games/GAMES.md), [ADR 0018](docs/adr/0018-games.md))
+are off by default too. Put `GAMES_ENABLED=true` and `GAMES_MEMBERS=<your handle>`
+(comma-separated for more) in `.env` and restart the API; Games is then in your
+account menu, at `/games`. With either missing, `/games` and every `/v1/games` route
+answer 404.
+
 The demo members can sign in as `<handle>@demo.heynaija.test` with the code
 Mailpit catches; `pnpm demo:clean` removes them and everything they did.
 

@@ -146,6 +146,15 @@ const schema = z.object({
   GISTS_MAX_COHOSTS: z.coerce.number().int().min(0).max(10).default(2),
   GISTS_MAX_SPEAKERS: z.coerce.number().int().min(0).max(50).default(10),
   GISTS_LISTENER_CAP: z.coerce.number().int().min(1).max(10_000).default(200),
+  // Games (docs/games/GAMES.md, docs/adr/0018). Dark by default: with the switch
+  // off every /v1/games route answers 404 like a route that does not exist.
+  GAMES_ENABLED: flag(),
+  // Handles allowed to see Games while it is being built, comma-separated. Empty
+  // means nobody, as with CALLS_MEMBERS.
+  GAMES_MEMBERS: z
+    .string()
+    .default('')
+    .transform((raw) => raw.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean)),
   // Lets browsers subscribe with an http://127.0.0.1 address, for the end-to-end
   // tests' stand-in push service. Only allowed while WEB_PUBLIC_URL is on this machine.
   PUSH_ALLOW_LOOPBACK: z

@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 13 | 17 | 13 | 88 |
+| 45 | 14 | 19 | 13 | 91 |
 
 ## Priority order
 
@@ -259,7 +259,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Download your own profile, posts, social choices and account-status records as JSON.
 - **Inspected evidence:** `apps/api/src/export/export.service.ts`, `apps/api/src/export/export.controller.ts`, `apps/web/app/(main)/settings/export/route.ts`, `apps/api/src/export/export.service.test.ts`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** Format 11: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, and since format 11 reply boundaries, polls you created and your public poll ballots; restricted person keys and reports about someone stay excluded.
+- **Audit notes:** Format 12: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, since format 11 reply boundaries, polls you created and your public poll ballots, and since format 12 a games section (stats, season scores, competition entries; empty while Games is dark); restricted person keys and reports about someone stay excluded.
 
 #### Account deletion and privacy requests
 
@@ -740,6 +740,34 @@ This tracks product development, not formal governance decisions. Priority means
 - **Dependencies:** `upload-scanning`
 - **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`
 - **Audit notes:** Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built.
+
+#### Games section
+
+- **ID:** `games-core`
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
+- **Description:** A Games page with your Game Score, the games you can play, season leaderboards, competitions and posts from games, all in one place.
+- **Remaining work / caveat:** Dark behind GAMES_ENABLED and a GAMES_MEMBERS list; no game can be played yet. Seasons, the Game Score, leaderboards and competitions are not built.
+- **Dependencies:** `communities`, `in-app-notifications`, `data-export`
+- **Inspected evidence:** `apps/api/src/games/games.module.ts`, `apps/api/src/games/core/registry.ts`, `apps/api/src/games/core/games.controller.ts`, `packages/db/drizzle/0033_games_core.sql`, `apps/web/app/(main)/games/page.tsx`, `apps/api/src/games/core/games-enabled.test.ts`, `apps/api/src/games/core/registry.test.ts`, `docs/adr/0018-games.md`, `docs/games/GAMES.md`
+- **Audit notes:** Phase 1 built 3 Nov 2026 (ADR 0018): the module, the game registry, the games database schema, the switch and a games homepage showing Chess and Keno as coming soon, with empty states where there is no data.
+
+#### Chess on Lichess
+
+- **ID:** `games-chess`
+- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
+- **Description:** Link your Lichess account, challenge other members, play and watch games inside HeyNaija, and share results as posts.
+- **Dependencies:** `games-core`
+- **Inspected evidence:** `docs/games/GAMES.md`, `docs/adr/0018-games.md`, `apps/api/src/games/chess/manifest.ts`
+- **Audit notes:** Lichess runs the games, ratings and fair-play checks; HeyNaija adds challenges, notifications, spectating with replies hidden from the players until the game ends, and result posts.
+
+#### Keno (free to play)
+
+- **ID:** `games-keno`
+- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
+- **Description:** Pick numbers for a shared draw every few minutes with free daily tokens, and check that any draw was fair.
+- **Dependencies:** `games-core`
+- **Inspected evidence:** `docs/games/GAMES.md`, `docs/adr/0018-games.md`, `apps/api/src/games/keno/manifest.ts`
+- **Audit notes:** No money anywhere: tokens and points can never be bought, transferred or redeemed. Draws are made on the server and are provably fair (a published SHA-256 commitment, then the seed revealed).
 
 ## P3 — Later experiments
 

@@ -4,8 +4,12 @@ import {
   bookmarks,
   communities,
   communityMemberships,
+  competitionEntries,
+  competitions,
   type Db,
   follows,
+  gameProfiles,
+  gameSeasons,
   governanceMemberships,
   ideas,
   ideaVotes,
@@ -26,6 +30,7 @@ import {
   pushSubscriptions,
   reports,
   reposts,
+  seasonScores,
 } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
 import { aliasedTable, and, asc, eq, isNotNull, or } from 'drizzle-orm'
@@ -34,7 +39,7 @@ import { preferencesWithout } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/11'
+export const EXPORT_FORMAT = 'heynaija-export/12'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -327,6 +332,38 @@ export class ExportService {
       // A browser's push address is left out; it is only good for sending to it.
       pushNotifications: pushedTo,
       notifications: received,
+      // Games (docs/adr/0018): your stats in each game, your points per season and
+      // the competitions you entered.
+      games: await this.games(memberId),
     }
+  }
+
+  private async games(memberId: string) {
+    const [profiles, scores, entries] = await Promise.all([
+      this.db
+        .select({ game: gameProfiles.game, stats: gameProfiles.stats, since: gameProfiles.createdAt, updatedAt: gameProfiles.updatedAt })
+        .from(gameProfiles)
+        .where(eq(gameProfiles.memberId, memberId))
+        .orderBy(asc(gameProfiles.game)),
+      this.db
+        .select({ season: gameSeasons.slug, game: seasonScores.game, points: seasonScores.points, xp: seasonScores.xp })
+        .from(seasonScores)
+        .innerJoin(gameSeasons, eq(gameSeasons.id, seasonScores.seasonId))
+        .where(eq(seasonScores.memberId, memberId))
+        .orderBy(asc(gameSeasons.startsAt), asc(seasonScores.game)),
+      this.db
+        .select({
+          competition: competitions.name,
+          game: competitions.game,
+          enteredAt: competitionEntries.enteredAt,
+          placement: competitionEntries.placement,
+          score: competitionEntries.score,
+        })
+        .from(competitionEntries)
+        .innerJoin(competitions, eq(competitions.id, competitionEntries.competitionId))
+        .where(eq(competitionEntries.memberId, memberId))
+        .orderBy(asc(competitionEntries.enteredAt)),
+    ])
+    return { profiles, seasonScores: scores, competitionEntries: entries }
   }
 }
