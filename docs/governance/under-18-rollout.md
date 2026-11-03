@@ -5,6 +5,11 @@
 rule for accounts is a temporary beta restriction (ADR 0006); this document is what
 has to be decided, approved and built before it can be lifted.
 
+**Plan:** [ADR 0020](../adr/0020-under-18-accounts-and-adult-labels.md) (proposed,
+3 November 2026) orders this checklist into two phases. Phase 1, with the 18+ rule
+kept: a date of birth at signup and 18+ labels (sections 2 and 4). Phase 2: the rest,
+then opening to minors.
+
 **Intended model (owner, 16 October 2026):**
 
 - General social networking will eventually be open to eligible people under 18,
@@ -54,7 +59,9 @@ including for members who live outside Nigeria.
 
 - [ ] Signup asks which band someone is in, never a full birth date, unless counsel
       says a birth date is necessary. If it is, document why, derive the band and
-      `review_after` from it, and do not keep the date.
+      `review_after` from it, and do not keep the date. Owner decision, 3 November
+      2026: signup asks for a date of birth, derives the band and keeps nothing else
+      (ADR 0020, section 1); counsel to confirm (ADR 0020, section 7, item 3).
 - [ ] Below the minimum age: refuse, explain kindly, keep no age record.
 - [ ] Minors get `review_after` (the month they turn 18, rounded up, or a periodic
       re-check) and move to adult only after a fresh statement or check.

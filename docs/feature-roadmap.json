@@ -1071,6 +1071,21 @@
       "notes": "Decided 28 Oct 2026 (ADR 0014). A third choice beside Newest (still the default) and Oldest, for the replies to the post in focus; branches stay oldest first. The post author’s replies still come first, then everyone else’s by (2 × members who answered the reply + its likes) / (hours old + 2)^1.5, worked out as of the first page. Nothing depends on who the reader follows or on payment. Offered on posts with up to 2,000 direct replies until wide threads are measured."
     },
     {
+      "id": "adult-content-labels",
+      "name": "Date of birth at signup and 18+ labels",
+      "description": "Ask for a date of birth at signup and keep only the age band; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.",
+      "category": "safety",
+      "priority": "P2",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "docs/adr/0020-under-18-accounts-and-adult-labels.md",
+        "apps/api/src/governance/age.ts",
+        "docs/governance/under-18-rollout.md"
+      ],
+      "notes": "Phase 1 of ADR 0020 (proposed, 3 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth is used once and dropped; labelled media is served privately by short-lived signed URLs."
+    },
+    {
       "id": "minor-safeguards",
       "name": "Safeguards for under-18 access",
       "description": "Prepare approved age assurance, consent, content and contact safeguards before opening younger accounts.",
@@ -1081,9 +1096,14 @@
       "evidence": [
         "docs/governance/under-18-rollout.md",
         "apps/api/src/governance/age.ts",
-        "apps/api/src/env.ts"
+        "apps/api/src/env.ts",
+        "docs/adr/0020-under-18-accounts-and-adult-labels.md"
       ],
-      "caveat": "Child-safety decisions, approvals and implementation must precede any change to the temporary adult-only beta."
+      "caveat": "Child-safety decisions, approvals and implementation must precede any change to the temporary adult-only beta.",
+      "dependency": [
+        "adult-content-labels"
+      ],
+      "notes": "Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Waits for counsel (minimum age, guardian consent), phase 1 in production, upload hash-matching and the rest of the under-18 rollout checklist, then a written sign-off."
     },
     {
       "id": "age-verification",
