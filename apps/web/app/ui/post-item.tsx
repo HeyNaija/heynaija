@@ -20,6 +20,7 @@ import { Menu } from './menu'
 import { MorePosts } from './more-posts'
 import { PollCard } from './poll-card'
 import { PostImages } from './post-images'
+import { PostVideo } from './post-video'
 import { PostPermalink } from './post-permalink'
 import { PostText } from './post-text'
 import { QuotedPostCard } from './quoted-post'
@@ -55,6 +56,9 @@ const replyAudienceNote = (post: Post, viewerId: string | null) =>
 // choice itself (cookie and Save-Data header), so PostItem and its callers stay as they were.
 async function SaverImages({ images }: { images: Post['images'] }) {
   return <PostImages images={images} saver={await currentDataSaver()} />
+}
+async function SaverVideo({ video }: { video: NonNullable<Post['video']> }) {
+  return <PostVideo video={video} held={await currentDataSaver()} />
 }
 async function SaverQuote({ quote, now }: { quote: NonNullable<Post['quote']>; now: number }) {
   return <QuotedPostCard quote={quote} now={now} saver={await currentDataSaver()} />
@@ -335,13 +339,18 @@ export function PostItem({
           <SaverImages images={post.images} />
         </div>
       ) : null}
+      {post.video ? (
+        <div className="mt-3">
+          <SaverVideo video={post.video} />
+        </div>
+      ) : null}
       {post.quote ? (
         <div className="mt-3">
           <SaverQuote quote={post.quote} now={now} />
         </div>
       ) : null}
       {/* A card for the first address, unless the post already has pictures or a quote to show. */}
-      {post.linkPreview && !post.images.length && !post.quote ? (
+      {post.linkPreview && !post.images.length && !post.video && !post.quote ? (
         <div className="mt-3">
           <SaverLinkCard preview={post.linkPreview} />
         </div>

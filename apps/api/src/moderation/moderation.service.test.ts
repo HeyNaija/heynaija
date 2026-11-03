@@ -98,7 +98,7 @@ test('the queue shows what was reported, by whom, and how many times', async () 
     { reason: queue[0]!.reason, details: queue[0]!.details, by: queue[0]!.reporterHandle, count: queue[0]!.reportCount },
     { reason: 'scam', details: 'crypto scam', by: 'ada', count: 2 },
   )
-  assert.deepEqual(queue[0]!.post, { id, text: 'buy my coin', images: [], authorHandle: 'bayo', communityName: null })
+  assert.deepEqual(queue[0]!.post, { id, text: 'buy my coin', images: [], hasVideo: false, authorHandle: 'bayo', communityName: null })
 })
 
 test('removing a post hides it everywhere, closes every report on it, and is logged', async () => {

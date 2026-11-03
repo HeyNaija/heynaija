@@ -69,6 +69,11 @@ import { SearchController } from './search/search.controller.js'
 import { DB, ENV } from './tokens.js'
 import { TopicsController } from './topics/topics.controller.js'
 import { TopicsService } from './topics/topics.service.js'
+import { videoConfig } from './video/video-config.js'
+import { VideoGate, VideoPostsGuard } from './video/video-gate.js'
+import { BullVideoJobs } from './video/video-queue.js'
+import { VideosController } from './video/video.controller.js'
+import { VIDEO_CONFIG, VIDEO_JOBS, VIDEO_STORE, VideoService } from './video/video.service.js'
 
 @Controller()
 class HealthController {
@@ -79,7 +84,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController, AccountController, FlagsController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController, AccountController, FlagsController, VideosController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -189,6 +194,22 @@ class HealthController {
     GistsService,
     GistsEnabledGuard,
     GistReconciler,
+    // Video posts (docs/adr/0019): dark behind the videoPosts flag and, in production, a bound scanner.
+    // The encoding runs in the separate video-worker process; these are the API's half.
+    { provide: VIDEO_STORE, useExisting: OBJECT_STORE },
+    { provide: VIDEO_CONFIG, useFactory: (env: Env) => videoConfig(env), inject: [ENV] },
+    BullVideoJobs,
+    {
+      provide: VIDEO_JOBS,
+      useFactory: (video: BullVideoJobs, media: BullMediaJobs) => ({
+        processVideo: (id: string) => video.processVideo(id),
+        purgeCdn: (keys: string[]) => media.purgeCdn(keys),
+      }),
+      inject: [BullVideoJobs, MEDIA_JOBS],
+    },
+    VideoService,
+    VideoGate,
+    VideoPostsGuard,
   ],
 })
 export class AppModule {}

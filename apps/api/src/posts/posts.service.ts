@@ -15,12 +15,16 @@ import {
   REPLY_AUDIENCES,
   reposts,
 } from '@heynaija/db'
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { and, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { findLinks, type FoundLink, previewUrlOf } from '../links/link-text.js'
 import { type LinkPreview, type LinkPreviewRow, linkPreviewOf, toLinkPreview } from '../links/links.service.js'
 import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/media.service.js'
+import { type VideoConfig, DEFAULT_VIDEO_CONFIG } from '../video/video-config.js'
+import { assertVideoEligible } from '../video/video-eligibility.js'
+import { VIDEO_CONFIG } from '../video/video.service.js'
+import { type PostVideo, toPostVideo, type VideoRow, videoOf } from '../video/video-view.js'
 import { isFounder } from '../members/badges.js'
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
 import { excerpt, notify } from '../notifications/notifications.service.js'
@@ -66,6 +70,10 @@ export const postImagesInput = z
 
 export type PostImageInput = z.infer<typeof postImagesInput>[number]
 
+/** One video to attach to a new post: the member's own ready upload, with an optional description (ADR 0019). */
+export const postVideoInput = z.object({ id: z.uuid(), description: z.string().trim().max(ALT_MAX).default('') })
+export type PostVideoInput = z.infer<typeof postVideoInput>
+
 const pollOption = z.string().trim().min(1, 'poll options cannot be empty').refine(
   (option) => option.length <= POLL_OPTION_MAX_GRAPHEMES * 16 && graphemes(option) <= POLL_OPTION_MAX_GRAPHEMES,
   `poll options can have at most ${POLL_OPTION_MAX_GRAPHEMES} characters`,
@@ -94,10 +102,15 @@ export const newPost = (slug: z.ZodType<string>) =>
       quote: z.uuid().optional(),
       community: slug.optional(),
       images: postImagesInput,
+      video: postVideoInput.optional(),
       poll: pollInput.optional(),
       replyAudience: z.enum(REPLY_AUDIENCES).default('everyone'),
     })
-    .refine((p) => p.text.length > 0 || p.images.length > 0, { message: 'post is empty', path: ['text'] })
+    .refine((p) => p.text.length > 0 || p.images.length > 0 || p.video, { message: 'post is empty', path: ['text'] })
+    // One video, and nothing else of that kind beside it; and, to start with, not in replies (ADR 0019 section 1).
+    .refine((p) => !p.video || p.images.length === 0, { message: 'a post with a video cannot also have images', path: ['video'] })
+    .refine((p) => !p.video || !p.replyTo, { message: 'a video cannot be added to a reply', path: ['video'] })
+    .refine((p) => !p.video || !p.poll, { message: 'a video cannot be added to a poll', path: ['video'] })
     .refine((p) => !p.poll || p.text.length > 0, { message: 'a poll needs a question', path: ['text'] })
     .refine((p) => !p.poll || !p.replyTo, { message: 'a poll cannot be added to a reply', path: ['poll'] })
 
@@ -177,6 +190,8 @@ export type PostView = {
   text: string
   /** Up to four, in order. Empty when `deleted`. */
   images: PostImage[]
+  /** The post's one video, once it is ready (a held, blocked or unfinished one is never shown). Null when none, and when `deleted`. */
+  video: PostVideo | null
   /**
    * The @handles in `text` that lead to a member the viewer can see, in order,
    * each with the handle that member has now. Empty when `deleted`.
@@ -320,6 +335,7 @@ export class CommunityNotFoundError extends Error {}
 export { InvalidCursorError }
 export class NotACommunityMemberError extends Error {}
 export class ImagesNotReadyError extends Error {}
+export class VideoNotReadyError extends Error {}
 export class QuotedPostNotFoundError extends Error {}
 export class NotACommunityModeratorError extends Error {}
 
@@ -376,7 +392,7 @@ export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
 const outerId = sql`"posts"."id"`
 
 // Has at least one image a reader can see.
-const withImages = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.status = 'ready')`
+const withImages = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.kind = 'post_image' and m.status = 'ready')`
 
 const profileFilter: Record<ProfileFilter, SQL> = {
   posts: topLevel,
@@ -386,7 +402,7 @@ const profileFilter: Record<ProfileFilter, SQL> = {
 
 /** A post's ready images in order, as JSON, for any query with `posts` in scope. */
 export const imagesOf = (postId: SQL) =>
-  sql<ImageRow[]>`coalesce((select json_agg(json_build_object('id', m.id, 'alt', m.alt, 'width', m.width, 'height', m.height, 'animated', m.animated) order by m.position) from media m where m.post_id = ${postId} and m.status = 'ready'), '[]'::json)`
+  sql<ImageRow[]>`coalesce((select json_agg(json_build_object('id', m.id, 'alt', m.alt, 'width', m.width, 'height', m.height, 'animated', m.animated) order by m.position) from media m where m.post_id = ${postId} and m.kind = 'post_image' and m.status = 'ready'), '[]'::json)`
 
 export const toPostImages = (rows: ImageRow[]): PostImage[] =>
   rows.map(({ id, alt, width, height, animated }) => ({ src: postImagePath(id), alt, width, height, animated }))
@@ -516,7 +532,11 @@ const toReplyContext = (row: ReplyContextRow | null): ReplyContext | null => {
 
 @Injectable()
 export class PostsService {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    // The trust rules for video are checked again when a video is attached (ADR 0019 section 4.7).
+    @Optional() @Inject(VIDEO_CONFIG) private readonly videoCfg: VideoConfig = DEFAULT_VIDEO_CONFIG,
+  ) {}
 
   /**
    * The one place posts are read for display. Posts by inactive members never
@@ -549,6 +569,7 @@ export class PostsService {
         images: sql<
           ImageRow[]
         >`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${imagesOf(outerId)} else '[]'::json end`,
+        video: sql<VideoRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${videoOf(outerId)} end`,
         mentions: sql<PostMention[]>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${mentionsOf(viewerId, outerId)} else '[]'::json end`,
         hashtags: sql<PostHashtag[]>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${hashtagsOf(outerId)} else '[]'::json end`,
         linkPreview: sql<LinkPreviewRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${linkPreviewOf(sql`"posts"."link_url"`)} end`,
@@ -603,10 +624,11 @@ export class PostsService {
       .orderBy(...(opts.order ?? []))
       .limit(opts.limit ?? 1000)
 
-    return rows.map(({ communitySlug, communityName, authorAvatarId, images, quote, linkPreview, poll, replyContext, ...row }) => ({
+    return rows.map(({ communitySlug, communityName, authorAvatarId, images, video, quote, linkPreview, poll, replyContext, ...row }) => ({
       ...row,
       replyTo: toReplyContext(replyContext),
       images: toPostImages(images),
+      video: toPostVideo(video),
       links: findLinks(row.text),
       linkPreview: toLinkPreview(linkPreview),
       authorAvatar: avatarPath(authorAvatarId),
@@ -1248,8 +1270,9 @@ export class PostsService {
       created_at: Date
       grp: 0 | 1
       cursor_timestamp: string
-      view: (Omit<PostView, 'images' | 'createdAt' | 'authorAvatar' | 'quote' | 'poll' | 'links' | 'linkPreview'> & {
+      view: (Omit<PostView, 'images' | 'video' | 'createdAt' | 'authorAvatar' | 'quote' | 'poll' | 'links' | 'linkPreview'> & {
         images: ImageRow[]
+        video: VideoRow | null
         createdAt: string
         authorAvatarId: string | null
         quote: QuoteRow | null
@@ -1291,7 +1314,7 @@ export class PostsService {
         case when page.unavailable then null else json_build_object(
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
           'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id, 'authorFounder', ${isFounder(sql`p.author_id`)},
-          'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
+          'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'video', ${videoOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
           'hashtags', ${hashtagsOf(sql`p.id`)},
           'linkPreview', ${linkPreviewOf(sql`p.link_url`)},
           'createdAt', p.created_at, 'replyParentId', p.reply_parent_id, 'replyTo', null,
@@ -1325,10 +1348,11 @@ export class PostsService {
             hasReplies: true,
           }
         }
-        const { images, createdAt, authorAvatarId, quote, poll, linkPreview, ...post } = row.view
+        const { images, video, createdAt, authorAvatarId, quote, poll, linkPreview, ...post } = row.view
         return {
           ...post,
           images: toPostImages(images),
+          video: toPostVideo(video),
           links: findLinks(post.text),
           linkPreview: toLinkPreview(linkPreview),
           createdAt: new Date(createdAt),
@@ -1358,6 +1382,7 @@ export class PostsService {
       replyTo,
       communitySlug,
       images = [],
+      video,
       quote,
       poll,
       replyAudience = 'everyone',
@@ -1367,6 +1392,7 @@ export class PostsService {
       replyTo?: string
       communitySlug?: string
       images?: PostImageInput[]
+      video?: PostVideoInput
       quote?: string
       poll?: PollInput
       replyAudience?: ReplyAudience
@@ -1482,6 +1508,30 @@ export class PostsService {
           )
           .returning({ id: media.id })
         if (attached.length === 0) throw new ImagesNotReadyError('an image is missing, still processing or already used')
+      }
+      if (video) {
+        // Serialise this member's creates so two cannot both count 49 live videos and both pass, then re-check
+        // the rules the upload was checked against: the cap, the account's age and any upheld action since.
+        // NO KEY UPDATE, not UPDATE: the post insert above already holds FOR KEY SHARE on this row (the author
+        // foreign key), and FOR UPDATE conflicts with that, so two creates would deadlock. NO KEY UPDATE
+        // conflicts with itself but not with KEY SHARE. Do not move the lock before the insert.
+        await tx.select({ id: members.id }).from(members).where(eq(members.id, authorId)).for('no key update')
+        await assertVideoEligible(tx, authorId, this.videoCfg)
+        const attached = await tx
+          .update(media)
+          .set({ postId: row!.id, position: 0, alt: video.description })
+          .where(
+            and(
+              eq(media.id, video.id),
+              eq(media.ownerId, authorId),
+              eq(media.kind, 'post_video'),
+              // Only a video the scanner cleared and the worker published: never a held one.
+              eq(media.status, 'ready'),
+              isNull(media.postId),
+            ),
+          )
+          .returning({ id: media.id })
+        if (attached.length === 0) throw new VideoNotReadyError('the video is missing, still processing, held for review or already used')
       }
       await recordHashtags(tx, { id: row!.id, text })
       // Someone told about this post as a reply or a quote is not told again that
