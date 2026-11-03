@@ -4,8 +4,9 @@ import { and, asc, eq, inArray, isNull, lte, or, type SQL, sql } from 'drizzle-o
 import { AuthService } from '../auth/auth.service.js'
 import { EMAIL_ADDRESSES, type EmailAddresses } from '../email/addresses.js'
 import type { Env } from '../env.js'
+import { removeFromAllowLists } from '../flags/feature-flags.js'
 import { GistsService } from '../gists/gists.service.js'
-import { MediaService } from '../media/media.service.js'
+import { ACCOUNT_MEDIA_KINDS, MediaService } from '../media/media.service.js'
 import { HANDLE_HOLD_DAYS, MembersService } from '../members/members.service.js'
 import { DB, ENV } from '../tokens.js'
 import { DAY_MS, OPEN_REQUEST } from './privacy-requests.service.js'
@@ -303,9 +304,11 @@ export class AccountDeletionService {
 
       // Images: kept while they are evidence, and so is the photo while a report
       // about the account is open. The rest are marked deleted; their files go
-      // after the transaction (MediaService.eraseFilesOf).
+      // after the transaction (MediaService.eraseFilesOf). Only their own kinds of
+      // image: a community photo they uploaded is the community's and stays.
       await run(sql`update media set status = 'deleted'
         where owner_id = ${memberId} and status in ('pending', 'processing', 'ready')
+          and kind in (${sql.join(ACCOUNT_MEDIA_KINDS.map((kind) => sql`${kind}`), sql`, `)})
           and not (kind = 'post_image' and post_id is not null and post_id in ${evidence})
           and not (kind = 'avatar' and id is not distinct from (select avatar_media_id from members where id = ${memberId})
             and exists(select 1 from reports r where r.member_id = ${memberId} and r.post_id is null
@@ -373,6 +376,10 @@ export class AccountDeletionService {
       await run(sql`delete from push_subscriptions where member_id = ${memberId}`)
       await run(sql`delete from profile_badges where member_id = ${memberId}`)
       await run(sql`delete from invite_redemptions where identity_id = ${memberId}`)
+      // Their place on feature flags' allow-lists goes. Flag changes they made as a
+      // site moderator stay in the flag log, which names members by ID, so it shows
+      // the tombstone.
+      await removeFromAllowLists(tx, memberId)
       // Reports about them and the ones they made stay, as evidence. An appeal
       // still open has nothing left to decide.
       await run(sql`update reports set status = 'dismissed', resolved_at = ${now}

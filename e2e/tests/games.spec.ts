@@ -1,20 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { MARK } from '../lib/env.ts'
-import { signUpOverHttp } from '../lib/members.ts'
+import { newMember } from '../lib/members.ts'
 
-// The games homepage for a member on the Games list (docs/adr/0018). Needs the API
-// started with Games on for this handle, so CI (where it is off) skips it:
-//
-//   GAMES_ENABLED=true GAMES_MEMBERS=e2e_game_player pnpm dev:api
-//   E2E_GAMES=1 pnpm e2e games
-//
-// The allow-list takes exact handles, hence the fixed one below.
-test.skip(!process.env.E2E_GAMES, 'needs the API with GAMES_* set; see the comment at the top of this file')
+// The games homepage for a member the `games` flag is on for (docs/adr/0018). The
+// flag is on in development, as in CI; games-dark.spec.ts covers it switched off.
 
-const PLAYER = `${MARK.handlePrefix}game_player`
-
-test('an allow-listed member finds Games in the sidebar, with both games coming soon and no invented numbers', async ({ page }) => {
-  await signUpOverHttp(page, PLAYER)
+test('a member finds Games in the sidebar, with both games coming soon and no invented numbers', async ({ browser }) => {
+  const { page, context } = await newMember(browser, 'game_player')
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Games', exact: true }).click()
   await page.waitForURL((url) => url.pathname === '/games')
 
@@ -34,4 +25,5 @@ test('an allow-listed member finds Games in the sidebar, with both games coming 
   // Mobile first: nothing scrolls sideways on a 320px phone.
   await page.setViewportSize({ width: 320, height: 640 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+  await context.close()
 })

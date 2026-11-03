@@ -1,5 +1,5 @@
 {
-  "id": "fe6185b0-89af-446e-8f9d-a006cc70f2f0",
+  "id": "0652cd54-e30b-49e1-a6e8-5ae3b8a4ec2a",
   "prevId": "5630f62e-27f7-4891-9992-7b65d2a8c890",
   "version": "7",
   "dialect": "postgresql",
@@ -453,105 +453,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "games.competition_entries": {
-      "name": "competition_entries",
-      "schema": "games",
-      "columns": {
-        "competition_id": {
-          "name": "competition_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "entered_at": {
-          "name": "entered_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "placement": {
-          "name": "placement",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "score": {
-          "name": "score",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "competition_entries_member_idx": {
-          "name": "competition_entries_member_idx",
-          "columns": [
-            {
-              "expression": "member_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "competition_entries_competition_id_competitions_id_fk": {
-          "name": "competition_entries_competition_id_competitions_id_fk",
-          "tableFrom": "competition_entries",
-          "tableTo": "competitions",
-          "schemaTo": "games",
-          "columnsFrom": [
-            "competition_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "competition_entries_member_id_members_id_fk": {
-          "name": "competition_entries_member_id_members_id_fk",
-          "tableFrom": "competition_entries",
-          "tableTo": "members",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "competition_entries_competition_id_member_id_pk": {
-          "name": "competition_entries_competition_id_member_id_pk",
-          "columns": [
-            "competition_id",
-            "member_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "games.competitions": {
-      "name": "competitions",
-      "schema": "games",
+    "public.feature_flag_changes": {
+      "name": "feature_flag_changes",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
@@ -560,84 +464,29 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "game": {
-          "name": "game",
+        "flag_key": {
+          "name": "flag_key",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "format": {
-          "name": "format",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "eligibility": {
-          "name": "eligibility",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "community_id": {
-          "name": "community_id",
+        "actor_id": {
+          "name": "actor_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
-        "entry_opens_at": {
-          "name": "entry_opens_at",
-          "type": "timestamp with time zone",
+        "before": {
+          "name": "before",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
         },
-        "entry_closes_at": {
-          "name": "entry_closes_at",
-          "type": "timestamp with time zone",
+        "after": {
+          "name": "after",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
-        },
-        "starts_at": {
-          "name": "starts_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ends_at": {
-          "name": "ends_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'draft'"
-        },
-        "standings_source": {
-          "name": "standings_source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "result_post_id": {
-          "name": "result_post_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -648,17 +497,17 @@
         }
       },
       "indexes": {
-        "competitions_status_starts_idx": {
-          "name": "competitions_status_starts_idx",
+        "feature_flag_changes_key_created_idx": {
+          "name": "feature_flag_changes_key_created_idx",
           "columns": [
             {
-              "expression": "status",
+              "expression": "flag_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
             {
-              "expression": "starts_at",
+              "expression": "created_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -671,38 +520,12 @@
         }
       },
       "foreignKeys": {
-        "competitions_community_id_communities_id_fk": {
-          "name": "competitions_community_id_communities_id_fk",
-          "tableFrom": "competitions",
-          "tableTo": "communities",
-          "columnsFrom": [
-            "community_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "competitions_created_by_members_id_fk": {
-          "name": "competitions_created_by_members_id_fk",
-          "tableFrom": "competitions",
+        "feature_flag_changes_actor_id_members_id_fk": {
+          "name": "feature_flag_changes_actor_id_members_id_fk",
+          "tableFrom": "feature_flag_changes",
           "tableTo": "members",
           "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "competitions_result_post_id_posts_id_fk": {
-          "name": "competitions_result_post_id_posts_id_fk",
-          "tableFrom": "competitions",
-          "tableTo": "posts",
-          "columnsFrom": [
-            "result_post_id"
+            "actor_id"
           ],
           "columnsTo": [
             "id"
@@ -714,24 +537,119 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "competitions_eligibility_check": {
-          "name": "competitions_eligibility_check",
-          "value": "eligibility in ('open', 'community', 'invite')"
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.feature_flag_members": {
+      "name": "feature_flag_members",
+      "schema": "",
+      "columns": {
+        "flag_key": {
+          "name": "flag_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         },
-        "competitions_status_check": {
-          "name": "competitions_status_check",
-          "value": "status in ('draft', 'open', 'live', 'finished', 'cancelled')"
-        },
-        "competitions_community_check": {
-          "name": "competitions_community_check",
-          "value": "(eligibility = 'community') = (community_id is not null)"
-        },
-        "competitions_schedule_check": {
-          "name": "competitions_schedule_check",
-          "value": "entry_closes_at >= entry_opens_at and ends_at > starts_at"
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
         }
       },
+      "indexes": {},
+      "foreignKeys": {
+        "feature_flag_members_flag_key_feature_flags_key_fk": {
+          "name": "feature_flag_members_flag_key_feature_flags_key_fk",
+          "tableFrom": "feature_flag_members",
+          "tableTo": "feature_flags",
+          "columnsFrom": [
+            "flag_key"
+          ],
+          "columnsTo": [
+            "key"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "feature_flag_members_member_id_members_id_fk": {
+          "name": "feature_flag_members_member_id_members_id_fk",
+          "tableFrom": "feature_flag_members",
+          "tableTo": "members",
+          "columnsFrom": [
+            "member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "feature_flag_members_flag_key_member_id_pk": {
+          "name": "feature_flag_members_flag_key_member_id_pk",
+          "columns": [
+            "flag_key",
+            "member_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.feature_flags": {
+      "name": "feature_flags",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "feature_flags_updated_by_members_id_fk": {
+          "name": "feature_flags_updated_by_members_id_fk",
+          "tableFrom": "feature_flags",
+          "tableTo": "members",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.follows": {
@@ -815,273 +733,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "games.game_events": {
-      "name": "game_events",
-      "schema": "games",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "game": {
-          "name": "game",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "competition_id": {
-          "name": "competition_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "post_id": {
-          "name": "post_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "data": {
-          "name": "data",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "game_events_member_created_idx": {
-          "name": "game_events_member_created_idx",
-          "columns": [
-            {
-              "expression": "member_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "game_events_game_created_idx": {
-          "name": "game_events_game_created_idx",
-          "columns": [
-            {
-              "expression": "game",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "game_events_member_id_members_id_fk": {
-          "name": "game_events_member_id_members_id_fk",
-          "tableFrom": "game_events",
-          "tableTo": "members",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "game_events_competition_id_competitions_id_fk": {
-          "name": "game_events_competition_id_competitions_id_fk",
-          "tableFrom": "game_events",
-          "tableTo": "competitions",
-          "schemaTo": "games",
-          "columnsFrom": [
-            "competition_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "game_events_post_id_posts_id_fk": {
-          "name": "game_events_post_id_posts_id_fk",
-          "tableFrom": "game_events",
-          "tableTo": "posts",
-          "columnsFrom": [
-            "post_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "games.game_profiles": {
-      "name": "game_profiles",
-      "schema": "games",
-      "columns": {
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "game": {
-          "name": "game",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "stats": {
-          "name": "stats",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "game_profiles_member_id_members_id_fk": {
-          "name": "game_profiles_member_id_members_id_fk",
-          "tableFrom": "game_profiles",
-          "tableTo": "members",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "game_profiles_member_id_game_pk": {
-          "name": "game_profiles_member_id_game_pk",
-          "columns": [
-            "member_id",
-            "game"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "games.seasons": {
-      "name": "seasons",
-      "schema": "games",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "slug": {
-          "name": "slug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "starts_at": {
-          "name": "starts_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ends_at": {
-          "name": "ends_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "seasons_slug_unique": {
-          "name": "seasons_slug_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "slug"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "seasons_range_check": {
-          "name": "seasons_range_check",
-          "value": "ends_at > starts_at"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.gist_members": {
@@ -4929,128 +4580,10 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
-    },
-    "games.season_scores": {
-      "name": "season_scores",
-      "schema": "games",
-      "columns": {
-        "season_id": {
-          "name": "season_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "game": {
-          "name": "game",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "points": {
-          "name": "points",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "xp": {
-          "name": "xp",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "season_scores_rank_idx": {
-          "name": "season_scores_rank_idx",
-          "columns": [
-            {
-              "expression": "season_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "game",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "points",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "season_scores_season_id_seasons_id_fk": {
-          "name": "season_scores_season_id_seasons_id_fk",
-          "tableFrom": "season_scores",
-          "tableTo": "seasons",
-          "schemaTo": "games",
-          "columnsFrom": [
-            "season_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "season_scores_member_id_members_id_fk": {
-          "name": "season_scores_member_id_members_id_fk",
-          "tableFrom": "season_scores",
-          "tableTo": "members",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "season_scores_season_id_member_id_game_pk": {
-          "name": "season_scores_season_id_member_id_game_pk",
-          "columns": [
-            "season_id",
-            "member_id",
-            "game"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
     }
   },
   "enums": {},
   "schemas": {
-    "games": "games",
     "restricted": "restricted"
   },
   "sequences": {},

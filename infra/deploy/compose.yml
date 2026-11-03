@@ -15,6 +15,9 @@ x-logging: &logging
     max-file: "5"
 
 x-api-env: &api-env
+  # development | staging | production: picks each feature flag's default
+  # (docs/feature-flags.md). Anything unset is production, the safe side.
+  APP_ENV: ${APP_ENV:-production}
   DATABASE_URL: postgres://heynaija:${POSTGRES_PASSWORD:?}@postgres:5432/heynaija
   # Connections the API keeps open to Postgres (packages/db). 20 suits one API
   # process on the production server, well under Postgres's 100.
@@ -51,9 +54,6 @@ x-api-env: &api-env
   LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
   LIVEKIT_WEBHOOK_KEY: ${LIVEKIT_WEBHOOK_KEY:-}
   LIVEKIT_WEBHOOK_SECRET: ${LIVEKIT_WEBHOOK_SECRET:-}
-  # Games (docs/adr/0018). Off unless switched on, and then only for the handles listed.
-  GAMES_ENABLED: ${GAMES_ENABLED:-false}
-  GAMES_MEMBERS: ${GAMES_MEMBERS:-}
   # Safety (docs/safety/abuse-material-scanning.md): where alerts are emailed, the
   # PhotoDNA key once approved, and what purging Cloudflare's cache needs. Each
   # is optional; without them alerts are only logged, nothing is scanned and

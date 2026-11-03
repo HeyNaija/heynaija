@@ -105,10 +105,9 @@ the config in `docker-compose.dev.yml` advertises `127.0.0.1` for media. Servers
 staging and production are a separate piece of work.
 
 Games ([docs/games/GAMES.md](docs/games/GAMES.md), [ADR 0018](docs/adr/0018-games.md))
-are off by default too. Put `GAMES_ENABLED=true` and `GAMES_MEMBERS=<your handle>`
-(comma-separated for more) in `.env` and restart the API; Games is then in your
-account menu, at `/games`. With either missing, `/games` and every `/v1/games` route
-answer 404.
+is behind the `games` feature flag ([docs/feature-flags.md](docs/feature-flags.md)):
+on in development and staging, off in production until launch. A site moderator can
+turn it on, off, or on for named members only, from Moderation, Feature flags.
 
 The demo members can sign in as `<handle>@demo.heynaija.test` with the code
 Mailpit catches; `pnpm demo:clean` removes them and everything they did.

@@ -22,6 +22,8 @@ export const LIMITS = {
   search: [{ max: 60, windowMs: MINUTE }],
   // @mention suggestions: one per pause in typing, so more than full searches.
   mentionSuggest: [{ max: 240, windowMs: MINUTE }],
+  // Site admins changing feature flags: rare, and each change is audited.
+  flagChange: [{ max: 30, windowMs: HOUR }],
   inviteCheck: [{ max: 20, windowMs: MINUTE }],
   // Name and bio changes.
   profile: [{ max: 20, windowMs: HOUR }],

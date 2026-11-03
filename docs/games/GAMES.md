@@ -164,11 +164,13 @@ as posts. Only site moderators can create competitions for now.
 
 ## Feature flag, roadmap and docs
 
-- **Feature flag:** the whole Games module sits behind `GAMES_ENABLED` (off by
-  default) and a `GAMES_MEMBERS` list of handles (empty means nobody), the way Gists
-  are gated. Off means invisible: the API answers 404 like a missing route, the web
-  proxy serves the missing page, and the Games link (last in the sidebar, and
-  in the account menu on phones) is hidden. Only `gamesFeatureFor` decides.
+- **Feature flag:** the whole Games module sits behind the `games` feature flag
+  (docs/feature-flags.md): on in development and staging, off in production until
+  launch, and a site moderator can keep it to named members from Moderation,
+  Feature flags. Off means invisible: every Games route uses
+  `@Feature('games')` and answers 404, the web proxy serves the missing page, and
+  the Games link (last in the sidebar, and in the account menu on phones) is
+  hidden. New Games routes and jobs check the same flag.
 - **Roadmap:** Games entries live in `docs/feature-roadmap.json` as P2. After
   edits, run pnpm roadmap:generate, roadmap:check and roadmap:test.
 - **ADR:** one ADR records the games architecture, the Lichess dependency, keno

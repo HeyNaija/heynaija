@@ -1,21 +1,20 @@
-import { Controller, Get, Inject, Req, UseGuards } from '@nestjs/common'
-import { type AuthedRequest, SessionGuard } from '../../auth/session.guard.js'
-import type { Env } from '../../env.js'
-import { routeNotFound } from '../../http.js'
-import { ENV } from '../../tokens.js'
-import { GamesEnabledGuard, gamesFeatureFor } from './games-enabled.js'
+import { Controller, Get, UseGuards } from '@nestjs/common'
+import { SessionGuard } from '../../auth/session.guard.js'
+import { Feature, FeatureGuard } from '../../flags/feature.guard.js'
 import { publicManifest } from './manifest.js'
 import { GAME_REGISTRY } from './registry.js'
 
+/**
+ * Every Games route is behind the `games` flag (docs/feature-flags.md, docs/adr/0018):
+ * while it is off for the member, or they are not on its allow-list, the route is a 404.
+ */
 @Controller('v1/games')
-@UseGuards(GamesEnabledGuard, SessionGuard)
+@UseGuards(SessionGuard, FeatureGuard)
+@Feature('games')
 export class GamesController {
-  constructor(@Inject(ENV) private readonly env: Pick<Env, 'GAMES_ENABLED' | 'GAMES_MEMBERS'>) {}
-
-  /** The registry, for the games homepage. A member off the allow-list gets the same 404 as with the switch off. */
+  /** The registry, for the games homepage. */
   @Get()
-  list(@Req() req: AuthedRequest) {
-    if (!gamesFeatureFor(this.env, req.member)) throw routeNotFound(req)
+  list() {
     return { games: GAME_REGISTRY.map(publicManifest) }
   }
 }

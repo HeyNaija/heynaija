@@ -154,6 +154,10 @@ from `origin/staging` there too until a release has brought it to `main`.
   `127.0.0.1:3100` (`WEB_PORT`), for nginx. Postgres, Redis, Kratos and the API
   publish nothing; their ports exist only inside HeyNaija's own Docker network, so
   they cannot clash with Koinovera's Kratos on 4433 or anything else.
+- **Feature flags.** Set `APP_ENV=staging` in the server's `.env` (the template says
+  `production`, the safe default). Without it staging runs with production's
+  defaults: new features are off until an admin turns them on
+  ([feature-flags.md](../feature-flags.md)).
 - **Names.** `COMPOSE_PROJECT_NAME=heynaija-staging` prefixes every container,
   network and volume.
 - **nginx.** HeyNaija adds one site file, `heynaija-staging.conf`, answering only

@@ -1,7 +1,7 @@
 # ADR 0018 — Games: a pluggable section with Chess on Lichess and free-to-play Keno
 
 **Date:** 3 November 2026 · **Status:** Accepted 3 November 2026. Phase 1 built: the
-module, the registry, the `games` schema, the switch and a games homepage with
+module, the registry, the `games` schema, the `games` flag and a games homepage with
 both games marked coming soon. No game can be played yet ·
 **Spec:** [docs/games/GAMES.md](../games/GAMES.md), the standing rules for this work
 
@@ -13,9 +13,10 @@ The launch games are **Chess**, played on Lichess, and **Keno**, built here and
 free to play. The section is **pluggable**: a later game is a folder in the API,
 a folder in the web app and an entry in the registry, and nothing else.
 
-All of it is **dark** behind `GAMES_ENABLED` (off by default) and a
-`GAMES_MEMBERS` list of handles (empty means nobody). With either missing, every
-`/v1/games` route and `/games` answer 404 like an address that does not exist.
+All of it sits behind the **`games` feature flag** (docs/feature-flags.md): on in
+development and staging, off in production until the team launches it. While the
+flag is off for a member, or they are not on its allow-list, every `/v1/games` route
+and `/games` answer 404 like an address that does not exist.
 
 ## Why
 
@@ -50,7 +51,7 @@ All of it is **dark** behind `GAMES_ENABLED` (off by default) and a
   client code is loaded only on its own pages, so `/games` stays light.
 - **Database:** a separate Postgres schema, `games`, kept apart from the social
   tables as `restricted` is (ADR 0005), though unlike `restricted` it is not a
-  privacy boundary. Migration `0033_games_core` creates the schema and the shared
+  privacy boundary. Migration `0035_games_core` creates the schema and the shared
   tables: `game_profiles`, `seasons`, `season_scores`, `competitions`,
   `competition_entries` and `game_events` (append-only, the audit trail and the
   source of game posts). Chess and Keno add their own tables in their phases.
@@ -64,21 +65,28 @@ All of it is **dark** behind `GAMES_ENABLED` (off by default) and a
 
 ### The switch
 
-`GAMES_ENABLED` is a plain switch (`flag()` in `apps/api/src/env.ts`), and
-`GAMES_MEMBERS` lists the handles allowed while Games is being built, as
-`CALLS_MEMBERS` does for Gists (ADR 0017). `gamesFeatureFor` in
-`games/core/games-enabled.ts` is the only check:
+Games is the `games` flag in `apps/api/src/flags/registry.ts`, following the
+repository's feature flags (docs/feature-flags.md). *Amended 3 November 2026:* phase
+1 was first built with `GAMES_ENABLED` and `GAMES_MEMBERS` environment settings,
+because that was the only pattern in `main`; on merging `staging`, which has the
+flag system, Games moved onto it as GAMES.md asks ("following however the repo
+already gates features").
 
-- `GamesEnabledGuard` runs before sign-in on every Games route, so with the
-  switch off a signed-out caller learns nothing either.
-- A member off the list gets the same 404 from the route itself.
-- `GET /v1/me` returns `features.games`. The web app shows the Games link only
-  when it is true: last in the sidebar, so that when it appears as the page fills
-  in only the compose button below it moves, and in the account menu on phones,
-  which have no sidebar. `apps/web/proxy.ts` rewrites `/games/*` to the missing page for anyone
-  else, failing closed (`lib/games-gate.ts`).
+- Defaults follow the flag policy: on in development and staging, off in
+  production until launch, when a site moderator turns it on from Moderation,
+  Feature flags, with no deploy. The same page can keep it to named members (an
+  allow-list), which is how a launch can start small.
+- Every Games route is `@UseGuards(SessionGuard, FeatureGuard)` with
+  `@Feature('games')`: a member the flag is off for gets a 404.
+- `GET /v1/me` returns `features.games` with the other flags. The web app shows
+  the Games link only when it is true: last in the sidebar, so that when it appears
+  as the page fills in only the compose button below it moves, and in the account
+  menu on phones, which have no sidebar. `apps/web/proxy.ts` rewrites `/games/*` to
+  the missing page for anyone else, failing closed (`lib/games-gate.ts`).
+- Games is for members only: a visitor with no session always gets the missing
+  page.
 
-Turning the switch off deletes nothing.
+Turning the flag off deletes nothing.
 
 ### The Lichess dependency
 
@@ -128,12 +136,14 @@ Turning the switch off deletes nothing.
 - Spectator replies are hidden from both players until a game ends as a courtesy,
   not anti-cheat: anyone can watch the game on lichess.org.
 - Only site moderators can create competitions for now.
-- With an allow-list, signed-out visitors cannot see Games at all; whether
-  `/games` should be public once it opens to every member is decided then.
+- Signed-out visitors cannot see Games at all; whether `/games` should be public
+  once it is launched is decided then.
+- On staging every member sees Games (with both games coming soon) unless a
+  moderator limits the flag, by the flag policy.
 
 ## Rollback
 
 Revert the code. Then, before any real game data exists:
-`drop schema games cascade;` and delete the `0033_games_core` entry from
+`drop schema games cascade;` and delete the `0035_games_core` entry from
 `drizzle.__drizzle_migrations` (and `packages/db/drizzle/meta/_journal.json`).
 Put `EXPORT_FORMAT` back only together with the code that reads the tables.

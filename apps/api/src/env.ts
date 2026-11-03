@@ -24,6 +24,9 @@ const flag = () =>
 /** An optional setting that may also be given empty (compose passes `${NAME:-}`), which means unset. */
 const optional = <T extends z.ZodType>(type: T) => z.preprocess((value) => (value === '' ? undefined : value), type.optional())
 
+export const APP_ENVS = ['development', 'staging', 'production'] as const
+export type AppEnv = (typeof APP_ENVS)[number]
+
 /**
  * A whole number of days with a default, where empty means the default. Plain
  * coercion would read compose's empty `${NAME:-}` as 0, which for the deletion
@@ -33,6 +36,11 @@ const days = (fallback: number, min: number, max: number) =>
   z.preprocess((value) => (value === '' ? undefined : value), z.coerce.number().int().min(min).max(max).default(fallback))
 
 const schema = z.object({
+  // Which deployment this is; it picks each feature flag's default (docs/feature-flags.md).
+  // Unset or empty is production, so a server that forgets it can never switch on a
+  // feature that is only meant for staging. The dev scripts, CI and the staging
+  // server set their own.
+  APP_ENV: z.preprocess((value) => (value === '' ? undefined : value), z.enum(APP_ENVS).default('production')),
   DATABASE_URL: z.string().min(1),
   // Ory Kratos public API, reached server-to-server to validate sessions.
   KRATOS_PUBLIC_URL: z.url().transform((u) => u.replace(/\/$/, '')),
@@ -146,15 +154,6 @@ const schema = z.object({
   GISTS_MAX_COHOSTS: z.coerce.number().int().min(0).max(10).default(2),
   GISTS_MAX_SPEAKERS: z.coerce.number().int().min(0).max(50).default(10),
   GISTS_LISTENER_CAP: z.coerce.number().int().min(1).max(10_000).default(200),
-  // Games (docs/games/GAMES.md, docs/adr/0018). Dark by default: with the switch
-  // off every /v1/games route answers 404 like a route that does not exist.
-  GAMES_ENABLED: flag(),
-  // Handles allowed to see Games while it is being built, comma-separated. Empty
-  // means nobody, as with CALLS_MEMBERS.
-  GAMES_MEMBERS: z
-    .string()
-    .default('')
-    .transform((raw) => raw.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean)),
   // Lets browsers subscribe with an http://127.0.0.1 address, for the end-to-end
   // tests' stand-in push service. Only allowed while WEB_PUBLIC_URL is on this machine.
   PUSH_ALLOW_LOOPBACK: z

@@ -8,6 +8,9 @@ import {
   communityMemberships,
   competitionEntries,
   competitions,
+  featureFlagChanges,
+  featureFlagMembers,
+  featureFlags,
   follows,
   gameEvents,
   gameProfiles,
@@ -43,9 +46,10 @@ import {
   reports,
   reposts,
 } from '@heynaija/db'
-import { and, eq, or, type SQL, sql } from 'drizzle-orm'
+import { and, eq, isNull, or, type SQL, sql } from 'drizzle-orm'
 import type { PgTable } from 'drizzle-orm/pg-core'
 import { ExportService } from '../export/export.service.js'
+import { FeatureFlags, removeFromAllowLists } from '../flags/feature-flags.js'
 import type { MediaJobs } from '../media/media.service.js'
 import { MediaService } from '../media/media.service.js'
 import type { Bucket, ObjectStore } from '../media/object-store.js'
@@ -529,6 +533,42 @@ test('a photo is kept privately while a report about the account is still open',
   assert.equal((await member(xena)).avatarMediaId, null)
 })
 
+test('a community photo they uploaded is the community’s: it stays, reported or not', async () => {
+  const [lagos, abuja] = await db
+    .insert(communities)
+    .values([
+      { slug: 'lagos', name: 'Lagos', description: '' },
+      { slug: 'abuja', name: 'Abuja', description: '' },
+    ])
+    .returning({ id: communities.id })
+  const photoOf = async (communityId: string) => {
+    const [row] = await db
+      .insert(media)
+      .values({ ownerId: xena, kind: 'community_photo', status: 'ready', contentType: 'image/webp', bytes: 1, communityId, readyAt: now })
+      .returning({ id: media.id })
+    for (const px of [96, 256]) store.objects.set(`media/community-photos/${row!.id}/${px}.webp`, Buffer.from('img'))
+    await db.update(communities).set({ photoMediaId: row!.id }).where(eq(communities.id, communityId))
+    return row!.id
+  }
+  const plain = await photoOf(lagos!.id)
+  const reported = await photoOf(abuja!.id)
+  await moderation.report(yemi, { communitySlug: 'abuja' }, 'hate')
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  const statusOf = async (id: string) => (await db.select().from(media).where(eq(media.id, id)))[0]!.status
+  assert.deepEqual([await statusOf(plain), await statusOf(reported)], ['ready', 'ready'])
+  assert.equal(store.keys('media').filter((k) => k.startsWith('media/community-photos/')).length, 4)
+  assert.deepEqual(store.keys('uploads'), [])
+  assert.ok(!jobs.purged.some((k) => k.startsWith('community-photos/')), 'nothing purged from the CDN')
+  const photos = await db.select({ slug: communities.slug, photo: communities.photoMediaId }).from(communities)
+  assert.deepEqual(Object.fromEntries(photos.map((c) => [c.slug, c.photo])), { lagos: plain, abuja: reported })
+  // The report still reaches site moderators, who can take the photo down as before.
+  const [item] = await moderation.queue(sam)
+  assert.equal(item!.communityPhoto!.slug, 'abuja')
+})
+
 test('the handle is held for 30 days and leads nowhere; the tombstone cannot be found', async () => {
   await deletion.request(xena, { channel: 'self_service' }, now)
   await deletion.erase(xena, days(14))
@@ -734,6 +774,49 @@ test('Gists: one they hosted that was reported stays as evidence, with the repor
   assert.equal(await count(gistMembers, eq(gistMembers.gistId, reported!.id)), 0, 'places in it go; the report keeps its own record')
   assert.equal(await count(gistReportParticipants, eq(gistReportParticipants.reportId, report!.id)), 2)
   assert.equal(await count(reports, eq(reports.id, report!.id)), 1)
+})
+
+test('feature flags: they leave every allow-list; one that held only them goes off for everyone, and the log shows the tombstone', async () => {
+  const flags = new FeatureFlags(db, 'production')
+  await flags.set(sam, 'polls', { enabled: null, handles: ['xena'] })
+  await flags.set(sam, 'reposts', { enabled: null, handles: ['xena', 'yemi'] })
+  // A change she made, as a site moderator would.
+  await flags.set(xena, 'quotePosts', { enabled: false })
+  assert.equal(await flags.isEnabled('polls', yemi), false, 'on for her only')
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  assert.equal(await count(featureFlagMembers, eq(featureFlagMembers.memberId, xena)), 0)
+  assert.deepEqual(
+    (await db.select().from(featureFlagMembers).where(eq(featureFlagMembers.flagKey, 'reposts'))).map((r) => r.memberId),
+    [yemi],
+    'a list with others on it keeps them',
+  )
+  const [polls] = await db.select().from(featureFlags).where(eq(featureFlags.key, 'polls'))
+  assert.equal(polls?.enabled, false, 'off for everyone, as it was for everyone but her, not back to its default (on)')
+  const fresh = new FeatureFlags(db, 'production')
+  assert.equal(await fresh.isEnabled('polls', yemi), false)
+  assert.equal(await fresh.isEnabled('reposts', yemi), true)
+  assert.equal(await fresh.isEnabled('reposts', zara), false)
+
+  const erased = await db.select().from(featureFlagChanges).where(isNull(featureFlagChanges.actorId))
+  assert.deepEqual(
+    erased.map((c) => [c.flagKey, c.before, c.after]).sort(),
+    [
+      ['polls', { enabled: null, memberIds: [xena] }, { enabled: false, memberIds: [] }],
+      ['reposts', { enabled: null, memberIds: [xena, yemi].sort() }, { enabled: null, memberIds: [yemi] }],
+    ],
+    'each change the erase made is logged, with no admin named',
+  )
+  const log = (await fresh.describe()).changes
+  assert.ok(!JSON.stringify(log).includes('xena'), 'her handle is nowhere in the log')
+  assert.equal(log.find((c) => c.flagKey === 'quotePosts')?.actorHandle, tombstoneHandle(xena), 'a change she made shows the tombstone')
+  assert.deepEqual(log.find((c) => c.flagKey === 'polls' && c.actorHandle === null)?.before.handles, [tombstoneHandle(xena)])
+
+  // Safe to repeat.
+  await removeFromAllowLists(db, xena)
+  assert.equal(await count(featureFlagChanges, isNull(featureFlagChanges.actorId)), 2)
 })
 
 test('Games: their stats, scores, entries and history go; a competition they created stays', async () => {

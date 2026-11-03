@@ -15,6 +15,7 @@ import { EMAIL_JOBS, EMAIL_SETTINGS, EmailNotificationsService } from './email/e
 import { MAILER, type Mailer, smtpMailer } from './email/mailer.js'
 import { unsubscribeKey } from './email/unsubscribe-token.js'
 import type { Env } from './env.js'
+import { FlagsController } from './flags/flags.controller.js'
 import { ExportController } from './export/export.controller.js'
 import { ExportService } from './export/export.service.js'
 import { GamesModule } from './games/games.module.js'
@@ -32,7 +33,7 @@ import { BullLinkJobs, LinkWorker } from './links/link-queue.js'
 import { LINK_JOBS, LinksService, PAGE_FETCHER } from './links/links.service.js'
 import { SafeFetcher } from './links/safe-fetch.js'
 import { CDN_PURGER, CloudflarePurger, NoPurger } from './media/cdn-purge.js'
-import { MediaController, PostImagesController } from './media/media.controller.js'
+import { CommunityPhotoController, MediaController, PostImagesController } from './media/media.controller.js'
 import { BullMediaJobs, MediaWorker } from './media/media-queue.js'
 import { CONTENT_SCANNER, MEDIA_JOBS, MediaService, NoScanner, OBJECT_STORE } from './media/media.service.js'
 import { S3ObjectStore } from './media/object-store.js'
@@ -68,9 +69,9 @@ class HealthController {
 }
 
 @Module({
-  // Settings, the database, sign-in and rate limits; then the modules built on them.
+  // Settings, the database, sign-in, feature flags and rate limits; then the modules built on them.
   imports: [PlatformModule, GamesModule],
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController, AccountController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController, AccountController, FlagsController],
   providers: [
     ModerationService,
     { provide: OBJECT_STORE, useFactory: (env: Env) => new S3ObjectStore(s3Config(env)), inject: [ENV] },

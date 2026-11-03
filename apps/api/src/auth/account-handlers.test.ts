@@ -33,7 +33,7 @@ function setup() {
 
 // Logout uses only AuthService; the registration webhooks' services are not touched.
 const logoutController = (auth: AuthService) =>
-  new AuthController({} as never, {} as never, {} as never, {} as never, {} as never, {} as never, auth, {} as never, {} as never)
+  new AuthController({} as never, {} as never, {} as never, {} as never, {} as never, {} as never, auth, {} as never, {} as never, {} as never)
 
 test('export reads the current email from Kratos even when the identity is cached', async () => {
   let email = 'old@example.test'

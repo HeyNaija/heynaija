@@ -28,6 +28,7 @@ const reportBody = z.union([
   z.object({ postId: z.uuid(), reason: z.enum(reasons), details }),
   z.object({ handle: handleParam, reason: z.enum(reasons), details }),
   z.object({ gistId: z.uuid(), reason: z.enum(reasons), details }),
+  z.object({ communitySlug: slugParam, reason: z.enum(reasons), details }),
 ])
 const appealBody = z.object({ message: z.string().trim().min(10).max(1000) })
 const resolveBody = note.extend({ resolution: z.enum(RESOLUTIONS) })
@@ -117,6 +118,13 @@ export class ModerationController {
   @UseGuards(SessionGuard)
   roster(@Req() req: AuthedRequest) {
     return guarded(() => this.moderation.moderatorRoster(req.member.id))
+  }
+
+  @Post('moderation/communities/:slug/photo/remove')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async removeCommunityPhoto(@Req() req: AuthedRequest, @Param('slug') slug: string, @Body() body: unknown) {
+    await guarded(() => this.moderation.removeCommunityPhoto(req.member.id, parse(slugParam, slug), parse(note, body ?? {}).note))
   }
 
   @Put('moderation/communities/:slug/moderators/:handle')

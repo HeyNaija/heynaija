@@ -5,8 +5,8 @@ import { KenoModule } from './keno/keno.module.js'
 
 /**
  * The Games section (docs/games/GAMES.md, docs/adr/0018). Built on the global
- * PlatformModule for settings, the database, sign-in and rate limits. Dark unless
- * GAMES_ENABLED is on.
+ * PlatformModule for settings, the database, sign-in, feature flags and rate
+ * limits. Behind the `games` flag (docs/feature-flags.md).
  */
 @Module({
   imports: [GamesCoreModule, ChessModule, KenoModule],
