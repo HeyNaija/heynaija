@@ -68,6 +68,11 @@ the rest. What changes is described in section 5.
 - **Why under-18 accounts are locked.** `UNDER_18_ACCOUNTS_ENABLED` is locked off
   until `docs/governance/under-18-rollout.md` is approved and built (ADR 0006,
   decision 1). This ADR only has to prove "adult"; it never writes `under_18`.
+- **Date of birth at signup and 18+ labels** are ADR 0020 (proposed, 3 November
+  2026, branch `docs/under-18-accounts`): signup asks for a date of birth, keeps
+  only the band, and posts carry an 18+ label, before the 18+ rule is taken out.
+  A date of birth is `declared`, so it changes nothing here: direct messages,
+  calls and Gists still need this check, and the provider's result still decides.
 - **Constraints from the product.** Members are in Nigeria and the diaspora;
   phones are low-end Android on patchy data (`apps/web/DESIGN.md`); the pilot is
   small (the cost model uses 200, 2,000 and 20,000 verified members); the people
