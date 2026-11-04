@@ -267,6 +267,13 @@
       "when": 1793721885878,
       "tag": "0037_chess_play",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793734476581,
+      "tag": "0038_keno",
+      "breakpoints": true
     }
   ]
 }

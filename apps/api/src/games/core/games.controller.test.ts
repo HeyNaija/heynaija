@@ -28,7 +28,7 @@ test('GET /v1/games lists the registry, without the providers', () => {
     games.map((game) => [game.slug, game.status]),
     [
       ['chess', 'beta'],
-      ['keno', 'coming_soon'],
+      ['keno', 'beta'],
     ],
   )
   for (const game of games) assert.equal('providers' in game, false)

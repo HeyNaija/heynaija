@@ -141,6 +141,18 @@ export class FeatureFlags {
     return snapshot ? resolveFlag(key, this.appEnv, snapshot.get(key), viewerId, this.registry) : resolveFlag(key, 'production', undefined, viewerId, this.registry)
   }
 
+  /**
+   * Whether the flag is on for anybody at all: on for everyone, or for a listed
+   * few. Background work for a feature (such as Keno's draws) runs only then.
+   */
+  async onForAnyone(key: FlagKey): Promise<boolean> {
+    if (!isFlagKey(key)) return false
+    const snapshot = await this.current()
+    const override = snapshot?.get(key)
+    if (override && override.allow.size > 0) return true
+    return resolveFlag(key, snapshot ? this.appEnv : 'production', override, null, this.registry)
+  }
+
   /** Every flag for the viewer, keyed by registry key. */
   async all(viewerId?: string | null): Promise<Record<FlagKey, boolean>> {
     const snapshot = await this.current()

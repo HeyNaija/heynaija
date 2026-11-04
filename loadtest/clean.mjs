@@ -58,6 +58,7 @@ const steps = [
   ['chess challenges', `delete from games.chess_challenges where challenger_id in (select id from lt_m) or challenged_id in (select id from lt_m)`],
   ['lichess linking', `delete from games.lichess_link_attempts where member_id in (select id from lt_m)`],
   ['lichess accounts', `delete from games.lichess_accounts where member_id in (select id from lt_m)`],
+  ['keno tickets', `delete from games.keno_tickets where member_id in (select id from lt_m)`],
   ['game events', `delete from games.game_events where member_id in (select id from lt_m)
      or competition_id in (select id from games.competitions where created_by in (select id from lt_m))`],
   ['competition entries', `delete from games.competition_entries where member_id in (select id from lt_m)`],

@@ -30,6 +30,7 @@ import {
   problemDetails,
   pushSubscriptions,
   reports,
+  kenoTickets,
   reposts,
   seasonScores,
 } from '@heynaija/db'
@@ -41,7 +42,7 @@ import { describeTime } from '../games/chess/time-controls.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/14'
+export const EXPORT_FORMAT = 'heynaija-export/15'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -341,7 +342,7 @@ export class ExportService {
   }
 
   private async games(memberId: string) {
-    const [profiles, scores, entries, [lichess], challenges, played] = await Promise.all([
+    const [profiles, scores, entries, [lichess], challenges, played, tickets] = await Promise.all([
       this.db
         .select({ game: gameProfiles.game, stats: gameProfiles.stats, since: gameProfiles.createdAt, updatedAt: gameProfiles.updatedAt })
         .from(gameProfiles)
@@ -409,6 +410,11 @@ export class ExportService {
         join members o on o.id = case when g.white_id = ${memberId} then g.black_id else g.white_id end
         where g.white_id = ${memberId} or g.black_id = ${memberId}
         order by g.started_at`),
+      this.db
+        .select({ round: kenoTickets.roundNumber, numbers: kenoTickets.numbers, hits: kenoTickets.hits, points: kenoTickets.points, at: kenoTickets.createdAt })
+        .from(kenoTickets)
+        .where(eq(kenoTickets.memberId, memberId))
+        .orderBy(asc(kenoTickets.createdAt)),
     ])
     return {
       profiles,
@@ -440,6 +446,8 @@ export class ExportService {
         startedAt: new Date(g.started_at),
         finishedAt: g.finished_at ? new Date(g.finished_at) : null,
       })),
+      // Keno tickets you played (free, for points only): hits and points are empty until the round is drawn.
+      kenoTickets: tickets,
     }
   }
 }

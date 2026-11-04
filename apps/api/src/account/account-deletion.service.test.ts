@@ -7,6 +7,8 @@ import {
   communities,
   chessChallenges,
   chessGames,
+  kenoRounds,
+  kenoTickets,
   communityMemberships,
   competitionEntries,
   competitions,
@@ -890,4 +892,17 @@ test('Chess: their Lichess account, any linking under way and every challenge th
   assert.equal(await count(chessChallenges, eq(chessChallenges.challengerId, yemi)), 1, 'other members’ challenges stay')
   assert.equal(await count(notifications, eq(notifications.kind, 'chess_challenge')), 0)
   assert.equal(await count(chessGames, eq(chessGames.whiteId, xena)), 0, 'their games go too')
+})
+
+test('Keno: their tickets go; the shared rounds and other members’ tickets stay', async () => {
+  const [round] = await db.insert(kenoRounds).values({ drawsAt: days(1), seedHash: 'h', seedSealed: 's' }).returning()
+  await db.insert(kenoTickets).values([
+    { memberId: xena, roundNumber: round!.number, numbers: [1, 2, 3], tableVersion: 'v1' },
+    { memberId: yemi, roundNumber: round!.number, numbers: [4], tableVersion: 'v1' },
+  ])
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+  assert.equal(await count(kenoTickets, eq(kenoTickets.memberId, xena)), 0)
+  assert.equal(await count(kenoTickets, eq(kenoTickets.memberId, yemi)), 1)
+  assert.equal(await count(kenoRounds, eq(kenoRounds.number, round!.number)), 1)
 })

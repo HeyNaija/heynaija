@@ -483,6 +483,44 @@ export async function getLiveChessGames(): Promise<LiveChessGame[]> {
   return live?.games ?? []
 }
 
+// --- Keno, free to play (docs/adr/0018, phase 4) -------------------------------
+
+export type KenoTicket = { id: string; round: number; numbers: number[]; hits: number | null; points: number | null; createdAt: string }
+
+/** A round: its hash from the start; its seed and numbers (in the order drawn) once drawn. */
+export type KenoRound = {
+  number: number
+  drawsAt: string
+  seedHash: string
+  seed: string | null
+  numbers: number[] | null
+  drawnAt: string | null
+  late: boolean
+}
+
+export type KenoPlay = {
+  open: KenoRound & { closesAt: string }
+  last: KenoRound | null
+  openTickets: KenoTicket[]
+  lastTickets: KenoTicket[]
+  tokens: { left: number; daily: number; resetsAt: string }
+  serverTime: string
+  drawEveryMs: number
+  /** Points a ticket of N numbers earns, by how many were drawn. */
+  payouts: { version: string; table: Record<string, Record<string, number>> }
+}
+
+export type KenoBoardRow = { rank: number; handle: string; displayName: string | null; avatar: string | null; points: number; you: boolean }
+export type KenoBoard = { period: 'month' | 'all'; season: string | null; rows: KenoBoardRow[]; you: KenoBoardRow | null }
+
+/** The Keno page; null when Games is off for the member. */
+export const getKenoPlay = () => getOrNull<KenoPlay>('/v1/games/keno/round')
+export const getKenoRound = (n: number) => getOrNull<KenoRound>(`/v1/games/keno/rounds/${n}`)
+export const getKenoRounds = (before?: number) => getOrNull<{ rounds: KenoRound[]; next: number | null }>(`/v1/games/keno/rounds${before ? `?before=${before}` : ''}`)
+export const getKenoTickets = (before?: string) =>
+  getOrNull<{ tickets: KenoTicket[]; next: string | null }>(`/v1/games/keno/tickets${before ? `?before=${encodeURIComponent(before)}` : ''}`)
+export const getKenoBoard = (period: 'month' | 'all', limit = 50) => getOrNull<KenoBoard>(`/v1/games/keno/leaderboard?period=${period}&limit=${limit}`)
+
 /** A Gist the viewer may see; null for every refusal, which the API makes the same 404. */
 export const getGist = (id: string) => getOrNull<GistView>(`/v1/gists/${encodeURIComponent(id)}`)
 

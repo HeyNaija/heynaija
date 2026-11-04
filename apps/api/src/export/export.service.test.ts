@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { chessChallenges, chessGames, competitionEntries, competitions, gameProfiles, gameSeasons, lichessAccounts, members, seasonScores } from '@heynaija/db'
+import { chessChallenges, chessGames, competitionEntries, kenoRounds, kenoTickets, competitions, gameProfiles, gameSeasons, lichessAccounts, members, seasonScores } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { GovernanceService } from '../governance/governance.service.js'
 import { MembersService } from '../members/members.service.js'
@@ -178,7 +178,7 @@ test('an export includes the age confirmation and verification history, but neve
 })
 
 test('an export includes the member’s games: stats, season scores and competition entries', async () => {
-  assert.deepEqual((await service.export(ada, null))!.games, { profiles: [], seasonScores: [], competitionEntries: [], lichess: null, chessChallenges: [], chessGames: [] })
+  assert.deepEqual((await service.export(ada, null))!.games, { profiles: [], seasonScores: [], competitionEntries: [], lichess: null, chessChallenges: [], chessGames: [], kenoTickets: [] })
 
   const [season] = await db
     .insert(gameSeasons)
@@ -239,4 +239,14 @@ test('an export includes the linked Lichess account, never its token, and the ch
   await db.insert(chessGames).values({ id: 'gm000001', whiteId: ada, blackId: bayo, rated: true, clockLimit: 600, clockIncrement: 5, status: 'mate', winner: 'white', moves: 'e2e4 e7e5', finishedAt: new Date() })
   const [game] = (await service.export(ada, null))!.games.chessGames
   assert.deepEqual([game!.colour, game!.opponent, game!.result, game!.moves, game!.time], ['white', 'bayo', 'won', ['e2e4', 'e7e5'], '10+5'])
+})
+
+test('the export has your Keno tickets, and only yours', async () => {
+  const [round] = await db.insert(kenoRounds).values({ drawsAt: new Date(), seedHash: 'h', seedSealed: 's' }).returning()
+  await db.insert(kenoTickets).values([
+    { memberId: ada, roundNumber: round!.number, numbers: [3, 7, 11], tableVersion: 'v1', hits: 2, points: 1 },
+    { memberId: bayo, roundNumber: round!.number, numbers: [80], tableVersion: 'v1' },
+  ])
+  const { kenoTickets: tickets } = (await service.export(ada, null))!.games
+  assert.deepEqual(tickets.map((t) => [t.round, t.numbers, t.hits, t.points]), [[round!.number, [3, 7, 11], 2, 1]])
 })

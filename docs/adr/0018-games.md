@@ -258,19 +258,94 @@ both players' new ratings, writes a `chess_game_finished` event per player (what
 phase 5 will score) and the all-time tallies in `game_profiles`, and has The Arbiter
 reply in the thread with the result and the rating changes.
 
+## Phase 4: Keno, free to play (3 November 2026)
+
+Built on "Keno is free to play only" above, with the numbers chosen by the owner:
+20 free tokens a member a day, reset at midnight Lagos time; a draw every five
+minutes; standings for this month and all time; no Keno posts yet.
+
+### Rules
+
+- Numbers 1 to 80, 20 drawn a round. A ticket is 1 to 10 numbers for one round and
+  costs one token; a member may play several tickets in a round. Unused tokens do
+  not carry over.
+- Tickets go into the next round until 15 seconds before its draw; after that, into
+  the round after.
+- Points come from a table in code (`keno/payouts.ts`, version `v1`), the shape of
+  a common casino table, scaled to points. Each ticket keeps the version it was
+  played under, so a new table only changes tickets played after it.
+- Settings: `KENO_DRAW_EVERY_MS` (default 300000) and `KENO_DAILY_TOKENS`
+  (default 20).
+
+### Provably fair
+
+- Rounds are made two ahead, each with a fresh 32-byte random seed and its SHA-256
+  published at once, so a round's hash is public before any ticket for it can be
+  bought. Until the draw the seed is sealed with `GAMES_TOKEN_KEY` (TokenBox, bound
+  to the round's time) when that key is set, and kept as it is otherwise; it never
+  reaches a browser before the draw.
+- The numbers come from the seed and the round number alone: for counter 0, 1, 2 …,
+  HMAC-SHA256 with the seed as key and `"<round>:<counter>"` as message, read as
+  eight unsigned 32-bit big-endian numbers; each below 4,294,967,280 (80 × 53,687,091,
+  so every number is equally likely) gives (value mod 80) + 1, skipping numbers
+  already drawn, until there are 20 (`keno/draw.ts`).
+- Each round's page shows its hash, its seed after the draw and its numbers, checks
+  them in the browser with Web Crypto (the same steps, `_components/fair.ts`, tested
+  against the same examples as the server), and gives a one-line Node.js command
+  that checks it without HeyNaija's page.
+- Known limit: whoever runs the servers could read a sealed seed before its draw
+  (they hold the key). What the commitment guarantees is that nobody can change the
+  numbers after tickets are in: any change would no longer match the published hash.
+
+### The draw job
+
+- A BullMQ job scheduler (`keno-draws`, `every: KENO_DRAW_EVERY_MS`, which BullMQ
+  lines up with the clock) runs one job per interval however many API processes
+  there are. Each run (`KenoService.tick`) draws every round that is due, each in
+  one transaction that takes the round with `FOR UPDATE SKIP LOCKED` and scores its
+  tickets, then makes sure the next two rounds exist (a unique `draws_at` keeps them
+  single). A run that comes twice, or late, changes nothing.
+- The API runs it on start too, so a round missed while it was down is drawn then,
+  with its tickets, and its page says it was drawn late.
+- It does nothing while the `games` flag is off for everyone, as in production, so
+  no rounds pile up there (`FeatureFlags.onForAnyone`).
+
+### Tokens: Postgres decides, Redis first
+
+GAMES.md asks for the daily cap on the existing Redis limiter. Its windows start
+at a member's first action, not at midnight, and it has no "how many left", so:
+buying a ticket takes the member's advisory lock and counts their tickets since
+midnight in Lagos in Postgres, which decides and gives the "14 of 20 tokens left
+today" figure, and survives Redis being down. Before that, the Redis limiter counts
+a burst limit (30 a minute) and an outer bound on the day, under a key that carries
+the Lagos date, so its window is that day.
+
+### Scores and standings
+
+When a round is drawn, in the same transaction: the member's all-time Keno stats
+in `game_profiles` (rounds, tickets, points, best match), their points this month
+in `season_scores` (a `seasons` row for the Lagos month is made if needed; XP stays
+0 until phase 5), and one `keno_round_played` event per member per round. The
+leaderboard reads only these rows: this month from `season_scores`, all time from
+`game_profiles` with an index on its points. Blocks either way and inactive members
+are left out, ties share a rank, and the member's own row shows wherever they
+stand. The games homepage shows this month's top five.
+
 ## Data export and account deletion
 
-- The export is `heynaija-export/14`: a `games` section with the member's game
+- The export is `heynaija-export/15`: a `games` section with the member's game
   profiles, season scores and competition entries, the linked Lichess account
   (username, when linked, ratings; never the token), their chess challenges and the
-  games they played, with every move. Keno tickets join it in their phase.
+  games they played, with every move, and their Keno tickets (round, numbers, hits,
+  points, when).
 - No member foreign key in `games` cascades (ADR 0016). Erasing an account
   deletes the member's game profiles, season scores, competition entries and game
   events; competitions a moderator created stay, pointing at the tombstone. A
   linked Lichess account's token is revoked at Lichess before the erase, and the
   account, any linking under way, every challenge and every game the member was in
   are deleted (their notifications go with them). The Arbiter's threads and results
-  stay, as posts that name the tombstone.
+  stay, as posts that name the tombstone. Their Keno tickets are deleted; the shared
+  rounds stay.
 
 ## Known limitations
 
@@ -291,6 +366,9 @@ reply in the thread with the result and the rating changes.
   board uses a gradient.
 - A challenge is not withdrawn when one member blocks the other; it is hidden from
   both and runs out.
+- Keno: the operator could read a sealed seed before its draw (see Phase 4); the
+  hash only proves the numbers were not changed afterwards. At every draw each open
+  Keno page asks for it within a few seconds of the others.
 
 ## Rollback
 
@@ -300,6 +378,6 @@ Revert the code. Then, before any real game data exists:
 `chess_game_started` (after deleting those rows), `alter table notifications drop
 column game_id;`, `drop schema games cascade;`, delete The Arbiter's posts and
 membership, Chess Arena and The Arbiter's member row, and delete the
-`0035_games_core`, `0036_chess_linking` and `0037_chess_play` entries from
+`0035_games_core`, `0036_chess_linking`, `0037_chess_play` and `0038_keno` entries from
 `drizzle.__drizzle_migrations` (and `packages/db/drizzle/meta/_journal.json`).
 Put `EXPORT_FORMAT` back only together with the code that reads the tables.

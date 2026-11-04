@@ -161,8 +161,15 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
   draw, reveal serverSeed and derive the numbers deterministically from
   serverSeed and the round id. A public verify page lets anyone check a round.
 - Draws happen only on the server.
-- **Daily play cap,** enforced with the existing Redis rate limiter.
-- Optional posts for draw results and notable wins.
+- **Daily play cap,** enforced with the existing Redis rate limiter, with Postgres
+  counting the day's tokens and deciding (ADR 0018, phase 4).
+- Optional posts for draw results and notable wins (none yet: the owner chose to
+  leave them out of phase 4).
+- **Agreed numbers (phase 4):** 20 free tokens a member a day, reset at midnight
+  Lagos time, one token a ticket for one draw; a draw every 5 minutes
+  (`KENO_DRAW_EVERY_MS`); tickets close 15 seconds before a draw and go into the
+  next; points from table `v1` in `keno/payouts.ts`, never edited once used (add a
+  version instead); standings for this month and all time.
 
 ## Competitions engine
 

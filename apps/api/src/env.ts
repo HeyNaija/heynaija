@@ -166,6 +166,10 @@ const schema = z.object({
       .default('https://lichess.org')
       .transform((u) => u.replace(/\/$/, '')),
   ),
+  // Games, Keno (docs/adr/0018, phase 4): how often the shared draw is made, and
+  // how many free tokens (one ticket each) a member gets a day, Lagos time.
+  KENO_DRAW_EVERY_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(300_000),
+  KENO_DAILY_TOKENS: z.coerce.number().int().min(1).max(500).default(20),
   // Lets browsers subscribe with an http://127.0.0.1 address, for the end-to-end
   // tests' stand-in push service. Only allowed while WEB_PUBLIC_URL is on this machine.
   PUSH_ALLOW_LOOPBACK: z

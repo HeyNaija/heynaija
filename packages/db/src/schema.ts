@@ -10,6 +10,7 @@ import {
   pgSchema,
   pgTable,
   primaryKey,
+  smallint,
   text,
   uniqueIndex,
   timestamp,
@@ -1177,7 +1178,13 @@ export const gameProfiles = gamesSchema.table(
     createdAt: ts('created_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.memberId, t.game] })],
+  (t) => [
+    primaryKey({ columns: [t.memberId, t.game] }),
+    // The all-time Keno leaderboard reads points from here (docs/adr/0018, phase 4).
+    index('game_profiles_keno_points_idx')
+      .on(sql`((stats->>'points')::int) desc`)
+      .where(sql`game = 'keno'`),
+  ],
 )
 
 // Monthly seasons for the Game Score. All-time stats are kept apart, in game_profiles.
@@ -1421,5 +1428,64 @@ export const chessGames = gamesSchema.table(
     index('chess_games_live_idx').on(t.startedAt).where(sql`finished_at is null`),
     uniqueIndex('chess_games_thread_idx').on(t.threadPostId),
     check('chess_games_players_check', sql.raw('white_id <> black_id')),
+  ],
+)
+
+// ---------------------------------------------------------------------------
+// Keno, free to play (docs/adr/0018, phase 4). No money anywhere: tokens are free
+// each day and points can never be bought, sent or swapped for anything.
+// ---------------------------------------------------------------------------
+
+// One shared draw. The row is made with its commitment (the SHA-256 of a secret
+// seed) before any ticket can be bought for it; at `draws_at` the seed is revealed
+// and the 20 numbers it gives are kept. Drawn exactly when `drawn_at` is set.
+export const kenoRounds = gamesSchema.table(
+  'keno_rounds',
+  {
+    // "Round #1234".
+    number: integer('number').primaryKey().generatedAlwaysAsIdentity(),
+    drawsAt: ts('draws_at').notNull().unique(),
+    // SHA-256 of the seed, in hex: public from the start.
+    seedHash: text('seed_hash').notNull(),
+    // The seed until the draw: sealed with GAMES_TOKEN_KEY when there is one
+    // (TokenBox), else as it is. Never sent to a browser before the draw.
+    seedSealed: text('seed_sealed').notNull(),
+    // Revealed at the draw, with the numbers in the order they came out.
+    seed: text('seed'),
+    numbers: smallint('numbers').array(),
+    drawnAt: ts('drawn_at'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('keno_rounds_undrawn_idx').on(t.drawsAt).where(sql`drawn_at is null`),
+    check('keno_rounds_drawn_check', sql.raw('(drawn_at is null) = (seed is null) and (drawn_at is null) = (numbers is null)')),
+    check('keno_rounds_numbers_check', sql.raw('numbers is null or cardinality(numbers) = 20')),
+  ],
+)
+
+// A member's ticket: 1 to 10 numbers for one round, for one of the day's free
+// tokens. `hits` and `points` are set when the round is drawn, from the payout
+// table the ticket was played under (keno/payouts.ts), so a new table never
+// changes an old ticket.
+export const kenoTickets = gamesSchema.table(
+  'keno_tickets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    roundNumber: integer('round_number')
+      .notNull()
+      .references(() => kenoRounds.number),
+    numbers: smallint('numbers').array().notNull(),
+    tableVersion: text('table_version').notNull(),
+    hits: integer('hits'),
+    points: integer('points'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('keno_tickets_member_idx').on(t.memberId, t.createdAt),
+    index('keno_tickets_round_idx').on(t.roundNumber),
+    check('keno_tickets_numbers_check', sql.raw('cardinality(numbers) between 1 and 10')),
   ],
 )

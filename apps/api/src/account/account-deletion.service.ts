@@ -387,6 +387,8 @@ export class AccountDeletionService {
       await run(sql`delete from games.chess_challenges where challenger_id = ${memberId} or challenged_id = ${memberId}`)
       await run(sql`delete from games.lichess_link_attempts where member_id = ${memberId}`)
       await run(sql`delete from games.lichess_accounts where member_id = ${memberId}`)
+      // Keno (docs/adr/0018, phase 4): their tickets. The rounds are shared and stay.
+      await run(sql`delete from games.keno_tickets where member_id = ${memberId}`)
 
       await run(sql`delete from notifications where recipient_id = ${memberId} or actor_id = ${memberId}`)
       await run(sql`delete from notification_opt_outs where member_id = ${memberId}`)

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { PostsSkeleton } from '@/app/ui/post-item'
-import { getGames, getViewer } from '@/lib/api'
+import { getGames, getKenoBoard, getViewer } from '@/lib/api'
 import { GameCard } from './_components/game-card'
 import { CompetitionStrip, LeaderboardPreview, RecentGamePosts, ScoreCard } from './_components/home-sections'
 
@@ -33,7 +33,7 @@ async function GamesHome() {
   const viewer = await getViewer()
   // With Games off, or for anyone not on its list (or signed out), this page does not exist.
   if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
-  const registry = await getGames()
+  const [registry, keno] = await Promise.all([getGames(), getKenoBoard('month', 5)])
   if (!registry) notFound()
   return (
     <>
@@ -46,7 +46,7 @@ async function GamesHome() {
           ))}
         </ul>
       </section>
-      <LeaderboardPreview />
+      <LeaderboardPreview keno={keno} />
       <CompetitionStrip />
       <RecentGamePosts />
     </>

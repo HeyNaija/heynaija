@@ -90,6 +90,8 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['chess challenges', `delete from games.chess_challenges where challenger_id in (select id from e2e_m) or challenged_id in (select id from e2e_m)`],
         ['lichess linking', `delete from games.lichess_link_attempts where member_id in (select id from e2e_m)`],
         ['lichess accounts', `delete from games.lichess_accounts where member_id in (select id from e2e_m)`],
+        // Keno (docs/adr/0018, phase 4): tickets. The shared rounds stay.
+        ['keno tickets', `delete from games.keno_tickets where member_id in (select id from e2e_m)`],
         // Games (docs/adr/0018): competitions test members created go whole, entries and events with them.
         ['game events', `delete from games.game_events where member_id in (select id from e2e_m)
            or competition_id in (select id from games.competitions where created_by in (select id from e2e_m))`],

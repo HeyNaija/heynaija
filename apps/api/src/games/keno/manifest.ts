@@ -8,7 +8,7 @@ export const kenoManifest: GameManifest = {
   description:
     'Pick up to 10 numbers from 1 to 80 and watch the shared draw every few minutes. Tokens are free each day, and nothing can be bought or won.',
   cover: null,
-  status: 'coming_soon',
+  status: 'beta',
   rankingType: 'points',
   supportsCompetitions: true,
 }

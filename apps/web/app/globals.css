@@ -2218,3 +2218,53 @@ a.result-row:hover { color: var(--accent-strong); }
 .chess-player.is-turn .chess-clock { color: var(--accent-strong); }
 .chess-status { font-weight: 600; }
 .chess-moves { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* Keno (docs/adr/0018, phase 4). The picker is a grid of number keys from the existing tokens: picked keys take the
+   accent, drawn numbers are outlined chips, and a ticket's drawn numbers are filled the soft accent. Eight to a row on a
+   phone so the keys stay big enough to press, ten from tablet width. No new colours. */
+.keno-picker { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-top: 14px; }
+@media (min-width: 560px) { .keno-picker { grid-template-columns: repeat(10, minmax(0, 1fr)); } }
+.keno-num {
+  min-height: 36px; aspect-ratio: 1; border: 1px solid var(--line-strong); border-radius: var(--r-control);
+  background: var(--panel); color: var(--ink); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+@media (min-width: 560px) { .keno-num { min-height: var(--touch-target); aspect-ratio: auto; } }
+.keno-num:hover:not(:disabled) { border-color: var(--accent); }
+.keno-num[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.keno-num:disabled { opacity: 0.45; }
+.keno-clock { color: var(--ink); font-variant-numeric: tabular-nums; }
+.keno-hash code { font-size: 12px; }
+.keno-drawn { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
+.keno-ball {
+  display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border: 1px solid var(--line-strong);
+  border-radius: 999px; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.keno-ball[data-shown="false"] { visibility: hidden; }
+.keno-ball[data-hit] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.keno-tickets { display: flex; flex-direction: column; margin: 8px 0 0; padding: 0; list-style: none; }
+.keno-tickets > li { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding: 10px 0; }
+.keno-tickets > li:first-child { border-top: 0; }
+.keno-ticket-numbers { display: flex; flex-wrap: wrap; gap: 4px; }
+.keno-chip {
+  display: inline-flex; min-width: 28px; height: 26px; align-items: center; justify-content: center; padding: 0 6px;
+  border: 1px solid var(--line-strong); border-radius: var(--r-chip); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.keno-chip[data-hit] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.keno-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.keno-table-wrap { margin-top: 10px; overflow-x: auto; }
+.keno-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.keno-table th, .keno-table td { border-top: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: top; }
+.keno-table thead th { border-top: 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+.keno-table tbody th { width: 5.5rem; font-weight: 700; }
+.keno-tabs { position: static; background: transparent; }
+.keno-board { display: flex; flex-direction: column; margin: 8px 0 0; padding: 0; list-style: none; }
+.keno-board-row { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line); padding: 10px 0; min-width: 0; }
+.keno-board-row:first-child { border-top: 0; }
+.keno-board-row[data-you] { font-weight: 600; }
+.keno-board-gap { padding: 4px 0 4px 6px; color: var(--muted); }
+.keno-rank { width: 2rem; flex-shrink: 0; color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.keno-points { flex-shrink: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.keno-proof { display: grid; gap: 4px; margin: 10px 0 0; font-size: 13px; }
+.keno-proof dt { color: var(--muted); font-weight: 600; }
+.keno-proof dd { margin: 0 0 8px; overflow-wrap: anywhere; }
+.keno-command { margin-top: 6px; max-width: 100%; overflow-x: auto; border-radius: var(--r-control); background: var(--panel); padding: 10px; font-size: 11px; }

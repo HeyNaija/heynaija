@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 17 | 16 | 13 | 91 |
+| 45 | 18 | 15 | 13 | 91 |
 
 ## Priority order
 
@@ -766,11 +766,12 @@ This tracks product development, not formal governance decisions. Priority means
 #### Keno (free to play)
 
 - **ID:** `games-keno`
-- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
 - **Description:** Pick numbers for a shared draw every few minutes with free daily tokens, and check that any draw was fair.
+- **Remaining work / caveat:** Playable behind the games flag. Keno competitions and Game Score XP come in phase 5; no Keno posts yet.
 - **Dependencies:** `games-core`
-- **Inspected evidence:** `docs/games/GAMES.md`, `docs/adr/0018-games.md`, `apps/api/src/games/keno/manifest.ts`
-- **Audit notes:** No money anywhere: tokens and points can never be bought, transferred or redeemed. Draws are made on the server and are provably fair (a published SHA-256 commitment, then the seed revealed).
+- **Inspected evidence:** `docs/games/GAMES.md`, `docs/adr/0018-games.md`, `apps/api/src/games/keno/keno.service.ts`, `apps/api/src/games/keno/draw.ts`, `apps/web/app/(main)/games/keno/page.tsx`, `e2e/tests/keno.spec.ts`
+- **Audit notes:** Phase 4 built 3 Nov 2026 (ADR 0018): shared draws every five minutes, 20 free tokens a member a day (midnight Lagos), points from a fixed table, this month and all-time leaderboards, ticket history, and a page for every round that checks it was fair in the browser (a published SHA-256 commitment, then the seed revealed). No money anywhere: tokens and points can never be bought, transferred or redeemed. Still to come: competitions and the Game Score (phase 5).
 
 ## P3 — Later experiments
 

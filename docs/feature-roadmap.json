@@ -1637,17 +1637,21 @@
       "description": "Pick numbers for a shared draw every few minutes with free daily tokens, and check that any draw was fair.",
       "category": "expansion",
       "priority": "P2",
-      "status": "planned",
+      "status": "partial",
       "availability": "not_live",
       "evidence": [
         "docs/games/GAMES.md",
         "docs/adr/0018-games.md",
-        "apps/api/src/games/keno/manifest.ts"
+        "apps/api/src/games/keno/keno.service.ts",
+        "apps/api/src/games/keno/draw.ts",
+        "apps/web/app/(main)/games/keno/page.tsx",
+        "e2e/tests/keno.spec.ts"
       ],
       "dependency": [
         "games-core"
       ],
-      "notes": "No money anywhere: tokens and points can never be bought, transferred or redeemed. Draws are made on the server and are provably fair (a published SHA-256 commitment, then the seed revealed)."
+      "notes": "Phase 4 built 3 Nov 2026 (ADR 0018): shared draws every five minutes, 20 free tokens a member a day (midnight Lagos), points from a fixed table, this month and all-time leaderboards, ticket history, and a page for every round that checks it was fair in the browser (a published SHA-256 commitment, then the seed revealed). No money anywhere: tokens and points can never be bought, transferred or redeemed. Still to come: competitions and the Game Score (phase 5).",
+      "caveat": "Playable behind the games flag. Keno competitions and Game Score XP come in phase 5; no Keno posts yet."
     }
   ]
 }

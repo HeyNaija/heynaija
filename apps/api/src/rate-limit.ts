@@ -53,6 +53,12 @@ export const LIMITS = {
   chessChallenge: [{ max: 20, windowMs: HOUR }],
   // Moves, draw offers and resignations in a game (docs/adr/0018, phase 3).
   chessMove: [{ max: 120, windowMs: MINUTE }],
+  // Keno tickets (docs/adr/0018, phase 4): a burst limit, and an outer bound on a
+  // day's tickets, counted under a key that carries the Lagos date so the window is
+  // that day (the most KENO_DAILY_TOKENS may be). The day's tokens themselves
+  // (KENO_DAILY_TOKENS) are counted in Postgres, which decides.
+  kenoTicket: [{ max: 30, windowMs: MINUTE }],
+  kenoDaily: [{ max: 500, windowMs: 25 * HOUR }],
 } satisfies Record<string, { max: number; windowMs: number }[]>
 
 export type LimitKind = keyof typeof LIMITS
