@@ -94,3 +94,8 @@ test('the exact environment compose passes with every optional setting unset (al
   assert.doesNotThrow(() => loadEnv({ ...base, ...api }))
   assert.doesNotThrow(() => loadWorkerEnv({ ...workerBase, ...worker }))
 })
+
+test('the worker, like the API, refuses half an Arachnid Shield login', () => {
+  assert.doesNotThrow(() => loadWorkerEnv({ ...workerBase, ARACHNID_SHIELD_USERNAME: 'u', ARACHNID_SHIELD_PASSWORD: 'p' }))
+  assert.throws(() => loadWorkerEnv({ ...workerBase, ARACHNID_SHIELD_USERNAME: 'u' }), /set both ARACHNID_SHIELD_USERNAME and ARACHNID_SHIELD_PASSWORD/)
+})

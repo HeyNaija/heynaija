@@ -8,7 +8,7 @@ import { after, before, beforeEach, test } from 'node:test'
 import { media, members, reports, videoDetails, videoRenditions } from '@heynaija/db'
 import { UnrecoverableError } from 'bullmq'
 import { eq } from 'drizzle-orm'
-import { type ContentScanner, type FrameScan, NoScanner } from '../media/media.service.js'
+import { type ContentScanner, type FrameScan, NoScanner, type VideoScan } from '../media/media.service.js'
 import type { SafetyAlerts } from '../moderation/safety-alerts.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { MemoryVideoStore } from './memory-video-store.js'
@@ -179,6 +179,39 @@ test('a video removed while no scanner looked at it leaves no private copy behin
   await processor(removing).process(id, { lastAttempt: false })
   assert.equal((await rowOf(id)).status, 'deleted')
   assert.deepEqual(store.keys('uploads'), [])
+})
+
+test('a scanner that takes the whole file (Arachnid Shield) is sent the original: clear publishes, a match blocks at the time it gives', { skip, timeout: 120_000 }, async () => {
+  const seen: { contentType: string; bytes: number }[] = []
+  const whole = (verdict: VideoScan): ContentScanner => ({
+    scan: async () => 'clear',
+    scanVideo: async (video) => {
+      seen.push({ contentType: video.contentType, bytes: (await readFile(video.path)).length })
+      return verdict
+    },
+  })
+  const clearId = await queued()
+  await processor(whole({ verdict: 'clear', matchMs: null })).process(clearId, { lastAttempt: false })
+  assert.equal((await rowOf(clearId)).status, 'ready')
+  assert.deepEqual(seen[0], { contentType: 'video/mp4', bytes: clipBytes.length }, 'the whole original, as uploaded')
+
+  const matchId = await queued()
+  await processor(whole({ verdict: 'match', matchMs: 2500 })).process(matchId, { lastAttempt: false })
+  assert.equal((await rowOf(matchId)).status, 'blocked')
+  assert.equal((await detailsOf(matchId)).matchFrameMs, 2500)
+  assert.deepEqual(store.keys('media').filter((k) => k.includes(matchId)), [])
+})
+
+test('with a whole-file scanner and a frame scanner, either one matching blocks; clear needs one to have looked', { skip, timeout: 120_000 }, async () => {
+  const id = await queued()
+  const both: ContentScanner = {
+    scan: async () => 'clear',
+    scanVideo: async () => ({ verdict: 'clear', matchMs: null }),
+    scanFrames: async () => ({ verdict: 'match', matchIndex: 1 }),
+  }
+  await processor(both).process(id, { lastAttempt: false })
+  assert.equal((await rowOf(id)).status, 'blocked', 'the frames matched though the file did not')
+  assert.equal((await detailsOf(id)).matchFrameMs, 1000, 'the time of the sampled frame that matched')
 })
 
 test('over a limit is rejected for good: a reason class, original deleted, no retry (it returns, it does not throw)', { skip, timeout: 120_000 }, async () => {

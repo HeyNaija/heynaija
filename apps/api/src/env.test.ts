@@ -36,6 +36,15 @@ test('the API refuses to start with any of them switched on', () => {
   }
 })
 
+test('the Arachnid Shield login is both halves or neither', () => {
+  assert.doesNotThrow(() => loadEnv(base))
+  assert.doesNotThrow(() => loadEnv({ ...base, ARACHNID_SHIELD_USERNAME: 'u', ARACHNID_SHIELD_PASSWORD: 'p' }))
+  assert.throws(() => loadEnv({ ...base, ARACHNID_SHIELD_USERNAME: 'u' }), /set both ARACHNID_SHIELD_USERNAME and ARACHNID_SHIELD_PASSWORD/)
+  assert.throws(() => loadEnv({ ...base, ARACHNID_SHIELD_PASSWORD: 'p' }), /set both/)
+  // Empty is unset, as compose passes it.
+  assert.doesNotThrow(() => loadEnv({ ...base, ARACHNID_SHIELD_USERNAME: '', ARACHNID_SHIELD_PASSWORD: '' }))
+})
+
 test('the person-key secret must be long enough when given', () => {
   assert.throws(() => loadEnv({ ...base, IDENTITY_KEY_SECRET: 'short' }))
   assert.equal(loadEnv({ ...base, IDENTITY_KEY_SECRET: 'k'.repeat(32) }).IDENTITY_KEY_SECRET, 'k'.repeat(32))

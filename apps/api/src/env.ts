@@ -112,8 +112,15 @@ const schema = z.object({
   // uploads and reports of illegal content are emailed; without it they are only
   // logged. Needs the SMTP settings above.
   SAFETY_ALERT_EMAIL: optional(z.email()),
-  // PhotoDNA's key, once Microsoft has approved us: with it every upload is
-  // hash-matched before it is published; without it every image passes.
+  // The upload scanners: with either, every upload is hash-matched before it is
+  // published; with both, both are asked; with neither every image passes and
+  // every video is held. Arachnid Shield (the Canadian Centre for Child Protection's
+  // free API): the API username and password from shield.projectarachnid.com.
+  ARACHNID_SHIELD_USERNAME: optional(z.string().min(1)),
+  ARACHNID_SHIELD_PASSWORD: optional(z.string().min(1)),
+  // Only if Shield gives a different address.
+  ARACHNID_SHIELD_URL: optional(z.url().transform((u) => u.replace(/\/$/, ''))),
+  // PhotoDNA's key, once Microsoft has approved us.
   PHOTODNA_SUBSCRIPTION_KEY: optional(z.string().min(1)),
   // Only if Microsoft's documentation gives a different Match address.
   PHOTODNA_MATCH_URL: optional(z.url()),
@@ -162,6 +169,9 @@ const checked = schema.superRefine((env, ctx) => {
   graceWithinDue(env, ctx)
   if (env.SMTP_CONNECTION_URI && !env.SMTP_FROM_ADDRESS) {
     ctx.addIssue({ code: 'custom', path: ['SMTP_FROM_ADDRESS'], message: 'SMTP_FROM_ADDRESS is required when SMTP_CONNECTION_URI is set' })
+  }
+  if (Boolean(env.ARACHNID_SHIELD_USERNAME) !== Boolean(env.ARACHNID_SHIELD_PASSWORD)) {
+    ctx.addIssue({ code: 'custom', path: ['ARACHNID_SHIELD_PASSWORD'], message: 'set both ARACHNID_SHIELD_USERNAME and ARACHNID_SHIELD_PASSWORD, or neither' })
   }
   if (Boolean(env.PUSH_VAPID_PUBLIC_KEY) !== Boolean(env.PUSH_VAPID_PRIVATE_KEY)) {
     ctx.addIssue({ code: 'custom', path: ['PUSH_VAPID_PRIVATE_KEY'], message: 'set both PUSH_VAPID_PUBLIC_KEY and PUSH_VAPID_PRIVATE_KEY, or neither' })

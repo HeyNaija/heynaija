@@ -4,9 +4,13 @@
 
 ## The rule
 
-**No video is ever published unless an upload scanner has looked at its frames and
-said "clear".** Until PhotoDNA is approved and its key is set
-(`PHOTODNA_SUBSCRIPTION_KEY`), the scanner is `NoScanner`, and for video that means:
+**No video is ever published unless an upload scanner has looked at it and said
+"clear".** The scanners are Arachnid Shield (`ARACHNID_SHIELD_USERNAME` and
+`ARACHNID_SHIELD_PASSWORD`), which is sent the whole original and matches every
+frame itself, and PhotoDNA (`PHOTODNA_SUBSCRIPTION_KEY`, once Microsoft approves
+us), which is sent our sampled frames. With both set both are asked, and a match
+from either blocks the video. With neither, the scanner is `NoScanner`, and for
+video that means:
 
 - Every uploaded video is **held `quarantined`**. It is never made `ready`, never
   copied to the public bucket, and cannot be put on a post (attaching needs `ready`).
@@ -18,10 +22,13 @@ said "clear".** Until PhotoDNA is approved and its key is set
 - This is not configurable. There is no "pass everything" scanner for video, in any
   environment, on purpose. (`NoScanner` still passes images, as it always has.)
 
-To exercise the full pipeline end to end in development or staging, run a small
-stand-in for PhotoDNA's Match endpoint and point `PHOTODNA_MATCH_URL` and
-`PHOTODNA_SUBSCRIPTION_KEY` at it. The tests do this with stand-ins; never with
-real material.
+To exercise the full pipeline end to end in development or staging, set the
+Arachnid Shield login: an ordinary clip comes back `no-known-match` and is
+published. Shield's own test media (classification `test`) are treated as a match,
+so the blocking path can be drilled without real material. Without a login, run a
+small stand-in for PhotoDNA's Match endpoint and point `PHOTODNA_MATCH_URL` and
+`PHOTODNA_SUBSCRIPTION_KEY` at it. The tests use stand-ins for both; never real
+material.
 
 ## Two gates, and who can flip them
 
@@ -50,8 +57,9 @@ Both are pinned by tests (`video-gate.test.ts`, `video.http.test.ts`,
 | An illegal report hides the video at once | Yes: a report with reason `illegal` quarantines the post's video pending review (ADR open question 6, default yes). |
 
 **Not in code, and still required before production** (all are people, not
-software): PhotoDNA key set in production and shown to work on staging; Microsoft's
-written answer on frame-by-frame video use; Cloudflare's written answer on video via
+software): a scanner's login set in production (Arachnid Shield, or PhotoDNA) and
+shown to work on staging; if PhotoDNA is used, Microsoft's written answer on
+frame-by-frame video use; Cloudflare's written answer on video via
 R2 and the custom domain, and the CSAM tool on that hostname; the checklist in
 `abuse-material-scanning.md` fully ticked; counsel's answers; phase 4 drills; a
 named person signing off in the PR that flips the flag.
@@ -61,12 +69,17 @@ named person signing off in the PR that flips the flag.
 Same as images: the original is kept privately (`quarantine/originals/videos/<id>`),
 the row becomes `blocked`, the account gets an "Illegal content" report and
 `SAFETY_ALERT_EMAIL` an alert (media ID and member ID, never the content). The
-uploader is told only that the video could not be used. The index of the matching
-frame and its time are recorded in `video_details`, with the SHA-256 of the original.
+uploader is told only that the video could not be used. The time of the matching
+frame (from our sample for PhotoDNA, or as Shield reports it for a near match; none
+for an exact match of the whole file) is recorded in `video_details`, with the
+SHA-256 of the original. Shield's `harmful-abusive-material` blocks as `csam` does,
+and so would any classification it adds later: only `no-known-match` is clear.
 
 ## Honest limits (as in the ADR)
 
-- Frames are **sampled** (one a second, the last frame, up to 20 at scene changes,
-  at most 80). Something shown for under a second between samples can be missed.
+- For PhotoDNA, frames are **sampled** (one a second, the last frame, up to 20 at
+  scene changes, at most 80). Something shown for under a second between samples
+  can be missed. Arachnid Shield is sent the whole file and samples it its own way,
+  which it does not publish.
 - **Audio is not scanned.**
 - Cloudflare's own scanner is unverified for video: treat video as one automated layer.

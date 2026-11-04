@@ -5,21 +5,22 @@ import { type Db, media, reports, videoDetails, videoRenditions } from '@heynaij
 import { Logger } from '@nestjs/common'
 import { UnrecoverableError } from 'bullmq'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { type ContentScanner, type FrameScan } from '../media/media.service.js'
+import type { ContentScanner, VideoScan } from '../media/media.service.js'
 import type { VideoStore } from '../media/object-store.js'
 import type { SafetyAlerts } from '../moderation/safety-alerts.js'
-import { checkLimits, type Deadline, DurationMismatch, extractFrames, extractPoster, FFMPEG_SAFETY, FfmpegTimeout, newDeadline, type Probe, probe, type Rejection, renditionPlan, transcode } from './ffmpeg.js'
+import { checkLimits, type Deadline, DurationMismatch, extractFrames, extractPoster, FFMPEG_SAFETY, FfmpegTimeout, newDeadline, type Probe, probe, type Rejection, renditionPlan, type SampledFrame, transcode } from './ffmpeg.js'
 import type { VideoConfig } from './video-config.js'
 import { originalKey, posterKey, quarantineOriginalKey, renditionKey } from './video-keys.js'
 
 /**
  * The video worker's job (ADR 0019 section 3.5): probe, refuse what is over a
- * limit, take sample frames from the original, scan them, and only then encode
- * and publish. Nothing is public until the scan is clear and the encode is done,
- * and `ready` is set last, in a conditional update.
+ * limit, take sample frames from the original, scan the original and its frames
+ * (`scanVideo` below), and only then encode and publish. Nothing is public until
+ * the scan is clear and the encode is done, and `ready` is set last, in a
+ * conditional update.
  *
  * Fail closed. A video is made `ready` on one verdict only: the scanner said
- * `clear`. No scanner (or no frame scanning in it) keeps the video `quarantined`
+ * `clear`. No scanner (or none that looks at video) keeps the video `quarantined`
  * with its original kept privately; a match blocks it; a scanner that cannot
  * answer throws so the job is retried.
  */
@@ -44,7 +45,7 @@ export class VideoProcessor {
    */
   async process(mediaId: string, { lastAttempt }: { lastAttempt: boolean }): Promise<void> {
     const [row] = await this.db
-      .select({ ownerId: media.ownerId, status: media.status })
+      .select({ ownerId: media.ownerId, status: media.status, contentType: media.contentType })
       .from(media)
       .where(and(eq(media.id, mediaId), eq(media.kind, 'post_video')))
     if (row?.status !== 'processing') return
@@ -52,7 +53,7 @@ export class VideoProcessor {
     await this.db.update(videoDetails).set({ attempts: sql`${videoDetails.attempts} + 1` }).where(eq(videoDetails.mediaId, mediaId))
     const work = await mkdtemp(join(this.workDir, `video-${mediaId}-`))
     try {
-      await this.run(mediaId, row.ownerId, work, newDeadline(this.jobTimeoutMs))
+      await this.run(mediaId, row.ownerId, row.contentType, work, newDeadline(this.jobTimeoutMs))
     } catch (err) {
       const message = (err as Error).message
       // A timeout will happen again with the same file: fail it now and tell the queue not to retry.
@@ -69,7 +70,7 @@ export class VideoProcessor {
     }
   }
 
-  private async run(mediaId: string, ownerId: string, work: string, deadline: Deadline): Promise<void> {
+  private async run(mediaId: string, ownerId: string, contentType: string, work: string, deadline: Deadline): Promise<void> {
     const original = join(work, 'original')
     const sha256 = await this.store.download('uploads', originalKey(mediaId), original)
     const bytes = (await stat(original)).size
@@ -89,15 +90,13 @@ export class VideoProcessor {
     // Defence in depth: an empty sample must never count as "nothing found".
     if (frames.length === 0) throw new Error('no frames could be sampled from the video, so nothing was scanned')
     // Throws when the scanner cannot answer: the job is retried, nothing is published.
-    const scan: FrameScan = this.scanner.scanFrames
-      ? await this.scanner.scanFrames(frames.map((f) => f.jpeg))
-      : { verdict: 'unscanned', matchIndex: null }
+    const scan = await scanVideo(this.scanner, { path: original, contentType }, frames)
     await this.db
       .update(videoDetails)
       .set({ originalSha256: sha256, durationMs: p.durationMs, width: p.width, height: p.height, fps: p.fps, framesScanned: frames.length, scanResult: scan.verdict })
       .where(eq(videoDetails.mediaId, mediaId))
 
-    if (scan.verdict === 'match') return this.block(mediaId, ownerId, original, frames[scan.matchIndex ?? 0]?.ms ?? null)
+    if (scan.verdict === 'match') return this.block(mediaId, ownerId, original, scan.matchMs)
     if (scan.verdict !== 'clear') return this.hold(mediaId)
     return this.publish(mediaId, original, p, work, deadline)
   }
@@ -203,4 +202,17 @@ export class VideoProcessor {
     }
     if (!this.cfg.keepOriginals) await this.store.remove('uploads', originalKey(mediaId))
   }
+}
+
+/**
+ * One verdict on a video from whatever the scanner can look at: the whole file (Arachnid Shield)
+ * and the sampled frames (PhotoDNA). A match from either blocks it, with the time of the matching
+ * frame where one is known; it is clear only when at least one of them looked and neither matched.
+ */
+export async function scanVideo(scanner: ContentScanner, video: { path: string; contentType: string }, frames: SampledFrame[]): Promise<VideoScan> {
+  const whole = scanner.scanVideo ? await scanner.scanVideo(video) : null
+  if (whole?.verdict === 'match') return whole
+  const sampled = scanner.scanFrames ? await scanner.scanFrames(frames.map((f) => f.jpeg)) : null
+  if (sampled?.verdict === 'match') return { verdict: 'match', matchMs: frames[sampled.matchIndex ?? 0]?.ms ?? null }
+  return { verdict: whole?.verdict === 'clear' || sampled?.verdict === 'clear' ? 'clear' : 'unscanned', matchMs: null }
 }

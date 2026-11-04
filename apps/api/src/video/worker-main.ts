@@ -1,9 +1,9 @@
 import { createDb } from '@heynaija/db'
 import { Worker } from 'bullmq'
 import { smtpMailer } from '../email/mailer.js'
-import { type ContentScanner, NoScanner } from '../media/media.service.js'
+import { NoScanner } from '../media/media.service.js'
 import { S3ObjectStore } from '../media/object-store.js'
-import { PhotoDnaScanner } from '../media/photodna.js'
+import { describeScanner, scannerFromEnv } from '../media/scanners.js'
 import { EmailSafetyAlerts } from '../moderation/safety-alerts.js'
 import { VIDEO_QUEUE } from './video-config.js'
 import { VideoProcessor } from './video-processor.js'
@@ -28,12 +28,12 @@ const store = new S3ObjectStore({
   mediaBucket: env.S3_MEDIA_BUCKET,
 })
 
-const scanner: ContentScanner = env.PHOTODNA_SUBSCRIPTION_KEY ? new PhotoDnaScanner(env.PHOTODNA_SUBSCRIPTION_KEY, env.PHOTODNA_MATCH_URL) : new NoScanner()
+const scanner = scannerFromEnv(env)
 if (scanner instanceof NoScanner) {
   // Said once, loudly, at start. Per video it is said again when one is held.
   console.error(
     [
-      '!!! NO UPLOAD SCANNER IS CONFIGURED (PHOTODNA_SUBSCRIPTION_KEY is not set) !!!',
+      '!!! NO UPLOAD SCANNER IS CONFIGURED (neither ARACHNID_SHIELD_* nor PHOTODNA_* is set) !!!',
       '!!! Every video will be held in QUARANTINE and none will be published.    !!!',
       '!!! This is deliberate: video fails closed. See docs/safety/video-scanning.md. !!!',
     ].join('\n'),
@@ -53,7 +53,7 @@ const worker = new Worker(
 )
 worker.on('failed', (job, err) => console.error(`video job ${job?.id} failed (attempt ${job?.attemptsMade}): ${err.message}`))
 worker.on('error', (err) => console.error(`video worker error: ${err.message}`))
-console.log(`video worker ready: ${cfg.maxSeconds}s / ${Math.floor(cfg.maxBytes / 1024 / 1024)} MB / ${cfg.maxEdge}px limits, scanner: ${scanner instanceof NoScanner ? 'NONE (fail closed)' : 'PhotoDNA'}`)
+console.log(`video worker ready: ${cfg.maxSeconds}s / ${Math.floor(cfg.maxBytes / 1024 / 1024)} MB / ${cfg.maxEdge}px limits, scanner: ${describeScanner(scanner)}`)
 
 const stop = async () => {
   await worker.close()

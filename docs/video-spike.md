@@ -81,8 +81,8 @@ its own holding only Postgres and Redis, so it cannot reach Kratos, the API or t
 app. Postgres and Redis are now on that network as well as the default one (a change
 to two running services: they are recreated on the next deploy).
 
-Does **not**: filter outbound traffic. The worker must reach object storage, PhotoDNA
-and SMTP over the internet, and Docker has no per-host egress rule, so a compromised
+Does **not**: filter outbound traffic. The worker must reach object storage, the
+scanners (Arachnid Shield, PhotoDNA) and SMTP over the internet, and Docker has no per-host egress rule, so a compromised
 ffmpeg could still call out to the internet and to Postgres and Redis. Restricting
 that is a host firewall job. `-protocol_whitelist file,pipe` and the job deadline are
 ffmpeg flags, not container confinement. It is also not `nice`d, and the
@@ -107,7 +107,7 @@ it is read in `video-config.ts` and passed through `infra/deploy/compose.yml`.
 - Playback in real browsers (not run; the web typecheck passes and the pure helpers
   are tested).
 - The Docker image build, including the ffmpeg pin (no Docker from a worktree, and no workflow builds it).
-- A real PhotoDNA call. The frame scan is tested against a stand-in.
+- A real PhotoDNA or Arachnid Shield call. Both are tested against stand-ins.
 - Low-data holding: `held` is set from the reader's low-data choice, as for pictures.
   The rendition quality is still fixed at 360 (not chosen by the setting). The player is tap-to-play: the `<video>`
   element is not created until the tap, so no video bytes load before it, but the

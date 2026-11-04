@@ -45,9 +45,9 @@ import { SafeFetcher } from './links/safe-fetch.js'
 import { CDN_PURGER, CloudflarePurger, NoPurger } from './media/cdn-purge.js'
 import { CommunityPhotoController, MediaController, PostImagesController } from './media/media.controller.js'
 import { BullMediaJobs, MediaWorker } from './media/media-queue.js'
-import { CONTENT_SCANNER, MEDIA_JOBS, MediaService, NoScanner, OBJECT_STORE } from './media/media.service.js'
+import { CONTENT_SCANNER, MEDIA_JOBS, MediaService, OBJECT_STORE } from './media/media.service.js'
 import { S3ObjectStore } from './media/object-store.js'
-import { PhotoDnaScanner } from './media/photodna.js'
+import { scannerFromEnv } from './media/scanners.js'
 import { s3Config } from './media/s3-config.js'
 import { MembersController, OwnProfileController } from './members/members.controller.js'
 import { MembersService } from './members/members.service.js'
@@ -103,14 +103,9 @@ class HealthController {
     ModerationService,
     { provide: OBJECT_STORE, useFactory: (env: Env) => new S3ObjectStore(s3Config(env)), inject: [ENV] },
     { provide: MEDIA_JOBS, useClass: BullMediaJobs },
-    // Until PhotoDNA approves us there is no key, and every image passes; see
-    // docs/safety/abuse-material-scanning.md.
-    {
-      provide: CONTENT_SCANNER,
-      useFactory: (env: Env) =>
-        env.PHOTODNA_SUBSCRIPTION_KEY ? new PhotoDnaScanner(env.PHOTODNA_SUBSCRIPTION_KEY, env.PHOTODNA_MATCH_URL) : new NoScanner(),
-      inject: [ENV],
-    },
+    // Arachnid Shield and PhotoDNA, each once its key is set; with neither every image
+    // passes and every video is held (docs/safety/abuse-material-scanning.md).
+    { provide: CONTENT_SCANNER, useFactory: (env: Env) => scannerFromEnv(env), inject: [ENV] },
     {
       provide: CDN_PURGER,
       useFactory: (env: Env) =>
