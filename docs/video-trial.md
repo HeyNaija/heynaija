@@ -49,12 +49,13 @@ hour until it is deleted, switched off or not.
 
 ```bash
 ssh root@<server ip>
-apt-get update && apt-get install -y docker.io git
+apt-get update && apt-get install -y docker.io docker-buildx git
 git clone https://github.com/HeyNaija/heynaija.git && cd heynaija
 docker build --target video-worker -t heynaija-video-worker:trial .
 ```
 
-The build also proves the pinned ffmpeg still installs. If it fails at `apt-get` saying
+`docker-buildx` is needed: the `Dockerfile` caches pnpm's store with `RUN --mount`, which
+Ubuntu's `docker.io` cannot build on its own. The build also proves the pinned ffmpeg still installs. If it fails at `apt-get` saying
 the ffmpeg version was not found, see the `FFMPEG_VERSION` note in the `Dockerfile`.
 
 ## 3. Copy the clips and the login
@@ -136,17 +137,25 @@ Then delete the server in the Hetzner console.
 
 ## Measured so far
 
-Synthetic 10-second clips (a test pattern with grain), in the `video-worker` image under
-Docker on an Apple M4 with a 1 GB memory limit, 4 November 2026. A rented server's
-numbers will differ; these show the shape.
+The first trial: eight clips from the team's phones, 4 to 79 seconds long, on a Hetzner
+CCX33 (8 dedicated vCPUs) with the 1.5 GB limit, 4 November 2026.
 
 | Clip | CPU-s per s of video | Peak memory | Stored per minute |
 | --- | --- | --- | --- |
-| 1080p, 30 fps, H.264 | 1.26 | 485 MB | 28.8 MB |
-| 4K, 30 fps, H.264 | 1.72 | 560 MB | 29.1 MB |
-| 4K, 30 fps, HEVC, HDR (HLG) | 2.28 | 832 MB | 30.2 MB |
+| iPhone, 4K, 60 fps, HEVC, HDR | 6.06 | 815 MB | 29.0 MB |
+| Android, 4K, 60 fps, HEVC | 4.30 | 662 MB | 30.2 MB |
+| iPhone, 1080p, 30 fps, HEVC, HDR (two clips) | 2.48 to 2.66 | 608 MB | 28.8 to 29.2 MB |
+| Android, 1080p, 60 fps, HEVC (two clips) | 2.26 to 2.50 | 531 MB | 28.4 to 29.0 MB |
+| A shared clip, 1080p, 30 fps, H.264 | 0.85 | 521 MB | 18.6 MB |
+| A shared clip, 720x422, 30 fps, H.264 | 0.20 | 151 MB | 7.3 MB |
 
-Two changes to the command came out of these runs. HDR is tone-mapped at 720p, after
-scaling down, not at 4K: at 4K it cost 11 CPU-seconds per second of video and peaked at
-1.55 GB. And decoding uses 4 threads: as fast as letting ffmpeg choose, with a quarter
-less memory.
+Shield took 0.4 to 3.0 seconds a clip, a 93 MB original included. The clips played on
+an Android phone with one stall, too short to notice. At these rates a 3-minute 4K
+60 fps HDR clip takes about 3 minutes on this server, right at the mark, and ordinary
+1080p phone video about 75 seconds. Not yet tried: a clip near 3 minutes, playback on an
+iPhone, and the `--memory 1g --cpus 4` run.
+
+Two changes to the command came out of earlier runs, with synthetic clips on an Apple
+M4. HDR is tone-mapped at 720p, after scaling down, not at 4K: at 4K it cost 11
+CPU-seconds per second of video and peaked at 1.55 GB. And decoding uses 4 threads: as
+fast as letting ffmpeg choose, with a quarter less memory.
