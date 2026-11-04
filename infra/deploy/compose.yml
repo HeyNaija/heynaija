@@ -133,9 +133,11 @@ services:
     restart: unless-stopped
     logging: *logging
 
-  # Transcodes and scans uploaded videos. Off unless started with `--profile video`:
-  # nothing enqueues work while the videoPosts flag is off, and with no scanner it holds
-  # every video quarantined (docs/safety/video-scanning.md).
+  # Transcodes and scans uploaded videos. Runs only on a server whose .env sets
+  # COMPOSE_PROFILES=video: deploy.sh then pulls its image with the others and `up`
+  # starts it. Elsewhere nothing processes uploads, so leave it off only where the
+  # videoPosts flag is off too. With no scanner it holds every video quarantined
+  # (docs/safety/video-scanning.md).
   #
   # ffmpeg parses files strangers send us, so this container is confined (ADR 0019
   # section 3.4): its own environment (only what apps/api/src/video/worker-env.ts reads:
@@ -192,6 +194,10 @@ services:
     cpus: ${VIDEO_WORKER_CPUS:-2}
     mem_limit: ${VIDEO_WORKER_MEMORY:-1.5g}
     pids_limit: 256
+    # A deploy replaces it: the worker stops taking jobs on SIGTERM and finishes the one
+    # it has (a minute's clip encodes in a minute or two), rather than being killed
+    # mid-encode and leaving the job to be found stalled and run again.
+    stop_grace_period: 3m
     restart: unless-stopped
     logging: *logging
 

@@ -66,10 +66,10 @@ answered on staging hardware with real clips.
 
 ## What the worker's container does and does not do
 
-`video-worker` in `infra/deploy/compose.yml` (ADR 0019 section 3.4). Written, **not
-run**: no Docker from a worktree, so the compose file was only parsed. No workflow builds
-the `video-worker` image (CI's `images` job is skipped everywhere and covers only api and web),
-so the ffmpeg pin is unverified until someone builds it.
+`video-worker` in `infra/deploy/compose.yml` (ADR 0019 section 3.4). `build-images.yml`
+builds its image on every release, with the others, so a broken ffmpeg pin fails the
+build before any server is touched; the first build that ran was by hand on staging
+(4 November 2026).
 
 Does: its own environment, listing exactly what `worker-env.ts` reads (no Kratos
 webhook secret or admin URL, no VAPID key, no LiveKit or Cloudflare secrets); read-only
@@ -85,15 +85,23 @@ Does **not**: filter outbound traffic. The worker must reach object storage, the
 scanners (Arachnid Shield, PhotoDNA) and SMTP over the internet, and Docker has no per-host egress rule, so a compromised
 ffmpeg could still call out to the internet and to Postgres and Redis. Restricting
 that is a host firewall job. `-protocol_whitelist file,pipe` and the job deadline are
-ffmpeg flags, not container confinement. It is also not `nice`d, and the
-`video-worker` is not started by default (`--profile video`).
+ffmpeg flags, not container confinement. It is also not `nice`d.
 
-## Deploy of the worker is not wired in phase 1
+## Deploying the worker
 
-No workflow builds, pushes or pulls the `video-worker` image: `build-images.yml` builds only
-`api` and `web`, so a broken ffmpeg pin is not caught. `deploy-*.yml` pushes only `api` and `web`, and `deploy.sh` pulls only those. A human
-must add `video-worker` to the push loop and the pull, then start it with
-`docker compose --profile video up -d video-worker` on the server.
+`build-images.yml` pushes `<IMAGE_PREFIX>-video-worker:<commit>` with the API and web
+images, staging tags it `staged-<tree>` once it is running, and production deploys
+staging's image as it does the others. A server runs the worker when its
+`infra/deploy/.env` has **`COMPOSE_PROFILES=video`**: `deploy.sh` then pulls the image
+with the rest, and `docker compose up` starts it (compose reads the same setting), so
+every deploy replaces it with the release's code. A deploy waits up to three minutes
+(`stop_grace_period`) for a video being processed to finish.
+
+Set it wherever the `videoPosts` flag is on, staging included (where the flag is on by
+default): without the worker, an upload is accepted and never processed, and stays
+"Processing". To switch the worker on, add the line and deploy (or run `deploy.sh` with
+the current commit); to switch it off, remove the line and stop it with
+`docker compose --profile video stop video-worker`.
 
 ## Testing on staging or development
 
