@@ -2,7 +2,10 @@
 
 **Date:** 31 October 2026 · **Status:** Proposed. Phase 1 is implemented in PR #70
 (`feat/video-phase1`), not yet merged; nothing is in main. Where PR #70 differs
-from this ADR, section 7 lists what it must change. · **Roadmap:** `video`
+from this ADR, section 7 lists what it must change. **Partly superseded by
+[ADR 0021](0021-video-hls-on-r2.md)** (4 November 2026): the limits in section 1,
+sections 3.1, 3.3's conclusion, 3.4, 5.2's rendition table, 6, and launch-gate
+items 1 to 4. The rest stands. · **Roadmap:** `video`
 (depends on `upload-scanning`; this ADR adds `low-data-controls`) ·
 **Related:** [ADR 0017](0017-calls-and-meetings.md) (cost-model style),
 `docs/safety/abuse-material-scanning.md`, `docs/deployment/cloudflare-r2.md`,
