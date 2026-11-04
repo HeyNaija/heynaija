@@ -1,10 +1,11 @@
 # Scanning uploads for child sexual abuse material
 
-**Status (26 October 2026):** layer 2 is on: Cloudflare's CSAM Scanning Tool is
-enabled for heynaija.ng. Layer 1 is built but not live: the PhotoDNA scanner is
-written and switches on when `PHOTODNA_SUBSCRIPTION_KEY` is set, and the
-application to Microsoft went in on 26 October; until a key arrives every image
-passes. The questions at the end went to counsel the same day. **Uploads must
+**Status (4 November 2026):** layer 2 is on: Cloudflare's CSAM Scanning Tool is
+enabled for heynaija.ng. Layer 1 is built and waits only for logins: Arachnid
+Shield (account created 4 November) switches on when `ARACHNID_SHIELD_USERNAME`
+and `ARACHNID_SHIELD_PASSWORD` are set, and PhotoDNA (applied for 26 October)
+when `PHOTODNA_SUBSCRIPTION_KEY` is; with neither, every image passes and every
+video is held. The questions at the end went to counsel on 26 October. **Uploads must
 not open beyond the invited pilot until layers 1 and 2 below are live and the
 legal questions at the end are answered.**
 
@@ -39,10 +40,13 @@ anything reaches the public bucket. The scanner runs there, on the original file
 before the public copies are written.
 
 - **Where:** `ContentScanner` in `apps/api/src/media/media.service.ts`, called for
-  profile photos (in the request) and post images (in the background job). It is
-  bound in `apps/api/src/app.module.ts`: to `PhotoDnaScanner`
-  (`apps/api/src/media/photodna.ts`) when `PHOTODNA_SUBSCRIPTION_KEY` is set, and
-  otherwise to `NoScanner`, which passes everything.
+  profile photos (in the request) and post images (in the background job), and for
+  videos by the video worker (docs/safety/video-scanning.md). `scannerFromEnv`
+  (`apps/api/src/media/scanners.ts`) builds it for the API and the worker alike:
+  `ArachnidShieldScanner` (`arachnid-shield.ts`) when its login is set,
+  `PhotoDnaScanner` (`photodna.ts`) when its key is, both together when both are
+  (a match from either blocks; either failing to answer makes the upload wait), and
+  otherwise `NoScanner`, which passes every image.
 - **What happens on a match (built and tested):** nothing is published; the
   original is kept privately at `uploads/quarantine/originals/…`; the media row is
   marked `blocked`; the uploader sees only "That image cannot be used". The
@@ -54,9 +58,17 @@ before the public copies are written.
   published unchecked. A post image's job throws, so BullMQ retries it; if the
   service is still down the composer gives up after about two minutes and says
   to try again. A profile photo upload fails with "try again in a moment".
-  PhotoDNA errors of any kind, a missing answer included, count as "cannot
-  answer".
-- **Which service:** [Microsoft PhotoDNA Cloud
+  Errors of any kind from either service, a missing answer included, count as
+  "cannot answer"; so does a wrong Arachnid Shield login (HTTP 401).
+- **Arachnid Shield:** the [Canadian Centre for Child Protection's free
+  API](https://shield.projectarachnid.com/docs/). The original image or video goes
+  up as the request body (HTTP Basic, with the API username and password) and is
+  compared with Project Arachnid's list, exactly and by PhotoDNA near-match; a
+  video is matched frame by frame on their side. `no-known-match` is the only clear
+  answer: `csam`, `harmful-abusive-material`, their drill class `test`, and any
+  class they add later all block. We never use its "submit media" endpoint, which
+  sends a file to their analysts: that is a person's decision, not the code's.
+- **PhotoDNA:** [Microsoft PhotoDNA Cloud
   Service](https://www.microsoft.com/en-us/photodna/cloudservice). It is free for
   organisations that pass a third-party vetting process, and is meant for services
   that host user content. Apply early: vetting takes time. Its [terms of
@@ -74,9 +86,15 @@ before the public copies are written.
   a key to try it on. Then set `PHOTODNA_SUBSCRIPTION_KEY` on staging, upload an
   ordinary image and confirm it publishes (a wrong address or status code shows
   up at once, as every upload waiting), and then on production.
-- **Alternatives** if PhotoDNA is refused: Thorn's Safer (paid), or the hash lists
-  available through industry and hotline membership (for example IWF). Revisit if
-  needed.
+- **To do for Arachnid Shield:** set the login on staging; upload an ordinary
+  image and a short video and confirm both publish (a wrong login shows up at once:
+  uploads wait and the logs say "Arachnid Shield gave no answer (HTTP 401…)"); try
+  one of Shield's test files to see the block, the report and the alert; then
+  production. Shield publishes no size or rate limit: an upload it refuses fails
+  closed, so watch the logs on the first days.
+- **Alternatives** if both are refused: Thorn's Safer (paid), Google's CSAI Match
+  (video, free for qualifying partners), or the hash lists available through
+  industry and hotline membership (for example IWF). Revisit if needed.
 
 ### 2. Cloudflare's CSAM Scanning Tool (at the edge)
 
@@ -140,6 +158,9 @@ deletes a post that is still being reviewed cannot destroy its images either.
     `CLOUDFLARE_PURGE_TOKEN`: a Cloudflare API token (My Profile → API Tokens →
     Create Token → Custom) with only **Zone → Cache Purge → Purge**, for the
     heynaija.ng zone only. One token per server.
+  - `ARACHNID_SHIELD_USERNAME` and `ARACHNID_SHIELD_PASSWORD`: the API login from
+    shield.projectarachnid.com (both or neither; the API and the video worker
+    refuse to start with one).
   - `PHOTODNA_SUBSCRIPTION_KEY`, once Microsoft sends it.
 - Other error-level API logs must reach a person too: alerting is part of
   roadmap step 5.
@@ -175,7 +196,7 @@ Questions (sent to counsel on 26 October 2026):
 
 ## Checklist before uploads open beyond the pilot
 
-- [ ] PhotoDNA (or an alternative) approved and its key set (applied 26 October 2026; scanner implemented and failing closed)
+- [ ] An upload scanner's login set on both servers and shown to work on staging: Arachnid Shield (account created 4 November 2026; scanner implemented and failing closed) or PhotoDNA (applied 26 October 2026)
 - [x] Cloudflare CSAM Scanning Tool on, for the hostname that serves `/media` (enabled 15 October 2026 for heynaija.ng; `/media` must stay on that proxied hostname)
 - [ ] Safety email address monitored daily: contact@heynaija.ng, set as `SAFETY_ALERT_EMAIL` on both servers
 - [ ] CDN purge on removal: automated; `CLOUDFLARE_ZONE_ID` and `CLOUDFLARE_PURGE_TOKEN` set on both servers

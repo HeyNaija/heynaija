@@ -53,10 +53,12 @@ x-api-env: &api-env
   LIVEKIT_WEBHOOK_KEY: ${LIVEKIT_WEBHOOK_KEY:-}
   LIVEKIT_WEBHOOK_SECRET: ${LIVEKIT_WEBHOOK_SECRET:-}
   # Safety (docs/safety/abuse-material-scanning.md): where alerts are emailed, the
-  # PhotoDNA key once approved, and what purging Cloudflare's cache needs. Each
-  # is optional; without them alerts are only logged, nothing is scanned and
-  # nothing is purged.
+  # upload scanners' logins (Arachnid Shield, PhotoDNA once approved), and what
+  # purging Cloudflare's cache needs. Each is optional; without them alerts are
+  # only logged, nothing is scanned and nothing is purged.
   SAFETY_ALERT_EMAIL: ${SAFETY_ALERT_EMAIL:-}
+  ARACHNID_SHIELD_USERNAME: ${ARACHNID_SHIELD_USERNAME:-}
+  ARACHNID_SHIELD_PASSWORD: ${ARACHNID_SHIELD_PASSWORD:-}
   PHOTODNA_SUBSCRIPTION_KEY: ${PHOTODNA_SUBSCRIPTION_KEY:-}
   CLOUDFLARE_ZONE_ID: ${CLOUDFLARE_ZONE_ID:-}
   CLOUDFLARE_PURGE_TOKEN: ${CLOUDFLARE_PURGE_TOKEN:-}
@@ -141,7 +143,7 @@ services:
   # 2 GB scratch tmpfs, no capabilities, no privilege escalation, and its own network
   # that holds only Postgres and Redis besides this service. It is NOT on the default
   # network, so it cannot reach Kratos (public or admin), the API or the web app by
-  # name or address. It can still reach the internet (object storage, PhotoDNA, SMTP):
+  # name or address. It can still reach the internet (object storage, the scanners, SMTP):
   # there is no per-host egress filter in this compose layout, and that stays a
   # firewall job (docs/video-spike.md, "What the worker's container does not do").
   video-worker:
@@ -159,6 +161,8 @@ services:
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?}
       S3_UPLOADS_BUCKET: ${S3_UPLOADS_BUCKET:?}
       S3_MEDIA_BUCKET: ${S3_MEDIA_BUCKET:?}
+      ARACHNID_SHIELD_USERNAME: ${ARACHNID_SHIELD_USERNAME:-}
+      ARACHNID_SHIELD_PASSWORD: ${ARACHNID_SHIELD_PASSWORD:-}
       PHOTODNA_SUBSCRIPTION_KEY: ${PHOTODNA_SUBSCRIPTION_KEY:-}
       PHOTODNA_MATCH_URL: ${PHOTODNA_MATCH_URL:-}
       SAFETY_ALERT_EMAIL: ${SAFETY_ALERT_EMAIL:-}

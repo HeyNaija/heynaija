@@ -4,7 +4,8 @@ import { type ExecutionContext, NotFoundException } from '@nestjs/common'
 import type { AppEnv } from '../env.js'
 import type { FeatureFlags } from '../flags/feature-flags.js'
 import { FLAGS } from '../flags/registry.js'
-import { NoScanner } from '../media/media.service.js'
+import { ArachnidShieldScanner } from '../media/arachnid-shield.js'
+import { type ContentScanner, NoScanner } from '../media/media.service.js'
 import { PhotoDnaScanner } from '../media/photodna.js'
 import { VideoGate, VideoPostsGuard, videoPostsEffective } from './video-gate.js'
 
@@ -17,7 +18,7 @@ const flags = (on: boolean | Error) =>
     },
   }) as unknown as FeatureFlags
 
-const gate = (on: boolean | Error, env: AppEnv, scanner: NoScanner | PhotoDnaScanner = new NoScanner()) =>
+const gate = (on: boolean | Error, env: AppEnv, scanner: ContentScanner = new NoScanner()) =>
   new VideoGate(flags(on), { APP_ENV: env }, scanner)
 
 test('registry: videoPosts is off in production and on in staging and development', () => {
@@ -43,6 +44,7 @@ test('production with NoScanner is closed even when an admin turned the flag on'
   assert.equal(await gate(true, 'production').isOpen('m1'), false)
   assert.equal(gate(true, 'production').effective(true), false)
   assert.equal(await gate(true, 'production', new PhotoDnaScanner('key')).isOpen('m1'), true)
+  assert.equal(await gate(true, 'production', new ArachnidShieldScanner('user', 'pass')).isOpen('m1'), true, 'Arachnid Shield counts as a scanner')
   assert.equal(await gate(true, 'staging').isOpen('m1'), true)
 })
 

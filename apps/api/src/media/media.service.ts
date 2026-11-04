@@ -22,8 +22,9 @@ export const CONTENT_SCANNER = Symbol('CONTENT_SCANNER')
 
 /**
  * Checks an upload against known child sexual abuse material before anything is
- * published. See docs/safety/abuse-material-scanning.md: PhotoDNA once it is
- * approved (./photodna.ts); until then every image passes.
+ * published. See docs/safety/abuse-material-scanning.md: Arachnid Shield
+ * (./arachnid-shield.ts) and PhotoDNA (./photodna.ts), each when its key is set,
+ * both together when both are (./scanners.ts); with neither every image passes.
  */
 export interface ContentScanner {
   /** Throws when it cannot tell, and then the image is not published. */
@@ -35,9 +36,16 @@ export interface ContentScanner {
    * method counts as `unscanned`. Throws when it cannot tell, and then the job retries.
    */
   scanFrames?(frames: Buffer[]): Promise<FrameScan>
+  /**
+   * The whole video file, for a scanner that looks at every frame itself: `match`
+   * with the time of the first matching frame where it says one. The same rules
+   * as `scanFrames`: `unscanned` is not `clear`, and a throw retries the job.
+   */
+  scanVideo?(video: { path: string; contentType: string }): Promise<VideoScan>
 }
 
 export type FrameScan = { verdict: 'clear' | 'match' | 'unscanned'; matchIndex: number | null }
+export type VideoScan = { verdict: 'clear' | 'match' | 'unscanned'; matchMs: number | null }
 
 export class NoScanner implements ContentScanner {
   async scan(): Promise<'clear'> {

@@ -19,6 +19,9 @@ const schema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().min(1),
   S3_UPLOADS_BUCKET: z.string().min(1),
   S3_MEDIA_BUCKET: z.string().min(1),
+  ARACHNID_SHIELD_USERNAME: optional(z.string().min(1)),
+  ARACHNID_SHIELD_PASSWORD: optional(z.string().min(1)),
+  ARACHNID_SHIELD_URL: optional(z.url().transform((u) => u.replace(/\/$/, ''))),
   PHOTODNA_SUBSCRIPTION_KEY: optional(z.string().min(1)),
   PHOTODNA_MATCH_URL: optional(z.url()),
   SAFETY_ALERT_EMAIL: optional(z.email()),
@@ -27,6 +30,11 @@ const schema = z.object({
   SMTP_FROM_NAME: z.string().min(1).default('HeyNaija'),
   WEB_PUBLIC_URL: z.url().default('http://127.0.0.1:3000').transform((u) => u.replace(/\/$/, '')),
   ...videoEnvShape,
+}).superRefine((env, ctx) => {
+  // Half a login would quietly leave the worker without its scanner.
+  if (Boolean(env.ARACHNID_SHIELD_USERNAME) !== Boolean(env.ARACHNID_SHIELD_PASSWORD)) {
+    ctx.addIssue({ code: 'custom', path: ['ARACHNID_SHIELD_PASSWORD'], message: 'set both ARACHNID_SHIELD_USERNAME and ARACHNID_SHIELD_PASSWORD, or neither' })
+  }
 })
 
 export type WorkerEnv = z.infer<typeof schema>
