@@ -53,14 +53,14 @@ jobs:
           IMAGE_PREFIX: ${{ steps.prefix.outputs.value }}
         run: |
           tree=$(git rev-parse 'HEAD^{tree}')
-          for image in "api:staged-$tree" "web:staged-$tree" "kratos:$(git rev-parse HEAD:infra/kratos)"; do
+          for image in "api:staged-$tree" "web:staged-$tree" "video-worker:staged-$tree" "kratos:$(git rev-parse HEAD:infra/kratos)"; do
             if ! docker buildx imagetools inspect "$IMAGE_PREFIX-$image" >/dev/null 2>&1; then
               echo "Staging is not running this code ($IMAGE_PREFIX-$image is missing), so it is checked and built here."
               echo "found=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           done
-          for app in api web; do
+          for app in api web video-worker; do
             docker buildx imagetools create --prefer-index=false \
               --tag "$IMAGE_PREFIX-$app:$GITHUB_SHA" "$IMAGE_PREFIX-$app:staged-$tree"
           done

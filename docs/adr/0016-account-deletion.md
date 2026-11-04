@@ -178,9 +178,12 @@ does nothing for an inactive author. The text search index follows the text.
 | Images of evidence posts, `ready` | hidden | quarantined (kept privately, like images of removed posts); restoring a removed post does not release them, since the post is deleted | keep until sweep |
 | `quarantined`, `blocked` (and the blocked original in `uploads/quarantine/originals/`) | — | kept | keep (evidence) |
 | `pending`, `processing` uploads | — | marked deleted; the upload removed from the `uploads` bucket | delete |
+| Videos (`media` kind `post_video`, ADR 0019), in any state but `blocked`, on posts that are not evidence: `uploading`, `processing`, `ready`, `quarantined` (held), `rejected`, `failed` | hidden | marked deleted; an open multipart upload aborted; the original, the renditions, the poster and any `quarantine/` copies removed; CDN purge queued; then their `video_details` (scan result, original SHA-256, failure reason) and `video_renditions` rows deleted. The `media` row stays, as for images | delete |
+| `ready` videos on evidence posts | hidden | moved to the private bucket (`quarantine/videos/<id>/…`), status `quarantined`; their `video_details` stay with them | keep until sweep |
+| `blocked` videos (scanner match) and the original kept in `quarantine/originals/videos/<id>` | — | kept | keep (evidence) |
 
-Keys: `avatars/<id>/{96,256}.webp` and `posts/<id>/{640,1600,still}.webp` in the
-media bucket; `avatars/<id>` and `posts/<id>` in the uploads bucket while being
+Keys: `avatars/<id>/{96,256}.webp` and `posts/<id>/{640,1600,still}.webp` and
+`videos/<id>/{240,360,480}.mp4` + `poster.webp` in the media bucket; `avatars/<id>` and `posts/<id>` in the uploads bucket while being
 processed; `quarantine/…` for what is kept.
 
 ### Handles, invites and the new tables
@@ -193,6 +196,8 @@ processed; `quarantine/…` for what is kept.
 | `invites` | — | nothing: there is no column for who made an invite (operators make them from the command line) | — |
 | `privacy_requests` | a row (`deletion`) | completed; kept as the record that the request was handled, with `member_id` pointing at the tombstone | keep ([period] on `/privacy`) |
 | `link_previews` | — | kept: shared by every post linking to a URL, nobody's in particular | keep |
+| Their place on feature flags' allow-lists (`feature_flag_members`) | — (an inactive member is shut out of every flag anyway) | deleted. A list that held only them goes off for everyone (`feature_flags.enabled` false) rather than back to its default, which may be on; each change is logged in `feature_flag_changes` with no admin named | delete |
+| Flag changes they made as a site moderator, and log entries listing them (`feature_flag_changes`, `feature_flags.updated_by`) | — | kept: the log names members by ID only, never by handle, so they show as the tombstone | keep |
 
 ## Outside the app's database
 
@@ -201,7 +206,7 @@ processed; `quarantine/…` for what is kept.
 | Kratos identity (`kratos` database) | email, handle, sign-in methods (email code, Google's subject ID), verified addresses | stays active, so they can sign in to cancel | deleted through the admin API |
 | Kratos sessions | sessions and their devices (IP address, browser) | all ended through the admin API (a 404 means none was left) | ended again, then deleted with the identity, which also ends any session left |
 | Kratos's sent mail (`courier_messages`) | every email Kratos sent: the address, the subject (with the sign-in code), the identity as it was (email, handle) and the browser's User-Agent | — | not deleted with the identity, and Kratos never cleans them up (checked 29 October 2026). `infra/deploy/kratos-cleanup.sh` deletes everyone's once older than `KRATOS_SENT_MAIL_KEEP_DAYS` (7), every night before the backup, so an erased member's are gone within a week and never reach a backup older than that |
-| R2 media bucket | their published images | still there, unlinked | deleted |
+| R2 media bucket | their published images and videos | still there, unlinked | deleted |
 | Cloudflare's cache | copies of published images, for up to a year | — | purge queued for every deleted image |
 | Redis | whoami cache (a hash of the cookie, to the ID and handle; 30 s), rate limits (`hn:limit:*:<ID>`; an hour at most), `digest-<ID>` and `push-<ID>` jobs (removed when done; failures kept an hour at most) | all run out on their own | nothing left by then to delete; the `erase-<ID>` job holds only the ID, and a failed one, kept a day, a reason with nothing personal in it |
 | Backups | both databases, nightly, encrypted, kept 30 days | cannot be edited | age out within 30 days of the erase; `/privacy` says so |
@@ -284,8 +289,9 @@ every step; a step already done changes nothing.
    the next step deletes the rows it goes by.
 4. **One Postgres transaction** applying the tables above: the tombstone and
    the handle holds. Every statement can run twice.
-5. **Storage:** delete the files of every media row of theirs marked deleted,
-   quarantine evidence images, and queue CDN purges.
+5. **Storage:** delete the files of every media row of theirs marked deleted
+   (images and videos; `VideoService.eraseFilesOf` for videos),
+   quarantine evidence images and videos, and queue CDN purges.
 6. **Email** the address from step 1, if SMTP is configured: "Your HeyNaija
    account has been deleted". A mail server that refuses it for good (a dead
    address) does not hold the erase up; one that is away does, so the email gets

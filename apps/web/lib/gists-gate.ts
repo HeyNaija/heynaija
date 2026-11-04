@@ -31,8 +31,8 @@ export function meAllowsGists(status: number, body: unknown): boolean {
  * and come back; 'deny' to answer as for a missing URL. Never throws.
  *
  * `askMe` is GET /v1/me with the session. `askGists` is a Gists route asked with no
- * session: the API checks the switch before sign-in, so it answers 401 while Gists
- * are on and 404 (the words of a missing route) while they are off. With them off,
+ * session: the API checks the gists flag before sign-in, so it answers 401 while Gists
+ * are on for anyone and 404 (the words of a missing route) while they are off. With them off,
  * a signed-out visitor still gets the missing page.
  */
 export async function gistsGate(

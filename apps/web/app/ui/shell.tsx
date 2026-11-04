@@ -384,7 +384,7 @@ async function PopularCommunities() {
       <ul className="community-rail-list">
         {popular.map((c) => (
           <li key={c.slug} className="community-row flex items-center gap-3">
-            <Link href={`/c/${c.slug}`} tabIndex={-1} aria-hidden="true"><CommunityMark slug={c.slug} /></Link>
+            <Link href={`/c/${c.slug}`} tabIndex={-1} aria-hidden="true"><CommunityMark slug={c.slug} photo={c.photo} /></Link>
             <div className="min-w-0 flex-1">
               <Link href={`/c/${c.slug}`} className="block truncate text-sm font-semibold hover:underline">
                 {c.name}

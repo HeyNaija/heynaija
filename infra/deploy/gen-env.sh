@@ -10,8 +10,13 @@ chmod 600 .env
 hex() { openssl rand -hex "$1"; }
 # Push notifications need a VAPID key pair: P-256, both halves in base64url.
 b64url() { base64 | tr -d '\n=' | tr '+/' '-_'; }
-# SEC1 DER is a 7-byte header, then the 32-byte private key.
-vapid_private() { printf '%s\n' "$1" | openssl ec -outform DER 2>/dev/null | tail -c +8 | head -c 32 | b64url; }
+# SEC1 DER starts 30 len 02 01 01 04 n, then the n-byte private key. n is 32, except that
+# LibreSSL (macOS's openssl) drops leading zero bytes, 1 key in 256: pad those back.
+vapid_private() {
+  local n
+  n=$(printf '%s\n' "$1" | openssl ec -outform DER 2>/dev/null | od -An -tu1 -j6 -N1 | tr -d ' \n')
+  { printf '%*s' $((32 - n)) '' | tr ' ' '\000'; printf '%s\n' "$1" | openssl ec -outform DER 2>/dev/null | tail -c +8 | head -c "$n"; } | b64url
+}
 # SubjectPublicKeyInfo DER ends with the 65-byte public point.
 vapid_public() { printf '%s\n' "$1" | openssl ec -pubout -outform DER 2>/dev/null | tail -c 65 | b64url; }
 fill() {

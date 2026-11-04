@@ -1,8 +1,10 @@
 import { communities, communityMemberships, type Db, members } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
 import { and, asc, eq, ilike, or, sql } from 'drizzle-orm'
+import { communityPhotoPath } from '../media/media.service.js'
 import type { Queries } from '../members/members.service.js'
 import { DB } from '../tokens.js'
+import { isSiteModerator, managesPhoto } from './photo-managers.js'
 
 export type CommunitySummary = {
   id: string
@@ -10,6 +12,8 @@ export type CommunitySummary = {
   name: string
   description: string
   memberCount: number
+  /** Path of the community's square photo without the size suffix; null shows the subject icon. */
+  photo: string | null
   /** Always false for anonymous viewers. */
   viewerIsMember: boolean
 }
@@ -18,7 +22,17 @@ export type CommunityDetail = CommunitySummary & {
   rules: string
   /** Handles of the people who moderate it. */
   moderators: string[]
+  /** Whether the viewer may add, replace or remove the photo: its moderators and site moderators. */
+  viewerCanManagePhoto: boolean
+  /** Whether the viewer is a site moderator, who can also take a photo down. */
+  viewerIsSiteModerator: boolean
 }
+
+/** Swaps the stored media id for the path the web app serves it from. */
+const withPhoto = <T extends { photoMediaId: string | null }>({ photoMediaId, ...rest }: T): Omit<T, 'photoMediaId'> & { photo: string | null } => ({
+  ...rest,
+  photo: communityPhotoPath(photoMediaId),
+})
 
 // Written out so the outer community is unambiguous inside the subqueries.
 const outerId = sql`"communities"."id"`
@@ -29,6 +43,7 @@ export class CommunitiesService {
 
   private summary(viewerId: string | null) {
     return {
+      photoMediaId: communities.photoMediaId,
       id: communities.id,
       slug: communities.slug,
       name: communities.name,
@@ -41,18 +56,19 @@ export class CommunitiesService {
     }
   }
 
-  list(viewerId: string | null): Promise<CommunitySummary[]> {
-    return this.db
+  async list(viewerId: string | null): Promise<CommunitySummary[]> {
+    const rows = await this.db
       .select(this.summary(viewerId))
       .from(communities)
       .where(eq(communities.active, true))
       .orderBy(asc(communities.name))
+    return rows.map(withPhoto)
   }
 
   /** Active communities whose name or description mentions `query`. */
-  search(viewerId: string | null, query: string, limit: number): Promise<CommunitySummary[]> {
+  async search(viewerId: string | null, query: string, limit: number): Promise<CommunitySummary[]> {
     const pattern = `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
-    return this.db
+    const rows = await this.db
       .select(this.summary(viewerId))
       .from(communities)
       .where(
@@ -63,11 +79,17 @@ export class CommunitiesService {
       )
       .orderBy(asc(communities.name))
       .limit(limit)
+    return rows.map(withPhoto)
   }
 
   async detail(viewerId: string | null, slug: string): Promise<CommunityDetail | null> {
     const [row] = await this.db
-      .select({ ...this.summary(viewerId), rules: communities.rules })
+      .select({
+        ...this.summary(viewerId),
+        rules: communities.rules,
+        viewerCanManagePhoto: viewerId ? managesPhoto(viewerId) : sql<boolean>`false`,
+        viewerIsSiteModerator: viewerId ? isSiteModerator(viewerId) : sql<boolean>`false`,
+      })
       .from(communities)
       .where(and(eq(communities.slug, slug), eq(communities.active, true)))
     if (!row) return null
@@ -84,7 +106,7 @@ export class CommunitiesService {
         ),
       )
       .orderBy(asc(members.handle))
-    return { ...row, moderators: moderators.map((m) => m.handle) }
+    return { ...withPhoto(row), moderators: moderators.map((m) => m.handle) }
   }
 
   private async idForSlug(slug: string, db: Queries = this.db): Promise<string | null> {

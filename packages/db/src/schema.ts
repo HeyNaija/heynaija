@@ -6,9 +6,11 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgSchema,
   pgTable,
   primaryKey,
+  real,
   text,
   uniqueIndex,
   timestamp,
@@ -101,13 +103,19 @@ export const media = pgTable(
     ownerId: uuid('owner_id')
       .notNull()
       .references(() => members.id),
-    kind: text('kind', { enum: ['avatar', 'post_image'] }).notNull(),
+    kind: text('kind', { enum: ['avatar', 'post_image', 'community_photo', 'post_video'] }).notNull(),
     // pending: an upload URL was issued. processing: uploaded, waiting for the
     // background job. ready: processed and public. failed: it was not a usable
     // image. deleted: replaced or removed by its owner, or abandoned.
     // quarantined: taken down by a moderator; the files are kept privately.
     // blocked: matched known abuse material; the original is kept privately.
-    status: text('status', { enum: ['pending', 'processing', 'ready', 'failed', 'deleted', 'quarantined', 'blocked'] })
+    // Videos only (ADR 0019): uploading is the video's "pending" (a multipart upload
+    // is open, see video_details), and rejected is its "failed" for a permanent
+    // reason (too long, too large, not a video). A video that no scanner has cleared
+    // stays quarantined; it is never made ready by default.
+    status: text('status', {
+      enum: ['pending', 'uploading', 'processing', 'ready', 'failed', 'rejected', 'deleted', 'quarantined', 'blocked'],
+    })
       .notNull()
       .default('pending'),
     // What the browser said it would send; the upload URL only accepts exactly this.
@@ -124,6 +132,9 @@ export const media = pgTable(
     postId: uuid('post_id').references(() => posts.id),
     position: integer('position'),
     alt: text('alt').notNull().default(''),
+    // Community photos only: the community the upload was started for, the only
+    // one it can become the photo of.
+    communityId: uuid('community_id').references(() => communities.id),
     createdAt: ts('created_at').notNull().defaultNow(),
     readyAt: ts('ready_at'),
   },
@@ -131,6 +142,48 @@ export const media = pgTable(
     index('media_owner_status_idx').on(t.ownerId, t.status),
     index('media_post_idx').on(t.postId),
   ],
+)
+
+// A video's own facts, one row per `media` row of kind post_video (ADR 0019 section 7).
+// A table of its own so `media` gains no columns and the previous release ignores it.
+export const videoDetails = pgTable('video_details', {
+  mediaId: uuid('media_id')
+    .primaryKey()
+    .references(() => media.id, { onDelete: 'cascade' }),
+  // The open S3 multipart upload and the part size it was started with, so a reload can resume.
+  uploadId: text('upload_id'),
+  partSize: integer('part_size'),
+  durationMs: integer('duration_ms'),
+  // The poster's (and so the video's displayed) size.
+  width: integer('width'),
+  height: integer('height'),
+  fps: real('fps'),
+  originalSha256: text('original_sha256'),
+  framesScanned: integer('frames_scanned'),
+  // Where in the clip the first matching frame was, when the scanner blocked it.
+  matchFrameMs: integer('match_frame_ms'),
+  // clear, match, or unscanned (no scanner is configured: the video stays quarantined).
+  scanResult: text('scan_result', { enum: ['clear', 'match', 'unscanned'] }),
+  posterKey: text('poster_key'),
+  // Why a video was rejected (a class the uploader may be told) or failed (for the log).
+  rejectionReason: text('rejection_reason', { enum: ['too_long', 'too_short', 'too_large', 'too_big_picture', 'not_a_video'] }),
+  failureReason: text('failure_reason'),
+  attempts: integer('attempts').notNull().default(0),
+})
+
+// The MP4s made for one video, one row per height (240, 360, 480).
+export const videoRenditions = pgTable(
+  'video_renditions',
+  {
+    mediaId: uuid('media_id')
+      .notNull()
+      .references(() => media.id, { onDelete: 'cascade' }),
+    height: integer('height').notNull(),
+    width: integer('width').notNull(),
+    bytes: integer('bytes').notNull(),
+    bitrateKbps: integer('bitrate_kbps').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.mediaId, t.height] })],
 )
 
 // What a web address in a post leads to, fetched once and shared by every post
@@ -172,6 +225,8 @@ export const communities = pgTable('communities', {
   // A top-level post in the community its moderators keep at the top: a welcome,
   // or the guidance everyone should read. Shown only while it is live.
   pinnedPostId: uuid('pinned_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
+  // The community's square photo (a media row of kind community_photo); null shows the subject icon.
+  photoMediaId: uuid('photo_media_id'),
 })
 
 export const communityMemberships = pgTable(
@@ -452,7 +507,7 @@ export const mutes = pgTable(
 
 export const REPORT_REASONS = ['spam', 'harassment', 'hate', 'scam', 'illegal', 'other', 'appeal'] as const
 
-// A report about a post or an account. An appeal is a report a suspended member
+// A report about a post, an account, a Gist or a community's photo. An appeal is a report a suspended member
 // files about themselves (reason 'appeal'), so it lands in the same queue. A
 // report with no reporter was filed by the upload scanner, not by a person.
 export const reports = pgTable(
@@ -462,6 +517,10 @@ export const reports = pgTable(
     reporterId: uuid('reporter_id').references(() => members.id),
     postId: uuid('post_id').references(() => posts.id),
     memberId: uuid('member_id').references(() => members.id),
+    // A community photo report: the community, and the photo reported (a replaced
+    // photo is a different thing, so reports do not carry over to it).
+    communityId: uuid('community_id').references(() => communities.id),
+    photoMediaId: uuid('photo_media_id'),
     // A report about a Gist (docs/adr/0017): who was in it is in gist_report_participants.
     gistId: uuid('gist_id').references(() => gists.id),
     reason: text('reason', { enum: REPORT_REASONS }).notNull(),
@@ -482,6 +541,7 @@ export const MODERATION_ACTIONS = [
   'dismiss_report',
   'remove_avatar',
   'clear_profile',
+  'remove_community_photo',
   'grant_community_moderator',
   'revoke_community_moderator',
   'end_gist',
@@ -1077,4 +1137,49 @@ export const gistReportParticipants = pgTable(
     primaryKey({ columns: [t.reportId, t.memberId] }),
     check('gist_report_participants_role_check', sql.raw(`role in (${GIST_ROLES.map((value) => `'${value}'`).join(', ')})`)),
   ],
+)
+
+// Runtime feature flags (docs/feature-flags.md). The flags themselves are defined
+// in code (apps/api/src/flags/registry.ts); this table holds only the overrides an
+// admin has set. No row, or a null `enabled` with no allow-list, means "follow the
+// default for this environment". A key the code does not know is ignored on read.
+export const featureFlags = pgTable('feature_flags', {
+  key: text('key').primaryKey(),
+  // True or false forces the flag on or off for everyone; null is no override.
+  enabled: boolean('enabled'),
+  updatedBy: uuid('updated_by').references(() => members.id, { onDelete: 'set null' }),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+})
+
+// An allow-list: while a flag has any rows here it is on for these members only and
+// off for everyone else, whatever `enabled` and the default say. Members, not
+// handles, because a handle can change.
+export const featureFlagMembers = pgTable(
+  'feature_flag_members',
+  {
+    flagKey: text('flag_key')
+      .notNull()
+      .references(() => featureFlags.key, { onDelete: 'cascade' }),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.flagKey, t.memberId] })],
+)
+
+// Append-only audit of every change to an override: who, and the override before
+// and after as { enabled: boolean | null, memberIds: string[] }. Members, not
+// handles, so an erased account shows as its tombstone (docs/adr/0016).
+export const featureFlagChanges = pgTable(
+  'feature_flag_changes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    flagKey: text('flag_key').notNull(),
+    // The admin who made the change; null for one an account's erase made.
+    actorId: uuid('actor_id').references(() => members.id, { onDelete: 'set null' }),
+    before: jsonb('before').notNull(),
+    after: jsonb('after').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('feature_flag_changes_key_created_idx').on(t.flagKey, t.createdAt)],
 )

@@ -35,7 +35,16 @@ KRATOS_RELEASE=$(git rev-parse HEAD:infra/kratos)
 export KRATOS_RELEASE
 
 prefix=${IMAGE_PREFIX:-heynaija}
-if docker image inspect "$prefix-api:$RELEASE" "$prefix-web:$RELEASE" "$prefix-kratos:$KRATOS_RELEASE" >/dev/null 2>&1; then
+# The images this server runs. The video worker is one of them where COMPOSE_PROFILES
+# in .env includes `video` (docs/video-spike.md); compose reads the same setting, so
+# `up` below starts it too.
+pulled=(api web kratos)
+images=("$prefix-api:$RELEASE" "$prefix-web:$RELEASE" "$prefix-kratos:$KRATOS_RELEASE")
+if [[ ",${COMPOSE_PROFILES:-}," == *,video,* ]]; then
+  pulled+=(video-worker)
+  images+=("$prefix-video-worker:$RELEASE")
+fi
+if docker image inspect "${images[@]}" >/dev/null 2>&1; then
   echo "Using the images already on this server for $RELEASE"
 elif [[ ${BUILD:-0} == 1 ]]; then
   echo "Building $RELEASE here"
@@ -46,7 +55,7 @@ else
   # waiting tells them apart, so try a few times before giving up.
   attempts=${PULL_ATTEMPTS:-4}
   for ((attempt = 1; attempt <= attempts; attempt++)); do
-    docker compose pull --quiet api web kratos && break
+    docker compose pull --quiet "${pulled[@]}" && break
     if ((attempt == attempts)); then
       echo "Could not pull the images for $RELEASE from $prefix after $attempts tries."
       echo "Either the build job has not finished, or the registry could not be reached. (BUILD=1 builds here instead.)"
@@ -79,7 +88,7 @@ echo "$(date -u +%FT%TZ) $RELEASE" >> releases.log
 echo "Deployed $RELEASE. Earlier releases: tail releases.log"
 
 # Keep the five most recent images of each for rollback; remove older ones.
-for image in "api $RELEASE" "web $RELEASE" "kratos $KRATOS_RELEASE"; do
+for image in "api $RELEASE" "web $RELEASE" "kratos $KRATOS_RELEASE" "video-worker $RELEASE"; do
   read -r app tag <<< "$image"
   docker image ls --format '{{.Tag}}' "$prefix-$app" | tail -n +6 \
     | grep -vx "$tag" | xargs -r -I{} docker image rm "$prefix-$app:{}" >/dev/null || true

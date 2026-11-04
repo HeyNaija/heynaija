@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { deletePost, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin, setReplyAudience } from '@/app/actions'
 import type { Post } from '@/lib/api'
+import { currentDataSaver } from '@/lib/low-data-server'
 import { textParts } from '@/lib/mentions'
 import { previewParts } from '@/lib/post-length'
 import { excerpt } from '@/lib/previews'
@@ -19,6 +20,7 @@ import { Menu } from './menu'
 import { MorePosts } from './more-posts'
 import { PollCard } from './poll-card'
 import { PostImages } from './post-images'
+import { PostVideo } from './post-video'
 import { PostPermalink } from './post-permalink'
 import { PostText } from './post-text'
 import { QuotedPostCard } from './quoted-post'
@@ -49,6 +51,21 @@ const replyAudienceNote = (post: Post, viewerId: string | null) =>
   post.replyAudience === 'following' && post.authorId !== viewerId
     ? `People @${post.authorHandle} follows can reply`
     : REPLY_AUDIENCE_LABEL[post.replyAudience]
+
+// The media a post carries is held back for readers saving data. Each reads that
+// choice itself (cookie and Save-Data header), so PostItem and its callers stay as they were.
+async function SaverImages({ images }: { images: Post['images'] }) {
+  return <PostImages images={images} saver={await currentDataSaver()} />
+}
+async function SaverVideo({ video }: { video: NonNullable<Post['video']> }) {
+  return <PostVideo video={video} held={await currentDataSaver()} />
+}
+async function SaverQuote({ quote, now }: { quote: NonNullable<Post['quote']>; now: number }) {
+  return <QuotedPostCard quote={quote} now={now} saver={await currentDataSaver()} />
+}
+async function SaverLinkCard({ preview }: { preview: NonNullable<Post['linkPreview']> }) {
+  return <LinkCard preview={preview} saver={await currentDataSaver()} />
+}
 
 export function PostItem({
   post,
@@ -319,18 +336,23 @@ export function PostItem({
       {post.poll ? <PollCard postId={post.id} poll={post.poll} member={viewerId !== null} /> : null}
       {post.images.length ? (
         <div className="mt-3">
-          <PostImages images={post.images} />
+          <SaverImages images={post.images} />
+        </div>
+      ) : null}
+      {post.video ? (
+        <div className="mt-3">
+          <SaverVideo video={post.video} />
         </div>
       ) : null}
       {post.quote ? (
         <div className="mt-3">
-          <QuotedPostCard quote={post.quote} now={now} />
+          <SaverQuote quote={post.quote} now={now} />
         </div>
       ) : null}
       {/* A card for the first address, unless the post already has pictures or a quote to show. */}
-      {post.linkPreview && !post.images.length && !post.quote ? (
+      {post.linkPreview && !post.images.length && !post.video && !post.quote ? (
         <div className="mt-3">
-          <LinkCard preview={post.linkPreview} />
+          <SaverLinkCard preview={post.linkPreview} />
         </div>
       ) : null}
       {!post.replyParentId && post.replyAudience !== 'everyone' ? (

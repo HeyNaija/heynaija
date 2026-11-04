@@ -100,6 +100,7 @@ check its key (staging step 5), run `./gen-env.sh`, and edit `.env`:
 |---|---|
 | `COMPOSE_PROJECT_NAME` | `heynaija-production` |
 | `DEPLOY_BRANCH` | `main` |
+| `APP_ENV` | `production` (also what an unset value means). Feature flags start from their production defaults ([feature-flags.md](../feature-flags.md)) |
 | `SITE_URL` | `https://heynaija.ng` |
 | `SITE_ADDRESS` | `heynaija.ng` |
 | `ROBOTS` | `index` |
@@ -107,6 +108,7 @@ check its key (staging step 5), run `./gen-env.sh`, and edit `.env`:
 | `S3_UPLOADS_BUCKET` / `S3_MEDIA_BUCKET` | `heynaija-uploads` / `heynaija-media` |
 | `BACKUP_DESTINATION` | `r2backup:heynaija-backups/production` |
 | `IMAGE_PREFIX` | `ghcr.io/heynaija/heynaija`, lower case, as for staging |
+| `COMPOSE_PROFILES` | Unset until video opens in production; then `video`, so deploys run the video worker ([video-spike.md](../video-spike.md#deploying-the-worker)) |
 | `S3_*`, `SMTP_*`, `BACKUP_AGE_RECIPIENT` | as for staging, with production's tokens and keys |
 | `PUSH_VAPID_*` | made by `gen-env.sh`, production's own: never staging's. Keep a copy; a new pair cuts off every browser that turned push on ([ADR 0011](../adr/0011-push-notifications.md)) |
 | `POSTGRES_*`, `DATABASE_POOL_MAX` | delete these lines: `compose.yml`'s defaults are sized for this 16 GB server |

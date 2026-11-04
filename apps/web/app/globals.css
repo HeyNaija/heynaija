@@ -33,6 +33,8 @@
   --on-scrim: #eef4f0;
   --scrim-control: rgb(255 255 255 / 12%);
   --scrim-control-hover: rgb(255 255 255 / 22%);
+  /* The chevron every <select> draws for itself, in --muted (an image cannot take currentColor). */
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%235c6b76' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
 
   /* Radius follows role, not habit: small for things you press or type in, a
      little more for the surfaces that hold them. Only avatars are round. */
@@ -85,6 +87,7 @@
   --topbar: rgb(11 18 16 / 90%);
   --shadow-card: none;
   --shadow-pop: 0 12px 32px rgb(0 0 0 / 45%), 0 2px 6px rgb(0 0 0 / 30%);
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%239dafa5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
 
   --tone-0: #1d3327;
   --tone-1: #263326;
@@ -115,7 +118,7 @@
   --color-warm: var(--warm);
   --shadow-pop: var(--shadow-pop);
   --shadow-card: var(--shadow-card);
-  /* Plus Jakarta Sans is self-hosted by next/font (one small file, cached). */
+  /* Plus Jakarta Sans is self-hosted by next/font/local (one small file in app/fonts, cached). */
   --font-sans: var(--font-jakarta), system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
 }
 
@@ -291,7 +294,7 @@ summary.menu::-webkit-details-marker {
     min-height: 46px;
     border: 1px solid var(--line-strong);
     border-radius: var(--r-control);
-    background: var(--surface);
+    background-color: var(--surface);
     padding: 10px 14px;
     /* 16px stops iOS Safari from zooming the page when a field is focused. */
     font-size: 16px;
@@ -313,7 +316,7 @@ summary.menu::-webkit-details-marker {
   .field[readonly],
   .field:disabled {
     border-color: var(--line);
-    background: var(--panel);
+    background-color: var(--panel);
     color: var(--muted);
   }
   .field:disabled {
@@ -322,6 +325,26 @@ summary.menu::-webkit-details-marker {
   .field-sm {
     min-height: 40px;
     padding: 7px 12px;
+  }
+  /* A select draws its own chevron, as far in from the right edge as its text is
+     from the left (the browser's own arrow sits hard against the border), with
+     8px between the two. Backgrounds above set the colour only, so this image
+     stays. */
+  select {
+    --select-inset: 0px;
+    appearance: none;
+    background-image: var(--select-chevron);
+    background-position: right var(--select-inset) center;
+    background-repeat: no-repeat;
+    background-size: 12px 8px;
+    padding-right: calc(var(--select-inset) + 20px);
+  }
+  select.field {
+    --select-inset: 14px;
+    padding-right: calc(var(--select-inset) + 20px);
+  }
+  select.field-sm {
+    --select-inset: 12px;
   }
   .field-label {
     font-size: 14px;
@@ -1147,7 +1170,7 @@ summary.menu::-webkit-details-marker {
 .composer-poll-add { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; color: var(--accent-strong); font-size: 12px; font-weight: 650; }
 .composer-poll-settings { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .composer-poll-settings label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
-.composer-poll-settings select { min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 5px 9px; color: var(--ink); font-size: 12px; }
+.composer-poll-settings select { --select-inset: 9px; min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background-color: var(--panel); padding: 5px calc(var(--select-inset) + 20px) 5px 9px; color: var(--ink); font-size: 12px; }
 .composer-poll > p { margin-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .composer-input {
   display: block;
@@ -1262,7 +1285,7 @@ summary.menu::-webkit-details-marker {
 .link-card-text { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .post-primary-link:focus-visible { outline: none; }
 .post-primary-link:focus-visible::after { outline: 2px solid var(--focus-ring); outline-offset: -3px; }
-.post-card.is-clickable :is(a:not(.post-primary-link), button, summary, input, select, textarea, form, .post-images) { position: relative; z-index: 2; }
+.post-card.is-clickable :is(a:not(.post-primary-link), button, summary, input, select, textarea, form, .post-images, .post-video) { position: relative; z-index: 2; }
 .post-list .post-card:hover { border-color: var(--line-strong); }
 /* Older posts loaded onto a feed continue the same list. */
 .more-posts { margin-top: 14px; }
@@ -1626,6 +1649,21 @@ a.notification-row:hover {
   inset: 0;
   display: block;
 }
+.media-held {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 96px;
+  padding: 12px;
+  background: var(--panel);
+  color: var(--muted);
+  text-align: center;
+  text-decoration: none;
+}
+.media-held-label { color: var(--accent-strong); font-size: 13.5px; font-weight: 600; }
+.media-held-alt { display: -webkit-box; overflow: hidden; font-size: 12px; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .gif-toggle {
   position: absolute;
   z-index: 1;
@@ -1769,6 +1807,45 @@ html:has(.image-viewer[open]) {
   gap: 10px;
   margin-top: 12px;
 }
+/* A post's video: a poster to tap, then the browser's own player. */
+.post-video {
+  position: relative;
+  width: 100%;
+  max-height: 520px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  background: var(--line);
+}
+.post-video video,
+.post-video-start,
+.post-video-start img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.post-video video { object-fit: contain; background: #000; }
+.post-video-start { position: relative; padding: 0; border: 0; background: none; cursor: pointer; min-height: 44px; }
+.post-video-start img { object-fit: contain; }
+.post-video-badge {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.72);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.post-video-start:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -3px; }
+/* A video being attached in the composer: progress under its name. */
+.composer-video { display: flex; align-items: flex-start; gap: 10px; }
+.composer-video progress { display: block; width: 100%; height: 6px; margin-top: 6px; accent-color: var(--accent); }
 .composer-image {
   display: flex;
   align-items: flex-start;
@@ -1859,6 +1936,9 @@ html:has(.image-viewer[open]) {
 .community-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; border-top: 1px solid var(--line); padding-top: 14px; }
 .community-mark { display: inline-flex; width: 38px; height: 38px; flex-shrink: 0; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--r-control); background: var(--accent-soft); color: var(--accent-strong); }
 .community-mark.is-large { width: 52px; height: 52px; border-radius: var(--r-panel); }
+.community-mark.has-photo { overflow: hidden; border-color: var(--line); background: var(--surface); }
+.community-mark.has-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.community-photo-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .section-label { color: var(--muted); font-size: 11px; font-weight: 600; }
 .settings-section { display: flex; flex-direction: column; gap: 18px; }

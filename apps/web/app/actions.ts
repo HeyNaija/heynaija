@@ -13,6 +13,7 @@ import {
   refusalPath,
 } from '@/lib/account-deletion'
 import { api } from '@/lib/api'
+import { DATA_COOKIE, DATA_COOKIE_MAX_AGE, dataMode } from '@/lib/low-data'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
 import { forgetEndedSession, reauthUrl, startAuthUrl } from '@/lib/auth/server'
 import { siteOrigin } from '@/lib/previews'
@@ -23,6 +24,7 @@ import type { ThreadRow } from '@/lib/thread-state'
 import { POLL_OPTIONS_MAX } from '@/lib/polls'
 import { POST_MAX } from '@/lib/post-length'
 import { isReplyAudience } from '@/lib/reply-audience'
+import type { VideoRendition } from '@/lib/video'
 
 // The API is the authority on who is signed in and what they may do; these
 // functions only relay the visitor's own session cookie to it.
@@ -53,10 +55,13 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
     .map(String)
     .filter(Boolean)
     .map((id) => ({ id, alt: String(formData.get(`alt-${id}`) ?? '') }))
+  // One video, named by its upload, with its description in `videoDescription`.
+  const videoId = String(formData.get('video') ?? '')
+  const video = videoId ? { id: videoId, description: String(formData.get('videoDescription') ?? '') } : undefined
   const res = await api('/v1/posts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, replyTo, community, images, quote, poll, replyAudience }),
+    body: JSON.stringify({ text, replyTo, community, images, video, quote, poll, replyAudience }),
   }).catch(() => null)
 
   if (!res) return { error: 'Could not post. Check your connection and try again.' }
@@ -67,16 +72,22 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
     // The session itself can be refused with a 403 too (a suspension, say).
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     if (body.code === 'reply_not_allowed') return { error: 'The author has limited who can reply to this conversation.' }
+    // The video rules, checked again when the video goes on the post.
+    if (video && body.code === 'not_eligible') return { error: VIDEO_REFUSALS.not_eligible! }
   }
   if (res.status === 400) {
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     if (body.code === 'parent_gone') return { error: 'The post you are replying to has been deleted.' }
+    if (body.code === 'feature_unavailable') return { error: 'That is not available right now.' }
     if (body.code === 'quote_gone') return { error: 'The post you are quoting is no longer available.' }
     if (body.code === 'not_a_member') return { error: 'Join that community to post in it.' }
     if (body.code === 'community_gone') return { error: 'That community is no longer available.' }
     if (body.code === 'images_not_ready') {
       return { error: 'One of your images is no longer available. Remove it and add it again.' }
     }
+    if (body.code === 'video_not_ready') return { error: 'Your video is no longer available. Remove it and add it again.' }
+    if (video && body.code === 'too_many_videos') return { error: VIDEO_REFUSALS.too_many_videos! }
+    if (video && !text.trim()) return { error: 'Could not post that video. Try again.' }
     if (poll) return { error: `Check the poll question and its choices. Use 2 to ${POLL_OPTIONS_MAX} different options.` }
     if (text.trim()) return { error: `That post is too long, or an image description is. The post limit is ${POST_MAX.toLocaleString('en-NG')} characters.` }
     return { error: images.length ? 'Could not post those images. Try again.' : 'Write something first.' }
@@ -334,22 +345,29 @@ export async function checkPushSubscription(endpoint: string): Promise<{ subscri
 
 export type UploadTicket = { mediaId: string; uploadUrl: string } | { error: string }
 
-export async function startAvatarUpload(contentType: string, bytes: number): Promise<UploadTicket> {
-  const res = await api('/v1/me/avatar/upload', {
+/**
+ * Step 1 of a square photo (a profile or community photo): the upload ticket, or
+ * what to tell the member. `forbidden` is said on a 403, for the community's.
+ */
+async function startSquarePhoto(path: string, contentType: string, bytes: number, say: { tooMany: string; forbidden?: string }): Promise<UploadTicket> {
+  const res = await api(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ contentType, bytes }),
   })
   if (res.status === 401) redirect('/login')
-  if (res.status === 429) return { error: 'You have changed your photo a lot. Try again in an hour.' }
+  if (res.status === 403 && say.forbidden) return { error: say.forbidden }
+  if (res.status === 429) return { error: say.tooMany }
   if (res.status === 400) return { error: 'Choose a JPEG, PNG or WebP image under 5 MB.' }
   if (!res.ok) return { error: 'Could not start the upload. Try again in a moment.' }
   return res.json()
 }
 
-export async function finishAvatarUpload(mediaId: string): Promise<{ error?: string }> {
-  const res = await api(`/v1/me/avatar/${encodeURIComponent(mediaId)}/complete`, { method: 'POST' })
+/** Step 2 of a square photo: published, or what to tell the member. */
+async function finishSquarePhoto(path: string, say: { failed: string; forbidden?: string }): Promise<{ error?: string }> {
+  const res = await api(path, { method: 'POST' })
   if (res.status === 401) redirect('/login')
+  if (res.status === 403 && say.forbidden) return { error: say.forbidden }
   if (res.status === 400) {
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     const messages: Record<string, string> = {
@@ -359,9 +377,18 @@ export async function finishAvatarUpload(mediaId: string): Promise<{ error?: str
     }
     return { error: messages[body.code ?? ''] ?? 'The upload did not finish. Try again.' }
   }
-  if (!res.ok) return { error: 'Could not save your photo. Try again in a moment.' }
+  if (res.status === 503) return { error: 'Images cannot be checked right now. Try again in a few minutes.' }
+  if (!res.ok) return { error: say.failed }
   refresh()
   return {}
+}
+
+export async function startAvatarUpload(contentType: string, bytes: number): Promise<UploadTicket> {
+  return startSquarePhoto('/v1/me/avatar/upload', contentType, bytes, { tooMany: 'You have changed your photo a lot. Try again in an hour.' })
+}
+
+export async function finishAvatarUpload(mediaId: string): Promise<{ error?: string }> {
+  return finishSquarePhoto(`/v1/me/avatar/${encodeURIComponent(mediaId)}/complete`, { failed: 'Could not save your photo. Try again in a moment.' })
 }
 
 // --- Post images: same two steps, then the browser waits for the background job. ---
@@ -401,20 +428,123 @@ export async function postImageStatus(mediaId: string): Promise<ImageStatus | nu
   return ((await res.json()) as { status: ImageStatus }).status
 }
 
+// --- Post video (docs/adr/0019): parts go straight to storage, then the browser waits for the worker. ---
+
+export type VideoPlan = {
+  mediaId: string
+  partSize: number
+  totalParts: number
+  done: { partNumber: number; size: number }[]
+  parts: { partNumber: number; url: string; bytes: number }[]
+}
+export type VideoState = 'uploading' | 'processing' | 'quarantined' | 'ready' | 'rejected' | 'failed'
+export type VideoStatus = {
+  status: VideoState
+  reason: 'too_long' | 'too_short' | 'too_large' | 'too_big_picture' | 'not_a_video' | null
+  video: { id: string; src: string; durationMs: number; width: number; height: number; description: string; renditions: VideoRendition[] } | null
+}
+
+// The limits themselves are told before sending, from the API's own (lib/video.ts); these are the server's backstop.
+const VIDEO_REFUSALS: Record<string, string> = {
+  too_large: 'That video is too large to post.',
+  too_long: 'That video is too long to post.',
+  bad_type: 'Choose an MP4, MOV or WebM video.',
+  too_many_videos: 'You have the most videos allowed. Delete a post with a video first.',
+  not_eligible: 'Video is not available to your account yet.',
+  bad_parts: 'The upload did not finish. Try again.',
+}
+
+async function refusal(res: Response): Promise<{ error: string }> {
+  if (res.status === 401) redirect('/login')
+  if (res.status === 404) return { error: 'Video is not available right now.' }
+  if (res.status === 429) return { error: 'You have started a lot of videos. Wait a while and try again.' }
+  const body = (await res.json().catch(() => ({}))) as { code?: string }
+  return { error: VIDEO_REFUSALS[body.code ?? ''] ?? 'Could not upload that video. Try again in a moment.' }
+}
+
+export async function startVideoUpload(contentType: string, bytes: number, durationMs?: number): Promise<VideoPlan | { error: string }> {
+  const res = await api('/v1/me/videos/upload', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ contentType, bytes, ...(durationMs === undefined ? {} : { durationMs: Math.round(durationMs) }) }),
+  }).catch(() => null)
+  if (!res) return { error: 'Could not start the upload. Check your connection and try again.' }
+  return res.ok ? res.json() : refusal(res)
+}
+
+/** After a lost connection: which parts storage already holds, and fresh addresses for the rest. */
+export async function resumeVideoUpload(mediaId: string): Promise<VideoPlan | { error: string }> {
+  const res = await api(`/v1/me/videos/${encodeURIComponent(mediaId)}/upload`).catch(() => null)
+  if (!res) return { error: 'Could not reach the server. Check your connection and try again.' }
+  return res.ok ? res.json() : refusal(res)
+}
+
+export async function completeVideoUpload(mediaId: string): Promise<VideoStatus | { error: string }> {
+  const res = await api(`/v1/me/videos/${encodeURIComponent(mediaId)}/complete`, { method: 'POST' }).catch(() => null)
+  if (!res) return { error: 'Could not finish the upload. Check your connection and try again.' }
+  return res.ok ? res.json() : refusal(res)
+}
+
+/** Null when the video is gone (abandoned, or never this member's). Throws on other failures. */
+export async function videoStatus(mediaId: string): Promise<VideoStatus | null> {
+  const res = await api(`/v1/me/videos/${encodeURIComponent(mediaId)}`)
+  if (res.status === 401) redirect('/login')
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`API video status responded ${res.status}`)
+  return res.json()
+}
+
+export async function removeVideo(mediaId: string): Promise<void> {
+  await api(`/v1/me/videos/${encodeURIComponent(mediaId)}`, { method: 'DELETE' }).catch(() => null)
+}
+
 export async function removeAvatar(): Promise<void> {
   const res = await api('/v1/me/avatar', { method: 'DELETE' })
   if (res.status === 401) redirect('/login')
   refresh()
 }
 
+// --- Community photo: the same steps, for the community's moderators. ---
+
+const photoPath = (slug: string) => `/v1/communities/${encodeURIComponent(slug)}/photo`
+
+const notAModerator = 'Only the moderators of this community can change its photo.'
+
+export async function startCommunityPhotoUpload(slug: string, contentType: string, bytes: number): Promise<UploadTicket> {
+  return startSquarePhoto(`${photoPath(slug)}/upload`, contentType, bytes, {
+    tooMany: 'You have changed photos a lot. Try again in an hour.',
+    forbidden: notAModerator,
+  })
+}
+
+export async function finishCommunityPhotoUpload(slug: string, mediaId: string): Promise<{ error?: string }> {
+  return finishSquarePhoto(`${photoPath(slug)}/${encodeURIComponent(mediaId)}/complete`, {
+    failed: 'Could not save the photo. Try again in a moment.',
+    forbidden: notAModerator,
+  })
+}
+
+/** `takeDown` is a site moderator's logged decision; otherwise the photo is simply deleted. */
+export async function removeCommunityPhoto(slug: string, takeDown = false): Promise<{ error?: string }> {
+  const res = takeDown
+    ? await api(`/v1/moderation/communities/${encodeURIComponent(slug)}/photo/remove`, { method: 'POST' })
+    : await api(photoPath(slug), { method: 'DELETE' })
+  if (res.status === 401) redirect('/login')
+  if (res.status === 403) return { error: notAModerator }
+  if (!res.ok && res.status !== 400) return { error: 'Could not remove the photo. Try again in a moment.' }
+  refresh()
+  return {}
+}
+
 export async function submitReport(_prev: FormState, formData: FormData): Promise<FormState> {
   const postId = String(formData.get('postId') ?? '') || undefined
   const handle = String(formData.get('handle') ?? '') || undefined
+  const communitySlug = String(formData.get('community') ?? '') || undefined
   const res = await api('/v1/reports', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      ...(postId ? { postId } : { handle }),
+      ...(postId ? { postId } : communitySlug ? { communitySlug } : { handle }),
       reason: String(formData.get('reason') ?? ''),
       details: String(formData.get('details') ?? ''),
     }),
@@ -451,6 +581,31 @@ export async function resolveReport(formData: FormData): Promise<void> {
   })
   if (res.status === 401) redirect('/login')
   refresh()
+}
+
+/** A site moderator turns a feature on or off, or limits it to some members (docs/feature-flags.md). */
+export async function setFlag(_prev: FormState, formData: FormData): Promise<FormState> {
+  const key = String(formData.get('key') ?? '')
+  const mode = String(formData.get('mode') ?? 'default')
+  const handles = String(formData.get('handles') ?? '')
+    .split(/[\s,]+/)
+    .map((h) => h.replace(/^@/, '').trim().toLowerCase())
+    .filter(Boolean)
+  if (mode === 'list' && handles.length === 0) return { error: 'Name at least one member, or choose another setting.' }
+  const enabled = mode === 'on' ? true : mode === 'off' ? false : null
+  const res = await api(`/v1/admin/flags/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ enabled, handles: mode === 'list' ? handles : [] }),
+  })
+  if (res.status === 401) redirect('/login')
+  if (res.status === 400) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string }
+    return { error: typeof body.message === 'string' && body.message.length < 160 ? body.message : 'Check the handles.' }
+  }
+  if (!res.ok) return { error: 'Could not change that. Try again in a moment.' }
+  refresh()
+  return { done: true }
 }
 
 /** A site moderator makes someone a community moderator, or stops them being one. */
@@ -629,4 +784,16 @@ export async function cancelAccountDeletion(_prev: FormState, _formData: FormDat
   if (answer) return { error: answer.message }
   refresh()
   return { done: true }
+}
+
+/** Saves how much media the reader wants. A plain form post, so it works without JavaScript. */
+export async function setDataMode(formData: FormData) {
+  const mode = dataMode(String(formData.get('mode') ?? ''))
+  ;(await cookies()).set(DATA_COOKIE, mode, {
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: DATA_COOKIE_MAX_AGE,
+  })
+  redirect('/settings')
 }

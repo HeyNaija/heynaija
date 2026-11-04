@@ -70,6 +70,12 @@ delete objects **1 day** after upload, **for the prefixes `avatars/` and `posts/
 only**. The API already deletes uploads it has processed and clears abandoned ones
 hourly; these catch the rest.
 
+Also add a rule to **abort incomplete multipart uploads after 7 days** (R2: *Abort
+incomplete multipart uploads*). Video is uploaded in parts straight to this bucket
+(ADR 0019); parts of an upload nobody finished are stored, and billed, until it is
+aborted. The API aborts them itself (the hourly sweep, and account deletion), so this
+is only a backstop for a sweep that failed, not the mechanism.
+
 **Do not** add a rule for the whole bucket. The `quarantine/` prefix holds images
 moderators took down and uploads the abuse-material scanner blocked. They are
 kept as evidence and must survive (see `docs/safety/abuse-material-scanning.md`).

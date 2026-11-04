@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, Inject, Post, Query, Req, UseGuards } 
 import { z } from 'zod'
 import { type AuthedRequest, SessionGuard } from '../auth/session.guard.js'
 import { handleParam, parse, slugParam } from '../http.js'
+import { Feature, FeatureGuard } from '../flags/feature.guard.js'
 import { RateLimiter } from '../rate-limit.js'
 import { OnboardingService } from './onboarding.service.js'
 
@@ -33,7 +34,8 @@ export class OnboardingController {
 
   /** People to follow, drawn from the communities chosen (and from the whole site to fill up). */
   @Get('suggestions')
-  @UseGuards(SessionGuard)
+  @UseGuards(SessionGuard, FeatureGuard)
+  @Feature('onboarding')
   suggestions(@Req() req: AuthedRequest, @Query() query: unknown) {
     const { communities } = parse(suggestionsQuery, query)
     return this.onboarding.suggestions(req.member.id, communities)
@@ -42,7 +44,8 @@ export class OnboardingController {
   /** Joins and follows everything chosen in one transaction, and ends the flow. */
   @Post('complete')
   @HttpCode(200)
-  @UseGuards(SessionGuard)
+  @UseGuards(SessionGuard, FeatureGuard)
+  @Feature('onboarding')
   async complete(@Req() req: AuthedRequest, @Body() body: unknown) {
     const choices = parse(completeBody, body)
     // Each join and follow draws on the shared budget, as it would one at a time.
@@ -54,7 +57,8 @@ export class OnboardingController {
   /** Ends the flow without joining or following anyone. */
   @Post('skip')
   @HttpCode(204)
-  @UseGuards(SessionGuard)
+  @UseGuards(SessionGuard, FeatureGuard)
+  @Feature('onboarding')
   async skip(@Req() req: AuthedRequest) {
     await this.limits.hit('action', req.member.id)
     await this.onboarding.skip(req.member.id)

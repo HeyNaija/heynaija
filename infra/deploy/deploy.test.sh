@@ -24,7 +24,7 @@ set -euo pipefail
 printf 'docker %s\n' "$*" >> "$DEPLOY_TEST_EVENTS"
 case "$*" in
   'image inspect '*) exit 1 ;;
-  'compose pull --quiet api web kratos')
+  'compose pull --quiet api web kratos'|'compose pull --quiet api web kratos video-worker')
     # Fail the first DEPLOY_TEST_PULL_FAILURES pulls, as a dropped connection would.
     (( $(grep -c '^docker compose pull ' "$DEPLOY_TEST_EVENTS") > ${DEPLOY_TEST_PULL_FAILURES:-0} )) ;;
   'compose config kratos') printf 'kratos config\n' ;;
@@ -105,7 +105,7 @@ prepare_case() {
   : > "$DEPLOY_TEST_EVENTS"
   "$DEPLOY_TEST_GIT" clone --quiet "$test_dir/origin.git" "$DEPLOY_TEST_REPO"
   "$DEPLOY_TEST_GIT" -C "$DEPLOY_TEST_REPO" -c advice.detachedHead=false checkout --quiet --detach "$start_ref"
-  printf 'IMAGE_PREFIX=ghcr.io/HeyNaija/heynaija\nDEPLOY_BRANCH=main\nBUILD=0\n' > "$DEPLOY_TEST_REPO/infra/deploy/.env"
+  printf 'IMAGE_PREFIX=ghcr.io/HeyNaija/heynaija\nDEPLOY_BRANCH=main\nBUILD=0\n%s' "${DEPLOY_TEST_ENV_EXTRA:-}" > "$DEPLOY_TEST_REPO/infra/deploy/.env"
   # The deploy key's forced command: a copy installed outside the checkout.
   export DEPLOY_TEST_WRAPPER="$case_dir/ssh-deploy.sh" DEPLOY_CHECKOUT="$DEPLOY_TEST_REPO"
   install -m 700 "$repo_root/infra/deploy/ssh-deploy.sh" "$DEPLOY_TEST_WRAPPER"
@@ -155,8 +155,13 @@ run_case() {
 
   grep -Fxq "$expected_version" "$DEPLOY_TEST_EVENTS"
   [[ $(grep -Ec '^(older|newer)$' "$DEPLOY_TEST_EVENTS") == 1 ]]
-  grep -Fxq 'docker compose pull --quiet api web kratos' "$DEPLOY_TEST_EVENTS"
-  grep -Fxq "docker image inspect ghcr.io/heynaija/heynaija-api:$target_ref ghcr.io/heynaija/heynaija-web:$target_ref ghcr.io/heynaija/heynaija-kratos:$DEPLOY_TEST_KRATOS_TREE" "$DEPLOY_TEST_EVENTS"
+  # The video worker's image too, where the server runs it (COMPOSE_PROFILES=video).
+  local worker_pull='' worker_image=''
+  if [[ ${DEPLOY_TEST_ENV_EXTRA:-} == *COMPOSE_PROFILES=video* ]]; then
+    worker_pull=' video-worker' worker_image=" ghcr.io/heynaija/heynaija-video-worker:$target_ref"
+  fi
+  grep -Fxq "docker compose pull --quiet api web kratos$worker_pull" "$DEPLOY_TEST_EVENTS"
+  grep -Fxq "docker image inspect ghcr.io/heynaija/heynaija-api:$target_ref ghcr.io/heynaija/heynaija-web:$target_ref ghcr.io/heynaija/heynaija-kratos:$DEPLOY_TEST_KRATOS_TREE$worker_image" "$DEPLOY_TEST_EVENTS"
   grep -Fxq 'docker compose up -d --remove-orphans --wait' "$DEPLOY_TEST_EVENTS"
   grep -Fq "$target_ref" "$DEPLOY_TEST_REPO/infra/deploy/releases.log"
   echo "PASS: $name"
@@ -169,6 +174,12 @@ run_case ssh-rollback "$newer_ref" "$older_ref" older ssh
 run_case manual-upgrade "$older_ref" "$newer_ref" newer
 run_case manual-rollback "$newer_ref" "$older_ref" older
 run_case unchanged-script "$newer_ref" "$newer_ref" newer
+
+# A server that runs the video worker pulls its image with the others, and only there.
+DEPLOY_TEST_ENV_EXTRA=$'COMPOSE_PROFILES=video\n' run_case video-worker "$newer_ref" "$newer_ref" newer
+DEPLOY_TEST_ENV_EXTRA=$'COMPOSE_PROFILES=other\n' run_case no-video-worker "$newer_ref" "$newer_ref" newer
+! grep -Fq video-worker "$test_dir/no-video-worker/events"
+echo "PASS: no-video-worker-image"
 
 # A dropped connection while pulling is tried again; a registry that stays down is
 # reported after PULL_ATTEMPTS tries, saying why it may have failed.

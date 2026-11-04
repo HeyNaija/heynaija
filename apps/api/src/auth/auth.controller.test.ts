@@ -33,6 +33,9 @@ const controller = new AuthController(
   {} as never,
   new MembersService(db),
   new GovernanceService(db, env),
+  {} as never,
+  {} as never,
+  {} as never,
 )
 
 /** The message Kratos would show on the signup form, or null if the signup may go ahead. */

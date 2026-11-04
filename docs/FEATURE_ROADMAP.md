@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 13 | 17 | 13 | 88 |
+| 45 | 16 | 16 | 12 | 89 |
 
 ## Priority order
 
@@ -471,9 +471,11 @@ This tracks product development, not formal governance decisions. Priority means
 #### Community photos
 
 - **ID:** `community-photos`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Partial · **Availability:** Not live
 - **Description:** Give communities their own uploaded visual identities.
-- **Inspected evidence:** `packages/db/src/schema.ts`, `apps/web/app/ui/community-mark.tsx`, `apps/api/src/media/media.controller.ts`
+- **Remaining work / caveat:** Moderators can add, replace, remove and take down a community photo in the API, covered by API tests; members can report a photo and site moderators remove it from the moderation queue, also covered by API tests. The web editor, the report page, the queue entry and the end-to-end test have not been run yet, and uploads are only as safe as upload scanning, which is still blocked.
+- **Inspected evidence:** `packages/db/drizzle/0034_community_photos.sql`, `packages/db/src/schema.ts`, `apps/api/src/media/media.service.ts`, `apps/api/src/media/media.controller.ts`, `apps/api/src/communities/communities.service.ts`, `apps/api/src/communities/photo-managers.ts`, `apps/api/src/moderation/moderation.service.ts`, `apps/web/app/ui/community-mark.tsx`, `apps/web/app/ui/community-photo-editor.tsx`, `apps/web/app/ui/use-square-photo-upload.ts`, `apps/web/app/(main)/c/[slug]/page.tsx`, `apps/web/app/(main)/report/page.tsx`, `apps/web/app/(main)/mod/page.tsx`, `apps/api/src/moderation/moderation.service.test.ts`, `apps/api/src/media/community-photo.test.ts`, `e2e/tests/community-photos.spec.ts`
+- **Audit notes:** One square photo per community (communities.photo_media_id), added, replaced or removed by that community's moderators and site moderators from the community page; the control needs JavaScript, while the photo and the subject-icon fallback show to everyone without it. It goes through the profile-photo pipeline (JPEG, PNG or WebP up to 5 MB, 96px and 256px WebP, location data dropped) and the same fail-closed upload scanner, so it depends on upload-scanning being completed before launch. Site moderators take a photo down from the community page: it is quarantined privately and logged as remove_community_photo, but the community's moderators can then upload another. Members who cannot manage the photo report it from a Report photo link on the community page (/report?community=slug), as they would a post or account: same reasons, rate limit and one open report per member per photo (reports.community_id and photo_media_id, migration 0034). The report reaches site moderators only, who can remove the photo from the queue (the photo is quarantined, logged and reporters told) or dismiss; a report about a photo since replaced can only be dismissed, and once its reports are dismissed its private copy is deleted. An upload can only become the photo of the community it was started for (media.community_id). The photo is the community's: erasing the account of the moderator who uploaded it leaves it in place.
 
 #### Email notifications
 
@@ -531,10 +533,10 @@ This tracks product development, not formal governance decisions. Priority means
 #### Low-data and media controls
 
 - **ID:** `low-data-controls`
-- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Priority:** P1 · **Status:** Partial · **Availability:** Not live
 - **Description:** Let members choose how much media loads on limited connections.
-- **Inspected evidence:** `apps/web/app/ui/post-images.tsx`, `apps/web/app/ui/shrink-image.ts`, `apps/web/app/(main)/settings/page.tsx`
-- **Audit notes:** Upload resizing is implemented; member low-data settings are not. GIFs play unless the device asks for less motion and can be paused. Video is not supported.
+- **Remaining work / caveat:** Settings has a data-use choice (Automatic follows the browser's Save-Data hint, Save data, Always load) that holds post pictures and GIFs back until tapped and leaves link pictures out. Avatars still load, the moderator queue is unchanged, video is not supported, and savings on real constrained networks are not measured.
+- **Inspected evidence:** `apps/web/lib/low-data.ts`, `apps/web/lib/low-data-server.ts`, `apps/web/tests/low-data.test.mjs`, `e2e/tests/low-data.spec.ts`, `apps/web/app/ui/post-images.tsx`, `apps/web/app/ui/link-card.tsx`, `apps/web/app/ui/shrink-image.ts`, `apps/web/app/(main)/settings/page.tsx`
 
 ### Transparency and governance
 
@@ -573,13 +575,23 @@ This tracks product development, not formal governance decisions. Priority means
 
 ### Safety and privacy
 
+#### Date of birth at signup and 18+ labels
+
+- **ID:** `adult-content-labels`
+- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
+- **Description:** Ask for a date of birth at signup and keep only the age band; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.
+- **Inspected evidence:** `docs/adr/0020-under-18-accounts-and-adult-labels.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`
+- **Audit notes:** Phase 1 of ADR 0020 (proposed, 3 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs.
+
 #### Safeguards for under-18 access
 
 - **ID:** `minor-safeguards`
 - **Priority:** P2 · **Status:** Blocked · **Availability:** Not live
 - **Description:** Prepare approved age assurance, consent, content and contact safeguards before opening younger accounts.
 - **Remaining work / caveat:** Child-safety decisions, approvals and implementation must precede any change to the temporary adult-only beta.
-- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`
+- **Dependencies:** `adult-content-labels`
+- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`, `docs/adr/0020-under-18-accounts-and-adult-labels.md`
+- **Audit notes:** Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Waits for counsel (minimum age, guardian consent), phase 1 in production, upload hash-matching and the rest of the under-18 rollout checklist, then a written sign-off.
 
 #### Age verification for adults
 
@@ -737,9 +749,9 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `video`
 - **Priority:** P2 · **Status:** Planned · **Availability:** Not live
 - **Description:** Support video with accessible playback and appropriate safety processing.
-- **Dependencies:** `upload-scanning`
-- **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`
-- **Audit notes:** Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built.
+- **Dependencies:** `upload-scanning`, `low-data-controls`
+- **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`, `docs/adr/0019-video-posts.md`
+- **Audit notes:** Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built. Designed in ADR 0019 (proposed): one 60-second clip a post, uploaded in parts, scanned by sampled frames and transcoded by a self-hosted ffmpeg worker, behind a videoPosts flag that stays off in production until the scanner is real and a named person signs off.
 
 ## P3 — Later experiments
 
@@ -756,12 +768,12 @@ This tracks product development, not formal governance decisions. Priority means
 #### Calls, meetings, Gists and screen sharing
 
 - **ID:** `calls-and-meetings`
-- **Priority:** P3 · **Status:** Blocked · **Availability:** Not live
+- **Priority:** P3 · **Status:** Partial · **Availability:** Not live
 - **Description:** Voice and video calls between age-verified adults, then small group meetings, screen sharing and Gists (live audio rooms with a few speakers and a large audience), on a self-hosted LiveKit server.
-- **Remaining work / caveat:** Design only. Needs direct messages and age verification first; recording, moderator access and retention need counsel and governance.
-- **Dependencies:** `minor-safeguards`
-- **Inspected evidence:** `docs/adr/0017-calls-and-meetings.md`, `docs/governance/under-18-rollout.md`
-- **Audit notes:** Also depends on direct-messages and age-verification (ADR 0016, PR #42): add them to the dependencies when that PR merges. Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers).
+- **Remaining work / caveat:** Gists (live audio rooms) are built and being tested with a small list of members; they are not available to everyone yet. 1:1 calls, meetings and screen sharing are paused and remain a design: they need direct messages and age verification first, and recording, moderator access and retention need counsel and governance.
+- **Dependencies:** `minor-safeguards`, `direct-messages`, `age-verification`
+- **Inspected evidence:** `docs/adr/0017-calls-and-meetings.md`, `docs/governance/under-18-rollout.md`, `apps/api/src/gists/gists.service.ts`, `apps/api/src/gists/eligibility.ts`, `apps/web/app/ui/gists/gist-room.tsx`
+- **Audit notes:** Gists are built and in main: off unless LIVEKIT_* is set, then open to the members the gists feature flag is on for, and in production only through its allow-list, a temporary gate with no age check (apps/api/src/gists/eligibility.ts; the flag replaced the CALLS_* env switches on 3 Nov 2026). On in staging since 31 Oct 2026 (the owner tested them there). 1:1 calls and meetings were dropped by the owner on 1 Nov 2026 (PRs #54 and #62 closed, work parked); they, not Gists, need direct-messages and age-verification (docs/adr/0016-direct-messages.md). Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers).
 
 #### Native mobile apps
 

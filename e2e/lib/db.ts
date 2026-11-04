@@ -79,6 +79,8 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['gist role changes', `update gist_members set role_changed_by = null where role_changed_by in (select id from e2e_m)`],
         ['gist removals', `update gist_members set removed_by = null where removed_by in (select id from e2e_m)`],
         ['gists', `delete from gists where id in (select id from e2e_g)`],
+        // A community photo points at a media row by id only, so unlink before the media goes.
+        ['community photos', `update communities set photo_media_id = null where photo_media_id in (select id from media where owner_id in (select id from e2e_m))`],
         ['media', `delete from media where owner_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
         // Replies by others to these posts would be orphaned; tests only reply among themselves.
         ['idea votes', `delete from idea_votes where member_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
@@ -97,6 +99,9 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['age records', `delete from restricted.age_assurances where member_id in (select id from e2e_m)`],
         ['governance audit', `delete from restricted.governance_audit_log where subject_id in (select id from e2e_m)`],
         ['privacy requests', `delete from privacy_requests where member_id in (select id from e2e_m) or handled_by in (select id from e2e_m)`],
+        ['test communities', `delete from moderation_actions where community_id in (select id from communities where slug like 'e2e-%')`],
+        ['test community memberships', `delete from community_memberships where community_id in (select id from communities where slug like 'e2e-%')`],
+        ['test communities (2)', `delete from communities where slug like 'e2e-%'`],
         ['members', `delete from members where id in (select id from e2e_m)`],
         ['invites', `delete from invites where note = $1`],
       ]
@@ -336,6 +341,17 @@ export async function setCommunityPin(slug: string, postId: string | null) {
   const db = pool()
   try {
     await db.query('update communities set pinned_post_id = $2 where slug = $1', [slug, postId])
+  } finally {
+    await db.end()
+  }
+}
+
+/** A community of its own, so a test can change its photo without touching a real one. Removed by cleanTestData. */
+export async function createCommunity(slug: string, name: string) {
+  if (!slug.startsWith('e2e-')) throw new Error('test communities have slugs starting e2e-')
+  const db = pool()
+  try {
+    await db.query(`insert into communities (slug, name, description) values ($1, $2, 'Made by an end-to-end test.') on conflict do nothing`, [slug, name])
   } finally {
     await db.end()
   }

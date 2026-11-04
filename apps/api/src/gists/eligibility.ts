@@ -4,8 +4,9 @@
  * TEMPORARY GATE. The real rule is "signed in, 18 or over, age-verified, opted in
  * to calls, in good standing", and none of age verification (ADR 0006), the
  * opt-in or direct messages exist yet. Until they do, the only gate is: signed in
- * (the caller has a session) AND the member's handle is on the CALLS_MEMBERS
- * beta allow-list, and the account is active.
+ * (the caller has a session) AND the `gists` feature flag is on for the member
+ * (in production only through its allow-list: see gists-enabled.guard.ts), and
+ * the account is active.
  *
  * Every eligibility decision in the Gists code goes through `canJoinGist` and
  * `canHostGist`, and both end in `isCallsMember`. When the real gate exists,
@@ -17,11 +18,12 @@ export type GistViewer = { id: string; handle: string; active: boolean }
 
 export type GistFacts = { status: 'scheduled' | 'live' | 'ended'; communityId: string | null }
 
-export type EligibilityConfig = { callsMembers: readonly string[] }
+/** `allowed` is `GistsAccess.member`, read once before the checks so that none of them awaits. */
+export type EligibilityConfig = { allowed: (memberId: string) => boolean }
 
 /** The one place that decides whether a member may take part in calls at all. */
 function isCallsMember(viewer: GistViewer, config: EligibilityConfig): boolean {
-  return viewer.active && config.callsMembers.includes(viewer.handle.toLowerCase())
+  return viewer.active && config.allowed(viewer.id)
 }
 
 /**

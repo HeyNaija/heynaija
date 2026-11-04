@@ -154,6 +154,16 @@ from `origin/staging` there too until a release has brought it to `main`.
   `127.0.0.1:3100` (`WEB_PORT`), for nginx. Postgres, Redis, Kratos and the API
   publish nothing; their ports exist only inside HeyNaija's own Docker network, so
   they cannot clash with Koinovera's Kratos on 4433 or anything else.
+- **Feature flags.** Set `APP_ENV=staging` in the server's `.env` (the template says
+  `production`, the safe default). Without it staging runs with production's
+  defaults: new features are off until an admin turns them on
+  ([feature-flags.md](../feature-flags.md)).
+- **Video.** Set `COMPOSE_PROFILES=video` so deploys run the video worker (the
+  `videoPosts` flag is on in staging, and without the worker uploaded videos are
+  never processed), with `VIDEO_WORKER_CPUS=1` and `VIDEO_WORKER_MEMORY=1g` so it
+  leaves room for Koinovera. A scanner login (`ARACHNID_SHIELD_USERNAME` and
+  `ARACHNID_SHIELD_PASSWORD`) lets videos be published; without one each is held
+  for a safety check ([video-spike.md](../video-spike.md#deploying-the-worker)).
 - **Names.** `COMPOSE_PROJECT_NAME=heynaija-staging` prefixes every container,
   network and volume.
 - **nginx.** HeyNaija adds one site file, `heynaija-staging.conf`, answering only

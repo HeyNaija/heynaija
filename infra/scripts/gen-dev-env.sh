@@ -12,15 +12,20 @@ touch "$env_file"
 hex() { openssl rand -hex "$1"; }
 # Push notifications need a VAPID key pair: P-256, both halves in base64url.
 b64url() { base64 | tr -d '\n=' | tr '+/' '-_'; }
-# SEC1 DER is a 7-byte header, then the 32-byte private key.
-vapid_private() { printf '%s\n' "$1" | openssl ec -outform DER 2>/dev/null | tail -c +8 | head -c 32 | b64url; }
+# SEC1 DER starts 30 len 02 01 01 04 n, then the n-byte private key. n is 32, except that
+# LibreSSL (macOS's openssl) drops leading zero bytes, 1 key in 256: pad those back.
+vapid_private() {
+  local n
+  n=$(printf '%s\n' "$1" | openssl ec -outform DER 2>/dev/null | od -An -tu1 -j6 -N1 | tr -d ' \n')
+  { printf '%*s' $((32 - n)) '' | tr ' ' '\000'; printf '%s\n' "$1" | openssl ec -outform DER 2>/dev/null | tail -c +8 | head -c "$n"; } | b64url
+}
 # SubjectPublicKeyInfo DER ends with the 65-byte public point.
 vapid_public() { printf '%s\n' "$1" | openssl ec -pubout -outform DER 2>/dev/null | tail -c 65 | b64url; }
 get() { grep -E "^$1=" "$env_file" | head -1 | cut -d= -f2- || true; }
 ensure() {
   if [[ -z "$(get "$1")" ]]; then
     # A .env edited by hand may not end in a newline, and the new line would then join
-    # the last one (CALLS_GISTS_ENABLED=trueLIVEKIT_URL=...), breaking both.
+    # the last one (PUSH_SWEEP_EVERY_S=2LIVEKIT_URL=...), breaking both.
     if [[ -s "$env_file" && -n "$(tail -c 1 "$env_file")" ]]; then echo >> "$env_file"; fi
     echo "$1=$2" >> "$env_file"
     echo "  added $1"
@@ -67,9 +72,9 @@ ensure PUSH_CONTACT "mailto:no-reply@heynaija.test"
 ensure PUSH_ALLOW_LOOPBACK "true"
 ensure PUSH_SWEEP_EVERY_S "2"
 
-# LiveKit for Gists (docs/adr/0017). The server starts with `pnpm infra:livekit`; the
-# API uses these only when CALLS_ENABLED and CALLS_GISTS_ENABLED are also true and the
-# handle is in CALLS_MEMBERS, none of which this script switches on.
+# LiveKit for Gists (docs/adr/0017). The server starts with `pnpm infra:livekit`. With
+# these set the API has Gists for whoever the gists feature flag is on for, which in
+# development is everyone until an admin changes it.
 ensure LIVEKIT_URL "ws://127.0.0.1:7880"
 ensure LIVEKIT_API_KEY "devkey"
 ensure LIVEKIT_API_SECRET "$(hex 20)"

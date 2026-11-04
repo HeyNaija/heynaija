@@ -105,21 +105,14 @@ answers `OK`.
 On the staging server, as your admin user, at the end of
 `/srv/heynaija/infra/deploy/.env`:
 
-1. Paste the six lines `gen-env.sh` printed as they are: `LIVEKIT_URL`, the four
-   keys and `LIVEKIT_WEBHOOK_FROM` (for nginx; the LiveKit server's address).
-2. Add the switches, with your own handles in place of the example ones:
-
-   ```
-   CALLS_ENABLED=true
-   CALLS_GISTS_ENABLED=true
-   CALLS_MEMBERS=ada,bayo
-   ```
+Paste the six lines `gen-env.sh` printed as they are: `LIVEKIT_URL`, the four
+keys and `LIVEKIT_WEBHOOK_FROM` (for nginx; the LiveKit server's address).
 
 Every value is plain: **no quotes, spaces or angle brackets.** The deploy reads
 this file with bash, so a stray `'` or `<` stops it before it deploys anything
 (`.env: line N: unexpected EOF while looking for matching`). Lists such as
-`CALLS_MEMBERS`, and `LIVEKIT_WEBHOOK_FROM` with an IPv6 address after the IPv4,
-are comma-separated with no spaces. Check the file before deploying:
+`LIVEKIT_WEBHOOK_FROM` with an IPv6 address after the IPv4 are comma-separated
+with no spaces. Check the file before deploying:
 
 ```bash
 bash -c 'set -a; source /srv/heynaija/infra/deploy/.env' && echo ok
@@ -139,13 +132,18 @@ The deploy restarts the API with the new settings; the nginx site gets the
 webhook location and allows the microphone. Both are needed: without the second,
 the site's `Permissions-Policy` still blocks every microphone.
 
+Who has Gists is then the `gists` feature flag ([docs/feature-flags.md](../feature-flags.md)),
+not a setting here: in the web app, **Moderation, Feature flags**, set `gists` to
+**Only these members** with the testers' handles, or leave staging's default (on for
+everyone). In production it opens only through such a list.
+
 ## 6. Check it works
 
 - [ ] From the LiveKit server, the webhook path reaches the API and is refused for
       its signature, not by Cloudflare or nginx:
       `curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/webhook+json' -d '{}' https://staging.heynaija.ng/api/internal/livekit/webhook`
       prints **401**. From your laptop the same command prints **403** (nginx).
-- [ ] Signed in as a handle in `CALLS_MEMBERS`, Home shows **Start a Gist**. Go
+- [ ] Signed in as a member the `gists` flag is on for, Home shows **Start a Gist**. Go
       live; a second member (another phone, on mobile data) joins and hears you.
 - [ ] The listener taps **Request to speak**, the host taps **Let speak**, and the
       listener's microphone works. **Mute**, **To listeners** and **Remove** work.
@@ -161,8 +159,8 @@ the site's `Permissions-Policy` still blocks every microphone.
       `docker compose exec postgres psql -U heynaija -d heynaija -c "select role, connection_sid is not null as webhook_seen from gist_members where left_at is null"`
       shows `t` for each listener. If it shows `f`, the reconcile still puts
       presence right within a minute, but record it in ADR 0017.
-- [ ] A member not in `CALLS_MEMBERS` sees no Start card, and `/gists/new` is the
-      normal not-found page.
+- [ ] With `gists` limited to a list, a member not on it sees no Start card, and
+      `/gists/new` is the normal not-found page.
 
 ## Day to day
 
@@ -173,7 +171,7 @@ the site's `Permissions-Policy` still blocks every microphone.
 | Update              | `git pull` in `/srv/heynaija/repo`, then `docker compose up -d` in `infra/livekit`: a new image or config restarts LiveKit      |
 | Upgrade LiveKit     | change the image tag in `infra/livekit/compose.yml` (and `infra/compose/docker-compose.dev.yml`) in a PR, test it, then update |
 | New keys            | empty the four keys in `.env`, `./gen-env.sh`, `docker compose up -d`, then the new lines in staging's `.env` and `./deploy.sh` |
-| Turn Gists off      | `CALLS_GISTS_ENABLED=false` in staging's `.env`, then `./deploy.sh`: every Gists route answers 404 again                       |
+| Turn Gists off      | `gists` to **Off for everyone** in Moderation, Feature flags: routes answer 404 within seconds, live Gists empty within a minute |
 | Remove the server   | Gists off first, then cancel it at Contabo and delete the two DNS records                                                      |
 
 A restart drops every live Gist's media for a few seconds; members' rooms

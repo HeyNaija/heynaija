@@ -5,6 +5,7 @@ import {
   gistMembers,
   gistReportParticipants,
   gists,
+  media as mediaTable,
   members,
   moderationActions,
   posts,
@@ -12,11 +13,13 @@ import {
   reports,
 } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
-import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, ne, or, sql } from 'drizzle-orm'
+import { managesPhoto } from '../communities/photo-managers.js'
 import { GistsService } from '../gists/gists.service.js'
-import { avatarPath, MediaService } from '../media/media.service.js'
+import { avatarPath, communityPhotoPath, MediaService } from '../media/media.service.js'
 import { type NewNotification, notify } from '../notifications/notifications.service.js'
 import { imagesOf, type PostImage, toPostImages } from '../posts/posts.service.js'
+import { VideoService } from '../video/video.service.js'
 import { DB } from '../tokens.js'
 import { SAFETY_ALERTS, type SafetyAlerts } from './safety-alerts.js'
 
@@ -28,6 +31,7 @@ export const RESOLUTIONS = [
   'reinstate_member',
   'remove_avatar',
   'clear_profile',
+  'remove_community_photo',
   'end_gist',
 ] as const
 export type Resolution = (typeof RESOLUTIONS)[number]
@@ -51,9 +55,11 @@ export type QueueItem = {
   reporterHandle: string | null
   /** How many open reports there are about the same post or account. */
   reportCount: number
-  post: { id: string; text: string; images: PostImage[]; authorHandle: string; communityName: string | null } | null
+  post: { id: string; text: string; images: PostImage[]; /** Has a video, shown or held: the queue shows a label, not the video (phase 3). */ hasVideo: boolean; authorHandle: string; communityName: string | null } | null
   /** For reports about an account: what the moderator needs to judge it. */
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
+  /** For reports about a community's photo: the photo as reported; `photo` is null once it is no longer published (replaced or removed). */
+  communityPhoto: { slug: string; name: string; photo: string | null } | null
   /** For reports about a Gist: what it was, and who was in it when it was reported. There is no audio. */
   gist: {
     id: string
@@ -95,6 +101,8 @@ export class ModerationService {
     @Optional() @Inject(SAFETY_ALERTS) private readonly alerts?: SafetyAlerts,
     // Ends a reported Gist. Optional so tests of other decisions need no LiveKit.
     @Optional() @Inject(GistsService) private readonly gists?: Pick<GistsService, 'endNow'>,
+    // Takes a post's video down with it (ADR 0019 section 4.3). Optional like media.
+    @Optional() @Inject(VideoService) private readonly videos?: VideoService,
   ) {}
 
   /**
@@ -102,11 +110,10 @@ export class ModerationService {
    * the decision stands and the hourly sweep finishes moving the files.
    */
   private async afterwards(what: string, work: () => Promise<void>): Promise<void> {
-    if (!this.media) return
     try {
       await work()
     } catch (err) {
-      this.logger.error(`${what} failed; the hourly sweep will retry: ${(err as Error).message}`)
+      this.logger.error(`${what} failed; the hourly sweep will retry (for a video that is the video sweep, which re-hides a ready video of a removed post or one under an open illegal report): ${(err as Error).message}`)
     }
   }
 
@@ -135,20 +142,33 @@ export class ModerationService {
   }
 
   /**
-   * Files a report about a post, an account or a Gist. Reporting the same thing
-   * again while the first report is still open changes nothing.
+   * Files a report about a post, an account, a Gist or a community's photo.
+   * Reporting the same thing again while the first report is still open changes
+   * nothing, unless the new report says it is illegal and the open one did not.
    */
   async report(
     reporterId: string,
-    target: { postId: string } | { handle: string } | { gistId: string },
+    target: { postId: string } | { handle: string } | { gistId: string } | { communitySlug: string },
     reason: ReportReason,
     details = '',
   ): Promise<void> {
     if ('gistId' in target) return this.reportGist(reporterId, target.gistId, reason, details)
     let postId: string | null = null
     let memberId: string | null = null
+    let communityId: string | null = null
+    let photoMediaId: string | null = null
 
-    if ('postId' in target) {
+    if ('communitySlug' in target) {
+      const [community] = await this.db
+        .select({ id: communities.id, photoMediaId: communities.photoMediaId, mine: managesPhoto(reporterId) })
+        .from(communities)
+        .where(and(eq(communities.slug, target.communitySlug), eq(communities.active, true)))
+      if (!community?.photoMediaId) throw new ModerationTargetError('that community has no photo')
+      // Whoever can change the photo can simply remove it.
+      if (community.mine) throw new ModerationTargetError('you can remove this photo yourself')
+      communityId = community.id
+      photoMediaId = community.photoMediaId
+    } else if ('postId' in target) {
       const [post] = await this.db
         .select({ id: posts.id, authorId: posts.authorId })
         .from(posts)
@@ -169,22 +189,41 @@ export class ModerationService {
     }
 
     const [existing] = await this.db
-      .select({ id: reports.id })
+      .select({ id: reports.id, reason: reports.reason })
       .from(reports)
       .where(
         and(
           eq(reports.reporterId, reporterId),
           eq(reports.status, 'open'),
-          postId ? eq(reports.postId, postId) : eq(reports.memberId, memberId!),
+          postId
+            ? eq(reports.postId, postId)
+            : communityId
+              ? and(eq(reports.communityId, communityId), eq(reports.photoMediaId, photoMediaId!))
+              : eq(reports.memberId, memberId!),
         ),
       )
-    if (existing) return
-    await this.db.insert(reports).values({ reporterId, postId, memberId, reason, details })
+    if (existing) {
+      // The same report again changes nothing, except one now saying the content is illegal: that is
+      // decided apart and hides a post's video at once, so the open report becomes an illegal one.
+      if (reason !== 'illegal' || existing.reason === 'illegal') return
+      await this.db
+        .update(reports)
+        .set({ reason, ...(details ? { details } : {}) })
+        .where(and(eq(reports.id, existing.id), eq(reports.status, 'open')))
+    } else {
+      await this.db.insert(reports).values({ reporterId, postId, memberId, communityId, photoMediaId, reason, details })
+    }
     // Illegal content may need taking down and reporting quickly, so a person
     // hears about it rather than waiting for a moderator to open the queue.
     if (reason === 'illegal') {
+      // Unlike an image, a video reported as illegal is hidden at once, pending review (ADR 0019 open question 6).
+      if (postId) await this.afterwards(`hiding the video of reported post ${postId}`, async () => void (await this.videos?.hideReportedVideos(postId)))
       await this.alerts?.alert('A member reported illegal content', [
-        postId ? `A post (${postId}) was reported as illegal.` : `An account (${memberId}) was reported as illegal.`,
+        postId
+          ? `A post (${postId}) was reported as illegal.`
+          : communityId
+            ? `A community photo (community ${communityId}) was reported as illegal.`
+            : `An account (${memberId}) was reported as illegal.`,
         'Illegal-content reports are at the top of the moderation queue.',
       ])
     }
@@ -277,6 +316,7 @@ export class ModerationService {
       post_id: string | null
       post_text: string | null
       post_images: { id: string; alt: string; width: number; height: number; animated: boolean }[]
+      post_has_video: boolean | null
       post_author: string | null
       community_name: string | null
       member_handle: string | null
@@ -284,6 +324,10 @@ export class ModerationService {
       member_name: string | null
       member_bio: string | null
       member_avatar: string | null
+      community_slug: string | null
+      community_title: string | null
+      photo_media_id: string | null
+      photo_status: string | null
       gist_id: string | null
       gist_title: string | null
       gist_status: 'scheduled' | 'live' | 'ended' | null
@@ -296,9 +340,11 @@ export class ModerationService {
         (select count(*)::int from reports o where o.status = 'open'
           and ((r.post_id is not null and o.post_id = r.post_id)
             or (r.gist_id is not null and o.gist_id = r.gist_id)
-            or (r.post_id is null and r.gist_id is null and o.post_id is null and o.gist_id is null
-              and o.member_id = r.member_id))) as report_count,
-        p.id as post_id, p.text as post_text, ${imagesOf(sql`p.id`)} as post_images, pa.handle as post_author, c.name as community_name,
+            or (r.community_id is not null and o.community_id = r.community_id and o.photo_media_id = r.photo_media_id)
+            or (r.post_id is null and r.gist_id is null and r.community_id is null and o.post_id is null and o.gist_id is null
+              and o.community_id is null and o.member_id = r.member_id))) as report_count,
+        p.id as post_id, p.text as post_text, ${imagesOf(sql`p.id`)} as post_images,
+        exists(select 1 from media vm where vm.post_id = p.id and vm.kind = 'post_video' and vm.status in ('ready', 'quarantined')) as post_has_video, pa.handle as post_author, c.name as community_name,
         tm.handle as member_handle, tm.active as member_active, tm.display_name as member_name,
         tm.bio as member_bio, tm.avatar_media_id as member_avatar,
         g.id as gist_id, g.title as gist_title, g.status as gist_status, gh.handle as gist_host, gc.name as gist_community,
@@ -307,7 +353,8 @@ export class ModerationService {
           select coalesce(json_agg(json_build_object('handle', pm.handle, 'role', grp.role)
             order by grp.role = 'host' desc, grp.role = 'cohost' desc, grp.role = 'speaker' desc, pm.handle), '[]'::json)
           from gist_report_participants grp join members pm on pm.id = grp.member_id
-          where grp.report_id = r.id) end as gist_participants
+          where grp.report_id = r.id) end as gist_participants,
+        rc.slug as community_slug, rc.name as community_title, r.photo_media_id, ph.status as photo_status
       from reports r
       left join members rep on rep.id = r.reporter_id
       left join posts p on p.id = r.post_id
@@ -317,6 +364,8 @@ export class ModerationService {
       left join gists g on g.id = r.gist_id
       left join members gh on gh.id = g.host_id
       left join communities gc on gc.id = g.community_id
+      left join communities rc on rc.id = r.community_id
+      left join media ph on ph.id = r.photo_media_id
       where r.status = 'open'
         and (${scope.siteWide} or coalesce(p.community_id, g.community_id) in ${scope.communityIds.length ? sql`(${sql.join(scope.communityIds.map((id) => sql`${id}`), sql`, `)})` : sql`(null)`})
       order by r.reason = 'illegal' desc, r.created_at asc
@@ -330,7 +379,7 @@ export class ModerationService {
       reporterHandle: r.reporter_handle,
       reportCount: r.report_count,
       post: r.post_id
-        ? { id: r.post_id, text: r.post_text!, images: toPostImages(r.post_images), authorHandle: r.post_author!, communityName: r.community_name }
+        ? { id: r.post_id, text: r.post_text!, images: toPostImages(r.post_images), hasVideo: r.post_has_video === true, authorHandle: r.post_author!, communityName: r.community_name }
         : null,
       member: r.member_handle
         ? {
@@ -340,6 +389,9 @@ export class ModerationService {
             bio: r.member_bio ?? '',
             avatar: avatarPath(r.member_avatar),
           }
+        : null,
+      communityPhoto: r.community_slug
+        ? { slug: r.community_slug, name: r.community_title!, photo: r.photo_status === 'ready' ? communityPhotoPath(r.photo_media_id) : null }
         : null,
       gist: r.gist_id
         ? {
@@ -367,6 +419,9 @@ export class ModerationService {
 
     let removedAvatar: string | null = null
     let removedPost: string | null = null
+    let removedCommunityPhoto: string | null = null
+    let dismissedCommunityPhoto: string | null = null
+    let dismissedPost: string | null = null
 
     await this.db.transaction(async (tx) => {
       const [report] = await tx
@@ -375,6 +430,8 @@ export class ModerationService {
           reason: reports.reason,
           postId: reports.postId,
           memberId: reports.memberId,
+          communityId: reports.communityId,
+          photoMediaId: reports.photoMediaId,
           gistId: reports.gistId,
           postAuthorId: posts.authorId,
           postCommunityId: posts.communityId,
@@ -396,6 +453,8 @@ export class ModerationService {
 
       if (resolution === 'dismiss') {
         action = 'dismiss_report'
+        dismissedCommunityPhoto = report.photoMediaId
+        dismissedPost = report.postId
       } else if (resolution === 'end_gist') {
         // Ended already, by endReportedGist.
         if (!report.gistId) throw new ModerationTargetError('this report is not about a Gist')
@@ -405,6 +464,30 @@ export class ModerationService {
         await tx.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, report.postId))
         action = 'remove_post'
         removedPost = report.postId
+      } else if (resolution === 'remove_community_photo') {
+        // Like any takedown of a community's photo, this is for site moderators only.
+        if (!scope.siteWide) throw new NotAModeratorError()
+        if (!report.communityId) throw new ModerationTargetError('this report is not about a community photo')
+        const [current] = await tx
+          .select({ photoMediaId: communities.photoMediaId })
+          .from(communities)
+          .where(eq(communities.id, report.communityId))
+          .for('update')
+        action = 'remove_community_photo'
+        if (current?.photoMediaId && current.photoMediaId === report.photoMediaId) {
+          await tx.update(communities).set({ photoMediaId: null }).where(eq(communities.id, report.communityId))
+          removedCommunityPhoto = current.photoMediaId
+        } else {
+          // Replaced or removed since. Never take down a different photo; but if the
+          // reported one is already out of public view, the report is settled by that.
+          const [gone] = await tx
+            .select({ status: mediaTable.status })
+            .from(mediaTable)
+            .where(eq(mediaTable.id, report.photoMediaId!))
+          if (gone?.status !== 'quarantined' && gone?.status !== 'deleted') {
+            throw new ModerationTargetError('that photo has already been replaced or removed')
+          }
+        }
       } else if (resolution === 'remove_avatar' || resolution === 'clear_profile') {
         // Changing someone's profile is for site moderators only, like suspension.
         if (!scope.siteWide) throw new NotAModeratorError()
@@ -439,11 +522,23 @@ export class ModerationService {
         ? eq(reports.postId, report.postId)
         : report.gistId
           ? eq(reports.gistId, report.gistId)
-          : and(isNull(reports.postId), isNull(reports.gistId), eq(reports.memberId, report.memberId!))
+          : report.communityId
+            ? and(eq(reports.communityId, report.communityId), eq(reports.photoMediaId, report.photoMediaId!))
+            : and(isNull(reports.postId), isNull(reports.gistId), isNull(reports.communityId), eq(reports.memberId, report.memberId!))
       const closed = await tx
         .update(reports)
         .set({ status: resolution === 'dismiss' ? 'dismissed' : 'actioned', resolvedAt: new Date(), resolvedBy: moderatorId })
-        .where(and(eq(reports.status, 'open'), or(eq(reports.id, report.id), sameTarget)))
+        .where(
+          and(
+            eq(reports.status, 'open'),
+            or(
+              eq(reports.id, report.id),
+              // Dismissing a report that is not about illegal content must not close an illegal report on the
+              // same post: that one is decided on its own, and the video it hid stays hidden until then.
+              resolution === 'dismiss' && report.reason !== 'illegal' ? and(sameTarget, ne(reports.reason, 'illegal')) : sameTarget,
+            ),
+          ),
+        )
         .returning({ reporterId: reports.reporterId, reason: reports.reason })
 
       // Tell the people affected. A suspended member cannot read notifications, so
@@ -467,6 +562,7 @@ export class ModerationService {
           kind: 'report_resolved',
           postId: report.postId,
           subjectId: report.postId ? null : report.memberId,
+          communityId: report.communityId,
           // A Gist report names no post or member, so the wording needs telling apart.
           detail: `${report.gistId ? 'gist_' : ''}${resolution === 'dismiss' ? 'dismissed' : 'actioned'}`,
         })
@@ -478,6 +574,7 @@ export class ModerationService {
         action,
         postId: report.postId,
         memberId: targetMemberId,
+        communityId: report.communityId,
         reportId: report.id,
         gistId: report.gistId,
         note,
@@ -486,12 +583,76 @@ export class ModerationService {
 
     if (removedPost) {
       const postId = removedPost
-      await this.afterwards(`quarantining images of post ${postId}`, () => this.media!.quarantinePostImages(postId))
+      await this.afterwards(`quarantining images of post ${postId}`, async () => void (await this.media?.quarantinePostImages(postId)))
+      await this.afterwards(`quarantining the video of post ${postId}`, async () => void (await this.videos?.quarantinePostVideos(postId)))
+    }
+    if (removedCommunityPhoto) {
+      const mediaId = removedCommunityPhoto
+      await this.afterwards(`quarantining community photo ${mediaId}`, async () => void (await this.media?.quarantineCommunityPhoto(mediaId)))
+    }
+    if (dismissedCommunityPhoto && this.media) {
+      // A photo replaced or removed while reported was kept only for this decision.
+      // Still the community's photo, it stays; if deleting fails, it stays private.
+      const mediaId = dismissedCommunityPhoto
+      await this.media.discardClearedCommunityPhoto(mediaId).catch((err: Error) => {
+        this.logger.error(`deleting dismissed community photo ${mediaId} failed; its files stay private: ${err.message}`)
+      })
+    }
+    if (dismissedPost) {
+      // A video hidden by an illegal report comes back when the report is dismissed (unless something else keeps it down).
+      const postId = dismissedPost
+      await this.afterwards(`releasing the video of dismissed post ${postId}`, async () => void (await this.videos?.releaseIfCleared(postId)))
     }
     if (removedAvatar) {
       const mediaId = removedAvatar
-      await this.afterwards(`quarantining profile photo ${mediaId}`, () => this.media!.quarantineAvatar(mediaId))
+      await this.afterwards(`quarantining profile photo ${mediaId}`, async () => void (await this.media?.quarantineAvatar(mediaId)))
     }
+  }
+
+  /**
+   * Takes a community's photo out of public view, keeping the files privately.
+   * Site moderators only; the community's own moderators can replace or remove
+   * the photo themselves but a takedown is a logged decision.
+   */
+  async removeCommunityPhoto(moderatorId: string, slug: string, note = ''): Promise<void> {
+    if (!(await this.requireModerator(moderatorId)).siteWide) throw new NotAModeratorError()
+    const removed = await this.db.transaction(async (tx) => {
+      const [community] = await tx
+        .select({ id: communities.id, photoMediaId: communities.photoMediaId })
+        .from(communities)
+        .where(eq(communities.slug, slug))
+        .for('update')
+      if (!community) throw new ModerationTargetError(`no community "${slug}"`)
+      if (!community.photoMediaId) throw new ModerationTargetError('that community has no photo')
+      await tx.update(communities).set({ photoMediaId: null }).where(eq(communities.id, community.id))
+      // Reports about this photo are settled by its removal; their reporters hear.
+      const closed = await tx
+        .update(reports)
+        .set({ status: 'actioned', resolvedAt: new Date(), resolvedBy: moderatorId })
+        .where(
+          and(eq(reports.status, 'open'), eq(reports.communityId, community.id), eq(reports.photoMediaId, community.photoMediaId)),
+        )
+        .returning({ id: reports.id, reporterId: reports.reporterId })
+      const reporters = new Set(closed.flatMap((r) => (r.reporterId ? [r.reporterId] : [])))
+      await notify(
+        tx,
+        [...reporters].map((recipientId) => ({
+          recipientId,
+          kind: 'report_resolved' as const,
+          communityId: community.id,
+          detail: 'actioned',
+        })),
+      )
+      await tx.insert(moderationActions).values({
+        actorId: moderatorId,
+        action: 'remove_community_photo',
+        communityId: community.id,
+        reportId: closed[0]?.id,
+        note,
+      })
+      return community.photoMediaId
+    })
+    await this.afterwards(`quarantining community photo ${removed}`, async () => void (await this.media?.quarantineCommunityPhoto(removed)))
   }
 
   /** Ends the Gist a report is about, if this moderator may decide that report. */
@@ -529,7 +690,8 @@ export class ModerationService {
     if (restored.length === 0) throw new ModerationTargetError('that post is not removed')
     await this.db.insert(moderationActions).values({ actorId: moderatorId, action: 'restore_post', postId, note })
     await notify(this.db, [{ recipientId: restored[0]!.authorId, kind: 'post_restored', postId }])
-    await this.afterwards(`releasing images of post ${postId}`, () => this.media!.releasePostImages(postId))
+    await this.afterwards(`releasing images of post ${postId}`, async () => void (await this.media?.releasePostImages(postId)))
+    await this.afterwards(`releasing the video of post ${postId}`, async () => void (await this.videos?.releasePostVideos(postId)))
   }
 
   /**

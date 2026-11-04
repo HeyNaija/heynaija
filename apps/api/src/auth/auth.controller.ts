@@ -19,12 +19,15 @@ import { eq } from 'drizzle-orm'
 import type { FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import type { Env } from '../env.js'
+import { FeatureFlags } from '../flags/feature-flags.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
-import { gistsFeatureFor } from '../gists/gists-enabled.guard.js'
+import { GistsGate, gistsShownTo } from '../gists/gists-enabled.guard.js'
 import { signupAgeDecision } from '../governance/age.js'
 import { GovernanceService } from '../governance/governance.service.js'
 import { avatarPath } from '../media/media.service.js'
+import { videoConfig, videoLimitsOf } from '../video/video-config.js'
+import { VideoGate } from '../video/video-gate.js'
 import { MembersService } from '../members/members.service.js'
 import { NotificationsService } from '../notifications/notifications.service.js'
 import { RateLimiter, visitor } from '../rate-limit.js'
@@ -82,14 +85,18 @@ export class AuthController {
     @Inject(AuthService) private readonly auth: Pick<AuthService, 'invalidateSessionCache'>,
     @Inject(MembersService) private readonly members: MembersService,
     @Inject(GovernanceService) private readonly governance: GovernanceService,
+    @Inject(FeatureFlags) private readonly flags: FeatureFlags,
+    @Inject(VideoGate) private readonly videoGate: Pick<VideoGate, 'effective'>,
+    @Inject(GistsGate) private readonly gistsGate: Pick<GistsGate, 'access'>,
   ) {}
 
   @Get('v1/me')
   @UseGuards(SessionGuard)
   async me(@Req() req: AuthedRequest) {
-    const [scope, unread, [row]] = await Promise.all([
+    const [scope, unread, features, [row]] = await Promise.all([
       this.moderation.scope(req.member.id),
       this.notifications.unreadCount(req.member.id),
+      this.flags.all(req.member.id),
       this.db
         .select({
           avatarMediaId: members.avatarMediaId,
@@ -100,6 +107,10 @@ export class AuthController {
         .from(members)
         .where(eq(members.id, req.member.id)),
     ])
+    // videoPosts is the flag AND the scanner rule (ADR 0019 section 4.7), never the flag alone.
+    const videoPosts = this.videoGate.effective(features.videoPosts)
+    // gists is the flag AND LiveKit AND, in production, the allow-list rule (gists-enabled.guard.ts).
+    const gists = gistsShownTo(await this.gistsGate.access(), req.member)
     // `moderates` only decides whether the web app shows the moderation link; every
     // moderation endpoint checks the role again.
     return {
@@ -111,9 +122,13 @@ export class AuthController {
       moderates: scope.siteWide || scope.communityIds.length > 0,
       // False until the member finishes or skips the welcome flow; the web app's
       // home page sends them to /welcome until then.
-      onboarded: Boolean(row?.onboardedAt),
-      // Switches the web app may show this member (docs/adr/0017); false when off.
-      features: { gists: gistsFeatureFor(this.env, req.member) },
+      // With the welcome flow switched off nobody is sent to it.
+      onboarded: !features.onboarding || Boolean(row?.onboardedAt),
+      // What is switched on for this member: the database-backed flags (docs/feature-flags.md),
+      // with videoPosts and gists as they take effect, rules in code included.
+      features: { ...features, videoPosts, gists },
+      // The limits the composer checks a chosen video against before sending it: this server's own settings.
+      videoLimits: videoPosts ? videoLimitsOf(videoConfig(this.env)) : null,
     }
   }
 
