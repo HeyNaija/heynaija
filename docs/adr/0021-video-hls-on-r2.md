@@ -25,9 +25,9 @@ and 60 fps**, to a post. The worker checks the whole original with Arachnid
 Shield, then encodes it **once, in one ffmpeg run, into HLS**: 4-second pieces at
 240p, 360p, 480p and 720p, at most 30 fps, with HDR tone-mapped to ordinary colour.
 R2 stores the pieces and Cloudflare's CDN delivers them from the media domain, so
-watching costs us nothing per view. **The member posts at once**: the post is
-hidden, marked "Processing" for its author, and appears by itself when the video
-is ready.
+watching costs us nothing per view. **The member previews the clip from their own
+device and posts without waiting for processing**: the post is hidden, marked
+"Processing" for its author, and appears by itself when the video is ready.
 
 1. **Accept** H.264, HEVC or VP9, up to 3840 pixels on the long side, up to 60 fps,
    3 seconds to 3 minutes, 1 GB on the website (section 2).
@@ -37,7 +37,8 @@ is ready.
    folder and purges it by prefix (section 4).
 4. **Encode** on at least 8 vCPUs of the worker's own: a 3-minute clip is ready in
    about 25 seconds (1080p H.264) to 3 minutes (4K 60 fps HDR) (section 5).
-5. **Post before ready**: one wait for the member, not two (section 6).
+5. **Preview, then post before ready**: the composer plays the member's own file
+   at once; one wait for the upload, none for processing (section 6).
 6. **Play** with the browser's own HLS on iPhones and hls.js elsewhere, starting
    low and stepping up, capped by the member's data setting (section 7).
 
@@ -79,7 +80,7 @@ testers only.
 | What we accept | Up to 4K and 60 fps, in H.264, HEVC or VP9 | Longest edge 1920 |
 | File size | 1 GB on the website; the native apps shrink clips before sending | 100 MB |
 | What we serve | HLS at 240p, 360p, 480p and 720p; 1080p later, if members ask | MP4 at 240p, 360p, 480p |
-| Posting | Post at once; the post is hidden until its video is ready | Wait for `ready`, then post |
+| Posting | Post at once; the post is hidden until its video is ready. The composer previews the member's own file before they post (owner, 4 November 2026) | Wait for `ready`, then post |
 | Trial server | An hourly Hetzner cloud server, deleted after | (not in ADR 0019) |
 
 ## 2. What we accept
@@ -236,8 +237,20 @@ no longer wait for it (section 6), that is acceptable.
 
 ## 6. Posting before the video is ready
 
-Once the upload completes, the composer lets the member post. The post is created
-with its video still `processing`:
+**Preview first, from the member's own file.** As soon as a video is picked, the
+composer plays it from the device (an object URL in a `<video>`), while it
+uploads: the member checks it is the right clip, writes the text, and can remove
+it. This is how Instagram and TikTok work: the preview is of the member's file,
+and the upload and processing happen after they share. Where the browser cannot
+play the file (iPhone HEVC on some desktop browsers), the composer says so and
+shows the poster once the worker has made it. The preview is of the original, so
+HDR may look a little different from what readers get after tone-mapping.
+
+**Then post, without waiting for processing.** Once the upload completes, the
+composer lets the member post. (The website has to finish the upload first,
+since closing the tab stops it; the native apps upload in the background and can
+let the member post sooner.) The post is created with its video still
+`processing`:
 
 - **Until the video is `ready` only its author sees the post**, marked
   "Processing". It is left out of every feed, profile seen by others, search,
@@ -245,8 +258,8 @@ with its video still `processing`:
   reposted. The rule sits in the post queries, in one place, like the
   moderation filters.
 - **When the video becomes `ready`** the post appears, and its mentions and
-  notifications are sent then, not before. It takes its place in feeds as of the
-  moment it appears (open question 4).
+  notifications are sent then, not before. It takes its place in feeds, and its
+  time, as of the moment it appears (open question 4).
 - **When the video is `blocked`, `rejected` or `failed`**, the post is removed and
   its author is told, with the post's text so it can be posted again. A blocked
   video comes back as "That video cannot be used", with no reason, as today.
@@ -297,11 +310,12 @@ real cost.
 | Growing | 10,000 min (330 a day) | the same server | about $12 | about €52 | $1,150 |
 | Large | 100,000 min (3,300 a day) | two such servers, €81.40 | about $150 | about €220 | $21,500 |
 
-The netcup price assumes its cores encode like Hetzner's CCX33 (€138.99 a month),
-which is what the trial measured **(unverified)**: an hour's run of the trial on an
-RS 2000 settles it. The pilot can run for less on spare cores, at the cost of
-slower 4K (open question 1). Not counted: developer time, monitoring, and the
-traffic of sending originals to Shield.
+The netcup price is on a 12-month term, and assumes its cores encode like
+Hetzner's CCX33 (€138.99 a month), which is what the trial measured
+**(unverified)**. netcup bills root servers by the month, not the hour, so the
+trial command is run on an RS 2000 before it takes jobs (open question 1). Not
+counted: developer time, monitoring, and the traffic of sending originals to
+Shield.
 
 ## 9. Schema, API and settings
 
@@ -392,18 +406,29 @@ checklist and counsel's answers, the drills, a named person's sign-off) stand.
 
 1. **Where the worker runs.** A netcup RS 2000 of its own (€40.70, cores untried),
    a Hetzner CCX33 (€138.99, measured), or spare cores on today's servers for the
-   pilot (a 3-minute 4K HDR clip in about 9 minutes on 2 cores). Recommend: try
-   the RS 2000 for an hour with the trial command, and rent it if it matches.
-   *Answer:*
+   pilot (a 3-minute 4K HDR clip in about 9 minutes on 2 cores). Recommend: the
+   RS 2000, once the trial command has been run on one. *Answer (owner,
+   4 November 2026):* a netcup RS 2000. netcup has no hourly billing, so its
+   cores are measured with the trial command before it takes jobs: on the new
+   server, or at a quiet hour on the production RS 2000 limited to 2 cores (the
+   CPU-seconds per second do not depend on how many cores it is given).
 2. **Cloudflare's written answer.** ADR 0019 asked for one. Recommend: rely on the
    published terms (Context), and still ask once in writing whether the CSAM
-   Scanning Tool covers video, which it does not say. Not a gate. *Answer:*
+   Scanning Tool covers video, which it does not say. Not a gate. *Answer (owner,
+   4 November 2026):* rely on the published terms; no written answer is needed.
+   The owner's reading is that the CSAM Scanning Tool does not reliably cover
+   video, so nothing relies on it: Arachnid Shield is the check for video.
 3. **Staging's MP4 videos.** Recommend: delete them, and their videos from posts,
-   with a one-off when PR 2 lands; they are the team's tests. *Answer:*
+   with a one-off when PR 2 lands; they are the team's tests. *Answer (owner,
+   4 November 2026):* yes.
 4. **Where a post appears in feeds** when its video becomes ready: at the time it
    appears, or the time it was posted. Recommend: when it appears, so a video
-   posted three minutes ago is not already buried. *Answer:*
-5. **1080p.** Recommend: not until members ask. *Answer:*
+   posted three minutes ago is not already buried. *Answer (owner, 4 November
+   2026):* when it appears. The owner first preferred making the member wait for
+   `ready` so they could preview the post; a preview of their own file in the
+   composer (section 6) gives that without the wait.
+5. **1080p.** Recommend: not until members ask. *Answer (owner, 4 November
+   2026):* agreed.
 
 ## Could not verify
 
