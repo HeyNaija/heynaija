@@ -48,6 +48,8 @@ export type Probe = {
   fps: number
   hasAudio: boolean
   videoCodec: string
+  /** HDR (PQ or HLG, as iPhones record by default): its colours need tone mapping before an 8-bit encode. */
+  hdr: boolean
   /** The container's frame count when it states one (it is a claim too); omitted when it does not. */
   frameCount?: number
 }
@@ -59,6 +61,8 @@ const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null 
 
 /** MP4, MOV (QuickTime) and WebM, decided by what ffprobe finds, never by the browser's type. */
 const CONTAINERS = ['mov', 'mp4', 'matroska', 'webm']
+/** The transfer functions of HDR video: PQ (HDR10, Dolby Vision) and HLG. */
+const HDR_TRANSFERS = ['smpte2084', 'arib-std-b67']
 
 const frameRate = (text: unknown): number => {
   const [n, d] = String(text ?? '0/1').split('/').map(Number)
@@ -91,6 +95,7 @@ export function parseProbe(json: unknown): Probe | null {
     fps: frameRate(video.avg_frame_rate) || frameRate(video.r_frame_rate),
     hasAudio: streams.some((s) => s.codec_type === 'audio'),
     videoCodec: typeof video.codec_name === 'string' ? video.codec_name : 'unknown',
+    hdr: HDR_TRANSFERS.includes(String(video.color_transfer)),
     ...(Number.isFinite(nbFrames) && nbFrames > 0 ? { frameCount: nbFrames } : {}),
   }
 }
