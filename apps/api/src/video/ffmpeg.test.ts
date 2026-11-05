@@ -51,7 +51,20 @@ const probed = (over: Partial<Probe> = {}): Probe => ({
   fps: 29.97,
   hasAudio: true,
   videoCodec: 'h264',
+  hdr: false,
   ...over,
+})
+
+test('parseProbe marks HDR (PQ or HLG) so it can be tone-mapped', () => {
+  const withTransfer = (color_transfer: string) => {
+    const json = ffprobeJson() as { streams: Record<string, unknown>[] }
+    json.streams[0] = { ...json.streams[0], color_transfer }
+    return parseProbe(json)!.hdr
+  }
+  assert.equal(withTransfer('arib-std-b67'), true, 'HLG, as iPhones record')
+  assert.equal(withTransfer('smpte2084'), true, 'PQ')
+  assert.equal(withTransfer('bt709'), false)
+  assert.equal(parseProbe(ffprobeJson())!.hdr, false)
 })
 
 test('parseProbe reads the size, length, frame rate and audio from ffprobe', () => {
