@@ -225,6 +225,17 @@ run_worker_case worker-server "$newer_ref"
 run_worker_case worker-server-workflow "$newer_ref" deploy-production.yml
 run_worker_case worker-server-not-set-up "$newer_ref" deploy-production.yml ''
 
+# GitHub skips a job when any job before it was skipped, unless the job has a
+# condition of its own, and production skips check and images whenever staging's
+# images are reused. So every production job that needs another says when it runs.
+awk '
+  /^  [a-z-]+:$/ { if (needs && !cond) { print "No condition of its own: " job; bad = 1 } job = $1; sub(/:$/, "", job); needs = cond = 0 }
+  /^    needs:/ { needs = 1 }
+  /^    if: \$\{\{ !cancelled\(\)/ { cond = 1 }
+  END { if (needs && !cond) { print "No condition of its own: " job; bad = 1 } exit bad }
+' "$repo_root/.github/workflows/deploy-production.yml"
+echo "PASS: production-jobs-after-skips"
+
 # A dropped connection while pulling is tried again; a registry that stays down is
 # reported after PULL_ATTEMPTS tries, saying why it may have failed.
 DEPLOY_TEST_PULL_FAILURES=2 run_case pull-retried "$newer_ref" "$newer_ref" newer
