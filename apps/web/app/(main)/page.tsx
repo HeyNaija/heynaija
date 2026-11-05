@@ -1,4 +1,4 @@
-import { CHESS_ARENA } from '@/lib/chess-arena'
+import { ARBITER_ONLY } from '@/lib/chess-arena'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
@@ -201,7 +201,7 @@ async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) 
   const chosen: Feed | null = asked === 'following' ? await getFollowingFeed(cursor) : discovered
   const shown: HomeFeed = chosen ? asked : 'latest'
   const [feed, communities] = await Promise.all([chosen ?? getFeed(cursor), me ? getCommunities() : []])
-  const joined = communities.filter((c) => c.viewerIsMember && c.slug !== CHESS_ARENA)
+  const joined = communities.filter((c) => c.viewerIsMember && !ARBITER_ONLY[c.slug])
   const period = discovered ? discoverPeriod(discovered.rules.windowHours) : ''
 
   return (

@@ -1219,6 +1219,7 @@ export const seasonScores = gamesSchema.table(
   (t) => [
     primaryKey({ columns: [t.seasonId, t.memberId, t.game] }),
     index('season_scores_rank_idx').on(t.seasonId, t.game, t.points.desc()),
+    index('season_scores_xp_idx').on(t.seasonId, t.game, t.xp.desc()),
   ],
 )
 
@@ -1248,10 +1249,18 @@ export const competitions = gamesSchema.table(
       .notNull()
       .references(() => members.id),
     resultPostId: uuid('result_post_id').references(() => posts.id, { onDelete: 'set null' }),
+    // A chess competition is a Lichess tournament (phase 6): its id there, how it
+    // was set up ({ kind, teamId, clock, minutes or rounds, rated, players }), and
+    // when its standings were last read from Lichess.
+    lichessTournamentId: text('lichess_tournament_id'),
+    settings: jsonb('settings').$type<Record<string, unknown>>().notNull().default({}),
+    standingsAt: ts('standings_at'),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [
     index('competitions_status_starts_idx').on(t.status, t.startsAt),
+    uniqueIndex('competitions_lichess_tournament_idx').on(t.lichessTournamentId).where(sql`lichess_tournament_id is not null`),
+    check('competitions_chess_check', sql.raw(`game <> 'chess' or (lichess_tournament_id is not null and eligibility = 'community')`)),
     check('competitions_eligibility_check', sql.raw(`eligibility in (${inList(COMPETITION_ELIGIBILITY)})`)),
     check('competitions_status_check', sql.raw(`status in (${inList(COMPETITION_STATUSES)})`)),
     check('competitions_community_check', sql.raw(`(eligibility = 'community') = (community_id is not null)`)),
@@ -1271,6 +1280,8 @@ export const competitionEntries = gamesSchema.table(
     enteredAt: ts('entered_at').notNull().defaultNow(),
     placement: integer('placement'),
     score: integer('score'),
+    // For a Lichess tournament: the member's rank among everyone who played there.
+    sourceRank: integer('source_rank'),
   },
   (t) => [primaryKey({ columns: [t.competitionId, t.memberId] }), index('competition_entries_member_idx').on(t.memberId)],
 )
@@ -1288,12 +1299,47 @@ export const gameEvents = gamesSchema.table(
     competitionId: uuid('competition_id').references(() => competitions.id),
     postId: uuid('post_id').references(() => posts.id, { onDelete: 'set null' }),
     data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+    // The Game Score XP it gave (games/core/scoring.ts), set when it is written and
+    // added to the totals in the same transaction. Null only for events written
+    // before XP existed, until the API scores them once (docs/adr/0018, phase 5).
+    xp: integer('xp'),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [
     index('game_events_member_created_idx').on(t.memberId, t.createdAt),
     index('game_events_game_created_idx').on(t.game, t.createdAt),
+    index('game_events_unscored_idx').on(t.createdAt).where(sql`xp is null`),
   ],
+)
+
+// A member's Game Score: XP from every game, for one season ("2026-11") or for
+// all time ("all"). Kept up to date as events are scored, so the leaderboards only
+// read it (docs/adr/0018, phase 5).
+export const xpTotals = gamesSchema.table(
+  'xp_totals',
+  {
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    period: text('period').notNull(),
+    xp: integer('xp').notNull().default(0),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.memberId, t.period] }), index('xp_totals_rank_idx').on(t.period, t.xp.desc())],
+)
+
+// Who may enter an invite-only competition, listed by the moderator who made it.
+export const competitionInvites = gamesSchema.table(
+  'competition_invites',
+  {
+    competitionId: uuid('competition_id')
+      .notNull()
+      .references(() => competitions.id, { onDelete: 'cascade' }),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+  },
+  (t) => [primaryKey({ columns: [t.competitionId, t.memberId] }), index('competition_invites_member_idx').on(t.memberId)],
 )
 
 // ---------------------------------------------------------------------------
@@ -1330,10 +1376,29 @@ export const lichessLinkAttempts = gamesSchema.table(
       .notNull()
       .references(() => members.id),
     verifierBox: text('verifier_box').notNull(),
+    // What was asked for, space separated: the base scopes, plus tournament:write
+    // when a community moderator asks to run tournaments (phase 6).
+    scopes: text('scopes').notNull().default('challenge:read challenge:write board:play'),
     expiresAt: ts('expires_at').notNull(),
   },
   (t) => [index('lichess_link_attempts_member_idx').on(t.memberId)],
 )
+
+// A HeyNaija community's Lichess team (phase 6): one each way. Linked by a
+// moderator of the community who leads the team on Lichess; its chess
+// tournaments are made for that team. The name and size are as Lichess last said.
+export const communityTeams = gamesSchema.table('community_teams', {
+  communityId: uuid('community_id')
+    .primaryKey()
+    .references(() => communities.id),
+  lichessTeamId: text('lichess_team_id').notNull().unique(),
+  teamName: text('team_name').notNull(),
+  nbMembers: integer('nb_members').notNull().default(0),
+  // Set to null when that member's account is erased; the link stays.
+  linkedBy: uuid('linked_by').references(() => members.id),
+  linkedAt: ts('linked_at').notNull().defaultNow(),
+  refreshedAt: ts('refreshed_at').notNull().defaultNow(),
+})
 
 export const CHESS_CHALLENGE_STATUSES = ['pending', 'accepted', 'declined', 'cancelled', 'failed'] as const
 export const CHESS_COLORS = ['random', 'white', 'black'] as const

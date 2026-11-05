@@ -6,7 +6,8 @@ import { and, eq, isNull, sql } from 'drizzle-orm'
 import { db, migrate, pool, reset } from '../../test-db.js'
 import { TokenBox } from '../core/token-box.js'
 import { drawNumbers, hitsOf, seedHash } from './draw.js'
-import { KENO_CLOSE_MS, KenoError, KenoService, lagosDayStart, lagosMonth } from './keno.service.js'
+import { lagosDayStart, lagosMonth } from '../core/seasons.js'
+import { KENO_CLOSE_MS, KenoError, KenoService } from './keno.service.js'
 import { PAYOUT_TABLES, pointsFor } from './payouts.js'
 
 const EVERY = 300_000
@@ -149,9 +150,9 @@ test('tickets are scored from the table they were played under, and the stats, m
     ].sort(),
   )
   const [profile] = await db.select().from(gameProfiles).where(and(eq(gameProfiles.memberId, ada), eq(gameProfiles.game, 'keno')))
-  assert.deepEqual(profile!.stats, { rounds: 1, tickets: 2, points: 100, bestHits: 4 })
+  assert.deepEqual(profile!.stats, { rounds: 1, tickets: 2, points: 100, bestHits: 4, xp: 12 })
   const [score] = await db.select().from(seasonScores).where(eq(seasonScores.memberId, ada))
-  assert.deepEqual([score!.game, score!.points, score!.xp], ['keno', 100, 0])
+  assert.deepEqual([score!.game, score!.points, score!.xp], ['keno', 100, 12], 'XP: 2 for the round, 10 for 100 points')
   const events = await db.select().from(gameEvents).where(eq(gameEvents.kind, 'keno_round_played'))
   assert.equal(events.length, 2, 'one event per member per round')
   assert.deepEqual(events.find((e) => e.memberId === ada)!.data, { round: 1, tickets: 2, points: 100, bestHits: 4 })

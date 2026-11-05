@@ -4,6 +4,7 @@ import {
   ConflictException,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpException,
@@ -11,6 +12,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Put,
   Query,
   Req,
   ServiceUnavailableException,
@@ -23,6 +25,7 @@ import { handleParam, parse } from '../../http.js'
 import { RateLimiter } from '../../rate-limit.js'
 import { ChessGamesService } from './chess-games.service.js'
 import { ChessError, ChessService } from './chess.service.js'
+import { TeamsService } from './teams.js'
 
 const completeBody = z.object({ code: z.string().min(1).max(500), state: z.string().min(1).max(200) })
 const challengeBody = z.object({
@@ -34,6 +37,18 @@ const challengeBody = z.object({
   openThread: z.boolean().default(true),
 })
 const opponentsQuery = z.object({ q: z.string().max(30).default('') })
+const linkQuery = z.object({ scope: z.enum(['tournaments']).optional() })
+const communitySlug = z.string().regex(/^[a-z0-9-]{1,60}$/)
+const teamBody = z.object({ team: z.string().trim().min(1).max(200) })
+const tournamentBody = z.object({
+  name: z.string().max(60),
+  kind: z.enum(['arena', 'swiss']),
+  timeControl: z.string().max(10),
+  rated: z.boolean(),
+  startsAt: z.coerce.date(),
+  minutes: z.number().int().optional(),
+  rounds: z.number().int().optional(),
+})
 const challengeId = (id: string) => {
   if (!z.uuid().safeParse(id).success) throw new NotFoundException()
   return id
@@ -51,8 +66,12 @@ export function answer(err: unknown): never {
       throw new ServiceUnavailableException(body)
     case 'lichess_unavailable':
       throw new HttpException(body, 502)
+    case 'not_moderator':
+    case 'not_leader':
+      throw new ForbiddenException(body)
     case 'duplicate':
     case 'already_linked':
+    case 'team_taken':
     case 'reconnect':
     case 'game_over':
       throw new ConflictException(body)
@@ -78,6 +97,7 @@ export class ChessController {
     @Inject(ChessService) private readonly chess: ChessService,
     @Inject(RateLimiter) private readonly limits: RateLimiter,
     @Inject(ChessGamesService) private readonly games: Pick<ChessGamesService, 'playingNow'>,
+    @Inject(TeamsService) private readonly teams: TeamsService,
   ) {}
 
   @Get()
@@ -85,11 +105,12 @@ export class ChessController {
     return this.chess.overview(req.member.id)
   }
 
-  /** Where to send the member to link their Lichess account. */
+  /** Where to send the member to link their Lichess account; `?scope=tournaments` also asks to make tournaments (phase 6). */
   @Post('link')
-  async startLink(@Req() req: AuthedRequest) {
+  async startLink(@Req() req: AuthedRequest, @Query() query: unknown) {
+    const { scope } = parse(linkQuery, query)
     await this.limits.hit('lichessLink', req.member.id)
-    return run(() => this.chess.startLink(req.member.id))
+    return run(() => this.chess.startLink(req.member.id, new Date(), { tournaments: scope === 'tournaments' }))
   }
 
   /** What Lichess sent back to /games/chess/callback, passed on by the web app. */
@@ -153,5 +174,41 @@ export class ChessController {
   async cancel(@Req() req: AuthedRequest, @Param('id') id: string) {
     await this.limits.hit('action', req.member.id)
     await run(() => this.chess.cancel(req.member.id, challengeId(id)))
+  }
+
+  // --- Community teams and tournaments (phase 6) -------------------------------
+
+  @Get('teams/:slug')
+  team(@Req() req: AuthedRequest, @Param('slug') slug: string) {
+    return run(() => this.teams.view(req.member.id, parse(communitySlug, slug)))
+  }
+
+  @Put('teams/:slug')
+  @HttpCode(204)
+  async linkTeam(@Req() req: AuthedRequest, @Param('slug') slug: string, @Body() body: unknown) {
+    const { team } = parse(teamBody, body)
+    await this.limits.hit('chessTeam', req.member.id)
+    await run(() => this.teams.link(req.member.id, parse(communitySlug, slug), team))
+  }
+
+  @Delete('teams/:slug')
+  @HttpCode(204)
+  async unlinkTeam(@Req() req: AuthedRequest, @Param('slug') slug: string) {
+    await this.limits.hit('chessTeam', req.member.id)
+    await run(() => this.teams.unlink(req.member.id, parse(communitySlug, slug)))
+  }
+
+  @Post('teams/:slug/tournaments')
+  async createTournament(@Req() req: AuthedRequest, @Param('slug') slug: string, @Body() body: unknown) {
+    const input = parse(tournamentBody, body)
+    const name = parse(communitySlug, slug)
+    await this.limits.hit('chessTournament', req.member.id)
+    return { id: await run(() => this.teams.createTournament(req.member.id, name, input)) }
+  }
+
+  @Post('tournaments/:id/cancel')
+  async cancelTournament(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await this.limits.hit('action', req.member.id)
+    return run(() => this.teams.cancelTournament(req.member.id, challengeId(id)))
   }
 }

@@ -9,7 +9,7 @@ import { notify } from '../../notifications/notifications.service.js'
 import { blockedEitherWay } from '../../posts/posts.service.js'
 import { DB, ENV } from '../../tokens.js'
 import type { TokenBox } from '../core/token-box.js'
-import { type ChallengeRequest, LichessError, type LichessApi, type Ratings, USERS_MAX } from './lichess.js'
+import { type ChallengeRequest, LICHESS_SCOPES, LichessError, type LichessApi, type Ratings, TOURNAMENT_SCOPE, USERS_MAX } from './lichess.js'
 import { describeTime, TIME_CONTROLS, timeControlById } from './time-controls.js'
 import { type AcceptedChallenge, ChessError, GAME_STARTER, type GameStarter, LICHESS, TOKEN_BOX } from './chess-tokens.js'
 
@@ -92,9 +92,14 @@ export class ChessService {
 
   // --- Linking ----------------------------------------------------------------
 
-  /** Starts linking: remembers a single-use state and verifier, and returns where to send the member. */
-  async startLink(memberId: string, now = new Date()): Promise<{ url: string }> {
+  /**
+   * Starts linking: remembers a single-use state and verifier, and returns where
+   * to send the member. `tournaments` also asks for tournament:write, for a
+   * community moderator who runs tournaments (phase 6); nobody else is asked for it.
+   */
+  async startLink(memberId: string, now = new Date(), { tournaments = false }: { tournaments?: boolean } = {}): Promise<{ url: string }> {
     const box = this.sealer()
+    const scopes = [...LICHESS_SCOPES, ...(tournaments ? [TOURNAMENT_SCOPE] : [])]
     const state = randomBytes(24).toString('base64url')
     const verifier = randomBytes(32).toString('base64url')
     const challenge = createHash('sha256').update(verifier).digest('base64url')
@@ -105,10 +110,11 @@ export class ChessService {
         stateHash: sha256(state),
         memberId,
         verifierBox: box.seal(verifier, memberId),
+        scopes: scopes.join(' '),
         expiresAt: new Date(now.getTime() + LINK_ATTEMPT_MS),
       })
     })
-    return { url: this.lichess.authorizeUrl({ clientId: this.clientId, redirectUri: this.redirectUri, codeChallenge: challenge, state }) }
+    return { url: this.lichess.authorizeUrl({ clientId: this.clientId, redirectUri: this.redirectUri, codeChallenge: challenge, state, scopes }) }
   }
 
   /**
@@ -138,7 +144,7 @@ export class ChessService {
         username: user.username,
         tokenBox: box.seal(token.accessToken, memberId),
         tokenExpiresAt: token.expiresAt,
-        scopes: 'challenge:read challenge:write board:play',
+        scopes: attempt.scopes,
         ratings: user.ratings,
         ratingsRefreshedAt: now,
       }

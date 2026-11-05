@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { PostsSkeleton } from '@/app/ui/post-item'
-import { getGames, getKenoBoard, getViewer } from '@/lib/api'
+import { getCommunityPosts, getCompetitions, getGameBoard, getGames, getViewer } from '@/lib/api'
 import { GameCard } from './_components/game-card'
 import { CompetitionStrip, LeaderboardPreview, RecentGamePosts, ScoreCard } from './_components/home-sections'
 
@@ -11,7 +11,7 @@ import { CompetitionStrip, LeaderboardPreview, RecentGamePosts, ScoreCard } from
 export const metadata: Metadata = { title: 'Games', robots: { index: false } }
 
 /** The games homepage (docs/games/GAMES.md): your score, the games, the season and what is on. */
-export default function GamesPage() {
+export default function GamesPage({ searchParams }: PageProps<'/games'>) {
   return (
     <div className="page-stack">
       <header className="page-intro">
@@ -23,21 +23,32 @@ export default function GamesPage() {
         </p>
       </header>
       <Suspense fallback={<PostsSkeleton />}>
-        <GamesHome />
+        <GamesHome searchParams={searchParams} />
       </Suspense>
     </div>
   )
 }
 
-async function GamesHome() {
-  const viewer = await getViewer()
+async function GamesHome({ searchParams }: Pick<PageProps<'/games'>, 'searchParams'>) {
+  const [params, viewer] = await Promise.all([searchParams, getViewer()])
   // With Games off, or for anyone not on its list (or signed out), this page does not exist.
   if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
-  const [registry, keno] = await Promise.all([getGames(), getKenoBoard('month', 5)])
+  const board = params.board === 'chess' ? 'chess' : params.board === 'keno' ? 'keno' : 'score'
+  const [registry, season, allTime, preview, competitions, night, arena] = await Promise.all([
+    getGames(),
+    getGameBoard({ board: 'score', limit: 1 }),
+    getGameBoard({ board: 'score', period: 'all', limit: 1 }),
+    getGameBoard({ board, limit: 5 }),
+    getCompetitions(),
+    getCommunityPosts('game-night').catch(() => null),
+    getCommunityPosts('chess-arena').catch(() => null),
+  ])
   if (!registry) notFound()
+  // The Arbiter's latest: competition results and game threads, newest first.
+  const posts = [...(night?.posts ?? []), ...(arena?.posts ?? [])].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 3)
   return (
     <>
-      <ScoreCard />
+      <ScoreCard season={season} allTime={allTime} />
       <section aria-labelledby="games-list">
         <h2 id="games-list" className="sr-only">All games</h2>
         <ul className="directory-grid">
@@ -46,9 +57,9 @@ async function GamesHome() {
           ))}
         </ul>
       </section>
-      <LeaderboardPreview keno={keno} />
-      <CompetitionStrip />
-      <RecentGamePosts />
+      <LeaderboardPreview board={preview} />
+      <CompetitionStrip items={competitions?.current ?? []} />
+      <RecentGamePosts posts={posts} viewerId={viewer.me.id} now={Date.now()} />
     </>
   )
 }

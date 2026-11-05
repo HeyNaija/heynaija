@@ -37,6 +37,12 @@ export type ChessErrorCode =
   | 'lichess_rejected'
   | 'illegal_move'
   | 'game_over'
+  // Community teams and tournaments (phase 6).
+  | 'not_moderator'
+  | 'not_leader'
+  | 'needs_scope'
+  | 'team_taken'
+  | 'no_team'
 
 export class ChessError extends Error {
   constructor(

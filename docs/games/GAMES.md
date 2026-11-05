@@ -80,7 +80,13 @@ member foreign key cascades.
   community filters. Standings are precomputed (a BullMQ job or a refreshed
   table), never computed with heavy queries on page load.
 - **Explainer:** a public "How games scoring works" page that states every rule,
-  in the spirit of /about/discover.
+  in the spirit of /about/discover (`/games/scoring`; behind the `games` flag until
+  launch, by the owner's choice).
+- **Agreed XP (phase 5):** chess 10 for a game played to the end, +10 a win, +5 a
+  draw, 0 aborted; Keno 2 a round played, +1 per 10 points (at most +20 a round);
+  competitions 5 for playing, +100 / +60 / +40 for 1st / 2nd / 3rd, +20 for 4th to
+  10th. Rules live in `core/scoring.ts` only; change them there and the explainer
+  follows.
 - **Safety:** blocks and mutes apply to leaderboards, challenges and game posts
   the same way they apply to feeds. Suspended members cannot play or appear on
   leaderboards.
@@ -114,8 +120,9 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
    registration; the client ID is the site's host. The callback is
    `/games/chess/callback` on the web app's single origin, which passes it to the
    API. Request only the scopes needed: challenge:read, challenge:write and
-   board:play first; team and tournament scopes only when community tournaments
-   are built. Tokens are sealed with `GAMES_TOKEN_KEY`. Unlinking revokes and
+   board:play; tournament:write only from a community moderator who asks to run
+   tournaments (phase 6). No team scope is needed: team pages are public.
+   Tokens are sealed with `GAMES_TOKEN_KEY`. Unlinking revokes and
    deletes the token. Linking lives on /games/chess only.
 2. **Profile:** the Lichess username, plus Blitz, Rapid, Classical and
    Correspondence ratings, cached and refreshed on a schedule and on demand.
@@ -145,6 +152,14 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
    the game's thread with the result.
 7. **Community tournaments:** existing HeyNaija communities can link to a Lichess
    team, enabling Arena and Swiss tournaments created through the API.
+   **Agreed (phase 6):** a moderator of the community who Lichess lists as a
+   leader of the team links it (one team per community, and the reverse) and
+   makes its tournaments with their own token. Games are played on lichess.org;
+   HeyNaija shows the tournament, the community's members who play (matched by
+   their linked account), standings read from Lichess and the result, posted by
+   The Arbiter in the community. Places among HeyNaija members follow Lichess's
+   order, and give the usual competition XP; tournament games give no XP of
+   their own.
 
 ## Keno (in-house, free to play only)
 
@@ -176,7 +191,11 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
 Shared across games: name, game, format, eligibility (open, community, invite),
 entry window, schedule, standings source (Lichess tournament results for chess,
 points within a draw window for keno), status lifecycle, and results published
-as posts. Only site moderators can create competitions for now.
+as posts. Site moderators create Keno competitions (`keno_points`, phase 5);
+community moderators who lead the linked Lichess team create their community's
+chess tournaments (`lichess_arena`, `lichess_swiss`, phase 6). Results are posted by The Arbiter in **Game Night**
+(`game-night`), or in the competition's own community; only The Arbiter starts
+posts in Game Night.
 
 ## Feature flag, roadmap and docs
 

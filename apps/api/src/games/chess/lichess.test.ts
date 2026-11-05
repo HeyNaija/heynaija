@@ -190,3 +190,42 @@ test('stream lines this code does not use, or cannot read, are left out', () => 
   assert.equal(parseBoardEvent('{"type":"opponentGone","gone":true}'), null)
   assert.equal(parseBoardEvent('{"type":"gameState"}'), null)
 })
+
+test('a team is read publicly with its listed leaders; one Lichess does not know is null', async () => {
+  const { calls, client } = fake((c) =>
+    c.url.endsWith('/coders') ? json({ id: 'coders', name: 'Coders', nbMembers: 12, leader: { id: 'Thibault' }, leaders: [{ id: 'thibault' }, { id: 'Ada' }] }) : new Response('', { status: 404 }),
+  )
+  assert.deepEqual(await client.team('coders'), { id: 'coders', name: 'Coders', nbMembers: 12, leaders: ['thibault', 'ada'] })
+  assert.equal(calls[0]!.headers.authorization, undefined)
+  assert.equal(await client.team('nobody'), null)
+})
+
+test('an Arena is made for the team with its clock in minutes; a Swiss on the team with its clock in seconds', async () => {
+  const { calls, client } = fake(() => json({ id: 'abc12345' }))
+  const base = { name: 'Lagos Blitz', clockLimit: 180, clockIncrement: 2, rated: true, startsAt: new Date(1_800_000_000_000), teamId: 'lagos' }
+  assert.deepEqual(await client.createTournament('tok', { ...base, kind: 'arena', minutes: 60 }), { id: 'abc12345' })
+  assert.equal(calls[0]!.url, 'https://lichess.test/api/tournament')
+  assert.equal(calls[0]!.headers.authorization, 'Bearer tok')
+  const arena = new URLSearchParams(calls[0]!.body)
+  assert.deepEqual(
+    ['clockTime', 'clockIncrement', 'minutes', 'startDate', 'conditions.teamMember.teamId', 'rated'].map((k) => arena.get(k)),
+    ['3', '2', '60', '1800000000000', 'lagos', 'true'],
+  )
+  await client.createTournament('tok', { ...base, kind: 'swiss', rounds: 7 })
+  assert.equal(calls[1]!.url, 'https://lichess.test/api/swiss/new/lagos')
+  const swiss = new URLSearchParams(calls[1]!.body)
+  assert.deepEqual(['clock.limit', 'clock.increment', 'nbRounds', 'startsAt'].map((k) => swiss.get(k)), ['180', '2', '7', '1800000000000'])
+})
+
+test('a tournament’s state: Arena from isFinished and secondsToStart, Swiss from its status; results as ndjson', async () => {
+  const { calls, client } = fake((c) => {
+    if (c.url.includes('/results')) return new Response('{"rank":1,"score":5,"username":"A"}\n', { headers: { 'content-type': 'application/x-ndjson' } })
+    if (c.url.includes('/swiss/')) return json({ status: 'started', nbPlayers: 8 })
+    return json(c.url.endsWith('/soon') ? { secondsToStart: 60, nbPlayers: 3 } : { isFinished: true, nbPlayers: 30 })
+  })
+  assert.deepEqual(await client.tournament('arena', 'soon'), { status: 'created', nbPlayers: 3 })
+  assert.deepEqual(await client.tournament('arena', 'done'), { status: 'finished', nbPlayers: 30 })
+  assert.deepEqual(await client.tournament('swiss', 'sw1'), { status: 'started', nbPlayers: 8 })
+  assert.deepEqual(await client.results('arena', 'done', 1000), [{ rank: 1, username: 'A', score: 5 }])
+  assert.equal(calls.at(-1)!.url, 'https://lichess.test/api/tournament/done/results?nb=1000')
+})

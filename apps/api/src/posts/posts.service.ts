@@ -26,7 +26,7 @@ import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, Inval
 import { excerpt, notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { Refreshing } from '../refreshing.js'
-import { ARBITER_ID, ARENA_SLUG } from '../games/chess/arena-ids.js'
+import { ARBITER_ID, ARBITER_ONLY } from '../games/chess/arena-ids.js'
 import { hiddenFromPlayer } from '../games/chess/hidden-replies.js'
 import { DB } from '../tokens.js'
 import {
@@ -1430,10 +1430,9 @@ export class PostsService {
         .from(communities)
         .where(and(eq(communities.slug, communitySlug), eq(communities.active, true)))
       if (!community) throw new CommunityNotFoundError('no such community')
-      // Chess Arena (docs/adr/0018): The Arbiter starts one thread per match; members reply.
-      if (communitySlug === ARENA_SLUG && authorId !== ARBITER_ID) {
-        throw new NotACommunityMemberError('Chess Arena threads are started for each game; reply in one instead.')
-      }
+      // Chess Arena and Game Night (docs/adr/0018): The Arbiter starts the posts; members reply.
+      const arbiterOnly = ARBITER_ONLY[communitySlug]
+      if (arbiterOnly && authorId !== ARBITER_ID) throw new NotACommunityMemberError(arbiterOnly)
       if (!community.joined && !anyMember) throw new NotACommunityMemberError('join the community to post in it')
       communityId = community.id
     }

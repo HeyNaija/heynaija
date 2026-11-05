@@ -1,8 +1,10 @@
 // A stand-in for lichess.org, for the chess end-to-end tests (docs/adr/0018).
 // The API is pointed at it with LICHESS_URL. It does what HeyNaija asks of
 // Lichess: the OAuth consent page (with PKCE checked properly), the account,
-// public profiles, and making, accepting and cancelling challenges. Everything is
-// kept in memory and forgotten when it stops.
+// public profiles, making, accepting and cancelling challenges, and (phase 6)
+// teams and their Arena and Swiss tournaments. Everything is kept in memory and
+// forgotten when it stops. Tests set teams and tournament results through
+// /_test/team and /_test/tournament/<id>.
 //
 //   node --experimental-strip-types e2e/lib/fake-lichess.ts      (port 8790, or FAKE_LICHESS_PORT)
 import { createHash, randomBytes } from 'node:crypto'
@@ -19,6 +21,10 @@ export function fakeLichess() {
   // Games once a challenge is accepted: moves are recorded as sent, not checked (Lichess checks; this stands in).
   type Game = { white: string; black: string; moves: string[]; status: string; winner?: 'white' | 'black'; wdraw: boolean; bdraw: boolean; watchers: Set<ServerResponse> }
   const games = new Map<string, Game>()
+  // Teams by id, and tournaments as they were made; a test says who leads a team and how a tournament went.
+  const teams = new Map<string, { id: string; name: string; nbMembers: number; leaders: { id: string; name: string }[] }>()
+  type Tournament = { kind: 'arena' | 'swiss'; by: string; form: Record<string, string>; status: 'created' | 'started' | 'finished'; results: { rank: number; username: string; score: number }[] }
+  const tournaments = new Map<string, Tournament>()
   const stateOf = (g: Game) => ({
     type: 'gameState',
     moves: g.moves.join(' '),
@@ -161,6 +167,49 @@ export function fakeLichess() {
       tell(g)
       return send(res, 200, { ok: true })
     }
+    // Teams and tournaments (phase 6).
+    if (req.method === 'POST' && path === '/_test/team') {
+      const t = JSON.parse(body) as { id: string; name: string; leader: string }
+      teams.set(t.id, { id: t.id, name: t.name, nbMembers: 3, leaders: [{ id: t.leader.toLowerCase(), name: t.leader }] })
+      return send(res, 204)
+    }
+    const setTournament = /^\/_test\/tournament\/([^/]+)$/.exec(path)
+    if (req.method === 'POST' && setTournament) {
+      const t = tournaments.get(setTournament[1]!)
+      if (!t) return send(res, 404, { error: 'no such tournament' })
+      Object.assign(t, JSON.parse(body))
+      return send(res, 204)
+    }
+    const team = /^\/api\/team\/([^/]+)$/.exec(path)
+    if (req.method === 'GET' && team) {
+      const t = teams.get(decodeURIComponent(team[1]!))
+      return t ? send(res, 200, { ...t, leader: t.leaders[0] }) : send(res, 404, { error: 'not found' })
+    }
+    const create = path === '/api/tournament' ? 'arena' : /^\/api\/swiss\/new\/[^/]+$/.test(path) ? 'swiss' : null
+    if (req.method === 'POST' && create) {
+      const by = bearer(req)
+      if (!by) return send(res, 401, { error: 'no token' })
+      const id = randomBytes(4).toString('hex')
+      tournaments.set(id, { kind: create, by: by.toLowerCase(), form: Object.fromEntries(form), status: 'created', results: [] })
+      return send(res, 200, { id })
+    }
+    const about = /^\/api\/(tournament|swiss)\/([^/]+)(?:\/(results|terminate))?$/.exec(path)
+    if (about) {
+      const t = tournaments.get(about[2]!)
+      if (!t) return send(res, 404, { error: 'not found' })
+      if (about[3] === 'terminate' && req.method === 'POST') {
+        t.status = 'finished'
+        return send(res, 200, { ok: true })
+      }
+      if (about[3] === 'results') {
+        const lines = t.results.map((r) => JSON.stringify(t.kind === 'arena' ? { rank: r.rank, username: r.username, score: r.score } : { rank: r.rank, username: r.username, points: r.score / 2 }))
+        return send(res, 200, lines.map((l) => `${l}\n`).join(''), 'application/x-ndjson')
+      }
+      const nbPlayers = t.results.length
+      return send(res, 200, t.kind === 'arena' ? { id: about[2], isFinished: t.status === 'finished', secondsToStart: t.status === 'created' ? 600 : 0, nbPlayers } : { id: about[2], status: t.status, nbPlayers })
+    }
+    // A tournament's and a team's pages on lichess.org.
+    if (req.method === 'GET' && /^\/(tournament|swiss|team)\/[^/]+$/.test(path)) return send(res, 200, `<!doctype html><title>Lichess</title><h1>${path}</h1>`, 'text/html')
     // The game page an accepted challenge links to.
     if (req.method === 'GET' && /^\/[0-9a-f]{8}$/.test(path)) return send(res, 200, `<!doctype html><title>Game</title><h1>Game ${path.slice(1)}</h1>`, 'text/html')
     return send(res, 404, { error: 'not found' })

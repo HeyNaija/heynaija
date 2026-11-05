@@ -3,11 +3,12 @@ import { Inject, Injectable, Logger } from '@nestjs/common'
 import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, sql } from 'drizzle-orm'
 import type { Env } from '../../env.js'
 import { FeatureFlags } from '../../flags/feature-flags.js'
-import { avatarPath } from '../../media/media.service.js'
-import { blockedEitherWay } from '../../posts/posts.service.js'
 import { DB, ENV } from '../../tokens.js'
 import type { TokenBox } from '../core/token-box.js'
 import { drawNumbers, hitsOf, KENO_MAX, newSeed, seedHash } from './draw.js'
+import { recordEvents } from '../core/scoring.js'
+import { type BoardRow as SharedRow, leaderboard } from '../core/leaderboards.js'
+import { ensureSeason, lagosDayStart, lagosMonth } from '../core/seasons.js'
 import { KENO_TOKEN_BOX } from './keno-tokens.js'
 import { CURRENT_TABLE, PAYOUT_TABLES, type PayoutTable, pointsFor } from './payouts.js'
 
@@ -17,8 +18,6 @@ import { CURRENT_TABLE, PAYOUT_TABLES, type PayoutTable, pointsFor } from './pay
 
 /** Tickets stop going into a round this long before it is drawn; later ones go into the next. */
 export const KENO_CLOSE_MS = 15_000
-/** Lagos is UTC+1 all year (no summer time), so its days and months are UTC's moved by an hour. */
-const LAGOS_OFFSET_MS = 3_600_000
 /** A round drawn this long after its time was drawn late (the API was down), and says so. */
 const LATE_MS = 60_000
 const PAGE = 30
@@ -32,24 +31,6 @@ export class KenoError extends Error {
     message: string,
   ) {
     super(message)
-  }
-}
-
-/** Midnight in Lagos at the start of the day `now` falls on. */
-export function lagosDayStart(now: Date): Date {
-  const shifted = now.getTime() + LAGOS_OFFSET_MS
-  return new Date(shifted - (shifted % 86_400_000) - LAGOS_OFFSET_MS)
-}
-
-/** The Lagos calendar month `at` falls in: its season slug ("2026-11") and bounds. */
-export function lagosMonth(at: Date): { slug: string; startsAt: Date; endsAt: Date } {
-  const shifted = new Date(at.getTime() + LAGOS_OFFSET_MS)
-  const y = shifted.getUTCFullYear()
-  const m = shifted.getUTCMonth()
-  return {
-    slug: `${y}-${String(m + 1).padStart(2, '0')}`,
-    startsAt: new Date(Date.UTC(y, m, 1) - LAGOS_OFFSET_MS),
-    endsAt: new Date(Date.UTC(y, m + 1, 1) - LAGOS_OFFSET_MS),
   }
 }
 
@@ -211,10 +192,7 @@ export class KenoService {
       m.bestHits = Math.max(m.bestHits, t.hits)
       byMember.set(t.memberId, m)
     }
-    const month = lagosMonth(round.drawsAt)
-    await tx.execute(sql`
-      insert into games.seasons (slug, starts_at, ends_at) values (${month.slug}, ${month.startsAt}, ${month.endsAt})
-      on conflict (slug) do nothing`)
+    const season = await ensureSeason(tx, now)
     for (const [memberId, m] of byMember) {
       await tx.execute(sql`
         insert into games.game_profiles (member_id, game, stats, created_at, updated_at)
@@ -228,15 +206,30 @@ export class KenoService {
           updated_at = ${now}`)
       await tx.execute(sql`
         insert into games.season_scores (season_id, member_id, game, points, updated_at)
-        select id, ${memberId}, 'keno', ${m.points}::int, ${now} from games.seasons where slug = ${month.slug}
+        values (${season.id}, ${memberId}, 'keno', ${m.points}::int, ${now})
         on conflict (season_id, member_id, game) do update set
           points = games.season_scores.points + excluded.points,
           updated_at = case when excluded.points > 0 then excluded.updated_at else games.season_scores.updated_at end`)
-      await tx.execute(sql`
-        insert into games.game_events (game, kind, member_id, data, created_at)
-        values ('keno', 'keno_round_played', ${memberId},
-                jsonb_build_object('round', ${round.number}::int, 'tickets', ${m.tickets}::int, 'points', ${m.points}::int, 'bestHits', ${m.bestHits}::int), ${now})`)
     }
+    // One event per member for the round, with its Game Score XP (docs/adr/0018, phase 5).
+    await recordEvents(
+      tx,
+      [...byMember].map(([memberId, m]) => ({
+        game: 'keno',
+        kind: 'keno_round_played',
+        memberId,
+        data: { round: round.number, tickets: m.tickets, points: m.points, bestHits: m.bestHits },
+        createdAt: now,
+      })),
+    )
+    // Keno competitions whose play window this round falls in: their entrants' points go on (phase 5).
+    await tx.execute(sql`
+      update games.competition_entries e set score = coalesce(e.score, 0) + s.points
+      from (select member_id, sum(points)::int as points from games.keno_tickets where round_number = ${round.number} group by member_id) s,
+           games.competitions c
+      where e.competition_id = c.id and e.member_id = s.member_id
+        and c.game = 'keno' and c.format = 'keno_points' and c.status in ('open', 'live')
+        and c.starts_at <= ${round.drawsAt} and c.ends_at > ${round.drawsAt}`)
   }
 
   /** The round's seed: opened from its box, or as it is if it was made without GAMES_TOKEN_KEY. */
@@ -351,41 +344,13 @@ export class KenoService {
   // --- Standings ----------------------------------------------------------------
 
   /**
-   * The top members by points this Lagos month, or of all time, from the rows the
-   * draws keep (nothing is added up here), and the viewer's own row wherever they
-   * stand. Members the viewer has blocked or is blocked by, and inactive members
-   * (suspended, deactivated), are left out; members with no points are not ranked.
+   * The Keno board by points, this Lagos month or of all time: the shared
+   * leaderboards (games/core/leaderboards.ts), which leave out blocks, mutes and
+   * inactive members and always give the viewer's own row.
    */
   async leaderboard(viewerId: string, period: 'month' | 'all', now = new Date(), limit = BOARD_SIZE): Promise<{ period: 'month' | 'all'; season: string | null; rows: BoardRow[]; you: BoardRow | null }> {
-    const month = lagosMonth(now)
-    const scores =
-      period === 'month'
-        ? sql`select ss.member_id, ss.points, ss.updated_at from games.season_scores ss join games.seasons s on s.id = ss.season_id where s.slug = ${month.slug} and ss.game = 'keno'`
-        : sql`select gp.member_id, (gp.stats->>'points')::int as points, gp.updated_at from games.game_profiles gp where gp.game = 'keno'`
-    const ranked = sql`
-      with sc as (${scores}),
-      eligible as (
-        select sc.member_id, sc.points, sc.updated_at, m.handle, m.display_name, m.avatar_media_id
-        from sc join members m on m.id = sc.member_id
-        where sc.points > 0 and m.active and m.deleted_at is null and (m.id = ${viewerId} or not ${blockedEitherWay(viewerId, sql`m.id`)})
-      )
-      select *, rank() over (order by points desc) as rank from eligible`
-    const top = await this.db.execute<{ member_id: string; points: number; handle: string; display_name: string | null; avatar_media_id: string | null; rank: string | number }>(
-      sql`select * from (${ranked}) r order by rank, updated_at limit ${limit}`,
-    )
-    const [me] = (
-      await this.db.execute<{ member_id: string; points: number; handle: string; display_name: string | null; avatar_media_id: string | null; rank: string | number }>(
-        sql`select * from (${ranked}) r where member_id = ${viewerId}`,
-      )
-    ).rows
-    const row = (r: { member_id: string; points: number; handle: string; display_name: string | null; avatar_media_id: string | null; rank: string | number }): BoardRow => ({
-      rank: Number(r.rank),
-      handle: r.handle,
-      displayName: r.display_name,
-      avatar: avatarPath(r.avatar_media_id),
-      points: Number(r.points),
-      you: r.member_id === viewerId,
-    })
-    return { period, season: period === 'month' ? month.slug : null, rows: top.rows.map(row), you: me ? row(me) : null }
+    const view = await leaderboard(this.db, viewerId, { board: 'keno', period: period === 'all' ? 'all' : lagosMonth(now).slug, limit, now })
+    const row = (r: SharedRow): BoardRow => ({ rank: r.rank, handle: r.handle, displayName: r.displayName, avatar: r.avatar, points: r.value, you: r.you })
+    return { period, season: period === 'month' ? view.period : null, rows: view.rows.map(row), you: view.you ? row(view.you) : null }
   }
 }

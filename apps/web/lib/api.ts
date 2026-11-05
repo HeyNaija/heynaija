@@ -521,6 +521,115 @@ export const getKenoTickets = (before?: string) =>
   getOrNull<{ tickets: KenoTicket[]; next: string | null }>(`/v1/games/keno/tickets${before ? `?before=${encodeURIComponent(before)}` : ''}`)
 export const getKenoBoard = (period: 'month' | 'all', limit = 50) => getOrNull<KenoBoard>(`/v1/games/keno/leaderboard?period=${period}&limit=${limit}`)
 
+// --- Seasons, Game Score, leaderboards, competitions (docs/adr/0018, phase 5) ----
+
+export type GameBoardKind = 'score' | 'chess' | 'keno'
+export type GameBoardFilter = 'everyone' | 'following' | 'community'
+export type GameBoardRow = { rank: number; handle: string; displayName: string | null; avatar: string | null; value: number; you: boolean }
+export type GameBoard = {
+  board: GameBoardKind
+  unit: 'xp' | 'points'
+  /** "2026-11" for a season, or "all". */
+  period: string
+  filter: GameBoardFilter
+  community: string | null
+  rows: GameBoardRow[]
+  you: GameBoardRow | null
+}
+
+export const getGameBoard = (q: { board: GameBoardKind; period?: string; filter?: GameBoardFilter; community?: string; limit?: number }) => {
+  const params = new URLSearchParams({ board: q.board, filter: q.filter ?? 'everyone', limit: String(q.limit ?? 50) })
+  if (q.period) params.set('period', q.period)
+  if (q.community) params.set('community', q.community)
+  return getOrNull<GameBoard>(`/v1/games/leaderboard?${params}`)
+}
+export const getGameSeasons = () => getOrNull<{ current: string; seasons: string[] }>('/v1/games/seasons')
+
+/** Every scoring rule, as the API scores: the explainer shows these numbers. */
+export type GameScoring = {
+  xp: {
+    chess: { finished: number; win: number; draw: number }
+    keno: { round: number; pointsPerXp: number; pointsXpMax: number }
+    competition: { entered: number; places: number[]; topTen: number }
+  }
+  keno: { tableVersion: string; payouts: Record<string, Record<string, number>> }
+  formats: Record<string, Record<string, string>>
+  season: string
+}
+export const getGameScoring = () => getOrNull<GameScoring>('/v1/games/scoring')
+
+export type CompetitionStatus = 'draft' | 'open' | 'live' | 'finished' | 'cancelled'
+export type CompetitionEligibility = 'open' | 'community' | 'invite'
+export type CompetitionCard = {
+  id: string
+  name: string
+  game: string
+  format: string
+  status: CompetitionStatus
+  eligibility: CompetitionEligibility
+  entryOpensAt: string
+  entryClosesAt: string
+  startsAt: string
+  endsAt: string
+  entrants: number
+  resultPostId: string | null
+}
+export type CompetitionStanding = {
+  place: number | null
+  handle: string
+  displayName: string | null
+  avatar: string | null
+  score: number | null
+  you: boolean
+  /** In a Lichess tournament: their rank among everyone there, and their Lichess name. */
+  lichess: { rank: number | null; username: string | null } | null
+}
+/** A chess competition's Lichess tournament (docs/adr/0018, phase 6). */
+export type CompetitionTournament = {
+  kind: 'arena' | 'swiss'
+  url: string
+  teamUrl: string
+  teamName: string | null
+  clock: { limit: number; increment: number }
+  minutes: number | null
+  rounds: number | null
+  rated: boolean
+  players: number | null
+  standingsAt: string | null
+  unfinished: boolean
+}
+export type Competition = CompetitionCard & {
+  formatText: string
+  community: { slug: string; name: string } | null
+  you: { entered: boolean; canEnter: boolean; canWithdraw: boolean; reason: string | null; moderator: boolean; canCancel: boolean }
+  standings: CompetitionStanding[]
+  yourStanding: CompetitionStanding | null
+  invite: string[]
+  chess: CompetitionTournament | null
+}
+
+/** A community's Lichess team and what the viewer may do with it (docs/adr/0018, phase 6). */
+export type ChessTeam = {
+  community: { slug: string; name: string }
+  team: { id: string; name: string; nbMembers: number; url: string } | null
+  you: {
+    communityModerator: boolean
+    siteModerator: boolean
+    lichess: string | null
+    canCreate: boolean
+    needsTournamentScope: boolean
+    canLink: boolean
+    canUnlink: boolean
+  }
+  controls: { id: string; speed: string; limit: number; increment: number; arenaMinutes: number[] }[]
+  swissRounds: { min: number; max: number }
+  tournaments: { current: CompetitionCard[]; recent: CompetitionCard[] }
+}
+export const getChessTeam = (slug: string) => getOrNull<ChessTeam>(`/v1/games/chess/teams/${encodeURIComponent(slug)}`)
+
+export const getCompetitions = () => getOrNull<{ current: CompetitionCard[]; recent: CompetitionCard[]; drafts: CompetitionCard[] }>('/v1/games/competitions')
+export const getCompetition = (id: string) => getOrNull<Competition>(`/v1/games/competitions/${encodeURIComponent(id)}`)
+
 /** A Gist the viewer may see; null for every refusal, which the API makes the same 404. */
 export const getGist = (id: string) => getOrNull<GistView>(`/v1/gists/${encodeURIComponent(id)}`)
 

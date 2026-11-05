@@ -163,9 +163,10 @@ test('when the game ends: finished once, ratings read, results kept, and The Arb
   const view = (await games.view(ada, id))!
   assert.deepEqual([view.finished, view.winner, view.status], [true, 'white', 'mate'])
   const events = await db.select().from(gameEvents).where(eq(gameEvents.kind, 'chess_game_finished'))
-  assert.deepEqual(events.map((e) => [e.memberId, (e.data as { outcome: string }).outcome]).sort(), [[ada, 'won'], [bayo, 'lost']].sort())
+  // With their Game Score XP (phase 5): 10 for the game, 10 more for the win.
+  assert.deepEqual(events.map((e) => [e.memberId, (e.data as { outcome: string }).outcome, e.xp]).sort(), [[ada, 'won', 20], [bayo, 'lost', 10]].sort())
   const [adaStats] = await db.select().from(gameProfiles).where(and(eq(gameProfiles.memberId, ada), eq(gameProfiles.game, 'chess')))
-  assert.deepEqual(adaStats!.stats, { played: 1, won: 1 })
+  assert.deepEqual(adaStats!.stats, { played: 1, won: 1, xp: 20 })
   const [g] = await db.select().from(chessGames).where(eq(chessGames.id, id))
   const [result] = await db.select().from(posts).where(eq(posts.id, g!.resultPostId!))
   assert.equal(result!.authorId, ARBITER_ID)

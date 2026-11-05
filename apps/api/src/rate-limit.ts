@@ -51,6 +51,9 @@ export const LIMITS = {
   lichessLink: [{ max: 10, windowMs: HOUR }],
   lichessRefresh: [{ max: 6, windowMs: HOUR }],
   chessChallenge: [{ max: 20, windowMs: HOUR }],
+  // Linking a community's Lichess team, and making its tournaments (Lichess allows 12 a day).
+  chessTeam: [{ max: 20, windowMs: HOUR }],
+  chessTournament: [{ max: 12, windowMs: 24 * HOUR }],
   // Moves, draw offers and resignations in a game (docs/adr/0018, phase 3).
   chessMove: [{ max: 120, windowMs: MINUTE }],
   // Keno tickets (docs/adr/0018, phase 4): a burst limit, and an outer bound on a

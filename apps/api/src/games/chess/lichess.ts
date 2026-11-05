@@ -6,6 +6,8 @@
  */
 
 export const LICHESS_SCOPES = ['challenge:read', 'challenge:write', 'board:play'] as const
+/** Asked for only when a community moderator wants to run tournaments (phase 6). */
+export const TOURNAMENT_SCOPE = 'tournament:write'
 
 /** The four speeds HeyNaija shows. Lichess calls a missing one "not played yet". */
 export const RATED_SPEEDS = ['blitz', 'rapid', 'classical', 'correspondence'] as const
@@ -32,6 +34,21 @@ export type BoardState = {
   wdraw?: boolean
   bdraw?: boolean
 }
+
+export type LichessTeam = { id: string; name: string; nbMembers: number; leaders: string[] }
+export type TournamentKind = 'arena' | 'swiss'
+export type TournamentRequest = {
+  name: string
+  /** Seconds, and seconds added a move. */
+  clockLimit: number
+  clockIncrement: number
+  rated: boolean
+  startsAt: Date
+  teamId: string
+} & ({ kind: 'arena'; minutes: number } | { kind: 'swiss'; rounds: number })
+export type TournamentState = { status: 'created' | 'started' | 'finished'; nbPlayers: number }
+/** One player's result, best first. `score` is Arena points, or Swiss points doubled (half points are whole). */
+export type TournamentResult = { rank: number; username: string; score: number }
 
 export type BoardEvent = { type: 'gameFull'; state: BoardState } | ({ type: 'gameState' } & BoardState)
 
@@ -60,7 +77,7 @@ export class LichessError extends Error {
 
 export interface LichessApi {
   /** The address to send a member to so they can say yes. */
-  authorizeUrl(input: { clientId: string; redirectUri: string; codeChallenge: string; state: string }): string
+  authorizeUrl(input: { clientId: string; redirectUri: string; codeChallenge: string; state: string; scopes?: readonly string[] }): string
   token(input: { code: string; codeVerifier: string; redirectUri: string; clientId: string }): Promise<LichessToken>
   revoke(accessToken: string): Promise<void>
   account(accessToken: string): Promise<LichessUser>
@@ -83,6 +100,16 @@ export interface LichessApi {
   resign(accessToken: string, gameId: string): Promise<void>
   /** Only before both players have moved. */
   abort(accessToken: string, gameId: string): Promise<void>
+  /** A team's public page: its name, size and publicly listed leaders (lower-case ids). Null if there is no such team. */
+  team(teamId: string): Promise<LichessTeam | null>
+  /** Makes an Arena (members of the team only) or a Swiss (always the team's) with a leader's token. */
+  createTournament(accessToken: string, request: TournamentRequest): Promise<{ id: string }>
+  /** Where a tournament is; public, no token. */
+  tournament(kind: TournamentKind, id: string): Promise<TournamentState>
+  /** Its players best first, at most `max`; public, no token. */
+  results(kind: TournamentKind, id: string, max: number): Promise<TournamentResult[]>
+  /** Ends it early, with the creator's token. */
+  terminate(accessToken: string, kind: TournamentKind, id: string): Promise<void>
 }
 
 export const USERS_MAX = 300
@@ -116,7 +143,7 @@ export class HttpLichess implements LichessApi {
     private readonly fetchFn: typeof fetch = fetch,
   ) {}
 
-  authorizeUrl({ clientId, redirectUri, codeChallenge, state }: Parameters<LichessApi['authorizeUrl']>[0]): string {
+  authorizeUrl({ clientId, redirectUri, codeChallenge, state, scopes = LICHESS_SCOPES }: Parameters<LichessApi['authorizeUrl']>[0]): string {
     const url = new URL(`${this.baseUrl}/oauth`)
     url.search = new URLSearchParams({
       response_type: 'code',
@@ -124,7 +151,7 @@ export class HttpLichess implements LichessApi {
       redirect_uri: redirectUri,
       code_challenge_method: 'S256',
       code_challenge: codeChallenge,
-      scope: LICHESS_SCOPES.join(' '),
+      scope: scopes.join(' '),
       state,
     }).toString()
     return url.toString()
@@ -226,6 +253,82 @@ export class HttpLichess implements LichessApi {
     await this.call('POST', `/api/board/game/${encodeURIComponent(gameId)}/abort`, { token: accessToken })
   }
 
+  async team(teamId: string): Promise<LichessTeam | null> {
+    let body: unknown
+    try {
+      body = await this.call('GET', `/api/team/${encodeURIComponent(teamId)}`)
+    } catch (err) {
+      if (err instanceof LichessError && err.kind === 'rejected') return null
+      throw err
+    }
+    const raw = (body ?? {}) as { id?: string; name?: string; nbMembers?: number; leaders?: { id?: string }[]; leader?: { id?: string } }
+    if (!raw.id || !raw.name) return null
+    const leaders = [...(raw.leaders ?? []), ...(raw.leader ? [raw.leader] : [])].map((l) => l.id?.toLowerCase()).filter((id): id is string => Boolean(id))
+    return { id: raw.id, name: raw.name, nbMembers: typeof raw.nbMembers === 'number' ? raw.nbMembers : 0, leaders: [...new Set(leaders)] }
+  }
+
+  async createTournament(accessToken: string, r: TournamentRequest): Promise<{ id: string }> {
+    const common = { name: r.name, rated: String(r.rated), variant: 'standard' }
+    const body =
+      r.kind === 'arena'
+        ? await this.call('POST', '/api/tournament', {
+            token: accessToken,
+            form: {
+              ...common,
+              // Arena clocks are in minutes there.
+              clockTime: String(r.clockLimit / 60),
+              clockIncrement: String(r.clockIncrement),
+              minutes: String(r.minutes),
+              startDate: String(r.startsAt.getTime()),
+              'conditions.teamMember.teamId': r.teamId,
+            },
+          })
+        : await this.call('POST', `/api/swiss/new/${encodeURIComponent(r.teamId)}`, {
+            token: accessToken,
+            form: {
+              ...common,
+              'clock.limit': String(r.clockLimit),
+              'clock.increment': String(r.clockIncrement),
+              nbRounds: String(r.rounds),
+              startsAt: String(r.startsAt.getTime()),
+            },
+          })
+    const id = (body as { id?: string } | null)?.id
+    if (!id) throw new LichessError('unavailable', 'Lichess made no tournament')
+    return { id }
+  }
+
+  async tournament(kind: TournamentKind, id: string): Promise<TournamentState> {
+    const raw = ((await this.call('GET', `/api/${kind === 'arena' ? 'tournament' : 'swiss'}/${encodeURIComponent(id)}`)) ?? {}) as {
+      isFinished?: boolean
+      secondsToStart?: number
+      status?: string
+      nbPlayers?: number
+    }
+    const nbPlayers = typeof raw.nbPlayers === 'number' ? raw.nbPlayers : 0
+    if (kind === 'swiss') {
+      const status = raw.status === 'finished' || raw.status === 'started' ? raw.status : 'created'
+      return { status, nbPlayers }
+    }
+    return { status: raw.isFinished ? 'finished' : (raw.secondsToStart ?? 0) > 0 ? 'created' : 'started', nbPlayers }
+  }
+
+  async results(kind: TournamentKind, id: string, max: number): Promise<TournamentResult[]> {
+    const path = `/api/${kind === 'arena' ? 'tournament' : 'swiss'}/${encodeURIComponent(id)}/results?nb=${max}`
+    let res: Response
+    try {
+      res = await this.fetchFn(`${this.baseUrl}${path}`, { headers: { accept: 'application/x-ndjson' }, redirect: 'error', signal: AbortSignal.timeout(TIMEOUT_MS) })
+    } catch {
+      throw new LichessError('unavailable', `Lichess did not answer GET ${path}`)
+    }
+    this.check(res, path)
+    return parseResults(kind, await res.text())
+  }
+
+  async terminate(accessToken: string, kind: TournamentKind, id: string): Promise<void> {
+    await this.call('POST', `/api/${kind === 'arena' ? 'tournament' : 'swiss'}/${encodeURIComponent(id)}/terminate`, { token: accessToken })
+  }
+
   /** Turns an answer that is not a success into a LichessError. */
   private check(res: Response, path: string) {
     if (res.status === 401 || res.status === 403) throw new LichessError('unauthorized', `Lichess refused the token for ${path}`)
@@ -297,4 +400,22 @@ export function parseBoardEvent(line: string): BoardEvent | null {
     return s ? { type: 'gameState', ...s } : null
   }
   return null
+}
+
+/** A tournament's ndjson results: Arena `score`, or Swiss `points` doubled so half points stay whole. Lines it cannot read are skipped. */
+export function parseResults(kind: TournamentKind, ndjson: string): TournamentResult[] {
+  const out: TournamentResult[] = []
+  for (const line of ndjson.split('\n')) {
+    if (!line.trim()) continue
+    let raw: { rank?: unknown; username?: unknown; score?: unknown; points?: unknown }
+    try {
+      raw = JSON.parse(line)
+    } catch {
+      continue
+    }
+    const points = kind === 'arena' ? raw.score : typeof raw.points === 'number' ? raw.points * 2 : undefined
+    if (typeof raw.rank !== 'number' || typeof raw.username !== 'string' || typeof points !== 'number') continue
+    out.push({ rank: raw.rank, username: raw.username, score: Math.round(points) })
+  }
+  return out.sort((a, b) => a.rank - b.rank)
 }

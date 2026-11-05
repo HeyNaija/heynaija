@@ -4,7 +4,8 @@ import { type AuthedRequest, SessionGuard } from '../../auth/session.guard.js'
 import { Feature, FeatureGuard } from '../../flags/feature.guard.js'
 import { parse } from '../../http.js'
 import { RateLimiter } from '../../rate-limit.js'
-import { KenoError, KenoService, lagosDayStart } from './keno.service.js'
+import { lagosDayStart } from '../core/seasons.js'
+import { KenoError, KenoService } from './keno.service.js'
 
 const ticketBody = z.object({ numbers: z.array(z.number().int()).min(1).max(10) })
 const ticketsQuery = z.object({ before: z.iso.datetime().optional() })

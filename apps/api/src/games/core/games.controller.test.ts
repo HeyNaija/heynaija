@@ -23,7 +23,7 @@ test('an allow-list keeps Games to the members on it', () => {
 })
 
 test('GET /v1/games lists the registry, without the providers', () => {
-  const { games } = new GamesController().list()
+  const { games } = new GamesController({} as never, {} as never, {} as never).list()
   assert.deepEqual(
     games.map((game) => [game.slug, game.status]),
     [

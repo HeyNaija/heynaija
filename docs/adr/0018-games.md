@@ -331,13 +331,147 @@ leaderboard reads only these rows: this month from `season_scores`, all time fro
 are left out, ties share a rank, and the member's own row shows wherever they
 stand. The games homepage shows this month's top five.
 
+## Phase 5: seasons, the Game Score, scoring explainer and competitions (4 November 2026)
+
+With these choices by the owner: the XP table below, competitions for Keno only
+until chess tournaments arrive with Lichess team linking (phase 6), results posted
+by The Arbiter in a new Game Night community, and the explainer kept behind the
+`games` flag until launch.
+
+### Seasons and XP
+
+- A season is a Lagos calendar month (`core/seasons.ts`), made on demand. All-time
+  totals are kept beside it and never reset.
+- XP rules live in one place, `core/scoring.ts` (`XP_RULES`, `xpFor`):
+  - chess: 10 XP for a game played to the end, +10 for a win, +5 for a draw, 0 for an
+    aborted game; rated and casual count alike;
+  - Keno: 2 XP for each round a member has a ticket in, +1 per 10 points scored in
+    it, at most +20;
+  - competitions: 5 XP for playing in one, +100 / +60 / +40 for 1st / 2nd / 3rd, +20
+    for 4th to 10th.
+- XP is stored on the `game_events` row (`xp`) and added to the totals in the same
+  transaction that writes the event: `season_scores.xp` per game and season,
+  `game_profiles.stats.xp` per game for all time, and `games.xp_totals` (member,
+  period, xp) for the Game Score per season and for all time. An event is counted
+  exactly once because its XP and the totals change together.
+- Events from phases 3 and 4 had no XP. On start the API scores any event whose
+  `xp` is null, in batches taken with `SKIP LOCKED`, so the backfill is safe to run
+  again or in two processes.
+- `/games/scoring` ("How games scoring works") reads the same rules from
+  `GET /v1/games/scoring`, so the page cannot state a number the scoring does not use.
+
+### Leaderboards
+
+`core/leaderboards.ts` serves every board from the precomputed rows: the Game Score
+(`xp_totals`), Chess (XP in chess) and Keno (points), for any season or all time,
+for everyone, the people the viewer follows (and them), or the members of a
+community. Blocks either way, mutes and inactive members are left out, as from
+feeds; ties share a rank; the viewer's own row is always given. The Keno board of
+phase 4 now uses it too, which adds mutes to it.
+
+### Competitions
+
+- Site moderators make them (`/games/competitions/new`, linked from Moderation):
+  a name, the game and format (`keno_points`: most Keno points from tickets in
+  rounds drawn during the play window), who can enter (open, one community, or by
+  invitation: `games.competition_invites`), the entry window and the play window.
+  They can be saved as drafts, changed until entry opens, published and cancelled.
+- A BullMQ job scheduler (`games-competitions`, every minute, one run however many
+  API processes) moves them on: open → live at the start; finished once the end
+  has passed and every Keno round drawing before it is drawn. It does nothing while
+  Games is off for everyone.
+- Members enter or withdraw while entry is open. Live scores are kept as rounds
+  are drawn: the Keno draw adds each entrant's points from that round to
+  `competition_entries.score` in the same transaction.
+- Finishing (once, `SKIP LOCKED`): places by score, ties sharing; only members who
+  played get one; one `competition_placed` event each, with its XP; then The
+  Arbiter posts the top ten (names, not @handles, so nobody is pinged) in Game
+  Night, or in the competition's own community. A competition nobody played
+  finishes with no post.
+- No notifications yet: entrants follow the page, and the result is a public post.
+
+### Game Night and The Arbiter
+
+Game Night (`game-night`) is made on start beside Chess Arena, with The Arbiter as
+its moderator. Only The Arbiter starts posts in either (`ARBITER_ONLY` in
+`chess/arena-ids.ts`); members reply, and composers do not offer them. The
+Arbiter's bio now says it posts game threads and results for HeyNaija Games.
+
+### Games homepage
+
+Your Game Score this season, your rank and your all-time XP; the season
+leaderboard with a tab per board; live and upcoming competitions; and The
+Arbiter's latest posts from Game Night and Chess Arena, through the normal post
+list so blocks and mutes apply.
+
+## Phase 6: community Lichess teams and tournaments (5 November 2026)
+
+A HeyNaija community can link a Lichess team and run Arena and Swiss tournaments
+for it. The owner chose: a moderator of the community who leads the team on
+Lichess links it and makes its tournaments; games are played on lichess.org;
+Arena and Swiss; Game Score XP for places only.
+
+### Linking a team
+
+- `games.community_teams`: one team per community and one community per team,
+  with the team's name and size as Lichess last said (read again on view at most
+  once an hour), and who linked it.
+- To link, the member must moderate the community, have Lichess connected, and be
+  listed by Lichess as one of the team's leaders (`GET /api/team/{id}`, public).
+  Lichess lists only leaders who are publicly visible; a hidden leader cannot link.
+- A community moderator or a site moderator can unlink. Tournaments already made
+  run to the end and finish as usual.
+
+### Permission to make tournaments
+
+Making a tournament needs `tournament:write`, which only moderators who run
+tournaments are asked for: "Allow tournaments" on the community's chess page runs
+the usual PKCE linking with the extra scope (`lichess_link_attempts.scopes`
+remembers what was asked), and the new token replaces the old one. The scopes
+granted are kept on `lichess_accounts.scopes`. A cookie brings the moderator back
+to the community's page from the callback.
+
+### Tournaments are competitions
+
+- Made on Lichess first, with the moderator's own token, after checking again that
+  they lead the team: an Arena (`POST /api/tournament`, entry limited to the team
+  with `conditions.teamMember.teamId`) or a Swiss (`POST /api/swiss/new/{team}`).
+  Then a chess competition for the community: format `lichess_arena` or
+  `lichess_swiss`, the tournament's id (`competitions.lichess_tournament_id`) and
+  its settings. If saving it fails, the tournament is ended on Lichess.
+- What is offered is what Lichess accepts: names of 2 to 30 characters; the clocks
+  in `TOURNAMENT_CONTROLS` (Blitz, Rapid and Classical; no Bullet, since games are
+  not played through the Board API here, Blitz is fine); Arena lengths that leave
+  room for 3 to 150 games (Lichess's rule); 3 to 15 Swiss rounds; a start 10
+  minutes to 60 days ahead. Lichess allows 12 tournaments a day per account; so
+  does `chessTournament`.
+- Members join and play on lichess.org (they must be in the team). HeyNaija has no
+  Enter button for these: the HeyNaija members of the community who have connected
+  Lichess are matched from the results.
+- A job scheduler (`chess-tournaments`) reads the state and results of tournaments
+  that have started, from Lichess's public endpoints, at most every
+  `CHESS_STANDINGS_EVERY_MS` (two minutes) each and 20 a run, oldest first, and
+  stops the run if Lichess says to slow down. Each read replaces the competition's
+  entries with the matched members (score; Swiss points doubled so half points are
+  whole; and their rank on Lichess, `competition_entries.source_rank`).
+- When Lichess says it has finished, it finishes as any competition, but placed in
+  Lichess's order (its tiebreaks), with no shared places; the usual placement XP,
+  and The Arbiter's post in the community with the Lichess link. A tournament
+  Lichess has not finished a day after it was due is finished from the last
+  standings read, and the post says so.
+- Its maker (while still a moderator of the community) or a site moderator can
+  cancel it; it is ended on Lichess with the maker's token when that works, and
+  the page says when it may still run there. The Keno cancel route refuses
+  tournaments so this one is always used.
+
 ## Data export and account deletion
 
-- The export is `heynaija-export/15`: a `games` section with the member's game
+- The export is `heynaija-export/17`: a `games` section with the member's game
   profiles, season scores and competition entries, the linked Lichess account
   (username, when linked, ratings; never the token), their chess challenges and the
-  games they played, with every move, and their Keno tickets (round, numbers, hits,
-  points, when).
+  games they played, with every move, their Keno tickets (round, numbers, hits,
+  points, when), their Game Score per season and all time, and the competitions
+  they were invited to, and the Lichess teams they linked to a community.
 - No member foreign key in `games` cascades (ADR 0016). Erasing an account
   deletes the member's game profiles, season scores, competition entries and game
   events; competitions a moderator created stay, pointing at the tombstone. A
@@ -345,7 +479,8 @@ stand. The games homepage shows this month's top five.
   account, any linking under way, every challenge and every game the member was in
   are deleted (their notifications go with them). The Arbiter's threads and results
   stay, as posts that name the tombstone. Their Keno tickets are deleted; the shared
-  rounds stay.
+  rounds stay. Their Game Score totals and competition invitations are deleted. A Lichess team
+  they linked stays linked to its community, with who linked it forgotten.
 
 ## Known limitations
 
@@ -354,7 +489,12 @@ stand. The games homepage shows this month's top five.
   for a game that does not exist.
 - Spectator replies are hidden from both players until a game ends as a courtesy,
   not anti-cheat: anyone can watch the game on lichess.org.
-- Only site moderators can create competitions for now.
+- Keno competitions are made by site moderators and chess tournaments by
+  community moderators who lead the Lichess team; entrants are not notified when
+  one starts or ends.
+- Whether a moderator still leads the Lichess team is checked when they link it
+  and when they make a tournament, not afterwards; tournaments already made run to
+  the end. Tournament games give no per-game XP, only places do.
 - Signed-out visitors cannot see Games at all; whether `/games` should be public
   once it is launched is decided then.
 - On staging every member sees Games unless a moderator limits the flag, by the
@@ -378,6 +518,6 @@ Revert the code. Then, before any real game data exists:
 `chess_game_started` (after deleting those rows), `alter table notifications drop
 column game_id;`, `drop schema games cascade;`, delete The Arbiter's posts and
 membership, Chess Arena and The Arbiter's member row, and delete the
-`0035_games_core`, `0036_chess_linking`, `0037_chess_play` and `0038_keno` entries from
+`0035_games_core`, `0036_chess_linking`, `0037_chess_play`, `0038_keno`, `0039_games_scoring` and `0040_games_teams` entries from
 `drizzle.__drizzle_migrations` (and `packages/db/drizzle/meta/_journal.json`).
 Put `EXPORT_FORMAT` back only together with the code that reads the tables.

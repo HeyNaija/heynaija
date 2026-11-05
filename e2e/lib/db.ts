@@ -52,6 +52,11 @@ export async function cleanTestData(log = (_: string) => {}) {
          or p.root_id in (select thread_post_id from games.chess_games
            where white_id in (select id from e2e_m) or black_id in (select id from e2e_m)))
          and p.id not in (select id from e2e_p)`)
+      // The Arbiter's result posts for competitions test moderators made (phase 5), and replies under them.
+      await client.query(`insert into e2e_p select p.id from posts p where (p.id in (select result_post_id from games.competitions
+           where created_by in (select id from e2e_m)) or p.root_id in (select result_post_id from games.competitions
+           where created_by in (select id from e2e_m)))
+         and p.id not in (select id from e2e_p)`)
       await client.query(`create temp table e2e_g on commit drop as select id from gists where host_id in (select id from e2e_m)`)
       const steps: [string, string][] = [
         ['notifications', `delete from notifications where recipient_id in (select id from e2e_m) or actor_id in (select id from e2e_m)
@@ -92,6 +97,12 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['lichess accounts', `delete from games.lichess_accounts where member_id in (select id from e2e_m)`],
         // Keno (docs/adr/0018, phase 4): tickets. The shared rounds stay.
         ['keno tickets', `delete from games.keno_tickets where member_id in (select id from e2e_m)`],
+        // The Game Score and competitions (phase 5); competitions the test moderators made go with their entries.
+        ['xp totals', `delete from games.xp_totals where member_id in (select id from e2e_m)`],
+        ['competition invites', `delete from games.competition_invites where member_id in (select id from e2e_m)`],
+        // Community Lichess teams (phase 6): test communities' links go, and a test member who linked one is forgotten.
+        ['community teams', `delete from games.community_teams where community_id in (select id from communities where slug like 'e2e-%')`],
+        ['community teams linked', `update games.community_teams set linked_by = null where linked_by in (select id from e2e_m)`],
         // Games (docs/adr/0018): competitions test members created go whole, entries and events with them.
         ['game events', `delete from games.game_events where member_id in (select id from e2e_m)
            or competition_id in (select id from games.competitions where created_by in (select id from e2e_m))`],

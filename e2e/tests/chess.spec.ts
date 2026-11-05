@@ -120,7 +120,12 @@ test('two members connect, play a game watched by a third, and The Arbiter posts
   await expect(bayo.page.locator('[aria-live="polite"]').filter({ hasText: 'won by resignation' })).toHaveCount(1)
   await ada.page.goto(threadUrl)
   await expect(ada.page.getByText('Watch the d-pawn, Ada')).toBeVisible()
-  await expect(ada.page.getByText(`${ada.handle} won by resignation after`, { exact: false })).toBeVisible()
+  // The Arbiter's result reply follows a moment after the game is marked over (it waits on the new
+  // ratings from Lichess), so the thread may need loading again.
+  await expect(async () => {
+    await ada.page.goto(threadUrl)
+    await expect(ada.page.getByText(`${ada.handle} won by resignation after`, { exact: false })).toBeVisible({ timeout: 2000 })
+  }).toPass({ timeout: 20_000 })
 
   // Disconnecting gives the key back.
   await ada.page.goto('/games/chess')

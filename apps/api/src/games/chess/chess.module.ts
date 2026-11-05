@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import type { Env } from '../../env.js'
 import { ENV } from '../../tokens.js'
+import { GamesCoreModule } from '../core/games-core.module.js'
 import { TokenBox } from '../core/token-box.js'
 import { ArenaSetup } from './arena-setup.js'
 import { ChessGamesController } from './chess-games.controller.js'
@@ -12,12 +13,17 @@ import { GAME_CHANGES, GameEvents } from './game-events.js'
 import { GameWatcher } from './game-watcher.js'
 import { HttpLichess } from './lichess.js'
 import { RatingsRefresher } from './ratings-refresher.js'
+import { TeamsService } from './teams.js'
+import { TournamentsJob } from './tournaments-job.js'
 
 /**
  * Chess on Lichess (docs/games/GAMES.md, docs/adr/0018): linking, ratings and
- * challenges (phase 2); playing, watching, Chess Arena and results (phase 3).
+ * challenges (phase 2); playing, watching, Chess Arena and results (phase 3);
+ * community Lichess teams and their tournaments (phase 6).
  */
 @Module({
+  // Tournaments are competitions (core/competitions.ts).
+  imports: [GamesCoreModule],
   controllers: [ChessController, ChessGamesController],
   providers: [
     { provide: LICHESS, useFactory: (env: Env) => new HttpLichess(env.LICHESS_URL), inject: [ENV] },
@@ -30,6 +36,8 @@ import { RatingsRefresher } from './ratings-refresher.js'
     GameWatcher,
     { provide: GAME_STARTER, useExisting: GameWatcher },
     RatingsRefresher,
+    TeamsService,
+    TournamentsJob,
     // The Arbiter and Chess Arena, made when the API starts if they are not there yet.
     ArenaSetup,
   ],

@@ -4,7 +4,9 @@ import {
   bookmarks,
   communities,
   communityMemberships,
+  communityTeams,
   competitionEntries,
+  competitionInvites,
   competitions,
   type Db,
   follows,
@@ -33,6 +35,7 @@ import {
   kenoTickets,
   reposts,
   seasonScores,
+  xpTotals,
 } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
 import { aliasedTable, and, asc, eq, isNotNull, or, sql } from 'drizzle-orm'
@@ -42,7 +45,7 @@ import { describeTime } from '../games/chess/time-controls.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/15'
+export const EXPORT_FORMAT = 'heynaija-export/17'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -342,7 +345,7 @@ export class ExportService {
   }
 
   private async games(memberId: string) {
-    const [profiles, scores, entries, [lichess], challenges, played, tickets] = await Promise.all([
+    const [profiles, scores, entries, [lichess], challenges, played, tickets, xp, invites, teams] = await Promise.all([
       this.db
         .select({ game: gameProfiles.game, stats: gameProfiles.stats, since: gameProfiles.createdAt, updatedAt: gameProfiles.updatedAt })
         .from(gameProfiles)
@@ -415,6 +418,19 @@ export class ExportService {
         .from(kenoTickets)
         .where(eq(kenoTickets.memberId, memberId))
         .orderBy(asc(kenoTickets.createdAt)),
+      this.db.select({ period: xpTotals.period, xp: xpTotals.xp }).from(xpTotals).where(eq(xpTotals.memberId, memberId)).orderBy(asc(xpTotals.period)),
+      this.db
+        .select({ competition: competitions.name, game: competitions.game, startsAt: competitions.startsAt })
+        .from(competitionInvites)
+        .innerJoin(competitions, eq(competitions.id, competitionInvites.competitionId))
+        .where(eq(competitionInvites.memberId, memberId))
+        .orderBy(asc(competitions.startsAt)),
+      this.db
+        .select({ community: communities.slug, lichessTeam: communityTeams.lichessTeamId, teamName: communityTeams.teamName, linkedAt: communityTeams.linkedAt })
+        .from(communityTeams)
+        .innerJoin(communities, eq(communities.id, communityTeams.communityId))
+        .where(eq(communityTeams.linkedBy, memberId))
+        .orderBy(asc(communityTeams.linkedAt)),
     ])
     return {
       profiles,
@@ -448,6 +464,12 @@ export class ExportService {
       })),
       // Keno tickets you played (free, for points only): hits and points are empty until the round is drawn.
       kenoTickets: tickets,
+      // Your Game Score: XP from every game, per season ("2026-11") and for all time ("all").
+      gameScore: xp,
+      // Invite-only competitions you were invited to.
+      competitionInvites: invites,
+      // Lichess teams you linked to a community you moderate.
+      lichessTeamsLinked: teams,
     }
   }
 }

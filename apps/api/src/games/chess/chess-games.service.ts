@@ -1,4 +1,4 @@
-import { chessGames, type Db, gameEvents, lichessAccounts, members } from '@heynaija/db'
+import { chessGames, type Db, lichessAccounts, members } from '@heynaija/db'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { and, eq, isNull, or, sql } from 'drizzle-orm'
 import type { Env } from '../../env.js'
@@ -6,6 +6,7 @@ import { avatarPath } from '../../media/media.service.js'
 import { notify } from '../../notifications/notifications.service.js'
 import { blockedEitherWay, PostsService } from '../../posts/posts.service.js'
 import { DB, ENV } from '../../tokens.js'
+import { recordEvents } from '../core/scoring.js'
 import type { TokenBox } from '../core/token-box.js'
 import { ARBITER_ID, ARENA_SLUG } from './arena-ids.js'
 import { ChessError, LICHESS, TOKEN_BOX } from './chess-tokens.js'
@@ -386,13 +387,16 @@ export class ChessGamesService {
       await tx.update(chessGames).set({ ratingsAfter }).where(eq(chessGames.id, gameId))
       for (const [side, memberId] of [['white', g.whiteId], ['black', g.blackId]] as const) {
         const outcome = !played ? 'aborted' : g.winner === side ? 'won' : g.winner ? 'lost' : 'drawn'
-        await tx.insert(gameEvents).values({
-          game: 'chess',
-          kind: 'chess_game_finished',
-          memberId,
-          data: { gameId, side, outcome, status: g.status, rated: g.rated, speed, ratingBefore: ratingsAfter[side].before, ratingAfter: ratingsAfter[side].after },
-          createdAt: now,
-        })
+        // With its Game Score XP (docs/adr/0018, phase 5).
+        await recordEvents(tx, [
+          {
+            game: 'chess',
+            kind: 'chess_game_finished',
+            memberId,
+            data: { gameId, side, outcome, status: g.status, rated: g.rated, speed, ratingBefore: ratingsAfter[side].before, ratingAfter: ratingsAfter[side].after },
+            createdAt: now,
+          },
+        ])
         if (!played) continue
         // All-time chess stats, kept in game_profiles (docs/games/GAMES.md).
         await tx.execute(sql`

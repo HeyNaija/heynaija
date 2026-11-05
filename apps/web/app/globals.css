@@ -2268,3 +2268,12 @@ a.result-row:hover { color: var(--accent-strong); }
 .keno-proof dt { color: var(--muted); font-weight: 600; }
 .keno-proof dd { margin: 0 0 8px; overflow-wrap: anywhere; }
 .keno-command { margin-top: 6px; max-width: 100%; overflow-x: auto; border-radius: var(--r-control); background: var(--panel); padding: 10px; font-size: 11px; }
+
+/* Games leaderboards and competitions (docs/adr/0018, phase 5): the board's choices sit in a row that wraps on a
+   phone; competition times are two to a row from tablet width. */
+.leaderboard-controls { display: flex; flex-wrap: wrap; gap: 10px 12px; margin-top: 12px; }
+.leaderboard-controls > label { min-width: 0; flex: 1 1 140px; }
+.competition-times { display: grid; gap: 12px; }
+@media (min-width: 560px) { .competition-times { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.game-score { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-top: 10px; }
+.game-score strong { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }

@@ -178,7 +178,7 @@ test('an export includes the age confirmation and verification history, but neve
 })
 
 test('an export includes the member’s games: stats, season scores and competition entries', async () => {
-  assert.deepEqual((await service.export(ada, null))!.games, { profiles: [], seasonScores: [], competitionEntries: [], lichess: null, chessChallenges: [], chessGames: [], kenoTickets: [] })
+  assert.deepEqual((await service.export(ada, null))!.games, { profiles: [], seasonScores: [], competitionEntries: [], lichess: null, chessChallenges: [], chessGames: [], kenoTickets: [], gameScore: [], competitionInvites: [], lichessTeamsLinked: [] })
 
   const [season] = await db
     .insert(gameSeasons)

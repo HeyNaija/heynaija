@@ -2,9 +2,9 @@ import { communities, communityMemberships, type Db, members, profileBadges } fr
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common'
 import { and, eq, ne } from 'drizzle-orm'
 import { DB } from '../../tokens.js'
-import { ARBITER_FALLBACK_HANDLE, ARBITER_HANDLE, ARBITER_ID, ARENA_SLUG } from './arena-ids.js'
+import { ARBITER_FALLBACK_HANDLE, ARBITER_HANDLE, ARBITER_ID, ARENA_SLUG, GAME_NIGHT_SLUG } from './arena-ids.js'
 
-export const ARBITER_BIO = 'Automated account: posts game threads and results for Chess Arena. Nobody signs in to it.'
+export const ARBITER_BIO = 'Automated account: posts game threads and results for HeyNaija Games. Nobody signs in to it.'
 
 const ARENA = {
   slug: ARENA_SLUG,
@@ -17,8 +17,18 @@ const ARENA = {
   ].join('\n'),
 }
 
+const GAME_NIGHT = {
+  slug: GAME_NIGHT_SLUG,
+  name: 'Game Night',
+  description: 'Competition results from HeyNaija Games. Look back, cheer on, and reply.',
+  rules: [
+    'Posts here are started by The Arbiter, one for each competition when it ends. Reply in them.',
+    'Congratulate, tease kindly, talk tactics. HeyNaija’s rules apply here as everywhere.',
+  ].join('\n'),
+}
+
 /**
- * Makes The Arbiter, Chess Arena and The Arbiter's place as its moderator, if
+ * Makes The Arbiter, Chess Arena, Game Night and The Arbiter's place as their moderator, if
  * they are not there yet. Safe to run any number of times; every environment gets
  * them this way, without a seed. Never changes anything a person has: if someone
  * already holds `arbiter`, The Arbiter takes `arbiter_hn`.
@@ -44,12 +54,16 @@ export async function ensureArena(db: Db, logger?: Pick<Logger, 'warn'>): Promis
       .onConflictDoNothing()
   }
   await db.insert(profileBadges).values({ memberId: ARBITER_ID, kind: 'automated' }).onConflictDoNothing()
-  await db.insert(communities).values(ARENA).onConflictDoNothing({ target: communities.slug })
-  const [arena] = await db.select({ id: communities.id }).from(communities).where(eq(communities.slug, ARENA_SLUG))
-  await db
-    .insert(communityMemberships)
-    .values({ communityId: arena!.id, memberId: ARBITER_ID, role: 'moderator' })
-    .onConflictDoNothing()
+  // An older Arbiter keeps its bio in step with what it now does.
+  await db.update(members).set({ bio: ARBITER_BIO }).where(eq(members.id, ARBITER_ID))
+  for (const community of [ARENA, GAME_NIGHT]) {
+    await db.insert(communities).values(community).onConflictDoNothing({ target: communities.slug })
+    const [made] = await db.select({ id: communities.id }).from(communities).where(eq(communities.slug, community.slug))
+    await db
+      .insert(communityMemberships)
+      .values({ communityId: made!.id, memberId: ARBITER_ID, role: 'moderator' })
+      .onConflictDoNothing()
+  }
 }
 
 @Injectable()

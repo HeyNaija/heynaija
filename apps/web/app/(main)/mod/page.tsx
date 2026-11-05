@@ -91,6 +91,20 @@ async function Moderation() {
       ) : null}
 
       {flags ? (
+        <section aria-label="Games competitions" className="content-panel">
+          <h2 className="section-title">Games competitions</h2>
+          <p className="mt-1 text-sm text-muted">
+            Site moderators run competitions in Games: Keno for now, chess with Lichess tournaments later. Results are posted
+            by The Arbiter in Game Night.
+          </p>
+          <p className="mt-3 flex flex-wrap gap-2">
+            <Link href="/games/competitions/new" className="btn btn-primary">New competition</Link>
+            <Link href="/games/competitions" className="btn btn-secondary">All competitions</Link>
+          </p>
+        </section>
+      ) : null}
+
+      {flags ? (
         <section aria-label="Feature flags" className="content-panel">
           <h2 className="section-title">Feature flags</h2>
           <p className="mt-1 text-sm text-muted">

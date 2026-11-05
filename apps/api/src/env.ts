@@ -170,6 +170,9 @@ const schema = z.object({
   // how many free tokens (one ticket each) a member gets a day, Lagos time.
   KENO_DRAW_EVERY_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(300_000),
   KENO_DAILY_TOKENS: z.coerce.number().int().min(1).max(500).default(20),
+  // Games, chess tournaments (docs/adr/0018, phase 6): how often a live Lichess
+  // tournament's standings are read. Two minutes; the end-to-end tests make it shorter.
+  CHESS_STANDINGS_EVERY_MS: z.coerce.number().int().min(5_000).max(3_600_000).default(120_000),
   // Lets browsers subscribe with an http://127.0.0.1 address, for the end-to-end
   // tests' stand-in push service. Only allowed while WEB_PUBLIC_URL is on this machine.
   PUSH_ALLOW_LOOPBACK: z

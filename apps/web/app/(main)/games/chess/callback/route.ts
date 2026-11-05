@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { api } from '@/lib/api'
+import { RETURN_COOKIE, returnPath } from '@/lib/lichess-return'
 
 /**
  * Where Lichess sends a member back after they say yes (or no) to linking their
@@ -10,6 +11,13 @@ import { api } from '@/lib/api'
  */
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams
+  // A moderator who came to allow tournaments goes back to their community's chess page.
+  const back = returnPath(request.cookies.get(RETURN_COOKIE)?.value) ?? '/games/chess'
+  const seeOther = (path: string) => {
+    const res = new NextResponse(null, { status: 303, headers: { location: path.replace(/^\/games\/chess(?=\?|$)/, back) } })
+    res.cookies.delete({ name: RETURN_COOKIE, path: '/games/chess' })
+    return res
+  }
   const code = params.get('code')
   const state = params.get('state')
   // They said no on Lichess, or arrived here some other way.
@@ -27,6 +35,5 @@ export async function GET(request: NextRequest) {
   return seeOther(`/games/chess?notice=${body?.code ?? (res?.status === 429 ? 'too_many' : 'link_failed')}`)
 }
 
-// A relative Location, so the redirect stays on whatever origin the browser used
-// (the server's own idea of its URL is the internal one behind nginx).
-const seeOther = (path: string) => new NextResponse(null, { status: 303, headers: { location: path } })
+// seeOther answers with a relative Location, so the redirect stays on whatever
+// origin the browser used (the server's own idea of its URL is the internal one behind nginx).
