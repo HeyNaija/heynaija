@@ -290,8 +290,24 @@ Our rooms are tiny, so the limit is more likely bandwidth than CPU.
   ([subscribing](https://docs.livekit.io/transport/media/subscribe/)) but not
   defaults, so set them explicitly **(verify option names)**.
 - **Low-resolution defaults:** 360p at 15 to 24 fps; audio with DTX (silence
-  costs almost nothing) and redundant audio on lossy links **(verify)**. Screen
+  costs almost nothing) and redundant audio (RED) on lossy links. Screen
   share favours sharpness over frame rate (5 to 15 fps).
+- **Clear voices on poor networks (Gists, built).** What makes a call sound
+  clear is mostly the network path and noise, not bitrate, so the client
+  (`apps/web/app/ui/gists/audio.ts`) does this. Opus is capped at **32 kbps**:
+  `livekit-client` 2.23 defaults to 48 kbps ("music"), more on the wire with
+  RED, which loses more to congestion on patchy mobile data. RED and DTX are on,
+  stated explicitly though they are the SDK's defaults. While noise suppression is on,
+  **RNNoise** removes background noise on the device (`noise.ts`, open question
+  20), where the room's audio runs at 48 kHz; elsewhere the browser's own noise
+  suppression is all there is. A web page cannot route sound to the earpiece
+  as a phone call does, so a speaker is told once to use earphones, and the
+  microphone settings say that Bluetooth makes a microphone sound muffled.
+  LiveKit's per-participant connection quality puts **Weak connection** on a
+  speaker's tile and tells a member when their own is weak, and a
+  **Connection** sheet shows the route (UDP, TCP or relay), round trip, loss,
+  jitter and concealment, with a line to copy for the Lagos measurement (open
+  question 2).
 - **Reconnect gracefully:** show "Reconnecting..." and keep the call; do not
   drop to a login page. Mid-call network changes (Wi-Fi to mobile) are the
   normal case.
@@ -879,7 +895,8 @@ Each has a recommendation; the PR description repeats them.
    Recommend choosing on measured loss and RTT, not on price. *Provider decided
    (31 October 2026): netcup for production (its own VPS 1000 ARM G12.5),
    Contabo for staging. Still open: which netcup location, chosen on the Lagos
-   measurement.*
+   measurement.* The room's Connection sheet gives the figures to record
+   (`docs/deployment/livekit.md`, "Measuring from Lagos").
 3. **TURN on 443 (second IP) or 5349?** Recommend 5349 first, measure.
 4. **Moderator access to live or past calls?** Recommend none; metadata from
    reports only. Governance decision.
@@ -931,9 +948,12 @@ Each has a recommendation; the PR description repeats them.
     start, or must server transcription (open question 8) come first? Recommend
     the stopgap for the allow-list, a decision before widening.
 20. **Voice effects (pitch shifting, voice changers, "voice masks") in Gists
-    and calls.** Not built, and the audio path is a clean pass-through: the web
-    client offers only the browser's own noise suppression, echo cancellation and
-    automatic gain control. A disguised voice in a live public room is a
+    and calls.** Not built. The audio path cleans up the sound around a voice
+    and never changes the voice: the browser's own noise suppression, echo
+    cancellation and automatic gain control, and RNNoise noise removal on the
+    device while noise suppression is on. *Decided (5 November 2026): removing
+    background noise does not change who a voice sounds like, so it is outside
+    this question.* A disguised voice in a live public room is a
     means of impersonating someone and of evading a mute, a removal or a
     report, and a room that leaves no recording cannot be corrected afterwards.
     Recommend: do not offer any effect that changes who a voice sounds like,

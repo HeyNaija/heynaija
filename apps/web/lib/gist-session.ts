@@ -9,6 +9,7 @@
 //    API was told the member joined.
 //  - Why a connection ended decides what happens next: a network drop reconnects
 //    (capped, with backoff), a duplicate identity or a removal never does.
+import type { Quality } from './gist-connection.ts'
 import { joinFailure, type JoinResult } from './gists.ts'
 
 export type Phase = 'prejoin' | 'connecting' | 'live' | 'reconnecting' | 'ended' | 'full' | 'locked' | 'failed' | 'elsewhere' | 'gone'
@@ -30,6 +31,10 @@ export type AudioEvents = {
   onMicOff: () => void
   /** Who has a live microphone: member id to true when they are publishing and unmuted. */
   onMics: (mics: Record<string, boolean>) => void
+  /** How each person's connection is doing, as the server sees it: member id to quality. */
+  onQuality: (quality: Record<string, Quality>) => void
+  /** Whether RNNoise is cleaning up the member's own microphone: false for the plain microphone, null while it starts. */
+  onNoise: (active: boolean | null) => void
 }
 
 export type SessionDeps = {
@@ -53,6 +58,8 @@ export type SessionDeps = {
     speaking: (ids: string[]) => void
     micOff: () => void
     mics: (mics: Record<string, boolean>) => void
+    quality: (quality: Record<string, Quality>) => void
+    noise: (active: boolean | null) => void
   }
 }
 
@@ -155,6 +162,8 @@ export class GistSession {
       onSpeaking: ui.speaking,
       onMicOff: ui.micOff,
       onMics: ui.mics,
+      onQuality: ui.quality,
+      onNoise: ui.noise,
     }
   }
 

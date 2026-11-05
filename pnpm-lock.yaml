@@ -83,6 +83,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@sapphi-red/web-noise-suppressor':
+        specifier: 0.4.1
+        version: 0.4.1
       livekit-client:
         specifier: 2.23.0
         version: 2.23.0(@types/dom-mediacapture-record@1.0.22)
@@ -1054,9 +1057,13 @@ packages:
     engines: {node: '>=20'}
     hasBin: true
 
+  '@sapphi-red/web-noise-suppressor@0.4.1':
+    resolution: {integrity: sha512-hy2GnF079+zi4n9BZUf+GGIQ1IofApAk6rgGMyMQ3soHfz/GKu1pcCsmePyIHVvUuv1LrFudw9BmmBqoOKay5w==}
+
   '@smithy/core@3.36.0':
     resolution: {integrity: sha512-3hJiwG1F5t1SoXqp/yOCmYXziyx7ZVqF63S5W6YU201e/qwVaHPex+E/3vvyY9a3ORq/b+BydeNZpP2saQ9X2g==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.5.2':
     resolution: {integrity: sha512-A9uSdn72ozbRUSit0eib0TW7nXuNPlaeM0zcGkJ+nE6tFcSDbnmtwoxbTCFBukVQcszDAyvsd7+rTduPTXpygg==}
@@ -2674,6 +2681,8 @@ snapshots:
   '@playwright/test@1.64.1':
     dependencies:
       playwright: 1.64.1
+
+  '@sapphi-red/web-noise-suppressor@0.4.1': {}
 
   '@smithy/core@3.36.0':
     dependencies:

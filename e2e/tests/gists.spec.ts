@@ -41,6 +41,15 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
   await expect(host.getByRole('button', { name: 'Microphone', exact: true, pressed: false })).toBeVisible()
 
   const earContext = await browser.newContext()
+  // Headless Chromium runs audio at 16 kHz, where RNNoise cannot work; a phone or laptop runs at 48 kHz.
+  await earContext.addInitScript(() => {
+    const Base = window.AudioContext
+    window.AudioContext = class extends Base {
+      constructor(options?: AudioContextOptions) {
+        super({ sampleRate: 48_000, ...options })
+      }
+    }
+  })
   const ear = await earContext.newPage()
   const earEmail = await signUpOverHttp(ear, EAR)
 
@@ -81,6 +90,24 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
 
   await expect(ear.getByRole('button', { name: 'Microphone', exact: true, pressed: false })).toBeVisible({ timeout: 15_000 })
   await expect(ear.getByRole('status').filter({ hasText: 'You are now a speaker' })).toBeAttached()
+
+  // A new speaker is told about earphones until they speak. Turning the microphone on also starts
+  // noise removal, which must never stop it: the button says On, and the tip has done its job.
+  await expect(ear.getByText('Use earphones when you speak.')).toBeVisible()
+  await ear.getByRole('button', { name: 'Microphone', exact: true }).click()
+  await expect(ear.getByRole('button', { name: 'Microphone', exact: true, pressed: true })).toBeVisible()
+  await expect(ear.getByText('Use earphones when you speak.')).toHaveCount(0)
+  // RNNoise (fetched now, the first time) is cleaning up the microphone.
+  await ear.getByRole('button', { name: 'Microphone settings' }).click()
+  const micSettings = ear.getByRole('dialog', { name: 'Microphone settings' })
+  await expect(micSettings.getByText('Strong noise removal is on.')).toBeVisible({ timeout: 10_000 })
+  await micSettings.getByRole('button', { name: 'Close Microphone settings' }).click()
+  // The Connection sheet reads the speaker's own stream and offers the figures to copy.
+  await ear.getByRole('button', { name: 'Connection', exact: true }).click()
+  const connection = ear.getByRole('dialog', { name: 'Connection' })
+  await expect(connection.getByText('Sound lost on the way')).toBeVisible()
+  await expect(connection.getByRole('button', { name: 'Copy figures' })).toBeEnabled({ timeout: 10_000 })
+  await connection.getByRole('button', { name: 'Close Connection' }).click()
 
   // Anyone in the room but the host can report the Gist itself; the room keeps playing.
   await expect(host.getByRole('button', { name: 'Report', exact: true })).toHaveCount(0)
