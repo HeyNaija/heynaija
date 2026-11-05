@@ -99,7 +99,10 @@ every deploy replaces it with the release's code. A deploy waits up to three min
 
 Set it wherever the `videoPosts` flag is on, staging included (where the flag is on by
 default): without the worker, an upload is accepted and never processed, and stays
-"Processing". To switch the worker on, add the line and deploy (or run `deploy.sh` with
+"Processing". Production is the exception: its worker runs on a server of its own,
+from `compose.worker.yml`, reaching Postgres and Redis over a WireGuard link, and the
+production workflow deploys it after production
+([production.md](deployment/production.md#7-the-video-workers-server)). To switch the worker on, add the line and deploy (or run `deploy.sh` with
 the current commit); to switch it off, remove the line and stop it with
 `docker compose --profile video stop video-worker`.
 
