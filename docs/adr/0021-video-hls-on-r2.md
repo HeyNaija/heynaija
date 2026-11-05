@@ -35,19 +35,20 @@ device and posts without waiting for processing**: the post is hidden, marked
 3. **Store and serve** each video as one folder, `videos/<id>/`, in the public
    media bucket, from the media domain with a Cache Rule; a takedown moves the
    folder and purges it by prefix (section 4).
-4. **Encode** on at least 8 vCPUs of the worker's own: a 3-minute clip is ready in
-   about 25 seconds (1080p H.264) to 3 minutes (4K 60 fps HDR) (section 5).
+4. **Encode** on a server of the worker's own, 4 cores for the pilot (a netcup
+   RS 1000) and 8 as it grows: on 4 cores a 3-minute clip is ready in about 40
+   seconds (1080p H.264) to 4½ minutes (4K 60 fps HDR) (section 5).
 5. **Preview, then post before ready**: the composer plays the member's own file
    at once; Post can be pressed straight away and goes when the upload completes;
    no wait for processing (section 6).
 6. **Play** with the browser's own HLS on iPhones and hls.js elsewhere, starting
    low and stepping up, capped by the member's data setting (section 7).
 
-Cost: about €41 a month for the pilot on one 8-core server, €52 at 10,000 minutes
-uploaded a month and €220 at 100,000; Cloudflare Stream would be $25, $1,150 and
-$21,500 for the same use (section 8). Video stays off in production until the
-launch gate (section 11) is met, and on staging it stays on for allow-listed
-testers only.
+Cost: about €22 a month for the pilot on one 4-core server, €33 at 10,000 minutes
+uploaded a month on the same server, and €220 at 100,000 on two 8-core servers;
+Cloudflare Stream would be $25, $1,150 and $21,500 for the same use (section 8).
+Video stays off in production until the launch gate (section 11) is met, and on
+staging it stays on for allow-listed testers only.
 
 ## Context
 
@@ -200,21 +201,30 @@ on staging (open question 3).
 Measured in the trial (CPU-seconds per second of video; a clip's time on N busy
 cores is about its length times this, divided by N):
 
-| Original | CPU-s per s | Peak memory | A 3-minute clip on 8 vCPUs (about 6 busy) |
-|---|---|---|---|
-| 1080p, 30 fps, H.264 (already compressed) | 0.85 | 521 MB | about 25 s |
-| 1080p, 60 fps, HEVC (Android) | 2.26 to 2.50 | 531 MB | about 75 s |
-| 1080p, 30 fps, HEVC, HDR (iPhone) | 2.48 to 2.66 | 608 MB | about 80 s |
-| 4K, 60 fps, HEVC (Android) | 4.30 | 662 MB | about 2.2 min |
-| 4K, 60 fps, HEVC, HDR (iPhone) | 6.06 | 815 MB | about 3 min |
+| Original | CPU-s per s | Peak memory | A 3-minute clip on 4 cores (the pilot's) | On 8 vCPUs (about 6 busy) |
+|---|---|---|---|---|
+| 1080p, 30 fps, H.264 (already compressed) | 0.85 | 521 MB | about 40 s | about 25 s |
+| 1080p, 60 fps, HEVC (Android) | 2.26 to 2.50 | 531 MB | about 1.8 min | about 75 s |
+| 1080p, 30 fps, HEVC, HDR (iPhone) | 2.48 to 2.66 | 608 MB | about 2 min | about 80 s |
+| 4K, 60 fps, HEVC (Android) | 4.30 | 662 MB | about 3.2 min | about 2.2 min |
+| 4K, 60 fps, HEVC, HDR (iPhone) | 6.06 | 815 MB | about 4.5 min | about 3 min |
 
-The 3-minute column is extrapolated from clips of 4 to 79 seconds. The pass mark
-was "ready within 3 minutes on 8 vCPUs"; the worst case sits on it. Since members
+The 3-minute columns are extrapolated from clips of 4 to 79 seconds, and the
+4-core one from the 8-vCPU trial: an encode that would keep six cores busy keeps
+all four busy. The pass mark was "ready within 3 minutes on 8 vCPUs"; the worst
+case sits on it, and takes about 4½ minutes on the pilot's 4 cores. Since members
 no longer wait for it (section 6), that is acceptable.
 
-- **Cores.** At least 8 vCPUs for the worker, of its own: one server encodes about
-  4,600 minutes a day of ordinary 1080p phone video flat out, or about 1,900 of
-  4K 60 fps HDR. On 2 cores a 3-minute 4K HDR clip takes about 9 minutes.
+- **Cores.** A server of the worker's own. The pilot starts on 4 cores, a netcup
+  RS 1000 (owner, 5 November 2026; open question 1). Flat out, 4 cores encode
+  about 2,300 minutes a day of ordinary 1080p phone video, or about 950 of 4K
+  60 fps HDR, against 10 a day for the pilot and 330 a day at the Growing stage
+  (section 8). 8 cores (an RS 2000) double that and bring the worst clip to about
+  3 minutes: move up when clips start to queue, or before the Large stage. netcup
+  upgrades a server to a bigger plan of the same generation in its control panel,
+  free and keeping the data, and cannot go back down. `VIDEO_WORKER_CPUS` is set
+  to the server's cores; compose's default of 2 would make a 3-minute 4K HDR clip
+  take about 9 minutes.
 - **One video at a time per worker** (concurrency 1): one encode keeps about six
   cores busy. More throughput is more workers on more servers, reading the same
   queue.
@@ -334,16 +344,17 @@ real cost.
 
 | Stage | Uploaded a month | Encoding | R2 | Total a month | Stream, same use |
 |---|---|---|---|---|---|
-| Pilot | 300 min (10 a day) | one 8-core server, netcup RS 2000, €40.70 | under $1 | about €41 | $25 |
-| Growing | 10,000 min (330 a day) | the same server | about $12 | about €52 | $1,150 |
-| Large | 100,000 min (3,300 a day) | two such servers, €81.40 | about $150 | about €220 | $21,500 |
+| Pilot | 300 min (10 a day) | one 4-core server, netcup RS 1000, €21.73 | under $1 | about €22 | $25 |
+| Growing | 10,000 min (330 a day) | the same server | about $12 | about €33 | $1,150 |
+| Large | 100,000 min (3,300 a day) | two 8-core servers, netcup RS 2000, €81.40 | about $150 | about €220 | $21,500 |
 
-The netcup price is on a 12-month term, and assumes its cores encode like
-Hetzner's CCX33 (€138.99 a month), which is what the trial measured
-**(unverified)**. netcup bills root servers by the month, not the hour, so the
-trial command is run on an RS 2000 before it takes jobs (open question 1). Not
-counted: developer time, monitoring, and the traffic of sending originals to
-Shield.
+netcup's prices are on a 12-month term and include German VAT at 19%, which may
+differ by country (the RS 1000 is €25.00 on a 1-month term, €18.47 on 24 months;
+the RS 2000 €46.81 and €34.60). They assume netcup's cores encode like Hetzner's
+CCX33 (€138.99 a month), which is what the trial measured **(unverified)**.
+netcup bills root servers by the month, not the hour, so the trial command is
+run on the RS 1000 before it takes jobs (open question 1). Not counted: developer
+time, monitoring, and the traffic of sending originals to Shield.
 
 ## 9. Schema, API and settings
 
@@ -431,13 +442,14 @@ checklist and counsel's answers, the drills, a named person's sign-off) stand.
 
 - Members can post the videos their phones record, without trimming most of them,
   and post without waiting for processing.
-- We run more: an encoder that needs 8 cores of its own, a Cache Rule and a CORS
+- We run more: an encoder on a server of its own (4 cores for the pilot, 8 as it
+  grows), a Cache Rule and a CORS
   rule outside the repository, and a pinned ffmpeg to keep patched.
 - Storage roughly doubles per minute against phase 1's three MP4s (720p is half of
   it), and a video is about 66 objects per minute of it instead of four files.
 - Takedown becomes a folder operation, and the CDN purge goes by prefix.
 - The worst-case clip, 3 minutes of 4K 60 fps HDR, takes about as long to encode
-  as it lasts.
+  as it lasts on 8 cores, and about 1½ times as long on the pilot's 4.
 - 18+ video needs a design of its own for private HLS before labels ship.
 
 ## Open questions
@@ -450,6 +462,10 @@ checklist and counsel's answers, the drills, a named person's sign-off) stand.
    cores are measured with the trial command before it takes jobs: on the new
    server, or at a quiet hour on the production RS 2000 limited to 2 cores (the
    CPU-seconds per second do not depend on how many cores it is given).
+   *Changed (owner, 5 November 2026):* a netcup RS 1000 for the pilot (4 dedicated
+   cores, 8 GB, 128 GB, €21.73 a month on a 12-month term), upgraded to an RS 2000
+   when clips start to queue (section 5). The trial command runs on it before it
+   takes jobs, which also gives the 4-core measurement the trial did not make.
 2. **Cloudflare's written answer.** ADR 0019 asked for one. Recommend: rely on the
    published terms (Context), and still ask once in writing whether the CSAM
    Scanning Tool covers video, which it does not say. Not a gate. *Answer (owner,
@@ -470,10 +486,12 @@ checklist and counsel's answers, the drills, a named person's sign-off) stand.
 
 ## Could not verify
 
-How netcup's RS 2000 cores encode; playback and start times on an iPhone and on
-mobile data; a clip near 3 minutes long (the longest was 79 seconds); a 1 GB file
-through Shield, and Shield's rate limit; hls.js fetching across origins from the
-site; Cloudflare caching `.m3u8` and `.m4s` under the Cache Rule (not yet added);
+How netcup's cores encode (the RS 1000 and RS 2000 share the AMD EPYC 9645),
+and whether its "dedicated cores" are whole cores or threads; that an RS 1000
+upgrades to an RS 2000 in place (netcup's example is RS 2000 to RS 4000);
+playback and start times on an iPhone and on mobile data; a clip near 3 minutes
+long (the longest was 79 seconds); a 1 GB file through Shield, and Shield's rate
+limit; hls.js fetching across origins from the site; Cloudflare caching `.m3u8` and `.m4s` under the Cache Rule (not yet added);
 purge by prefix on our zone's plan; HDR colour on an iPhone screen. How TikTok
 and X handle posting, and Instagram's own account of it (its engineering post on
 upload latency would not load); what Instagram does is second-hand.
@@ -489,7 +507,9 @@ upload latency would not load); what Instagram does is second-hand.
 - R2 public buckets and custom domains: https://developers.cloudflare.com/r2/buckets/public-buckets/
 - Cloudflare Stream pricing: https://developers.cloudflare.com/stream/pricing/
 - Hetzner dedicated-vCPU cloud servers (CCX33, excluding VAT): https://www.hetzner.com/cloud/general-purpose/
-- netcup root servers (RS 2000, 12-month term): https://www.netcup.com/en/server/root-server
+- netcup root servers (RS 1000 and RS 2000 G12.5, prices incl. 19% VAT): https://www.netcup.com/en/server/root-server
+  and https://www.netcup.com/en/server/root-server/rs-1000-g12.5-iv-24m-eu
+- netcup upgrades (free, data kept, no way back down): https://www.netcup.com/en/helpcenter/documentation/general/instance-upgrade
 - Arachnid Shield API: https://shield.projectarachnid.com/docs/
 - How other apps post video (section 6), 5 November 2026:
   - Bluesky's composer, which holds the Post press until the video is ready, and
