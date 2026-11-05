@@ -1,4 +1,4 @@
-import { type Db, GIST_ROLES, blocks, communities, communityMemberships, gistMembers, gists, members } from '@heynaija/db'
+import { type Db, GIST_REPLY_AUDIENCES, GIST_ROLES, blocks, communities, communityMemberships, gistMembers, gists, members } from '@heynaija/db'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lt, ne, notInArray, or, sql } from 'drizzle-orm'
 import { RateLimiter } from '../rate-limit.js'
@@ -17,6 +17,7 @@ export type GistsConfig = {
 }
 
 export type GistRole = (typeof GIST_ROLES)[number]
+export type GistReplyAudience = (typeof GIST_REPLY_AUDIENCES)[number]
 
 export const GISTS_CONFIG = Symbol('GISTS_CONFIG')
 
@@ -36,6 +37,7 @@ export type GistErrorCode =
   | 'not_eligible'
   | 'already_speaker'
   | 'livekit_unavailable'
+  | 'reply_not_allowed'
 
 const STATUS: Record<GistErrorCode, number> = {
   not_found: 404,
@@ -52,6 +54,7 @@ const STATUS: Record<GistErrorCode, number> = {
   not_eligible: 409,
   already_speaker: 409,
   livekit_unavailable: 502,
+  reply_not_allowed: 403,
 }
 
 export class GistError extends Error {
@@ -148,6 +151,21 @@ export class GistsService {
   async get(viewer: { id: string; handle: string }, gistId: string): Promise<GistView> {
     const { gist, me } = await this.open(this.db, viewer, gistId)
     return this.view(this.db, gist, me)
+  }
+
+  /** The Gist, for someone who may see it. A Gist whose host erased their account is gone with its replies. */
+  async viewable(viewer: { id: string; handle: string }, gistId: string): Promise<GistRow> {
+    const { gist } = await this.open(this.db, viewer, gistId)
+    const [host] = await this.db.select({ erased: isNotNull(members.deletedAt) }).from(members).where(eq(members.id, gist.hostId))
+    if (!host || host.erased) throw new GistError('not_found')
+    return gist
+  }
+
+  /** Host only, in any status: replies go on after the Gist ends. */
+  async setReplyAudience(actor: { id: string; handle: string }, gistId: string, audience: GistReplyAudience): Promise<void> {
+    const gist = await this.viewable(actor, gistId)
+    if (gist.hostId !== actor.id) throw new GistError('forbidden')
+    await this.db.update(gists).set({ replyAudience: audience }).where(eq(gists.id, gist.id))
   }
 
   /** Requests to speak, oldest first. Host and co-hosts only. */

@@ -66,6 +66,7 @@ const messages: Record<GistError['code'], string> = {
   not_eligible: 'That member cannot be given the microphone.',
   already_speaker: 'You are already on the stage.',
   livekit_unavailable: 'The audio service is not available. Try again in a moment.',
+  reply_not_allowed: 'The host limited who can reply.',
 }
 
 @Controller('v1/gists')

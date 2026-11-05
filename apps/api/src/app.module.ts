@@ -29,6 +29,8 @@ import { FlagsController } from './flags/flags.controller.js'
 import { ExportController } from './export/export.controller.js'
 import { ExportService } from './export/export.service.js'
 import { GistReconciler } from './gists/gist-queue.js'
+import { GistRepliesController } from './gists/gist-replies.controller.js'
+import { GistRepliesService } from './gists/gist-replies.service.js'
 import { GistsController, LiveKitWebhookController } from './gists/gists.controller.js'
 import { GISTS_CONFIG, GistsService } from './gists/gists.service.js'
 import { GistsEnabledGuard, GistsGate, LiveKitConfiguredGuard } from './gists/gists-enabled.guard.js'
@@ -84,7 +86,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController, AccountController, FlagsController, VideosController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, GistRepliesController, LiveKitWebhookController, AccountController, FlagsController, VideosController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -187,6 +189,7 @@ class HealthController {
     },
     GistsGate,
     GistsService,
+    GistRepliesService,
     GistsEnabledGuard,
     LiveKitConfiguredGuard,
     GistReconciler,
