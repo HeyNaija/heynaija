@@ -119,6 +119,9 @@ jobs:
   deploy-video-worker:
     name: Deploy the video worker
     needs: deploy
+    # Without a condition of its own GitHub skips a job when any job before it was
+    # skipped, and check and images are, whenever staging's images are reused.
+    if: ${{ !cancelled() && needs.deploy.result == 'success' }}
     runs-on: ubuntu-latest
     environment: production
     # A deploy waits for the video being encoded to finish (stop_grace_period in
