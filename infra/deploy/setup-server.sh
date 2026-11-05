@@ -1,30 +1,44 @@
 #!/usr/bin/env bash
-# One-time setup of a FRESH Ubuntu 24.04 server for HeyNaija alone (production,
-# on netcup), run as root:
+# One-time setup of a FRESH Ubuntu (24.04 or 26.04) server for HeyNaija alone, run as
+# root:
 #   bash setup-server.sh <ssh-public-key-of-the-person-deploying>
+#       production (on netcup): the site, its database and the rest
+#   bash setup-server.sh --worker <ssh-public-key-of-the-person-deploying>
+#       production's video worker on a server of its own (docs/deployment/production.md,
+#       section 7), which serves nothing: no nginx, and only SSH let in
 #
 # NOT for the shared staging server: it rewrites SSH and firewall settings and
 # restarts Docker, which would restart everything else running there. Staging
 # has its own short checklist in docs/deployment/staging.md.
 #
 # Read it before running it. It:
-#   - installs Docker (from Docker's own apt repository), nginx, git, age and rclone
+#   - installs Docker (from Docker's own apt repository) and git; for production also
+#     nginx, age and rclone
 #   - creates a `heynaija` user who runs the deployment (GitHub's deploy job logs
 #     in as it with a key that can only run ssh-deploy.sh: docs/deployment/staging.md, step 4)
 #   - turns off SSH password logins and direct root login
-#   - lets in only SSH, HTTP and HTTPS (ufw), and turns on automatic security updates
-#   - has systemd keep restarting nginx if it ever fails to start
+#   - lets in only SSH, plus HTTP and HTTPS for production (ufw), and turns on
+#     automatic security updates
+#   - for production, has systemd keep restarting nginx if it ever fails to start
 # HTTPS is only accepted from Cloudflare: nginx requires Cloudflare's client
 # certificate (Authenticated Origin Pulls), see nginx/heynaija.conf.template.
 set -euo pipefail
 
-key=${1:?usage: setup-server.sh "<ssh public key>"}
+worker=false
+if [[ ${1:-} == --worker ]]; then
+  worker=true
+  shift
+fi
+key=${1:?usage: setup-server.sh [--worker] "<ssh public key>"}
 [[ $(id -u) == 0 ]] || { echo "Run as root."; exit 1; }
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get upgrade -yq
-apt-get install -yq ca-certificates curl git ufw unattended-upgrades age rclone nginx gettext-base
+apt-get install -yq ca-certificates curl git ufw unattended-upgrades
+if ! $worker; then
+  apt-get install -yq age rclone nginx gettext-base
+fi
 
 # Docker Engine and the Compose plugin, from Docker's apt repository.
 install -m 0755 -d /etc/apt/keyrings
@@ -43,16 +57,21 @@ echo "$key" >> /home/heynaija/.ssh/authorized_keys
 chown heynaija:heynaija /home/heynaija/.ssh/authorized_keys
 chmod 600 /home/heynaija/.ssh/authorized_keys
 install -d -o heynaija -g heynaija /srv/heynaija
-# Where the Cloudflare certificates go (docs/deployment/production.md).
-install -d -m 755 /etc/ssl/cloudflare
-# nginx's default site would answer for any unknown host name; HeyNaija's own
-# site is installed later by install-nginx.sh.
-rm -f /etc/nginx/sites-enabled/default
+if ! $worker; then
+  # Where the Cloudflare certificates go (docs/deployment/production.md).
+  install -d -m 755 /etc/ssl/cloudflare
+  # nginx's default site would answer for any unknown host name; HeyNaija's own
+  # site is installed later by install-nginx.sh.
+  rm -f /etc/nginx/sites-enabled/default
+fi
 # heynaija is the admin account too (root cannot log in over SSH). Passwordless
 # sudo grants nothing the docker group does not already: both are root-equivalent.
 echo 'heynaija ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/heynaija
 chmod 440 /etc/sudoers.d/heynaija
-visudo -cf /etc/sudoers.d/heynaija
+# -c and -f given apart, which both sudo's visudo and sudo-rs's (Ubuntu 26.04's
+# default, possibly installed as visudo-rs) document. A bad file stops the script
+# here, before SSH is locked down.
+"$(command -v visudo || command -v visudo-rs)" -c -f /etc/sudoers.d/heynaija
 
 # SSH: keys only, no root.
 cat > /etc/ssh/sshd_config.d/10-heynaija.conf <<'SSH'
@@ -65,17 +84,20 @@ systemctl reload ssh
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow OpenSSH
-ufw allow 80/tcp
-ufw allow 443/tcp
+if ! $worker; then
+  ufw allow 80/tcp
+  ufw allow 443/tcp
+fi
 ufw --force enable
 
 # Security updates install themselves; reboots are left to a person.
 dpkg-reconfigure -f noninteractive unattended-upgrades
 
-# Those updates restart nginx, and a failed start (once, a DNS blip) used to leave
-# the site down until someone noticed. Keep trying every 10 seconds instead.
-install -d /etc/systemd/system/nginx.service.d
-cat > /etc/systemd/system/nginx.service.d/restart.conf <<'UNIT'
+if ! $worker; then
+  # Those updates restart nginx, and a failed start (once, a DNS blip) used to leave
+  # the site down until someone noticed. Keep trying every 10 seconds instead.
+  install -d /etc/systemd/system/nginx.service.d
+  cat > /etc/systemd/system/nginx.service.d/restart.conf <<'UNIT'
 [Unit]
 StartLimitIntervalSec=0
 
@@ -83,7 +105,8 @@ StartLimitIntervalSec=0
 Restart=on-failure
 RestartSec=10s
 UNIT
-systemctl daemon-reload
+  systemctl daemon-reload
+fi
 
 # Container logs are capped per service in compose.yml; this caps everything else.
 cat > /etc/docker/daemon.json <<'JSON'

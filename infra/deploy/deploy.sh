@@ -35,14 +35,26 @@ KRATOS_RELEASE=$(git rev-parse HEAD:infra/kratos)
 export KRATOS_RELEASE
 
 prefix=${IMAGE_PREFIX:-heynaija}
-# The images this server runs. The video worker is one of them where COMPOSE_PROFILES
-# in .env includes `video` (docs/video-spike.md); compose reads the same setting, so
-# `up` below starts it too.
-pulled=(api web kratos)
-images=("$prefix-api:$RELEASE" "$prefix-web:$RELEASE" "$prefix-kratos:$KRATOS_RELEASE")
-if [[ ",${COMPOSE_PROFILES:-}," == *,video,* ]]; then
-  pulled+=(video-worker)
-  images+=("$prefix-video-worker:$RELEASE")
+# A server whose .env sets DEPLOY_ROLE=video-worker runs production's video worker
+# and nothing else (compose.worker.yml, which COMPOSE_FILE in the same .env makes
+# compose use; docs/deployment/production.md, section 7). Production's own deploy
+# has already run this release's migrations.
+worker_only=false
+[[ ${DEPLOY_ROLE:-} == video-worker ]] && worker_only=true
+
+# The images this server runs. Elsewhere the video worker is one of them where
+# COMPOSE_PROFILES in .env includes `video` (docs/video-spike.md); compose reads the
+# same setting, so `up` below starts it too.
+if $worker_only; then
+  pulled=(video-worker)
+  images=("$prefix-video-worker:$RELEASE")
+else
+  pulled=(api web kratos)
+  images=("$prefix-api:$RELEASE" "$prefix-web:$RELEASE" "$prefix-kratos:$KRATOS_RELEASE")
+  if [[ ",${COMPOSE_PROFILES:-}," == *,video,* ]]; then
+    pulled+=(video-worker)
+    images+=("$prefix-video-worker:$RELEASE")
+  fi
 fi
 if docker image inspect "${images[@]}" >/dev/null 2>&1; then
   echo "Using the images already on this server for $RELEASE"
@@ -72,8 +84,10 @@ fi
 # the old ones (git checkout replaces the files, and a single-file mount keeps
 # showing the replaced copy). So the kratos service is labelled with a hash of all
 # of them, worked out with the label itself empty.
-KRATOS_INPUTS=$( { KRATOS_INPUTS='' docker compose config kratos; cat ../kratos/*.json ../kratos/*.jsonnet; } | sha256sum | cut -c1-16 )
-export KRATOS_INPUTS
+if ! $worker_only; then
+  KRATOS_INPUTS=$( { KRATOS_INPUTS='' docker compose config kratos; cat ../kratos/*.json ../kratos/*.jsonnet; } | sha256sum | cut -c1-16 )
+  export KRATOS_INPUTS
+fi
 
 # Migrations run first (the api waits for them); --wait returns once every
 # service is healthy, or fails.
@@ -81,14 +95,18 @@ docker compose up -d --remove-orphans --wait
 
 # The web app end to end (web, API, database), on its loopback port. nginx is
 # not in this check: it only accepts Cloudflare's client certificate.
-curl -fsS -o /dev/null --max-time 20 "http://127.0.0.1:${WEB_PORT:-3100}/" \
-  || { echo "The site did not answer after deploying $RELEASE"; exit 1; }
+if ! $worker_only; then
+  curl -fsS -o /dev/null --max-time 20 "http://127.0.0.1:${WEB_PORT:-3100}/" \
+    || { echo "The site did not answer after deploying $RELEASE"; exit 1; }
+fi
 
 echo "$(date -u +%FT%TZ) $RELEASE" >> releases.log
 echo "Deployed $RELEASE. Earlier releases: tail releases.log"
 
 # Keep the five most recent images of each for rollback; remove older ones.
-for image in "api $RELEASE" "web $RELEASE" "kratos $KRATOS_RELEASE" "video-worker $RELEASE"; do
+kept=("api $RELEASE" "web $RELEASE" "kratos $KRATOS_RELEASE" "video-worker $RELEASE")
+$worker_only && kept=("video-worker $RELEASE")
+for image in "${kept[@]}"; do
   read -r app tag <<< "$image"
   docker image ls --format '{{.Tag}}' "$prefix-$app" | tail -n +6 \
     | grep -vx "$tag" | xargs -r -I{} docker image rm "$prefix-$app:{}" >/dev/null || true

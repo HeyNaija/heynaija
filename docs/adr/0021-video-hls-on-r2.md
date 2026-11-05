@@ -252,9 +252,14 @@ acceptable.
   and rate limits are not published, and a 1 GB file has not been tried
   **(unverified)**. Its time limit is 5 minutes per file today; the original is
   streamed from disk, so a large file does not cost memory.
-- **Where it runs** is PR 6 and open question 1. A worker on another server than
-  Postgres and Redis needs a private network to them (WireGuard), or to report to
-  the API over HTTPS instead of writing to the database.
+- **Where it runs** (PR 6; owner, 5 November 2026): production's worker on its own
+  RS 1000, for production only; staging keeps its 1-core worker on its shared
+  server. It reaches production's Postgres and Redis over a WireGuard link, chosen
+  over having it report to the API over HTTPS, which would mean new code in both.
+  Production publishes the two on its end of the link alone, and drops packets for
+  that address from anywhere else, since Docker's published ports bypass the
+  firewall. The worker's server runs nothing else, so the worker cannot reach
+  Kratos, the API or the web app (docs/deployment/production.md, section 7).
 
 ## 6. Posting before the video is ready
 
@@ -411,7 +416,8 @@ two or three, L about a week.
 | 3 | Folders in storage | list and delete many in `ObjectStore`; takedown, release and deletion move folders; purge by prefix | 2's layout | M |
 | 4 | The player | hls.js and the browser's own HLS, the data-setting playlists, the Cache Rule and CORS rule | 2's playlists | M |
 | 5 | Post before ready | section 6 | nothing | L |
-| 6 | Worker capacity and alerts | the worker's server and limits; queue length and time to ready in the logs; an alert when the queue backs up | the trial | S |
+| 6 | The worker's server | its own server, the WireGuard link to production's Postgres and Redis, its deploy, and its limits | the trial | M |
+| 6b | Queue alerts | queue length and time to ready in the logs; an alert when the queue backs up | 6 | S |
 | 7 | Shrink before upload, in the apps | section 10 | the native apps | M |
 
 After 2 to 6: reopen video on staging for allow-listed testers, fix what they

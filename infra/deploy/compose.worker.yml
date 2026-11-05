@@ -1,0 +1,65 @@
+# Production's video worker on a server of its own (ADR 0021 section 5,
+# docs/deployment/production.md section 7): this service alone, reaching production's
+# Postgres and Redis over the WireGuard link (setup-tunnel.sh) at
+# DATABASE_TUNNEL_ADDRESS. The server's .env sets COMPOSE_FILE=compose.worker.yml, so
+# deploy.sh and `docker compose` use this file instead of compose.yml, and
+# DEPLOY_ROLE=video-worker; worker-env.sh writes that .env from production's.
+#
+# The service is compose.yml's video-worker, with the same confinement (ADR 0019
+# section 3.4) and the same environment: change both together (worker.test.sh checks
+# that they list the same variables). On this server there is nothing else for it to
+# reach: no Kratos, API or web app.
+name: heynaija
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+services:
+  video-worker:
+    image: ${IMAGE_PREFIX:-heynaija}-video-worker:${RELEASE:-latest}
+    build:
+      context: ../..
+      target: video-worker
+    environment:
+      DATABASE_URL: postgres://heynaija:${POSTGRES_PASSWORD:?}@${DATABASE_TUNNEL_ADDRESS:?}:5432/heynaija
+      REDIS_URL: redis://:${REDIS_PASSWORD:?}@${DATABASE_TUNNEL_ADDRESS:?}:6379
+      S3_ENDPOINT: ${S3_ENDPOINT:?}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?}
+      S3_UPLOADS_BUCKET: ${S3_UPLOADS_BUCKET:?}
+      S3_MEDIA_BUCKET: ${S3_MEDIA_BUCKET:?}
+      ARACHNID_SHIELD_USERNAME: ${ARACHNID_SHIELD_USERNAME:-}
+      ARACHNID_SHIELD_PASSWORD: ${ARACHNID_SHIELD_PASSWORD:-}
+      PHOTODNA_SUBSCRIPTION_KEY: ${PHOTODNA_SUBSCRIPTION_KEY:-}
+      PHOTODNA_MATCH_URL: ${PHOTODNA_MATCH_URL:-}
+      SAFETY_ALERT_EMAIL: ${SAFETY_ALERT_EMAIL:-}
+      SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:-}
+      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-HeyNaija}
+      WEB_PUBLIC_URL: ${SITE_URL:?}
+      # The limits, each empty (unset in .env) for the default.
+      VIDEO_MAX_SECONDS: ${VIDEO_MAX_SECONDS:-}
+      VIDEO_MIN_SECONDS: ${VIDEO_MIN_SECONDS:-}
+      VIDEO_MAX_BYTES: ${VIDEO_MAX_BYTES:-}
+      VIDEO_MAX_EDGE: ${VIDEO_MAX_EDGE:-}
+      VIDEO_KEEP_ORIGINALS: ${VIDEO_KEEP_ORIGINALS:-}
+    read_only: true
+    tmpfs:
+      - /tmp:size=2g,mode=1777
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # The server's 4 cores (a netcup RS 1000; ADR 0021 section 5). On an RS 2000, 8.
+    cpus: ${VIDEO_WORKER_CPUS:-4}
+    mem_limit: ${VIDEO_WORKER_MEMORY:-1.5g}
+    pids_limit: 256
+    # A deploy replaces it: the worker stops taking jobs on SIGTERM and finishes the one
+    # it has, rather than being killed mid-encode and leaving the job to be found
+    # stalled and run again. Longer than compose.yml's 3 minutes: a 3-minute 4K clip
+    # takes up to about 7 on 4 cores.
+    stop_grace_period: 8m
+    restart: unless-stopped
+    logging: *logging
