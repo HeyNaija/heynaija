@@ -160,8 +160,29 @@ CCX33 (8 dedicated vCPUs) with the 1.5 GB limit, 4 November 2026.
 Shield took 0.4 to 3.0 seconds a clip, a 93 MB original included. The clips played on
 an Android phone with one stall, too short to notice. At these rates a 3-minute 4K
 60 fps HDR clip takes about 3 minutes on this server, right at the mark, and ordinary
-1080p phone video about 75 seconds. Not yet tried: a clip near 3 minutes, playback on an
-iPhone, and the `--memory 1g --cpus 4` run.
+1080p phone video about 75 seconds.
+
+The second run: the same clips on the pilot's worker, a netcup RS 1000 (4 dedicated
+cores), with `--memory 1.5g --cpus 4`, 5 November 2026, before it took any jobs.
+
+| Clip | Length | Encode time | CPU-s per s of video | Peak memory | Stored per minute |
+| --- | --- | --- | --- | --- | --- |
+| iPhone, 4K, 60 fps, HEVC, HDR | 7.9 s | 14.0 s | 6.08 | 694 MB | 29.7 MB |
+| Android, 4K, 60 fps, HEVC | 4.4 s | 10.6 s | 4.78 | 548 MB | 31.0 MB |
+| iPhone, 1080p, 30 fps, HEVC, HDR (two clips) | 7.7 and 42.3 s | 5.9 and 30.0 s | 2.20 to 2.32 | 477 MB | 28.8 to 29.4 MB |
+| Android, 1080p, 60 fps, HEVC (two clips) | 5.6 and 14.5 s | 5.0 and 12.1 s | 2.28 to 2.43 | 413 MB | 29.2 to 29.3 MB |
+| A shared clip, 1080p, 30 fps, H.264 | 47.5 s | 14.3 s | 0.77 | 407 MB | 19.7 MB |
+| A shared clip, 720x422, 30 fps, H.264 | 79.4 s | 6.7 s | 0.21 | 137 MB | 7.3 MB |
+
+netcup's cores do the same work per second of video as the CCX33's, within about 10%,
+and with fewer threads need less memory. One encode kept 2.5 to 3.6 of the 4 cores
+busy, about three-quarters, as it kept about 6 of the CCX33's 8; the 4-second Android
+4K clip kept only 2. At these rates a 3-minute 4K 60 fps HDR clip takes 5 to 6 minutes
+on this server, and ordinary 1080p phone video about 2.2 to 2.4 minutes. Shield took 0.6
+to 5.4 seconds a clip from there.
+
+Not yet tried: a clip near 3 minutes, an Android 4K clip longer than 4 seconds, a 1 GB
+file through Shield, playback on an iPhone, and the `--memory 1g` run.
 
 Two changes to the command came out of earlier runs, with synthetic clips on an Apple
 M4. HDR is tone-mapped at 720p, after scaling down, not at 4K: at 4K it cost 11
