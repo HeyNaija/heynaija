@@ -1,0 +1,16 @@
+# Production only, once its video worker runs on a server of its own (ADR 0021
+# section 5, docs/deployment/production.md section 7): publishes Postgres and Redis
+# on production's end of the WireGuard link (setup-tunnel.sh), and nowhere else, for
+# that worker to reach. Used with compose.yml by setting, in infra/deploy/.env:
+#   COMPOSE_FILE=compose.yml:compose.tunnel.yml
+#   DATABASE_TUNNEL_ADDRESS=10.80.0.1
+# setup-tunnel.sh lets Docker publish on that address while the link is down, and
+# drops packets for it that did not come through the link: Docker's published ports
+# bypass ufw.
+services:
+  postgres:
+    ports:
+      - "${DATABASE_TUNNEL_ADDRESS:?}:5432:5432"
+  redis:
+    ports:
+      - "${DATABASE_TUNNEL_ADDRESS:?}:6379:6379"

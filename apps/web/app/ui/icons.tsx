@@ -19,6 +19,7 @@ import {
   Flame,
   Hash,
   Pin,
+  Headphones,
   Heart,
   History,
   House,
@@ -47,6 +48,7 @@ import {
   Share,
   Share2,
   Shield,
+  Signal,
   User,
   UserPlus,
   Users,
@@ -120,6 +122,8 @@ export const MicOffIcon = icon(MicOff)
 export const LiveIcon = icon(Radio)
 export const LockIcon = icon(Lock)
 export const LeaveIcon = icon(LogOut)
+export const SignalIcon = icon(Signal)
+export const HeadphonesIcon = icon(Headphones)
 export const HandIcon = icon(Hand)
 
 export const AwardIcon = icon(Award)

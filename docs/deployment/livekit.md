@@ -162,6 +162,45 @@ everyone). In production it opens only through such a list.
 - [ ] With `gists` limited to a list, a member not on it sees no Start card, and
       `/gists/new` is the normal not-found page.
 
+## 7. Measuring from Lagos
+
+Where production's LiveKit goes (ADR 0017, open question 2) is chosen on measured
+loss and round trip from Nigerian networks, not on price. The same figures explain a
+Gist that sounds unclear. Every room has a **Connection** button that reads the
+browser's WebRTC statistics every two seconds; **Copy figures** gives one line:
+
+```
+route=udp rtt=142ms loss=0.4% jitter=12ms concealed=0.2% verdict=good network=4g
+```
+
+1. One person hosts a Gist on the server being measured and keeps talking (read
+   an article aloud): the figures need sound to measure.
+2. Testers in Lagos join on phones, one network each (MTN, Airtel, Glo, 9mobile,
+   home Wi-Fi or fibre), and at least one tester is a speaker, so outgoing loss is
+   measured too.
+3. Each opens **Connection**, waits 30 seconds, then copies the figures once a
+   minute for ten minutes, pasting each line with the network, the area and the
+   time. Repeat at an evening peak (8 to 10 pm).
+4. Do the same against each candidate location, on the same networks and in the same
+   week.
+
+What the figures mean (the sheet's verdict uses the same limits,
+`apps/web/lib/gist-connection.ts`):
+
+| Figure    | Good               | Fair               | Poor          | What it sounds like when poor             |
+| --------- | ------------------ | ------------------ | ------------- | ----------------------------------------- |
+| loss      | under 2%           | 2 to 5%            | 5% or more    | words missing, robotic sound              |
+| jitter    | under 30ms         | 30 to 60ms         | 60ms or more  | sound speeding up and slowing down        |
+| rtt       | under 300ms        | 300 to 500ms       | 500ms or more | people talking over each other            |
+| concealed | under 3%           | 3 to 10%           | 10% or more   | the browser making up sound that was lost |
+| route     | `udp`, `relay-udp` | `tcp`, `relay-tcp` |               | `tcp` routes turn loss into stalls        |
+
+Pick the location with the lowest loss and jitter at peak, then round trip. If many
+testers show `relay-tcp`, their networks block UDP 7882 and 3478: look at that before
+blaming the location. On a laptop, `chrome://webrtc-internals` shows the same
+statistics in full (the selected candidate pair, `packetsLost`, `jitter`,
+`concealedSamples`).
+
 ## Day to day
 
 | Task                | How                                                                                                                            |

@@ -108,7 +108,7 @@ check its key (staging step 5), run `./gen-env.sh`, and edit `.env`:
 | `S3_UPLOADS_BUCKET` / `S3_MEDIA_BUCKET` | `heynaija-uploads` / `heynaija-media` |
 | `BACKUP_DESTINATION` | `r2backup:heynaija-backups/production` |
 | `IMAGE_PREFIX` | `ghcr.io/heynaija/heynaija`, lower case, as for staging |
-| `COMPOSE_PROFILES` | Unset until video opens in production; then `video`, so deploys run the video worker ([video-spike.md](../video-spike.md#deploying-the-worker)) |
+| `COMPOSE_PROFILES` | Unset: production's video worker runs on a server of its own (section 7), not here |
 | `S3_*`, `SMTP_*`, `BACKUP_AGE_RECIPIENT` | as for staging, with production's tokens and keys |
 | `PUSH_VAPID_*` | made by `gen-env.sh`, production's own: never staging's. Keep a copy; a new pair cuts off every browser that turned push on ([ADR 0011](../adr/0011-push-notifications.md)) |
 | `POSTGRES_*`, `DATABASE_POOL_MAX` | delete these lines: `compose.yml`'s defaults are sized for this 16 GB server |
@@ -133,3 +133,137 @@ Backups exactly as staging step 6, with production's token and the same age key
 
 Then every check in staging step 7, except that `curl -I https://heynaija.ng` must
 **not** show `x-robots-tag`, and add an uptime check for `https://heynaija.ng/`.
+
+## 7. The video worker's server
+
+Production's video worker runs on a server of its own, a netcup **RS 1000** (4
+dedicated cores, 8 GB, Ubuntu 26.04), so encoding never takes cores from the site
+([ADR 0021](../adr/0021-video-hls-on-r2.md) section 5). It reaches production's
+Postgres and Redis over a private WireGuard link, and nothing else of production's:
+not Kratos, the API or the web app. It runs `compose.worker.yml`, that one service.
+Video stays off for members until ADR 0021's launch gate; the worker can run before
+then, with nothing to do.
+
+How the link works: production listens on UDP 51820 to the worker's address alone;
+the worker connects out and keeps it open, so it opens no port. On the link
+production is `10.80.0.1` and the worker `10.80.0.2`, and production publishes
+Postgres and Redis on `10.80.0.1` only (`compose.tunnel.yml`). Docker's published
+ports bypass ufw, so `setup-tunnel.sh` also drops any packet for `10.80.0.1` that did
+not come through the link, and lets Docker publish on that address while the link is
+down, so that a broken link can never stop Postgres starting.
+
+1. **Set the server up.** From your computer (use your own public key file):
+
+   ```bash
+   scp infra/deploy/setup-server.sh root@<worker-ip>:
+   ```
+
+   ```bash
+   ssh root@<worker-ip> "bash setup-server.sh --worker '$(cat ~/.ssh/id_ed25519.pub)'"
+   ```
+
+   As for production (section 1), but without nginx, and the firewall lets in SSH
+   alone. **Check `ssh heynaija@<worker-ip>` works in a second terminal before closing
+   the root session.** Then, as `heynaija` on the worker:
+
+   ```bash
+   git clone https://github.com/HeyNaija/heynaija.git /srv/heynaija
+   ```
+
+2. **The link.** As `heynaija`, on both servers, which prints each one's public key:
+
+   ```bash
+   sudo bash /srv/heynaija/infra/deploy/setup-tunnel.sh key
+   ```
+
+   On production, with the worker's public IP and key:
+
+   ```bash
+   sudo bash /srv/heynaija/infra/deploy/setup-tunnel.sh production <worker-ip> <worker's key>
+   ```
+
+   On the worker, with production's public IP and key, then check it answers:
+
+   ```bash
+   sudo bash /srv/heynaija/infra/deploy/setup-tunnel.sh worker <production-ip> <production's key>
+   ```
+
+   ```bash
+   ping -c 3 10.80.0.1
+   ```
+
+3. **Publish Postgres and Redis on the link.** Add these two lines to production's
+   `infra/deploy/.env`:
+
+   ```
+   COMPOSE_FILE=compose.yml:compose.tunnel.yml
+   DATABASE_TUNNEL_ADDRESS=10.80.0.1
+   ```
+
+   Then deploy the release production already runs. **This restarts Postgres and
+   Redis**, which Compose recreates to publish them, so the site pauses for a few
+   seconds: do it at a quiet hour.
+
+   ```bash
+   cd /srv/heynaija/infra/deploy && ./deploy.sh "$(git rev-parse HEAD)"
+   ```
+
+   From the worker, both must print `open`:
+
+   ```bash
+   for port in 5432 6379; do timeout 3 bash -c "</dev/tcp/10.80.0.1/$port" && echo "$port open"; done
+   ```
+
+4. **The worker's settings**, made from production's `.env` and sent straight
+   across, so its secrets never show on a screen. From your computer:
+
+   ```bash
+   ssh heynaija@<production-ip> /srv/heynaija/infra/deploy/worker-env.sh | ssh heynaija@<worker-ip> 'umask 077 && cat > /srv/heynaija/infra/deploy/.env'
+   ```
+
+   It holds the database and Redis passwords, the storage keys, Arachnid Shield's
+   login and the email settings: what `compose.worker.yml` reads, and no Kratos,
+   push, LiveKit or Cloudflare secrets. To change one later, change it on production
+   and run this again.
+
+5. **Deploys.** The production workflow deploys the worker after production, with
+   production's deploy key. On the worker, as `heynaija`, add that key's line from
+   production's `authorized_keys`, forced command and all, and put the script it runs
+   in place:
+
+   ```bash
+   ssh heynaija@<production-ip> "grep -F ssh-deploy.sh ~/.ssh/authorized_keys" | ssh heynaija@<worker-ip> 'cat >> ~/.ssh/authorized_keys'
+   ```
+
+   ```bash
+   install -m 700 /srv/heynaija/infra/deploy/ssh-deploy.sh ~/ssh-deploy.sh
+   ```
+
+   Then give GitHub's `production` environment the worker's address and host key,
+   from this repository's folder, and check the fingerprint as in staging step 4:
+
+   ```bash
+   gh secret set VIDEO_WORKER_HOST --env production --body '<worker-ip>'
+   ```
+
+   ```bash
+   ssh-keyscan -t ed25519 <worker-ip> | gh secret set VIDEO_WORKER_KNOWN_HOSTS --env production
+   ```
+
+   (`VIDEO_WORKER_SSH_PORT` too, if SSH is not on port 22.) Until `VIDEO_WORKER_HOST`
+   is set, the workflow's "Deploy the video worker" job does nothing.
+
+6. **First deploy.** Run **Actions → Deploy production → Run workflow** on `main`, or
+   wait for the next release, and watch its second job. Then, on the worker:
+
+   ```bash
+   cd /srv/heynaija/infra/deploy && docker compose ps && docker compose logs --tail 20 video-worker
+   ```
+
+   It should be running and waiting for jobs. To roll back, run
+   `./deploy.sh <commit>` on each server, production first.
+
+Before video opens in production, ADR 0021's launch gate also needs a 3-minute 4K
+clip and a 1 GB file through this worker and Arachnid Shield. When clips start to
+queue, upgrade the server to an RS 2000 in netcup's control panel (it keeps the
+data), run step 4 again with `worker-env.sh 8` for its 8 cores, and deploy.

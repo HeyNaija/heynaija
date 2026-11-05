@@ -111,3 +111,38 @@ jobs:
           printf '%s\n%s\n' "$GITHUB_ACTOR" "$REGISTRY_TOKEN" | ssh -i ~/.ssh/deploy -p "${DEPLOY_SSH_PORT:-22}" \
             -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=30 -o ServerAliveInterval=30 \
             "heynaija@$DEPLOY_HOST" deploy "$GITHUB_SHA"
+
+  # Production's video worker runs on a server of its own (docs/deployment/production.md,
+  # section 7). It goes second, once production has run the release's migrations, with
+  # the same key and forced command. Until the production environment has a
+  # VIDEO_WORKER_HOST, there is no such server and this does nothing.
+  deploy-video-worker:
+    name: Deploy the video worker
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: production
+    # A deploy waits for the video being encoded to finish (stop_grace_period in
+    # compose.worker.yml).
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Deploy the video worker ${{ github.sha }}
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          VIDEO_WORKER_KNOWN_HOSTS: ${{ secrets.VIDEO_WORKER_KNOWN_HOSTS }}
+          VIDEO_WORKER_HOST: ${{ secrets.VIDEO_WORKER_HOST }}
+          VIDEO_WORKER_SSH_PORT: ${{ secrets.VIDEO_WORKER_SSH_PORT }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ -z $VIDEO_WORKER_HOST ]]; then
+            echo "No VIDEO_WORKER_HOST in the production environment: no video worker's server to deploy."
+            exit 0
+          fi
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$VIDEO_WORKER_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n%s\n' "$GITHUB_ACTOR" "$REGISTRY_TOKEN" | ssh -i ~/.ssh/deploy -p "${VIDEO_WORKER_SSH_PORT:-22}" \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=30 -o ServerAliveInterval=30 \
+            "heynaija@$VIDEO_WORKER_HOST" deploy "$GITHUB_SHA"

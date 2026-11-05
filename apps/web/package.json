@@ -10,6 +10,7 @@
     "test": "node --experimental-strip-types --test \"tests/*.test.mjs\""
   },
   "dependencies": {
+    "@sapphi-red/web-noise-suppressor": "0.4.1",
     "livekit-client": "2.23.0",
     "lucide-react": "^1.56.0",
     "next": "16.4.2",
