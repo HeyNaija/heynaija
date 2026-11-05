@@ -35,7 +35,7 @@ import { preferencesWithout } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/12'
+export const EXPORT_FORMAT = 'heynaija-export/13'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -92,6 +92,8 @@ export class ExportService {
           community: communities.slug,
           deletedAt: posts.deletedAt,
           removedByModeratorAt: posts.removedAt,
+          gistId: posts.gistId,
+          hiddenByHostAt: posts.hiddenByHostAt,
         })
         .from(posts)
         .leftJoin(communities, eq(communities.id, posts.communityId))

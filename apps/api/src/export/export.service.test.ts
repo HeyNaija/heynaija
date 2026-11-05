@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { media, members } from '@heynaija/db'
+import { gists, media, members } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { GovernanceService } from '../governance/governance.service.js'
 import { MembersService } from '../members/members.service.js'
@@ -189,8 +189,22 @@ test('an export lists a post’s ready video (path and poster); held, unattached
   await row(bayo, 'ready', other.id)
 
   const data = (await service.export(ada, null))!
-  assert.equal(data.format, 'heynaija-export/12')
+  assert.equal(data.format, 'heynaija-export/13')
   const byText = (text: string) => data.posts.find((p) => p.text === text)!
   assert.deepEqual(byText('my clip').videos, [{ url: `/media/videos/${ready}`, poster: `/media/videos/${ready}/poster.webp` }])
   assert.deepEqual(byText('no clip').videos, [])
+})
+
+test('an export marks a reply in a Gist with its Gist and says when the host hid it', async () => {
+  const [{ id: gist }] = (await db.insert(gists).values({ hostId: bayo, title: 'Room' }).returning({ id: gists.id })) as [{ id: string }]
+  const inGist = await postsService.create(ada, 'Hello room', { gist })
+  const plain = await postsService.create(ada, 'Hello feed')
+  await postsService.hideInGist(gist, inGist.id, true)
+
+  const data = (await service.export(ada, null))!
+  const byId = (id: string) => data.posts.find((p) => p.id === id)!
+  assert.equal(byId(inGist.id).gistId, gist)
+  assert.notEqual(byId(inGist.id).hiddenByHostAt, null)
+  assert.equal(byId(plain.id).gistId, null)
+  assert.equal(byId(plain.id).hiddenByHostAt, null)
 })
