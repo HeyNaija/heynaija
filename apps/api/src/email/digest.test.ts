@@ -16,6 +16,13 @@ test('one notification: the subject says what happened and quotes nothing', () =
   assert.ok(!mail.subject.includes('Jollof'))
 })
 
+test('a reply in a Gist links to the Gist, not to a post page the reader cannot open', () => {
+  const mail = render([item({ kind: 'reply', excerpt: 'Jollof, obviously', postId: 'r1', gistId: 'g1' })])
+  assert.equal(mail.subject, '@bayo replied in a Gist')
+  assert.match(mail.text, /https:\/\/heynaija\.test\/gists\/g1\n/)
+  assert.ok(!mail.text.includes('/p/r1'))
+})
+
 test('several notifications: counted in the subject, newest first', () => {
   const mail = render([item({ kind: 'follow', actor: 'chi', postId: null }), item({ kind: 'reply', actor: 'bayo', excerpt: 'hi', postId: 'r1' })])
   assert.equal(mail.subject, '2 new notifications on HeyNaija')

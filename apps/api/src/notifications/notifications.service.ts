@@ -73,7 +73,7 @@ export type NotificationView = {
   /** Null for moderation decisions. `founder`: one of the people who founded HeyNaija. */
   actor: { handle: string; displayName: string | null; avatar: string | null; founder: boolean } | null
   /** The post concerned, with its text shortened. */
-  post: { id: string; excerpt: string } | null
+  post: { id: string; excerpt: string; gistId: string | null } | null
   /** report_resolved about an account: whose. */
   subjectHandle: string | null
   /** moderator_granted / moderator_revoked: which community. */
@@ -100,7 +100,7 @@ export const visible = (viewerId: string) => sql`
     a.active
     and not exists(select 1 from blocks b where (b.blocker_id = ${viewerId} and b.blocked_id = n.actor_id) or (b.blocker_id = n.actor_id and b.blocked_id = ${viewerId}))
     and not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = n.actor_id)))
-  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'idea_status') or (p.deleted_at is null and p.removed_at is null))
+  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'idea_status') or (p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null))
   and (n.kind <> 'like' or exists(select 1 from likes l where l.post_id = n.post_id and l.member_id = n.actor_id))
   and (n.kind <> 'repost' or exists(select 1 from reposts r where r.post_id = n.post_id and r.member_id = n.actor_id))
   and (n.kind <> 'follow' or exists(select 1 from follows f where f.follower_id = n.actor_id and f.followee_id = ${viewerId}))`
@@ -136,6 +136,7 @@ export class NotificationsService {
       actor_founder: boolean
       post_id: string | null
       post_text: string | null
+      gist_id: string | null
       subject_handle: string | null
       community_slug: string | null
       community_name: string | null
@@ -145,7 +146,7 @@ export class NotificationsService {
       select n.id, n.kind, n.created_at, n.read_at, n.detail,
         a.handle as actor_handle, a.display_name as actor_name, a.avatar_media_id as actor_avatar,
         ${isFounder(sql`a.id`)} as actor_founder,
-        p.id as post_id, p.text as post_text, s.handle as subject_handle,
+        p.id as post_id, p.text as post_text, p.gist_id, s.handle as subject_handle,
         c.slug as community_slug, c.name as community_name,
         i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours
       ${joins}
@@ -162,7 +163,7 @@ export class NotificationsService {
         actor: r.actor_handle
           ? { handle: r.actor_handle, displayName: r.actor_name, avatar: avatarPath(r.actor_avatar), founder: r.actor_founder }
           : null,
-        post: r.post_id ? { id: r.post_id, excerpt: excerpt(r.post_text ?? '') } : null,
+        post: r.post_id ? { id: r.post_id, excerpt: excerpt(r.post_text ?? ''), gistId: r.gist_id } : null,
         subjectHandle: r.subject_handle,
         community: r.community_slug ? { slug: r.community_slug, name: r.community_name! } : null,
         detail: r.detail,

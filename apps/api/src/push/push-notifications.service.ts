@@ -238,6 +238,7 @@ export class PushNotificationsService {
       kind: NotificationKind
       actor_handle: string | null
       post_id: string | null
+      gist_id: string | null
       post_text: string | null
       community_name: string | null
       detail: string | null
@@ -245,7 +246,7 @@ export class PushNotificationsService {
       idea_yours: boolean
       pending: boolean
     }>(sql`
-      select n.id, n.kind, a.handle as actor_handle, n.post_id,
+      select n.id, n.kind, a.handle as actor_handle, n.post_id, p.gist_id,
         -- The text of a post is read only for the kinds that quote it.
         case when n.kind in (${excerptKinds}) then p.text end as post_text,
         c.name as community_name, n.detail, i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, n.push_settled_at is null as pending

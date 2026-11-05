@@ -8,6 +8,8 @@ export type DigestItem = {
   /** Handle of whoever did it; null for moderation notices. */
   actor: string | null
   postId: string | null
+  /** Set when the post is a reply in a Gist, which is read there. */
+  gistId?: string | null
   /** A short piece of the post concerned, only for the kinds that show one. */
   excerpt: string | null
   /** moderator_granted / moderator_revoked: the community's name. */
@@ -74,7 +76,8 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
     groups.set(key, group)
   })
 
-  const post = (id: string | null) => (id ? `${webUrl}/p/${id}` : `${webUrl}/notifications`)
+  const post = (id: string | null, gistId?: string | null) =>
+    gistId ? `${webUrl}/gists/${gistId}` : id ? `${webUrl}/p/${id}` : `${webUrl}/notifications`
   return [...groups.values()].map(({ items, actors }) => ({ ...describe(items[0]!, actors, items.length), items }))
 
   function describe(item: DigestItem, actors: string[], count: number): Omit<Line, 'items'> {
@@ -84,7 +87,7 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
     const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
     switch (item.kind) {
       case 'reply':
-        return { headline: `${who} replied to your post`, quote, href: post(item.postId) }
+        return { headline: item.gistId ? `${who} replied in a Gist` : `${who} replied to your post`, quote, href: post(item.postId, item.gistId) }
       case 'quote':
         return { headline: `${who} quoted your post`, quote, href: post(item.postId) }
       case 'mention':
