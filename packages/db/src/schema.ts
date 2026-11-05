@@ -21,6 +21,7 @@ import {
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
 
 export const REPLY_AUDIENCES = ['everyone', 'following', 'mentioned'] as const
+export const GIST_REPLY_AUDIENCES = [...REPLY_AUDIENCES, 'off'] as const
 
 // A member of the network. `id` is the Ory Kratos identity ID: Kratos owns the
 // email, password and sessions; this table holds only what the app itself needs.
@@ -269,11 +270,14 @@ export const posts = pgTable(
     linkUrl: text('link_url'),
     // At most one community per post. Replies inherit their parent's.
     communityId: uuid('community_id').references(() => communities.id),
+    // A reply in a Gist's comment section, inherited by the replies under it. Read only through the Gist's routes.
+    gistId: uuid('gist_id').references((): AnyPgColumn => gists.id),
     createdAt: ts('created_at').notNull().defaultNow(),
     // Soft delete: the row stays for moderation and audit, but leaves every feed.
     deletedAt: ts('deleted_at'),
     // Taken down by a moderator (as opposed to deleted by its author). Reversible.
     removedAt: ts('removed_at'),
+    hiddenByHostAt: ts('hidden_by_host_at'),
     // Likes by active members, and direct replies that are live and by active
     // members: what readers see. Kept by triggers (migration 0011), in the same
     // transaction as the like, reply, deletion or suspension that changes them.
@@ -289,6 +293,8 @@ export const posts = pgTable(
     index('posts_reply_parent_created_idx').on(t.replyParentId, t.createdAt, t.id),
     index('posts_community_created_idx').on(t.communityId, t.createdAt),
     index('posts_quote_idx').on(t.quotePostId).where(sql`quote_post_id is not null`),
+    index('posts_gist_created_idx').on(t.gistId, t.createdAt, t.id).where(sql`gist_id is not null`),
+    check('posts_gist_reply_check', sql`${t.gistId} is null or ${t.quotePostId} is null`),
     check('posts_reply_audience_check', sql.raw(`reply_audience in (${REPLY_AUDIENCES.map((value) => `'${value}'`).join(', ')})`)),
     // Full-text search. 'simple' (no stemming) suits mixed English, Pidgin and names.
     index('posts_text_search_idx').using('gin', sql`to_tsvector('simple', ${t.text})`),
@@ -1070,9 +1076,11 @@ export const gists = pgTable(
     locked: boolean('locked').notNull().default(false),
     listenerCap: integer('listener_cap'),
     requestsOpen: boolean('requests_open').notNull().default(true),
+    replyAudience: text('reply_audience', { enum: GIST_REPLY_AUDIENCES }).notNull().default('everyone'),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [
+    check('gists_reply_audience_check', sql.raw(`reply_audience in (${GIST_REPLY_AUDIENCES.map((value) => `'${value}'`).join(', ')})`)),
     // One live Gist per host, enforced here so two racing requests cannot make two.
     uniqueIndex('gists_one_live_per_host_idx')
       .on(t.hostId)
