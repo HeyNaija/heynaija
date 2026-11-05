@@ -66,17 +66,25 @@ From your computer:
 scp -r <clips folder> root@<server ip>:/root/clips
 ```
 
-On the server, put the login in a file only root can read, so it stays out of the shell
-history:
+On the server, make a file only root can read, and type the login into it with an
+editor (fresh Ubuntu images may have none, hence the `apt-get`):
 
 ```bash
 install -m 600 /dev/null /root/trial.env
-cat >> /root/trial.env <<'EOF'
-ARACHNID_SHIELD_USERNAME=...
-ARACHNID_SHIELD_PASSWORD=...
-EOF
+apt-get install -y nano
+nano /root/trial.env
 mkdir -p /root/out && chmod 777 /root/out
 ```
+
+```
+ARACHNID_SHIELD_USERNAME=...
+ARACHNID_SHIELD_PASSWORD=...
+```
+
+Not with `cat <<'EOF'` or `echo` at the prompt: bash keeps every line typed into a
+command in its history, a here-document's lines included, so the password would be in
+`~/.bash_history`. The login is only needed to time Shield; without the file, leave out
+`--env-file` below and the run skips Shield.
 
 ## 4. Run it
 
@@ -91,7 +99,7 @@ docker run --rm --read-only --tmpfs /tmp:size=2g --memory 1.5g --env-file /root/
 
 ## 5. Play the results on phones (optional)
 
-Add these to `/root/trial.env`, using staging's values:
+Add these to `/root/trial.env` with `nano`, as in step 3, using staging's values:
 
 ```
 S3_ENDPOINT=...
