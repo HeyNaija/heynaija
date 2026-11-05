@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  canRemoveNoise,
   chooseDevice,
   createSpeakingAnnouncer,
   DEFAULT_MIC,
@@ -135,4 +136,13 @@ test('a saved input missing when the visit begins is forgotten; one unplugged du
   assert.equal(staleSavedDevice(devs('a', 'b'), 'b', true), false)
   assert.equal(staleSavedDevice(devs('a'), null, true), false)
   assert.equal(staleSavedDevice([], 'gone', true), false)
+})
+
+test('RNNoise runs only on a 48 kHz graph with AudioWorklet and WebAssembly', () => {
+  const ok = { sampleRate: 48_000, audioWorklet: true, webAssembly: true }
+  assert.equal(canRemoveNoise(ok), true)
+  // A 44.1 kHz device: the browser's own noise suppression is all there is.
+  assert.equal(canRemoveNoise({ ...ok, sampleRate: 44_100 }), false)
+  assert.equal(canRemoveNoise({ ...ok, audioWorklet: false }), false)
+  assert.equal(canRemoveNoise({ ...ok, webAssembly: false }), false)
 })

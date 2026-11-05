@@ -5,7 +5,7 @@ import { deviceLabel, type InputDevice, type MicFailure, type MicSettings } from
 import { LevelMeter } from './stage'
 
 const SWITCHES: { key: 'noiseSuppression' | 'echoCancellation' | 'autoGainControl'; label: string; hint: string }[] = [
-  { key: 'noiseSuppression', label: 'Noise suppression', hint: 'Hushes steady background noise such as a fan or a generator. Turn it off if you are playing music.' },
+  { key: 'noiseSuppression', label: 'Noise suppression', hint: 'Removes background noise such as a generator, traffic or people talking nearby. Turn it off if you are playing music.' },
   { key: 'echoCancellation', label: 'Echo cancellation', hint: 'Stops the sound from your speaker looping back into your microphone. Keep it on unless you use headphones.' },
   { key: 'autoGainControl', label: 'Automatic volume', hint: 'Evens out how loud you sound. Turn it off if your voice seems to pump up and down.' },
 ]
@@ -18,6 +18,7 @@ export function MicPanel({
   failure,
   live,
   level,
+  noiseRemoval,
   onChange,
 }: {
   settings: MicSettings
@@ -28,6 +29,8 @@ export function MicPanel({
   failure: MicFailure | null
   live: boolean
   level: number
+  /** Whether RNNoise is running on the live microphone; null until it is known. */
+  noiseRemoval: boolean | null
   onChange: (next: MicSettings) => void
 }) {
   const selectId = useId()
@@ -58,6 +61,10 @@ export function MicPanel({
           </option>
         ))}
       </select>
+      <p className="field-hint">
+        For the clearest voice, use wired earphones. Bluetooth earphones make a microphone sound muffled, like an old phone line: if you use them, you can choose your phone&apos;s own
+        microphone here.
+      </p>
 
       <div className="mt-4">
         <p className="field-label">Input level</p>
@@ -67,13 +74,16 @@ export function MicPanel({
 
       <fieldset className="mt-4">
         <legend className="field-label">Sound clean-up</legend>
-        <p className="field-hint">Your browser does this. Your voice is otherwise sent as it is: HeyNaija does not offer voice changers.</p>
+        <p className="field-hint">This happens on your device. It cleans up the sound around your voice and never changes the voice itself: HeyNaija does not offer voice changers.</p>
         {SWITCHES.map(({ key, label, hint }) => (
           <label key={key} className="gist-switch">
             <input type="checkbox" checked={settings[key]} onChange={(event) => onChange({ ...settings, [key]: event.target.checked })} />
             <span>
               <span className="font-semibold">{label}</span>
               <span className="field-hint block">{hint}</span>
+              {key === 'noiseSuppression' && live && settings.noiseSuppression && noiseRemoval !== null ? (
+                <span className="field-hint block">{noiseRemoval ? 'Strong noise removal is on.' : "This device uses the browser's own noise suppression only."}</span>
+              ) : null}
             </span>
           </label>
         ))}

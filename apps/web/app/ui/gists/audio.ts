@@ -2,12 +2,15 @@
 // import() when someone taps Join, so the SDK is a separate chunk that the feed,
 // the profile and every other page never download (ADR 0017 section 6).
 //
-// The microphone path is a clean pass-through: the browser's own capture
-// processing (noise suppression, echo cancellation, auto gain) can be switched, and
-// that is all. No effects, no pitch shifting (ADR 0017, open question 20).
+// The microphone path cleans up the sound around a voice and never changes the voice:
+// the browser's own capture processing (noise suppression, echo cancellation, auto
+// gain), and RNNoise noise removal on the device while noise suppression is on
+// (noise.ts). No effects, no pitch shifting (ADR 0017, open question 20).
 import { ConnectionState, DisconnectReason, type LocalAudioTrack, Room, RoomEvent, Track, TrackEvent } from 'livekit-client'
+import { readSample, type Quality, type Sample, type Stat } from '@/lib/gist-connection'
 import type { AudioEvents, LostReason } from '@/lib/gist-session'
 import { afterFailedRestart, micPlan, rmsLevel, type MicSettings } from '@/lib/gist-mic'
+import { createNoiseRemoval, NOISE_PROCESSOR } from './noise'
 
 /** Why LiveKit ended the connection, in the terms the room acts on: only a network drop is worth retrying. */
 export function lostReason(reason: DisconnectReason | undefined): LostReason {
@@ -27,9 +30,18 @@ const capture = (m: MicSettings) => ({
 
 export function createAudio(container: HTMLElement, on: AudioEvents) {
   const room = new Room({
-    // stopMicTrackOnMute: muting stops the capture, so the browser's recording indicator goes off with it.
-    // Unmuting asks the browser for the microphone again (a tap, so allowed); see setMic.
-    publishDefaults: { dtx: true, stopMicTrackOnMute: true },
+    publishDefaults: {
+      // Voice, not music: 32 kbps Opus is full-sounding speech and leaves room on patchy mobile data,
+      // where LiveKit's 48 kbps default (more on the wire with RED) loses more to congestion.
+      audioPreset: { maxBitrate: 32_000 },
+      // RED sends each moment of audio again in the next packets, so a lost packet costs no sound;
+      // DTX sends almost nothing during silence. Both are LiveKit's defaults, stated so they stay on.
+      red: true,
+      dtx: true,
+      // Muting stops the capture, so the browser's recording indicator goes off with it.
+      // Unmuting asks the browser for the microphone again (a tap, so allowed); see setMic.
+      stopMicTrackOnMute: true,
+    },
   })
   let closing = false
 
@@ -39,6 +51,11 @@ export function createAudio(container: HTMLElement, on: AudioEvents) {
     return out
   }
   const emitMics = () => on.onMics(mics())
+  const emitQuality = () => {
+    const out: Record<string, Quality> = {}
+    for (const p of [room.localParticipant, ...room.remoteParticipants.values()]) out[p.identity] = p.connectionQuality as Quality
+    on.onQuality(out)
+  }
   const localTrack = () => room.localParticipant.getTrackPublication(Track.Source.Microphone)?.audioTrack as LocalAudioTrack | undefined
 
   room
@@ -70,9 +87,41 @@ export function createAudio(container: HTMLElement, on: AudioEvents) {
     .on(RoomEvent.LocalTrackPublished, emitMics)
     .on(RoomEvent.ParticipantConnected, emitMics)
     .on(RoomEvent.ParticipantDisconnected, emitMics)
+    // The server's view of each connection, every few seconds: a weak one is named on the speaker's tile.
+    .on(RoomEvent.ConnectionQualityChanged, emitQuality)
+    .on(RoomEvent.ParticipantDisconnected, emitQuality)
 
   /** What the live microphone track was last started with; '' when there is none. */
   let appliedKey = ''
+
+  /** Whether noise removal should be on, as last asked; each pass below acts on this, not on what it was called with. */
+  let wantNoise = false
+  let noiseQueue: Promise<void> = Promise.resolve()
+
+  /**
+   * Puts RNNoise on the microphone track, or takes it off, to match the noise suppression switch.
+   * Not awaited by the microphone button: the plain microphone is live meanwhile, so a slow
+   * download of the model never holds up being heard. Passes run one at a time, so a quick
+   * off-and-on settles on the last choice. The processor follows the track through Unmute and
+   * device changes by itself. A failure leaves the plain microphone, never a silent one.
+   */
+  const applyNoise = (settings: MicSettings) => {
+    wantNoise = settings.noiseSuppression
+    noiseQueue = noiseQueue.then(async () => {
+      const track = localTrack()
+      if (!track) return
+      const has = track.getProcessor()?.name === NOISE_PROCESSOR
+      try {
+        if (wantNoise && !has) {
+          on.onNoise(null)
+          await track.setProcessor(createNoiseRemoval(on.onNoise))
+        } else if (!wantNoise && has) await track.stopProcessor()
+      } catch {
+        on.onNoise(false)
+      }
+      if (!wantNoise) on.onNoise(false)
+    })
+  }
 
   /**
    * Restarts the track with new options. LiveKit stops the old track first, so if the browser
@@ -87,6 +136,8 @@ export function createAudio(container: HTMLElement, on: AudioEvents) {
       appliedKey = afterFailedRestart().appliedKey
       await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined)
       const track = localTrack()
+      // With a processor, the track reports the processed output, which never ends: take it off to see the microphone.
+      await track?.stopProcessor().catch(() => undefined)
       if (track && track.mediaStreamTrack.readyState === 'ended') await room.localParticipant.unpublishTrack(track, true).catch(() => undefined)
       emitMics()
       throw err
@@ -118,9 +169,11 @@ export function createAudio(container: HTMLElement, on: AudioEvents) {
       if (plan === 'publish') {
         await room.localParticipant.setMicrophoneEnabled(true, capture(settings))
         appliedKey = key
+        applyNoise(settings)
       } else if (plan === 'restart') {
         await restart(settings, key)
         await room.localParticipant.setMicrophoneEnabled(true)
+        applyNoise(settings)
       } else if (plan === 'unmute') {
         // The muted track was stopped, so this asks the browser for the microphone again. If it refuses
         // the publication stays muted (nothing is live), and the next Unmute simply tries again.
@@ -136,7 +189,22 @@ export function createAudio(container: HTMLElement, on: AudioEvents) {
     /** Applies a changed device or processing switch to a microphone that is already live. */
     async applyMic(settings: MicSettings, key: string) {
       const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone)
-      if (micPlan({ appliedKey, key, hasPublication: Boolean(pub?.audioTrack), isMuted: false, wantOn: true }) === 'restart') await restart(settings, key)
+      if (micPlan({ appliedKey, key, hasPublication: Boolean(pub?.audioTrack), isMuted: false, wantOn: true }) !== 'restart') return
+      await restart(settings, key)
+      applyNoise(settings)
+    },
+    /**
+     * One reading of the connection for the Connection sheet, from every audio track in the room
+     * (they share the transport). Null until there is a track to read: nobody has spoken yet.
+     */
+    async sample(): Promise<Sample | null> {
+      const tracks = [localTrack(), ...[...room.remoteParticipants.values()].flatMap((p) => [...p.audioTrackPublications.values()].map((pub) => pub.track))]
+      const byId = new Map<string, Stat>()
+      for (const track of tracks) {
+        const report = await track?.getRTCStatsReport().catch(() => undefined)
+        report?.forEach((stat: Stat) => byId.set(stat.id, stat))
+      }
+      return byId.size ? readSample([...byId.values()]) : null
     },
     /**
      * Calls `onLevel` (0..1) about fifteen times a second with the loudness of the member's own
@@ -181,11 +249,14 @@ export function createAudio(container: HTMLElement, on: AudioEvents) {
       }
       const onVisibility = () => attach()
       watched.on(TrackEvent.Restarted, attach)
+      // With noise removal on, the meter reads the cleaned-up sound: what the room hears.
+      watched.on(TrackEvent.TrackProcessorUpdate, attach)
       watched.on(TrackEvent.Ended, onGone)
       document.addEventListener('visibilitychange', onVisibility)
       attach()
       return () => {
         watched.off(TrackEvent.Restarted, attach)
+        watched.off(TrackEvent.TrackProcessorUpdate, attach)
         watched.off(TrackEvent.Ended, onGone)
         document.removeEventListener('visibilitychange', onVisibility)
         detach()
