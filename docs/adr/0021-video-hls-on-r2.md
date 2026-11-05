@@ -38,7 +38,8 @@ device and posts without waiting for processing**: the post is hidden, marked
 4. **Encode** on at least 8 vCPUs of the worker's own: a 3-minute clip is ready in
    about 25 seconds (1080p H.264) to 3 minutes (4K 60 fps HDR) (section 5).
 5. **Preview, then post before ready**: the composer plays the member's own file
-   at once; one wait for the upload, none for processing (section 6).
+   at once; Post can be pressed straight away and goes when the upload completes;
+   no wait for processing (section 6).
 6. **Play** with the browser's own HLS on iPhones and hls.js elsewhere, starting
    low and stepping up, capped by the member's data setting (section 7).
 
@@ -240,17 +241,22 @@ no longer wait for it (section 6), that is acceptable.
 **Preview first, from the member's own file.** As soon as a video is picked, the
 composer plays it from the device (an object URL in a `<video>`), while it
 uploads: the member checks it is the right clip, writes the text, and can remove
-it. This is how Instagram and TikTok work: the preview is of the member's file,
-and the upload and processing happen after they share. Where the browser cannot
-play the file (iPhone HEVC on some desktop browsers), the composer says so and
-shows the poster once the worker has made it. The preview is of the original, so
-HDR may look a little different from what readers get after tone-mapping.
+it. Bluesky's website does exactly this (its code is public), and Instagram is
+reported to start the upload before Share, as we do. Where the browser cannot play the file (iPhone HEVC on some
+desktop browsers), the composer says so and shows the poster once the worker has
+made it. A preview that fails never removes the video or stops its upload
+(Bluesky's code guards against the same mistake). The preview is of the
+original, so HDR may look a little different from what readers get after
+tone-mapping.
 
-**Then post, without waiting for processing.** Once the upload completes, the
-composer lets the member post. (The website has to finish the upload first,
-since closing the tab stops it; the native apps upload in the background and can
-let the member post sooner.) The post is created with its video still
-`processing`:
+**Then post, without waiting for processing.** The member can press Post at
+once. If the upload is still running, the composer holds the press, says it will
+post when the upload finishes and to keep the tab open, and then posts by itself,
+as Bluesky's composer does; the member can cancel, and if the upload fails nothing is
+posted and the text stays in the composer. (The post can only be created once
+the upload completes, since closing the tab stops it; the native apps upload in
+the background and can let the member leave sooner.) The post is created with
+its video still `processing`:
 
 - **Until the video is `ready` only its author sees the post**, marked
   "Processing". It is left out of every feed, profile seen by others, search,
@@ -269,6 +275,28 @@ let the member post sooner.) The post is created with its video still
   without a clear scan.
 
 This needs no HLS and can be built before it (PR 5 works with phase 1's MP4s).
+
+**How other apps do it** (checked 5 November 2026; sources at the end):
+
+- **Bluesky and Mastodon** create the post only once its video is processed, and
+  keep the member in the composer until then (Mastodon's server refuses a post
+  whose video has not finished). That suits processing that takes seconds; ours
+  takes minutes for 4K (section 5), so we create the post at upload and hide it,
+  and the member can close the tab.
+- **Instagram** holds the post in the app after Share, with a progress bar, and
+  members report being asked to keep the app open until it finishes.
+- **Facebook** tells the member when the video is ready to share. It splits the
+  video into pieces (on the phone where it can) and encodes each as it arrives, so
+  the wait after the upload is short; some analysis of the whole video runs only
+  after the member is told. Ours cannot work that way: nothing is shown before
+  Shield has passed the whole original.
+- **YouTube** lets a video go public once its standard quality is done and adds
+  the higher qualities later, hours later for long 4K. Not copied: the worker
+  makes every size in one pass, and most of its time goes on reading the original
+  (in the trial, 6.06 CPU-seconds per second for iPhone 4K60 HDR against 0.85
+  for 1080p H.264, with the same outputs), which a low-quality pass would still
+  need.
+- **TikTok and X**: nothing reliable found.
 
 ## 7. Playback
 
@@ -340,8 +368,14 @@ and resume, so an app uses it as the website does, in the background if it likes
 HLS plays in the platforms' own players; limits come from `/v1/me`; and
 "Your video is ready" can be a push, since posting no longer waits. **The apps
 shrink 4K and very large clips to about 1080p on the phone before sending** (PR 7),
-so a 3-minute clip leaves as about 180 MB instead of up to 1.2 GB. The website
-keeps sending originals; no in-browser encoder.
+so a 3-minute clip leaves as about 180 MB instead of up to 1.2 GB. Facebook
+re-encodes on the phone only when the file is large, the connection is slow and
+the phone has the hardware for it, to spare the battery when it would gain
+little. The apps always shrink 4K, because that also spares the worker most of
+its work (6.06 CPU-seconds per second for iPhone 4K60 HDR against 0.85 for
+1080p H.264 in the trial), and use Facebook's three tests for clips that are
+already 1080p or smaller. The website keeps sending originals; no in-browser
+encoder.
 
 ## 11. Delivery and the launch gate
 
@@ -388,6 +422,10 @@ checklist and counsel's answers, the drills, a named person's sign-off) stand.
 - **D. Bunny Stream or Mux.** Cheaper than Stream, a new processor each; not tried.
 - **E. Encode in the browser.** Too slow and too hard on the phones we serve; the
   native apps do it instead (PR 7).
+- **F. Keep the post in the composer until its video is ready**, as Bluesky and
+  Mastodon do. No hidden posts and no rule in the post queries; but the member
+  waits with the tab open for minutes on a 4K clip, and loses the post if they
+  close it.
 
 ## Consequences
 
@@ -436,9 +474,11 @@ How netcup's RS 2000 cores encode; playback and start times on an iPhone and on
 mobile data; a clip near 3 minutes long (the longest was 79 seconds); a 1 GB file
 through Shield, and Shield's rate limit; hls.js fetching across origins from the
 site; Cloudflare caching `.m3u8` and `.m4s` under the Cache Rule (not yet added);
-purge by prefix on our zone's plan; HDR colour on an iPhone screen.
+purge by prefix on our zone's plan; HDR colour on an iPhone screen. How TikTok
+and X handle posting, and Instagram's own account of it (its engineering post on
+upload latency would not load); what Instagram does is second-hand.
 
-## Sources (retrieved 4 November 2026)
+## Sources (retrieved 4 and 5 November 2026)
 
 - The trial: `docs/video-trial.md` (PR #85), run `202611042030`, and the results
   table in the video plan's Implementation plan tab.
@@ -451,6 +491,19 @@ purge by prefix on our zone's plan; HDR colour on an iPhone screen.
 - Hetzner dedicated-vCPU cloud servers (CCX33, excluding VAT): https://www.hetzner.com/cloud/general-purpose/
 - netcup root servers (RS 2000, 12-month term): https://www.netcup.com/en/server/root-server
 - Arachnid Shield API: https://shield.projectarachnid.com/docs/
+- How other apps post video (section 6), 5 November 2026:
+  - Bluesky's composer, which holds the Post press until the video is ready, and
+    its web preview: https://github.com/bluesky-social/social-app/blob/main/src/view/com/composer/Composer.tsx
+    and https://github.com/bluesky-social/social-app/blob/main/src/view/com/composer/videos/VideoPreview.web.tsx
+  - Mastodon refusing a post whose media is still processing, and its composer
+    waiting: https://github.com/mastodon/mastodon/blob/main/app/services/post_status_service.rb
+    and https://github.com/mastodon/mastodon/blob/main/app/javascript/mastodon/actions/compose.js
+  - Facebook's Streaming Video Engine (SOSP 2017): upload and encoding overlapped,
+    the member told when the video is ready to share, re-encoding on the phone
+    under three conditions: https://www.cs.princeton.edu/~wlloyd/papers/sve-sosp17.pdf
+  - YouTube Help, publishing once standard quality is done and higher qualities
+    later: https://support.google.com/youtube/answer/57407 and https://support.google.com/youtube/answer/71674
+  - Instagram uploading before Share (second-hand): https://www.popphoto.com/gear/2012/05/how-does-instagram-upload-files-so-damn-fast/
 - In repo: `apps/api/src/video/` (`hls.ts`, `ffmpeg.ts`, `video-config.ts`,
   `video-keys.ts`), `apps/api/src/media/arachnid-shield.ts`,
   `apps/api/src/app.module.ts` (the purger), `infra/deploy/compose.yml` (the
