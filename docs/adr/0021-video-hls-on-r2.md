@@ -36,8 +36,8 @@ device and posts without waiting for processing**: the post is hidden, marked
    media bucket, from the media domain with a Cache Rule; a takedown moves the
    folder and purges it by prefix (section 4).
 4. **Encode** on a server of the worker's own, 4 cores for the pilot (a netcup
-   RS 1000) and 8 as it grows: on 4 cores a 3-minute clip is ready in about 40
-   seconds (1080p H.264) to 4½ minutes (4K 60 fps HDR) (section 5).
+   RS 1000) and 8 as it grows: measured on the RS 1000, a 3-minute clip is ready
+   in about 50 seconds (1080p H.264) to 5 or 6 minutes (4K 60 fps HDR) (section 5).
 5. **Preview, then post before ready**: the composer plays the member's own file
    at once; Post can be pressed straight away and goes when the upload completes;
    no wait for processing (section 6).
@@ -198,37 +198,46 @@ on staging (open question 3).
 
 ## 5. Encoding capacity
 
-Measured in the trial (CPU-seconds per second of video; a clip's time on N busy
-cores is about its length times this, divided by N):
+Measured with the trial command and the production limits, on the same eight
+clips: on a Hetzner CCX33 (8 vCPUs) on 4 November, and on the pilot's netcup
+RS 1000 (4 cores) on 5 November. CPU-seconds per second of video is the work; a
+clip's time on N busy cores is about its length times this, divided by N.
 
-| Original | CPU-s per s | Peak memory | A 3-minute clip on 4 cores (the pilot's) | On 8 vCPUs (about 6 busy) |
+| Original | CPU-s per s (CCX33 / RS 1000) | Peak memory (CCX33 / RS 1000) | A 3-minute clip on the RS 1000 | On 8 vCPUs (about 6 busy) |
 |---|---|---|---|---|
-| 1080p, 30 fps, H.264 (already compressed) | 0.85 | 521 MB | about 40 s | about 25 s |
-| 1080p, 60 fps, HEVC (Android) | 2.26 to 2.50 | 531 MB | about 1.8 min | about 75 s |
-| 1080p, 30 fps, HEVC, HDR (iPhone) | 2.48 to 2.66 | 608 MB | about 2 min | about 80 s |
-| 4K, 60 fps, HEVC (Android) | 4.30 | 662 MB | about 3.2 min | about 2.2 min |
-| 4K, 60 fps, HEVC, HDR (iPhone) | 6.06 | 815 MB | about 4.5 min | about 3 min |
+| 1080p, 30 fps, H.264 (already compressed) | 0.85 / 0.77 | 521 / 407 MB | about 50 s | about 25 s |
+| 1080p, 60 fps, HEVC (Android) | 2.26 to 2.50 / 2.28 to 2.43 | 531 / 413 MB | about 2.4 min | about 75 s |
+| 1080p, 30 fps, HEVC, HDR (iPhone) | 2.48 to 2.66 / 2.20 to 2.32 | 608 / 477 MB | about 2.2 min | about 80 s |
+| 4K, 60 fps, HEVC (Android) | 4.30 / 4.78 | 662 / 548 MB | 5 to 7 min | about 2.2 min |
+| 4K, 60 fps, HEVC, HDR (iPhone) | 6.06 / 6.08 | 815 / 694 MB | 5 to 6 min | about 3 min |
 
-The 3-minute columns are extrapolated from clips of 4 to 79 seconds, and the
-4-core one from the 8-vCPU trial: an encode that would keep six cores busy keeps
-all four busy. The pass mark was "ready within 3 minutes on 8 vCPUs"; the worst
-case sits on it, and takes about 4½ minutes on the pilot's 4 cores. Since members
-no longer wait for it (section 6), that is acceptable.
+netcup's cores do the same work per second of video as Hetzner's, within about
+10% clip by clip, and with fewer threads need less memory. As on the CCX33, one
+encode keeps about three-quarters of the cores busy: 2.5 to 3.6 of the RS 1000's
+4. So its column scales each clip's own encode time to 3 minutes, and where that
+differs from the work spread over 3 busy cores, gives both. The 3-minute columns
+are extrapolated from clips of 4 to 79 seconds; the Android 4K row rests on one
+4-second clip, which kept only 2 cores busy. The pass mark was "ready within 3
+minutes on 8 vCPUs"; the worst case sits on it, and takes 5 to 6 minutes on the
+pilot's 4 cores. Since members no longer wait for it (section 6), that is
+acceptable.
 
 - **Cores.** A server of the worker's own. The pilot starts on 4 cores, a netcup
-  RS 1000 (owner, 5 November 2026; open question 1). Flat out, 4 cores encode
-  about 2,300 minutes a day of ordinary 1080p phone video, or about 950 of 4K
-  60 fps HDR, against 10 a day for the pilot and 330 a day at the Growing stage
-  (section 8). 8 cores (an RS 2000) double that and bring the worst clip to about
-  3 minutes: move up when clips start to queue, or before the Large stage. netcup
-  upgrades a server to a bigger plan of the same generation in its control panel,
-  free and keeping the data, and cannot go back down. `VIDEO_WORKER_CPUS` is set
-  to the server's cores; compose's default of 2 would make a 3-minute 4K HDR clip
-  take about 9 minutes.
-- **One video at a time per worker** (concurrency 1): one encode keeps about six
-  cores busy. More throughput is more workers on more servers, reading the same
+  RS 1000 (owner, 5 November 2026; open question 1). Flat out, it encodes about
+  1,800 minutes a day of ordinary 1080p phone video, or about 800 of 4K 60 fps
+  HDR, against 10 a day for the pilot and 330 a day at the Growing stage
+  (section 8). 8 cores (an RS 2000) roughly double that and bring the worst clip
+  to about 3 minutes: move up when clips start to queue, or before the Large
+  stage. netcup upgrades a server to a bigger plan of the same generation in its
+  control panel, free and keeping the data, and cannot go back down.
+  `VIDEO_WORKER_CPUS` is set to the server's cores; compose's default of 2 would
+  make a 3-minute 4K HDR clip take 10 minutes or more.
+- **One video at a time per worker** (concurrency 1): one encode keeps about
+  three-quarters of the cores busy (6 of 8, 3 of 4). More throughput is more
+  workers on more servers, reading the same
   queue.
-- **Memory.** 1.5 GB stays the limit; the worst clip peaked at 815 MB.
+- **Memory.** 1.5 GB stays the limit; the worst clip peaked at 815 MB on the
+  CCX33 and 694 MB on the RS 1000.
 - **Scratch on disk, not `tmpfs`.** The worker mounts a 2 GB `tmpfs` today, and
   `tmpfs` pages count against the container's memory limit. With a 1 GB original
   in it beside an 815 MB encode, the worker would be killed. PR 2 moves the scratch
@@ -238,7 +247,8 @@ no longer wait for it (section 6), that is acceptable.
   about 5 minutes plus 4 times the clip's length, so a 3-minute clip gets 17
   minutes, which covers a 2-core staging worker. The job's limit is that plus the
   Shield upload. Exact numbers are set in PR 2.
-- **Shield** answered in 0.4 to 3 seconds per clip, the largest 93.5 MB. Its size
+- **Shield** answered in 0.4 to 3 seconds per clip from the CCX33 and 0.6 to 5.4
+  from the RS 1000, the largest 93.5 MB. Its size
   and rate limits are not published, and a 1 GB file has not been tried
   **(unverified)**. Its time limit is 5 minutes per file today; the original is
   streamed from disk, so a large file does not cost memory.
@@ -350,11 +360,11 @@ real cost.
 
 netcup's prices are on a 12-month term and include German VAT at 19%, which may
 differ by country (the RS 1000 is €25.00 on a 1-month term, €18.47 on 24 months;
-the RS 2000 €46.81 and €34.60). They assume netcup's cores encode like Hetzner's
-CCX33 (€138.99 a month), which is what the trial measured **(unverified)**.
-netcup bills root servers by the month, not the hour, so the trial command is
-run on the RS 1000 before it takes jobs (open question 1). Not counted: developer
-time, monitoring, and the traffic of sending originals to Shield.
+the RS 2000 €46.81 and €34.60). netcup's cores encode like those of Hetzner's
+CCX33 (€138.99 a month): the trial command ran on the RS 1000 on 5 November
+before it took any jobs, and did the same work per second of video, within about
+10% (section 5). Not counted: developer time, monitoring, and the traffic of
+sending originals to Shield.
 
 ## 9. Schema, API and settings
 
@@ -449,7 +459,7 @@ checklist and counsel's answers, the drills, a named person's sign-off) stand.
   it), and a video is about 66 objects per minute of it instead of four files.
 - Takedown becomes a folder operation, and the CDN purge goes by prefix.
 - The worst-case clip, 3 minutes of 4K 60 fps HDR, takes about as long to encode
-  as it lasts on 8 cores, and about 1½ times as long on the pilot's 4.
+  as it lasts on 8 cores, and nearly twice as long on the pilot's 4.
 - 18+ video needs a design of its own for private HLS before labels ship.
 
 ## Open questions
@@ -464,8 +474,9 @@ checklist and counsel's answers, the drills, a named person's sign-off) stand.
    CPU-seconds per second do not depend on how many cores it is given).
    *Changed (owner, 5 November 2026):* a netcup RS 1000 for the pilot (4 dedicated
    cores, 8 GB, 128 GB, €21.73 a month on a 12-month term), upgraded to an RS 2000
-   when clips start to queue (section 5). The trial command runs on it before it
-   takes jobs, which also gives the 4-core measurement the trial did not make.
+   when clips start to queue (section 5). The trial command ran on it on
+   5 November, before it took any jobs: its cores do the same work per second of
+   video as the CCX33's (section 5).
 2. **Cloudflare's written answer.** ADR 0019 asked for one. Recommend: rely on the
    published terms (Context), and still ask once in writing whether the CSAM
    Scanning Tool covers video, which it does not say. Not a gate. *Answer (owner,
@@ -486,19 +497,20 @@ checklist and counsel's answers, the drills, a named person's sign-off) stand.
 
 ## Could not verify
 
-How netcup's cores encode (the RS 1000 and RS 2000 share the AMD EPYC 9645),
-and whether its "dedicated cores" are whole cores or threads; that an RS 1000
-upgrades to an RS 2000 in place (netcup's example is RS 2000 to RS 4000);
-playback and start times on an iPhone and on mobile data; a clip near 3 minutes
-long (the longest was 79 seconds); a 1 GB file through Shield, and Shield's rate
-limit; hls.js fetching across origins from the site; Cloudflare caching `.m3u8` and `.m4s` under the Cache Rule (not yet added);
-purge by prefix on our zone's plan; HDR colour on an iPhone screen. How TikTok
+Whether netcup's "dedicated cores" are whole cores or threads; an Android 4K clip
+longer than 4 seconds on 4 cores; that an RS 1000 upgrades to an RS 2000 in place
+(netcup's example is RS 2000 to RS 4000); playback and start times on an iPhone
+and on mobile data; a clip near 3 minutes long (the longest was 79 seconds); a
+1 GB file through Shield, and Shield's rate limit; hls.js fetching across origins
+from the site; Cloudflare caching `.m3u8` and `.m4s` under the Cache Rule (not
+yet added); purge by prefix on our zone's plan; HDR colour on an iPhone screen. How TikTok
 and X handle posting, and Instagram's own account of it (its engineering post on
 upload latency would not load); what Instagram does is second-hand.
 
 ## Sources (retrieved 4 and 5 November 2026)
 
-- The trial: `docs/video-trial.md` (PR #85), run `202611042030`, and the results
+- The trial: `docs/video-trial.md` (PR #85), run `202611042030` on a Hetzner CCX33
+  (4 November) and a run on the netcup RS 1000 (5 November), and the results
   table in the video plan's Implementation plan tab.
 - Cloudflare's updated terms, on serving video from R2 through the CDN: https://blog.cloudflare.com/updated-tos/
 - Cloudflare default cache behaviour (`.m3u8` and `.m4s` not cached): https://developers.cloudflare.com/cache/concepts/default-cache-behavior/
