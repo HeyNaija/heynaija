@@ -33,7 +33,7 @@ const TIERS = ['moderator', 'community', 'recent'] as const
 
 // Public activity only: a post that is still up, or a moderator role that every
 // community page lists.
-const live = sql`p.deleted_at is null and p.removed_at is null`
+const live = sql`p.deleted_at is null and p.removed_at is null and p.gist_id is null`
 const recent = sql`p.created_at > now() - make_interval(days => ${ACTIVE_WITHIN_DAYS})`
 
 /**

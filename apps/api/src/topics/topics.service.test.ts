@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { members, posts } from '@heynaija/db'
+import { gists, members, posts } from '@heynaija/db'
 import { eq, inArray } from 'drizzle-orm'
 import { PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
@@ -38,6 +38,12 @@ test('one member using a hashtag many times is still one member', async () => {
   assert.deepEqual(await ranked(), [])
   await post(chi, 'and me #onlyme')
   assert.deepEqual(await ranked(), ['OnlyMe 3/12'])
+})
+
+test('hashtags in replies inside a Gist are not counted', async () => {
+  const [{ id: gist }] = (await db.insert(gists).values({ hostId: ada, title: 'Room' }).returning({ id: gists.id })) as [{ id: string }]
+  for (const id of [ada, bayo, chi]) await postsService.create(id, '#Hidden inside a Gist', { gist })
+  assert.deepEqual(await ranked(), [])
 })
 
 test('replies and quotes count; ties go to more posts, then the latest use', async () => {

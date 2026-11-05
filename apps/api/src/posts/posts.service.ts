@@ -3,6 +3,7 @@ import {
   communities,
   type Db,
   follows,
+  gists,
   likes,
   media,
   members,
@@ -313,9 +314,11 @@ export type UnavailableReply = {
   replyParentId: string | null
   createdAt: Date
   hasReplies: true
+  hiddenByHost?: true
 }
 export type ThreadReply = PostView | UnavailableReply
 export type ReplyPage = { replies: ThreadReply[]; cursor: string | null }
+export type GistReplyPage = ReplyPage & { viewerCanReply: boolean }
 export type Thread = {
   ancestors: PostView[]
   post: PostView
@@ -360,10 +363,11 @@ const pollExpiresAt = (expiresIn: PollInput['expiresIn']): Date | null => {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000)
 }
 
-const topLevel = isNull(posts.replyParentId)
+const topLevel = sql`${posts.replyParentId} is null and ${posts.gistId} is null`
 
-// Neither deleted by the author nor taken down by a moderator.
-const live = and(isNull(posts.deletedAt), isNull(posts.removedAt))
+// Neither deleted by the author, taken down by a moderator, nor hidden by a Gist's host.
+const live = and(isNull(posts.deletedAt), isNull(posts.removedAt), isNull(posts.hiddenByHostAt))
+const shown = sql`${posts.deletedAt} is null and ${posts.removedAt} is null and ${posts.hiddenByHostAt} is null`
 
 /**
  * Shared eligibility for ordinary posts, reply nodes, branch parents, quoted posts
@@ -424,7 +428,7 @@ const quoteOf = (viewerId: string | null, quotePostId: SQL) => sql<QuoteRow | nu
     'authorAvatarId', qa.avatar_media_id, 'authorFounder', ${isFounder(sql`q.author_id`)}, 'text', q.text, 'images', ${imagesOf(sql`q.id`)},
     'createdAt', q.created_at, 'replyParentId', q.reply_parent_id)
   from posts q join members qa on qa.id = q.author_id
-  where q.id = ${quotePostId} and q.deleted_at is null and q.removed_at is null
+  where q.id = ${quotePostId} and q.deleted_at is null and q.removed_at is null and q.gist_id is null
     and ${visibleAuthor(viewerId, sql`q.author_id`, sql`qa.active`)}
 ), json_build_object('unavailable', true)) end`
 
@@ -480,7 +484,7 @@ const replyAudienceOf = (postId: SQL, rootId: SQL) => sql<ReplyAudience>`coalesc
  * gone altogether restricts no one, though a block with its author still does.
  */
 const canReplyTo = (viewerId: string | null, postId: SQL, rootId: SQL) => viewerId
-  ? sql<boolean>`not exists(
+  ? sql<boolean>`(not exists(
       select 1 from posts r join members ra on ra.id = r.author_id
       where r.id = coalesce(${rootId}, ${postId})
         and (
@@ -495,8 +499,36 @@ const canReplyTo = (viewerId: string | null, postId: SQL, rootId: SQL) => viewer
             ))
           )
         )
-    )`
+    ) and not exists(
+      select 1 from posts gp where gp.id = ${postId} and gp.gist_id is not null and not ${gistAllowsReply(viewerId, sql`gp.gist_id`)}
+    ))`
   : sql<boolean>`false`
+
+/**
+ * A Gist's reply controls, with the Gist as the root `canReplyTo` would read. The host
+ * always may; "mentioned" means named in one of the host's replies there.
+ */
+export const gistAllowsReply = (viewerId: string, gistId: SQL) => sql<boolean>`not exists(
+  select 1 from gists g
+  where g.id = ${gistId}
+    and (
+      ${blockedEitherWay(viewerId, sql`g.host_id`)}
+      or (
+        g.host_id <> ${viewerId}
+        and (
+          g.reply_audience = 'off'
+          or (g.reply_audience = 'following' and not exists(
+            select 1 from follows f where f.follower_id = g.host_id and f.followee_id = ${viewerId}
+          ))
+          or (g.reply_audience = 'mentioned' and not exists(
+            select 1 from post_mentions pm join posts hp on hp.id = pm.post_id
+            where hp.gist_id = g.id and hp.author_id = g.host_id and hp.deleted_at is null and hp.removed_at is null
+              and pm.member_id = ${viewerId}
+          ))
+        )
+      )
+    )
+)`
 
 /**
  * A poll is open to whoever could read its post (`post`): live, by an active
@@ -551,6 +583,8 @@ export class PostsService {
       /** Show this author's posts even if the viewer muted them (on the author's profile). */
       unmuted?: string
       reason?: SQL<FeedReason>
+      /** Read inside this Gist's comment section; everywhere else its posts are never read. */
+      gist?: string
       /** Thread reads show the parent themselves; everything else says what a reply answers. */
       withReplyContext?: boolean
       order?: SQL[]
@@ -565,19 +599,19 @@ export class PostsService {
         authorName: members.displayName,
         authorAvatarId: members.avatarMediaId,
         authorFounder: isFounder(sql`${posts.authorId}`),
-        text: sql<string>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${posts.text} else '' end`,
+        text: sql<string>`case when ${shown} then ${posts.text} else '' end`,
         images: sql<
           ImageRow[]
-        >`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${imagesOf(outerId)} else '[]'::json end`,
-        video: sql<VideoRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${videoOf(outerId)} end`,
-        mentions: sql<PostMention[]>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${mentionsOf(viewerId, outerId)} else '[]'::json end`,
-        hashtags: sql<PostHashtag[]>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${hashtagsOf(outerId)} else '[]'::json end`,
-        linkPreview: sql<LinkPreviewRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${linkPreviewOf(sql`"posts"."link_url"`)} end`,
+        >`case when ${shown} then ${imagesOf(outerId)} else '[]'::json end`,
+        video: sql<VideoRow | null>`case when ${shown} then ${videoOf(outerId)} end`,
+        mentions: sql<PostMention[]>`case when ${shown} then ${mentionsOf(viewerId, outerId)} else '[]'::json end`,
+        hashtags: sql<PostHashtag[]>`case when ${shown} then ${hashtagsOf(outerId)} else '[]'::json end`,
+        linkPreview: sql<LinkPreviewRow | null>`case when ${shown} then ${linkPreviewOf(sql`"posts"."link_url"`)} end`,
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
         replyAudience: replyAudienceOf(outerId, sql`"posts"."root_id"`),
         viewerCanReply: canReplyTo(viewerId, outerId, sql`"posts"."root_id"`),
-        poll: sql<PollRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${pollOf(viewerId, outerId)} end`,
+        poll: sql<PollRow | null>`case when ${shown} then ${pollOf(viewerId, outerId)} end`,
         replyContext: opts.withReplyContext === false ? sql<null>`null` : replyContextOf(viewerId, sql`${posts.replyParentId}`),
         // Kept on the row by triggers (see the posts schema): only active
         // members' likes and live replies count, as a reader would see them.
@@ -593,7 +627,7 @@ export class PostsService {
         viewerBookmarked: viewerId
           ? sql<boolean>`exists(select 1 from bookmarks b where b.post_id = ${outerId} and b.member_id = ${viewerId})`
           : sql<boolean>`false`,
-        deleted: sql<boolean>`${posts.deletedAt} is not null or ${posts.removedAt} is not null`,
+        deleted: sql<boolean>`${posts.deletedAt} is not null or ${posts.removedAt} is not null or ${posts.hiddenByHostAt} is not null`,
         pinnedOnProfile: sql<boolean>`coalesce(${members.pinnedPostId} = ${posts.id}, false)`,
         pinnedInCommunity: sql<boolean>`coalesce(${communities.pinnedPostId} = ${posts.id}, false)`,
         viewerCanPinInCommunity: viewerId
@@ -601,7 +635,7 @@ export class PostsService {
           : sql<boolean>`false`,
         communitySlug: communities.slug,
         communityName: communities.name,
-        quote: sql<QuoteRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${quoteOf(viewerId, sql`${posts.quotePostId}`)} end`,
+        quote: sql<QuoteRow | null>`case when ${shown} then ${quoteOf(viewerId, sql`${posts.quotePostId}`)} end`,
         reason: opts.reason ?? sql<null>`null`,
       })
       .from(posts)
@@ -618,6 +652,7 @@ export class PostsService {
             opts.unmuted,
           ),
           opts.includeDeleted ? undefined : live,
+          opts.gist ? eq(posts.gistId, opts.gist) : isNull(posts.gistId),
           where,
         ),
       )
@@ -752,7 +787,7 @@ export class PostsService {
       with entries as (
         (select p.id as post_id, p.created_at as at, null::uuid as reposter_id
         from posts p join members a on a.id = p.author_id
-        where p.reply_parent_id is null
+        where p.reply_parent_id is null and p.gist_id is null
           and (${byMember(sql`p.author_id`)}${communityIds.length ? sql` or p.community_id = any(${ids(communityIds)})` : sql``})
           and ${postVisible} and not ${memberRepost(sql`p.id`)}
           ${before(sql`p.created_at`, sql`p.id`)}
@@ -761,7 +796,7 @@ export class PostsService {
         union all
         (select r.post_id, r.created_at, r.member_id
         from reposts r join posts p on p.id = r.post_id join members a on a.id = p.author_id
-        where ${byMember(sql`r.member_id`)} and ${postVisible}
+        where ${byMember(sql`r.member_id`)} and ${postVisible} and p.gist_id is null
           and not ${memberRepost(sql`r.post_id`, sql`(r.created_at, r.member_id)`)}
           ${before(sql`r.created_at`, sql`r.post_id`)}
         order by r.created_at desc, r.post_id desc
@@ -917,7 +952,7 @@ export class PostsService {
               where cm.member_id = ${viewerId} and cm.community_id = p.community_id)`
             : sql`false`} as in_joined
         from posts p join members a on a.id = p.author_id
-        where p.reply_parent_id is null and p.created_at > ${since} and p.created_at <= ${until}
+        where p.reply_parent_id is null and p.gist_id is null and p.created_at > ${since} and p.created_at <= ${until}
           and p.deleted_at is null and p.removed_at is null
           ${viewerId ? sql`and p.author_id <> ${viewerId}` : sql``}
           and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)}
@@ -1064,7 +1099,7 @@ export class PostsService {
         and(
           eq(members.id, memberId),
           sql`exists(select 1 from posts p where p.id = ${postId} and p.author_id = ${memberId}
-            and p.reply_parent_id is null and p.deleted_at is null and p.removed_at is null)`,
+            and p.reply_parent_id is null and p.gist_id is null and p.deleted_at is null and p.removed_at is null)`,
         ),
       )
       .returning({ id: members.id })
@@ -1153,7 +1188,7 @@ export class PostsService {
     const { rows } = await this.db.execute<{ id: string }>(sql`
       select p.id from posts p
       join members m on m.id = p.author_id and m.active
-      where p.reply_parent_id is null and p.deleted_at is null and p.removed_at is null and p.created_at > ${since}
+      where p.reply_parent_id is null and p.gist_id is null and p.deleted_at is null and p.removed_at is null and p.created_at > ${since}
         and p.like_count + p.reply_count > 0
       order by p.reply_count * 2 + p.like_count desc, p.created_at desc, p.id desc
       limit ${TRENDING_CANDIDATES}`)
@@ -1216,6 +1251,71 @@ export class PostsService {
     return post ?? null
   }
 
+  async postInGist(viewerId: string | null, gistId: string, id: string): Promise<PostView | null> {
+    const [post] = await this.select(viewerId, eq(posts.id, id), { gist: gistId, limit: 1, withReplyContext: false })
+    return post ?? null
+  }
+
+  async gistReplies(viewerId: string | null, gistId: string, limit: number, order: ReplyOrder, cursor?: string): Promise<GistReplyPage> {
+    if (cursor) decodeReplyCursor(cursor, gistId, order)
+    const [page, allowed] = await Promise.all([
+      this.replyPage(viewerId, null, Math.min(REPLY_PAGE_SIZE, Math.max(1, limit)), order, cursor, gistId),
+      viewerId
+        ? this.db.execute<{ allowed: boolean }>(sql`select ${gistAllowsReply(viewerId, sql`${gistId}::uuid`)} as allowed`)
+        : Promise.resolve(null),
+    ])
+    return { ...page, viewerCanReply: allowed?.rows[0]?.allowed === true }
+  }
+
+  async repliesInGist(
+    viewerId: string | null,
+    gistId: string,
+    parentId: string,
+    limit: number,
+    cursor: string | undefined,
+    order: ReplyOrder,
+  ): Promise<ReplyPage | null> {
+    if (cursor) decodeReplyCursor(cursor, parentId, order)
+    const [parent] = await this.db
+      .select({ id: posts.id })
+      .from(posts)
+      .innerJoin(members, eq(members.id, posts.authorId))
+      .where(
+        and(
+          eq(posts.id, parentId),
+          eq(posts.gistId, gistId),
+          visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`),
+          or(live, sql`exists(select 1 from posts child where child.reply_parent_id = ${posts.id})`),
+        ),
+      )
+      .limit(1)
+    if (!parent) return null
+    return this.replyPage(viewerId, parentId, Math.min(REPLY_PAGE_SIZE, Math.max(1, limit)), order, cursor, gistId)
+  }
+
+  async gistReplyCount(gistId: string): Promise<number> {
+    const { rows } = await this.db.execute<{ n: number }>(sql`
+      select count(*)::int as n from posts p join members m on m.id = p.author_id and m.active
+      where p.gist_id = ${gistId} and p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null`)
+    return rows[0]?.n ?? 0
+  }
+
+  /** The caller has checked that the host is acting. False if the reply is not in the Gist. */
+  async hideInGist(gistId: string, postId: string, hidden: boolean): Promise<boolean> {
+    const rows = await this.db
+      .update(posts)
+      .set({ hiddenByHostAt: hidden ? new Date() : null })
+      .where(and(eq(posts.id, postId), eq(posts.gistId, gistId), isNull(posts.deletedAt)))
+      .returning({ id: posts.id })
+    return rows.length > 0
+  }
+
+  async likeInGist(memberId: string, gistId: string, postId: string): Promise<boolean> {
+    if (!(await this.postInGist(memberId, gistId, postId))) return false
+    await this.db.insert(likes).values({ memberId, postId }).onConflictDoNothing()
+    return true
+  }
+
   /** A parent is checked afresh, including when its structural stub was loaded earlier. */
   async replies(
     viewerId: string | null,
@@ -1233,6 +1333,7 @@ export class PostsService {
       .where(
         and(
           eq(posts.id, parentId),
+          isNull(posts.gistId),
           visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`),
           or(live, sql`exists(select 1 from posts child where child.reply_parent_id = ${posts.id})`),
         ),
@@ -1252,8 +1353,16 @@ export class PostsService {
    * by the author is a placeholder among everyone else's, so its place does not
    * say whose it was.
    */
-  private async replyPage(viewerId: string | null, parentId: string, limit: number, order: ReplyOrder, cursor?: string): Promise<ReplyPage> {
-    const after = cursor ? decodeReplyCursor(cursor, parentId, order) : null
+  private async replyPage(
+    viewerId: string | null,
+    parentId: string | null,
+    limit: number,
+    order: ReplyOrder,
+    cursor?: string,
+    gist?: string,
+  ): Promise<ReplyPage> {
+    const scopeId = (parentId ?? gist)!
+    const after = cursor ? decodeReplyCursor(cursor, scopeId, order) : null
     const direction = sql.raw(order === 'newest' ? 'desc' : 'asc')
     const beyond = (group: 0 | 1) => {
       if (!after || after.group < group) return sql``
@@ -1262,13 +1371,15 @@ export class PostsService {
         ? sql`and (p.created_at, p.id) < (${after.timestamp}::timestamptz, ${after.id}::uuid)`
         : sql`and (p.created_at, p.id) > (${after.timestamp}::timestamptz, ${after.id}::uuid)`
     }
-    const parentAuthor = sql`(select author_id from posts where id = ${parentId})`
+    const parentAuthor = parentId ? sql`(select author_id from posts where id = ${parentId})` : sql`(select host_id from gists where id = ${gist})`
+    const within = parentId ? sql`p.reply_parent_id = ${parentId}` : sql`(p.reply_parent_id is null and p.gist_id = ${gist})`
     const visible = visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)
     type ReplyRow = {
       id: string
       reply_parent_id: string | null
       created_at: Date
       grp: 0 | 1
+      hidden: boolean
       cursor_timestamp: string
       view: (Omit<PostView, 'images' | 'video' | 'createdAt' | 'authorAvatar' | 'quote' | 'poll' | 'links' | 'linkPreview'> & {
         images: ImageRow[]
@@ -1283,24 +1394,26 @@ export class PostsService {
     const { rows } = await this.db.execute<ReplyRow>(sql`
       with page as materialized (
         select * from (
-          (select p.id, p.reply_parent_id, p.created_at, false as unavailable, 0 as grp
+          (select p.id, p.reply_parent_id, p.created_at, false as unavailable, false as hidden, 0 as grp
           from posts p join members a on a.id = p.author_id
-          where p.reply_parent_id = ${parentId}
-            and p.author_id = ${parentAuthor} and p.deleted_at is null and p.removed_at is null
+          where ${within}
+            and p.author_id = ${parentAuthor} and p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null
             and ${visible}
             ${beyond(0)}
           order by p.created_at ${direction}, p.id ${direction}
           limit ${limit + 1})
           union all
           (select p.id, p.reply_parent_id, p.created_at,
-            p.deleted_at is not null or p.removed_at is not null as unavailable, 1 as grp
+            p.deleted_at is not null or p.removed_at is not null or p.hidden_by_host_at is not null as unavailable,
+            p.hidden_by_host_at is not null and p.deleted_at is null and p.removed_at is null as hidden, 1 as grp
           from posts p join members a on a.id = p.author_id
-          where p.reply_parent_id = ${parentId}
-            and (p.author_id is distinct from ${parentAuthor} or p.deleted_at is not null or p.removed_at is not null)
+          where ${within}
+            and (p.author_id is distinct from ${parentAuthor} or p.deleted_at is not null or p.removed_at is not null or p.hidden_by_host_at is not null)
             -- An erased account's replies are all deleted, so they come only as
             -- placeholders keeping other people's replies under them in reach.
             and (${visible} or a.deleted_at is not null)
-            and ((p.deleted_at is null and p.removed_at is null)
+            and ((p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null)
+              or (p.hidden_by_host_at is not null and p.deleted_at is null and p.removed_at is null)
               or exists(select 1 from posts child where child.reply_parent_id = p.id))
             ${beyond(1)}
           order by p.created_at ${direction}, p.id ${direction}
@@ -1309,7 +1422,7 @@ export class PostsService {
         order by grp, created_at ${direction}, id ${direction}
         limit ${limit + 1}
       )
-      select page.id, page.reply_parent_id, page.created_at, page.grp,
+      select page.id, page.reply_parent_id, page.created_at, page.grp, page.hidden,
         to_char(page.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp,
         case when page.unavailable then null else json_build_object(
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
@@ -1346,6 +1459,7 @@ export class PostsService {
             replyParentId: row.reply_parent_id,
             createdAt: row.created_at,
             hasReplies: true,
+            ...(row.hidden ? { hiddenByHost: true as const } : {}),
           }
         }
         const { images, video, createdAt, authorAvatarId, quote, poll, linkPreview, ...post } = row.view
@@ -1362,7 +1476,7 @@ export class PostsService {
         }
       }),
       cursor: rows.length > limit && last
-        ? encodeReplyCursor(parentId, order, { group: last.grp, timestamp: last.cursor_timestamp, id: last.id })
+        ? encodeReplyCursor(scopeId, order, { group: last.grp, timestamp: last.cursor_timestamp, id: last.id })
         : null,
     }
   }
@@ -1388,6 +1502,7 @@ export class PostsService {
       replyAudience = 'everyone',
       anyMember = false,
       alongside,
+      gist,
     }: {
       replyTo?: string
       communitySlug?: string
@@ -1400,6 +1515,7 @@ export class PostsService {
       anyMember?: boolean
       /** More to write in the same transaction, once the post has its ID. */
       alongside?: (tx: Transaction, id: string) => Promise<void>
+      gist?: string
     } = {},
   ): Promise<{ id: string; linkUrl: string | null }> {
     let parent: { id: string; authorId: string; rootId: string | null; communityId: string | null } | undefined
@@ -1415,6 +1531,7 @@ export class PostsService {
         .where(
           and(
             eq(posts.id, quote),
+            isNull(posts.gistId),
             live,
             eq(members.active, true),
             sql`not ${blockedEitherWay(authorId, sql`"posts"."author_id"`)}`,
@@ -1432,13 +1549,17 @@ export class PostsService {
         .where(
           and(
             eq(posts.id, replyTo),
+            gist ? eq(posts.gistId, gist) : isNull(posts.gistId),
             live,
             eq(members.active, true),
             sql`not ${blockedEitherWay(authorId, sql`"posts"."author_id"`)}`,
           ),
         )
       if (!parent) throw new ParentNotFoundError('the post you are replying to no longer exists')
-      communityId = parent.communityId
+      communityId = gist ? null : parent.communityId
+    } else if (gist) {
+      const [found] = await this.db.select({ id: gists.id }).from(gists).where(eq(gists.id, gist))
+      if (!found) throw new ParentNotFoundError('that Gist no longer exists')
     } else if (communitySlug) {
       const [community] = await this.db
         .select({
@@ -1455,6 +1576,7 @@ export class PostsService {
     // The first web address gets a preview card; asking for it is up to the caller,
     // once the post exists (see `LinksService.request`).
     const linkUrl = previewUrlOf(text)
+    let gistHost: string | null = null
     return this.db.transaction(async (tx) => {
       if (parent) {
         // Locking the root waits out a change to its reply audience, so a reply
@@ -1469,6 +1591,15 @@ export class PostsService {
           .for('no key update')
         if (root && !root.allowed) throw new ReplyNotAllowedError('the conversation author limited who can reply')
       }
+      if (gist) {
+        const [locked] = await tx
+          .select({ allowed: gistAllowsReply(authorId, sql`${gists.id}`), hostId: gists.hostId })
+          .from(gists)
+          .where(eq(gists.id, gist))
+          .for('share')
+        if (!locked?.allowed) throw new ReplyNotAllowedError('the host limited who can reply')
+        gistHost = locked.hostId
+      }
       const [row] = await tx
         .insert(posts)
         .values({
@@ -1476,6 +1607,7 @@ export class PostsService {
           text,
           linkUrl,
           communityId,
+          gistId: gist ?? null,
           replyParentId: parent?.id ?? null,
           rootId: parent ? (parent.rootId ?? parent.id) : null,
           quotePostId: quoted?.id ?? null,
@@ -1537,10 +1669,14 @@ export class PostsService {
       // Someone told about this post as a reply or a quote is not told again that
       // it mentions them, and only the first few others named are told at all.
       const mentioned = (await recordMentions(tx, { id: row!.id, authorId, text }))
-        .filter((id) => id !== parent?.authorId && id !== quoted?.authorId)
+        .filter((id) => id !== parent?.authorId && id !== quoted?.authorId && id !== gistHost)
         .slice(0, MENTIONS_NOTIFIED_MAX)
       await notify(tx, [
-        ...(parent ? [{ recipientId: parent.authorId, kind: 'reply' as const, actorId: authorId, postId: row!.id }] : []),
+        ...(parent
+          ? [{ recipientId: parent.authorId, kind: 'reply' as const, actorId: authorId, postId: row!.id }]
+          : gistHost
+            ? [{ recipientId: gistHost, kind: 'reply' as const, actorId: authorId, postId: row!.id }]
+            : []),
         // A reply that quotes the post it answers notifies once, as a reply.
         ...(quoted && quoted.authorId !== parent?.authorId
           ? [{ recipientId: quoted.authorId, kind: 'quote' as const, actorId: authorId, postId: row!.id }]
