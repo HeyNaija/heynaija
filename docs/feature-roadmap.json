@@ -1454,7 +1454,8 @@
       "evidence": [
         "apps/api/src/media/media.service.ts",
         "apps/web/app/ui/post-images.tsx",
-        "docs/adr/0019-video-posts.md"
+        "docs/adr/0019-video-posts.md",
+        "docs/adr/0021-video-hls-on-r2.md"
       ],
       "dependency": [
         "upload-scanning",
