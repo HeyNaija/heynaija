@@ -92,6 +92,14 @@ people out of Gists already live within a minute, and the empty rooms then end.
 The `GISTS_*` numbers (co-host, speaker and listener caps) are limits, not switches,
 and stay in the env.
 
+## `gistReplies`
+
+`gistReplies` (off in production, on in staging and development) gates writing a reply in
+a Gist's comment section (ADR 0017). It only has an effect where `gists` is on: every
+`/v1/gists` route is behind the `gists` rules above first. Off stops new replies and
+leaves the existing ones readable; deleting your own reply, and the host's hiding, keep
+working. `/v1/me` reports it in `features.gistReplies`.
+
 ## Flipping a flag
 
 Site moderators (the site-wide role) use **Moderation, Feature flags** in the web app,

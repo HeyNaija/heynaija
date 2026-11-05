@@ -43,11 +43,11 @@ export class GistRepliesService {
     return { ...page, count, viewerIsHost: gist.hostId === viewer.id, replyAudience: gist.replyAudience }
   }
 
-  async branch(viewer: Viewer, gistId: string, parentId: string, { order, cursor, limit = 20 }: Paging): Promise<ReplyPage> {
+  async branch(viewer: Viewer, gistId: string, parentId: string, { order, cursor, limit = 20 }: Paging): Promise<ReplyPage & { viewerIsHost: boolean }> {
     const gist = await this.gists.viewable(viewer, gistId)
     const page = await this.posts.repliesInGist(viewer.id, gist.id, parentId, limit, cursor, order)
     if (!page) throw new GistError('not_found')
-    return page
+    return { ...page, viewerIsHost: gist.hostId === viewer.id }
   }
 
   async get(viewer: Viewer, gistId: string, postId: string): Promise<PostView> {

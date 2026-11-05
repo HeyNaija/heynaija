@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { appendReplyPage, branchOrder, canRenderThreadChildren, emptyBranch, insertConfirmedReply, nextThreadPath, pruneCollapsedBranches, THREAD_MAX_DEPTH, THREAD_MAX_GAPS } from '../lib/thread-state.ts'
+import { appendReplyPage, branchOrder, canRenderThreadChildren, emptyBranch, insertConfirmedReply, nextThreadPath, pruneCollapsedBranches, THREAD_MAX_DEPTH, THREAD_MAX_GAPS, threadHref } from '../lib/thread-state.ts'
 
 const row = (id) => ({ id, node: id, lead: id.startsWith('lead') })
 const loaded = (items = [], cursor = null) => ({ ...emptyBranch('root'), items: items.map(row), cursor, loaded: true, open: true })
@@ -116,4 +116,11 @@ test('collapsed cache eviction keeps active branches and the editor ancestry', (
   assert.equal(pruned.b, cache.b)
   assert.equal(pruned.active, cache.active)
   assert.equal(pruned.root, cache.root)
+})
+
+test('a reply in a Gist is read on the Gist page, any other on the post\'s own page', () => {
+  assert.equal(threadHref(null, 'p1'), '/p/p1')
+  assert.equal(threadHref(undefined, 'p1', '?replies=oldest'), '/p/p1?replies=oldest')
+  assert.equal(threadHref('g1', 'p1'), '/gists/g1')
+  assert.equal(threadHref('g1', 'p1', '?replies=oldest'), '/gists/g1?replies=oldest')
 })

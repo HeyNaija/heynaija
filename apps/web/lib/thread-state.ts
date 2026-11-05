@@ -41,6 +41,11 @@ export const THREAD_MAX_DEPTH = 5
  */
 export const THREAD_MAX_GAPS = 6
 
+/** Where a conversation is read: a reply in a Gist on the Gist's page, any other on the post's own. */
+export function threadHref(gistId: string | null | undefined, postId: string, query = ''): string {
+  return gistId ? `/gists/${gistId}${query}` : `/p/${postId}${query}`
+}
+
 /** Scope cycle detection to the rendered ancestry, never to unrelated branches. */
 export function nextThreadPath(ancestors: readonly string[], id: string): readonly string[] | null {
   return ancestors.includes(id) ? null : [...ancestors, id]

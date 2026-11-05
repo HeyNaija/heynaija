@@ -62,6 +62,8 @@ test('anyone who can see the Gist can reply, read the replies and answer a reply
   assert.equal(page.replyAudience, 'everyone')
   const branch = await service.branch(as('dayo'), gist, first.id, { order: 'oldest' })
   assert.deepEqual(branch.replies.map((r) => r.id), [nested.id])
+  assert.equal(branch.viewerIsHost, false)
+  assert.equal((await service.branch(as('ada'), gist, first.id, { order: 'oldest' })).viewerIsHost, true)
   assert.equal((await service.get(as('dayo'), gist, nested.id)).text, 'Never')
 })
 
