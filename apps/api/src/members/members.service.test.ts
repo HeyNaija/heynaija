@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { follows, members, releasedHandles } from '@heynaija/db'
+import { blocks, follows, members, releasedHandles } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { InvalidCursorError } from '../cursor.js'
 import { PostsService } from '../posts/posts.service.js'
@@ -125,13 +125,24 @@ test('member search matches handle prefixes literally', async () => {
     { id: randomUUID(), handle: 'adaxobi' },
     { id: randomUUID(), handle: 'adaeze', active: false },
   ])
-  const found = async (q: string) => (await service.search(q, 10)).map((m) => m.handle)
+  const found = async (q: string) => (await service.search(null, q, 10)).map((m) => m.handle)
   assert.deepEqual(await found('ada'), ['ada', 'ada_obi', 'adaxobi'])
   assert.deepEqual(await found('@ADA'), ['ada', 'ada_obi', 'adaxobi'])
   // "_" is a real character in handles, not a single-character wildcard.
   assert.deepEqual(await found('ada_'), ['ada_obi'])
   assert.deepEqual(await found('%'), [])
   assert.deepEqual(await found('zzz'), [])
+})
+
+test('member search hides members who blocked the searcher or whom the searcher blocked', async () => {
+  await db.insert(blocks).values({ blockerId: ada, blockedId: bayo })
+  const found = async (viewer: string | null, q: string) => (await service.search(viewer, q, 10)).map((m) => m.handle)
+  assert.deepEqual(await found(bayo, 'ada'), [])
+  assert.deepEqual(await found(ada, 'bayo'), [])
+  assert.deepEqual(await found(chi, 'ada'), ['ada'])
+  assert.deepEqual(await found(chi, 'bayo'), ['bayo'])
+  assert.deepEqual(await found(null, 'ada'), ['ada'])
+  assert.deepEqual(await found(null, 'bayo'), ['bayo'])
 })
 
 test('blocking is mutual invisibility and ends follows both ways', async () => {
@@ -226,7 +237,7 @@ test('names and bios lose hidden characters and are limited in length', () => {
 test('search finds members by name as well as handle, handles first', async () => {
   await service.updateProfile(bayo, profileInput.parse({ displayName: 'Adebayo Ade', bio: '' }))
   await service.updateProfile(chi, profileInput.parse({ displayName: '100% Chi', bio: '' }))
-  const found = async (q: string) => (await service.search(q, 10)).map((m) => m.handle)
+  const found = async (q: string) => (await service.search(null, q, 10)).map((m) => m.handle)
 
   assert.deepEqual(await found('ad'), ['ada', 'bayo'])
   assert.deepEqual(await found('Adebayo'), ['bayo'])
@@ -234,7 +245,7 @@ test('search finds members by name as well as handle, handles first', async () =
   // "%" and "_" are matched literally, not as wildcards.
   assert.deepEqual(await found('100%'), ['chi'])
   assert.deepEqual(await found('%'), ['chi'])
-  assert.deepEqual((await service.search('adebayo', 1))[0], { handle: 'bayo', displayName: 'Adebayo Ade', avatar: null, founder: false })
+  assert.deepEqual((await service.search(null, 'adebayo', 1))[0], { handle: 'bayo', displayName: 'Adebayo Ade', avatar: null, founder: false })
 })
 
 test('the Founder badge is given and taken away by handle, and shows on the profile, posts and search', async () => {
@@ -250,7 +261,7 @@ test('the Founder badge is given and taken away by handle, and shows on the prof
   assert.equal((await service.profile(null, 'ada'))!.founderBadge, true)
   assert.equal((await service.profile(null, 'bayo'))!.founderBadge, false)
   assert.deepEqual(
-    (await service.search('ada', 10)).map((m) => [m.handle, m.founder]),
+    (await service.search(null, 'ada', 10)).map((m) => [m.handle, m.founder]),
     [['ada', true]],
   )
   const feed = (await postsService.feed(null, 10)).posts
