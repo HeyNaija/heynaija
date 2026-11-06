@@ -8,7 +8,7 @@ import type { Rejection } from './ffmpeg.js'
 import { type VideoConfig, VIDEO_TYPES, type VideoType } from './video-config.js'
 import { assertVideoEligible } from './video-eligibility.js'
 import { VideoError } from './video-error.js'
-import { originalKey, posterKey, quarantineOriginalKey, quarantinedKey, renditionKey } from './video-keys.js'
+import { originalKey, quarantineOriginalKey, quarantinedKey, videoFolder } from './video-keys.js'
 import { type PostVideo, toPostVideo } from './video-view.js'
 
 export const VIDEO_STORE = Symbol('VIDEO_STORE')
@@ -183,7 +183,7 @@ export class VideoService {
       .from(videoRenditions)
       .where(eq(videoRenditions.mediaId, mediaId))
       .orderBy(videoRenditions.height)
-    return toPostVideo({ id: mediaId, alt: m.alt, durationMs: m.durationMs, width: m.width, height: m.height, renditions })
+    return toPostVideo({ id: mediaId, alt: m.alt, durationMs: m.durationMs, width: m.width, height: m.height, renditions }, this.cfg.filesBase)
   }
 
   // --- Removing ---
@@ -327,10 +327,17 @@ export class VideoService {
     await this.db.update(media).set({ status: 'quarantined' }).where(eq(media.id, mediaId))
   }
 
-  /** Every public file a published video has: its renditions and its poster. */
+  /**
+   * Every public file a published video has (its playlists, pieces and poster), wherever each is now: in
+   * the media bucket, or moved to the private one by a takedown. Listed from storage, since an HLS video
+   * is a few hundred files; from both places, so a move that failed part-way is finished, and purged, in
+   * full by the retry.
+   */
   private async publishedKeys(mediaId: string): Promise<string[]> {
-    const rows = await this.db.select({ height: videoRenditions.height }).from(videoRenditions).where(eq(videoRenditions.mediaId, mediaId))
-    return [...rows.map((r) => renditionKey(mediaId, r.height)), posterKey(mediaId)]
+    const folder = videoFolder(mediaId)
+    const held = quarantinedKey(folder)
+    const keys = [...(await this.store.list('media', folder)), ...(await this.store.list('uploads', held)).map((k) => folder + k.slice(held.length))]
+    return [...new Set(keys)].sort()
   }
 
   /**
@@ -342,9 +349,13 @@ export class VideoService {
     if (uploadId) await this.store.abortMultipart(originalKey(mediaId), uploadId)
     await this.store.remove('uploads', originalKey(mediaId))
     const keys = await this.publishedKeys(mediaId)
-    for (const key of keys) await this.store.remove('media', key)
-    // Gone from the bucket, but they were served `immutable` for a year, so Cloudflare may still have them.
-    await this.jobs.purgeCdn(keys)
+    try {
+      for (const key of keys) await this.store.remove('media', key)
+    } finally {
+      // Gone from the bucket, but they were served `immutable` for a year, so Cloudflare may still have them.
+      // Purged even when storage failed part-way: the retry lists only the files still there.
+      await this.jobs.purgeCdn(keys)
+    }
     for (const key of keys) await this.store.remove('uploads', quarantinedKey(key))
     await this.store.remove('uploads', quarantineOriginalKey(mediaId))
     await this.db.delete(videoRenditions).where(eq(videoRenditions.mediaId, mediaId))

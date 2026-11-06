@@ -334,6 +334,20 @@ export async function pushSubscriptionCount(handle: string): Promise<number> {
   }
 }
 
+/** How many videos `handle` has started to upload: none until the composer sends one. */
+export async function videoUploadCount(handle: string): Promise<number> {
+  const db = pool()
+  try {
+    const { rows } = await db.query<{ count: number }>(
+      `select count(*)::int as count from media v join members m on m.id = v.owner_id where m.handle = $1 and v.kind = 'post_video'`,
+      [handle],
+    )
+    return rows[0]!.count
+  } finally {
+    await db.end()
+  }
+}
+
 /**
  * The post pinned at the top of a community (by id), or null. For a test that
  * pins one in a real community to put back what was there before.
