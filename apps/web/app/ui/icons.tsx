@@ -33,6 +33,8 @@ import {
   Link,
   Lock,
   LogOut,
+  Maximize,
+  Minimize,
   type LucideIcon,
   Mic,
   MicOff,
@@ -54,6 +56,8 @@ import {
   Users,
   Vote,
   Video,
+  Volume2,
+  VolumeX,
   Wallet,
   X,
 } from 'lucide-react'
@@ -106,6 +110,10 @@ export const VideoIcon = icon(Video)
 export const CloseIcon = icon(X)
 export const PlayIcon = icon(Play)
 export const PauseIcon = icon(Pause)
+export const SoundIcon = icon(Volume2)
+export const MutedIcon = icon(VolumeX)
+export const FullScreenIcon = icon(Maximize)
+export const ExitFullScreenIcon = icon(Minimize)
 export const PreviousIcon = icon(ChevronLeft)
 export const NextIcon = icon(ChevronRight)
 export const ArrowUpRightIcon = icon(ArrowUpRight)
