@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { completeVideoUpload, removeVideo, resumeVideoUpload, startVideoUpload, type VideoPlan, videoStatus, type VideoStatus } from '@/app/actions'
+import type { PostVideo } from '@/lib/api'
 import { checkVideoFile, DEFAULT_VIDEO_LIMITS, formatSize, rejectionText, type VideoLimits } from '@/lib/video'
 
 /** A video being attached to a post, from choosing it to the worker having published it. */
@@ -17,6 +18,10 @@ export type VideoDraft = {
   /** The upload broke part-way and the same file can be continued. */
   canRetry: boolean
   description: string
+  /** The member's own file as an object URL, played in the composer while it uploads (ADR 0021 section 6). */
+  preview: string | null
+  /** The worker's video once ready: its poster stands in where this browser cannot play the file itself. */
+  video: PostVideo | null
 }
 
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
@@ -24,12 +29,10 @@ const PARALLEL = 2
 const RETRIES = 3
 
 /** The clip's length from the browser's own player, or undefined when it cannot read this format (HEVC on some browsers). */
-function readDuration(file: File): Promise<number | undefined> {
+function readDuration(url: string): Promise<number | undefined> {
   return new Promise((resolve) => {
-    const url = URL.createObjectURL(file)
     const el = document.createElement('video')
     const done = (ms?: number) => {
-      URL.revokeObjectURL(url)
       el.removeAttribute('src')
       resolve(ms)
     }
@@ -45,6 +48,12 @@ function readDuration(file: File): Promise<number | undefined> {
     }
     el.src = url
   })
+}
+
+/** Lets go of the member's file once its preview is no longer shown. */
+function revoke(preview: { current: string | null }) {
+  if (preview.current) URL.revokeObjectURL(preview.current)
+  preview.current = null
 }
 
 /** One PUT of a slice of the file, with progress. Rejects on any failure so the caller can retry. */
@@ -72,10 +81,17 @@ export function useVideoDraft(limits: VideoLimits = DEFAULT_VIDEO_LIMITS) {
   const [draft, setDraft] = useState<VideoDraft | null>(null)
   const file = useRef<File | null>(null)
   const abort = useRef<AbortController | null>(null)
+  const preview = useRef<string | null>(null)
   // Bumped on remove, so work for a video that was removed stops quietly.
   const generation = useRef(0)
 
-  useEffect(() => () => abort.current?.abort(), [])
+  useEffect(
+    () => () => {
+      abort.current?.abort()
+      revoke(preview)
+    },
+    [],
+  )
 
   const patch = (g: number, p: Partial<VideoDraft>) => {
     if (g === generation.current) setDraft((d) => (d ? { ...d, ...p } : d))
@@ -83,7 +99,7 @@ export function useVideoDraft(limits: VideoLimits = DEFAULT_VIDEO_LIMITS) {
 
   const settle = (g: number, result: VideoStatus | null) => {
     if (!result) return patch(g, { status: 'failed', error: 'That upload has expired. Remove it and add it again.', canRetry: false })
-    if (result.status === 'ready') return patch(g, { status: 'ready', progress: 1, error: null })
+    if (result.status === 'ready') return patch(g, { status: 'ready', progress: 1, error: null, video: result.video })
     if (result.status === 'quarantined') {
       return patch(g, { status: 'held', error: 'This video is being held for a safety check, so it cannot be posted yet.' })
     }
@@ -165,12 +181,16 @@ export function useVideoDraft(limits: VideoLimits = DEFAULT_VIDEO_LIMITS) {
   const choose = async (f: File) => {
     const g = ++generation.current
     abort.current?.abort()
+    revoke(preview)
     file.current = f
-    const fresh = { name: f.name, size: f.size, mediaId: null, status: 'uploading', progress: 0, error: null, canRetry: false, description: '' } satisfies VideoDraft
+    const fresh = { name: f.name, size: f.size, mediaId: null, status: 'uploading', progress: 0, error: null, canRetry: false, description: '', preview: null, video: null } satisfies VideoDraft
     const early = checkVideoFile(f, undefined, limits)
     if (early) return setDraft({ ...fresh, status: 'failed', error: early })
-    setDraft(fresh)
-    const duration = await readDuration(f)
+    // Played from the device at once, while the upload runs; the same URL gives the clip's length.
+    const url = URL.createObjectURL(f)
+    preview.current = url
+    setDraft({ ...fresh, preview: url })
+    const duration = await readDuration(url)
     const refused = checkVideoFile(f, duration, limits)
     if (refused) return patch(g, { status: 'failed', error: refused })
     const plan = await startVideoUpload(f.type || 'video/mp4', f.size, duration)
@@ -184,6 +204,7 @@ export function useVideoDraft(limits: VideoLimits = DEFAULT_VIDEO_LIMITS) {
   const remove = useCallback(() => {
     generation.current++
     abort.current?.abort()
+    revoke(preview)
     file.current = null
     if (mediaId) void removeVideo(mediaId)
     setDraft(null)
@@ -193,6 +214,7 @@ export function useVideoDraft(limits: VideoLimits = DEFAULT_VIDEO_LIMITS) {
   const clear = useCallback(() => {
     generation.current++
     abort.current?.abort()
+    revoke(preview)
     file.current = null
     setDraft(null)
   }, [])

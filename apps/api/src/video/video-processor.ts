@@ -71,6 +71,7 @@ export class VideoProcessor {
   }
 
   private async run(mediaId: string, ownerId: string, contentType: string, work: string, deadline: Deadline): Promise<void> {
+    const started = Date.now()
     const original = join(work, 'original')
     const sha256 = await this.store.download('uploads', originalKey(mediaId), original)
     const bytes = (await stat(original)).size
@@ -98,7 +99,7 @@ export class VideoProcessor {
 
     if (scan.verdict === 'match') return this.block(mediaId, ownerId, original, scan.matchMs)
     if (scan.verdict !== 'clear') return this.hold(mediaId)
-    return this.publish(mediaId, original, p, work, deadline)
+    return this.publish(mediaId, original, p, work, deadline, started)
   }
 
   /** A permanent refusal: a reason class the uploader can be told, the original deleted, no retry. */
@@ -165,7 +166,7 @@ export class VideoProcessor {
     ])
   }
 
-  private async publish(mediaId: string, original: string, p: Probe, work: string, deadline: Deadline): Promise<void> {
+  private async publish(mediaId: string, original: string, p: Probe, work: string, deadline: Deadline, started: number): Promise<void> {
     const plan = renditionPlan(p)
     const outputs = plan.map((r) => join(work, `${r.label}.mp4`))
     await transcode(original, outputs, p, this.cfg, deadline)
@@ -201,6 +202,9 @@ export class VideoProcessor {
       return
     }
     if (!this.cfg.keepOriginals) await this.store.remove('uploads', originalKey(mediaId))
+    // Said for every video, so a quiet log means no work came, not work that vanished.
+    const seconds = ((Date.now() - started) / 1000).toFixed(1)
+    this.log.log(`video ${mediaId} ready in ${seconds} s (${p.width}x${p.height}, ${(p.durationMs / 1000).toFixed(1)} s long, ${plan.length} sizes)`)
   }
 }
 

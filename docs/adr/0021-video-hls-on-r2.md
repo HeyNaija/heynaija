@@ -415,9 +415,10 @@ two or three, L about a week.
 | 2 | HLS encoder and 4K input | the worker writes section 3's files; the limits in section 2; scratch on disk; time limits from length; the API hands readers playlists | 1 | L |
 | 3 | Folders in storage | list and delete many in `ObjectStore`; takedown, release and deletion move folders; purge by prefix | 2's layout | M |
 | 4 | The player | hls.js and the browser's own HLS, the data-setting playlists, the Cache Rule and CORS rule | 2's playlists | M |
-| 5 | Post before ready | section 6 | nothing | L |
-| 6 | The worker's server | its own server, the WireGuard link to production's Postgres and Redis, its deploy, and its limits | the trial | M |
-| 6b | Queue alerts | queue length and time to ready in the logs; an alert when the queue backs up | 6 | S |
+| 5a | The preview | section 6's first paragraph: the member's own clip plays in the composer while it uploads, with a note and then the poster where the browser cannot play it | nothing | S |
+| 5 | Post before ready | the rest of section 6: the held press, and the post hidden until its video is ready | nothing | L |
+| 6 | The worker's server | its own server, the WireGuard link to production's Postgres and Redis, its deploy, and its limits (PRs #88 and #90; running since 5 November 2026) | the trial | done |
+| 6b | Queue alerts | queue length and the wait from upload to ready in the logs (the worker logs each video's own time since 5a); an alert when the queue backs up | 6 | S |
 | 7 | Shrink before upload, in the apps | section 10 | the native apps | M |
 
 After 2 to 6: reopen video on staging for allow-listed testers, fix what they
