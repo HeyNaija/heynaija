@@ -55,34 +55,77 @@ before(migrate)
 beforeEach(reset)
 after(() => pool.end())
 
-test('a signup without the 18+ confirmation is refused', async () => {
+/** A date of birth for someone `years` old today, with a day to spare either way. */
+const bornYearsAgo = (years: number, days = 0) => {
+  const date = new Date()
+  date.setUTCFullYear(date.getUTCFullYear() - years)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+test('a signup without a date of birth is refused', async () => {
   const code = await invites.create()
   const body = { identity_id: unsaved, invite_code: code, handle: 'newcomer' }
-  assert.match((await refusal(body))!, /18 or older/)
-  assert.match((await refusal({ ...body, adult_declared: false }))!, /18 or older/)
+  assert.match((await refusal(body))!, /enter your date of birth/)
+  assert.match((await refusal({ ...body, birth_date: '' }))!, /enter your date of birth/)
+  assert.match((await refusal({ ...body, birth_date: '1990-02-30' }))!, /enter your date of birth/)
+  assert.equal(await refusal({ ...body, birth_date: '1990-03-27' }), null)
+})
+
+test('during the 18+ beta, anyone under 18 is refused, and nobody under 13 ever', async () => {
+  const code = await invites.create()
+  const body = { identity_id: unsaved, invite_code: code, handle: 'newcomer' }
+  assert.equal(await refusal({ ...body, birth_date: bornYearsAgo(18, -2) }), null)
+  assert.match((await refusal({ ...body, birth_date: bornYearsAgo(18, 2) }))!, /aged 18 and over/)
+  assert.match((await refusal({ ...body, birth_date: bornYearsAgo(12) }))!, /aged 18 and over/)
+})
+
+test('the old "18 or older" box still counts for one release', async () => {
+  const code = await invites.create()
+  const body = { identity_id: unsaved, invite_code: code, handle: 'newcomer' }
   assert.equal(await refusal({ ...body, adult_declared: true }), null)
+  assert.match((await refusal({ ...body, adult_declared: false }))!, /enter your date of birth/)
+  // A date, when there is one, decides.
+  assert.match((await refusal({ ...body, adult_declared: true, birth_date: bornYearsAgo(15) }))!, /aged 18 and over/)
 })
 
 test('the invite is still checked first', async () => {
-  const body = { identity_id: unsaved, invite_code: 'HN-NOPE-NOPE-NOPE', handle: 'newcomer', adult_declared: true }
+  const body = { identity_id: unsaved, invite_code: 'HN-NOPE-NOPE-NOPE', handle: 'newcomer', birth_date: '1990-03-27' }
   assert.match((await refusal(body))!, /invite code is not valid/)
+})
+
+test('/join can ask whether a date of birth may join, without anything being kept', async () => {
+  const ask = (birthDate: unknown) => controller.checkAge({ ip: '203.0.113.9', headers: {} } as never, { birthDate })
+  assert.deepEqual(await ask('1990-03-27'), { outcome: 'allowed', joinAge: 18 })
+  assert.deepEqual(await ask(bornYearsAgo(16)), { outcome: 'too_young', joinAge: 18 })
+  assert.deepEqual(await ask(bornYearsAgo(10)), { outcome: 'too_young', joinAge: 18 })
+  assert.deepEqual(await ask('2999-01-01'), { outcome: 'not_a_date', joinAge: 18 })
+  assert.deepEqual(await ask(42), { outcome: 'not_a_date', joinAge: 18 })
+  assert.equal((await db.select().from(ageAssurances)).length, 0)
 })
 
 test('a wrong webhook secret is turned away before anything else', async () => {
   await assert.rejects(controller.registration('nope', {}), (err: unknown) => err instanceof HttpException && err.getStatus() === 401)
 })
 
-test('once the account exists, the age confirmation is recorded with the invite', async () => {
-  const code = await invites.create({ maxUses: 2 })
+test('once the account exists, the date of birth is recorded with the invite', async () => {
+  const code = await invites.create({ maxUses: 3 })
   const adult = randomUUID()
+  const ticked = randomUUID()
   const older = randomUUID()
-  assert.deepEqual(await controller.registered(secret, { identity_id: adult, invite_code: code, handle: 'adult', adult_declared: true }), { redeemed: true })
-  // A body from before the 18+ rule (no adult_declared) still redeems, but records nothing.
+  assert.deepEqual(await controller.registered(secret, { identity_id: adult, invite_code: code, handle: 'adult', birth_date: '1990-03-27' }), { redeemed: true })
+  // A signup begun with the old box records a stated adult with no date.
+  assert.deepEqual(await controller.registered(secret, { identity_id: ticked, invite_code: code, handle: 'ticked', adult_declared: true }), { redeemed: true })
+  // A body from before the 18+ rule (no age at all) still redeems, but records nothing.
   assert.deepEqual(await controller.registered(secret, { identity_id: older, invite_code: code, handle: 'older' }), { redeemed: true })
 
   const [row] = await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, adult))
   assert.equal(row!.method, 'self_declared')
   assert.equal(row!.band, '18_plus')
+  assert.equal(row!.birthDate, '1990-03-27')
+  const [box] = await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, ticked))
+  assert.equal(box!.band, '18_plus')
+  assert.equal(box!.birthDate, null)
   assert.equal((await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, older))).length, 0)
 })
 

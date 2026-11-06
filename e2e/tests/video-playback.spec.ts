@@ -201,3 +201,96 @@ test('on a 375px phone a tap brings the controls back, and the big button pauses
   await expect.poll(() => paused(page, 'Phone video')).toBe(true)
   await expect(player.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
 })
+
+/**
+ * Has the browser say it cannot play HLS itself, as Firefox does, so the player plays
+ * through hls.js. `fetched` gets each playlist and piece the page asks for, with how:
+ * hls.js fetches them (`xhr`), the browser's own player loads them as `media`.
+ */
+async function withoutOwnHls(page: Page, mediaId: string) {
+  await page.addInitScript(() => {
+    const own = HTMLMediaElement.prototype.canPlayType
+    HTMLMediaElement.prototype.canPlayType = function (type) {
+      return /mpegurl/i.test(type) ? '' : own.call(this, type)
+    }
+  })
+  const fetched: string[] = []
+  page.on('request', (r) => {
+    const path = r.url().split(`/videos/${mediaId}/hls/`)[1]
+    if (path) fetched.push(`${r.resourceType()} ${path}`)
+  })
+  return fetched
+}
+
+const HAVE_NOTHING = 0
+const videoOf = (page: Page, text: string) => playerOf(page, text).locator('video')
+const at = (page: Page, text: string) =>
+  videoOf(page, text).evaluate((v: HTMLVideoElement) => ({ source: v.getAttribute('src')?.split(':')[0], paused: v.paused, time: v.currentTime }))
+
+test('without HLS of its own, the browser plays a video through hls.js, which lets go with its page', async ({ browser }) => {
+  const { page, handle } = await newMember(browser, 'hlsjs')
+  const { postId, mediaId } = await seedVideoPost(handle, 'Fallback video')
+  const fetched = await withoutOwnHls(page, mediaId)
+  await serve(page, mediaId)
+  await page.goto(`/u/${handle}`)
+  const post = page.locator('article').filter({ hasText: 'Fallback video', visible: true })
+
+  // hls.js feeds the element itself (a blob: source), starting from the playlist up to 480p.
+  await post.getByRole('button', { name: /^Play video/ }).click()
+  await expect.poll(async () => (await at(page, 'Fallback video')).time).toBeGreaterThan(1)
+  expect(await at(page, 'Fallback video')).toMatchObject({ source: 'blob', paused: false })
+  expect(fetched[0]).toBe('xhr master-480.m3u8')
+  expect(fetched.filter((f) => f.startsWith('media'))).toEqual([])
+
+  // Onto the post's own page: the profile's video, hidden behind it, stops, and hls.js lets it go.
+  const left = (await at(page, 'Fallback video')).time
+  await post.getByText('Fallback video').click()
+  await expect(page).toHaveURL(new RegExp(`/p/${postId}`))
+  await expect.poll(() => playing(page)).toEqual([])
+  await expect
+    .poll(() => page.locator('video').evaluateAll((all: HTMLVideoElement[]) => all.map((v) => ({ src: v.getAttribute('src'), state: v.readyState }))))
+    .toEqual([{ src: null, state: HAVE_NOTHING }])
+
+  // Back: it is there again where it was, waiting for a tap, and plays on from there.
+  await page.goBack()
+  await expect(page).toHaveURL(new RegExp(`/u/${handle}$`))
+  await expect.poll(async () => (await at(page, 'Fallback video')).time).toBeGreaterThan(left - 0.5)
+  expect(await at(page, 'Fallback video')).toMatchObject({ source: 'blob', paused: true })
+  await page.waitForTimeout(1_000)
+  expect(await playing(page)).toEqual([])
+  await playerOf(page, 'Fallback video').getByRole('button', { name: 'Play', exact: true }).click()
+  await expect.poll(() => playing(page)).toEqual(['shown'])
+})
+
+test('saving data, hls.js plays the smallest quality alone', async ({ browser, baseURL }) => {
+  const { page, handle } = await newMember(browser, 'hlssaver')
+  await page.context().addCookies([{ name: 'hn_data', value: 'saver', url: baseURL! }])
+  const { mediaId } = await seedVideoPost(handle, 'Saver video')
+  const fetched = await withoutOwnHls(page, mediaId)
+  await serve(page, mediaId)
+  await page.goto(`/u/${handle}`)
+  const post = page.locator('article').filter({ hasText: 'Saver video', visible: true })
+
+  await post.getByRole('button', { name: /^Play video/ }).click()
+  await expect.poll(async () => (await at(page, 'Saver video')).time).toBeGreaterThan(1)
+  expect(await at(page, 'Saver video')).toMatchObject({ source: 'blob', paused: false })
+  // The clip's smallest is 180p; no master playlist, so nothing larger.
+  expect(fetched.filter((f) => f.endsWith('.m3u8'))).toEqual(['xhr 180/index.m3u8'])
+})
+
+test('when hls.js gives up, the player says the video could not be played', async ({ browser }) => {
+  const { page, handle } = await newMember(browser, 'hlsfails')
+  const { mediaId } = await seedVideoPost(handle, 'Missing video')
+  await withoutOwnHls(page, mediaId)
+  await serve(page, mediaId)
+  // Routes added later go first.
+  await page.route(`**/media/videos/${mediaId}/hls/master-480.m3u8`, (route) => route.fulfill({ status: 404 }))
+  await page.goto(`/u/${handle}`)
+
+  await page.locator('article').filter({ hasText: 'Missing video', visible: true }).getByRole('button', { name: /^Play video/ }).click()
+  const player = playerOf(page, 'Missing video')
+  await expect(player.getByRole('alert')).toHaveText('This video could not be played.')
+  // Its controls stay, as for the browser's own errors.
+  await page.waitForTimeout(3_000)
+  await expect(player).not.toHaveClass(/is-resting/)
+})

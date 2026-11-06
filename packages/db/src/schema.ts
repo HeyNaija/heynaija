@@ -3,6 +3,7 @@ import {
   type AnyPgColumn,
   boolean,
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -753,20 +754,23 @@ export const inviteRedemptions = pgTable('invite_redemptions', {
 // can get its own database role, encrypted storage and separate admin access.
 // Ordinary reads (profiles, posts, feeds, search) never join it; the public
 // badge has its own table below. Never store a raw NIN, a plain hash of one, a
-// date of birth, a legal name or a provider's raw response anywhere.
+// legal name or a provider's raw response anywhere, nor a date of birth outside
+// age_assurances.birth_date.
 // ---------------------------------------------------------------------------
 export const restricted = pgSchema('restricted')
 
 // Age is its own thing, separate from having an account, from identity
 // verification and from voting membership (ADR 0006). Each row is one statement
-// about which age band an account holder is in, and how we know it. Only a band
-// is ever stored: never an age, a birth date or a document. An account with no
-// live row has an unknown age, which never counts as an adult (accounts created
-// before 16 October 2026 start that way). The status a feature acts on is worked
-// out from these rows by ageStatus() in apps/api/src/governance/age.ts.
+// about which age band an account holder is in, and how we know it. Never an age
+// or a document; a date of birth only as the member gave it at signup (ADR 0020,
+// section 1). An account with no live row has an unknown age, which never counts
+// as an adult (accounts created before 16 October 2026 start that way). The
+// status a feature acts on is worked out from these rows by ageStatus() in
+// apps/api/src/governance/age.ts.
 export const AGE_BANDS = ['under_18', '18_plus'] as const
 
-// self_declared: the person said so (the "I am 18 or older" box on /join).
+// self_declared: the person said so (their date of birth on /join, or the "I am
+// 18 or older" box before it).
 // moderator_review: a moderator decided it, e.g. under the mistaken-age process
 // in the rules (not built). identity_provider: an age result from an identity
 // check such as NINAuth. age_assurance_provider: an age check that is not an
@@ -787,10 +791,14 @@ export const ageAssurances = restricted.table(
     verificationId: uuid('verification_id').references(() => identityVerifications.id),
     // moderator_review: who decided. Null when the member or a provider did.
     recordedBy: uuid('recorded_by'),
-    // under_18 only: when to check the band again, at the latest the month the
-    // person turns 18 (rounded up), so the account can move to adult without a
-    // birth date being kept. Nothing writes under_18 yet.
+    // under_18 only: when to check the band again. From a date of birth, the
+    // 18th birthday. Nothing writes under_18 while UNDER_18_ACCOUNTS_ENABLED is off.
     reviewAfter: ts('review_after'),
+    // self_declared only: the date of birth the member typed on /join, which the
+    // band was worked out from (ADR 0020, section 1). Seen only by the member
+    // (Settings, the data export): never logged, never public. Null for the old
+    // "18 or older" box and for every other method.
+    birthDate: date('birth_date', { mode: 'string' }),
     assuredAt: ts('assured_at').notNull().defaultNow(),
     // Set when the statement stops counting: its source was revoked, consent was
     // withdrawn, or a moderator decision was overturned on appeal. Kept as history.

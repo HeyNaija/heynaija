@@ -78,6 +78,9 @@ not for voting.
   only the band, and posts carry an 18+ label, before the 18+ rule is taken out.
   A date of birth is `declared`, so it changes nothing here: direct messages,
   calls and Gists still need this check, and the provider's result still decides.
+  **Owner decisions, 6 November 2026 (ADR 0020):** direct messages and calls are
+  not built until this check exists. Hosting and speaking in Gists read the stated
+  age meanwhile, and minors only listen.
 - **Constraints from the product.** Members are in Nigeria and the diaspora;
   phones are low-end Android on patchy data (`apps/web/DESIGN.md`); the pilot is
   small (the cost model uses 200, 2,000 and 20,000 verified members); the people

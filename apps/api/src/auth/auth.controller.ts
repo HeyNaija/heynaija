@@ -23,7 +23,7 @@ import { FeatureFlags } from '../flags/feature-flags.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
 import { GistsGate, gistsShownTo } from '../gists/gists-enabled.guard.js'
-import { signupAgeDecision } from '../governance/age.js'
+import { ADULT_AGE, MINIMUM_AGE, type SignupAgeDecision, signupAgeDecision } from '../governance/age.js'
 import { GovernanceService } from '../governance/governance.service.js'
 import { avatarPath } from '../media/media.service.js'
 import { videoConfig, videoLimitsOf } from '../video/video-config.js'
@@ -36,14 +36,18 @@ import { AuthService, authRequest } from './auth.service.js'
 import { type AuthedRequest, SessionGuard } from './session.guard.js'
 
 // identity_id is all zeros in the first hook (the account is not saved yet).
-// adult_declared: the person ticked "I am 18 or older" on /join (the hn_age
-// cookie, read by infra/kratos/invite-check.jsonnet).
+// birth_date: the date of birth typed on /join, as YYYY-MM-DD (the hn_age
+// cookie, read by infra/kratos/invite-check.jsonnet). adult_declared: the old
+// "I am 18 or older" box, for one release, so signups begun before dates of
+// birth still finish (ADR 0020, section 1).
 const registrationHook = z.object({
   identity_id: z.guid(),
   invite_code: z.string().max(100),
   handle: z.string().max(100),
+  birth_date: z.string().max(20).default(''),
   adult_declared: z.boolean().default(false),
 })
+type RegistrationHook = z.infer<typeof registrationHook>
 // previous_handle is the member's handle until this save; the same as `handle`
 // when they changed something else.
 const settingsHook = z.object({
@@ -52,6 +56,7 @@ const settingsHook = z.object({
   previous_handle: z.string().max(100),
 })
 const inviteCheckBody = z.object({ code: z.string().max(100) })
+const ageCheckBody = z.object({ birthDate: z.string().max(20) })
 
 // The shape Kratos expects from a webhook that aborts a flow; `text` is shown to
 // the person on the signup form.
@@ -152,6 +157,21 @@ export class AuthController {
     return { usable: parsed.success && (await this.invites.isUsable(parsed.data.code)) }
   }
 
+  /**
+   * Lets /join refuse someone too young before they fill in a signup form, so the
+   * age rules live here and not in the web app. The registration webhook decides
+   * again. The date is not kept or logged: this answers and forgets it.
+   */
+  @Post('v1/signup/age')
+  @HttpCode(200)
+  async checkAge(@Req() req: FastifyRequest, @Body() body: unknown) {
+    await this.limits.hit('signupAge', visitor(req))
+    const parsed = ageCheckBody.safeParse(body)
+    const age = signupAgeDecision(parsed.success ? parsed.data.birthDate : null, new Date(), this.env.UNDER_18_ACCOUNTS_ENABLED)
+    const outcome = age.allowed ? 'allowed' : age.reason === 'age_not_confirmed' ? 'not_a_date' : 'too_young'
+    return { outcome, joinAge: this.joinAge() }
+  }
+
   private assertFromKratos(secret: string | undefined) {
     const expected = Buffer.from(this.env.KRATOS_WEBHOOK_SECRET)
     const given = Buffer.from(secret ?? '')
@@ -177,10 +197,14 @@ export class AuthController {
     if (await this.members.handleHeld(parsed.data.handle, null)) {
       throw rejectSignup('That handle is not available. Go back and choose another.')
     }
-    // During the beta, accounts are 18+ (a temporary rule; see signupAgeDecision).
     // Checked here, not only on /join, so a signup that skips that page is refused too.
-    if (!signupAgeDecision(parsed.data.adult_declared ? 'adult' : null).allowed) {
-      throw rejectSignup('During the beta, HeyNaija is open to people aged 18 or older. Go back to your invite link and confirm your age to join.')
+    const age = this.signupAge(parsed.data)
+    if (!age.allowed) {
+      throw rejectSignup(
+        age.reason === 'age_not_confirmed'
+          ? 'Go back to your invite link and enter your date of birth to join.'
+          : `Sorry, you cannot join HeyNaija yet: it is open to people aged ${this.joinAge()} and over.`,
+      )
     }
     return {}
   }
@@ -221,7 +245,26 @@ export class AuthController {
     // Losing a race for the last use leaves an account without membership; the
     // session guard refuses it. Kratos cannot undo the signup at this point.
     if (!redeemed) this.logger.warn(`signup without a redeemable invite: ${parsed.data?.identity_id}`)
-    if (redeemed && parsed.data.adult_declared) await this.governance.recordAgeDeclaration(parsed.data.identity_id)
+    if (redeemed) {
+      // The same decision as the first hook, which refused anything else.
+      const age = this.signupAge(parsed.data)
+      if (age.allowed) await this.governance.recordAgeDeclaration(parsed.data.identity_id, age)
+    }
     return { redeemed }
+  }
+
+  /**
+   * What a signup's date of birth allows (signupAgeDecision). A body with only
+   * the old "I am 18 or older" box, from a signup begun before the date was
+   * asked, still counts as a stated adult for one release, with no date.
+   */
+  private signupAge(body: RegistrationHook): SignupAgeDecision {
+    if (!body.birth_date && body.adult_declared) return { allowed: true, band: '18_plus', birthDate: null, reviewAfter: null }
+    return signupAgeDecision(body.birth_date || null, new Date(), this.env.UNDER_18_ACCOUNTS_ENABLED)
+  }
+
+  /** The youngest age that may join now: 18 during the 18+ beta, 13 once under-18 accounts are open. */
+  private joinAge(): number {
+    return this.env.UNDER_18_ACCOUNTS_ENABLED ? MINIMUM_AGE : ADULT_AGE
   }
 }

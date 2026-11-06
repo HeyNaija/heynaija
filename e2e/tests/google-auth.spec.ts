@@ -3,7 +3,7 @@ import { createInvite } from '../lib/cli.ts'
 import { env, MARK } from '../lib/env.ts'
 import { googleProvider } from '../lib/google-provider.ts'
 import { codeFor } from '../lib/mailpit.ts'
-import { handleFor, newMember } from '../lib/members.ts'
+import { fillBirthDate, handleFor, newMember } from '../lib/members.ts'
 
 test.describe.configure({ mode: 'serial' })
 let google: Awaited<ReturnType<typeof googleProvider>>
@@ -64,7 +64,7 @@ test('choosing Google on signup recognizes an existing email account', async ({ 
     google.use(member.email)
     const before = google.authorizations
     await page.goto(`/join?code=${createInvite()}`)
-    await page.getByLabel('I am 18 or older').check()
+    await fillBirthDate(page)
     await page.getByRole('button', { name: 'Check invite code' }).click()
     await page.waitForURL((url) => url.pathname === '/signup')
     await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
@@ -215,7 +215,7 @@ test('a new invited Google member finishes with only a handle, on a page that sa
   google.use(email)
   const before = google.authorizations
   await page.goto(`/join?code=${createInvite()}`)
-  await page.getByLabel('I am 18 or older').check()
+  await fillBirthDate(page)
   await page.getByRole('button', { name: 'Check invite code' }).click()
   await page.waitForURL((url) => url.pathname === '/signup')
   await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()
@@ -247,7 +247,7 @@ test('a taken handle cannot connect a new Google email to another member, and a 
     google.use(email)
     const before = google.authorizations
     await page.goto(`/join?code=${createInvite()}`)
-    await page.getByLabel('I am 18 or older').check()
+    await fillBirthDate(page)
     await page.getByRole('button', { name: 'Check invite code' }).click()
     await page.waitForURL((url) => url.pathname === '/signup')
     await page.getByRole('button', { name: 'Continue with Google', exact: true }).click()

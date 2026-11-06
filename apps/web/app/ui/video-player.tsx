@@ -9,8 +9,8 @@ type Media = { paused: boolean; ended: boolean; time: number; length: number; lo
 
 const STILL: Media = { paused: true, ended: false, time: 0, length: 0, loaded: 0, muted: false, waiting: false, failed: false }
 
-// Every event that changes one of those. hls.js (ADR 0021, PR 4) plays through the same
-// element, so they fire for it as they do for an MP4.
+// Every event that changes one of those. hls.js (`useHls`) plays through the same element,
+// so they fire for it as they do for the browser's own HLS.
 const EVENTS = ['loadedmetadata', 'durationchange', 'timeupdate', 'progress', 'play', 'pause', 'playing', 'waiting', 'seeking', 'seeked', 'canplay', 'ended', 'volumechange', 'error', 'emptied'] as const
 
 function read(video: HTMLVideoElement): Media {
@@ -77,18 +77,21 @@ const AWAKE_MS = 2500
  * M mutes and F goes full screen.
  *
  * The caller renders the <video> as `children`, with `player` as its ref, and gives it its
- * source: an MP4 now, hls.js later (ADR 0021 section 11, PR 4). The controls only ever
- * talk to that element. `length` (seconds) is shown until the file says how long it is;
- * `autoFocus` moves focus to the play button, for a player that replaced what had it.
+ * source: a file, a playlist, or hls.js (`useHls`). The controls only ever talk to that
+ * element. `length` (seconds) is shown until the file says how long it is; `failed` is a
+ * failure the element cannot report itself, such as hls.js giving up; `autoFocus` moves
+ * focus to the play button, for a player that replaced what had it.
  */
 export function VideoPlayer({
   player,
   length: known = 0,
+  failed: failedOutside = false,
   autoFocus = false,
   children,
 }: {
   player: RefObject<HTMLVideoElement | null>
   length?: number
+  failed?: boolean
   autoFocus?: boolean
   children: ReactNode
 }) {
@@ -111,7 +114,8 @@ export function VideoPlayer({
   const length = media.length || known
   const lengthText = formatDuration(length * 1000)
   const now = media.ended ? lengthText : clock(media.time)
-  const shown = media.paused || media.failed || awake || keyboard || onBar || dragging
+  const failed = media.failed || failedOutside
+  const shown = media.paused || failed || awake || keyboard || onBar || dragging
 
   const wake = () => {
     setAwake(true)
@@ -291,7 +295,7 @@ export function VideoPlayer({
           </button>
         ) : null}
       </div>
-      {media.failed ? <p className="video-player-error" role="alert">This video could not be played.</p> : null}
+      {failed ? <p className="video-player-error" role="alert">This video could not be played.</p> : null}
       <p className="sr-only" role="status">
         {said}
       </p>

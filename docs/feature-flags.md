@@ -101,9 +101,9 @@ leaves the existing ones readable; deleting your own reply, liking and unliking 
 the host's hiding, keep working. `/v1/me` reports it in `features.gistReplies`.
 
 Rollback. Turning the flag off does not hide replies that exist. Rolling the API back to a
-release before migration 0036 does worse: its queries only know `reply_parent_id is null`, so
+release before migration 0037 does worse: its queries only know `reply_parent_id is null`, so
 a Gist's replies would show in feeds, search, profiles and `/p/:id`. Production is shielded
-while the flag is off. Before rolling back past 0036 on an environment that has Gist replies,
+while the flag is off. Before rolling back past 0037 on an environment that has Gist replies,
 soft-hide them (`update posts set removed_at = now() where gist_id is not null`) or accept
 that they appear. Do not give them a sentinel `reply_parent_id`.
 

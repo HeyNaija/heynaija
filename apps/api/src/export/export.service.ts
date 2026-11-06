@@ -229,6 +229,8 @@ export class ExportService {
           method: ageAssurances.method,
           at: ageAssurances.assuredAt,
           reviewAfter: ageAssurances.reviewAfter,
+          // The date of birth you gave at signup, on the row it came with.
+          birthDate: ageAssurances.birthDate,
           withdrawnAt: ageAssurances.withdrawnAt,
         })
         .from(ageAssurances)
@@ -320,8 +322,9 @@ export class ExportService {
         role: me.role,
         active: me.active,
       },
-      // Every statement about your age band and how it was made: empty for
-      // accounts made before HeyNaija asked, which HeyNaija treats as unknown.
+      // Every statement about your age band and how it was made, with the date
+      // of birth you gave at signup: empty for accounts made before HeyNaija
+      // asked, which HeyNaija treats as unknown.
       age: ageRecords,
       identityVerifications: verifications,
       votingMembership: membership ?? null,

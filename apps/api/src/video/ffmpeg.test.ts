@@ -186,14 +186,14 @@ const hasFfmpeg = (() => {
 const skip = !hasFfmpeg && 'ffmpeg and ffprobe are not installed here; the invocation is still covered by the argument tests above'
 
 let dir: string
-const clip = (name: string, size: string, seconds: number, opts: { audio?: boolean; rate?: number } = {}) => {
+const clip = (name: string, size: string, seconds: number, opts: { audio?: boolean; rate?: number; soundSeconds?: number } = {}) => {
   const path = join(dir, name)
   execFileSync(
     'ffmpeg',
     [
       '-v', 'error', '-y',
       '-f', 'lavfi', '-i', `testsrc2=size=${size}:rate=${opts.rate ?? 30}:duration=${seconds}`,
-      ...(opts.audio === false ? [] : ['-f', 'lavfi', '-i', `sine=frequency=440:duration=${seconds}`, '-c:a', 'aac']),
+      ...(opts.audio === false ? [] : ['-f', 'lavfi', '-i', `sine=frequency=440:duration=${opts.soundSeconds ?? seconds}`, '-c:a', 'aac']),
       '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-metadata', 'location=+06.5244+003.3792/', path,
     ],
     { stdio: 'ignore' },
@@ -268,6 +268,17 @@ test('a clip over 78 seconds is sampled across its whole length, still within th
   const evenly = frames.filter((f) => f.ms % 2000 === 0)
   assert.ok(evenly.length >= 50, `one every 2 seconds: ${evenly.length}`)
   assert.ok(frames.at(-1)!.ms >= 98_000, `the end is covered: ${frames.at(-1)!.ms}`)
+})
+
+test('a picture that stops before its sound is sampled to its own last frame', { skip, timeout: 120_000 }, async () => {
+  // As screen recordings often are: nothing to see in the last 0.2 seconds, so no frame there.
+  const input = clip('silent-end.mp4', '320x180', 3, { soundSeconds: 4.5 })
+  const p = (await probe(input))!
+  assert.ok(p.durationMs > 4000, `the length is the sound's: ${p.durationMs}`)
+  const frames = await extractFrames(input, join(dir, 'silent-end-frames'), p.durationMs)
+  const last = frames.at(-1)!
+  assert.ok(last.ms >= 2800 && last.ms < 3000, `the picture's last frame, at its time: ${last.ms}`)
+  assert.ok(last.jpeg.length > 100)
 })
 
 test('probe says null for a file that is not a video, rather than throwing', { skip }, async () => {

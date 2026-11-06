@@ -139,9 +139,11 @@ test('a member sees their real status in Settings, and no tick on their profile'
   const { page, handle, context } = await newMember(browser, 'citizen')
   await page.goto('/settings')
   const section = page.locator('section', { has: page.getByRole('heading', { name: 'Identity and governance' }) })
-  // They confirmed their age on /join: a stated age, not a verified one.
+  // They gave their date of birth on /join: a stated age, not a verified one,
+  // and the date, which only they see.
   await expect(section).toContainText('18 or older')
   await expect(section).toContainText('It is not a verified age.')
+  await expect(section).toContainText('27 March 1990')
   await expect(section).toContainText('Not verified')
   await expect(section).toContainText('HeyNaija is not collecting NIN details.')
   await expect(section).toContainText('Not shown')

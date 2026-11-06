@@ -1,5 +1,5 @@
 {
-  "id": "a39b394b-61c0-4fb7-88c3-19a24286bcfb",
+  "id": "c34685c6-bc05-4447-939d-fef929a9481b",
   "prevId": "af5f262d-fa59-411c-a8f8-694addd187e5",
   "version": "7",
   "dialect": "postgresql",
@@ -48,6 +48,12 @@
         "review_after": {
           "name": "review_after",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "birth_date": {
+          "name": "birth_date",
+          "type": "date",
           "primaryKey": false,
           "notNull": false
         },
@@ -1055,13 +1061,6 @@
           "notNull": true,
           "default": true
         },
-        "reply_audience": {
-          "name": "reply_audience",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'everyone'"
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1141,10 +1140,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "gists_reply_audience_check": {
-          "name": "gists_reply_audience_check",
-          "value": "reply_audience in ('everyone', 'following', 'mentioned', 'off')"
-        },
         "gists_status_check": {
           "name": "gists_status_check",
           "value": "status in ('scheduled', 'live', 'ended')"
@@ -3698,12 +3693,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "gist_id": {
-          "name": "gist_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3719,12 +3708,6 @@
         },
         "removed_at": {
           "name": "removed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "hidden_by_host_at": {
-          "name": "hidden_by_host_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -3858,34 +3841,6 @@
           "method": "btree",
           "with": {}
         },
-        "posts_gist_created_idx": {
-          "name": "posts_gist_created_idx",
-          "columns": [
-            {
-              "expression": "gist_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "gist_id is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "posts_text_search_idx": {
           "name": "posts_text_search_idx",
           "columns": [
@@ -3928,29 +3883,12 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "posts_gist_id_gists_id_fk": {
-          "name": "posts_gist_id_gists_id_fk",
-          "tableFrom": "posts",
-          "tableTo": "gists",
-          "columnsFrom": [
-            "gist_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "posts_gist_reply_check": {
-          "name": "posts_gist_reply_check",
-          "value": "\"posts\".\"gist_id\" is null or \"posts\".\"quote_post_id\" is null"
-        },
         "posts_reply_audience_check": {
           "name": "posts_reply_audience_check",
           "value": "reply_audience in ('everyone', 'following', 'mentioned')"

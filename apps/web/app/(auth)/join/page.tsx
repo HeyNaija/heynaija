@@ -10,7 +10,7 @@ export default function JoinPage({ searchParams }: PageProps<'/join'>) {
     <AuthPage
       eyebrow="You're invited"
       title="Your conversation starts here"
-      intro="During the beta, HeyNaija is invite-only and open to people aged 18 or older. Enter your invite code to create an account."
+      intro="During the beta, HeyNaija is invite-only and open to people aged 18 or older. Enter your invite code and your date of birth to create an account."
       footer={
         <>
           <p>

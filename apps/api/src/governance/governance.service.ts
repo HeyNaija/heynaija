@@ -10,7 +10,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import type { Env } from '../env.js'
 import { DB, ENV } from '../tokens.js'
-import { type AgeStatus, ageStatus } from './age.js'
+import { type AgeStatement, type AgeStatus, ageStatus } from './age.js'
 import { type ProviderResult, VerificationUnavailableError } from './nin-provider.js'
 import {
   badgeAllowed,
@@ -28,8 +28,11 @@ type GovernanceEnv = GovernanceFlags & Pick<Env, 'IDENTITY_KEY_SECRET'>
 
 /** A member's own governance standing, for Settings. No keys, no provider data. */
 export type OwnGovernanceStatus = {
-  /** Their own age band and how it is known; never shown to anyone else. */
-  age: AgeStatus
+  /**
+   * Their own age band and how it is known, and the date of birth they gave at
+   * signup if they gave one; never shown to anyone else.
+   */
+  age: AgeStatus & { birthDate: string | null }
   verification: {
     status: VerificationStatus | 'none'
     /** Whether verification can be started at all. False until it is approved. */
@@ -70,23 +73,32 @@ export class GovernanceService {
   ) {}
 
   /**
-   * Records that someone said on /join that they are 18 or older. Called by the
-   * Kratos webhook once the account exists (so `memberId` is the new identity);
-   * a second call changes nothing. A statement, not a check: it is enough for an
-   * account during the beta and never for a vote.
+   * Records what someone said about their age on /join: the band their date of
+   * birth gives, with the date (ADR 0020, section 1), or for a signup begun
+   * before dates of birth, TICKED_ADULT. Called by the Kratos webhook once the
+   * account exists (so `memberId` is the new identity); a second call changes
+   * nothing. A statement, not a check: never enough for a vote.
    */
-  async recordAgeDeclaration(memberId: string, now = new Date()): Promise<void> {
+  async recordAgeDeclaration(memberId: string, said: AgeStatement, now = new Date()): Promise<void> {
     await this.db.transaction(async (tx) => {
       const added = await tx
         .insert(ageAssurances)
-        .values({ memberId, band: '18_plus', method: 'self_declared', assuredAt: now })
+        .values({
+          memberId,
+          band: said.band,
+          method: 'self_declared',
+          birthDate: said.birthDate,
+          reviewAfter: said.reviewAfter,
+          assuredAt: now,
+        })
         .onConflictDoNothing({
           target: ageAssurances.memberId,
           where: sql`method = 'self_declared' and withdrawn_at is null`,
         })
         .returning({ id: ageAssurances.id })
       if (added.length) {
-        await tx.insert(governanceAuditLog).values({ subjectId: memberId, event: 'age_declared', reason: '18_plus', createdAt: now })
+        // The band only: the date of birth stays in age_assurances.
+        await tx.insert(governanceAuditLog).values({ subjectId: memberId, event: 'age_declared', reason: said.band, createdAt: now })
       }
     })
   }
@@ -107,8 +119,15 @@ export class GovernanceService {
   }
 
   async statusFor(memberId: string, now = new Date()): Promise<OwnGovernanceStatus> {
-    const [age, [verification], [membership], [badge]] = await Promise.all([
+    const [age, [declared], [verification], [membership], [badge]] = await Promise.all([
       this.ageStatusFor(memberId, now),
+      // The date of birth from their standing statement at signup, if it had one.
+      this.db
+        .select({ birthDate: ageAssurances.birthDate })
+        .from(ageAssurances)
+        .where(
+          and(eq(ageAssurances.memberId, memberId), eq(ageAssurances.method, 'self_declared'), isNull(ageAssurances.withdrawnAt)),
+        ),
       this.latestVerification(memberId),
       this.db
         .select({
@@ -125,7 +144,7 @@ export class GovernanceService {
     ])
     const facts = verification ?? null
     return {
-      age,
+      age: { ...age, birthDate: declared?.birthDate ?? null },
       verification: {
         status: effectiveVerificationStatus(facts, now),
         open: this.env.NIN_VERIFICATION_ENABLED,
