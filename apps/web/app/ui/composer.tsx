@@ -19,6 +19,7 @@ import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
 import { useFixedPlacement } from './use-fixed-placement'
 import { useMentionSuggestions } from './use-mention-suggestions'
 import { PostVideo } from './post-video'
+import { useOneVideo } from './use-one-video'
 import { graphemes, POST_MAX } from '@/lib/post-length'
 
 const LIMIT = POST_MAX
@@ -559,6 +560,8 @@ const VIDEO_STATUS: Record<VideoDraft['status'], string> = {
 function VideoPreview({ draft }: { draft: VideoDraft }) {
   const [unplayable, setUnplayable] = useState(false)
   const [ratio, setRatio] = useState<number | null>(null)
+  const player = useRef<HTMLVideoElement>(null)
+  const playing = useOneVideo(player, !unplayable)
   if (unplayable) {
     if (draft.video) return <PostVideo video={draft.video} />
     const coming = draft.status === 'uploading' || draft.status === 'processing'
@@ -572,11 +575,13 @@ function VideoPreview({ draft }: { draft: VideoDraft }) {
     // At most 320px tall: a tall clip is narrowed to fit rather than shown as a black band.
     <div className="composer-video-preview" style={ratio ? { aspectRatio: ratio, maxWidth: `${Math.round(320 * ratio)}px` } : undefined}>
       <video
+        ref={player}
         src={draft.preview ?? undefined}
         controls
         playsInline
         preload="metadata"
         aria-label={`Preview of ${draft.name}`}
+        onPlay={playing}
         onLoadedMetadata={(e) => {
           const { videoWidth: width, videoHeight: height } = e.currentTarget
           // No picture (a codec this browser lacks, with sound it can play) counts as no preview.

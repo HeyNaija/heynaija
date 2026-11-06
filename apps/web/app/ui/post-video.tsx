@@ -1,28 +1,27 @@
 'use client'
 
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { PostVideo as PostVideoData } from '@/lib/api'
 import { formatDuration, formatSize, videoFiles } from '@/lib/video'
 import { PlayIcon } from './icons'
+import { useOneVideo } from './use-one-video'
 
 // Video must be served from the media bucket's own domain, not through our nginx
 // (ADR 0019 section 3.3), once Cloudflare has confirmed it. Unset, files come from /media.
 const ORIGIN = process.env.NEXT_PUBLIC_VIDEO_ORIGIN ?? ''
 // Which rendition plays: 360 until the low-data setting picks one (240 saver, 480 full); not wired yet.
 const QUALITY = 360
-const PLAYING = 'heynaija:video-playing'
 
 /**
  * A post's video: the poster first, a tap to play, never autoplay. Only one video
- * plays at a time, and one scrolled out of view pauses. The browser's own controls
- * give keyboard play, seek and focus.
+ * plays at a time, and one scrolled out of view or on a page left behind pauses
+ * (`useOneVideo`). The browser's own controls give keyboard play, seek and focus.
  *
  * `held` is the low-data hold (ADR 0019 section 5.2): nothing, not even the poster, is
  * fetched until the reader taps. PostItem sets it from the reader's low-data choice
  * (`currentDataSaver()`), as it does for pictures.
  */
 export function PostVideo({ video, held = false }: { video: PostVideoData; held?: boolean }) {
-  const id = useId()
   const [started, setStarted] = useState(false)
   const [loaded, setLoaded] = useState(!held)
   const player = useRef<HTMLVideoElement>(null)
@@ -32,14 +31,8 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
   // Reserve the box from the stored size so the page does not jump; very tall clips are cropped to a limit.
   const ratio = Math.min(Math.max(video.width / video.height, 9 / 16), 2)
 
-  // Starting one pauses the others.
-  useEffect(() => {
-    const stop = (e: Event) => {
-      if ((e as CustomEvent<string>).detail !== id) setStarted(false)
-    }
-    window.addEventListener(PLAYING, stop)
-    return () => window.removeEventListener(PLAYING, stop)
-  }, [id])
+  // Starting another puts the poster back.
+  const playing = useOneVideo(player, started, () => setStarted(false))
 
   // Scrolled fully out of view: pause (by putting the poster back).
   useEffect(() => {
@@ -55,7 +48,7 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
   if (!files.file) return null
 
   const play = () => {
-    window.dispatchEvent(new CustomEvent(PLAYING, { detail: id }))
+    playing()
     setLoaded(true)
     setStarted(true)
   }
@@ -72,6 +65,8 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
           playsInline
           preload="auto"
           aria-label={label}
+          // Also when it is played again from its controls, on coming back to its page.
+          onPlay={playing}
           onEnded={() => setStarted(false)}
         />
       ) : (
