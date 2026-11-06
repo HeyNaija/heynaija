@@ -22,6 +22,22 @@ test('a picked video plays in the composer from the member’s own file while it
   await expect(preview).toBeVisible()
   await expect.poll(() => preview.evaluate((v: HTMLVideoElement) => [v.src.startsWith('blob:'), v.videoWidth, v.videoHeight])).toEqual([true, 320, 180])
 
+  // It plays under the same controls as a post's video, not the browser's, to its end,
+  // where Play starts it again.
+  const player = page.locator('.composer-video-preview .video-player')
+  const seek = player.getByRole('slider', { name: 'Seek' })
+  await expect(preview).not.toHaveAttribute('controls')
+  await expect(seek).toHaveAttribute('aria-valuetext', '0:00 of 0:04')
+  await player.getByRole('button', { name: 'Play', exact: true }).click()
+  await expect(player.getByRole('button', { name: 'Pause', exact: true })).toBeVisible()
+  await expect(seek).toHaveAttribute('aria-valuetext', '0:04 of 0:04', { timeout: 10_000 })
+  await expect(player.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
+  // Its keys work there too.
+  await player.getByRole('button', { name: 'Play', exact: true }).focus()
+  await page.keyboard.press('m')
+  await expect(player.getByRole('button', { name: 'Unmute' })).toBeVisible()
+  expect(await preview.evaluate((v: HTMLVideoElement) => v.muted)).toBe(true)
+
   // The upload runs alongside it, and the preview stays.
   await expect(page.getByRole('status').filter({ hasText: sent })).toBeVisible({ timeout: 45_000 })
   await expect(preview).toBeVisible()

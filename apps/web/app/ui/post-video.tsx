@@ -5,6 +5,7 @@ import type { PostVideo as PostVideoData } from '@/lib/api'
 import { formatDuration, formatSize, videoFiles } from '@/lib/video'
 import { PlayIcon } from './icons'
 import { useOneVideo } from './use-one-video'
+import { VideoPlayer } from './video-player'
 
 // Video must be served from the media bucket's own domain, not through our nginx
 // (ADR 0019 section 3.3), once Cloudflare has confirmed it. Unset, files come from /media.
@@ -15,7 +16,8 @@ const QUALITY = 360
 /**
  * A post's video: the poster first, a tap to play, never autoplay. Only one video
  * plays at a time, and one scrolled out of view or on a page left behind pauses
- * (`useOneVideo`). The browser's own controls give keyboard play, seek and focus.
+ * (`useOneVideo`). It plays under our own controls (`VideoPlayer`), and when it ends the
+ * poster comes back.
  *
  * `held` is the low-data hold (ADR 0019 section 5.2): nothing, not even the poster, is
  * fetched until the reader taps. PostItem sets it from the reader's low-data choice
@@ -25,6 +27,8 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
   const [started, setStarted] = useState(false)
   const [loaded, setLoaded] = useState(!held)
   const player = useRef<HTMLVideoElement>(null)
+  // The poster's button gets focus back when a video that had it ends.
+  const refocus = useRef(false)
   const files = videoFiles(video.src, video.renditions, QUALITY, ORIGIN)
   const length = formatDuration(video.durationMs)
   const label = video.description.trim() ? `${video.description.trim()}, ${length}` : `Video, ${length}`
@@ -56,21 +60,35 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
   return (
     <div className="post-video" style={{ aspectRatio: ratio }}>
       {started ? (
-        <video
-          ref={player}
-          src={files.file}
-          poster={files.poster}
-          controls
-          autoPlay
-          playsInline
-          preload="auto"
-          aria-label={label}
-          // Also when it is played again from its controls, on coming back to its page.
-          onPlay={playing}
-          onEnded={() => setStarted(false)}
-        />
+        // It replaces the poster's button, so focus moves to its own play button.
+        <VideoPlayer player={player} length={video.durationMs / 1000} autoFocus>
+          <video
+            ref={player}
+            src={files.file}
+            poster={files.poster}
+            autoPlay
+            playsInline
+            preload="auto"
+            aria-label={label}
+            // Also when it is played again from its controls, on coming back to its page.
+            onPlay={playing}
+            onEnded={(e) => {
+              refocus.current = e.currentTarget.parentElement?.contains(document.activeElement) ?? false
+              setStarted(false)
+            }}
+          />
+        </VideoPlayer>
       ) : (
-        <button type="button" className="post-video-start" onClick={play} aria-label={`Play video, ${length}${video.description.trim() ? `: ${video.description.trim()}` : ''}`}>
+        <button
+          ref={(el) => {
+            if (el && refocus.current) el.focus({ preventScroll: true })
+            refocus.current = false
+          }}
+          type="button"
+          className="post-video-start"
+          onClick={play}
+          aria-label={`Play video, ${length}${video.description.trim() ? `: ${video.description.trim()}` : ''}`}
+        >
           {loaded ? (
             // eslint-disable-next-line @next/next/no-img-element -- a poster served as is, at the size we made it
             <img src={files.poster} alt="" width={video.width} height={video.height} loading="lazy" />
