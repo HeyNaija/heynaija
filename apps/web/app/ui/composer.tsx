@@ -331,7 +331,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
           ) : null}
           {video.draft ? (
             <ul className="composer-images" aria-label="Video">
-              <VideoRow draft={video.draft} onRemove={video.remove} onRetry={video.retry} onDescribe={video.describe} />
+              <VideoRow draft={video.draft} onRemove={video.remove} onRetry={video.retry} onSend={video.send} onDescribe={video.describe} />
             </ul>
           ) : null}
           {quote ? <div className="composer-quote">{quote.preview}</div> : null}
@@ -544,8 +544,9 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
 }
 
 const VIDEO_STATUS: Record<VideoDraft['status'], string> = {
+  asking: '',
   uploading: 'Uploading…',
-  processing: 'Processing. This can take a minute or two; you can post when it is ready.',
+  processing: 'Processing. This can take a few minutes for a long or 4K video; you can post when it is ready.',
   ready: 'Ready',
   held: '',
   rejected: '',
@@ -601,11 +602,13 @@ function VideoRow({
   draft,
   onRemove,
   onRetry,
+  onSend,
   onDescribe,
 }: {
   draft: VideoDraft
   onRemove: () => void
   onRetry: () => void
+  onSend: () => void
   onDescribe: (description: string) => void
 }) {
   const id = useId()
@@ -627,7 +630,12 @@ function VideoRow({
           className="field field-sm mt-2"
         />
         {draft.status === 'ready' && draft.mediaId ? <input type="hidden" name="video" value={draft.mediaId} /> : null}
-        {draft.error ? (
+        {draft.status === 'asking' ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <p role="status">{draft.question}</p>
+            <button type="button" className="btn btn-primary btn-sm" onClick={onSend}>Send video</button>
+          </div>
+        ) : draft.error ? (
           <p role="alert" className="mt-1 text-xs text-danger">
             {draft.error}{' '}
             {draft.canRetry ? <button type="button" className="underline" onClick={onRetry}>Continue upload</button> : null}

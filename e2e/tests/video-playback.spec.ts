@@ -1,30 +1,27 @@
 import { readFileSync } from 'node:fs'
+import { extname } from 'node:path'
 import { expect, type Page, test } from '@playwright/test'
 import { seedVideoPost } from '../lib/db.ts'
 import { newMember } from '../lib/members.ts'
 
-// A minute of VP8, 320x180, which every test browser can play, and a 1x1 still. It has a
-// (silent) sound track: browsers pause a video with none themselves when it cannot be seen.
-const clip = readFileSync(new URL('../fixtures/minute.webm', import.meta.url))
+// A minute of video, 320x180, as the worker leaves it: HLS, made from minute.webm with the
+// worker's settings (ADR 0021 section 3), which the test's Chromium plays itself. And a 1x1
+// still. It has a (silent) sound track: browsers pause a video with none themselves when it
+// cannot be seen.
+const hls = new URL('../fixtures/minute-hls/', import.meta.url)
 const still = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
+const TYPES: Record<string, string> = { '.m3u8': 'application/vnd.apple.mpegurl', '.m4s': 'video/iso.segment', '.mp4': 'video/mp4' }
 
 /**
- * The dev stack stores no video files, so the test serves them. The clip is served in
- * ranges, as R2 serves it: a browser seeks only in a file it can ask for part of.
+ * The dev stack stores no video files, so the test serves them: the poster, and the playlists
+ * and pieces under `hls/`. Each piece is a file of its own, so the player seeks without ranges.
  */
 async function serve(page: Page, mediaId: string) {
   await page.route(`**/media/videos/${mediaId}/**`, (route) => {
-    if (route.request().url().endsWith('/poster.webp')) return route.fulfill({ contentType: 'image/png', body: still })
-    const range = /bytes=(\d+)-(\d*)/.exec(route.request().headers().range ?? '')
-    if (!range) return route.fulfill({ contentType: 'video/webm', body: clip, headers: { 'accept-ranges': 'bytes' } })
-    const start = Number(range[1])
-    const end = range[2] ? Math.min(Number(range[2]), clip.length - 1) : clip.length - 1
-    return route.fulfill({
-      status: 206,
-      contentType: 'video/webm',
-      body: clip.subarray(start, end + 1),
-      headers: { 'accept-ranges': 'bytes', 'content-range': `bytes ${start}-${end}/${clip.length}` },
-    })
+    const path = new URL(route.request().url()).pathname.split(`/videos/${mediaId}/`)[1] ?? ''
+    if (path === 'poster.webp') return route.fulfill({ contentType: 'image/png', body: still })
+    if (!path.startsWith('hls/')) return route.fulfill({ status: 404 })
+    return route.fulfill({ contentType: TYPES[extname(path)] ?? 'application/octet-stream', body: readFileSync(new URL(path.slice('hls/'.length), hls)) })
   })
 }
 

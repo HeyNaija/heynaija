@@ -12,7 +12,7 @@ import {
   type Refusal,
   refusalPath,
 } from '@/lib/account-deletion'
-import { api } from '@/lib/api'
+import { api, type PostVideo } from '@/lib/api'
 import { DATA_COOKIE, DATA_COOKIE_MAX_AGE, dataMode } from '@/lib/low-data'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
 import { forgetEndedSession, reauthUrl, startAuthUrl } from '@/lib/auth/server'
@@ -24,7 +24,6 @@ import type { ThreadRow } from '@/lib/thread-state'
 import { POLL_OPTIONS_MAX } from '@/lib/polls'
 import { POST_MAX } from '@/lib/post-length'
 import { isReplyAudience } from '@/lib/reply-audience'
-import type { VideoRendition } from '@/lib/video'
 
 // The API is the authority on who is signed in and what they may do; these
 // functions only relay the visitor's own session cookie to it.
@@ -441,7 +440,7 @@ export type VideoState = 'uploading' | 'processing' | 'quarantined' | 'ready' | 
 export type VideoStatus = {
   status: VideoState
   reason: 'too_long' | 'too_short' | 'too_large' | 'too_big_picture' | 'not_a_video' | null
-  video: { id: string; src: string; durationMs: number; width: number; height: number; description: string; renditions: VideoRendition[] } | null
+  video: PostVideo | null
 }
 
 // The limits themselves are told before sending, from the API's own (lib/video.ts); these are the server's backstop.

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { loadEnv } from '../env.js'
 import { LIMITS } from '../rate-limit.js'
-import { DEFAULT_VIDEO_CONFIG, videoConfig, videoLimitsOf } from './video-config.js'
+import { DEFAULT_VIDEO_CONFIG, FRAME_SCAN_MAX_SECONDS, videoConfig, videoLimitsOf } from './video-config.js'
 import { loadWorkerEnv, workerVideoConfig } from './worker-env.js'
 
 const base = {
@@ -20,20 +20,23 @@ const base = {
   S3_MEDIA_BUCKET: 'media',
 }
 
-test('the defaults are the ADR 0019 recommendations for its open questions', () => {
+const shield = { ARACHNID_SHIELD_USERNAME: 'u', ARACHNID_SHIELD_PASSWORD: 'p' }
+
+test('the defaults are ADR 0021 section 2’s (3 minutes, 1 GB, 4K) and ADR 0019’s answers to its open questions', () => {
   assert.deepEqual(DEFAULT_VIDEO_CONFIG, {
-    maxSeconds: 60,
+    maxSeconds: 180,
     minSeconds: 3,
-    maxBytes: 100 * 1024 * 1024,
-    maxEdge: 1920,
+    maxBytes: 1024 * 1024 * 1024,
+    maxEdge: 3840,
     partBytes: 5 * 1024 * 1024,
     uploadWindowMs: 24 * 3_600_000,
     minAccountAgeDays: 7,
     upheldLookbackDays: 90,
     maxLivePerMember: 50,
     keepOriginals: false,
+    filesBase: '/media',
   })
-  assert.deepEqual(videoConfig(loadEnv(base)), DEFAULT_VIDEO_CONFIG)
+  assert.deepEqual(videoConfig(loadEnv({ ...base, ...shield })), DEFAULT_VIDEO_CONFIG)
 })
 
 test('each limit can be set from the environment, and empty means the default (compose passes ${NAME:-})', () => {
@@ -47,7 +50,12 @@ test('each limit can be set from the environment, and empty means the default (c
 
 test('the browser is told the limits from these same settings, so its checks match the server (/v1/me videoLimits)', () => {
   const cfg = videoConfig(loadEnv({ ...base, VIDEO_MAX_SECONDS: '30', VIDEO_MAX_BYTES: String(50 * 1024 * 1024) }))
-  assert.deepEqual(videoLimitsOf(cfg), { maxBytes: 50 * 1024 * 1024, maxSeconds: 30, minSeconds: 3, maxEdge: 1920 })
+  assert.deepEqual(videoLimitsOf(cfg), { maxBytes: 50 * 1024 * 1024, maxSeconds: 30, minSeconds: 3, maxEdge: 3840 })
+})
+
+test('readers fetch video from the media domain when there is one, the site’s /media only in development', () => {
+  assert.equal(videoConfig(loadEnv({ ...base, MEDIA_ORIGIN: 'https://media.heynaija.ng/' })).filesBase, 'https://media.heynaija.ng')
+  assert.equal(videoConfig(loadEnv(base)).filesBase, '/media')
 })
 
 test('a part size under storage’s 5 MiB minimum is refused', () => {
@@ -62,10 +70,24 @@ test('rate limits: uploads 3 an hour and 10 a day, parts 120 a minute', () => {
   assert.deepEqual(LIMITS.videoPart, [{ max: 120, windowMs: 60_000 }])
 })
 
-test('the length limit cannot exceed what the 80-frame scan sample can cover (one frame a second and the last)', () => {
-  assert.equal(videoConfig(loadEnv({ ...base, VIDEO_MAX_SECONDS: '78' })).maxSeconds, 78)
-  assert.throws(() => loadEnv({ ...base, VIDEO_MAX_SECONDS: '79' }))
+test('the length limit goes to 180 seconds with Arachnid Shield, which checks the whole file; never past it', () => {
+  assert.equal(videoConfig(loadEnv({ ...base, ...shield })).maxSeconds, 180)
+  assert.equal(videoConfig(loadEnv({ ...base, ...shield, VIDEO_MAX_SECONDS: '120' })).maxSeconds, 120)
+  assert.throws(() => loadEnv({ ...base, VIDEO_MAX_SECONDS: '181' }))
   assert.throws(() => loadEnv({ ...base, VIDEO_MAX_SECONDS: '600' }))
+})
+
+test('without Arachnid Shield the length stays within what the 80 sampled frames cover, for the API, /v1/me and the worker alike', () => {
+  assert.equal(FRAME_SCAN_MAX_SECONDS, 78)
+  const photoDnaOnly = { PHOTODNA_SUBSCRIPTION_KEY: 'k' }
+  for (const env of [base, { ...base, ...photoDnaOnly }]) {
+    const cfg = videoConfig(loadEnv(env))
+    assert.equal(cfg.maxSeconds, 78, 'min(VIDEO_MAX_SECONDS, 78)')
+    assert.equal(videoLimitsOf(cfg).maxSeconds, 78, 'what the composer is told')
+  }
+  assert.equal(videoConfig(loadEnv({ ...base, VIDEO_MAX_SECONDS: '45' })).maxSeconds, 45, 'a lower setting still wins')
+  assert.equal(workerVideoConfig(loadWorkerEnv({ ...workerBase, ...photoDnaOnly })).maxSeconds, 78)
+  assert.equal(workerVideoConfig(loadWorkerEnv({ ...workerBase, ...shield })).maxSeconds, 180)
 })
 
 test('VIDEO_KEEP_ORIGINALS empty (what compose passes when it is unset) is the default, false, for the API and the worker', () => {

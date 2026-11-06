@@ -13,6 +13,7 @@ import {
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   ListPartsCommand,
   PutBucketPolicyCommand,
   PutObjectCommand,
@@ -61,6 +62,8 @@ export interface VideoStore extends ObjectStore {
   upload(bucket: Bucket, key: string, path: string, contentType: string): Promise<void>
   /** Server-side copy, between buckets or within one; the bytes do not pass through us. */
   copy(from: Bucket, fromKey: string, to: Bucket, toKey: string): Promise<void>
+  /** Every key that starts with `prefix`, such as a video's folder (ADR 0021 section 4). */
+  list(bucket: Bucket, prefix: string): Promise<string[]>
 }
 
 export type S3Config = {
@@ -220,6 +223,17 @@ export class S3ObjectStore implements VideoStore {
         MetadataDirective: 'COPY',
       }),
     )
+  }
+
+  async list(bucket: Bucket, prefix: string): Promise<string[]> {
+    const keys: string[] = []
+    let token: string | undefined
+    do {
+      const res = await this.client.send(new ListObjectsV2Command({ Bucket: this.buckets[bucket], Prefix: prefix, ContinuationToken: token }))
+      for (const o of res.Contents ?? []) if (o.Key) keys.push(o.Key)
+      token = res.IsTruncated ? res.NextContinuationToken : undefined
+    } while (token)
+    return keys
   }
 
   /**

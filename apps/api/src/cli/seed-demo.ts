@@ -17,7 +17,7 @@ import { loadEnv } from '../env.js'
 import { AVATAR_SIZES, type MediaKind, POST_IMAGE_SIZES, publishedKeys } from '../media/media.service.js'
 import { S3ObjectStore } from '../media/object-store.js'
 import { s3Config } from '../media/s3-config.js'
-import { posterKey, renditionKey } from '../video/video-keys.js'
+import { videoFolder } from '../video/video-keys.js'
 import type { Art } from './demo/art.js'
 import { ANSWERS, type DemoImage, type DemoReply, FOLLOWED_REAL_MEMBERS, MEMBERS, THREADS } from './demo/content.js'
 
@@ -58,8 +58,8 @@ async function clean() {
   if (ids.length === 0) return 0
 
   const client = await pool.connect()
-  // A video's files are named by its renditions (video_renditions goes with the row), an image's by its kind.
-  let media: { id: string; kind: MediaKind | 'post_video'; heights: number[] | null }[] = []
+  // A video's files are its folder's, listed from storage; an image's are named by its kind.
+  let media: { id: string; kind: MediaKind | 'post_video' }[] = []
   try {
     await client.query('begin')
     await client.query('create temp table d_m on commit drop as select unnest($1::uuid[]) as id', [ids])
@@ -71,9 +71,8 @@ async function clean() {
         select id from posts where author_id in (select id from d_m)
         union select p.id from posts p join tree on p.reply_parent_id = tree.id
       ) select id from tree`)
-    media = (await client.query<{ id: string; kind: MediaKind | 'post_video'; heights: number[] | null }>(
-      `select id, kind, (select array_agg(r.height) from video_renditions r where r.media_id = media.id) as heights
-        from media where owner_id in (select id from d_m) or post_id in (select id from d_p)`,
+    media = (await client.query<{ id: string; kind: MediaKind | 'post_video' }>(
+      'select id, kind from media where owner_id in (select id from d_m) or post_id in (select id from d_p)',
     )).rows
     const steps: [string, string][] = [
       ['notifications', `delete from notifications where recipient_id in (select id from d_m) or actor_id in (select id from d_m)
@@ -126,7 +125,7 @@ async function clean() {
   }
 
   for (const m of media) {
-    const keys = m.kind === 'post_video' ? [...(m.heights ?? []).map((h) => renditionKey(m.id, h)), posterKey(m.id)] : publishedKeys(m.kind, m.id)
+    const keys = m.kind === 'post_video' ? await store.list('media', videoFolder(m.id)) : publishedKeys(m.kind, m.id)
     for (const key of keys) await store.remove('media', key)
   }
   for (const id of kratos) {

@@ -22,3 +22,10 @@ export function dataSaver(mode: DataMode, saveDataHeader: string | null): boolea
   if (mode === 'full') return false
   return saveDataHeader?.trim().toLowerCase() === 'on'
 }
+
+/** The same, in the browser: the cookie, and the browser's own save-data setting standing in for the header. */
+export function browserDataSaver(): boolean {
+  const stored = document.cookie.split('; ').find((c) => c.startsWith(`${DATA_COOKIE}=`))?.slice(DATA_COOKIE.length + 1)
+  const saveData = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData
+  return dataSaver(dataMode(stored), saveData ? 'on' : null)
+}

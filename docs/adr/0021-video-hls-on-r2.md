@@ -2,9 +2,9 @@
 
 **Date:** 4 November 2026 · **Status:** Proposed. The six decisions in section 1
 were agreed by the owner on 4 November 2026; the rest is the design that follows
-from them. Nothing is built except the HLS command and the trial tool
-(`apps/api/src/video/hls.ts`, `apps/api/src/cli/video-trial.ts`, PR #85, not yet
-merged). · **Supersedes:** in [ADR 0019](0019-video-posts.md), the limits in
+from them. Built: the HLS command and the trial tool (PR #85), the worker's server
+(PR 6), the composer's preview (PR 5a) and, in review, the HLS encoder and 4K input
+(PR 2); section 11 has each. · **Supersedes:** in [ADR 0019](0019-video-posts.md), the limits in
 section 1, sections 3.1 (what the worker makes), 3.3's conclusion on serving,
 3.4 (sizing), 5.2's rendition table, 6 (cost) and launch-gate items 1 to 4. The
 upload path, failure handling, safety, moderation, captions, retention and the
@@ -244,9 +244,12 @@ acceptable.
   to a disk volume of at least 3 GB (the original, its pieces and the sampled
   frames), as ADR 0019 section 3.4 already asked.
 - **Time limits from the clip's length**, not a fixed 5 minutes per ffmpeg run:
-  about 5 minutes plus 4 times the clip's length, so a 3-minute clip gets 17
-  minutes, which covers a 2-core staging worker. The job's limit is that plus the
-  Shield upload. Exact numbers are set in PR 2.
+  5 minutes plus 4 times the clip's length for each run (`runTimeoutMs` in
+  `ffmpeg.ts`), so a 3-minute clip gets 17 minutes, which covers a 2-core staging
+  worker; staging's 1-core worker does not fit a 3-minute 4K 60 fps HDR clip in
+  it. The job's limit, shared by its runs, is that plus Shield's 5 minutes for
+  the upload (`jobTimeoutMs`): 22 minutes for 3 minutes of video. Until the probe
+  says how long a clip is, the job has the longest clip's limit.
 - **Shield** answered in 0.4 to 3 seconds per clip from the CCX33 and 0.6 to 5.4
   from the RS 1000, the largest 93.5 MB. Its size
   and rate limits are not published, and a 1 GB file has not been tried
@@ -378,8 +381,9 @@ sending originals to Shield.
   and `bitrate_kbps`; the bytes now count a quality's pieces. `video_details` is
   unchanged.
 - **Reader payload:** `{id, durationMs, width, height, posterUrl, playlists: {all,
-  upTo480}, renditions: [{height, playlistUrl, bytes}], description}`, every URL
-  absolute on the media domain. `renditions[].url` to MP4s goes.
+  upTo480}, renditions: [{height, width, playlistUrl, bytes}], description}`, every
+  URL absolute on the media domain (`MEDIA_ORIGIN`; the site's `/media` only in
+  development, where there is none). The MP4 path (`src`) goes.
 - **Post create** accepts a `videoId` that is `processing` as well as `ready`
   (section 6); the post rows gain what PR 5 needs to hide and reveal them.
 - **Settings** (`video-config.ts`): the defaults in section 2. `VIDEO_MAX_BYTES`
@@ -412,8 +416,8 @@ two or three, L about a week.
 |---|---|---|---|---|
 | 0 | The trial | `hls.ts`, the trial command and guide (PR #85) | | done |
 | 1 | This ADR | the decision, written down | the trial | S |
-| 2 | HLS encoder and 4K input | the worker writes section 3's files; the limits in section 2; scratch on disk; time limits from length; the API hands readers playlists | 1 | L |
-| 3 | Folders in storage | list and delete many in `ObjectStore`; takedown, release and deletion move folders; purge by prefix | 2's layout | M |
+| 2 | HLS encoder and 4K input | the worker writes section 3's files in one ffmpeg run (`publish()` in `video-processor.ts`), and `master-480.m3u8` after it; the limits in section 2, held to 78 seconds without Shield, and PhotoDNA's 80 frames spread over clips longer than that; scratch on a disk volume; time limits from length (section 5); the API hands readers playlists on the media domain; the composer asks before sending a file over 200 MB, and every file when saving data. Takes from 3 a folder listing in `ObjectStore`, so takedown, release and deletion cover every piece, still one object at a time. The player sets the playlists as the `<video>` source, which plays where the browser has HLS; hls.js is 4 | 1 | in review |
+| 3 | Folders in storage | delete many in `ObjectStore` (listing came with 2); takedown, release and deletion move folders in batches; purge by prefix | 2's layout | M |
 | 4 | The player | hls.js and the browser's own HLS, the data-setting playlists, the Cache Rule and CORS rule | 2's playlists | M |
 | 5a | The preview | section 6's first paragraph: the member's own clip plays in the composer while it uploads, with a note and then the poster where the browser cannot play it | nothing | S |
 | 5 | Post before ready | the rest of section 6: the held press, and the post hidden until its video is ready | nothing | L |

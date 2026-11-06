@@ -3,15 +3,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { completeVideoUpload, removeVideo, resumeVideoUpload, startVideoUpload, type VideoPlan, videoStatus, type VideoStatus } from '@/app/actions'
 import type { PostVideo } from '@/lib/api'
-import { checkVideoFile, DEFAULT_VIDEO_LIMITS, formatSize, rejectionText, type VideoLimits } from '@/lib/video'
+import { browserDataSaver } from '@/lib/low-data'
+import { checkVideoFile, DEFAULT_VIDEO_LIMITS, formatSize, rejectionText, sendingQuestion, type VideoLimits } from '@/lib/video'
 
 /** A video being attached to a post, from choosing it to the worker having published it. */
 export type VideoDraft = {
   name: string
   size: number
   mediaId: string | null
-  /** uploading (0..1 sent), processing (the worker has it), ready, held (kept back for a safety check), or stopped. */
-  status: 'uploading' | 'processing' | 'ready' | 'held' | 'rejected' | 'failed'
+  /**
+   * asking (nothing sent until the member says so: a large file, or any file when saving data), uploading (0..1
+   * sent), processing (the worker has it), ready, held (kept back for a safety check), or stopped.
+   */
+  status: 'asking' | 'uploading' | 'processing' | 'ready' | 'held' | 'rejected' | 'failed'
+  /** While asking: what the member is asked, with the file's size. */
+  question: string | null
   progress: number
   /** What to tell the member when it stopped, or null. */
   error: string | null
@@ -82,6 +88,8 @@ export function useVideoDraft(limits: VideoLimits = DEFAULT_VIDEO_LIMITS) {
   const file = useRef<File | null>(null)
   const abort = useRef<AbortController | null>(null)
   const preview = useRef<string | null>(null)
+  // The clip's length, read before asking, for when the member says send.
+  const duration = useRef<number | undefined>(undefined)
   // Bumped on remove, so work for a video that was removed stops quietly.
   const generation = useRef(0)
 
@@ -108,8 +116,8 @@ export function useVideoDraft(limits: VideoLimits = DEFAULT_VIDEO_LIMITS) {
   }
 
   const waitForWorker = async (g: number, mediaId: string) => {
-    // About five minutes: a minute of video takes the worker a minute or two.
-    for (let i = 0; i < 150; i++) {
+    // About 25 minutes: the worker's limit for a 3-minute clip is 22 (ADR 0021 section 5), after any wait in its queue.
+    for (let i = 0; i < 750; i++) {
       if (g !== generation.current) return
       const status = await videoStatus(mediaId).catch(() => undefined)
       if (status === undefined) {
@@ -178,25 +186,41 @@ export function useVideoDraft(limits: VideoLimits = DEFAULT_VIDEO_LIMITS) {
     await run(g, plan, f)
   }
 
+  const start = async (g: number, f: File) => {
+    const plan = await startVideoUpload(f.type || 'video/mp4', f.size, duration.current)
+    if ('error' in plan) return patch(g, { status: 'failed', error: plan.error })
+    patch(g, { mediaId: plan.mediaId })
+    await run(g, plan, f)
+  }
+
   const choose = async (f: File) => {
     const g = ++generation.current
     abort.current?.abort()
     revoke(preview)
     file.current = f
-    const fresh = { name: f.name, size: f.size, mediaId: null, status: 'uploading', progress: 0, error: null, canRetry: false, description: '', preview: null, video: null } satisfies VideoDraft
+    const fresh = { name: f.name, size: f.size, mediaId: null, status: 'uploading', question: null, progress: 0, error: null, canRetry: false, description: '', preview: null, video: null } satisfies VideoDraft
     const early = checkVideoFile(f, undefined, limits)
     if (early) return setDraft({ ...fresh, status: 'failed', error: early })
     // Played from the device at once, while the upload runs; the same URL gives the clip's length.
     const url = URL.createObjectURL(f)
     preview.current = url
     setDraft({ ...fresh, preview: url })
-    const duration = await readDuration(url)
-    const refused = checkVideoFile(f, duration, limits)
+    duration.current = await readDuration(url)
+    const refused = checkVideoFile(f, duration.current, limits)
     if (refused) return patch(g, { status: 'failed', error: refused })
-    const plan = await startVideoUpload(f.type || 'video/mp4', f.size, duration)
-    if ('error' in plan) return patch(g, { status: 'failed', error: plan.error })
-    patch(g, { mediaId: plan.mediaId })
-    await run(g, plan, f)
+    // A large file, or any for a member saving data, waits for their say (ADR 0021 section 2); the preview is from the device, so it costs nothing.
+    const question = sendingQuestion(f.size, browserDataSaver())
+    if (question) return patch(g, { status: 'asking', question })
+    await start(g, f)
+  }
+
+  /** The member said send: the upload the question held back. */
+  const send = async () => {
+    const f = file.current
+    const g = generation.current
+    if (!f || draft?.status !== 'asking') return
+    patch(g, { status: 'uploading', question: null })
+    await start(g, f)
   }
 
   // Outside the state update: an updater must not send anything (React may run it twice).
@@ -221,5 +245,5 @@ export function useVideoDraft(limits: VideoLimits = DEFAULT_VIDEO_LIMITS) {
 
   const describe = (description: string) => setDraft((d) => (d ? { ...d, description } : d))
 
-  return { draft, choose, retry, remove, clear, describe, sizeLabel: draft ? formatSize(draft.size) : '' }
+  return { draft, choose, send, retry, remove, clear, describe, sizeLabel: draft ? formatSize(draft.size) : '' }
 }

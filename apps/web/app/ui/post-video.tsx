@@ -7,17 +7,15 @@ import { PlayIcon } from './icons'
 import { useOneVideo } from './use-one-video'
 import { VideoPlayer } from './video-player'
 
-// Video must be served from the media bucket's own domain, not through our nginx
-// (ADR 0019 section 3.3), once Cloudflare has confirmed it. Unset, files come from /media.
-const ORIGIN = process.env.NEXT_PUBLIC_VIDEO_ORIGIN ?? ''
-// Which rendition plays: 360 until the low-data setting picks one (240 saver, 480 full); not wired yet.
-const QUALITY = 360
-
 /**
  * A post's video: the poster first, a tap to play, never autoplay. Only one video
  * plays at a time, and one scrolled out of view or on a page left behind pauses
  * (`useOneVideo`). It plays under our own controls (`VideoPlayer`), and when it ends the
  * poster comes back.
+ *
+ * It plays HLS from the media domain (ADR 0021 section 7) where the browser plays HLS
+ * itself (Safari, every browser on iPhones); hls.js for the rest comes with the player's
+ * own pull request (PR 4), as does the `full` data setting.
  *
  * `held` is the low-data hold (ADR 0019 section 5.2): nothing, not even the poster, is
  * fetched until the reader taps. PostItem sets it from the reader's low-data choice
@@ -29,7 +27,7 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
   const player = useRef<HTMLVideoElement>(null)
   // The poster's button gets focus back when a video that had it ends.
   const refocus = useRef(false)
-  const files = videoFiles(video.src, video.renditions, QUALITY, ORIGIN)
+  const files = videoFiles(video, held ? 'saver' : 'auto')
   const length = formatDuration(video.durationMs)
   const label = video.description.trim() ? `${video.description.trim()}, ${length}` : `Video, ${length}`
   // Reserve the box from the stored size so the page does not jump; very tall clips are cropped to a limit.
@@ -49,7 +47,7 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
     return () => watch.disconnect()
   }, [started])
 
-  if (!files.file) return null
+  if (!files.playlist) return null
 
   const play = () => {
     playing()
@@ -64,7 +62,7 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
         <VideoPlayer player={player} length={video.durationMs / 1000} autoFocus>
           <video
             ref={player}
-            src={files.file}
+            src={files.playlist}
             poster={files.poster}
             autoPlay
             playsInline

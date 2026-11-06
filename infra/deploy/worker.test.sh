@@ -187,6 +187,8 @@ jq -e '.services["video-worker"].environment.DATABASE_URL == "postgres://heynaij
 jq -e '.services["video-worker"].environment.REDIS_URL == "redis://:redis-secret@10.80.0.1:6379"' "$test_dir/worker.json" > /dev/null
 jq -e '.services["video-worker"].image == "ghcr.io/heynaija/heynaija-video-worker:0123abc"' "$test_dir/worker.json" > /dev/null
 jq -e '.services["video-worker"] | .cpus == 4 and .read_only == true and .cap_drop == ["ALL"] and (.ports // [] | length) == 0' "$test_dir/worker.json" > /dev/null
+# Scratch on a disk volume, not a tmpfs that counts against the memory limit (ADR 0021 section 5).
+jq -e '.services["video-worker"] | (.tmpfs // [] | length) == 0 and ([.volumes[] | select(.type == "volume" and .target == "/tmp")] | length) == 1' "$test_dir/worker.json" > /dev/null
 echo "PASS: worker-compose"
 
 # Production: Postgres and Redis published on the link's address with

@@ -191,6 +191,6 @@ test('an export lists a post’s ready video (path and poster); held, unattached
   const data = (await service.export(ada, null))!
   assert.equal(data.format, 'heynaija-export/12')
   const byText = (text: string) => data.posts.find((p) => p.text === text)!
-  assert.deepEqual(byText('my clip').videos, [{ url: `/media/videos/${ready}`, poster: `/media/videos/${ready}/poster.webp` }])
+  assert.deepEqual(byText('my clip').videos, [{ url: `/media/videos/${ready}/hls/master.m3u8`, poster: `/media/videos/${ready}/poster.webp` }])
   assert.deepEqual(byText('no clip').videos, [])
 })
