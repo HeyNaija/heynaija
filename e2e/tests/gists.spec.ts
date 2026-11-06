@@ -159,6 +159,17 @@ test('a Gist has a reply thread: reply while live and after it ends, the host hi
 
   await reply(ada.page, 'Still talking after the end')
 
+  await ada.page.setViewportSize({ width: 390, height: 844 })
+  await ada.page.goto(url)
+  const lastActions = ada.page.locator('#gist-replies article').last().locator('.post-actions')
+  const bar = ada.page.locator('#gist-replies .thread-branch.is-root > .thread-editor-host:not(:empty)')
+  await expect(async () => {
+    await ada.page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+    const actions = await lastActions.boundingBox()
+    const top = (await bar.boundingBox())?.y
+    expect(actions && top !== undefined && actions.y + actions.height <= top).toBe(true)
+  }).toPass()
+
   const rude = host.page.locator('article', { hasText: 'Never, it is smoky' })
   await host.page.reload()
   await rude.getByLabel('Post options', { exact: true }).click()

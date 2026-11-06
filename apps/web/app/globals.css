@@ -1236,7 +1236,12 @@ summary.menu::-webkit-details-marker {
      starts a tap elsewhere would move the page under the finger and the tap would miss. It
      covers an open bar of the usual size; scrolling something into view stops short of it. */
   .thread-view:has(> .thread-branch.is-root > .thread-editor-host:not(:empty)) { padding-bottom: min(220px, calc(100dvh - 135px)); }
+  .gist-replies:has(.thread-branch.is-root > .thread-editor-host:not(:empty)) { padding-bottom: min(220px, calc(100dvh - 135px)); }
   html:has(.thread-branch.is-root > .thread-editor-host:not(:empty)) { scroll-padding-bottom: min(270px, calc(100dvh - 135px)); }
+  /* A Gist's own bar sticks above the tabs, where the reply bar is. With the reply bar there it
+     rides above it, so neither hides the other; once the reply box is in use it goes behind it. */
+  body:has(.gist-replies .thread-editor-host:not(:empty)) .gist-bar { bottom: calc(63px + 72px + env(safe-area-inset-bottom, 0px) + 8px); }
+  body:has(.gist-replies .reply-composer:is(.is-expanded, :focus-within)) .gist-bar { z-index: 3; }
 }
 @media (max-width: 419px) { .thread-branch.is-root > .thread-editor-host { padding-inline: 12px; } }
 @media (max-width: 1023px) and (max-height: 520px) { .thread-branch.is-root > .thread-editor-host .composer-privacy { display: none; } }
