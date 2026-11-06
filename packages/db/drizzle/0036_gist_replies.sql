@@ -3,7 +3,7 @@ ALTER TABLE "posts" ADD COLUMN "gist_id" uuid;--> statement-breakpoint
 ALTER TABLE "posts" ADD COLUMN "hidden_by_host_at" timestamp with time zone;--> statement-breakpoint
 -- NOT VALID: gist_id is new, so every existing row is null and there is nothing to check.
 ALTER TABLE "posts" ADD CONSTRAINT "posts_gist_id_gists_id_fk" FOREIGN KEY ("gist_id") REFERENCES "public"."gists"("id") ON DELETE no action ON UPDATE no action NOT VALID;--> statement-breakpoint
--- allow-breaking: a partial index on a column that is null in every row is empty, so it builds at once
+-- allow-breaking: the index is empty, but building it still scans every posts row once, under the lock ADD COLUMN already holds until this migration commits; a few seconds at this table size
 CREATE INDEX "posts_gist_created_idx" ON "posts" USING btree ("gist_id","created_at","id") WHERE gist_id is not null;--> statement-breakpoint
 -- NOT VALID: reply_audience and gist_id are new, so every existing row holds the default and there is nothing to check.
 ALTER TABLE "gists" ADD CONSTRAINT "gists_reply_audience_check" CHECK (reply_audience in ('everyone', 'following', 'mentioned', 'off')) NOT VALID;--> statement-breakpoint

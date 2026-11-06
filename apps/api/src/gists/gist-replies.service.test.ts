@@ -169,6 +169,7 @@ test('a Gist whose host erased their account is gone, with its replies', async (
   await say('bayo', 'hello')
   await db.update(members).set({ deletedAt: new Date() }).where(eq(members.id, id.ada))
   assert.equal(await codeOf(service.list(as('bayo'), gist, { order: 'newest' })), 'not_found')
+  assert.equal(await codeOf(gistsService.get(as('bayo'), gist)), 'not_found')
   assert.equal((await db.select().from(posts)).length, 1)
 })
 

@@ -150,15 +150,20 @@ export class GistsService {
 
   async get(viewer: { id: string; handle: string }, gistId: string): Promise<GistView> {
     const { gist, me } = await this.open(this.db, viewer, gistId)
+    await this.assertHostActive(gist)
     return this.view(this.db, gist, me)
   }
 
   /** The Gist, for someone who may see it. A Gist whose host erased their account is gone with its replies. */
   async viewable(viewer: { id: string; handle: string }, gistId: string): Promise<GistRow> {
     const { gist } = await this.open(this.db, viewer, gistId)
+    await this.assertHostActive(gist)
+    return gist
+  }
+
+  private async assertHostActive(gist: GistRow): Promise<void> {
     const [host] = await this.db.select({ erased: isNotNull(members.deletedAt) }).from(members).where(eq(members.id, gist.hostId))
     if (!host || host.erased) throw new GistError('not_found')
-    return gist
   }
 
   /** Whether the `gists` flag is on for a member, read once. */
