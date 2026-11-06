@@ -4,13 +4,14 @@ import {
   governanceAuditLog,
   governanceMemberships,
   identityVerifications,
+  members,
   profileBadges,
 } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import type { Env } from '../env.js'
 import { DB, ENV } from '../tokens.js'
-import { type AgeStatement, type AgeStatus, ageStatus } from './age.js'
+import { type AgeRecord, type AgeStatus, ageStatus, bandOn, birthDateNeeded } from './age.js'
 import { type ProviderResult, VerificationUnavailableError } from './nin-provider.js'
 import {
   badgeAllowed,
@@ -29,8 +30,8 @@ type GovernanceEnv = GovernanceFlags & Pick<Env, 'IDENTITY_KEY_SECRET'>
 /** A member's own governance standing, for Settings. No keys, no provider data. */
 export type OwnGovernanceStatus = {
   /**
-   * Their own age band and how it is known, and the date of birth they gave at
-   * signup if they gave one; never shown to anyone else.
+   * Their own age band and how it is known, and the date of birth on record if
+   * there is one; never shown to anyone else.
    */
   age: AgeStatus & { birthDate: string | null }
   verification: {
@@ -73,61 +74,90 @@ export class GovernanceService {
   ) {}
 
   /**
-   * Records what someone said about their age on /join: the band their date of
-   * birth gives, with the date (ADR 0020, section 1), or for a signup begun
-   * before dates of birth, TICKED_ADULT. Called by the Kratos webhook once the
-   * account exists (so `memberId` is the new identity); a second call changes
-   * nothing. A statement, not a check: never enough for a vote.
+   * Records the date of birth someone typed on /join (ADR 0020, section 1).
+   * Called by the Kratos webhook once the account exists (so `memberId` is the
+   * new identity); a second call changes nothing. A statement, not a check:
+   * never enough for a vote.
    */
-  async recordAgeDeclaration(memberId: string, said: AgeStatement, now = new Date()): Promise<void> {
-    await this.db.transaction(async (tx) => {
-      const added = await tx
-        .insert(ageAssurances)
-        .values({
-          memberId,
-          band: said.band,
-          method: 'self_declared',
-          birthDate: said.birthDate,
-          reviewAfter: said.reviewAfter,
-          assuredAt: now,
-        })
-        .onConflictDoNothing({
-          target: ageAssurances.memberId,
-          where: sql`method = 'self_declared' and withdrawn_at is null`,
-        })
+  async recordAgeDeclaration(memberId: string, birthDate: string, now = new Date()): Promise<void> {
+    await this.db.transaction((tx) => declare(tx, memberId, birthDate, now))
+  }
+
+  /**
+   * Records the date of birth of a member who joined before signup asked for
+   * one: asked once, before they can use the app again (ADR 0020, section 1).
+   * Given once, as at signup: a member with a date on record cannot change it
+   * here (a correction goes through support). Their old "I am 18 or older"
+   * statement, if they made one, is withdrawn, since the date replaces it. The
+   * date is kept whatever it says; acting on an age under 18 is the caller's.
+   */
+  async giveBirthDate(memberId: string, birthDate: string, now = new Date()): Promise<'recorded' | 'already_given'> {
+    return this.db.transaction(async (tx) => {
+      const live = await tx
+        .select({ birthDate: ageAssurances.birthDate, withdrawnAt: ageAssurances.withdrawnAt })
+        .from(ageAssurances)
+        .where(and(eq(ageAssurances.memberId, memberId), isNull(ageAssurances.withdrawnAt)))
+        .for('update')
+      if (!birthDateNeeded(live)) return 'already_given'
+      const replaced = await tx
+        .update(ageAssurances)
+        .set({ withdrawnAt: now })
+        .where(
+          and(
+            eq(ageAssurances.memberId, memberId),
+            eq(ageAssurances.method, 'self_declared'),
+            isNull(ageAssurances.birthDate),
+            isNull(ageAssurances.withdrawnAt),
+          ),
+        )
         .returning({ id: ageAssurances.id })
-      if (added.length) {
-        // The band only: the date of birth stays in age_assurances.
-        await tx.insert(governanceAuditLog).values({ subjectId: memberId, event: 'age_declared', reason: said.band, createdAt: now })
+      if (replaced.length) {
+        await tx.insert(governanceAuditLog).values({ subjectId: memberId, event: 'age_withdrawn', reason: 'replaced_by_birth_date', createdAt: now })
       }
+      // Nothing is added if a second answer sent at the same moment got there first.
+      return (await declare(tx, memberId, birthDate, now)) ? 'recorded' : 'already_given'
     })
+  }
+
+  /**
+   * Suspends the account of a member who gave a date of birth under the minimum
+   * age, until a moderator looks (they reinstate it from /mod, as any other
+   * suspension). Not a moderation decision, so nothing goes in the public log;
+   * the restricted audit trail records it.
+   */
+  async holdUnderMinimumAge(memberId: string, now = new Date()): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx.update(members).set({ active: false, status: 'suspended' }).where(eq(members.id, memberId))
+      await tx.insert(governanceAuditLog).values({ subjectId: memberId, event: 'age_below_minimum', createdAt: now })
+    })
+  }
+
+  /** Whether the member still has to give a date of birth (see birthDateNeeded). */
+  async birthDateNeeded(memberId: string): Promise<boolean> {
+    return birthDateNeeded(await this.ageRecords(memberId))
   }
 
   /** The age an account is treated as having; unknown when nothing is on record. */
   async ageStatusFor(memberId: string, now = new Date()): Promise<AgeStatus> {
-    const records = await this.db
+    return ageStatus(await this.ageRecords(memberId), now)
+  }
+
+  private ageRecords(memberId: string): Promise<AgeRecord[]> {
+    return this.db
       .select({
         band: ageAssurances.band,
         method: ageAssurances.method,
+        birthDate: ageAssurances.birthDate,
         assuredAt: ageAssurances.assuredAt,
-        reviewAfter: ageAssurances.reviewAfter,
         withdrawnAt: ageAssurances.withdrawnAt,
       })
       .from(ageAssurances)
       .where(eq(ageAssurances.memberId, memberId))
-    return ageStatus(records, now)
   }
 
   async statusFor(memberId: string, now = new Date()): Promise<OwnGovernanceStatus> {
-    const [age, [declared], [verification], [membership], [badge]] = await Promise.all([
-      this.ageStatusFor(memberId, now),
-      // The date of birth from their standing statement at signup, if it had one.
-      this.db
-        .select({ birthDate: ageAssurances.birthDate })
-        .from(ageAssurances)
-        .where(
-          and(eq(ageAssurances.memberId, memberId), eq(ageAssurances.method, 'self_declared'), isNull(ageAssurances.withdrawnAt)),
-        ),
+    const [records, [verification], [membership], [badge]] = await Promise.all([
+      this.ageRecords(memberId),
       this.latestVerification(memberId),
       this.db
         .select({
@@ -143,8 +173,13 @@ export class GovernanceService {
         .where(identityTick(memberId)),
     ])
     const facts = verification ?? null
+    const age = ageStatus(records, now)
+    // The newest live date of birth: the member's own, or a correction made through support.
+    const dated = records
+      .filter((record) => !record.withdrawnAt && record.birthDate)
+      .sort((a, b) => b.assuredAt.getTime() - a.assuredAt.getTime())[0]
     return {
-      age: { ...age, birthDate: declared?.birthDate ?? null },
+      age: { ...age, birthDate: dated?.birthDate ?? null },
       verification: {
         status: effectiveVerificationStatus(facts, now),
         open: this.env.NIN_VERIFICATION_ENABLED,
@@ -321,4 +356,25 @@ export class GovernanceService {
       .orderBy(desc(identityVerifications.createdAt))
       .limit(1)
   }
+}
+
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
+
+/**
+ * Adds a member's own statement of their date of birth, with the band it gives
+ * today, unless they already have a standing one. The audit trail gets the band,
+ * never the date. True when it was added.
+ */
+async function declare(tx: Tx, memberId: string, birthDate: string, now: Date): Promise<boolean> {
+  const band = bandOn(birthDate, now)
+  const added = await tx
+    .insert(ageAssurances)
+    .values({ memberId, band, method: 'self_declared', birthDate, assuredAt: now })
+    .onConflictDoNothing({
+      target: ageAssurances.memberId,
+      where: sql`method = 'self_declared' and withdrawn_at is null`,
+    })
+    .returning({ id: ageAssurances.id })
+  if (added.length) await tx.insert(governanceAuditLog).values({ subjectId: memberId, event: 'age_declared', reason: band, createdAt: now })
+  return added.length > 0
 }

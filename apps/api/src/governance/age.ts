@@ -5,9 +5,13 @@ import type { AGE_ASSURANCE_METHODS, AGE_BANDS } from '@heynaija/db'
 // (ADR 0006). Everything here is pure: GovernanceService reads the
 // restricted.age_assurances rows and asks these functions.
 //
+// Everyone gives a date of birth (ADR 0020, section 1): new members on /join,
+// everyone already here once, before they can use the app again. The age is
+// worked out from the date on every check, so nobody's age goes out of date.
+//
 // Three rules hold whatever else changes:
-// - An unknown age is never treated as adult. Accounts from before the 18+ beta
-//   rule have no age on record and stay "unknown" until they say otherwise.
+// - An unknown age is never treated as adult. A member with no date of birth on
+//   record (they have not answered yet) is "unknown".
 // - Content restricted to adults needs at least a stated adult age.
 // - Governance voting needs a verified adult age.
 
@@ -20,20 +24,18 @@ export type AgeAssurance = 'none' | 'declared' | 'reviewed' | 'verified'
 export type AgeStatus = {
   band: AgeBand | 'unknown'
   assurance: AgeAssurance
-  /** An under-18 band whose review date has passed: ask again before treating them as adult. */
-  reviewDue: boolean
 }
 
 /** The parts of an age_assurances row the rules look at. */
 export type AgeRecord = {
   band: AgeBand
   method: AgeMethod
+  birthDate: string | null
   assuredAt: Date
-  reviewAfter: Date | null
   withdrawnAt: Date | null
 }
 
-export const UNKNOWN_AGE: AgeStatus = { band: 'unknown', assurance: 'none', reviewDue: false }
+export const UNKNOWN_AGE: AgeStatus = { band: 'unknown', assurance: 'none' }
 
 const ASSURANCE_OF: Record<AgeMethod, AgeAssurance> = {
   self_declared: 'declared',
@@ -45,16 +47,38 @@ const ASSURANCE_OF: Record<AgeMethod, AgeAssurance> = {
 const RANK: Record<AgeAssurance, number> = { none: 0, declared: 1, reviewed: 2, verified: 3 }
 
 /**
- * The age an account is treated as having. The strongest live statement wins:
- * a check beats a moderator's decision, which beats the person's own word; between
- * equally strong statements, the newest wins. So a moderator who finds a
- * self-declared adult is a child overrides the declaration, and a verified check
- * can settle an appeal. Withdrawn statements count for nothing.
+ * Whether a record counts. A statement of the member's own counts only with a
+ * date of birth: the old "I am 18 or older" box, from before signup asked for
+ * one, counts for nothing, and its owner is asked for their date. Withdrawn
+ * records count for nothing either.
+ */
+function counts(record: AgeRecord): boolean {
+  return !record.withdrawnAt && (record.birthDate !== null || record.method !== 'self_declared')
+}
+
+/** Whether the member still has to give a date of birth: none of their live records has one. */
+export function birthDateNeeded(records: Pick<AgeRecord, 'birthDate' | 'withdrawnAt'>[]): boolean {
+  return !records.some((record) => !record.withdrawnAt && record.birthDate !== null)
+}
+
+/** The band a date of birth gives today. */
+export function bandOn(birthDate: string, now: Date): AgeBand {
+  return ageOn(birthDate, now) >= ADULT_AGE ? '18_plus' : 'under_18'
+}
+
+/**
+ * The age an account is treated as having. The strongest live record wins: a
+ * check beats a moderator's decision, which beats the person's own word; between
+ * equally strong records, the newest wins. So a moderator who corrects a date
+ * overrides the member's own, and a verified check can settle an appeal. The
+ * band comes from the record's date of birth, worked out today, so a minor is
+ * an adult on their 18th birthday; only a record without a date (an ID check's
+ * yes or no, ADR 0018, not built) uses its stored band.
  */
 export function ageStatus(records: AgeRecord[], now: Date): AgeStatus {
   let best: AgeRecord | null = null
   for (const record of records) {
-    if (record.withdrawnAt) continue
+    if (!counts(record)) continue
     if (
       !best ||
       RANK[ASSURANCE_OF[record.method]] > RANK[ASSURANCE_OF[best.method]] ||
@@ -64,11 +88,7 @@ export function ageStatus(records: AgeRecord[], now: Date): AgeStatus {
     }
   }
   if (!best) return UNKNOWN_AGE
-  return {
-    band: best.band,
-    assurance: ASSURANCE_OF[best.method],
-    reviewDue: best.band === 'under_18' && best.reviewAfter !== null && best.reviewAfter <= now,
-  }
+  return { band: best.birthDate ? bandOn(best.birthDate, now) : best.band, assurance: ASSURANCE_OF[best.method] }
 }
 
 /**
@@ -125,35 +145,21 @@ export function birthDateFrom(text: string, now: Date): string | null {
   return text
 }
 
-/** The start of someone's 18th birthday in Lagos. Born on 29 February, 1 March. */
-function eighteenthBirthday(birthDate: string): Date {
-  const [year = 0, month = 0, day = 0] = birthDate.split('-').map(Number)
-  return new Date(Date.UTC(year + ADULT_AGE, month - 1, day) - LAGOS_OFFSET_MS)
-}
-
-/** What a signup records about the person's age: the band, and the date it came from. */
-export type AgeStatement = { band: AgeBand; birthDate: string | null; reviewAfter: Date | null }
-
-/** What the "I am 18 or older" box said, before signup asked for a date of birth. */
-export const TICKED_ADULT: AgeStatement = { band: '18_plus', birthDate: null, reviewAfter: null }
-
 export type SignupAgeDecision =
-  | ({ allowed: true } & AgeStatement)
+  | { allowed: true; birthDate: string }
   | { allowed: false; reason: 'age_not_confirmed' | 'below_minimum_age' | 'under_18_not_open' }
 
 /**
  * Whether a signup may go ahead on age grounds, from the date of birth typed on
  * /join (ADR 0020, section 1). Nobody under MINIMUM_AGE, ever. People aged 13
  * to 17 only when `under18Open`, which is UNDER_18_ACCOUNTS_ENABLED (env.ts);
- * until then the beta is 18+. A minor's band is checked again on their 18th
- * birthday. A date that cannot be a birthday is no answer at all.
+ * until then the beta is 18+. A date that cannot be a birthday is no answer at all.
  */
 export function signupAgeDecision(birthDate: string | null, now: Date, under18Open: boolean): SignupAgeDecision {
   const date = birthDate === null ? null : birthDateFrom(birthDate, now)
   if (!date) return { allowed: false, reason: 'age_not_confirmed' }
   const age = ageOn(date, now)
   if (age < MINIMUM_AGE) return { allowed: false, reason: 'below_minimum_age' }
-  if (age >= ADULT_AGE) return { allowed: true, band: '18_plus', birthDate: date, reviewAfter: null }
-  if (!under18Open) return { allowed: false, reason: 'under_18_not_open' }
-  return { allowed: true, band: 'under_18', birthDate: date, reviewAfter: eighteenthBirthday(date) }
+  if (age < ADULT_AGE && !under18Open) return { allowed: false, reason: 'under_18_not_open' }
+  return { allowed: true, birthDate: date }
 }

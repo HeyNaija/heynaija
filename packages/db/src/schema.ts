@@ -755,16 +755,16 @@ export const restricted = pgSchema('restricted')
 
 // Age is its own thing, separate from having an account, from identity
 // verification and from voting membership (ADR 0006). Each row is one statement
-// about which age band an account holder is in, and how we know it. Never an age
-// or a document; a date of birth only as the member gave it at signup (ADR 0020,
-// section 1). An account with no live row has an unknown age, which never counts
-// as an adult (accounts created before 16 October 2026 start that way). The
-// status a feature acts on is worked out from these rows by ageStatus() in
-// apps/api/src/governance/age.ts.
+// about how old an account holder is, and how we know it. Never an age or a
+// document; a date of birth only as the member gave it (ADR 0020, section 1). An
+// account with no live row with a date has an unknown age, which never counts as
+// an adult, and is asked for its date. The status a feature acts on is worked out
+// from these rows by ageStatus() in apps/api/src/governance/age.ts: from the date
+// of birth, on the day, wherever a row has one.
 export const AGE_BANDS = ['under_18', '18_plus'] as const
 
-// self_declared: the person said so (their date of birth on /join, or the "I am
-// 18 or older" box before it).
+// self_declared: the person said so (their date of birth, on /join or when asked
+// later; or the "I am 18 or older" box before that, which no longer counts).
 // moderator_review: a moderator decided it, e.g. under the mistaken-age process
 // in the rules (not built). identity_provider: an age result from an identity
 // check such as NINAuth. age_assurance_provider: an age check that is not an
@@ -778,6 +778,8 @@ export const ageAssurances = restricted.table(
     // The Kratos identity, which becomes members.id. No foreign key: the signup
     // webhook writes the first row before the members row exists.
     memberId: uuid('member_id').notNull(),
+    // From a date of birth, the band it gave on the day it was given; the rules
+    // work it out from the date again on every check.
     band: text('band', { enum: AGE_BANDS }).notNull(),
     method: text('method', { enum: AGE_ASSURANCE_METHODS }).notNull(),
     // identity_provider: the verification the result came from, so revoking that
@@ -785,13 +787,13 @@ export const ageAssurances = restricted.table(
     verificationId: uuid('verification_id').references(() => identityVerifications.id),
     // moderator_review: who decided. Null when the member or a provider did.
     recordedBy: uuid('recorded_by'),
-    // under_18 only: when to check the band again. From a date of birth, the
-    // 18th birthday. Nothing writes under_18 while UNDER_18_ACCOUNTS_ENABLED is off.
+    // Not written any more: an age from a date of birth is worked out on the day,
+    // so it needs no date to check again (ADR 0020, section 1).
     reviewAfter: ts('review_after'),
-    // self_declared only: the date of birth the member typed on /join, which the
-    // band was worked out from (ADR 0020, section 1). Seen only by the member
+    // The date of birth the member gave, on /join or when asked later (ADR 0020,
+    // section 1), or a correction made through support. Seen only by the member
     // (Settings, the data export): never logged, never public. Null for the old
-    // "18 or older" box and for every other method.
+    // "18 or older" box and for an ID check's yes-or-no answer.
     birthDate: date('birth_date', { mode: 'string' }),
     assuredAt: ts('assured_at').notNull().defaultNow(),
     // Set when the statement stops counting: its source was revoked, consent was
@@ -882,6 +884,9 @@ export const GOVERNANCE_AUDIT_EVENTS = [
   'age_declared',
   'age_recorded',
   'age_withdrawn',
+  // A member already here gave a date of birth under MINIMUM_AGE, and their
+  // account was suspended until a moderator looks (ADR 0020, section 1).
+  'age_below_minimum',
   'verification_recorded',
   'verification_rejected',
   'verification_reviewed',

@@ -148,13 +148,13 @@ function ageLabel({ band, assurance }: GovernanceStatus['age']): { value: string
   if (band === 'unknown') {
     return {
       value: 'Not on record',
-      detail: 'There is no age on record for your account, usually because it was made before HeyNaija asked. It is not treated as a confirmed adult.',
+      detail: 'There is no date of birth on record for your account yet. It is not treated as a confirmed adult.',
     }
   }
   const age = band === '18_plus' ? '18 or older' : 'Under 18'
   if (assurance === 'verified') return { value: `${age}, verified`, detail: 'Confirmed by an age or identity check.' }
   if (assurance === 'reviewed') return { value: age, detail: 'Decided by a moderator. You can appeal it.' }
-  return { value: age, detail: 'You confirmed this yourself when you joined. It is not a verified age.' }
+  return { value: age, detail: 'From the date of birth you gave. It is not a verified age.' }
 }
 
 /** A YYYY-MM-DD date of birth in words, "27 March 1990", the same in every time zone. */
@@ -206,7 +206,7 @@ async function GovernanceStanding() {
           <dd>
             <p className="settings-status-value">{birthDateLabel(status.age.birthDate)}</p>
             <p>
-              As you gave it when you joined. Only you can see it. To correct it, write to{' '}
+              As you gave it. Only you can see it. To correct it, write to{' '}
               <a href="mailto:contact@heynaija.ng" className={linkClass}>contact@heynaija.ng</a>.
             </p>
           </dd>

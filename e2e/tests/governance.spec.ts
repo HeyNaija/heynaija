@@ -15,7 +15,7 @@ test('the rules say the 18+ account rule is temporary, and voting stays 18+', as
   await expect(age).toContainText('The 18+ rule is temporary, for the beta.')
   await expect(age).toContainText('voting in HeyNaija’s governance would stay 18+')
   await page.goto('/privacy#age')
-  await expect(page.locator('#age')).toContainText('not treated as confirmed adults')
+  await expect(page.locator('#age')).toContainText('not treated as a confirmed adult')
 })
 
 test('the governance documents are public and say they are drafts @mobile', async ({ page }) => {

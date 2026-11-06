@@ -782,6 +782,43 @@ export async function acceptInvite(_prev: JoinState, formData: FormData): Promis
   return { next: startAuthUrl('registration') }
 }
 
+export type BirthDateState = {
+  error?: string
+  dateError?: string
+  confirmError?: string
+  birth?: BirthFields
+  confirmed?: boolean
+}
+
+/**
+ * A member who joined before signup asked for a date of birth gives theirs, on
+ * /birth-date, the only page they see until they do (ADR 0020, section 1). The
+ * API keeps it and decides what an age under 18 means; whatever it decided, the
+ * home page then shows them where they stand.
+ */
+export async function giveBirthDate(_prev: BirthDateState, formData: FormData): Promise<BirthDateState> {
+  const birth = { day: digits(formData, 'day', 2), month: digits(formData, 'month', 2), year: digits(formData, 'year', 4) }
+  const confirmed = formData.get('confirm') === 'yes'
+  const birthDate = birthDateOf(birth)
+  if (!birthDate) {
+    return { birth, confirmed, dateError: 'Enter your date of birth as numbers: the day, the month and the year, for example 27 3 2004.' }
+  }
+  if (!confirmed) return { birth, confirmed, confirmError: 'Confirm that this is your real date of birth.' }
+
+  const res = await api('/v1/me/birth-date', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ birthDate }),
+    cache: 'no-store',
+  }).catch(() => null)
+  if (res?.status === 401) redirect('/login')
+  if (res?.status === 429) return { birth, confirmed, error: 'You have tried several times in a minute. Wait a minute and try again.' }
+  if (!res?.ok) return { birth, confirmed, error: 'Your date of birth could not be saved just now. Try again in a moment.' }
+  const { outcome } = (await res.json()) as { outcome: 'recorded' | 'already_given' | 'not_a_date' | 'suspended' }
+  if (outcome === 'not_a_date') return { birth, confirmed, dateError: 'That date is not possible. Check the day, the month and the year.' }
+  redirect('/')
+}
+
 /**
  * What the account deletion form shows: an error, or Kratos's sign-in to confirm
  * it is them (`next`), which the form opens itself and, if that fails, offers

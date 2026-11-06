@@ -63,7 +63,11 @@ including for members who live outside Nigeria.
       confirm or raise it).
 - [ ] **Whether minors' posts are public.** Every post is public today; that may
       not be acceptable for children.
-- [ ] **What happens to existing accounts with no age on record.**
+- [ ] **What happens to existing accounts with no age on record.** Owner decision,
+      6 November 2026: everyone already here gives a date of birth before they can
+      use the app again; a 13 to 17 year old is kept as a minor and moderators are
+      told, and under 13 the account is suspended until a moderator looks (ADR
+      0020, section 1). Counsel to confirm.
 - [ ] **A privacy impact assessment for children's data**, reviewed by counsel.
 
 ## 2. Age assurance
@@ -78,10 +82,16 @@ including for members who live outside Nigeria.
       the person's real date of birth.
 - [ ] Below the minimum age: refuse, explain kindly, keep no age record.
 - [ ] Minors get `review_after` (the month they turn 18, rounded up, or a periodic
-      re-check) and move to adult only after a fresh statement or check.
+      re-check) and move to adult only after a fresh statement or check. Owner
+      decision, 6 November 2026: the age is worked out from the date of birth on
+      every check instead, so a minor is an adult from their 18th birthday without
+      a fresh statement (ADR 0020, section 1). Counsel to confirm.
 - [ ] Ask every member with an unknown age to confirm it before any minor can join.
       Until they do, they are not adult for adult-only content (already enforced by
-      `isAdultFor`).
+      `isAdultFor`). Built (branch `feat/date-of-birth-everyone`): everyone without a
+      date of birth, those who ticked "18 or older" included, is asked on their next
+      visit and sees nothing else until they answer. Done once it is in production
+      and every account has answered or been closed.
 - [ ] Risk-based checks beyond self-declaration: reports, signals, and moderator
       review recorded as `moderator_review`, with notice and appeal. Never ask anyone
       to post documents publicly.

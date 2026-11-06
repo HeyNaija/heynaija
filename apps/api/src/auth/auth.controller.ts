@@ -37,15 +37,12 @@ import { type AuthedRequest, SessionGuard } from './session.guard.js'
 
 // identity_id is all zeros in the first hook (the account is not saved yet).
 // birth_date: the date of birth typed on /join, as YYYY-MM-DD (the hn_age
-// cookie, read by infra/kratos/invite-check.jsonnet). adult_declared: the old
-// "I am 18 or older" box, for one release, so signups begun before dates of
-// birth still finish (ADR 0020, section 1).
+// cookie, read by infra/kratos/invite-check.jsonnet).
 const registrationHook = z.object({
   identity_id: z.guid(),
   invite_code: z.string().max(100),
   handle: z.string().max(100),
   birth_date: z.string().max(20).default(''),
-  adult_declared: z.boolean().default(false),
 })
 type RegistrationHook = z.infer<typeof registrationHook>
 // previous_handle is the member's handle until this save; the same as `handle`
@@ -98,10 +95,11 @@ export class AuthController {
   @Get('v1/me')
   @UseGuards(SessionGuard)
   async me(@Req() req: AuthedRequest) {
-    const [scope, unread, features, [row]] = await Promise.all([
+    const [scope, unread, features, birthDateNeeded, [row]] = await Promise.all([
       this.moderation.scope(req.member.id),
       this.notifications.unreadCount(req.member.id),
       this.flags.all(req.member.id),
+      this.governance.birthDateNeeded(req.member.id),
       this.db
         .select({
           avatarMediaId: members.avatarMediaId,
@@ -129,6 +127,9 @@ export class AuthController {
       // home page sends them to /welcome until then.
       // With the welcome flow switched off nobody is sent to it.
       onboarded: !features.onboarding || Boolean(row?.onboardedAt),
+      // True until a member who joined before signup asked for a date of birth
+      // gives theirs; the web app shows nothing else until then (ADR 0020).
+      birthDateNeeded,
       // What is switched on for this member: the database-backed flags (docs/feature-flags.md),
       // with videoPosts and gists as they take effect, rules in code included.
       features: { ...features, videoPosts, gists },
@@ -248,18 +249,13 @@ export class AuthController {
     if (redeemed) {
       // The same decision as the first hook, which refused anything else.
       const age = this.signupAge(parsed.data)
-      if (age.allowed) await this.governance.recordAgeDeclaration(parsed.data.identity_id, age)
+      if (age.allowed) await this.governance.recordAgeDeclaration(parsed.data.identity_id, age.birthDate)
     }
     return { redeemed }
   }
 
-  /**
-   * What a signup's date of birth allows (signupAgeDecision). A body with only
-   * the old "I am 18 or older" box, from a signup begun before the date was
-   * asked, still counts as a stated adult for one release, with no date.
-   */
+  /** What a signup's date of birth allows (signupAgeDecision). */
   private signupAge(body: RegistrationHook): SignupAgeDecision {
-    if (!body.birth_date && body.adult_declared) return { allowed: true, band: '18_plus', birthDate: null, reviewAfter: null }
     return signupAgeDecision(body.birth_date || null, new Date(), this.env.UNDER_18_ACCOUNTS_ENABLED)
   }
 

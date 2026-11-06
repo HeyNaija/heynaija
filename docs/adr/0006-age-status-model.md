@@ -50,8 +50,10 @@ account with no row had no explicit status.
    can move to adult without a birth date being kept. Nothing writes `under_18` yet.
    **Changed by ADR 0020 (accepted 6 November 2026):** signup now asks for a date
    of birth and keeps it on the member's own statement (`birth_date`), seen only
-   by them; a minor's `review_after` is their 18th birthday. Still never an exact
-   age or a document, and the rules still read only the band.
+   by them, and everyone already here is asked for theirs. The rules work the band
+   out from the date on every check, so `review_after` is no longer written and a
+   minor is an adult from their 18th birthday. Still never an exact age or a
+   document.
 6. **Unknown is said plainly.** Accounts created before 16 October 2026 have no
    age on record. Settings tells members their own status ("Not on record", or
    "18 or older" stated or verified), the data export lists every age record, and
