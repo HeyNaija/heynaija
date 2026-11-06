@@ -30,7 +30,7 @@ import {
 import { Inject, Injectable } from '@nestjs/common'
 import { aliasedTable, and, asc, eq, isNotNull, or } from 'drizzle-orm'
 import { avatarPath, postImagePath } from '../media/media.service.js'
-import { videoPath } from '../video/video-keys.js'
+import { masterKey, posterKey } from '../video/video-keys.js'
 import { preferencesWithout } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 
@@ -262,7 +262,8 @@ export class ExportService {
     for (const video of videos) {
       if (!video.postId) continue
       const list = videosByPost.get(video.postId) ?? []
-      list.push({ url: videoPath(video.id), poster: `${videoPath(video.id)}/poster.webp` })
+      // Paths on the site, as for images: the master playlist (every quality) and the poster.
+      list.push({ url: `/media/${masterKey(video.id)}`, poster: `/media/${posterKey(video.id)}` })
       videosByPost.set(video.postId, list)
     }
     // The members each post mentions, once each, by the handle they have now.

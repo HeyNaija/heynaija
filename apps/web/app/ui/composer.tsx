@@ -19,6 +19,8 @@ import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
 import { useFixedPlacement } from './use-fixed-placement'
 import { useMentionSuggestions } from './use-mention-suggestions'
 import { PostVideo } from './post-video'
+import { useOneVideo } from './use-one-video'
+import { VideoPlayer } from './video-player'
 import { graphemes, POST_MAX } from '@/lib/post-length'
 
 const LIMIT = POST_MAX
@@ -329,7 +331,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
           ) : null}
           {video.draft ? (
             <ul className="composer-images" aria-label="Video">
-              <VideoRow draft={video.draft} onRemove={video.remove} onRetry={video.retry} onDescribe={video.describe} />
+              <VideoRow draft={video.draft} onRemove={video.remove} onRetry={video.retry} onSend={video.send} onDescribe={video.describe} />
             </ul>
           ) : null}
           {quote ? <div className="composer-quote">{quote.preview}</div> : null}
@@ -542,8 +544,9 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
 }
 
 const VIDEO_STATUS: Record<VideoDraft['status'], string> = {
+  asking: '',
   uploading: 'Uploading…',
-  processing: 'Processing. This can take a minute or two; you can post when it is ready.',
+  processing: 'Processing. This can take a few minutes for a long or 4K video; you can post when it is ready.',
   ready: 'Ready',
   held: '',
   rejected: '',
@@ -559,6 +562,8 @@ const VIDEO_STATUS: Record<VideoDraft['status'], string> = {
 function VideoPreview({ draft }: { draft: VideoDraft }) {
   const [unplayable, setUnplayable] = useState(false)
   const [ratio, setRatio] = useState<number | null>(null)
+  const player = useRef<HTMLVideoElement>(null)
+  const playing = useOneVideo(player, !unplayable)
   if (unplayable) {
     if (draft.video) return <PostVideo video={draft.video} />
     const coming = draft.status === 'uploading' || draft.status === 'processing'
@@ -571,20 +576,23 @@ function VideoPreview({ draft }: { draft: VideoDraft }) {
   return (
     // At most 320px tall: a tall clip is narrowed to fit rather than shown as a black band.
     <div className="composer-video-preview" style={ratio ? { aspectRatio: ratio, maxWidth: `${Math.round(320 * ratio)}px` } : undefined}>
-      <video
-        src={draft.preview ?? undefined}
-        controls
-        playsInline
-        preload="metadata"
-        aria-label={`Preview of ${draft.name}`}
-        onLoadedMetadata={(e) => {
-          const { videoWidth: width, videoHeight: height } = e.currentTarget
-          // No picture (a codec this browser lacks, with sound it can play) counts as no preview.
-          if (width && height) setRatio(Math.min(Math.max(width / height, 9 / 16), 2))
-          else setUnplayable(true)
-        }}
-        onError={() => setUnplayable(true)}
-      />
+      <VideoPlayer player={player}>
+        <video
+          ref={player}
+          src={draft.preview ?? undefined}
+          playsInline
+          preload="metadata"
+          aria-label={`Preview of ${draft.name}`}
+          onPlay={playing}
+          onLoadedMetadata={(e) => {
+            const { videoWidth: width, videoHeight: height } = e.currentTarget
+            // No picture (a codec this browser lacks, with sound it can play) counts as no preview.
+            if (width && height) setRatio(Math.min(Math.max(width / height, 9 / 16), 2))
+            else setUnplayable(true)
+          }}
+          onError={() => setUnplayable(true)}
+        />
+      </VideoPlayer>
     </div>
   )
 }
@@ -594,11 +602,13 @@ function VideoRow({
   draft,
   onRemove,
   onRetry,
+  onSend,
   onDescribe,
 }: {
   draft: VideoDraft
   onRemove: () => void
   onRetry: () => void
+  onSend: () => void
   onDescribe: (description: string) => void
 }) {
   const id = useId()
@@ -620,7 +630,12 @@ function VideoRow({
           className="field field-sm mt-2"
         />
         {draft.status === 'ready' && draft.mediaId ? <input type="hidden" name="video" value={draft.mediaId} /> : null}
-        {draft.error ? (
+        {draft.status === 'asking' ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <p role="status">{draft.question}</p>
+            <button type="button" className="btn btn-primary btn-sm" onClick={onSend}>Send video</button>
+          </div>
+        ) : draft.error ? (
           <p role="alert" className="mt-1 text-xs text-danger">
             {draft.error}{' '}
             {draft.canRetry ? <button type="button" className="underline" onClick={onRetry}>Continue upload</button> : null}

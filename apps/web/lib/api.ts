@@ -6,7 +6,7 @@ import type { GistView } from './gists'
 import type { NotificationPreferences } from './notification-preferences'
 import type { ReplyAudience } from './reply-audience'
 import type { ReplyContext } from './reply-context'
-import type { VideoLimits } from './video'
+import type { VideoLimits, VideoRendition } from './video'
 import type { ReplyOrder } from './thread-state'
 
 // Server-to-server address of the NestJS API. Browsers never use this; they go
@@ -44,16 +44,18 @@ export type PostImage = {
   animated: boolean
 }
 
-/** A post's one video, once it is ready. `src` is a path without the file: `/poster.webp` and `/<height>.mp4` go on the end. */
+/** A post's one video, once it is ready (ADR 0021 section 9). Every URL is absolute on the media domain. */
 export type PostVideo = {
   id: string
-  src: string
   durationMs: number
   width: number
   height: number
+  posterUrl: string
+  /** HLS master playlists: every quality, and 240p to 480p. */
+  playlists: { all: string; upTo480: string }
   description: string
-  /** Smallest first. `height` is the short edge: 240, 360 or 480. */
-  renditions: { height: number; width: number; bytes: number }[]
+  /** Smallest first. `height` is the short edge: 240, 360, 480 or 720; `bytes` counts its pieces. */
+  renditions: VideoRendition[]
 }
 
 /** The post a quote post quotes, or a placeholder when the reader cannot see it. */

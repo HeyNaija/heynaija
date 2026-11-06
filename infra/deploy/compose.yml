@@ -142,8 +142,8 @@ services:
   #
   # ffmpeg parses files strangers send us, so this container is confined (ADR 0019
   # section 3.4): its own environment (only what apps/api/src/video/worker-env.ts reads:
-  # no Kratos, session, push, LiveKit or Cloudflare secrets), a read-only root with a
-  # 2 GB scratch tmpfs, no capabilities, no privilege escalation, and its own network
+  # no Kratos, session, push, LiveKit or Cloudflare secrets), a read-only root with
+  # scratch on a disk volume, no capabilities, no privilege escalation, and its own network
   # that holds only Postgres and Redis besides this service. It is NOT on the default
   # network, so it cannot reach Kratos (public or admin), the API or the web app by
   # name or address. It can still reach the internet (object storage, the scanners, SMTP):
@@ -186,8 +186,11 @@ services:
       redis:
         condition: service_healthy
     read_only: true
-    tmpfs:
-      - /tmp:size=2g,mode=1777
+    # Scratch on a disk volume, not a tmpfs (ADR 0021 section 5): tmpfs pages count against
+    # mem_limit, and a 1 GB original beside a 4K encode would not fit in 1.5 GB. Needs 3 GB
+    # free on the server: the original, its pieces and the sampled frames.
+    volumes:
+      - video-scratch:/tmp
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     # Staging shares its server and sets 1 and 1g in .env. (Production's worker has
@@ -197,7 +200,8 @@ services:
     pids_limit: 256
     # A deploy replaces it: the worker stops taking jobs on SIGTERM and finishes the one
     # it has (a minute's clip encodes in a minute or two), rather than being killed
-    # mid-encode and leaving the job to be found stalled and run again.
+    # mid-encode and leaving the job to be found stalled and run again. A long 4K clip on
+    # staging's one core can outlast this, and is run again after the deploy.
     stop_grace_period: 3m
     restart: unless-stopped
     logging: *logging
@@ -321,6 +325,7 @@ networks:
 volumes:
   postgres-data:
   redis-data:
+  video-scratch:
 
 configs:
   # Kratos for a real domain over https. Rendered here so the site address and

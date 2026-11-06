@@ -628,7 +628,7 @@ export class PostsService {
       ...row,
       replyTo: toReplyContext(replyContext),
       images: toPostImages(images),
-      video: toPostVideo(video),
+      video: toPostVideo(video, this.videoCfg.filesBase),
       links: findLinks(row.text),
       linkPreview: toLinkPreview(linkPreview),
       authorAvatar: avatarPath(authorAvatarId),
@@ -1352,7 +1352,7 @@ export class PostsService {
         return {
           ...post,
           images: toPostImages(images),
-          video: toPostVideo(video),
+          video: toPostVideo(video, this.videoCfg.filesBase),
           links: findLinks(post.text),
           linkPreview: toLinkPreview(linkPreview),
           createdAt: new Date(createdAt),

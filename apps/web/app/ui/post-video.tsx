@@ -1,45 +1,40 @@
 'use client'
 
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { PostVideo as PostVideoData } from '@/lib/api'
 import { formatDuration, formatSize, videoFiles } from '@/lib/video'
 import { PlayIcon } from './icons'
-
-// Video must be served from the media bucket's own domain, not through our nginx
-// (ADR 0019 section 3.3), once Cloudflare has confirmed it. Unset, files come from /media.
-const ORIGIN = process.env.NEXT_PUBLIC_VIDEO_ORIGIN ?? ''
-// Which rendition plays: 360 until the low-data setting picks one (240 saver, 480 full); not wired yet.
-const QUALITY = 360
-const PLAYING = 'heynaija:video-playing'
+import { useOneVideo } from './use-one-video'
+import { VideoPlayer } from './video-player'
 
 /**
  * A post's video: the poster first, a tap to play, never autoplay. Only one video
- * plays at a time, and one scrolled out of view pauses. The browser's own controls
- * give keyboard play, seek and focus.
+ * plays at a time, and one scrolled out of view or on a page left behind pauses
+ * (`useOneVideo`). It plays under our own controls (`VideoPlayer`), and when it ends the
+ * poster comes back.
+ *
+ * It plays HLS from the media domain (ADR 0021 section 7) where the browser plays HLS
+ * itself (Safari, every browser on iPhones); hls.js for the rest comes with the player's
+ * own pull request (PR 4), as does the `full` data setting.
  *
  * `held` is the low-data hold (ADR 0019 section 5.2): nothing, not even the poster, is
  * fetched until the reader taps. PostItem sets it from the reader's low-data choice
  * (`currentDataSaver()`), as it does for pictures.
  */
 export function PostVideo({ video, held = false }: { video: PostVideoData; held?: boolean }) {
-  const id = useId()
   const [started, setStarted] = useState(false)
   const [loaded, setLoaded] = useState(!held)
   const player = useRef<HTMLVideoElement>(null)
-  const files = videoFiles(video.src, video.renditions, QUALITY, ORIGIN)
+  // The poster's button gets focus back when a video that had it ends.
+  const refocus = useRef(false)
+  const files = videoFiles(video, held ? 'saver' : 'auto')
   const length = formatDuration(video.durationMs)
   const label = video.description.trim() ? `${video.description.trim()}, ${length}` : `Video, ${length}`
   // Reserve the box from the stored size so the page does not jump; very tall clips are cropped to a limit.
   const ratio = Math.min(Math.max(video.width / video.height, 9 / 16), 2)
 
-  // Starting one pauses the others.
-  useEffect(() => {
-    const stop = (e: Event) => {
-      if ((e as CustomEvent<string>).detail !== id) setStarted(false)
-    }
-    window.addEventListener(PLAYING, stop)
-    return () => window.removeEventListener(PLAYING, stop)
-  }, [id])
+  // Starting another puts the poster back.
+  const playing = useOneVideo(player, started, () => setStarted(false))
 
   // Scrolled fully out of view: pause (by putting the poster back).
   useEffect(() => {
@@ -52,10 +47,10 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
     return () => watch.disconnect()
   }, [started])
 
-  if (!files.file) return null
+  if (!files.playlist) return null
 
   const play = () => {
-    window.dispatchEvent(new CustomEvent(PLAYING, { detail: id }))
+    playing()
     setLoaded(true)
     setStarted(true)
   }
@@ -63,19 +58,35 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
   return (
     <div className="post-video" style={{ aspectRatio: ratio }}>
       {started ? (
-        <video
-          ref={player}
-          src={files.file}
-          poster={files.poster}
-          controls
-          autoPlay
-          playsInline
-          preload="auto"
-          aria-label={label}
-          onEnded={() => setStarted(false)}
-        />
+        // It replaces the poster's button, so focus moves to its own play button.
+        <VideoPlayer player={player} length={video.durationMs / 1000} autoFocus>
+          <video
+            ref={player}
+            src={files.playlist}
+            poster={files.poster}
+            autoPlay
+            playsInline
+            preload="auto"
+            aria-label={label}
+            // Also when it is played again from its controls, on coming back to its page.
+            onPlay={playing}
+            onEnded={(e) => {
+              refocus.current = e.currentTarget.parentElement?.contains(document.activeElement) ?? false
+              setStarted(false)
+            }}
+          />
+        </VideoPlayer>
       ) : (
-        <button type="button" className="post-video-start" onClick={play} aria-label={`Play video, ${length}${video.description.trim() ? `: ${video.description.trim()}` : ''}`}>
+        <button
+          ref={(el) => {
+            if (el && refocus.current) el.focus({ preventScroll: true })
+            refocus.current = false
+          }}
+          type="button"
+          className="post-video-start"
+          onClick={play}
+          aria-label={`Play video, ${length}${video.description.trim() ? `: ${video.description.trim()}` : ''}`}
+        >
           {loaded ? (
             // eslint-disable-next-line @next/next/no-img-element -- a poster served as is, at the size we made it
             <img src={files.poster} alt="" width={video.width} height={video.height} loading="lazy" />

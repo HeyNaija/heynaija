@@ -38,8 +38,10 @@ before(async () => {
 after(async () => {
   if (skip) return
   for (const b of [bucket, media]) {
-    const listed = await raw.send(new ListObjectsV2Command({ Bucket: b }))
-    for (const o of listed.Contents ?? []) await raw.send(new DeleteObjectCommand({ Bucket: b, Key: o.Key }))
+    // A page at a time: the listing test leaves more than one.
+    for (let listed = await raw.send(new ListObjectsV2Command({ Bucket: b })); listed.Contents?.length; listed = await raw.send(new ListObjectsV2Command({ Bucket: b }))) {
+      await Promise.all(listed.Contents.map((o) => raw.send(new DeleteObjectCommand({ Bucket: b, Key: o.Key }))))
+    }
     await raw.send(new DeleteBucketCommand({ Bucket: b }))
   }
   await rm(dir, { recursive: true, force: true })
@@ -109,6 +111,17 @@ test('download and upload stream a file to and from disk; copy is server-side be
   await store.copy('uploads', 'videos/spike-4', 'media', 'copy/spike-4.mp4')
   assert.equal(await store.size('media', 'copy/spike-4.mp4'), body.length)
   assert.ok(body.equals(await store.read('media', 'copy/spike-4.mp4')))
+})
+
+test('list gives every key in a folder, past a page of 1000, and nothing beside it (a video\'s HLS files, ADR 0021 section 4)', { skip, timeout: 120_000 }, async () => {
+  const folder = 'videos/spike-6/'
+  const keys = Array.from({ length: 1005 }, (_, i) => `${folder}hls/240/piece-${String(i).padStart(4, '0')}.m4s`)
+  for (let i = 0; i < keys.length; i += 50) await Promise.all(keys.slice(i, i + 50).map((k) => store.write('media', k, Buffer.from('x'), 'video/iso.segment')))
+  // A neighbour whose name starts the same. (No object at `videos/spike-6` itself: MinIO keeps objects
+  // as files, so one cannot sit beside a folder of the same name. The original is in the other bucket.)
+  await store.write('media', 'videos/spike-60/poster.webp', Buffer.from('another video'), 'image/webp')
+  assert.deepEqual((await store.list('media', folder)).sort(), keys)
+  assert.deepEqual(await store.list('media', 'videos/nothing-here/'), [])
 })
 
 test('a public object answers a Range request with 206 and the bytes asked for (what a video player sends)', { skip }, async () => {
