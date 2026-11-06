@@ -99,7 +99,7 @@ test('it is pushed only to someone who can open the Gist', async () => {
   const sent = browser.sent.filter((m) => m.body.includes('secret'))
   assert.equal(sent.length, can.length)
   for (const message of sent) {
-    assert.equal(message.url, `/gists/${room}#post-${reply}`)
+    assert.equal(message.url, `/gists/${room}?reply=${reply}#post-${reply}`)
     assert.match(message.title, /in a Gist/)
   }
 })
@@ -110,7 +110,7 @@ test('it reaches the email digest only for someone who can open the Gist', async
   const texts = outbox.sent.filter((m) => m.text.includes('secret'))
   assert.deepEqual(texts.map((m) => m.to).sort(), can.map((p) => `${id[p]}@example.test`).sort())
   for (const mail of texts) {
-    assert.ok(mail.text.includes(`/gists/${room}#post-${reply}`))
+    assert.ok(mail.text.includes(`/gists/${room}?reply=${reply}#post-${reply}`))
     assert.ok(!mail.text.includes(`/p/${reply}`))
   }
   assert.equal(outbox.sent.filter((m) => cannot.some((p) => m.to === `${id[p]}@example.test`)).length, 0)

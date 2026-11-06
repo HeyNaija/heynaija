@@ -76,8 +76,9 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
     groups.set(key, group)
   })
 
+  // A Gist reply opens as the conversation in focus (?reply=), the shape of gistReplyHref in apps/web/lib/thread-state.ts.
   const post = (id: string | null, gistId?: string | null) =>
-    gistId ? `${webUrl}/gists/${gistId}${id ? `#post-${id}` : ''}` : id ? `${webUrl}/p/${id}` : `${webUrl}/notifications`
+    gistId ? `${webUrl}/gists/${gistId}${id ? `?reply=${id}#post-${id}` : ''}` : id ? `${webUrl}/p/${id}` : `${webUrl}/notifications`
   return [...groups.values()].map(({ items, actors }) => ({ ...describe(items[0]!, actors, items.length), items }))
 
   function describe(item: DigestItem, actors: string[], count: number): Omit<Line, 'items'> {

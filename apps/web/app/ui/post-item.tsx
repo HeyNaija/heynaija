@@ -1,3 +1,4 @@
+import { gistReplyHref } from '@/lib/thread-state'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { deletePost, hideGistReply, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin, setReplyAudience } from '@/app/actions'
@@ -105,7 +106,7 @@ export function PostItem({
     return <p className="post-card text-sm italic text-muted">This post is no longer available.</p>
   }
 
-  const href = gist ? `/gists/${gist.id}#post-${post.id}` : `/p/${post.id}`
+  const href = gist ? gistReplyHref(gist.id, post.id) : `/p/${post.id}`
   const compact = inThread && !focused
   const openLabel = `Open ${post.replyParentId ? 'reply' : 'post'} by @${post.authorHandle}`
   const parts = textParts(post.text, post.mentions, post.links, post.hashtags)

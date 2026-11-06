@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { notificationTarget } from '../lib/notification-target.ts'
+import { gistReplyHref } from '../lib/thread-state.ts'
 
 const notification = (kind, fields = {}) => ({ kind, post: null, actor: null, community: null, ...fields })
 
@@ -36,10 +37,16 @@ test('informational moderation outcomes remain readable without a misleading des
 test('a reply in a Gist opens the Gist page at the reply, not a post page the reader cannot open', () => {
   assert.equal(
     notificationTarget(notification('reply', { post: { id: 'reply-id', excerpt: 'hello', gistId: 'gist-id' } })),
-    '/gists/gist-id#post-reply-id',
+    '/gists/gist-id?reply=reply-id#post-reply-id',
   )
   assert.equal(
     notificationTarget(notification('reply', { post: { id: 'reply-id', excerpt: 'hello', gistId: null } })),
     '/p/reply-id#post-reply-id',
   )
+})
+
+test('a reply nested under another reply opens that reply as the conversation in focus, which the page can always render', () => {
+  const nested = notification('mention', { post: { id: 'r2', excerpt: 'hi', gistId: 'g1' } })
+  assert.equal(notificationTarget(nested), '/gists/g1?reply=r2#post-r2')
+  assert.equal(notificationTarget(nested), gistReplyHref('g1', 'r2'))
 })
