@@ -1,16 +1,15 @@
 'use client'
 
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { PostVideo as PostVideoData } from '@/lib/api'
 import { formatDuration, formatSize, videoFiles } from '@/lib/video'
 import { PlayIcon } from './icons'
-
-const PLAYING = 'heynaija:video-playing'
+import { useOneVideo } from './use-one-video'
 
 /**
  * A post's video: the poster first, a tap to play, never autoplay. Only one video
- * plays at a time, and one scrolled out of view pauses. The browser's own controls
- * give keyboard play, seek and focus.
+ * plays at a time, and one scrolled out of view or on a page left behind pauses
+ * (`useOneVideo`). The browser's own controls give keyboard play, seek and focus.
  *
  * It plays HLS from the media domain (ADR 0021 section 7) where the browser plays HLS
  * itself (Safari, every browser on iPhones); hls.js for the rest comes with the player's
@@ -21,7 +20,6 @@ const PLAYING = 'heynaija:video-playing'
  * (`currentDataSaver()`), as it does for pictures.
  */
 export function PostVideo({ video, held = false }: { video: PostVideoData; held?: boolean }) {
-  const id = useId()
   const [started, setStarted] = useState(false)
   const [loaded, setLoaded] = useState(!held)
   const player = useRef<HTMLVideoElement>(null)
@@ -31,14 +29,8 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
   // Reserve the box from the stored size so the page does not jump; very tall clips are cropped to a limit.
   const ratio = Math.min(Math.max(video.width / video.height, 9 / 16), 2)
 
-  // Starting one pauses the others.
-  useEffect(() => {
-    const stop = (e: Event) => {
-      if ((e as CustomEvent<string>).detail !== id) setStarted(false)
-    }
-    window.addEventListener(PLAYING, stop)
-    return () => window.removeEventListener(PLAYING, stop)
-  }, [id])
+  // Starting another puts the poster back.
+  const playing = useOneVideo(player, started, () => setStarted(false))
 
   // Scrolled fully out of view: pause (by putting the poster back).
   useEffect(() => {
@@ -54,7 +46,7 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
   if (!files.playlist) return null
 
   const play = () => {
-    window.dispatchEvent(new CustomEvent(PLAYING, { detail: id }))
+    playing()
     setLoaded(true)
     setStarted(true)
   }
@@ -71,6 +63,8 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
           playsInline
           preload="auto"
           aria-label={label}
+          // Also when it is played again from its controls, on coming back to its page.
+          onPlay={playing}
           onEnded={() => setStarted(false)}
         />
       ) : (

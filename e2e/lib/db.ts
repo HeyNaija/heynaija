@@ -163,6 +163,44 @@ export async function ageAccount(handle: string, days: number) {
   }
 }
 
+/**
+ * Gives `handle` a post with a ready video, as the worker leaves one: the rows only.
+ * The dev stack runs no worker, and without a scanner it would hold the video anyway,
+ * so nothing is stored: a test serves `/media/videos/<mediaId>/…` itself (`page.route`).
+ * The rows describe e2e/fixtures/minute.webm.
+ */
+export async function seedVideoPost(handle: string, text: string): Promise<{ postId: string; mediaId: string }> {
+  const db = pool()
+  const client = await db.connect()
+  try {
+    await client.query('begin')
+    const { rows: [post] } = await client.query<{ id: string; author_id: string }>(
+      `insert into posts (author_id, text) select id, $2 from members where handle = $1 returning id, author_id`,
+      [handle, text],
+    )
+    if (!post) throw new Error(`no member @${handle} to seed a video for`)
+    const { rows: [video] } = await client.query<{ id: string }>(
+      `insert into media (owner_id, kind, status, content_type, bytes, width, height, post_id, position, ready_at)
+       values ($1, 'post_video', 'ready', 'video/webm', 46306, 320, 180, $2, 0, now()) returning id`,
+      [post.author_id, post.id],
+    )
+    await client.query(
+      `insert into video_details (media_id, duration_ms, width, height, scan_result, poster_key)
+       values ($1, 60008, 320, 180, 'clear', $2)`,
+      [video!.id, `videos/${video!.id}/poster.webp`],
+    )
+    await client.query(`insert into video_renditions (media_id, height, width, bytes, bitrate_kbps) values ($1, 360, 640, 46306, 6)`, [video!.id])
+    await client.query('commit')
+    return { postId: post.id, mediaId: video!.id }
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+    await db.end()
+  }
+}
+
 /** A wide conversation plus a branch through two deleted intermediate replies. */
 export async function seedThread(handle: string) {
   const db = pool()
