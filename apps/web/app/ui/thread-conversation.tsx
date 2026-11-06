@@ -220,6 +220,7 @@ export function ThreadConversation({
       avatar={member.avatar}
       replyTo={target.id}
       replyHandle={target.handle}
+      replyLabel={gist && target.id === gist && target.handle === member.handle ? 'this Gist' : undefined}
       replyDepth={target.depth + 1}
       answeringReply={target.id !== focus.id}
       placeholder="Post your reply"

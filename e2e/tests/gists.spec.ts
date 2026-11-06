@@ -150,7 +150,7 @@ test('a Gist has a reply thread: reply while live and after it ends, the host hi
 
   await host.page.reload()
   await expect(host.page.locator('article', { hasText: 'Team party jollof, always' })).toBeVisible()
-  await expect(host.page.locator('form#compose .composer-recipient')).toHaveText('Replying to @' + host.handle)
+  await expect(host.page.locator('form#compose .composer-recipient')).toHaveText('Replying to this Gist')
 
   await host.page.getByRole('button', { name: 'Join the Gist' }).click()
   await host.page.getByRole('button', { name: 'End the Gist' }).click()

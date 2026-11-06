@@ -33,6 +33,8 @@ type Props = {
   avatar?: string | null
   replyTo?: string
   replyHandle?: string
+  /** Names the recipient in place of `@replyHandle` (the host answering their own Gist). */
+  replyLabel?: string
   replyDepth?: number
   /** The reply is to another reply rather than the post in focus: the recipient stays in view. */
   answeringReply?: boolean
@@ -63,7 +65,7 @@ type Props = {
   videoLimits?: VideoLimits | null
 }
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, media = true, videoLimits = null }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, media = true, videoLimits = null }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -228,7 +230,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
       {pollOpen ? <input type="hidden" name="poll" value="1" /> : null}
 
       {replyTo && replyHandle ? (
-        <p id={recipientId} className="composer-recipient">Replying to <strong>@{replyHandle}</strong></p>
+        <p id={recipientId} className="composer-recipient">Replying to <strong>{replyLabel ?? `@${replyHandle}`}</strong></p>
       ) : null}
       <div className={replyTo ? 'composer-reply-writing' : 'flex gap-3'}>
         {replyTo ? (
