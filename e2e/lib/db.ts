@@ -167,7 +167,7 @@ export async function ageAccount(handle: string, days: number) {
  * Gives `handle` a post with a ready video, as the worker leaves one: the rows only.
  * The dev stack runs no worker, and without a scanner it would hold the video anyway,
  * so nothing is stored: a test serves `/media/videos/<mediaId>/…` itself (`page.route`).
- * The rows describe e2e/fixtures/minute.webm.
+ * The rows describe e2e/fixtures/minute-hls, made from minute.webm: one quality, 180p.
  */
 export async function seedVideoPost(handle: string, text: string): Promise<{ postId: string; mediaId: string }> {
   const db = pool()
@@ -189,7 +189,7 @@ export async function seedVideoPost(handle: string, text: string): Promise<{ pos
        values ($1, 60008, 320, 180, 'clear', $2)`,
       [video!.id, `videos/${video!.id}/poster.webp`],
     )
-    await client.query(`insert into video_renditions (media_id, height, width, bytes, bitrate_kbps) values ($1, 360, 640, 46306, 6)`, [video!.id])
+    await client.query(`insert into video_renditions (media_id, height, width, bytes, bitrate_kbps) values ($1, 180, 320, 111714, 16)`, [video!.id])
     await client.query('commit')
     return { postId: post.id, mediaId: video!.id }
   } catch (err) {
