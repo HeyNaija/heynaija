@@ -104,10 +104,17 @@ export const visible = (viewerId: string, gistsOn: boolean) => sql`
     and not exists(select 1 from blocks b where (b.blocker_id = ${viewerId} and b.blocked_id = n.actor_id) or (b.blocker_id = n.actor_id and b.blocked_id = ${viewerId}))
     and not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = n.actor_id)))
   and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'idea_status') or (p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null))
-  and (p.gist_id is null or (${gistsOn}::boolean and ${memberOpensGist(viewerId, sql`p.gist_id`)}))
+  and (p.gist_id is null or n.kind in ('post_removed', 'report_resolved') or (${gistsOn}::boolean and ${memberOpensGist(viewerId, sql`p.gist_id`)}))
   and (n.kind <> 'like' or exists(select 1 from likes l where l.post_id = n.post_id and l.member_id = n.actor_id))
   and (n.kind <> 'repost' or exists(select 1 from reposts r where r.post_id = n.post_id and r.member_id = n.actor_id))
   and (n.kind <> 'follow' or exists(select 1 from follows f where f.follower_id = n.actor_id and f.followee_id = ${viewerId}))`
+
+/**
+ * Whether the post a notification names may be shown to its recipient: not in a Gist, or in one they can
+ * open, or their own. A moderation outcome stays listed after they lose the Gist, but without the reply.
+ */
+export const postShown = (viewerId: string, gistsOn: boolean) =>
+  sql`(p.gist_id is null or p.author_id = n.recipient_id or (${gistsOn}::boolean and ${memberOpensGist(viewerId, sql`p.gist_id`)}))`
 
 /** Whether Gists are open to this member, which a notification about a Gist reply needs. Closed without a gate. */
 export const gistsOpenTo = async (gate: Pick<GistsGate, 'access'> | null, memberId: string): Promise<boolean> =>
@@ -136,6 +143,7 @@ export class NotificationsService {
       before = sql`(n.created_at, n.id) < (${createdAt.toISOString()}::timestamptz, ${id}::uuid)`
     }
     const gistsOn = await gistsOpenTo(this.gate, viewerId)
+    const shown = postShown(viewerId, gistsOn)
     const { rows } = await this.db.execute<{
       id: string
       kind: NotificationKind
@@ -158,7 +166,7 @@ export class NotificationsService {
       select n.id, n.kind, n.created_at, n.read_at, n.detail,
         a.handle as actor_handle, a.display_name as actor_name, a.avatar_media_id as actor_avatar,
         ${isFounder(sql`a.id`)} as actor_founder,
-        p.id as post_id, p.text as post_text, p.gist_id, s.handle as subject_handle,
+        case when ${shown} then p.id end as post_id, case when ${shown} then p.text end as post_text, case when ${shown} then p.gist_id end as gist_id, s.handle as subject_handle,
         c.slug as community_slug, c.name as community_name,
         i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours
       ${joins}

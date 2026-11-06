@@ -3,7 +3,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { EXCERPT_MAX, KINDS_WITH_EXCERPT } from '../email/digest.js'
 import { GistsGate } from '../gists/gists-enabled.guard.js'
-import { excerpt, gistsOpenTo, joins, type NotificationKind, visible } from '../notifications/notifications.service.js'
+import { excerpt, gistsOpenTo, joins, type NotificationKind, postShown, visible } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 import { type PushItem, pushMessages } from './push-message.js'
 import {
@@ -233,6 +233,8 @@ export class PushNotificationsService {
    * pushed that the new ones are counted in with. Newest first within each.
    */
   private async eligible(memberId: string, ids: string[]): Promise<PushItem[]> {
+    const gistsOn = await gistsOpenTo(this.gate, memberId)
+    const shown = postShown(memberId, gistsOn)
     const optional = sql.join(OPTIONAL_NOTIFICATION_KINDS.map((k) => sql`${k}`), sql`, `)
     const excerptKinds = sql.join(KINDS_WITH_EXCERPT.map((k) => sql`${k}`), sql`, `)
     const { rows } = await this.db.execute<{
@@ -248,12 +250,12 @@ export class PushNotificationsService {
       idea_yours: boolean
       pending: boolean
     }>(sql`
-      select n.id, n.kind, a.handle as actor_handle, n.post_id, p.gist_id,
+      select n.id, n.kind, a.handle as actor_handle, case when ${shown} then n.post_id end as post_id, case when ${shown} then p.gist_id end as gist_id,
         -- The text of a post is read only for the kinds that quote it.
         case when n.kind in (${excerptKinds}) then p.text end as post_text,
         c.name as community_name, n.detail, i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, n.push_settled_at is null as pending
       ${joins}
-      where ${visible(memberId, await gistsOpenTo(this.gate, memberId))} and n.read_at is null
+      where ${visible(memberId, gistsOn)} and n.read_at is null
         and (n.kind not in (${optional})
           or not exists(select 1 from notification_opt_outs o where o.member_id = n.recipient_id and o.kind = n.kind))
         and (n.id = any(${pgUuids(ids)})

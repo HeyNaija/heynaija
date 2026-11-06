@@ -2,7 +2,7 @@ import { type Db, members, notifications, OPTIONAL_NOTIFICATION_KINDS } from '@h
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { eq, inArray, sql } from 'drizzle-orm'
 import { GistsGate } from '../gists/gists-enabled.guard.js'
-import { excerpt, gistsOpenTo, joins, type NotificationKind, visible } from '../notifications/notifications.service.js'
+import { excerpt, gistsOpenTo, joins, type NotificationKind, postShown, visible } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 import { EMAIL_ADDRESSES, type EmailAddresses } from './addresses.js'
 import { type DigestItem, EXCERPT_MAX, KINDS_WITH_EXCERPT, renderDigest } from './digest.js'
@@ -190,6 +190,8 @@ export class EmailNotificationsService {
    * they have not read, have not since opted out of and were not pushed.
    */
   private async eligible(memberId: string, ids: string[]): Promise<{ items: DigestItem[]; total: number }> {
+    const gistsOn = await gistsOpenTo(this.gate, memberId)
+    const shown = postShown(memberId, gistsOn)
     const optional = sql.join(OPTIONAL_NOTIFICATION_KINDS.map((k) => sql`${k}`), sql`, `)
     const excerptKinds = sql.join(KINDS_WITH_EXCERPT.map((k) => sql`${k}`), sql`, `)
     const waiting = sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)
@@ -205,12 +207,12 @@ export class EmailNotificationsService {
       idea_yours: boolean
       total: number
     }>(sql`
-      select n.kind, a.handle as actor_handle, n.post_id, p.gist_id,
+      select n.kind, a.handle as actor_handle, case when ${shown} then n.post_id end as post_id, case when ${shown} then p.gist_id end as gist_id,
         -- The text of a post is read only for the kinds that quote it.
         case when n.kind in (${excerptKinds}) then p.text end as post_text,
         c.name as community_name, n.detail, i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, count(*) over ()::int as total
       ${joins}
-      where ${visible(memberId, await gistsOpenTo(this.gate, memberId))} and n.id in (${waiting}) and n.read_at is null and n.pushed_at is null
+      where ${visible(memberId, gistsOn)} and n.id in (${waiting}) and n.read_at is null and n.pushed_at is null
         and (n.kind not in (${optional})
           or not exists(select 1 from notification_opt_outs o where o.member_id = n.recipient_id and o.kind = n.kind))
       order by n.created_at desc, n.id desc

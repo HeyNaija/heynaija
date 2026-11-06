@@ -111,3 +111,30 @@ test('a member who is removed from the Gist later stops seeing the old notificat
   await db.insert(gistMembers).values({ gistId: room, memberId: id.chi, role: 'listener', removedAt: new Date() })
   assert.equal((await list.list(id.chi, 20)).notifications.length, 0)
 })
+
+test('a moderation decision about your own Gist reply shows even after you can no longer open the Gist', async () => {
+  const { id: own } = await posts.create(id.chi, 'my own words', { gist: room })
+  await db.insert(gistMembers).values({ gistId: room, memberId: id.chi, role: 'listener', removedAt: new Date() })
+  await db.delete(notifications)
+  await db.insert(notifications).values({ recipientId: id.chi, kind: 'post_removed', postId: own, detail: 'harassment' })
+  const [item] = (await list.list(id.chi, 20)).notifications
+  assert.equal(item?.kind, 'post_removed')
+  assert.equal(item?.post?.excerpt, 'my own words')
+  assert.equal(await list.unreadCount(id.chi), 1)
+})
+
+test('a reporter who can no longer open the Gist still hears the outcome, without the reply or a way to it', async () => {
+  await db.delete(notifications)
+  await db.insert(notifications).values({ recipientId: id.dayo, kind: 'report_resolved', postId: reply, detail: 'actioned' })
+  await db.execute(sql`update notifications set created_at = created_at - interval '6 minutes'`)
+  const [item] = (await list.list(id.dayo, 20)).notifications
+  assert.equal(item?.kind, 'report_resolved')
+  assert.equal(item?.post, null)
+  assert.equal(await list.unreadCount(id.dayo), 1)
+  await push.sweep()
+  await push.send(id.dayo)
+  await email.sweep()
+  await email.sendDigest(id.dayo)
+  assert.equal(browser.sent.filter((m) => JSON.stringify(m).includes(room) || JSON.stringify(m).includes('secret')).length, 0)
+  assert.equal(outbox.sent.filter((m) => m.text.includes(room) || m.text.includes('secret')).length, 0)
+})
