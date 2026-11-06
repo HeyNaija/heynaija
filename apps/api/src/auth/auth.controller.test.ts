@@ -80,13 +80,12 @@ test('during the 18+ beta, anyone under 18 is refused, and nobody under 13 ever'
   assert.match((await refusal({ ...body, birth_date: bornYearsAgo(12) }))!, /aged 18 and over/)
 })
 
-test('the old "18 or older" box still counts for one release', async () => {
+test('the old "18 or older" box no longer lets anyone join', async () => {
   const code = await invites.create()
   const body = { identity_id: unsaved, invite_code: code, handle: 'newcomer' }
-  assert.equal(await refusal({ ...body, adult_declared: true }), null)
-  assert.match((await refusal({ ...body, adult_declared: false }))!, /enter your date of birth/)
-  // A date, when there is one, decides.
-  assert.match((await refusal({ ...body, adult_declared: true, birth_date: bornYearsAgo(15) }))!, /aged 18 and over/)
+  assert.match((await refusal({ ...body, adult_declared: true }))!, /enter your date of birth/)
+  // The cookie's old value is not a date.
+  assert.match((await refusal({ ...body, birth_date: '18-plus' }))!, /enter your date of birth/)
 })
 
 test('the invite is still checked first', async () => {
@@ -111,21 +110,16 @@ test('a wrong webhook secret is turned away before anything else', async () => {
 test('once the account exists, the date of birth is recorded with the invite', async () => {
   const code = await invites.create({ maxUses: 3 })
   const adult = randomUUID()
-  const ticked = randomUUID()
   const older = randomUUID()
   assert.deepEqual(await controller.registered(secret, { identity_id: adult, invite_code: code, handle: 'adult', birth_date: '1990-03-27' }), { redeemed: true })
-  // A signup begun with the old box records a stated adult with no date.
-  assert.deepEqual(await controller.registered(secret, { identity_id: ticked, invite_code: code, handle: 'ticked', adult_declared: true }), { redeemed: true })
-  // A body from before the 18+ rule (no age at all) still redeems, but records nothing.
+  // A body with no date (which the first hook refuses) still redeems, but records nothing;
+  // the member is asked for their date before they can use the app.
   assert.deepEqual(await controller.registered(secret, { identity_id: older, invite_code: code, handle: 'older' }), { redeemed: true })
 
   const [row] = await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, adult))
   assert.equal(row!.method, 'self_declared')
   assert.equal(row!.band, '18_plus')
   assert.equal(row!.birthDate, '1990-03-27')
-  const [box] = await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, ticked))
-  assert.equal(box!.band, '18_plus')
-  assert.equal(box!.birthDate, null)
   assert.equal((await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, older))).length, 0)
 })
 

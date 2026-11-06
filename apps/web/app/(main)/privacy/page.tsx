@@ -51,8 +51,9 @@ export default function PrivacyPage() {
               <dd>Your email address, handle, and the invite you joined with. If you sign in with Google, Google tells us your email address.</dd>
               <dt>Your date of birth and age</dt>
               <dd>
-                The date of birth you give when you join, which you confirm is your real one, and the age band it gives
-                (under 18, or 18 or older), kept apart from your account. We do not ask for any identity document to
+                The date of birth you give when you join (or the first time you come back, if you joined before we asked
+                for it), which you confirm is your real one, and the age band it gives (under 18, or 18 or older), kept
+                apart from your account. We do not ask for any identity document to
                 join.
               </dd>
               <dt>Your profile</dt>
@@ -275,8 +276,11 @@ export default function PrivacyPage() {
                 worked out again without asking you, and so a later age check can be compared with what you said. Only
                 you can see your date of birth, in Settings and in your data export; moderators see at most whether an
                 account is an adult. It is never logged, never shown on your profile, and deleted with your account.
-                You cannot change it yourself: to correct it, write to <ContactEmail />. Accounts made before 16 October
-                2026 have no age on record and are not treated as confirmed adults.
+                You cannot change it yourself: to correct it, write to <ContactEmail />. If you joined before we asked
+                for a date of birth, we ask you for it once before you can carry on using HeyNaija; until you give it,
+                you are not treated as a confirmed adult. If the date you give then is under 18, we keep it so we can
+                protect you as a minor, and tell our moderators, who follow the steps in the rules. If it is under 13,
+                your account is suspended until a moderator looks.
               </p>
             </>
           ),

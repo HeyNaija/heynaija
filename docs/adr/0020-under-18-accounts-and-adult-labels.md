@@ -1,8 +1,9 @@
 # ADR 0020 — Opening HeyNaija to under-18s: date of birth at signup and 18+ labels, in two phases
 
 **Date:** 3 November 2026 · **Status:** Accepted, 6 November 2026 (owner). Section
-1's date of birth at signup is built (branch `feat/date-of-birth-signup`); asking
-members with no age on record, the labels, enforcement and phase 2 are not yet. ·
+1 is built: the date of birth at signup (PR #102) and asking everyone already here
+for theirs (branch `feat/date-of-birth-everyone`). The labels, enforcement and
+phase 2 are not yet. ·
 **Roadmap:** `adult-content-labels`
 (phase 1), `minor-safeguards` (phase 2) · **Related:**
 [ADR 0006](0006-age-status-model.md), [ADR 0016](0016-direct-messages.md),
@@ -28,8 +29,10 @@ ship first and are proven before any minor arrives:
   "I am 18 or older" tick, kept with the age record (question 5 gives the
   reasons). An 18+ label on posts and
   communities, enforced on the server in every read path, with labelled media
-  served privately. Members whose age is not on record are asked for it. Under-18s
-  are still refused, so no child's data is processed.
+  served privately. Everyone already on HeyNaija is asked for their date of birth
+  too, and cannot use the app until they give it. Under-18s are still refused at
+  signup; a member already here whose date gives under 18 is kept as a minor, and
+  moderators are told.
 - **Phase 2, opening to minors.** Only after counsel has answered section 7, the
   rest of the under-18 rollout checklist is built and tested, and a named person
   has signed off: minors from 13 get `under_18` accounts with the
@@ -58,6 +61,12 @@ check in ADR 0018, and never counts for `governance_vote`.
 - **No direct messages or calls until the ID check exists** (6 November): neither
   is built before ADR 0018's check, and both then need it. A stated age is never
   enough for them.
+- **Everyone gives a date of birth** (6 November, changing question 6): members
+  who ticked "18 or older" are asked too, and nobody can use the app until they
+  answer. The age is worked out from the date on every check, so nobody's age
+  goes out of date. A member already here whose date gives 13 to 17 is kept and
+  treated as a minor at once, and moderators are told; under 13, the account is
+  also suspended until a moderator looks.
 - **The beta opens to 13 to 17 year olds the way X does** (question 10, 6
   November): with section 4's protections on by default, without waiting for the
   rest of section 5. Upload hash-matching is built: Arachnid Shield.
@@ -108,16 +117,18 @@ check in ADR 0018, and never counts for `governance_vote`.
   `birth_date` in place of `adult_declared`. The API works the age out again
   (`signupAgeDecision`) instead of trusting the web app, and
   `recordAgeDeclaration` writes a `self_declared` row with the band and the date.
-  In phase 1 the band is always `18_plus`; in phase 2 a minor's row also gets
-  `review_after`, their 18th birthday. For one release the webhook also accepts
-  `adult_declared`, so signups in flight across the deploy still work.
+  The stored band is only what the date gave that day: the rules work the band
+  out from the date on every check (`ageStatus`), so a minor is an adult from
+  the start of their 18th birthday in Lagos, with no new row and no
+  `review_after`. The webhook accepted `adult_declared` for one release after
+  the date shipped; it no longer does.
 - **The date is kept, with the age record** (question 5 gives the reasons).
   `restricted.age_assurances` gains `birth_date` (a date, nullable), set only on a
   `self_declared` row made from a date of birth. Rows from the old tick have none.
-  - The rules still read only the band, so `ageStatus()` and `isAdultFor()` do not
-    change. If an age in the rules changes (counsel's age of a child, the minimum
-    age, or separate protections for 13 to 15), new rows are worked out from the
-    dates already given and the old ones are withdrawn.
+  - `ageStatus()` works the band out from the date each time, and `isAdultFor()`
+    reads that band. If an age in the rules changes (counsel's age of a child, the
+    minimum age, or separate protections for 13 to 15), the dates already given
+    answer it, and nobody is asked again.
   - Only the member sees it: in Settings next to their age status, and in the data
     export. Moderators don't; they see minor or adult only (rollout doc section 6).
     Nor do the admin pages, profiles or any public API.
@@ -129,9 +140,9 @@ check in ADR 0018, and never counts for `governance_vote`.
     nobody can try dates until one gets past the limit.
   - Deleted with the account: ADR 0016's account deletion already deletes the age
     rows.
-  - In phase 1 only a date that gives 18 or older is kept. A refused signup keeps
-    nothing, and an existing member's under-18 date is not kept (below), so no
-    child's data is held before phase 2.
+  - A refused signup keeps nothing. A member already here keeps the date they give
+    whatever it says (below), so a child already on HeyNaija is protected as one
+    at once (owner decision, 6 November 2026).
 - **Below the age limit.** In phase 1 that is anyone under 18; in phase 2, anyone
   under 13 (question 1). Refused with a kind message, keeping no age
   record (rollout doc section 2). The refusal is held for a day in a cookie that
@@ -139,15 +150,25 @@ check in ADR 0018, and never counts for `governance_vote`.
   straight away; that stops only the laziest retry and is not a control.
   Impossible dates (in the future, or more than 120 years ago) are refused as
   typing mistakes.
-- **Members with no age on record.** Asked once for a date of birth, by a prompt
-  on their next visit and in place of any 18+ item they try to open; until they
-  answer they are not adult (already how `isAdultFor` works). The rollout doc
-  requires every unknown age to be asked before any minor joins, so phase 2 waits
-  for this. One whose date gives under 18 is not refused like a signup, because the
-  account exists in an 18+ beta: an operator alert opens the mistaken-age process
-  in `/rules#age`, the date is not stored, and they stay `unknown` until a
-  moderator acts. Members who already ticked "18 or older" are not asked again
-  (question 6).
+- **Everyone already on HeyNaija** (owner decision, 6 November 2026, changing
+  question 6): members with no age on record and members who ticked "18 or older"
+  alike. Every page of the app sends them to `/birth-date` (the main layout reads
+  `birthDateNeeded` from `/v1/me`), with the same fields and tick as `/join` and a
+  Sign out link, and nothing else, until they answer (`POST /v1/me/birth-date`,
+  given once, rate limited). The old tick counts for nothing (`ageStatus` ignores a
+  `self_declared` row without a date) and is withdrawn when the date arrives. The
+  rollout doc requires every unknown age to be asked before any minor joins, so
+  phase 2 waits for this.
+  - An under-18 date is not refused like a signup, because the account exists in
+    an 18+ beta. It is kept, so the rules treat them as a minor at once, and a
+    safety alert (`SAFETY_ALERT_EMAIL`, with the handle and never the date) tells
+    moderators to follow the mistaken-age process in `/rules#age`.
+  - Under 13, the account is also suspended until a moderator looks, recorded in
+    the restricted audit trail (`age_below_minimum`) and not in the public
+    moderation log. A moderator reinstates it like any suspension.
+  - The gate is the web app's. The API does not refuse other requests from a
+    member without a date, but every age rule there already treats a missing
+    date as not adult.
 - **No flag.** It replaces one field and ships through staging like any change.
   The e2e `submitSignUp` helper (`e2e/lib/members.ts`) ticks the box today and must
   type a date. `signUpOverHttp` and `newMember` set `hn_age` to `18-plus` directly
@@ -263,8 +284,8 @@ follows during the beta.
 
 1. Counsel's answers to section 7, with question 2 revisited if the answer on
    consent requires it. Questions 1, 2 and 7 are answered.
-2. Phase 1 live in production: dates of birth at signup, every `unknown` member
-   asked, labels enforced and the read-path test passing, labelled media private.
+2. Phase 1 live in production: dates of birth at signup, every member already
+   here asked, labels enforced and the read-path test passing, labelled media private.
 3. Hash-matching of known abuse material on every upload (PhotoDNA or equivalent,
    `docs/safety/abuse-material-scanning.md`). Built: Arachnid Shield scans every
    image and video before it is published, once `ARACHNID_SHIELD_USERNAME` and
@@ -427,6 +448,9 @@ accepted. Questions 10 and 11 come from the decisions of 5 November.
    nothing.
    - Answer: Agreed.
    - Answered by / date: Psami-wondah, 3 November 2026
+   - Changed: everyone is asked, those who ticked "18 or older" included, and must
+     answer before they can use the app ("we need to have everybody's date of
+     birth"). Psami-wondah, 6 November 2026.
 
 7. **Are minors' posts public?** Recommendation: shown to signed-in members only,
    never to signed-out visitors or search engines, with replies limited to people

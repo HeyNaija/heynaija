@@ -195,7 +195,7 @@ const auth = new AuthController(
   db,
   {} as never,
   membersService,
-  {} as never,
+  { birthDateNeeded: async () => false } as never,
   new FeatureFlags(db, 'development'),
   { effective: (on: boolean) => on },
   { access: async () => ({ member: () => false, anyone: false }) },

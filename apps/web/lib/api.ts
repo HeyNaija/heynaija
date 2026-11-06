@@ -26,6 +26,11 @@ export type Me = {
   /** False until they finish or skip the welcome flow, which the home page sends them to. */
   onboarded: boolean
   /**
+   * True until a member who joined before signup asked for a date of birth gives
+   * theirs. The app shows them nothing but /birth-date until then (ADR 0020).
+   */
+  birthDateNeeded: boolean
+  /**
    * What is switched on for this member: the API's feature flags by key (docs/feature-flags.md) and
    * `gists` (docs/adr/0017). A missing key counts as off.
    */
@@ -694,8 +699,7 @@ export type GovernanceStatus = {
   age: {
     band: 'unknown' | 'under_18' | '18_plus'
     assurance: 'none' | 'declared' | 'reviewed' | 'verified'
-    reviewDue: boolean
-    /** The date of birth they gave at signup (YYYY-MM-DD), or null for an account from before it was asked. */
+    /** The date of birth on record (YYYY-MM-DD), or null until they give it. */
     birthDate: string | null
   }
   verification: {
