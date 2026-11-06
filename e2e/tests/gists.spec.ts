@@ -10,12 +10,8 @@ import { newMember, replyBox, signUpOverHttp } from '../lib/members.ts'
 //   pnpm dev:api, with the LIVEKIT_* settings `pnpm infra:env` put in .env
 //   E2E_GISTS=1 pnpm e2e gists
 //
-// The gists and gistReplies flags are on for everyone in development; if gists has been
-// limited to a list, add the two fixed handles below to it for the first test (or set it back
-// to the default). The reply-thread test signs up fresh members with random handles, so it
-// needs both flags on for everyone and cannot run against an allow-list.
 // Chromium's fake-media flags stand in for a microphone.
-test.skip(!process.env.E2E_GISTS, 'needs LiveKit and the API configured for it; see the comment at the top of this file')
+test.skip(!process.env.E2E_GISTS, 'needs LiveKit and the API configured for it; see docs/e2e.md')
 
 test.use({
   launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },
