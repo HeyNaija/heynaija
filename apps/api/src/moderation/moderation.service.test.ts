@@ -478,3 +478,22 @@ test('End the Gist is only for a report about a Gist, and a LiveKit failure leav
   await assert.rejects(failing.resolve(sam, item!.id, 'end_gist'), /LiveKit is down/)
   assert.ok((await gistQueueItem(sam))?.id === item!.id, 'the report is still open to try again')
 })
+
+test('a reply in a Gist is reported, queued with its text, and removed like any post', async () => {
+  const gist = (await gistsService.create(as(ada, 'ada'), { title: 'Jollof wars' })).id
+  const { id: reply } = await postsService.create(bayo, 'buy my coin', { gist })
+
+  await service.report(lola, { postId: reply }, 'scam', 'crypto scam')
+  await assert.rejects(service.report(bayo, { postId: reply }, 'spam'), /your own post/)
+  const [item] = await service.queue(sam)
+  assert.deepEqual(item!.post, { id: reply, text: 'buy my coin', images: [], hasVideo: false, authorHandle: 'bayo', communityName: null })
+
+  await service.resolve(sam, item!.id, 'remove_post', 'scam')
+
+  assert.equal((await postsService.gistReplies(ada, gist, 20, 'newest')).replies.length, 0)
+  assert.equal(await openReports(), 0)
+  const [reporter] = await db.select().from(notifications).where(eq(notifications.recipientId, lola))
+  assert.equal(reporter!.kind, 'report_resolved')
+  const [author] = await db.select().from(notifications).where(eq(notifications.recipientId, bayo))
+  assert.deepEqual({ kind: author!.kind, post: author!.postId }, { kind: 'post_removed', post: reply })
+})

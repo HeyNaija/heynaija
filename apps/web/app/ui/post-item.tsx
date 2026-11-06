@@ -1,3 +1,4 @@
+import { reportPostHref } from '@/lib/report-href'
 import { gistReplyHref, replyQuery, type ReplyOrder } from '@/lib/thread-state'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
@@ -297,7 +298,7 @@ export function PostItem({
                         <SubmitButton className="menu-item">Hide reply</SubmitButton>
                       </form>
                     ) : null}
-                    <Link prefetch={false} href={`/report?post=${post.id}`} className="menu-item">
+                    <Link prefetch={false} href={reportPostHref(post.id, gist?.id)} className="menu-item">
                       Report post
                     </Link>
                     <form action={setMute}>
