@@ -1,7 +1,7 @@
-import { FFMPEG_SAFETY, type Probe } from './ffmpeg.js'
+import { type Deadline, FFMPEG, FFMPEG_SAFETY, type Probe, run, runTimeoutMs } from './ffmpeg.js'
 
 /**
- * Video as HLS (docs/video-trial.md, and the Implementation plan in the video doc):
+ * Video as HLS (ADR 0021 section 3, docs/video-trial.md):
  * one ffmpeg pass turns the original into 4-second pieces at up to four qualities,
  * with a playlist per quality and a master playlist the player chooses from. Up to
  * 4K and 60 fps goes in; at most 720p and 30 fps comes out; HDR is tone-mapped to
@@ -24,6 +24,9 @@ export const DECODER_THREADS = 4
 
 /** Seconds of video in each piece. */
 export const HLS_PIECE_SECONDS = 4
+
+/** What a reader's browser is told each file is, by its extension. */
+export const HLS_CONTENT_TYPES: Record<string, string> = { '.m3u8': 'application/vnd.apple.mpegurl', '.m4s': 'video/iso.segment', '.mp4': 'video/mp4' }
 
 export type HlsRung = { label: number; width: number; height: number; videoKbps: number; audioKbps: number }
 
@@ -99,4 +102,29 @@ export function hlsArgs(input: string, outDir: string, p: Probe, maxSeconds: num
     '-var_stream_map', rungs.map((r, i) => (p.hasAudio ? `v:${i},a:${i},name:${r.label}` : `v:${i},name:${r.label}`)).join(' '),
     `${outDir}/%v/index.m3u8`,
   ]
+}
+
+/** Encodes the original into `outDir` (see `hlsArgs`). Throws on any ffmpeg failure; the caller decides if that is retryable. */
+export async function encodeHls(input: string, outDir: string, p: Probe, maxSeconds: number, deadline: Deadline): Promise<void> {
+  const res = await run(FFMPEG, hlsArgs(input, outDir, p, maxSeconds), runTimeoutMs(Math.min(p.durationMs, maxSeconds * 1000)), deadline)
+  if (res.code !== 0) throw new Error(`ffmpeg could not encode the video: ${res.stderr.slice(-500)}`)
+}
+
+/**
+ * `master-480.m3u8`: the master playlist without the qualities above 480, for the `auto` data
+ * setting (ADR 0021 section 7). Each quality is a `#EXT-X-STREAM-INF` line and the playlist
+ * path after it; a clip with nothing above 480 gets the master as it is.
+ */
+export function upTo480(master: string): string {
+  const lines = master.split('\n')
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const label = lines[i]!.startsWith('#EXT-X-STREAM-INF') ? Number(/^(\d+)\//.exec(lines[i + 1] ?? '')?.[1]) : NaN
+    if (label > 480) {
+      i++
+      continue
+    }
+    out.push(lines[i]!)
+  }
+  return out.join('\n')
 }

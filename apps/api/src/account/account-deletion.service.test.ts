@@ -55,7 +55,7 @@ import { notify } from '../notifications/notifications.service.js'
 import { PostsService } from '../posts/posts.service.js'
 import { MemoryVideoStore } from '../video/memory-video-store.js'
 import { DEFAULT_VIDEO_CONFIG } from '../video/video-config.js'
-import { originalKey, posterKey, quarantineOriginalKey, renditionKey } from '../video/video-keys.js'
+import { originalKey, posterKey, quarantineOriginalKey, playlistKey } from '../video/video-keys.js'
 import { VideoService } from '../video/video.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { AccountDeletionError, AccountDeletionService, type DeletionNotices, tombstoneHandle } from './account-deletion.service.js'
@@ -864,7 +864,7 @@ async function video(owner: string, status: typeof media.$inferInsert['status'],
   await db.insert(videoDetails).values({ mediaId: id, durationMs: 9000, width: 640, height: 360, scanResult: status === 'ready' ? 'clear' : 'unscanned', originalSha256: 'ab'.repeat(32), uploadId: status === 'uploading' ? `up-${id}` : null, partSize: 5 * 1024 * 1024 })
   if (status === 'ready') {
     await db.insert(videoRenditions).values({ mediaId: id, height: 360, width: 640, bytes: 3000, bitrateKbps: 600 })
-    for (const key of [renditionKey(id, 360), posterKey(id)]) videoStore.objects.set(`media/${key}`, Buffer.from(key))
+    for (const key of [playlistKey(id, 360), posterKey(id)]) videoStore.objects.set(`media/${key}`, Buffer.from(key))
   }
   if (status === 'quarantined' || status === 'blocked') videoStore.objects.set(`uploads/${quarantineOriginalKey(id)}`, Buffer.from('original'))
   if (status === 'processing') videoStore.objects.set(`uploads/${originalKey(id)}`, Buffer.from('original'))
@@ -899,11 +899,11 @@ test('erasing an account takes its videos with it: files, open uploads, scan res
   )
   assert.deepEqual(
     videoStore.keys('uploads').sort(),
-    [`quarantine/${renditionKey(evidence, 360)}`, `quarantine/${posterKey(evidence)}`, quarantineOriginalKey(blocked)].sort(),
+    [`quarantine/${playlistKey(evidence, 360)}`, `quarantine/${posterKey(evidence)}`, quarantineOriginalKey(blocked)].sort(),
   )
   assert.ok(videoStore.keys('media').some((k) => k.includes(others)), 'another member’s video is untouched')
   assert.ok(videoStore.aborted.includes(`up-${uploading}`), 'the open multipart upload was aborted')
-  assert.ok(videoPurged.includes(renditionKey(ordinary, 360)), 'the CDN was purged')
+  assert.ok(videoPurged.includes(playlistKey(ordinary, 360)), 'the CDN was purged')
   // Scan results and renditions: gone for what was deleted, kept with the evidence and the blocked one.
   const detailIds = (await db.select().from(videoDetails)).map((d) => d.mediaId).sort()
   assert.deepEqual(detailIds, [evidence, blocked, others].sort())
@@ -926,7 +926,7 @@ test('a failed video erase leaves its rows, so the retry finds the same files; t
   const { id: postId } = await postsService.create(xena, 'my clip')
   const ready = await video(xena, 'ready', postId)
   await deletion.request(xena, { channel: 'self_service' }, now)
-  videoStore.failOnce('remove', renditionKey(ready, 360))
+  videoStore.failOnce('remove', playlistKey(ready, 360))
   await assert.rejects(() => deletion.erase(xena, days(14)), /storage failed on remove/)
   assert.equal(await count(videoDetails, eq(videoDetails.mediaId, ready)), 1, 'the scan row survives the failure')
   assert.equal(await count(videoRenditions, eq(videoRenditions.mediaId, ready)), 1, 'and so do the renditions that name the files')
@@ -965,5 +965,5 @@ test('restoring a removed post whose author was erased does not republish the vi
 
   assert.equal((await db.select().from(media).where(eq(media.id, id)))[0]!.status, 'quarantined')
   assert.deepEqual(videoStore.keys('media'), [])
-  assert.ok(videoStore.keys('uploads').includes(`quarantine/${renditionKey(id, 360)}`))
+  assert.ok(videoStore.keys('uploads').includes(`quarantine/${playlistKey(id, 360)}`))
 })

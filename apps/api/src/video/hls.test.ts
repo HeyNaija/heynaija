@@ -4,8 +4,8 @@ import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { FFMPEG, type Probe, probe } from './ffmpeg.js'
-import { hlsArgs, hlsLadder, toneMap } from './hls.js'
+import { FFMPEG, FFMPEG_SAFETY, type Probe, probe } from './ffmpeg.js'
+import { hlsArgs, hlsLadder, toneMap, upTo480 } from './hls.js'
 
 const probed = (over: Partial<Probe> = {}): Probe => ({
   formatName: 'mov,mp4,m4a,3gp,3g2,mj2',
@@ -60,6 +60,40 @@ test('HLS out: 4-second pieces, one playlist per quality, a master playlist, aud
   const silent = hlsArgs('/in', '/out', probed({ hasAudio: false }), 180)
   assert.ok(silent.includes('-an') && !silent.includes('0:a:0'))
   assert.equal(silent[silent.indexOf('-var_stream_map') + 1], 'v:0,name:240 v:1,name:360 v:2,name:480 v:3,name:720')
+})
+
+test('untrusted input: no network protocols, no stdin, the first video stream only, no metadata, nothing past the scanned window', () => {
+  const args = hlsArgs('/in/o.mp4', '/out', probed({ fps: 24 }), 180)
+  assert.ok(args.join(' ').includes(`-protocol_whitelist ${FFMPEG_SAFETY.protocolWhitelist}`))
+  assert.ok(args.indexOf('-protocol_whitelist') < args.indexOf('-i'), 'the whitelist applies to the input')
+  assert.ok(args.includes('-nostdin'))
+  assert.ok(filterOf(args).startsWith('[0:v:0]'), 'the stream the scan and the poster read')
+  assert.equal(args[args.indexOf('-map_metadata') + 1], '-1')
+  assert.ok(args.indexOf('-t') < args.indexOf('-i'), 'the window applies to the input')
+  assert.equal(args[args.indexOf('-t') + 1], '13.5', 'the probed length and a second, never the file’s own say')
+  assert.equal(hlsArgs('/in', '/out', probed({ durationMs: 400_000 }), 180)[args.indexOf('-t') + 1], '181', 'and never past the limit')
+  assert.ok(!filterOf(args).includes('fps='), 'a 24 fps source is not resampled')
+})
+
+test('master-480 is the master playlist without its 720p quality', () => {
+  const master = [
+    '#EXTM3U',
+    '#EXT-X-VERSION:7',
+    '#EXT-X-STREAM-INF:BANDWIDTH=382800,RESOLUTION=426x240,CODECS="avc1.4d4015,mp4a.40.2"',
+    '240/index.m3u8',
+    '',
+    '#EXT-X-STREAM-INF:BANDWIDTH=1095600,RESOLUTION=854x480,CODECS="avc1.4d401e,mp4a.40.2"',
+    '480/index.m3u8',
+    '',
+    '#EXT-X-STREAM-INF:BANDWIDTH=2085600,RESOLUTION=1280x720,CODECS="avc1.4d401f,mp4a.40.2"',
+    '720/index.m3u8',
+    '',
+  ].join('\n')
+  const capped = upTo480(master)
+  assert.ok(!capped.includes('720/index.m3u8') && !capped.includes('1280x720'))
+  assert.ok(capped.includes('240/index.m3u8') && capped.includes('480/index.m3u8') && capped.startsWith('#EXTM3U\n#EXT-X-VERSION:7'))
+  const small = master.split('\n').slice(0, 8).join('\n')
+  assert.equal(upTo480(small), small, 'nothing above 480: unchanged')
 })
 
 const hasFfmpeg = (() => {

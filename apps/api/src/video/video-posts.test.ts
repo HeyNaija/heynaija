@@ -45,24 +45,35 @@ const video = async (owner = ada, status: typeof media.$inferInsert['status'] = 
   return row!.id
 }
 
-test('a post carries its ready video: poster path, size, renditions smallest first, and the description', async () => {
+test('a post carries its ready video: poster, playlists, size, qualities smallest first, and the description', async () => {
   const id = await video()
   const { id: postId } = await service.create(ada, 'look at this', { video: { id, description: 'A goat on a bike' } })
   const post = await service.post(null, postId)
   assert.ok(post && !post.unavailable)
   assert.deepEqual(post.video, {
     id,
-    src: `/media/videos/${id}`,
     durationMs: 9000,
     width: 640,
     height: 360,
+    posterUrl: `/media/videos/${id}/poster.webp`,
+    playlists: { all: `/media/videos/${id}/hls/master.m3u8`, upTo480: `/media/videos/${id}/hls/master-480.m3u8` },
     description: 'A goat on a bike',
     renditions: [
-      { height: 240, width: 426, bytes: 2000 },
-      { height: 360, width: 640, bytes: 3000 },
+      { height: 240, width: 426, bytes: 2000, playlistUrl: `/media/videos/${id}/hls/240/index.m3u8` },
+      { height: 360, width: 640, bytes: 3000, playlistUrl: `/media/videos/${id}/hls/360/index.m3u8` },
     ],
   })
   assert.deepEqual(post.images, [], 'a video is not an image')
+})
+
+test('with a media domain, readers get absolute URLs on it, never the site’s /media (ADR 0021 section 4)', async () => {
+  const id = await video()
+  const onDomain = new PostsService(db, { ...DEFAULT_VIDEO_CONFIG, filesBase: 'https://media.heynaija.ng' })
+  const { id: postId } = await onDomain.create(ada, 'look at this', { video: { id, description: '' } })
+  const post = await onDomain.post(null, postId)
+  assert.ok(post && !post.unavailable && post.video)
+  const urls = [post.video.posterUrl, post.video.playlists.all, post.video.playlists.upTo480, ...post.video.renditions.map((r) => r.playlistUrl)]
+  assert.ok(urls.every((u) => u.startsWith(`https://media.heynaija.ng/videos/${id}/`)), urls.join(' '))
 })
 
 test('a video alone is a post; the text may be empty', async () => {

@@ -1812,7 +1812,7 @@ html:has(.image-viewer[open]) {
   gap: 10px;
   margin-top: 12px;
 }
-/* A post's video: a poster to tap, then the browser's own player. */
+/* A post's video: a poster to tap, then our own player (below). */
 .post-video {
   position: relative;
   width: 100%;
@@ -1848,6 +1848,167 @@ html:has(.image-viewer[open]) {
   font-weight: 600;
 }
 .post-video-start:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -3px; }
+/* A video's own controls (app/ui/video-player.tsx), over the picture. Dark in both themes,
+   as the image viewer is, so they read the same on any frame. Under 420px wide the seek bar
+   takes a row of its own above the buttons. */
+.video-player {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  container-type: inline-size;
+  isolation: isolate;
+  background: #000;
+  color: var(--on-scrim);
+}
+.video-player video { display: block; width: 100%; height: 100%; object-fit: contain; }
+/* Full screen fills the screen: the page's kept scrollbar gutter would leave a strip. */
+html:has(.video-player:fullscreen) { scrollbar-gutter: auto; }
+.video-player-surface { position: absolute; inset: 0; z-index: 1; cursor: pointer; }
+.video-player-middle {
+  position: absolute;
+  inset: 0 0 60px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.video-player-big {
+  display: inline-flex;
+  width: 56px;
+  height: 56px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-panel);
+  background: color-mix(in srgb, var(--scrim) 70%, transparent);
+  color: var(--on-scrim);
+  pointer-events: auto;
+}
+.video-player-big:hover { background: var(--scrim); }
+.video-player-wait {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--scrim-control-hover);
+  border-top-color: var(--on-scrim);
+  border-radius: 50%;
+}
+.video-player-bar {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "play time seek mute full";
+  align-items: center;
+  column-gap: 2px;
+  /* Room at the edges for a focused button's ring, and for a phone's rounded corners in full screen. */
+  padding: 28px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  background: linear-gradient(to top, color-mix(in srgb, var(--scrim) 80%, transparent), transparent);
+  /* Its fade belongs to the picture: only the controls in it take the pointer. */
+  pointer-events: none;
+}
+.video-player-bar > :is(button, input) { pointer-events: auto; }
+.video-player-btn {
+  display: inline-flex;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-control);
+  color: var(--on-scrim);
+}
+.video-player-btn:hover { background: var(--scrim-control-hover); }
+.video-player-btn.is-play { grid-area: play; }
+.video-player-btn.is-mute { grid-area: mute; }
+.video-player-btn.is-full { grid-area: full; }
+/* A light ring between two dark ones, so it shows on any picture. */
+.video-player :is(.video-player-btn, .video-player-big):focus-visible {
+  outline: 2px solid var(--on-scrim);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px var(--scrim);
+}
+.video-player-time {
+  grid-area: time;
+  padding-inline: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* A 24px target around a 4px track: played in the accent, loaded lighter, the rest faint. The
+   stops follow the thumb's centre, which runs from 7px in to 7px from the end. */
+.video-player-seek {
+  --stop-played: calc(7px + (100% - 14px) * var(--played, 0));
+  --stop-loaded: calc(7px + (100% - 14px) * var(--loaded, 0));
+  --track: linear-gradient(
+    to right,
+    var(--accent) var(--stop-played),
+    color-mix(in srgb, var(--on-scrim) 55%, transparent) var(--stop-played) var(--stop-loaded),
+    var(--scrim-control-hover) var(--stop-loaded)
+  );
+  grid-area: seek;
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+}
+.video-player-seek:disabled { cursor: default; opacity: 0.6; }
+.video-player-seek:focus-visible { outline: none; }
+.video-player-seek::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--track); }
+.video-player-seek::-moz-range-track { height: 4px; border-radius: 2px; background: var(--track); }
+.video-player-seek::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--on-scrim);
+  appearance: none;
+}
+.video-player-seek::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: var(--on-scrim); }
+.video-player-seek:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--scrim), 0 0 0 4px var(--on-scrim), 0 0 0 6px var(--scrim); }
+.video-player-seek:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(--scrim), 0 0 0 4px var(--on-scrim), 0 0 0 6px var(--scrim); }
+.video-player-error {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--scrim);
+  font-size: 13px;
+  text-align: center;
+}
+@container (max-width: 419px) {
+  .video-player-bar {
+    grid-template-areas: "seek seek seek seek seek" "play time . mute full";
+    padding-top: 20px;
+  }
+  .video-player-middle { bottom: 76px; }
+}
+/* A small player, such as the composer's preview on a phone, keeps its big button clear of the bar. */
+@container (max-width: 299px) {
+  .video-player-big { width: 48px; height: 48px; }
+}
+/* While it plays: faded until the next tap, pointer move or key, and no pointer either.
+   The waiting ring stays. */
+.video-player.is-resting,
+.video-player.is-resting .video-player-surface { cursor: none; }
+.video-player.is-resting :is(.video-player-bar, .video-player-big) { opacity: 0; }
+.video-player.is-resting :is(.video-player-bar > *, .video-player-big) { pointer-events: none; }
+/* With a mouse, a click on the picture pauses, so the big button shows only while paused. */
+@media (hover: hover) and (pointer: fine) {
+  .video-player.is-playing .video-player-big { opacity: 0; pointer-events: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .video-player-bar,
+  .video-player-big { transition: opacity 0.2s, background-color 0.15s; }
+  .video-player-btn { transition: background-color 0.15s; }
+  .video-player-wait { animation: video-player-spin 0.9s linear infinite; }
+}
+@keyframes video-player-spin { to { rotate: 360deg; } }
 /* A video being attached in the composer: progress under its name. */
 .composer-video { display: flex; align-items: flex-start; gap: 10px; }
 .composer-video progress { display: block; width: 100%; height: 6px; margin-top: 6px; accent-color: var(--accent); }

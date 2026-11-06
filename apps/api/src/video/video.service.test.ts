@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { MemoryVideoStore } from './memory-video-store.js'
 import { DEFAULT_VIDEO_CONFIG as defaults } from './video-config.js'
-import { originalKey, posterKey, quarantineOriginalKey, renditionKey } from './video-keys.js'
+import { hlsKey, master480Key, masterKey, originalKey, playlistKey, posterKey, quarantineOriginalKey, videoFolder } from './video-keys.js'
 import { VideoError, VideoService } from './video.service.js'
 
 const MIB = 1024 * 1024
@@ -63,6 +63,10 @@ const upload = async (owner = ada, bytes = 11 * MIB, contentType = 'video/mp4' a
   return { ...started, uploadId: row!.uploadId! }
 }
 
+/** The public files of a two-quality HLS video, as the worker writes them (ADR 0021 section 4). */
+const filesOf = (id: string) =>
+  [masterKey(id), master480Key(id), ...[240, 360].flatMap((h) => [playlistKey(id, h), hlsKey(id, `${h}/init_0.mp4`), hlsKey(id, `${h}/piece-000.m4s`), hlsKey(id, `${h}/piece-001.m4s`)]), posterKey(id)].sort()
+
 /** A video that has been processed and published, as the worker leaves it. */
 const publish = async (owner = ada, over: Partial<typeof media.$inferInsert> = {}) => {
   const [row] = await db
@@ -72,7 +76,7 @@ const publish = async (owner = ada, over: Partial<typeof media.$inferInsert> = {
   const id = row!.id
   await db.insert(videoDetails).values({ mediaId: id, durationMs: 12_000, width: 640, height: 360, posterKey: posterKey(id), scanResult: 'clear' })
   await db.insert(videoRenditions).values([240, 360].map((h) => ({ mediaId: id, height: h, width: h * 2, bytes: h * 100, bitrateKbps: 300 })))
-  for (const key of [renditionKey(id, 240), renditionKey(id, 360), posterKey(id)]) store.objects.set(`media/${key}`, Buffer.from(key))
+  for (const key of filesOf(id)) store.objects.set(`media/${key}`, Buffer.from(key))
   return id
 }
 
@@ -100,8 +104,9 @@ test('start: never trusts the client — type, size and a too-long claimed durat
   assert.equal(await refusal(() => service.startUpload(ada, { contentType: 'video/mp4', bytes: defaults.maxBytes + 1 })), 'too_large')
   assert.equal(await refusal(() => service.startUpload(ada, { contentType: 'video/mp4', bytes: 0 })), 'too_large')
   assert.equal(await refusal(() => service.startUpload(ada, { contentType: 'image/png' as never, bytes: 1000 })), 'bad_type')
-  assert.equal(await refusal(() => service.startUpload(ada, { contentType: 'video/mp4', bytes: 1000, durationMs: 61_000 })), 'too_long')
-  assert.equal((await service.startUpload(ada, { contentType: 'video/mp4', bytes: defaults.maxBytes, durationMs: 60_000 })).totalParts, 20)
+  assert.equal(await refusal(() => service.startUpload(ada, { contentType: 'video/mp4', bytes: 1000, durationMs: 181_000 })), 'too_long')
+  // 1 GB in 5 MiB parts.
+  assert.equal((await service.startUpload(ada, { contentType: 'video/mp4', bytes: defaults.maxBytes, durationMs: 180_000 })).totalParts, 205)
 })
 
 test('start: accounts under 7 days old, and members with a recent upheld action, are not eligible', async () => {
@@ -211,19 +216,21 @@ test('status: what the uploader is told for each state, and never why a scanner 
   }
 })
 
-test('status of a ready video carries its poster, size and renditions in order', async () => {
+test('status of a ready video carries its poster, playlists, size and qualities in order', async () => {
   const id = await publish()
-  const s = await service.status(ada, id)
+  const s = await make({ ...defaults, filesBase: 'https://media.example' }).status(ada, id)
+  const at = (key: string) => `https://media.example/${key}`
   assert.deepEqual(s?.video, {
     id,
-    src: `/media/videos/${id}`,
     durationMs: 12_000,
     width: 640,
     height: 360,
+    posterUrl: at(posterKey(id)),
+    playlists: { all: at(masterKey(id)), upTo480: at(master480Key(id)) },
     description: '',
     renditions: [
-      { height: 240, width: 480, bytes: 24_000 },
-      { height: 360, width: 720, bytes: 36_000 },
+      { height: 240, width: 480, bytes: 24_000, playlistUrl: at(playlistKey(id, 240)) },
+      { height: 360, width: 720, bytes: 36_000, playlistUrl: at(playlistKey(id, 360)) },
     ],
   })
 })
@@ -249,7 +256,7 @@ test('remove: aborts an open upload and deletes an unattached video; an attached
 
   const attached = await publish(ada, { postId: await post() })
   assert.equal(await service.remove(ada, attached), false)
-  assert.equal(store.keys('media').length, 3)
+  assert.equal(store.keys('media').length, filesOf(attached).length)
 })
 
 // --- Taking down ---
@@ -257,7 +264,7 @@ test('remove: aborts an open upload and deletes an unattached video; an attached
 test('quarantine moves every public file to the private bucket by server-side copy, purges the CDN, and release puts them back', async () => {
   const postId = await post()
   const id = await publish(ada, { postId })
-  const keys = [renditionKey(id, 240), renditionKey(id, 360), posterKey(id)]
+  const keys = filesOf(id)
   await service.quarantinePostVideos(postId)
   assert.deepEqual(store.keys('media'), [])
   assert.deepEqual(store.keys('uploads'), keys.map((k) => `quarantine/${k}`).sort())
@@ -286,14 +293,14 @@ test('deleting a post removes its video, unless the post is under report: then i
   await db.insert(reports).values({ reporterId: bayo, postId: reported, reason: 'spam' })
   await service.discardPostVideos(reported)
   assert.equal((await db.select().from(media).where(eq(media.id, b)))[0]!.status, 'quarantined')
-  assert.equal(store.keys('uploads').length, 3)
+  assert.equal(store.keys('uploads').length, filesOf(b).length)
 })
 
 test('deleting a post purges the CDN of every file the video had, as for images, and its rows go', async () => {
   const postId = await post()
   const id = await publish(ada, { postId })
   await service.discardPostVideos(postId)
-  assert.deepEqual(jobs.purged.flat().sort(), [renditionKey(id, 240), renditionKey(id, 360), posterKey(id)].sort())
+  assert.deepEqual(jobs.purged.flat().sort(), filesOf(id))
   assert.deepEqual(await db.select().from(videoDetails).where(eq(videoDetails.mediaId, id)), [])
   assert.deepEqual(await db.select().from(videoRenditions).where(eq(videoRenditions.mediaId, id)), [])
 })
@@ -301,7 +308,7 @@ test('deleting a post purges the CDN of every file the video had, as for images,
 test('removing an unattached ready video purges the CDN too', async () => {
   const id = await publish()
   await service.remove(ada, id)
-  assert.deepEqual(jobs.purged.flat().sort(), [renditionKey(id, 240), renditionKey(id, 360), posterKey(id)].sort())
+  assert.deepEqual(jobs.purged.flat().sort(), filesOf(id))
 })
 
 test('an illegal report hides the video at once, pending review (ADR open question 6)', async () => {
@@ -349,10 +356,12 @@ test('sweep: a video whose post was removed but is still public is quarantined',
 test('sweep: a removal storage failed part-way is finished on the next run, not left behind', async () => {
   const postId = await post()
   const id = await publish(ada, { postId })
-  store.failOnce('remove', renditionKey(id, 360))
+  store.failOnce('remove', playlistKey(id, 360))
   await assert.rejects(service.discardPostVideos(postId), /storage failed/)
   assert.equal((await db.select().from(media).where(eq(media.id, id)))[0]!.status, 'deleted')
-  assert.ok(store.keys('media').includes(renditionKey(id, 360)), 'the file the failure left')
+  assert.ok(store.keys('media').includes(playlistKey(id, 360)), 'the file the failure left')
+  // The files removed before the failure are purged now: the next run lists only what is left.
+  assert.deepEqual(jobs.purged.flat().sort(), filesOf(id))
 
   await service.sweepAbandoned()
   assert.deepEqual(store.keys('media'), [])
@@ -397,8 +406,28 @@ test('sweep: a video still public on a post its author deleted is taken down; an
   assert.ok(store.keys('uploads').includes(`quarantine/${posterKey(kept)}`))
 })
 
-test('the original of a quarantined upload is kept where the evidence belongs', () => {
+test('the original of a quarantined upload is kept where the evidence belongs; everything public is under one folder', () => {
   assert.equal(quarantineOriginalKey('abc'), 'quarantine/originals/videos/abc')
   assert.equal(originalKey('abc'), 'videos/abc')
-  assert.equal(renditionKey('abc', 360), 'videos/abc/360.mp4')
+  assert.ok(!originalKey('abc').startsWith(videoFolder('abc')), 'the original is not in the folder a takedown moves')
+  assert.deepEqual([masterKey('abc'), master480Key('abc'), playlistKey('abc', 360), posterKey('abc')], [
+    'videos/abc/hls/master.m3u8',
+    'videos/abc/hls/master-480.m3u8',
+    'videos/abc/hls/360/index.m3u8',
+    'videos/abc/poster.webp',
+  ])
+})
+
+test('a takedown that failed part-way is finished, and every file purged, by the retry', async () => {
+  const postId = await post()
+  const id = await publish(ada, { postId })
+  store.failOnce('remove', playlistKey(id, 360))
+  await assert.rejects(service.quarantinePostVideos(postId), /storage failed/)
+  assert.ok(store.keys('uploads').some((k) => k.startsWith('quarantine/')), 'some files were moved before the failure')
+
+  await service.quarantinePostVideos(postId)
+  assert.deepEqual(store.keys('media'), [])
+  assert.deepEqual(store.keys('uploads'), filesOf(id).map((k) => `quarantine/${k}`).sort())
+  assert.deepEqual(jobs.purged.flat().sort(), filesOf(id), 'the files moved by the first try are purged too')
+  assert.equal((await db.select().from(media).where(eq(media.id, id)))[0]!.status, 'quarantined')
 })
