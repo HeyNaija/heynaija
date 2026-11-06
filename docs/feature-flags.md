@@ -97,8 +97,8 @@ and stay in the env.
 `gistReplies` (off in production, on in staging and development) gates writing a reply in
 a Gist's comment section (ADR 0017). It only has an effect where `gists` is on: every
 `/v1/gists` route is behind the `gists` rules above first. Off stops new replies and
-leaves the existing ones readable; deleting your own reply, and the host's hiding, keep
-working. `/v1/me` reports it in `features.gistReplies`.
+leaves the existing ones readable; deleting your own reply, liking and unliking one, and
+the host's hiding, keep working. `/v1/me` reports it in `features.gistReplies`.
 
 ## Flipping a flag
 
