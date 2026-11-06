@@ -167,6 +167,17 @@ test('the Gist\'s reply controls: everyone, following, mentioned, off; the host 
   await assert.rejects(reply(dayo, 'blocked by the host'), ReplyNotAllowedError)
 })
 
+test('"mentioned" counts only a mention by the host, not one by another member in the Gist', async () => {
+  await db.update(gists).set({ replyAudience: 'mentioned' }).where(eq(gists.id, gist))
+  await reply(host, 'opening, no names')
+  const may = async (viewer: string) => (await service.gistReplies(viewer, gist, 20, 'newest')).viewerCanReply
+  const top = await reply(host, 'question for @chi')
+  await reply(chi, 'hey @dayo', top.id)
+  assert.equal(await may(chi), true)
+  assert.equal(await may(dayo), false)
+  await assert.rejects(reply(dayo, 'mentioned by a guest only'), ReplyNotAllowedError)
+})
+
 test('the Gist\'s reply controls apply to replies under a reply too', async () => {
   const top = await reply(bayo, 'top')
   await db.update(gists).set({ replyAudience: 'off' }).where(eq(gists.id, gist))
