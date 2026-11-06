@@ -4,7 +4,8 @@ import { Menu } from '@/app/ui/menu'
 import { SubmitButton } from '@/app/ui/submit-button'
 import { ThreadBranch, ThreadConversation } from '@/app/ui/thread-conversation'
 import { renderThreadRow } from '@/app/ui/thread-row'
-import type { GistReplies as GistRepliesPage } from '@/lib/api'
+import Link from 'next/link'
+import type { GistReplies as GistRepliesPage, Post, ReplyPage } from '@/lib/api'
 import { GIST_REPLY_AUDIENCE_LABEL, GIST_REPLY_AUDIENCES } from '@/lib/reply-audience'
 import type { ReplyOrder } from '@/lib/thread-state'
 
@@ -15,6 +16,7 @@ export function GistReplies({
   viewer,
   writable,
   order,
+  focus,
 }: {
   gistId: string
   hostHandle: string
@@ -23,6 +25,8 @@ export function GistReplies({
   /** The gistReplies flag: off stops new replies and leaves the ones there to read. */
   writable: boolean
   order: ReplyOrder
+  /** One reply opened as the conversation, with the replies under it: answers land under it. */
+  focus?: { post: Post; page: ReplyPage }
 }) {
   const now = Date.now()
   const gist = { id: gistId, viewerIsHost: page.viewerIsHost }
@@ -48,21 +52,30 @@ export function GistReplies({
       {page.replyAudience !== 'everyone' ? (
         <p className="reply-audience-note">{GIST_REPLY_AUDIENCE_LABEL[page.replyAudience]}</p>
       ) : null}
+      {focus ? (
+        <p className="thread-recipient">
+          <Link href={`/gists/${gistId}${order === 'oldest' ? '?replies=oldest' : ''}#gist-replies`}>All replies to this Gist</Link>
+        </p>
+      ) : null}
       <ThreadConversation
-        key={`${viewer.id}:${gistId}:${order}`}
-        focus={{ id: gistId, parentId: null, handle: hostHandle, depth: 0 }}
+        key={`${viewer.id}:${gistId}:${focus?.post.id ?? ''}:${order}`}
+        focus={focus ? { id: focus.post.id, parentId: focus.post.replyParentId, handle: focus.post.authorHandle, depth: 0 } : { id: gistId, parentId: null, handle: hostHandle, depth: 0 }}
         gist={gistId}
         member={canReply ? { handle: viewer.handle, avatar: viewer.avatar } : null}
         limited={!canReply}
         limitedNote={writable ? 'The host has limited who can reply.' : 'Replies are paused for now.'}
-        initialRows={page.replies.map((post) => renderThreadRow(post, viewer.id, now, 1, hostHandle, false, gist))}
-        cursor={page.cursor}
+        initialRows={(focus?.page ?? page).replies.map((post) => renderThreadRow(post, viewer.id, now, 1, focus?.post.authorHandle ?? hostHandle, false, gist))}
+        cursor={(focus?.page ?? page).cursor}
         order={order}
         version={now}
       >
-        <ThreadBranch id={gistId} parentId={null} handle={hostHandle} replyCount={page.count} hasReplies depth={0} root>
-          <></>
-        </ThreadBranch>
+        {focus ? (
+          renderThreadRow(focus.post, viewer.id, now, 0, hostHandle, true, gist).node
+        ) : (
+          <ThreadBranch id={gistId} parentId={null} handle={hostHandle} replyCount={page.count} hasReplies depth={0} root>
+            <></>
+          </ThreadBranch>
+        )}
       </ThreadConversation>
     </section>
   )

@@ -178,7 +178,7 @@ export function ThreadConversation({
     startTransition(async () => {
       const branch = branchOrder(order, position.id === focus.id)
       const result = await (gist
-        ? loadGistReplies(gist, position.id === focus.id ? null : position.id, next, position.depth + 1, position.handle, branch)
+        ? loadGistReplies(gist, position.id === gist ? null : position.id, next, position.depth + 1, position.handle, branch)
         : loadThreadReplies(position.id, next, position.depth + 1, position.handle, branch))
         .catch(() => ({ error: 'Replies could not be loaded. Check your connection and try again.' }))
       busy.current.delete(request)
@@ -223,6 +223,7 @@ export function ThreadConversation({
       submitAction={submitAction}
       onPosted={onPosted}
       onPendingChange={setPosting}
+      media={!gist}
       portalTarget={portalTarget}
       focusRequest={focusRequest}
     />
@@ -374,7 +375,7 @@ export function ThreadBranch({
 
       {renderChildren && (root || state) ? (
         <section id={`replies-${id}`} className={`thread-children${depth >= THREAD_MAX_DEPTH ? ' is-beyond' : ''}`} aria-label={root ? 'Replies' : `Replies${handle ? ` to @${handle}` : ' to unavailable post'}`} hidden={!open} aria-busy={busy || undefined}>
-          {root ? <RepliesHeading id={id} base={threadHref(context?.gist, id)} handle={handle} order={order} ordered={items.length + recent.length > 0 || !!state?.cursor} /> : null}
+          {root ? <RepliesHeading id={id} gist={context?.gist} handle={handle} order={order} ordered={items.length + recent.length > 0 || !!state?.cursor} /> : null}
           {items.length ? <ul className="thread-list">{items.map((row) => <li key={row.id}>{row.node}</li>)}</ul> : null}
           {empty ? <p className="thread-empty">{root && total === 0 ? 'No replies yet.' : 'No available replies.'}</p> : null}
           {recent.length ? (
@@ -415,7 +416,7 @@ function replyQuery(order: ReplyOrder, cursor: string | null) {
 }
 
 /** Keep reading controls together, out of the way until the reader asks for them. */
-function RepliesHeading({ id, base, handle, order, ordered }: { id: string; base: string; handle: string | null; order: ReplyOrder; ordered: boolean }) {
+function RepliesHeading({ id, gist, handle, order, ordered }: { id: string; gist?: string; handle: string | null; order: ReplyOrder; ordered: boolean }) {
   return (
     <div className="thread-replies-head">
       <h2 className="thread-replies-heading">Replies</h2>
@@ -426,7 +427,7 @@ function RepliesHeading({ id, base, handle, order, ordered }: { id: string; base
             {(['newest', 'oldest'] as const).map((value) => (
               <Link
                 key={value}
-                href={`${base}${replyQuery(value, null)}#replies-${id}`}
+                href={`${threadHref(gist, id, replyQuery(value, null))}#replies-${id}`}
                 prefetch={false}
                 aria-current={value === order ? 'true' : undefined}
                 className="menu-item"

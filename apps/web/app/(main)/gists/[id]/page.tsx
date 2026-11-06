@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { GistReplies } from '@/app/ui/gists/gist-replies'
 import { GistRoom } from '@/app/ui/gists/gist-room'
-import { getGist, getGistReplies, getViewer } from '@/lib/api'
+import { getGist, getGistReplies, getGistReply, getGistReplyBranch, getViewer } from '@/lib/api'
 import type { ReplyOrder } from '@/lib/thread-state'
 
 /**
@@ -15,6 +15,8 @@ export async function generateMetadata({ params }: PageProps<'/gists/[id]'>): Pr
   const gist = await getGist((await params).id).catch(() => null)
   return { title: gist?.title ?? 'Gist', robots: { index: false } }
 }
+
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export default function GistPage(props: PageProps<'/gists/[id]'>) {
   // The notice sits outside Suspense: without JavaScript the streamed page never replaces its fallback.
@@ -39,7 +41,11 @@ async function GistView({ params, searchParams }: Pick<PageProps<'/gists/[id]'>,
   const gist = await getGist(id)
   if (!gist) notFound()
   const cursor = typeof query.repliesCursor === 'string' ? query.repliesCursor : undefined
-  const replies = await getGistReplies(id, cursor, order).catch(() => null)
+  const replyId = typeof query.reply === 'string' && uuid.test(query.reply) ? query.reply : null
+  const [replies, focus] = await Promise.all([
+    getGistReplies(id, replyId ? undefined : cursor, order).catch(() => null),
+    replyId ? focusedReply(id, replyId, cursor, order) : null,
+  ])
   const writable = viewer.me.features.gistReplies === true
   return (
     <>
@@ -52,8 +58,14 @@ async function GistView({ params, searchParams }: Pick<PageProps<'/gists/[id]'>,
           viewer={{ id: viewer.me.id, handle: viewer.me.handle, avatar: viewer.me.avatar }}
           writable={writable}
           order={order}
+          focus={focus ?? undefined}
         />
       ) : null}
     </>
   )
+}
+
+async function focusedReply(gistId: string, replyId: string, cursor: string | undefined, order: ReplyOrder) {
+  const [post, page] = await Promise.all([getGistReply(gistId, replyId).catch(() => null), getGistReplyBranch(gistId, replyId, cursor, order).catch(() => null)])
+  return post && page ? { post, page } : null
 }

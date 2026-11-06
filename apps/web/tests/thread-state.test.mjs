@@ -121,6 +121,11 @@ test('collapsed cache eviction keeps active branches and the editor ancestry', (
 test('a reply in a Gist is read on the Gist page, any other on the post\'s own page', () => {
   assert.equal(threadHref(null, 'p1'), '/p/p1')
   assert.equal(threadHref(undefined, 'p1', '?replies=oldest'), '/p/p1?replies=oldest')
-  assert.equal(threadHref('g1', 'p1'), '/gists/g1')
-  assert.equal(threadHref('g1', 'p1', '?replies=oldest'), '/gists/g1?replies=oldest')
+  assert.equal(threadHref('g1', 'g1'), '/gists/g1')
+  assert.equal(threadHref('g1', 'g1', '?replies=oldest'), '/gists/g1?replies=oldest')
+})
+
+test('a reply in a Gist opens on the Gist page as the conversation in focus, so an answer lands under it', () => {
+  assert.equal(threadHref('g1', 'p1'), '/gists/g1?reply=p1')
+  assert.equal(threadHref('g1', 'p1', '?replies=oldest'), '/gists/g1?reply=p1&replies=oldest')
 })

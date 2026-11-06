@@ -41,9 +41,16 @@ export const THREAD_MAX_DEPTH = 5
  */
 export const THREAD_MAX_GAPS = 6
 
-/** Where a conversation is read: a reply in a Gist on the Gist's page, any other on the post's own. */
+/**
+ * Where a conversation is read: a reply in a Gist on the Gist's page, with `reply` naming the one
+ * in focus unless it is the whole comment section (`postId` is the Gist); any other on the post's own.
+ */
 export function threadHref(gistId: string | null | undefined, postId: string, query = ''): string {
-  return gistId ? `/gists/${gistId}${query}` : `/p/${postId}${query}`
+  if (!gistId) return `/p/${postId}${query}`
+  if (postId === gistId) return `/gists/${gistId}${query}`
+  const params = new URLSearchParams({ reply: postId })
+  for (const [key, value] of new URLSearchParams(query)) params.append(key, value)
+  return `/gists/${gistId}?${params}`
 }
 
 /** Scope cycle detection to the rendered ancestry, never to unrelated branches. */
