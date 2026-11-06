@@ -157,6 +157,13 @@ function ageLabel({ band, assurance }: GovernanceStatus['age']): { value: string
   return { value: age, detail: 'You confirmed this yourself when you joined. It is not a verified age.' }
 }
 
+/** A YYYY-MM-DD date of birth in words, "27 March 1990", the same in every time zone. */
+function birthDateLabel(date: string): string {
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+    new Date(`${date}T00:00:00Z`),
+  )
+}
+
 const verificationLabel: Record<GovernanceStatus['verification']['status'], string> = {
   none: 'Not verified',
   pending: 'Checking',
@@ -193,6 +200,18 @@ async function GovernanceStanding() {
           <p>{age.detail} Your age is never shown on your profile.</p>
         </dd>
       </div>
+      {status.age.birthDate ? (
+        <div>
+          <dt>Date of birth</dt>
+          <dd>
+            <p className="settings-status-value">{birthDateLabel(status.age.birthDate)}</p>
+            <p>
+              As you gave it when you joined. Only you can see it. To correct it, write to{' '}
+              <a href="mailto:contact@heynaija.ng" className={linkClass}>contact@heynaija.ng</a>.
+            </p>
+          </dd>
+        </div>
+      ) : null}
       <div>
         <dt>Identity verification</dt>
         <dd>

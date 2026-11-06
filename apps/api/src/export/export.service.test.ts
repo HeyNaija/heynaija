@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import { media, members } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
+import { TICKED_ADULT } from '../governance/age.js'
 import { GovernanceService } from '../governance/governance.service.js'
 import { MembersService } from '../members/members.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
@@ -157,7 +158,7 @@ test('an export includes the age confirmation and verification history, but neve
   assert.deepEqual(before.identityVerifications, [])
   assert.equal(before.votingMembership, null)
 
-  await approved.recordAgeDeclaration(ada)
+  await approved.recordAgeDeclaration(ada, { ...TICKED_ADULT, birthDate: '1990-03-27' })
   await approved.recordVerification(
     ada,
     { provider: 'ninauth', subject: 'person-ada', over18: true, verifiedAt: new Date(), expiresAt: null },
@@ -165,10 +166,10 @@ test('an export includes the age confirmation and verification history, but neve
   )
   const data = (await service.export(ada, null))!
   assert.deepEqual(
-    data.age.map((a) => [a.band, a.method]),
+    data.age.map((a) => [a.band, a.method, a.birthDate]),
     [
-      ['18_plus', 'self_declared'],
-      ['18_plus', 'identity_provider'],
+      ['18_plus', 'self_declared', '1990-03-27'],
+      ['18_plus', 'identity_provider', null],
     ],
   )
   assert.deepEqual(data.identityVerifications.map((v) => v.status), ['verified'])

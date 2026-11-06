@@ -1091,6 +1091,11 @@ summary.menu::-webkit-details-marker {
 .settings-status-value { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; font-weight: 600; }
 .join-age { display: flex; min-height: 44px; cursor: pointer; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; }
 .join-age input { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--accent); }
+.join-dob { display: flex; min-width: 0; flex-direction: column; gap: 8px; border: 0; margin: 0; padding: 0; }
+.join-dob legend { margin-bottom: 8px; padding: 0; }
+/* Each as wide as its digits, so the three read as one date and fit at 320px. */
+.join-dob-fields { display: grid; grid-template-columns: 4.5rem 4.5rem 6.5rem; gap: 12px; }
+.join-dob-fields label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 13px; }
 @media (max-width: 1023px) { .governance-summary { padding: 20px; } }
 @media (max-width: 419px) {
   .governance-summary { padding: 18px; }
