@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common'
+import { LinksService } from '../links/links.service.js'
 import { FeatureFlags } from '../flags/feature-flags.js'
 import {
   type GistReplyPage,
@@ -32,6 +33,7 @@ export class GistRepliesService {
     @Inject(GistsService) private readonly gists: GistsService,
     @Inject(PostsService) private readonly posts: PostsService,
     @Inject(FeatureFlags) private readonly flags: Pick<FeatureFlags, 'isEnabled'>,
+    @Inject(LinksService) private readonly links: Pick<LinksService, 'request'>,
   ) {}
 
   async list(viewer: Viewer, gistId: string, { order, cursor, limit = 20 }: Paging): Promise<GistReplies> {
@@ -62,7 +64,8 @@ export class GistRepliesService {
     const gist = await this.gists.viewable(viewer, gistId)
     if (!(await this.flags.isEnabled('gistReplies', viewer.id))) throw new GistError('not_found')
     try {
-      const { id } = await this.posts.create(viewer.id, input.text, { gist: gist.id, replyTo: input.replyTo, gistAccess: await this.gists.flagAllows() })
+      const { id, linkUrl } = await this.posts.create(viewer.id, input.text, { gist: gist.id, replyTo: input.replyTo, gistAccess: await this.gists.flagAllows() })
+      if (linkUrl && (await this.flags.isEnabled('linkPreviews', viewer.id))) await this.links.request(linkUrl)
       return { id }
     } catch (err) {
       if (err instanceof ReplyNotAllowedError) throw new GistError('reply_not_allowed')
@@ -73,7 +76,7 @@ export class GistRepliesService {
 
   async like(viewer: Viewer, gistId: string, postId: string): Promise<void> {
     const gist = await this.gists.viewable(viewer, gistId)
-    if (!(await this.posts.likeInGist(viewer.id, gist.id, postId))) throw new GistError('not_found')
+    if (!(await this.posts.likeInGist(viewer.id, gist.id, postId, await this.gists.flagAllows()))) throw new GistError('not_found')
   }
 
   async unlike(viewer: Viewer, postId: string): Promise<void> {

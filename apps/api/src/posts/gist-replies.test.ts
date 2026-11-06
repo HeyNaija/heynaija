@@ -167,6 +167,25 @@ test('the Gist\'s reply controls: everyone, following, mentioned, off; the host 
   await assert.rejects(reply(dayo, 'blocked by the host'), ReplyNotAllowedError)
 })
 
+test('under "following" a person named in one of the host\'s replies may reply too, as on an ordinary post', async () => {
+  await db.update(gists).set({ replyAudience: 'following' }).where(eq(gists.id, gist))
+  const may = async (viewer: string) => (await service.gistReplies(viewer, gist, 20, 'newest')).viewerCanReply
+  assert.equal(await may(chi), false)
+  const top = await reply(host, 'what do you think @chi')
+  assert.equal(await may(chi), true)
+  assert.equal(await may(dayo), false)
+  await reply(chi, 'answer')
+  await assert.rejects(reply(dayo, 'not named by the host'), ReplyNotAllowedError)
+})
+
+test('a reply in a Gist cannot be given a reply audience of its own', async () => {
+  const top = await reply(bayo, 'top')
+  assert.equal(await service.setReplyAudience(bayo, top.id, 'mentioned'), false)
+  const [row] = await db.select().from(posts).where(eq(posts.id, top.id))
+  assert.equal(row!.replyAudience, 'everyone')
+  assert.equal((await service.postInGist(chi, gist, top.id))!.viewerCanReply, true)
+})
+
 test('"mentioned" counts only a mention by the host, not one by another member in the Gist', async () => {
   await db.update(gists).set({ replyAudience: 'mentioned' }).where(eq(gists.id, gist))
   await reply(host, 'opening, no names')
@@ -242,6 +261,16 @@ test('a reply to the host is notified as a reply, with the post in the Gist', as
       { kind: 'reply', recipientId: bayo, actorId: chi, postId: nested.id },
     ].sort((a, b) => a.recipientId.localeCompare(b.recipientId)),
   )
+})
+
+test('liking a reply in a Gist tells its author, but not one who can no longer open the Gist', async () => {
+  const top = await reply(bayo, 'like me')
+  assert.equal(await service.likeInGist(chi, gist, top.id, () => true), true)
+  const rows = await db.select().from(notifications).where(eq(notifications.kind, 'like'))
+  assert.deepEqual(rows.map((n) => [n.kind, n.recipientId, n.actorId, n.postId]), [['like', bayo, chi, top.id]])
+  await db.delete(notifications)
+  await service.likeInGist(dayo, gist, top.id, (id) => id !== bayo)
+  assert.equal((await db.select().from(notifications).where(eq(notifications.kind, 'like'))).length, 0)
 })
 
 test('liking a reply in a Gist counts, and unliking takes it back', async () => {

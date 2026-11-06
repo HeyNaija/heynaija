@@ -5,6 +5,9 @@ import { type SQL, sql } from 'drizzle-orm'
  * the `gists` flag (which is read in code): an active member, in the Gist's community
  * if it has one, not on its removed list, and unless on the stage not blocked with
  * anyone on it. A Gist whose host erased their account is gone.
+ *
+ * A second copy of the rule in `isCallsMember` (eligibility.ts), which SQL cannot call: when
+ * that gains conditions (18+, verification, opt-in), add them here in the same change.
  */
 export const memberOpensGist = (memberId: SQL | string, gistId: SQL): SQL<boolean> => sql<boolean>`(
   exists(select 1 from members om where om.id = ${memberId} and om.active)

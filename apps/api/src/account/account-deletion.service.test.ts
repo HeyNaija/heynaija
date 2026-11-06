@@ -809,6 +809,27 @@ test('Gists: one they hosted with replies stays as a tombstone with a blank titl
   assert.equal(other!.deletedAt, null)
 })
 
+test('Gists: one they hosted whose only replies are their own goes entirely; one with another member’s reply stays', async () => {
+  const [alone, shared] = await db
+    .insert(gists)
+    .values([{ hostId: xena, title: 'Only me', status: 'ended' }, { hostId: xena, title: 'Not only me', status: 'ended' }])
+    .returning({ id: gists.id })
+  await db.insert(gistMembers).values([{ gistId: alone!.id, memberId: xena, role: 'host' }, { gistId: shared!.id, memberId: xena, role: 'host' }])
+  await db.insert(posts).values([
+    { authorId: xena, text: 'talking to myself', gistId: alone!.id },
+    { authorId: xena, text: 'my room', gistId: shared!.id },
+    { authorId: yemi, text: 'Yemi was here', gistId: shared!.id },
+  ])
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  assert.equal(await count(gists, eq(gists.id, alone!.id)), 0, 'no tombstone for a Gist nobody else replied in')
+  assert.equal(await count(posts, eq(posts.gistId, alone!.id)), 0)
+  const [kept] = await db.select().from(gists).where(eq(gists.id, shared!.id))
+  assert.equal(kept!.title, 'Deleted Gist')
+})
+
 test('feature flags: they leave every allow-list; one that held only them goes off for everyone, and the log shows the tombstone', async () => {
   const flags = new FeatureFlags(db, 'production')
   await flags.set(sam, 'polls', { enabled: null, handles: ['xena'] })

@@ -22,10 +22,12 @@ const told = async (recipient: Person) =>
   (await db.select({ kind: notifications.kind }).from(notifications).where(eq(notifications.recipientId, id[recipient]))).map((n) => n.kind)
 
 let repliesOn = true
-const flags = { isEnabled: async () => repliesOn }
+let previewsOn = true
+const flags = { isEnabled: async (key: string) => (key === 'linkPreviews' ? previewsOn : repliesOn) }
 let rooms: FakeRoomService
 let gistsService: GistsService
 let service: GistRepliesService
+let requested: string[]
 let gist: string
 const moderation = new ModerationService(db)
 
@@ -43,10 +45,12 @@ before(migrate)
 beforeEach(async () => {
   await reset()
   repliesOn = true
+  previewsOn = true
   await db.insert(members).values(people.map((p) => ({ id: id[p], handle: p })))
   rooms = new FakeRoomService()
   gistsService = new GistsService(db, rooms, config, new MemoryRateLimiter(), gate)
-  service = new GistRepliesService(gistsService, new PostsService(db), flags)
+  requested = []
+  service = new GistRepliesService(gistsService, new PostsService(db), flags, { request: async (url: string) => void requested.push(url) })
   gist = (await gistsService.create(as('ada'), { title: 'Jollof wars' })).id
 })
 after(() => pool.end())
@@ -196,4 +200,24 @@ test('the host named in a reply to someone else is told of the mention', async (
   await say('bayo', 'thanks @ada', first.id)
   assert.deepEqual((await told('ada')).sort(), ['mention', 'reply'])
   assert.deepEqual(await told('chi'), ['reply'])
+})
+
+test('a reply with a link asks for a preview, behind the linkPreviews flag', async () => {
+  await say('bayo', 'no link here')
+  assert.deepEqual(requested, [])
+  await say('bayo', 'read https://example.com/jollof today')
+  assert.deepEqual(requested, ['https://example.com/jollof'])
+  previewsOn = false
+  await say('bayo', 'and https://example.com/other')
+  assert.equal(requested.length, 1)
+})
+
+test('liking a reply tells its author, once, and not one who can no longer open the Gist', async () => {
+  const first = await say('bayo', 'like me')
+  await service.like(as('chi'), gist, first.id)
+  assert.deepEqual(await told('bayo'), ['like'])
+  await db.delete(notifications)
+  await db.insert(gistMembers).values({ gistId: gist, memberId: id.bayo, role: 'listener', removedAt: new Date() })
+  await service.like(as('dayo'), gist, first.id)
+  assert.deepEqual(await told('bayo'), [])
 })

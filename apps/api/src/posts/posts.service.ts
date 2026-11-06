@@ -484,7 +484,7 @@ const replyAudienceOf = (postId: SQL, rootId: SQL) => sql<ReplyAudience>`coalesc
  * `replyAudienceOf`, a root that is deleted, taken down, by an inactive member or
  * gone altogether restricts no one, though a block with its author still does.
  */
-const canReplyTo = (viewerId: string | null, postId: SQL, rootId: SQL) => viewerId
+const canReplyTo = (viewerId: string | null, postId: SQL, rootId: SQL, postGistId: SQL) => viewerId
   ? sql<boolean>`(not exists(
       select 1 from posts r join members ra on ra.id = r.author_id
       where r.id = coalesce(${rootId}, ${postId})
@@ -500,16 +500,21 @@ const canReplyTo = (viewerId: string | null, postId: SQL, rootId: SQL) => viewer
             ))
           )
         )
-    ) and not exists(
-      select 1 from posts gp where gp.id = ${postId} and gp.gist_id is not null and not ${gistAllowsReply(viewerId, sql`gp.gist_id`)}
-    ))`
+    ) and (${postGistId} is null or ${gistAllowsReply(viewerId, postGistId)}))`
   : sql<boolean>`false`
 
 /**
  * A Gist's reply controls, with the Gist as the root `canReplyTo` would read. The host
- * always may; "mentioned" means named in one of the host's replies there.
+ * always may; "mentioned" means named in one of the host's replies there, and
+ * "following" lets those named in through too, as `canReplyTo` does for a post.
  */
-export const gistAllowsReply = (viewerId: string, gistId: SQL) => sql<boolean>`not exists(
+export const gistAllowsReply = (viewerId: string, gistId: SQL) => {
+  const namedByHost = sql`exists(
+    select 1 from post_mentions pm join posts hp on hp.id = pm.post_id
+    where hp.gist_id = g.id and hp.author_id = g.host_id and hp.deleted_at is null and hp.removed_at is null
+      and pm.member_id = ${viewerId}
+  )`
+  return sql<boolean>`not exists(
   select 1 from gists g
   where g.id = ${gistId}
     and (
@@ -518,18 +523,15 @@ export const gistAllowsReply = (viewerId: string, gistId: SQL) => sql<boolean>`n
         g.host_id <> ${viewerId}
         and (
           g.reply_audience = 'off'
-          or (g.reply_audience = 'following' and not exists(
+          or (g.reply_audience = 'following' and not ${namedByHost} and not exists(
             select 1 from follows f where f.follower_id = g.host_id and f.followee_id = ${viewerId}
           ))
-          or (g.reply_audience = 'mentioned' and not exists(
-            select 1 from post_mentions pm join posts hp on hp.id = pm.post_id
-            where hp.gist_id = g.id and hp.author_id = g.host_id and hp.deleted_at is null and hp.removed_at is null
-              and pm.member_id = ${viewerId}
-          ))
+          or (g.reply_audience = 'mentioned' and not ${namedByHost})
         )
       )
     )
 )`
+}
 
 /**
  * A poll is open to whoever could read its post (`post`): live, by an active
@@ -611,7 +613,7 @@ export class PostsService {
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
         replyAudience: replyAudienceOf(outerId, sql`"posts"."root_id"`),
-        viewerCanReply: canReplyTo(viewerId, outerId, sql`"posts"."root_id"`),
+        viewerCanReply: canReplyTo(viewerId, outerId, sql`"posts"."root_id"`, sql`"posts"."gist_id"`),
         poll: sql<PollRow | null>`case when ${shown} then ${pollOf(viewerId, outerId)} end`,
         replyContext: opts.withReplyContext === false ? sql<null>`null` : replyContextOf(viewerId, sql`${posts.replyParentId}`),
         // Kept on the row by triggers (see the posts schema): only active
@@ -1258,7 +1260,6 @@ export class PostsService {
   }
 
   async gistReplies(viewerId: string | null, gistId: string, limit: number, order: ReplyOrder, cursor?: string): Promise<GistReplyPage> {
-    if (cursor) decodeReplyCursor(cursor, gistId, order)
     const [page, allowed] = await Promise.all([
       this.replyPage(viewerId, null, Math.min(REPLY_PAGE_SIZE, Math.max(1, limit)), order, cursor, gistId),
       viewerId
@@ -1311,9 +1312,13 @@ export class PostsService {
     return rows.length > 0
   }
 
-  async likeInGist(memberId: string, gistId: string, postId: string): Promise<boolean> {
-    if (!(await this.postInGist(memberId, gistId, postId))) return false
+  async likeInGist(memberId: string, gistId: string, postId: string, gistAccess?: (memberId: string) => boolean): Promise<boolean> {
+    const post = await this.postInGist(memberId, gistId, postId)
+    if (!post) return false
     await this.db.insert(likes).values({ memberId, postId }).onConflictDoNothing()
+    if ((await this.whoOpensGist(this.db, gistId, [post.authorId], gistAccess)).length) {
+      await notify(this.db, [{ recipientId: post.authorId, kind: 'like', actorId: memberId, postId }])
+    }
     return true
   }
 
@@ -1433,7 +1438,7 @@ export class PostsService {
           'linkPreview', ${linkPreviewOf(sql`p.link_url`)},
           'createdAt', p.created_at, 'replyParentId', p.reply_parent_id, 'replyTo', null,
           'replyAudience', ${replyAudienceOf(sql`p.id`, sql`p.root_id`)},
-          'viewerCanReply', ${canReplyTo(viewerId, sql`p.id`, sql`p.root_id`)},
+          'viewerCanReply', ${canReplyTo(viewerId, sql`p.id`, sql`p.root_id`, sql`p.gist_id`)},
           'poll', ${pollOf(viewerId, sql`p.id`)},
           'likeCount', p.like_count, 'replyCount', p.reply_count, 'repostCount', p.repost_count,
           'hasReplies', p.reply_count > 0 or exists(select 1 from posts child where child.reply_parent_id = p.id),
@@ -1561,10 +1566,7 @@ export class PostsService {
         )
       if (!parent) throw new ParentNotFoundError('the post you are replying to no longer exists')
       communityId = gist ? null : parent.communityId
-    } else if (gist) {
-      const [found] = await this.db.select({ id: gists.id }).from(gists).where(eq(gists.id, gist))
-      if (!found) throw new ParentNotFoundError('that Gist no longer exists')
-    } else if (communitySlug) {
+    } else if (communitySlug && !gist) {
       const [community] = await this.db
         .select({
           id: communities.id,
@@ -1589,7 +1591,7 @@ export class PostsService {
         // every write that refers to them, and deadlock two members replying in
         // each other's conversations. A root that is gone restricts no one.
         const [root] = await tx
-          .select({ allowed: canReplyTo(authorId, sql`${posts.id}`, sql`null`) })
+          .select({ allowed: canReplyTo(authorId, sql`${posts.id}`, sql`null`, sql`${posts.gistId}`) })
           .from(posts)
           .where(eq(posts.id, parent.rootId ?? parent.id))
           .for('no key update')
@@ -1601,7 +1603,8 @@ export class PostsService {
           .from(gists)
           .where(eq(gists.id, gist))
           .for('share')
-        if (!locked?.allowed) throw new ReplyNotAllowedError('the host limited who can reply')
+        if (!locked) throw new ParentNotFoundError('that Gist no longer exists')
+        if (!locked.allowed) throw new ReplyNotAllowedError('the host limited who can reply')
         gistHost = locked.hostId
       }
       const [row] = await tx
@@ -1708,6 +1711,7 @@ export class PostsService {
         eq(posts.id, postId),
         eq(posts.authorId, authorId),
         isNull(posts.replyParentId),
+        isNull(posts.gistId),
         live,
       ))
       .returning({ id: posts.id })
