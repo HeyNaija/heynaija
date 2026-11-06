@@ -27,11 +27,12 @@ import {
   reports,
   reposts,
 } from '@heynaija/db'
-import { Inject, Injectable } from '@nestjs/common'
-import { aliasedTable, and, asc, eq, isNotNull, or } from 'drizzle-orm'
+import { Inject, Injectable, Optional } from '@nestjs/common'
+import { aliasedTable, and, asc, eq, isNotNull, or, sql } from 'drizzle-orm'
 import { avatarPath, postImagePath } from '../media/media.service.js'
 import { videoPath } from '../video/video-keys.js'
-import { preferencesWithout } from '../notifications/notifications.service.js'
+import { gistsOpenTo, postShown, preferencesWithout } from '../notifications/notifications.service.js'
+import { GistsGate } from '../gists/gists-enabled.guard.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
@@ -46,10 +47,14 @@ export const EXPORT_FORMAT = 'heynaija-export/13'
  */
 @Injectable()
 export class ExportService {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    @Optional() @Inject(GistsGate) private readonly gate: Pick<GistsGate, 'access'> | null = null,
+  ) {}
 
   async export(memberId: string, email: string | null) {
     const db = this.db
+    const gistsOn = await gistsOpenTo(this.gate, memberId)
     const [me] = await db.select().from(members).where(eq(members.id, memberId))
     if (!me) return null
 
@@ -202,8 +207,14 @@ export class ExportService {
         .where(or(eq(moderationActions.memberId, memberId), eq(posts.authorId, memberId)))
         .orderBy(asc(moderationActions.createdAt)),
       db
-        .select({ kind: notifications.kind, postId: notifications.postId, at: notifications.createdAt, readAt: notifications.readAt })
+        .select({
+          kind: notifications.kind,
+          postId: sql<string | null>`case when ${postShown(memberId, gistsOn, { gist: sql`${posts.gistId}`, author: sql`${posts.authorId}`, recipient: sql`${notifications.recipientId}` })} then ${notifications.postId} end`,
+          at: notifications.createdAt,
+          readAt: notifications.readAt,
+        })
         .from(notifications)
+        .leftJoin(posts, eq(posts.id, notifications.postId))
         .where(eq(notifications.recipientId, memberId))
         .orderBy(asc(notifications.createdAt)),
       db.select({ kind: notificationOptOuts.kind }).from(notificationOptOuts).where(eq(notificationOptOuts.memberId, memberId)),

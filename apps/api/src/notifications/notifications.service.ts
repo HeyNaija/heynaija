@@ -1,6 +1,6 @@
 import { type Db, members, NOTIFICATION_KINDS, notificationOptOuts, OPTIONAL_NOTIFICATION_KINDS } from '@heynaija/db'
 import { Inject, Injectable, Optional } from '@nestjs/common'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm'
 import { decodeCursor, encodeCursor } from '../cursor.js'
 import { memberOpensGist } from '../gists/gist-open.js'
 import { GistsGate } from '../gists/gists-enabled.guard.js'
@@ -113,8 +113,11 @@ export const visible = (viewerId: string, gistsOn: boolean) => sql`
  * Whether the post a notification names may be shown to its recipient: not in a Gist, or in one they can
  * open, or their own. A moderation outcome stays listed after they lose the Gist, but without the reply.
  */
-export const postShown = (viewerId: string, gistsOn: boolean) =>
-  sql`(p.gist_id is null or p.author_id = n.recipient_id or (${gistsOn}::boolean and ${memberOpensGist(viewerId, sql`p.gist_id`)}))`
+export const postShown = (
+  viewerId: string,
+  gistsOn: boolean,
+  cols: { gist: SQL; author: SQL; recipient: SQL } = { gist: sql`p.gist_id`, author: sql`p.author_id`, recipient: sql`n.recipient_id` },
+) => sql`(${cols.gist} is null or ${cols.author} = ${cols.recipient} or (${gistsOn}::boolean and ${memberOpensGist(viewerId, cols.gist)}))`
 
 /** Whether Gists are open to this member, which a notification about a Gist reply needs. Closed without a gate. */
 export const gistsOpenTo = async (gate: Pick<GistsGate, 'access'> | null, memberId: string): Promise<boolean> =>
