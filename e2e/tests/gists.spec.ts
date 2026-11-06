@@ -133,7 +133,7 @@ test('a Gist has a reply thread: reply while live and after it ends, the host hi
   const ada = await newMember(browser, 'gist_reply_ada')
   const bayo = await newMember(browser, 'gist_reply_bayo')
   const blocked = await newMember(browser, 'gist_reply_blocked')
-  await host.page.request.put(`/api/v1/members/${blocked.handle}/block`)
+  expect((await host.page.request.put(`/api/v1/members/${blocked.handle}/block`)).status()).toBe(204)
 
   await host.page.getByLabel('Gist title').fill('Replies, settled')
   await host.page.getByRole('button', { name: 'Go live' }).click()
@@ -154,6 +154,7 @@ test('a Gist has a reply thread: reply while live and after it ends, the host hi
   await expect(host.page.locator('article', { hasText: 'Team party jollof, always' })).toBeVisible()
   await expect(host.page.getByText('Replying to @' + host.handle).first()).toBeVisible()
 
+  await host.page.getByRole('button', { name: 'Join the Gist' }).click()
   await host.page.getByRole('button', { name: 'End the Gist' }).click()
   await host.page.getByRole('button', { name: /Tap again to end/ }).click()
   await expect(host.page.getByRole('heading', { name: 'This Gist has ended' })).toBeVisible({ timeout: 15_000 })
@@ -162,7 +163,7 @@ test('a Gist has a reply thread: reply while live and after it ends, the host hi
 
   const rude = host.page.locator('article', { hasText: 'Never, it is smoky' })
   await host.page.reload()
-  await rude.getByRole('button', { name: 'Post options' }).click()
+  await rude.getByLabel('Post options', { exact: true }).click()
   await host.page.getByRole('button', { name: 'Hide reply' }).click()
   await expect(host.page.getByText('The host hid this reply.')).toBeVisible()
   await ada.page.reload()
