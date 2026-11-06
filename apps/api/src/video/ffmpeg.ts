@@ -184,6 +184,9 @@ export async function extractPoster(input: string, workPath: string, durationMs:
 
 export type SampledFrame = { ms: number; jpeg: Buffer }
 
+const readIfWritten = (path: string): Promise<Buffer | null> =>
+  readFile(path).catch((err: NodeJS.ErrnoException) => (err.code === 'ENOENT' ? null : Promise.reject(err)))
+
 const SCALE = 'scale=1280:1280:force_original_aspect_ratio=decrease'
 
 /**
@@ -194,9 +197,9 @@ const SCALE = 'scale=1280:1280:force_original_aspect_ratio=decrease'
 export const sampleStep = (durationMs: number): number => Math.max(1, Math.ceil(durationMs / 1000 / FRAME_SCAN_MAX_SECONDS))
 
 /**
- * The three sampling runs' arguments. Each reads at most `maxSeconds + 1` of the
- * input whatever its container claims, and maps the first video stream, the one
- * the encode and the poster use.
+ * The sampling runs' arguments. Each reads at most `maxSeconds + 1` of the input
+ * whatever its container claims, and maps the first video stream, the one the
+ * encode and the poster use.
  */
 export function frameArgs(input: string, dir: string, durationMs: number, maxSeconds: number, budget = MAX_SCENE_FRAMES) {
   const safe = ['-nostdin', '-hide_banner', '-protocol_whitelist', FFMPEG_SAFETY.protocolWhitelist]
@@ -205,6 +208,10 @@ export function frameArgs(input: string, dir: string, durationMs: number, maxSec
   return {
     seconds: [...common, '-loglevel', 'error', '-vf', `fps=1/${step},${SCALE}`, '-q:v', '3', join(dir, 's-%04d.jpg')],
     last: [...safe, '-loglevel', 'error', '-sseof', '-0.2', '-i', input, '-map', '0:v:0', '-update', '1', '-frames:v', '1', '-vf', SCALE, '-q:v', '3', '-y', join(dir, 'last.jpg')],
+    // When the picture stops before the sound, as in screen recordings, the last 0.2 seconds have no
+    // frame: then the last frame within the final `step` + 1 seconds (each is written over the one
+    // before), with its time in the clip (-copyts) for showinfo to report.
+    tail: [...safe, '-loglevel', 'info', '-sseof', `-${step + 1}`, '-copyts', '-i', input, '-map', '0:v:0', '-update', '1', '-vf', `showinfo,${SCALE}`, '-q:v', '3', '-y', join(dir, 'last.jpg')],
     scenes: [...common, '-loglevel', 'info', '-vf', `select='gt(scene,0.4)',showinfo,${SCALE}`, '-vsync', 'vfr', '-frames:v', String(budget), '-q:v', '3', join(dir, 'c-%04d.jpg')],
   }
 }
@@ -240,8 +247,16 @@ export async function extractFrames(
   if (secondFiles.length > Math.ceil(durationMs / 1000 / step) + 1) throw new DurationMismatch(durationMs, secondFiles.length * step)
   for (const [i, f] of secondFiles.entries()) frames.push({ ms: i * step * 1000, jpeg: await readFile(join(dir, f)) })
 
+  // ffmpeg can finish without error and write nothing, when there was no frame to write.
   const last = await run(FFMPEG, args.last, timeoutMs, deadline)
-  if (last.code === 0) frames.push({ ms: Math.max(0, durationMs - 200), jpeg: await readFile(join(dir, 'last.jpg')) })
+  const lastJpeg = last.code === 0 ? await readIfWritten(join(dir, 'last.jpg')) : null
+  if (lastJpeg) frames.push({ ms: Math.max(0, durationMs - 200), jpeg: lastJpeg })
+  else {
+    const tail = await run(FFMPEG, args.tail, timeoutMs, deadline)
+    const at = parseShowinfo(tail.stderr).at(-1)
+    const tailJpeg = tail.code === 0 && at !== undefined ? await readIfWritten(join(dir, 'last.jpg')) : null
+    if (tailJpeg) frames.push({ ms: at!, jpeg: tailJpeg })
+  }
 
   const budget = sceneBudget(secondFiles.length)
   if (budget > 0) {
