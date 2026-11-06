@@ -17,6 +17,7 @@ import {
   type ReplyTarget,
   type ThreadRow,
   THREAD_MAX_DEPTH,
+  replyQuery,
   threadHref,
 } from '@/lib/thread-state'
 import { Composer } from './composer'
@@ -42,6 +43,7 @@ type ConversationContext = {
   editor: ReactNode
 }
 const Conversation = createContext<ConversationContext | null>(null)
+const keepOrder = (context: ConversationContext | null) => (context?.gist ? replyQuery(context.order, null) : '')
 const BranchAncestry = createContext<readonly string[]>([])
 /** What a reply's own row needs to open, hide or continue its branch. */
 type BranchControl = { id: string; inPlace: boolean; expanded: boolean; shown: boolean; busy: boolean; toggle?: () => void }
@@ -256,7 +258,7 @@ export function ThreadReplyAction({ id, parentId, handle, depth, count }: ReplyT
   }, [id, added, total, count])
   return (
     <Link
-      href={`${threadHref(context?.gist, id)}#compose`}
+      href={`${threadHref(context?.gist, id, keepOrder(context))}#compose`}
       prefetch={false}
       className="icon-btn"
       aria-label={`Reply (${total === 1 ? '1 reply' : `${total} replies`})`}
@@ -290,11 +292,11 @@ export function ThreadToggle() {
   const context = useContext(Conversation)
   if (!branch) return null
   if (!branch.inPlace) {
-    return <Link prefetch={false} href={threadHref(context?.gist, branch.id)} className="thread-toggle is-wide">Continue conversation</Link>
+    return <Link prefetch={false} href={threadHref(context?.gist, branch.id, keepOrder(context))} className="thread-toggle is-wide">Continue conversation</Link>
   }
   return (
     <Link
-      href={`${threadHref(context?.gist, branch.id)}#replies-${branch.id}`}
+      href={`${threadHref(context?.gist, branch.id, keepOrder(context))}#replies-${branch.id}`}
       prefetch={false}
       className="thread-toggle"
       aria-controls={`replies-${branch.id}`}
@@ -333,7 +335,7 @@ export function ThreadBranch({
     return (
       <p className="thread-context-note" role="note">
         This conversation returns to an earlier post.{' '}
-        <Link prefetch={false} href={threadHref(context?.gist, id)}>Continue conversation</Link>
+        <Link prefetch={false} href={threadHref(context?.gist, id, keepOrder(context))}>Continue conversation</Link>
       </p>
     )
   }
@@ -405,14 +407,6 @@ export function ThreadBranch({
     </div>
     </BranchAncestry.Provider>
   )
-}
-
-/** The page's address for an order and, for reading on without JavaScript, a page of replies. */
-function replyQuery(order: ReplyOrder, cursor: string | null) {
-  const query = new URLSearchParams()
-  if (order === 'oldest') query.set('replies', 'oldest')
-  if (cursor) query.set('repliesCursor', cursor)
-  return query.size ? `?${query}` : ''
 }
 
 /** Keep reading controls together, out of the way until the reader asks for them. */

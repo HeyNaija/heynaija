@@ -53,6 +53,14 @@ export function threadHref(gistId: string | null | undefined, postId: string, qu
   return `/gists/${gistId}?${params}`
 }
 
+/** The page's address for an order and, for reading on without JavaScript, a page of replies. */
+export function replyQuery(order: ReplyOrder, cursor: string | null): string {
+  const query = new URLSearchParams()
+  if (order === 'oldest') query.set('replies', 'oldest')
+  if (cursor) query.set('repliesCursor', cursor)
+  return query.size ? `?${query}` : ''
+}
+
 /** Scope cycle detection to the rendered ancestry, never to unrelated branches. */
 export function nextThreadPath(ancestors: readonly string[], id: string): readonly string[] | null {
   return ancestors.includes(id) ? null : [...ancestors, id]

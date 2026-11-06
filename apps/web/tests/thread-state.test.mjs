@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { appendReplyPage, branchOrder, canRenderThreadChildren, emptyBranch, insertConfirmedReply, nextThreadPath, pruneCollapsedBranches, THREAD_MAX_DEPTH, THREAD_MAX_GAPS, threadHref } from '../lib/thread-state.ts'
+import { appendReplyPage, branchOrder, canRenderThreadChildren, emptyBranch, insertConfirmedReply, nextThreadPath, pruneCollapsedBranches, replyQuery, THREAD_MAX_DEPTH, THREAD_MAX_GAPS, threadHref } from '../lib/thread-state.ts'
 
 const row = (id) => ({ id, node: id, lead: id.startsWith('lead') })
 const loaded = (items = [], cursor = null) => ({ ...emptyBranch('root'), items: items.map(row), cursor, loaded: true, open: true })
@@ -128,4 +128,11 @@ test('a reply in a Gist is read on the Gist page, any other on the post\'s own p
 test('a reply in a Gist opens on the Gist page as the conversation in focus, so an answer lands under it', () => {
   assert.equal(threadHref('g1', 'p1'), '/gists/g1?reply=p1')
   assert.equal(threadHref('g1', 'p1', '?replies=oldest'), '/gists/g1?reply=p1&replies=oldest')
+})
+
+test('the order a reader chose, and a page of replies, ride along in the address', () => {
+  assert.equal(replyQuery('newest', null), '')
+  assert.equal(replyQuery('oldest', null), '?replies=oldest')
+  assert.equal(replyQuery('oldest', 'c1'), '?replies=oldest&repliesCursor=c1')
+  assert.equal(threadHref('g1', 'p1', replyQuery('oldest', null)), '/gists/g1?reply=p1&replies=oldest')
 })
