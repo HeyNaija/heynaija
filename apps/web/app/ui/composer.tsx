@@ -19,6 +19,8 @@ import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
 import { useFixedPlacement } from './use-fixed-placement'
 import { useMentionSuggestions } from './use-mention-suggestions'
 import { PostVideo } from './post-video'
+import { composerOffers } from '@/lib/composer-offers'
+import { postedReplyHref } from '@/lib/posted-href'
 import { useOneVideo } from './use-one-video'
 import { VideoPlayer } from './video-player'
 import { graphemes, POST_MAX } from '@/lib/post-length'
@@ -31,6 +33,8 @@ type Props = {
   avatar?: string | null
   replyTo?: string
   replyHandle?: string
+  /** Names the recipient in place of `@replyHandle` (the host answering their own Gist). */
+  replyLabel?: string
   replyDepth?: number
   /** The reply is to another reply rather than the post in focus: the recipient stays in view. */
   answeringReply?: boolean
@@ -42,6 +46,8 @@ type Props = {
   /** Makes this a quote post of that post, shown under the box as `preview`. */
   quote?: { id: string; preview: ReactNode }
   submitAction?: (previous: ComposeState, data: FormData) => Promise<ComposeState>
+  /** Where "View reply" goes for the reply just posted; a Gist's replies are not served on /p/. */
+  postedHref?: (id: string) => string
   onPosted?: (state: ComposeState) => void
   onPendingChange?: (pending: boolean) => void
   /** The Composer stays mounted when its form moves to another reply row. */
@@ -50,6 +56,8 @@ type Props = {
   /** From `me.features`: whether polls and reply limits are switched on. Off hides them. */
   polls?: boolean
   replyControls?: boolean
+  /** False for a text-only box: no pictures, GIFs or video to attach. */
+  media?: boolean
   /**
    * From `me.videoLimits`: the API's video limits, present only while video is open to this member
    * (the videoPosts flag and, in production, a bound scanner). Null hides the button.
@@ -57,7 +65,7 @@ type Props = {
   videoLimits?: VideoLimits | null
 }
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, videoLimits = null }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, media = true, videoLimits = null }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -85,6 +93,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
   }, [clearImages, clearVideo])
   const videoPicker = useRef<HTMLInputElement>(null)
   const picker = useRef<HTMLInputElement>(null)
+  const offers = composerOffers({ media, polls, videoAvailable: videoLimits !== null, replyTo, pollOpen, videoDrafted: video.draft !== null })
   const form = useRef<HTMLFormElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   // A quote keeps the box open: the post being quoted is shown under it.
@@ -221,7 +230,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
       {pollOpen ? <input type="hidden" name="poll" value="1" /> : null}
 
       {replyTo && replyHandle ? (
-        <p id={recipientId} className="composer-recipient">Replying to <strong>@{replyHandle}</strong></p>
+        <p id={recipientId} className="composer-recipient">Replying to <strong>{replyLabel ?? `@${replyHandle}`}</strong></p>
       ) : null}
       <div className={replyTo ? 'composer-reply-writing' : 'flex gap-3'}>
         {replyTo ? (
@@ -394,44 +403,48 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
         </fieldset>
       ) : null}
       <div className="composer-toolbar">
-        <button
-          type="button"
-          className="icon-btn composer-photo"
-          aria-label={`Add images (up to ${MAX_IMAGES})`}
-          title="Add images"
-          disabled={images.drafts.length >= MAX_IMAGES || !!video.draft}
-          onClick={() => choose(IMAGE_TYPES)}
-        >
-          <ImageIcon size={20} />
-          <span className="composer-photo-label">Photo</span>
-        </button>
-        <button
-          type="button"
-          className="icon-btn composer-photo"
-          aria-label={`Add a GIF (the post can have up to ${MAX_IMAGES} pictures in all)`}
-          title="Add a GIF"
-          disabled={images.drafts.length >= MAX_IMAGES || !!video.draft}
-          onClick={() => choose(['image/gif'])}
-        >
-          <GifIcon size={20} />
-          <span className="composer-photo-label">GIF</span>
-        </button>
-        {/* One hidden picker for both buttons; each says what it will offer before it opens. */}
-        <input
-          ref={picker}
-          type="file"
-          multiple
-          className="sr-only"
-          tabIndex={-1}
-          aria-hidden="true"
-          onChange={(e) => {
-            const files = [...(e.target.files ?? [])]
-            e.target.value = '' // so choosing the same file again still fires
-            setExpanded(true)
-            setTooMany(images.add(files) > 0)
-          }}
-        />
-        {videoLimits && !replyTo && !pollOpen ? (
+        {offers.pictures ? (
+          <>
+            <button
+              type="button"
+              className="icon-btn composer-photo"
+              aria-label={`Add images (up to ${MAX_IMAGES})`}
+              title="Add images"
+              disabled={images.drafts.length >= MAX_IMAGES || !!video.draft}
+              onClick={() => choose(IMAGE_TYPES)}
+            >
+              <ImageIcon size={20} />
+              <span className="composer-photo-label">Photo</span>
+            </button>
+            <button
+              type="button"
+              className="icon-btn composer-photo"
+              aria-label={`Add a GIF (the post can have up to ${MAX_IMAGES} pictures in all)`}
+              title="Add a GIF"
+              disabled={images.drafts.length >= MAX_IMAGES || !!video.draft}
+              onClick={() => choose(['image/gif'])}
+            >
+              <GifIcon size={20} />
+              <span className="composer-photo-label">GIF</span>
+            </button>
+            {/* One hidden picker for both buttons; each says what it will offer before it opens. */}
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={(e) => {
+                const files = [...(e.target.files ?? [])]
+                e.target.value = '' // so choosing the same file again still fires
+                setExpanded(true)
+                setTooMany(images.add(files) > 0)
+              }}
+            />
+          </>
+        ) : null}
+        {videoLimits && offers.video ? (
           <>
             <button
               type="button"
@@ -461,7 +474,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
             />
           </>
         ) : null}
-        {!replyTo && polls && !video.draft ? (
+        {offers.poll ? (
           <button
             type="button"
             className="icon-btn composer-photo"
@@ -535,7 +548,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
       </p>
       {submitAction && state.postId ? (
         <p role="status" className="composer-posted">
-          Reply posted. <Link prefetch={false} href={`/p/${state.postId}#post-${state.postId}`}>View reply</Link>
+          Reply posted. <Link prefetch={false} href={postedHref(state.postId)}>View reply</Link>
         </p>
       ) : null}
     </form>

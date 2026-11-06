@@ -77,7 +77,7 @@ export class TopicsService {
   private async rank(): Promise<TrendingTopic[]> {
     const since = new Date(Date.now() - TOPIC_WINDOW_DAYS * 86_400_000).toISOString()
     const counted = sql`post_hashtags ph join posts p on p.id = ph.post_id join members m on m.id = p.author_id and m.active
-      where p.created_at > ${since} and p.deleted_at is null and p.removed_at is null`
+      where p.created_at > ${since} and p.deleted_at is null and p.removed_at is null and p.gist_id is null`
     const { rows } = await this.db.execute<{ tag: string; members: number; posts: number; uses: Use[] | null }>(sql`
       with ranked as (
         select ph.tag, count(distinct p.author_id)::int as members, count(distinct p.id)::int as posts, max(p.created_at) as last_used

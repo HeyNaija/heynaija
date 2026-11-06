@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { media, members } from '@heynaija/db'
+import { gistMembers, gists, media, members, notifications } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { GovernanceService } from '../governance/governance.service.js'
 import { MembersService } from '../members/members.service.js'
@@ -11,7 +11,8 @@ import { PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { EXPORT_FORMAT, ExportService } from './export.service.js'
 
-const service = new ExportService(db)
+let flagOn = true
+const service = new ExportService(db, { access: async () => ({ member: () => flagOn, anyone: true }) })
 const postsService = new PostsService(db)
 const membersService = new MembersService(db)
 const moderation = new ModerationService(db)
@@ -23,6 +24,7 @@ const chi = randomUUID()
 before(migrate)
 beforeEach(async () => {
   await reset()
+  flagOn = true
   await db.insert(members).values([
     { id: ada, handle: 'ada', displayName: 'Ada O.', bio: 'Lagos' },
     { id: bayo, handle: 'bayo' },
@@ -189,8 +191,36 @@ test('an export lists a post’s ready video (path and poster); held, unattached
   await row(bayo, 'ready', other.id)
 
   const data = (await service.export(ada, null))!
-  assert.equal(data.format, 'heynaija-export/12')
+  assert.equal(data.format, 'heynaija-export/13')
   const byText = (text: string) => data.posts.find((p) => p.text === text)!
   assert.deepEqual(byText('my clip').videos, [{ url: `/media/videos/${ready}/hls/master.m3u8`, poster: `/media/videos/${ready}/poster.webp` }])
   assert.deepEqual(byText('no clip').videos, [])
+})
+
+test('an export marks a reply in a Gist with its Gist and says when the host hid it', async () => {
+  const [{ id: gist }] = (await db.insert(gists).values({ hostId: bayo, title: 'Room' }).returning({ id: gists.id })) as [{ id: string }]
+  const inGist = await postsService.create(ada, 'Hello room', { gist })
+  const plain = await postsService.create(ada, 'Hello feed')
+  await postsService.hideInGist(gist, inGist.id, true)
+
+  const data = (await service.export(ada, null))!
+  const byId = (id: string) => data.posts.find((p) => p.id === id)!
+  assert.equal(byId(inGist.id).gistId, gist)
+  assert.notEqual(byId(inGist.id).hiddenByHostAt, null)
+  assert.equal(byId(plain.id).gistId, null)
+  assert.equal(byId(plain.id).hiddenByHostAt, null)
+})
+
+test('an export lists a notification about a Gist reply without its post once the member can no longer open the Gist', async () => {
+  const [{ id: room }] = (await db.insert(gists).values({ hostId: ada, title: 'Room' }).returning({ id: gists.id })) as [{ id: string }]
+  const { id: reply } = await postsService.create(bayo, 'a reply', { gist: room })
+  await db.insert(notifications).values([
+    { recipientId: ada, kind: 'reply', actorId: bayo, postId: reply },
+    { recipientId: chi, kind: 'report_resolved', postId: reply, detail: 'actioned' },
+  ])
+  await db.insert(gistMembers).values({ gistId: room, memberId: chi, role: 'listener', removedAt: new Date() })
+  assert.equal((await service.export(ada, null))!.notifications.find((n) => n.kind === 'reply')?.postId, reply)
+  assert.equal((await service.export(chi, null))!.notifications.find((n) => n.kind === 'report_resolved')?.postId, null)
+  flagOn = false
+  assert.equal((await service.export(ada, null))!.notifications.find((n) => n.kind === 'reply')?.postId, null)
 })

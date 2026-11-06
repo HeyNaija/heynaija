@@ -143,7 +143,7 @@ export class MembersService {
         bio: members.bio,
         avatarMediaId: members.avatarMediaId,
         joinedAt: members.createdAt,
-        postCount: sql<number>`(select count(*)::int from posts p where p.author_id = ${outerId} and p.deleted_at is null)`,
+        postCount: sql<number>`(select count(*)::int from posts p where p.author_id = ${outerId} and p.deleted_at is null and p.gist_id is null)`,
         followerCount: sql<number>`(select count(*)::int from follows f join members m on m.id = f.follower_id and m.active where f.followee_id = ${outerId})`,
         followingCount: sql<number>`(select count(*)::int from follows f join members m on m.id = f.followee_id and m.active where f.follower_id = ${outerId})`,
         viewerFollows: viewerId

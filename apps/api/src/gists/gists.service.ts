@@ -1,4 +1,4 @@
-import { type Db, GIST_ROLES, blocks, communities, communityMemberships, gistMembers, gists, members } from '@heynaija/db'
+import { type Db, GIST_REPLY_AUDIENCES, GIST_ROLES, blocks, communities, communityMemberships, gistMembers, gists, members } from '@heynaija/db'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lt, ne, notInArray, or, sql } from 'drizzle-orm'
 import { RateLimiter } from '../rate-limit.js'
@@ -17,6 +17,7 @@ export type GistsConfig = {
 }
 
 export type GistRole = (typeof GIST_ROLES)[number]
+export type GistReplyAudience = (typeof GIST_REPLY_AUDIENCES)[number]
 
 export const GISTS_CONFIG = Symbol('GISTS_CONFIG')
 
@@ -36,6 +37,7 @@ export type GistErrorCode =
   | 'not_eligible'
   | 'already_speaker'
   | 'livekit_unavailable'
+  | 'reply_not_allowed'
 
 const STATUS: Record<GistErrorCode, number> = {
   not_found: 404,
@@ -52,6 +54,7 @@ const STATUS: Record<GistErrorCode, number> = {
   not_eligible: 409,
   already_speaker: 409,
   livekit_unavailable: 502,
+  reply_not_allowed: 403,
 }
 
 export class GistError extends Error {
@@ -146,8 +149,28 @@ export class GistsService {
   // ---- reading -------------------------------------------------------------
 
   async get(viewer: { id: string; handle: string }, gistId: string): Promise<GistView> {
-    const { gist, me } = await this.open(this.db, viewer, gistId)
+    const { gist, me, hostErased } = await this.open(this.db, viewer, gistId)
+    if (hostErased) throw new GistError('not_found')
     return this.view(this.db, gist, me)
+  }
+
+  /** The Gist, for someone who may see it. A Gist whose host erased their account is gone with its replies. */
+  async viewable(viewer: { id: string; handle: string }, gistId: string): Promise<GistRow> {
+    const { gist, hostErased } = await this.open(this.db, viewer, gistId)
+    if (hostErased) throw new GistError('not_found')
+    return gist
+  }
+
+  /** Whether the `gists` flag is on for a member, read once. */
+  async flagAllows(): Promise<(memberId: string) => boolean> {
+    return (await this.eligibility()).allowed
+  }
+
+  /** Host only, in any status: replies go on after the Gist ends. */
+  async setReplyAudience(actor: { id: string; handle: string }, gistId: string, audience: GistReplyAudience): Promise<void> {
+    const gist = await this.viewable(actor, gistId)
+    if (gist.hostId !== actor.id) throw new GistError('forbidden')
+    await this.db.update(gists).set({ replyAudience: audience }).where(eq(gists.id, gist.id))
   }
 
   /** Requests to speak, oldest first. Host and co-hosts only. */
@@ -753,9 +776,14 @@ export class GistsService {
    */
   private async open(q: Q, who: { id: string; handle: string }, gistId: string) {
     if (!isUuid(gistId)) throw new GistError('not_found')
-    const [gist] = await q.select().from(gists).where(eq(gists.id, gistId))
+    const [found] = await q
+      .select({ gist: gists, hostErased: sql<boolean>`${members.deletedAt} is not null` })
+      .from(gists)
+      .leftJoin(members, eq(members.id, gists.hostId))
+      .where(eq(gists.id, gistId))
     const viewer = await this.viewer(q, who.id)
-    if (!gist || !viewer) throw new GistError('not_found')
+    if (!found || !viewer) throw new GistError('not_found')
+    const { gist, hostErased } = found
     const inCommunity = gist.communityId ? await this.inCommunity(q, who.id, gist.communityId) : false
     if (!canJoinGist(viewer, gist, { ...(await this.eligibility()), inCommunity })) throw new GistError('not_found')
     const [me] = await q
@@ -766,7 +794,7 @@ export class GistsService {
     if (!me || !STAGE.includes(me.role)) {
       if (await this.blockedOnStage(q, gist.id, who.id)) throw new GistError('not_found')
     }
-    return { gist, me, who: { ...viewer, displayName: await this.displayName(q, who.id) } }
+    return { gist, hostErased: hostErased !== false, me, who: { ...viewer, displayName: await this.displayName(q, who.id) } }
   }
 
   private async displayName(q: Q, memberId: string): Promise<string | null> {

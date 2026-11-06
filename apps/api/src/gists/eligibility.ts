@@ -21,7 +21,10 @@ export type GistFacts = { status: 'scheduled' | 'live' | 'ended'; communityId: s
 /** `allowed` is `GistsAccess.member`, read once before the checks so that none of them awaits. */
 export type EligibilityConfig = { allowed: (memberId: string) => boolean }
 
-/** The one place that decides whether a member may take part in calls at all. */
+/**
+ * The one place that decides whether a member may take part in calls at all. Notifications
+ * are filtered by an SQL copy of this rule, `memberOpensGist` in gist-open.ts: change both together.
+ */
 function isCallsMember(viewer: GistViewer, config: EligibilityConfig): boolean {
   return viewer.active && config.allowed(viewer.id)
 }

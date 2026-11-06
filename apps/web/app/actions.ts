@@ -23,7 +23,7 @@ import { choicesFromForm, welcomePath } from '@/lib/onboarding'
 import type { ThreadRow } from '@/lib/thread-state'
 import { POLL_OPTIONS_MAX } from '@/lib/polls'
 import { POST_MAX } from '@/lib/post-length'
-import { isReplyAudience } from '@/lib/reply-audience'
+import { isGistReplyAudience, isReplyAudience } from '@/lib/reply-audience'
 
 // The API is the authority on who is signed in and what they may do; these
 // functions only relay the visitor's own session cookie to it.
@@ -121,11 +121,17 @@ export async function deletePost(formData: FormData): Promise<void> {
   refresh()
 }
 
+/** A reply in a Gist is liked through the Gist, which decides who may see it. */
+const likePath = (id: string, gistId?: string) =>
+  gistId
+    ? `/v1/gists/${encodeURIComponent(gistId)}/replies/${encodeURIComponent(id)}/like`
+    : `/v1/posts/${encodeURIComponent(id)}/like`
+
 /** `on` is the state the member wants, so a double submit cannot flip it back. */
 export async function setLike(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '')
   const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
-  const res = await api(`/v1/posts/${encodeURIComponent(id)}/like`, { method })
+  const res = await api(likePath(id, String(formData.get('gist') ?? '') || undefined), { method })
   if (res.status === 401) redirect('/login')
   refresh()
 }
@@ -135,9 +141,9 @@ export async function setLike(formData: FormData): Promise<void> {
  * the change, so the page is not re-rendered. On a long feed that re-render would
  * resend every post the reader has loaded.
  */
-export async function toggleLike(id: string, on: boolean): Promise<{ ok: boolean }> {
-  if (typeof id !== 'string' || id.length > 64) return { ok: false }
-  const res = await api(`/v1/posts/${encodeURIComponent(id)}/like`, { method: on ? 'PUT' : 'DELETE' })
+export async function toggleLike(id: string, on: boolean, gistId?: string): Promise<{ ok: boolean }> {
+  if (typeof id !== 'string' || id.length > 64 || (gistId !== undefined && (typeof gistId !== 'string' || gistId.length > 64))) return { ok: false }
+  const res = await api(likePath(id, gistId), { method: on ? 'PUT' : 'DELETE' })
   if (res.status === 401) redirect('/login')
   return { ok: res.ok }
 }
@@ -190,6 +196,30 @@ export async function setReplyAudience(formData: FormData): Promise<void> {
   const audience = String(formData.get('audience') ?? '')
   if (!isReplyAudience(audience)) return
   const res = await api(`/v1/posts/${encodeURIComponent(id)}/reply-audience`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ audience }),
+  })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+/** The host hides a reply in their Gist (on=1) or shows it again. */
+export async function hideGistReply(formData: FormData): Promise<void> {
+  const gist = String(formData.get('gist') ?? '')
+  const id = String(formData.get('id') ?? '')
+  const res = await api(`/v1/gists/${encodeURIComponent(gist)}/replies/${encodeURIComponent(id)}/hide`, {
+    method: formData.get('on') === '1' ? 'PUT' : 'DELETE',
+  })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+export async function setGistReplyAudience(formData: FormData): Promise<void> {
+  const gist = String(formData.get('gist') ?? '')
+  const audience = String(formData.get('audience') ?? '')
+  if (!isGistReplyAudience(audience)) return
+  const res = await api(`/v1/gists/${encodeURIComponent(gist)}/replies/audience`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ audience }),

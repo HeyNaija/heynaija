@@ -1,6 +1,8 @@
+import { reportPostHref } from '@/lib/report-href'
+import { gistReplyHref, replyQuery, type ReplyOrder } from '@/lib/thread-state'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { deletePost, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin, setReplyAudience } from '@/app/actions'
+import { deletePost, hideGistReply, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin, setReplyAudience } from '@/app/actions'
 import type { Post } from '@/lib/api'
 import { currentDataSaver } from '@/lib/low-data-server'
 import { textParts } from '@/lib/mentions'
@@ -78,6 +80,7 @@ export function PostItem({
   replyAction,
   threadToggle,
   pinned,
+  gist,
 }: {
   post: Post
   /** Null for visitors who are not signed-in members. */
@@ -97,12 +100,14 @@ export function PostItem({
   threadToggle?: ReactNode
   /** Shown above the list as the profile's or the community's pinned post. */
   pinned?: 'profile' | 'community'
+  /** A reply in this Gist's comment section: read, liked and hidden through the Gist, never reposted, saved or shared. */
+  gist?: { id: string; viewerIsHost: boolean; order?: ReplyOrder }
 }) {
   if (post.deleted) {
     return <p className="post-card text-sm italic text-muted">This post is no longer available.</p>
   }
 
-  const href = `/p/${post.id}`
+  const href = gist ? gistReplyHref(gist.id, post.id, replyQuery(gist.order ?? 'newest', null)) : `/p/${post.id}`
   const compact = inThread && !focused
   const openLabel = `Open ${post.replyParentId ? 'reply' : 'post'} by @${post.authorHandle}`
   const parts = textParts(post.text, post.mentions, post.links, post.hashtags)
@@ -239,7 +244,7 @@ export function PostItem({
 
             {viewerId ? (
               <Menu label="Post options" trigger={<DotsIcon />} className="-mr-2 -mt-1.5">
-                {compact ? (
+                {compact && !gist ? (
                   <form action={setBookmark}>
                     <input type="hidden" name="id" value={post.id} />
                     <input type="hidden" name="on" value={post.viewerBookmarked ? '0' : '1'} />
@@ -251,7 +256,7 @@ export function PostItem({
                 ) : null}
                 {post.authorId === viewerId ? (
                   <>
-                    {post.replyParentId ? null : (
+                    {post.replyParentId || gist ? null : (
                       <>
                         <form action={setProfilePin}>
                           <input type="hidden" name="id" value={post.id} />
@@ -285,7 +290,15 @@ export function PostItem({
                 ) : (
                   <>
                     {communityPin}
-                    <Link prefetch={false} href={`/report?post=${post.id}`} className="menu-item">
+                    {gist?.viewerIsHost ? (
+                      <form action={hideGistReply}>
+                        <input type="hidden" name="gist" value={gist.id} />
+                        <input type="hidden" name="id" value={post.id} />
+                        <input type="hidden" name="on" value="1" />
+                        <SubmitButton className="menu-item">Hide reply</SubmitButton>
+                      </form>
+                    ) : null}
+                    <Link prefetch={false} href={reportPostHref(post.id, gist?.id)} className="menu-item">
                       Report post
                     </Link>
                     <form action={setMute}>
@@ -362,7 +375,7 @@ export function PostItem({
       <div className="post-actions">
         {replyAction ?? <ReplyLink id={post.id} href={`${href}#compose`} count={post.replyCount} disabled={viewerId !== null && !post.viewerCanReply} />}
 
-        {viewerId ? (
+        {gist ? null : viewerId ? (
           <RepostButton id={post.id} reposted={post.viewerReposted} count={post.repostCount} />
         ) : (
           <span className="icon-btn pointer-events-none">
@@ -373,7 +386,7 @@ export function PostItem({
         )}
 
         {viewerId ? (
-          <LikeButton id={post.id} liked={post.viewerLiked} count={post.likeCount} />
+          <LikeButton id={post.id} liked={post.viewerLiked} count={post.likeCount} gistId={gist?.id} />
         ) : (
           <span className="icon-btn pointer-events-none">
             <HeartIcon size={18} />
@@ -385,7 +398,7 @@ export function PostItem({
         {threadToggle}
 
         <div className="post-actions-end">
-          {viewerId && !compact ? (
+          {viewerId && !compact && !gist ? (
             <form action={setBookmark}>
               <input type="hidden" name="id" value={post.id} />
               <input type="hidden" name="on" value={post.viewerBookmarked ? '0' : '1'} />
@@ -398,7 +411,7 @@ export function PostItem({
               </SubmitButton>
             </form>
           ) : null}
-          <ShareButton id={post.id} handle={post.authorHandle} name={post.authorName} avatar={post.authorAvatar} text={excerpt(post.text)} />
+          {gist ? null : <ShareButton id={post.id} handle={post.authorHandle} name={post.authorName} avatar={post.authorAvatar} text={excerpt(post.text)} />}
         </div>
       </div>
     </article>

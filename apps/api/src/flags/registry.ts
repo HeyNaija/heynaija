@@ -80,6 +80,12 @@ export const FLAGS = {
     owner: 'gists',
     defaults: { development: true, staging: true, production: false }, // code in main, but never switched on in production; LIVE_IN_MAIN is false
   },
+  gistReplies: {
+    description:
+      "Writing replies in a Gist's comment section (ADR 0017). Only has an effect where gists is on. Replies already posted stay readable, and a member can still delete their own.",
+    owner: 'gists',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
 } as const satisfies Record<string, FlagDefinition>
 
 export type FlagKey = keyof typeof FLAGS

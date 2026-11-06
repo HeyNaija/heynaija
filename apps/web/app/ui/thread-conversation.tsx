@@ -1,9 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { createContext, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useRef, useState, useTransition } from 'react'
+import { createContext, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import type { ComposeState } from '@/app/actions'
-import { createThreadReply, loadThreadReplies } from '@/app/thread-actions'
+import { createGistReply, createThreadReply, loadGistReplies, loadThreadReplies } from '@/app/thread-actions'
 import {
   appendReplyPage,
   type BranchCache,
@@ -17,7 +17,10 @@ import {
   type ReplyTarget,
   type ThreadRow,
   THREAD_MAX_DEPTH,
+  replyQuery,
+  threadHref,
 } from '@/lib/thread-state'
+import { postedReplyHref } from '@/lib/posted-href'
 import { Composer } from './composer'
 import { BubbleIcon, DotsIcon } from './icons'
 import { Menu } from './menu'
@@ -29,6 +32,8 @@ type ConversationContext = {
   branches: BranchCache
   increments: Record<string, number>
   canReply: boolean
+  /** Set when the conversation is a Gist's comment section, whose root is the Gist itself. */
+  gist?: string
   /** A member the conversation's author left out of its replies. */
   limited: boolean
   posting: boolean
@@ -39,6 +44,7 @@ type ConversationContext = {
   editor: ReactNode
 }
 const Conversation = createContext<ConversationContext | null>(null)
+const keepOrder = (context: ConversationContext | null) => (context?.gist ? replyQuery(context.order, null) : '')
 const BranchAncestry = createContext<readonly string[]>([])
 /** What a reply's own row needs to open, hide or continue its branch. */
 type BranchControl = { id: string; inPlace: boolean; expanded: boolean; shown: boolean; busy: boolean; toggle?: () => void }
@@ -59,6 +65,8 @@ export function ThreadConversation({
   cursor,
   order,
   version,
+  gist,
+  limitedNote = 'The conversation author has limited who can reply.',
   children,
 }: {
   focus: ReplyTarget
@@ -70,6 +78,9 @@ export function ThreadConversation({
   /** The focus's replies are in this order; each branch's read oldest first (`branchOrder`). */
   order: ReplyOrder
   version: number
+  /** The Gist whose comment section this is; `focus` is then the Gist, not a post. */
+  gist?: string
+  limitedNote?: string
   children: ReactNode
 }) {
   const initial = useCallback((): BranchCache => ({
@@ -168,7 +179,10 @@ export function ThreadConversation({
       [position.id]: { ...(all[position.id] ?? current), open: true, status: 'loading', error: undefined, touched: Date.now() },
     }))
     startTransition(async () => {
-      const result = await loadThreadReplies(position.id, next, position.depth + 1, position.handle, branchOrder(order, position.id === focus.id))
+      const branch = branchOrder(order, position.id === focus.id)
+      const result = await (gist
+        ? loadGistReplies(gist, position.id === gist ? null : position.id, next, position.depth + 1, position.handle, branch)
+        : loadThreadReplies(position.id, next, position.depth + 1, position.handle, branch))
         .catch(() => ({ error: 'Replies could not be loaded. Check your connection and try again.' }))
       busy.current.delete(request)
       if (!mounted.current || gen !== generation.current) return
@@ -181,7 +195,9 @@ export function ThreadConversation({
         return pruneCollapsedBranches({ ...all, [position.id]: updated }, focus.id, selected.current)
       }))
     })
-  }, [focus.id, order])
+  }, [focus.id, order, gist])
+
+  const submitAction = useMemo(() => (gist ? createGistReply.bind(null, gist) : createThreadReply), [gist])
 
   const onPosted = useCallback((state: ComposeState) => {
     if (!state.postId || posted.current.has(state.postId)) return
@@ -204,18 +220,21 @@ export function ThreadConversation({
       avatar={member.avatar}
       replyTo={target.id}
       replyHandle={target.handle}
+      replyLabel={gist && target.id === gist && target.handle === member.handle ? 'this Gist' : undefined}
       replyDepth={target.depth + 1}
       answeringReply={target.id !== focus.id}
       placeholder="Post your reply"
-      submitAction={createThreadReply}
+      submitAction={submitAction}
+      postedHref={gist ? (id) => postedReplyHref(gist, id) : undefined}
       onPosted={onPosted}
       onPendingChange={setPosting}
+      media={!gist}
       portalTarget={portalTarget}
       focusRequest={focusRequest}
     />
   ) : limited ? (
     // A member the conversation's author has not allowed to reply: told so, in the bar's place.
-    <p className="reply-signin reply-limited">The conversation author has limited who can reply.</p>
+    <p className="reply-signin reply-limited">{limitedNote}</p>
   ) : (
     // Visitors get the same place, with the way in. Plain link, so it works without JavaScript.
     <Link href="/login" prefetch={false} className="reply-signin">
@@ -225,7 +244,7 @@ export function ThreadConversation({
   )
 
   return (
-    <Conversation.Provider value={{ order, branches, increments, canReply: member !== null, limited, posting, select, load, collapse, editor }}>
+    <Conversation.Provider value={{ order, branches, increments, canReply: member !== null, gist, limited, posting, select, load, collapse, editor }}>
       {children}
     </Conversation.Provider>
   )
@@ -242,7 +261,7 @@ export function ThreadReplyAction({ id, parentId, handle, depth, count }: ReplyT
   }, [id, added, total, count])
   return (
     <Link
-      href={`/p/${id}#compose`}
+      href={`${threadHref(context?.gist, id, keepOrder(context))}#compose`}
       prefetch={false}
       className="icon-btn"
       aria-label={`Reply (${total === 1 ? '1 reply' : `${total} replies`})`}
@@ -273,13 +292,14 @@ export function ThreadReplyAction({ id, parentId, handle, depth, count }: ReplyT
  */
 export function ThreadToggle() {
   const branch = useContext(BranchToggle)
+  const context = useContext(Conversation)
   if (!branch) return null
   if (!branch.inPlace) {
-    return <Link prefetch={false} href={`/p/${branch.id}`} className="thread-toggle is-wide">Continue conversation</Link>
+    return <Link prefetch={false} href={threadHref(context?.gist, branch.id, keepOrder(context))} className="thread-toggle is-wide">Continue conversation</Link>
   }
   return (
     <Link
-      href={`/p/${branch.id}#replies-${branch.id}`}
+      href={`${threadHref(context?.gist, branch.id, keepOrder(context))}#replies-${branch.id}`}
       prefetch={false}
       className="thread-toggle"
       aria-controls={`replies-${branch.id}`}
@@ -318,7 +338,7 @@ export function ThreadBranch({
     return (
       <p className="thread-context-note" role="note">
         This conversation returns to an earlier post.{' '}
-        <Link prefetch={false} href={`/p/${id}`}>Continue conversation</Link>
+        <Link prefetch={false} href={threadHref(context?.gist, id, keepOrder(context))}>Continue conversation</Link>
       </p>
     )
   }
@@ -360,7 +380,7 @@ export function ThreadBranch({
 
       {renderChildren && (root || state) ? (
         <section id={`replies-${id}`} className={`thread-children${depth >= THREAD_MAX_DEPTH ? ' is-beyond' : ''}`} aria-label={root ? 'Replies' : `Replies${handle ? ` to @${handle}` : ' to unavailable post'}`} hidden={!open} aria-busy={busy || undefined}>
-          {root ? <RepliesHeading id={id} handle={handle} order={order} ordered={items.length + recent.length > 0 || !!state?.cursor} /> : null}
+          {root ? <RepliesHeading id={id} gist={context?.gist} handle={handle} order={order} ordered={items.length + recent.length > 0 || !!state?.cursor} /> : null}
           {items.length ? <ul className="thread-list">{items.map((row) => <li key={row.id}>{row.node}</li>)}</ul> : null}
           {empty ? <p className="thread-empty">{root && total === 0 ? 'No replies yet.' : 'No available replies.'}</p> : null}
           {recent.length ? (
@@ -372,7 +392,7 @@ export function ThreadBranch({
           {state?.error ? <p role="alert" className="thread-error">{state.error}</p> : null}
           {state?.cursor || state?.status === 'error' ? (
             <Link
-              href={`/p/${id}${replyQuery(order, state.cursor)}#replies-${id}`}
+              href={`${threadHref(context?.gist, id, replyQuery(order, state.cursor))}#replies-${id}`}
               prefetch={false}
               className="thread-more btn btn-secondary btn-sm"
               aria-disabled={busy || undefined}
@@ -392,16 +412,8 @@ export function ThreadBranch({
   )
 }
 
-/** The page's address for an order and, for reading on without JavaScript, a page of replies. */
-function replyQuery(order: ReplyOrder, cursor: string | null) {
-  const query = new URLSearchParams()
-  if (order === 'oldest') query.set('replies', 'oldest')
-  if (cursor) query.set('repliesCursor', cursor)
-  return query.size ? `?${query}` : ''
-}
-
 /** Keep reading controls together, out of the way until the reader asks for them. */
-function RepliesHeading({ id, handle, order, ordered }: { id: string; handle: string | null; order: ReplyOrder; ordered: boolean }) {
+function RepliesHeading({ id, gist, handle, order, ordered }: { id: string; gist?: string; handle: string | null; order: ReplyOrder; ordered: boolean }) {
   return (
     <div className="thread-replies-head">
       <h2 className="thread-replies-heading">Replies</h2>
@@ -412,7 +424,7 @@ function RepliesHeading({ id, handle, order, ordered }: { id: string; handle: st
             {(['newest', 'oldest'] as const).map((value) => (
               <Link
                 key={value}
-                href={`/p/${id}${replyQuery(value, null)}#replies-${id}`}
+                href={`${threadHref(gist, id, replyQuery(value, null))}#replies-${id}`}
                 prefetch={false}
                 aria-current={value === order ? 'true' : undefined}
                 className="menu-item"

@@ -190,9 +190,20 @@ export type UnavailableReply = {
   replyParentId: string | null
   createdAt: string
   hasReplies: true
+  /** Hidden by the Gist's host rather than deleted or taken down. */
+  hiddenByHost?: true
 }
 export type ThreadReply = Post | UnavailableReply
 export type ReplyPage = { replies: ThreadReply[]; cursor: string | null }
+
+export type GistReplyAudience = 'everyone' | 'following' | 'mentioned' | 'off'
+/** The top level of a Gist's comment section. */
+export type GistReplies = ReplyPage & {
+  count: number
+  viewerCanReply: boolean
+  viewerIsHost: boolean
+  replyAudience: GistReplyAudience
+}
 export type Thread = {
   ancestors: Post[]
   post: Post
@@ -400,6 +411,23 @@ async function getOrNull<T>(path: string): Promise<T | null> {
 
 /** A Gist the viewer may see; null for every refusal, which the API makes the same 404. */
 export const getGist = (id: string) => getOrNull<GistView>(`/v1/gists/${encodeURIComponent(id)}`)
+
+const gistRepliesPath = (gistId: string, rest: string, cursor: string | undefined, order: ReplyOrder) => {
+  const query = new URLSearchParams({ order })
+  if (cursor) query.set('cursor', cursor)
+  return `/v1/gists/${encodeURIComponent(gistId)}/replies${rest}?${query}`
+}
+
+/** The Gist's comment section; null for every refusal, which the API makes the same 404. */
+export const getGistReplies = (gistId: string, cursor?: string, order: ReplyOrder = 'newest') =>
+  getOrNull<GistReplies>(gistRepliesPath(gistId, '', cursor, order))
+
+/** The replies under one reply in a Gist. */
+export const getGistReplyBranch = (gistId: string, postId: string, cursor: string | undefined, order: ReplyOrder) =>
+  getOrNull<ReplyPage & { viewerIsHost: boolean }>(gistRepliesPath(gistId, `/${encodeURIComponent(postId)}/replies`, cursor, order))
+
+export const getGistReply = (gistId: string, postId: string) =>
+  getOrNull<Post>(`/v1/gists/${encodeURIComponent(gistId)}/replies/${encodeURIComponent(postId)}`)
 
 /**
  * A member's profile; or, for a handle its owner gave up recently, the handle they
@@ -637,7 +665,7 @@ export type Notification = {
   read: boolean
   /** Null for moderation decisions. */
   actor: { handle: string; displayName: string | null; avatar: string | null; founder: boolean } | null
-  post: { id: string; excerpt: string } | null
+  post: { id: string; excerpt: string; gistId: string | null } | null
   subjectHandle: string | null
   community: { slug: string; name: string } | null
   /** report_resolved: 'actioned' or 'dismissed' ('gist_actioned', 'gist_dismissed' for a Gist). post_removed: the report reason. idea_status: the new status. */

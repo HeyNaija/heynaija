@@ -6,6 +6,7 @@ import { OptionalSessionGuard, SessionGuard } from '../auth/session.guard.js'
 import type { AppEnv } from '../env.js'
 import { FeatureFlags, type Snapshot } from '../flags/feature-flags.js'
 import { MemoryRateLimiter } from '../rate-limit.js'
+import { GistRepliesController } from './gist-replies.controller.js'
 import { GistsController, LiveKitWebhookController } from './gists.controller.js'
 import { type GistsAccess, GistsEnabledGuard, GistsGate, LiveKitConfiguredGuard, livekitConfigured } from './gists-enabled.guard.js'
 
@@ -72,6 +73,7 @@ test('every Gists route reads the session, then checks the flag, then requires s
   // Nest runs a controller's guards before any a route adds, so these come first on every route.
   const guardsOf = (controller: object) => Reflect.getMetadata(GUARDS_METADATA, controller) as unknown[]
   assert.deepEqual(guardsOf(GistsController), [OptionalSessionGuard, GistsEnabledGuard, SessionGuard])
+  assert.deepEqual(guardsOf(GistRepliesController), [OptionalSessionGuard, GistsEnabledGuard, SessionGuard])
   assert.deepEqual(guardsOf(LiveKitWebhookController), [LiveKitConfiguredGuard])
 
   const webhook = (livekit: LiveKit) => new LiveKitConfiguredGuard(livekit).canActivate(context(undefined, 'POST', '/internal/livekit/webhook'))
