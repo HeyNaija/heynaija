@@ -24,6 +24,6 @@ export const GIST_REPLY_AUDIENCE_LABEL = {
 export function gistReplyAudienceNote(audience: GistReplyAudience, hostHandle: string, viewerIsHost: boolean): string {
   if (viewerIsHost) return GIST_REPLY_AUDIENCE_LABEL[audience]
   if (audience === 'following') return `People @${hostHandle} follows can reply`
-  if (audience === 'mentioned') return 'Only people mentioned can reply'
+  if (audience === 'mentioned') return `People @${hostHandle} mentions can reply`
   return GIST_REPLY_AUDIENCE_LABEL[audience]
 }

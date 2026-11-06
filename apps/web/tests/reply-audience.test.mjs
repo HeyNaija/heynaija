@@ -16,7 +16,7 @@ test("the note under a Gist's replies is the host's own wording for the host, an
   assert.equal(gistReplyAudienceNote('following', 'ada', true), 'People you follow can reply')
   assert.equal(gistReplyAudienceNote('mentioned', 'ada', true), 'Only people you mention can reply')
   assert.equal(gistReplyAudienceNote('following', 'ada', false), 'People @ada follows can reply')
-  assert.equal(gistReplyAudienceNote('mentioned', 'ada', false), 'Only people mentioned can reply')
+  assert.equal(gistReplyAudienceNote('mentioned', 'ada', false), 'People @ada mentions can reply')
   assert.equal(gistReplyAudienceNote('off', 'ada', false), 'Replies off')
   assert.equal(gistReplyAudienceNote('everyone', 'ada', false), 'Everyone can reply')
 })
