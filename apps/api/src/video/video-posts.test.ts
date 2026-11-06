@@ -134,7 +134,7 @@ const meWith = (flags: FeatureFlags, appEnv: 'production' | 'staging', scanner: 
     db,
     {} as never,
     {} as never,
-    {} as never,
+    { birthDateNeeded: async () => false } as never,
     flags,
     new VideoGate(flags, { APP_ENV: appEnv }, scanner),
     { access: async () => ({ member: () => false, anyone: false }) },
