@@ -40,7 +40,7 @@ export function renderThreadRow(
                 <input type="hidden" name="gist" value={gist.id} />
                 <input type="hidden" name="id" value={post.id} />
                 <input type="hidden" name="on" value="0" />
-                <SubmitButton className="btn btn-secondary btn-sm">Show reply</SubmitButton>
+                <SubmitButton className="btn btn-secondary btn-lg">Show reply</SubmitButton>
               </form>
             ) : null}
             <div className="post-actions"><ThreadToggle /></div>
