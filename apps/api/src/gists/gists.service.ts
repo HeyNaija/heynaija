@@ -161,6 +161,11 @@ export class GistsService {
     return gist
   }
 
+  /** Whether the `gists` flag is on for a member, read once. */
+  async flagAllows(): Promise<(memberId: string) => boolean> {
+    return (await this.eligibility()).allowed
+  }
+
   /** Host only, in any status: replies go on after the Gist ends. */
   async setReplyAudience(actor: { id: string; handle: string }, gistId: string, audience: GistReplyAudience): Promise<void> {
     const gist = await this.viewable(actor, gistId)

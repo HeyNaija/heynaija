@@ -2,7 +2,8 @@ import { type Db, members, notifications, OPTIONAL_NOTIFICATION_KINDS, pushSubsc
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { EXCERPT_MAX, KINDS_WITH_EXCERPT } from '../email/digest.js'
-import { excerpt, joins, type NotificationKind, visible } from '../notifications/notifications.service.js'
+import { GistsGate } from '../gists/gists-enabled.guard.js'
+import { excerpt, gistsOpenTo, joins, type NotificationKind, visible } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 import { type PushItem, pushMessages } from './push-message.js'
 import {
@@ -51,6 +52,7 @@ export class PushNotificationsService {
     @Inject(DB) private readonly db: Db,
     @Inject(PUSH_JOBS) private readonly jobs: PushJobs,
     @Optional() @Inject(PUSH_SENDER) private readonly sender: PushSender | null = null,
+    @Optional() @Inject(GistsGate) private readonly gate: Pick<GistsGate, 'access'> | null = null,
   ) {}
 
   /** False when no VAPID keys are configured: nothing is pushed, and browsers are not offered it. */
@@ -251,7 +253,7 @@ export class PushNotificationsService {
         case when n.kind in (${excerptKinds}) then p.text end as post_text,
         c.name as community_name, n.detail, i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, n.push_settled_at is null as pending
       ${joins}
-      where ${visible(memberId)} and n.read_at is null
+      where ${visible(memberId, await gistsOpenTo(this.gate, memberId))} and n.read_at is null
         and (n.kind not in (${optional})
           or not exists(select 1 from notification_opt_outs o where o.member_id = n.recipient_id and o.kind = n.kind))
         and (n.id = any(${pgUuids(ids)})

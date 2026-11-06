@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { blocks, communities, communityMemberships, gists, members, posts } from '@heynaija/db'
+import { blocks, communities, communityMemberships, gistMembers, gists, members, notifications, posts } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { ModerationService } from '../moderation/moderation.service.js'
 import { PostsService } from '../posts/posts.service.js'
@@ -18,6 +18,8 @@ const id = Object.fromEntries(people.map((p) => [p, randomUUID()])) as Record<Pe
 const as = (p: Person) => ({ id: id[p], handle: p })
 const config: GistsConfig = { maxCohosts: 2, maxSpeakers: 2, listenerCap: 3, livekitUrl: 'wss://livekit.test' }
 const gate: Pick<GistsGate, 'access'> = { access: async () => ({ member: (memberId) => memberId !== id.outsider, anyone: true }) }
+const told = async (recipient: Person) =>
+  (await db.select({ kind: notifications.kind }).from(notifications).where(eq(notifications.recipientId, id[recipient]))).map((n) => n.kind)
 
 let repliesOn = true
 const flags = { isEnabled: async () => repliesOn }
@@ -168,4 +170,29 @@ test('a Gist whose host erased their account is gone, with its replies', async (
   await db.update(members).set({ deletedAt: new Date() }).where(eq(members.id, id.ada))
   assert.equal(await codeOf(service.list(as('bayo'), gist, { order: 'newest' })), 'not_found')
   assert.equal((await db.select().from(posts)).length, 1)
+})
+
+test('a reply never notifies, by mention or reply, someone who cannot open the Gist', async () => {
+  await db.insert(gistMembers).values({ gistId: gist, memberId: id.chi, role: 'listener', removedAt: new Date() })
+  await db.insert(blocks).values({ blockerId: id.dayo, blockedId: id.ada })
+  await say('bayo', 'hello @outsider @chi @dayo @sam')
+  assert.deepEqual(await told('outsider'), [])
+  assert.deepEqual(await told('chi'), [])
+  assert.deepEqual(await told('dayo'), [])
+  assert.deepEqual(await told('sam'), ['mention'])
+  assert.deepEqual(await told('ada'), ['reply'])
+})
+
+test('a reply to a reply whose author lost access to the Gist does not notify them', async () => {
+  const first = await say('chi', 'my take')
+  await db.insert(gistMembers).values({ gistId: gist, memberId: id.chi, role: 'listener', removedAt: new Date() })
+  await say('bayo', 'a quote of your take', first.id)
+  assert.deepEqual(await told('chi'), [])
+})
+
+test('the host named in a reply to someone else is told of the mention', async () => {
+  const first = await say('chi', 'my take')
+  await say('bayo', 'thanks @ada', first.id)
+  assert.deepEqual((await told('ada')).sort(), ['mention', 'reply'])
+  assert.deepEqual(await told('chi'), ['reply'])
 })

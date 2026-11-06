@@ -62,7 +62,7 @@ export class GistRepliesService {
     const gist = await this.gists.viewable(viewer, gistId)
     if (!(await this.flags.isEnabled('gistReplies', viewer.id))) throw new GistError('not_found')
     try {
-      const { id } = await this.posts.create(viewer.id, input.text, { gist: gist.id, replyTo: input.replyTo })
+      const { id } = await this.posts.create(viewer.id, input.text, { gist: gist.id, replyTo: input.replyTo, gistAccess: await this.gists.flagAllows() })
       return { id }
     } catch (err) {
       if (err instanceof ReplyNotAllowedError) throw new GistError('reply_not_allowed')

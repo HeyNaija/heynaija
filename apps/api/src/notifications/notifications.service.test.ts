@@ -397,6 +397,7 @@ test('one notify call skips the recipients who turned that kind off and tells th
 })
 
 test('a reply in a Gist says which Gist it is in, and leaves the list when the host hides it', async () => {
+  const service = new NotificationsService(db, { access: async () => ({ member: () => true, anyone: true }) })
   const [{ id: gist }] = (await db.insert(gists).values({ hostId: ada, title: 'Room' }).returning({ id: gists.id })) as [{ id: string }]
   const { id: reply } = await postsService.create(bayo, 'Hello host', { gist })
   const [listed] = (await service.list(ada, 50)).notifications

@@ -31,6 +31,7 @@ import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, Inval
 import { excerpt, notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { Refreshing } from '../refreshing.js'
+import { memberOpensGist } from '../gists/gist-open.js'
 import { DB } from '../tokens.js'
 import {
   DISCOVER_RULES,
@@ -1503,6 +1504,7 @@ export class PostsService {
       anyMember = false,
       alongside,
       gist,
+      gistAccess,
     }: {
       replyTo?: string
       communitySlug?: string
@@ -1516,6 +1518,8 @@ export class PostsService {
       /** More to write in the same transaction, once the post has its ID. */
       alongside?: (tx: Transaction, id: string) => Promise<void>
       gist?: string
+      /** With `gist`: whether the `gists` flag is on for a member; left out, it is not checked. */
+      gistAccess?: (memberId: string) => boolean
     } = {},
   ): Promise<{ id: string; linkUrl: string | null }> {
     let parent: { id: string; authorId: string; rootId: string | null; communityId: string | null } | undefined
@@ -1668,15 +1672,14 @@ export class PostsService {
       await recordHashtags(tx, { id: row!.id, text })
       // Someone told about this post as a reply or a quote is not told again that
       // it mentions them, and only the first few others named are told at all.
-      const mentioned = (await recordMentions(tx, { id: row!.id, authorId, text }))
-        .filter((id) => id !== parent?.authorId && id !== quoted?.authorId && id !== gistHost)
-        .slice(0, MENTIONS_NOTIFIED_MAX)
+      const replyRecipient = parent?.authorId ?? gistHost
+      const named = (await recordMentions(tx, { id: row!.id, authorId, text })).filter((id) => id !== replyRecipient && id !== quoted?.authorId)
+      const told = gist ? new Set(await this.whoOpensGist(tx, gist, [...named, ...(replyRecipient ? [replyRecipient] : [])], gistAccess)) : null
+      const mentioned = named.filter((id) => !told || told.has(id)).slice(0, MENTIONS_NOTIFIED_MAX)
       await notify(tx, [
-        ...(parent
-          ? [{ recipientId: parent.authorId, kind: 'reply' as const, actorId: authorId, postId: row!.id }]
-          : gistHost
-            ? [{ recipientId: gistHost, kind: 'reply' as const, actorId: authorId, postId: row!.id }]
-            : []),
+        ...(replyRecipient && (!told || told.has(replyRecipient))
+          ? [{ recipientId: replyRecipient, kind: 'reply' as const, actorId: authorId, postId: row!.id }]
+          : []),
         // A reply that quotes the post it answers notifies once, as a reply.
         ...(quoted && quoted.authorId !== parent?.authorId
           ? [{ recipientId: quoted.authorId, kind: 'quote' as const, actorId: authorId, postId: row!.id }]
@@ -1686,6 +1689,14 @@ export class PostsService {
       await alongside?.(tx, row!.id)
       return { id: row!.id, linkUrl }
     })
+  }
+
+  private async whoOpensGist(q: Pick<Db, 'execute'>, gistId: string, ids: string[], flagAllows: ((memberId: string) => boolean) | undefined): Promise<string[]> {
+    const candidates = [...new Set(ids)].filter((id) => !flagAllows || flagAllows(id))
+    if (!candidates.length) return []
+    const { rows } = await q.execute<{ id: string }>(sql`
+      select m.id from unnest(${sql.param(candidates)}::uuid[]) as m(id) where ${memberOpensGist(sql`m.id`, sql`${gistId}::uuid`)}`)
+    return rows.map((r) => r.id)
   }
 
   /** Changes only future replies. Existing replies remain in the conversation. */
