@@ -50,6 +50,7 @@ const LIVE_IN_MAIN: Record<FlagKey, boolean> = {
   reposts: true,
   quotePosts: true,
   linkPreviews: true,
+  games: false,
   videoPosts: false,
   gists: false,
 }

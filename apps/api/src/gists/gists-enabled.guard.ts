@@ -1,8 +1,9 @@
-import { type CanActivate, type ExecutionContext, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { type CanActivate, type ExecutionContext, Inject, Injectable, Logger } from '@nestjs/common'
 import type { FastifyRequest } from 'fastify'
 import type { MaybeAuthedRequest } from '../auth/session.guard.js'
 import type { AppEnv, Env } from '../env.js'
 import { FeatureFlags, type FlagReading } from '../flags/feature-flags.js'
+import { routeNotFound } from '../http.js'
 import { ENV } from '../tokens.js'
 import { canHostGist } from './eligibility.js'
 
@@ -60,9 +61,6 @@ export class GistsGate {
  */
 export const gistsShownTo = (access: GistsAccess, member: { id: string; handle: string }): boolean =>
   canHostGist({ ...member, active: true }, { allowed: access.member })
-
-/** What Fastify answers for a route that does not exist, so a dark feature cannot be told from no feature. */
-export const routeNotFound = (req: Pick<FastifyRequest, 'method' | 'url'>) => new NotFoundException(`Cannot ${req.method} ${req.url}`)
 
 /**
  * On every Gists route, after OptionalSessionGuard (so the allow-list can see the

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ARBITER_ONLY } from '@/lib/chess-arena'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { Composer } from '@/app/ui/composer'
@@ -6,7 +7,7 @@ import { JoinButton } from '@/app/ui/join-button'
 import { CommunityMark } from '@/app/ui/community-mark'
 import { CommunityPhotoEditor } from '@/app/ui/community-photo-editor'
 import { PostItem, PostList, PostsSkeleton } from '@/app/ui/post-item'
-import { getCommunity, getCommunityPosts, getViewer } from '@/lib/api'
+import { type ChessTeam, getChessTeam, getCommunity, getCommunityPosts, getViewer } from '@/lib/api'
 
 type Props = PageProps<'/c/[slug]'>
 
@@ -24,7 +25,12 @@ async function CommunityView({ params, searchParams }: Props) {
 
   const [community, viewer] = await Promise.all([getCommunity(slug), getViewer()])
   if (!community) notFound()
-  const feed = await getCommunityPosts(community.slug, page)
+  const games = viewer.state === 'member' && Boolean(viewer.me.features.games)
+  const [feed, chess] = await Promise.all([
+    getCommunityPosts(community.slug, page),
+    // Its Lichess team and tournaments (docs/adr/0018, phase 6), only for members with Games.
+    games ? getChessTeam(community.slug).catch(() => null) : Promise.resolve(null),
+  ])
   const viewerId = viewer.state === 'member' ? viewer.me.id : null
   const rules = community.rules.split('\n').filter((line) => line.trim())
   const now = Date.now()
@@ -87,6 +93,8 @@ async function CommunityView({ params, searchParams }: Props) {
           </p>
         ) : null}
 
+        {chess ? <CommunityChessLine chess={chess} /> : null}
+
         {rules.length ? (
           <details className="community-rules mt-4 rounded-lg bg-panel px-4 py-3 text-sm">
             <summary className="min-h-6 cursor-pointer font-semibold">Community rules</summary>
@@ -99,7 +107,10 @@ async function CommunityView({ params, searchParams }: Props) {
         ) : null}
       </header>
 
-      {viewer.state === 'member' && community.viewerIsMember ? (
+      {ARBITER_ONLY[community.slug] ? (
+        // Chess Arena and Game Night (docs/adr/0018): The Arbiter starts the posts; members reply in them.
+        <p className="notice">{ARBITER_ONLY[community.slug]}</p>
+      ) : viewer.state === 'member' && community.viewerIsMember ? (
         <Composer
           handle={viewer.me.handle}
           avatar={viewer.me.avatar}
@@ -145,5 +156,38 @@ async function CommunityView({ params, searchParams }: Props) {
         />
       </section>
     </div>
+  )
+}
+
+/** "Chess on Lichess": the community's team and next tournament, or a moderator's way to set one up. */
+function CommunityChessLine({ chess }: { chess: ChessTeam }) {
+  const page = `/games/chess/teams/${chess.community.slug}`
+  if (!chess.team) {
+    if (!chess.you.communityModerator) return null
+    return (
+      <p className="mt-4 text-sm leading-6 text-muted">
+        Run chess tournaments for this community on Lichess.{' '}
+        <Link href={page} className="font-semibold text-accent-strong hover:underline">Set it up</Link>
+      </p>
+    )
+  }
+  const next = chess.tournaments.current[0]
+  return (
+    <p className="mt-4 text-sm leading-6 text-muted">
+      Chess on Lichess:{' '}
+      <a href={chess.team.url} className="text-ink hover:underline" target="_blank" rel="noopener noreferrer">
+        {chess.team.name}
+      </a>
+      {next ? (
+        <>
+          {' · Next: '}
+          <Link href={`/games/competitions/${next.id}`} className="text-ink hover:underline">{next.name}</Link>
+        </>
+      ) : null}
+      {' · '}
+      <Link href={page} className="font-semibold text-accent-strong hover:underline">
+        {chess.you.communityModerator ? 'Manage' : 'Tournaments'}
+      </Link>
+    </p>
   )
 }

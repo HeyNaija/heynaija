@@ -25,11 +25,13 @@ import { type VideoConfig, DEFAULT_VIDEO_CONFIG } from '../video/video-config.js
 import { assertVideoEligible } from '../video/video-eligibility.js'
 import { VIDEO_CONFIG } from '../video/video.service.js'
 import { type PostVideo, toPostVideo, type VideoRow, videoOf } from '../video/video-view.js'
-import { isFounder } from '../members/badges.js'
+import { isAutomated, isFounder } from '../members/badges.js'
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
 import { excerpt, notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { Refreshing } from '../refreshing.js'
+import { ARBITER_ID, ARBITER_ONLY } from '../games/chess/arena-ids.js'
+import { hiddenFromPlayer } from '../games/chess/hidden-replies.js'
 import { DB } from '../tokens.js'
 import {
   DISCOVER_RULES,
@@ -186,6 +188,8 @@ export type PostView = {
   authorAvatar: string | null
   /** The author has the Founder badge: one of the people who founded HeyNaija. */
   authorFounder: boolean
+  /** The author is one of HeyNaija's automated accounts (The Arbiter); nobody signs in to it. */
+  authorAutomated: boolean
   /** Empty when `deleted`. */
   text: string
   /** Up to four, in order. Empty when `deleted`. */
@@ -426,6 +430,7 @@ const quoteOf = (viewerId: string | null, quotePostId: SQL) => sql<QuoteRow | nu
   from posts q join members qa on qa.id = q.author_id
   where q.id = ${quotePostId} and q.deleted_at is null and q.removed_at is null
     and ${visibleAuthor(viewerId, sql`q.author_id`, sql`qa.active`)}
+    and not ${hiddenFromPlayer(viewerId, sql`q.root_id`, sql`q.author_id`)}
 ), json_build_object('unavailable', true)) end`
 
 const toQuote = (row: QuoteRow | null): QuotedPost | null => {
@@ -521,6 +526,7 @@ const replyContextOf = (viewerId: string | null, parentId: SQL) => sql<ReplyCont
   from posts rp join members ra on ra.id = rp.author_id
   where rp.id = ${parentId} and rp.deleted_at is null and rp.removed_at is null
     and ${visibleAuthor(viewerId, sql`rp.author_id`, sql`ra.active`)}
+    and not ${hiddenFromPlayer(viewerId, sql`rp.root_id`, sql`rp.author_id`)}
 ), json_build_object('unavailable', true)) end`
 
 const toReplyContext = (row: ReplyContextRow | null): ReplyContext | null => {
@@ -565,6 +571,7 @@ export class PostsService {
         authorName: members.displayName,
         authorAvatarId: members.avatarMediaId,
         authorFounder: isFounder(sql`${posts.authorId}`),
+        authorAutomated: isAutomated(sql`${posts.authorId}`),
         text: sql<string>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${posts.text} else '' end`,
         images: sql<
           ImageRow[]
@@ -617,6 +624,7 @@ export class PostsService {
             opts.includeDeleted ? sql`(${members.active} or ${members.deletedAt} is not null)` : sql`${members.active}`,
             opts.unmuted,
           ),
+          sql`not ${hiddenFromPlayer(viewerId, sql`${posts.rootId}`, sql`${posts.authorId}`)}`,
           opts.includeDeleted ? undefined : live,
           where,
         ),
@@ -1263,7 +1271,7 @@ export class PostsService {
         : sql`and (p.created_at, p.id) > (${after.timestamp}::timestamptz, ${after.id}::uuid)`
     }
     const parentAuthor = sql`(select author_id from posts where id = ${parentId})`
-    const visible = visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)
+    const visible = and(visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`), sql`not ${hiddenFromPlayer(viewerId, sql`p.root_id`, sql`p.author_id`)}`)
     type ReplyRow = {
       id: string
       reply_parent_id: string | null
@@ -1313,7 +1321,7 @@ export class PostsService {
         to_char(page.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp,
         case when page.unavailable then null else json_build_object(
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
-          'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id, 'authorFounder', ${isFounder(sql`p.author_id`)},
+          'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id, 'authorFounder', ${isFounder(sql`p.author_id`)}, 'authorAutomated', ${isAutomated(sql`p.author_id`)},
           'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'video', ${videoOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
           'hashtags', ${hashtagsOf(sql`p.id`)},
           'linkPreview', ${linkPreviewOf(sql`p.link_url`)},
@@ -1448,6 +1456,9 @@ export class PostsService {
         .from(communities)
         .where(and(eq(communities.slug, communitySlug), eq(communities.active, true)))
       if (!community) throw new CommunityNotFoundError('no such community')
+      // Chess Arena and Game Night (docs/adr/0018): The Arbiter starts the posts; members reply.
+      const arbiterOnly = ARBITER_ONLY[communitySlug]
+      if (arbiterOnly && authorId !== ARBITER_ID) throw new NotACommunityMemberError(arbiterOnly)
       if (!community.joined && !anyMember) throw new NotACommunityMemberError('join the community to post in it')
       communityId = community.id
     }

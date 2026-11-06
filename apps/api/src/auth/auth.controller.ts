@@ -125,7 +125,7 @@ export class AuthController {
       // With the welcome flow switched off nobody is sent to it.
       onboarded: !features.onboarding || Boolean(row?.onboardedAt),
       // What is switched on for this member: the database-backed flags (docs/feature-flags.md),
-      // with videoPosts and gists as they take effect, rules in code included.
+      // games among them (docs/adr/0018), with videoPosts and gists as they take effect, rules in code included.
       features: { ...features, videoPosts, gists },
       // The limits the composer checks a chosen video against before sending it: this server's own settings.
       videoLimits: videoPosts ? videoLimitsOf(videoConfig(this.env)) : null,

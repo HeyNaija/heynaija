@@ -19,3 +19,10 @@ here, and the whole of it keeps every core busy for many minutes. So:
 - Runs take turns. If `pnpm e2e` says it is waiting for another run, let it wait
   (up to 30 minutes); do not stop the other run or work around the lock. A run in
   the background still holds it, so do not start a second one meanwhile.
+
+## Games module
+
+Before working on anything under `apps/api/src/games`, `apps/web/app/(main)/games`,
+or the `games` database schema, read [docs/games/GAMES.md](docs/games/GAMES.md)
+and follow it. If a change conflicts with it, stop and ask rather than
+working around it.

@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 16 | 16 | 12 | 89 |
+| 45 | 19 | 16 | 12 | 92 |
 
 ## Priority order
 
@@ -259,7 +259,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Download your own profile, posts, social choices and account-status records as JSON.
 - **Inspected evidence:** `apps/api/src/export/export.service.ts`, `apps/api/src/export/export.controller.ts`, `apps/web/app/(main)/settings/export/route.ts`, `apps/api/src/export/export.service.test.ts`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** Format 11: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, and since format 11 reply boundaries, polls you created and your public poll ballots; restricted person keys and reports about someone stay excluded.
+- **Audit notes:** Format 14: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, since format 11 reply boundaries, polls you created and your public poll ballots, since format 12 a games section (stats, season scores, competition entries), since format 13 the linked Lichess account (never its token) and chess challenges, and since format 14 the chess games played; restricted person keys and reports about someone stay excluded.
 
 #### Account deletion and privacy requests
 
@@ -752,6 +752,36 @@ This tracks product development, not formal governance decisions. Priority means
 - **Dependencies:** `upload-scanning`, `low-data-controls`
 - **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`, `docs/adr/0019-video-posts.md`, `docs/adr/0021-video-hls-on-r2.md`
 - **Audit notes:** Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built. Designed in ADR 0019 (proposed): one 60-second clip a post, uploaded in parts, scanned by sampled frames and transcoded by a self-hosted ffmpeg worker, behind a videoPosts flag that stays off in production until the scanner is real and a named person signs off.
+
+#### Games section
+
+- **ID:** `games-core`
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
+- **Description:** A Games page with your Game Score, the games you can play, season leaderboards, competitions and posts from games, all in one place.
+- **Remaining work / caveat:** Behind the games feature flag (on in staging, off in production). Competitions are Keno only until chess tournaments (phase 6), and entrants are not notified when one starts or ends.
+- **Dependencies:** `communities`, `in-app-notifications`, `data-export`
+- **Inspected evidence:** `apps/api/src/games/games.module.ts`, `apps/api/src/games/core/registry.ts`, `apps/api/src/games/core/games.controller.ts`, `packages/db/drizzle/0036_games_core.sql`, `apps/web/app/(main)/games/page.tsx`, `apps/api/src/games/core/games.controller.test.ts`, `apps/api/src/games/core/registry.test.ts`, `apps/api/src/games/core/scoring.ts`, `apps/api/src/games/core/leaderboards.ts`, `apps/api/src/games/core/competitions.ts`, `apps/web/app/(main)/games/scoring/page.tsx`, `e2e/tests/competitions.spec.ts`, `docs/adr/0018-games.md`, `docs/games/GAMES.md`
+- **Audit notes:** Phase 1 built 3 Nov 2026 (ADR 0018): the module, the game registry, the games database schema, the games feature flag and a games homepage. Phase 5 built 4 Nov 2026: monthly seasons (Lagos time), the Game Score (XP from chess games, Keno rounds and competition places, stored on each game event and kept in precomputed totals), leaderboards for the Game Score, Chess and Keno by season or all time, narrowed to people you follow or a community, with blocks, mutes and suspensions left out; a How games scoring works page; and competitions run by site moderators (Keno for now) with results posted by The Arbiter in Game Night.
+
+#### Chess on Lichess
+
+- **ID:** `games-chess`
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
+- **Description:** Link your Lichess account, challenge other members, play and watch games inside HeyNaija, and share results as posts.
+- **Remaining work / caveat:** Linking, ratings, challenges, playing and watching inside HeyNaija, Chess Arena, result posts and community tournaments are built (phases 2, 3 and 6). Tournament games are played on lichess.org, not inside HeyNaija. Behind the games flag; connecting needs GAMES_TOKEN_KEY.
+- **Dependencies:** `games-core`
+- **Inspected evidence:** `apps/api/src/games/chess/chess.service.ts`, `apps/api/src/games/chess/chess.controller.ts`, `apps/api/src/games/chess/lichess.ts`, `packages/db/drizzle/0037_chess_linking.sql`, `apps/web/app/(main)/games/chess/page.tsx`, `apps/api/src/games/chess/chess.service.test.ts`, `apps/api/src/games/chess/lichess.test.ts`, `e2e/tests/chess.spec.ts`, `docs/adr/0018-games.md`, `apps/api/src/games/chess/chess-games.service.ts`, `apps/api/src/games/chess/game-watcher.ts`, `packages/db/drizzle/0038_chess_play.sql`, `apps/web/app/(main)/games/chess/games/[id]/page.tsx`, `apps/api/src/games/chess/chess-games.service.test.ts`, `apps/api/src/games/chess/teams.ts`, `apps/api/src/games/chess/teams.test.ts`, `packages/db/drizzle/0041_games_teams.sql`, `apps/web/app/(main)/games/chess/teams/[slug]/page.tsx`, `e2e/tests/chess-teams.spec.ts`
+- **Audit notes:** Phase 2 built 3 Nov 2026: connect Lichess, ratings, challenges. Phase 3 built 3 Nov 2026: play and watch inside HeyNaija through the Lichess Board API (the browser long-polls; one watcher per game), Chess Arena threads by The Arbiter (an automated account) with spectators’ replies hidden from the players until the end, and the result posted there. Phase 6 built 5 Nov 2026: a community moderator who leads a Lichess team links it to the community and makes Arena and Swiss tournaments for it; members play on lichess.org, HeyNaija reads the standings and finishes them as community competitions (placement XP, The Arbiter's result post). Lichess runs the games, ratings and fair play.
+
+#### Keno (free to play)
+
+- **ID:** `games-keno`
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
+- **Description:** Pick numbers for a shared draw every few minutes with free daily tokens, and check that any draw was fair.
+- **Remaining work / caveat:** Playable behind the games flag. Keno competitions and Game Score XP arrived in phase 5; no posts for single Keno draws or wins.
+- **Dependencies:** `games-core`
+- **Inspected evidence:** `docs/games/GAMES.md`, `docs/adr/0018-games.md`, `apps/api/src/games/keno/keno.service.ts`, `apps/api/src/games/keno/draw.ts`, `apps/web/app/(main)/games/keno/page.tsx`, `e2e/tests/keno.spec.ts`
+- **Audit notes:** Phase 4 built 3 Nov 2026 (ADR 0018): shared draws every five minutes, 20 free tokens a member a day (midnight Lagos), points from a fixed table, this month and all-time leaderboards, ticket history, and a page for every round that checks it was fair in the browser (a published SHA-256 commitment, then the seed revealed). No money anywhere: tokens and points can never be bought, transferred or redeemed. Still to come: competitions and the Game Score (phase 5).
 
 ## P3 — Later experiments
 

@@ -32,3 +32,8 @@ test('informational moderation outcomes remain readable without a misleading des
     assert.equal(notificationTarget(notification(kind)), null)
   }
 })
+
+test('a chess challenge opens it on the chess page', () => {
+  assert.equal(notificationTarget(notification('chess_challenge', { challenge: { id: 'c1', phrase: 'x' } })), '/games/chess#challenge-c1')
+  assert.equal(notificationTarget(notification('chess_challenge')), '/games/chess')
+})

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { gamesGate } from './lib/games-gate'
 import { SESSION_COOKIE, gistReturnPath, gistsGate } from './lib/gists-gate'
 
 // Gists are dark for anyone not on the list (docs/adr/0017 section 4a): with the
@@ -19,9 +20,17 @@ const API_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000'
 const ask = (path: string, headers: HeadersInit = {}) =>
   fetch(`${API_URL}${path}`, { headers, cache: 'no-store', signal: AbortSignal.timeout(2000) })
 
+// Games (docs/adr/0018) is dark the same way, for /games/*, except that a visitor
+// with no session always gets the missing page: Games is for members on its list.
+
 export async function proxy(request: NextRequest) {
+  const session = request.cookies.get(SESSION_COOKIE)?.value
+  if (request.nextUrl.pathname === '/games' || request.nextUrl.pathname.startsWith('/games/')) {
+    const verdict = await gamesGate(session, (cookie) => ask('/v1/me', { cookie }))
+    return verdict === 'allow' ? NextResponse.next() : NextResponse.rewrite(new URL('/__not-found', request.url))
+  }
   const verdict = await gistsGate(
-    request.cookies.get(SESSION_COOKIE)?.value,
+    session,
     (cookie) => ask('/v1/me', { cookie }),
     async () => {
       // Only the status matters; the body is let go so the connection can be reused.
@@ -41,4 +50,4 @@ export async function proxy(request: NextRequest) {
 }
 
 // Not the prompt's own path: a rewrite target that matches runs this again.
-export const config = { matcher: '/gists/:path*' }
+export const config = { matcher: ['/gists/:path*', '/games/:path*'] }

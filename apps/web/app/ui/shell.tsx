@@ -13,6 +13,7 @@ import {
   DotsIcon,
   FlagIcon,
   FlameIcon,
+  GamesIcon,
   GovernanceIcon,
   GearIcon,
   HashIcon,
@@ -109,8 +110,9 @@ export function Sidebar() {
  * undefined) the page is drawn for a member, whose list is the longer: the
  * Notifications row is kept, empty, so nothing below it moves when a member's page
  * fills in. For a visitor that row goes away when it is known they are one.
- * Every member's list is the same, so Moderation is in the account menu (`UserMenu`):
- * a row here would push the compose button down when a moderator's page fills in.
+ * Every member's list is the same, except Games for members on its list, so Moderation
+ * is in the account menu (`UserMenu`): a row here would push the compose button down
+ * when a moderator's page fills in.
  */
 function sidebarLinks(me: Looking): SidebarLink[] {
   return [
@@ -126,6 +128,10 @@ function sidebarLinks(me: Looking): SidebarLink[] {
     { href: '/ideas', label: 'Ideas board', icon: IdeaIcon, keep: 4 },
     { href: '/bookmarks', label: 'Bookmarks', icon: BookmarkIcon, keep: 5 },
     { href: '/settings', label: 'Settings', icon: GearIcon, keep: 6 },
+    // Only for members on the Games list (docs/adr/0018), so it is last: when it
+    // appears as the page fills in, only the compose button below it moves. First
+    // to go into More.
+    ...(me?.features.games ? [{ href: '/games', label: 'Games', icon: GamesIcon, keep: 10 }] : []),
   ]
 }
 
@@ -306,6 +312,13 @@ async function UserMenu() {
             <GovernanceIcon size={18} />
             Governance
           </Link>
+          {/* Games is in the sidebar; phones have none, so here too below 1024px (docs/adr/0018). */}
+          {viewer.state === 'member' && viewer.me.features.games ? (
+            <Link href="/games" className="menu-item lg:hidden">
+              <GamesIcon size={18} />
+              Games
+            </Link>
+          ) : null}
           {viewer.state === 'member' && viewer.me.moderates ? (
             <Link href="/mod" className="menu-item">
               <ShieldIcon size={18} />

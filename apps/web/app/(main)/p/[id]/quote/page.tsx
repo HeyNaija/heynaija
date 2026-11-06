@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { ARBITER_ONLY } from '@/lib/chess-arena'
 import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { createQuote } from '@/app/actions'
@@ -27,7 +28,7 @@ async function QuoteView({ params }: Props) {
   const [viewer, post] = await Promise.all([getViewer(), getPost(id)])
   if (viewer.state !== 'member') redirect(viewer.state === 'anonymous' ? '/login' : '/')
   if (!post || post.deleted) notFound()
-  const joined = (await getCommunities()).filter((c) => c.viewerIsMember)
+  const joined = (await getCommunities()).filter((c) => c.viewerIsMember && !ARBITER_ONLY[c.slug])
   const saver = await currentDataSaver()
 
   return (

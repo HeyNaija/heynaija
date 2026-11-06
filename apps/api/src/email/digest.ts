@@ -14,6 +14,10 @@ export type DigestItem = {
   community: string | null
   /** idea_status: the new status, whether it was an idea or a problem, and whether the recipient sent it. */
   idea?: { status: string | null; kind: string; yours: boolean } | null
+  /** chess_challenge: the challenge and how it reads ("a rated Rapid game (10+5)"). */
+  challenge?: { id: string; phrase: string } | null
+  /** chess_game_started: the game. */
+  game?: { id: string } | null
 }
 
 export type Digest = { subject: string; text: string; html: string }
@@ -56,6 +60,8 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
       case 'reply':
       case 'quote':
       case 'mention':
+      case 'chess_challenge':
+      case 'chess_game_started':
         return `${item.kind}:${i}`
       case 'moderator_granted':
       case 'moderator_revoked':
@@ -114,6 +120,18 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
       case 'idea_status':
         // Newest first, so this is the latest status.
         return { headline: ideaHeadline(item.idea ?? { kind: 'idea', yours: false }, item.idea?.status ?? null), quote, href: post(item.postId) }
+      case 'chess_challenge':
+        return {
+          headline: `${who} challenged you to ${item.challenge?.phrase ?? 'a game of chess'}`,
+          quote: null,
+          href: item.challenge ? `${webUrl}/games/chess#challenge-${item.challenge.id}` : `${webUrl}/games/chess`,
+        }
+      case 'chess_game_started':
+        return {
+          headline: `${who} accepted your challenge. Your game has started`,
+          quote: null,
+          href: item.game ? `${webUrl}/games/chess/games/${item.game.id}` : `${webUrl}/games/chess`,
+        }
     }
   }
 }
