@@ -1,5 +1,5 @@
 import type { Notification } from './api'
-import { gistReplyHref } from './thread-state.ts'
+import { postedReplyHref } from './posted-href.ts'
 
 /** Open the actual item, including its position in a conversation. */
 export function notificationTarget(n: Pick<Notification, 'kind' | 'post' | 'actor' | 'community'>): string | null {
@@ -12,7 +12,7 @@ export function notificationTarget(n: Pick<Notification, 'kind' | 'post' | 'acto
     case 'post_restored':
     case 'idea_status':
       if (!n.post) return null
-      return n.post.gistId ? gistReplyHref(n.post.gistId, n.post.id) : `/p/${n.post.id}#post-${n.post.id}`
+      return postedReplyHref(n.post.gistId, n.post.id)
     case 'follow':
       return n.actor ? `/u/${n.actor.handle}` : null
     case 'avatar_removed':

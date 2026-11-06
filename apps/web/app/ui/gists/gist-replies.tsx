@@ -29,7 +29,7 @@ export function GistReplies({
   focus?: { post: Post; page: ReplyPage }
 }) {
   const now = Date.now()
-  const gist = { id: gistId, viewerIsHost: page.viewerIsHost }
+  const gist = { id: gistId, viewerIsHost: page.viewerIsHost, order }
   const canReply = writable && page.viewerCanReply
   return (
     <section id="gist-replies" className="gist-replies flex flex-col gap-3" aria-label="Replies to this Gist">

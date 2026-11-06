@@ -20,6 +20,7 @@ import {
   replyQuery,
   threadHref,
 } from '@/lib/thread-state'
+import { postedReplyHref } from '@/lib/posted-href'
 import { Composer } from './composer'
 import { BubbleIcon, DotsIcon } from './icons'
 import { Menu } from './menu'
@@ -223,6 +224,7 @@ export function ThreadConversation({
       answeringReply={target.id !== focus.id}
       placeholder="Post your reply"
       submitAction={submitAction}
+      postedHref={gist ? (id) => postedReplyHref(gist, id) : undefined}
       onPosted={onPosted}
       onPendingChange={setPosting}
       media={!gist}

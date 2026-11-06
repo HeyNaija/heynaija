@@ -1,6 +1,6 @@
 import { hideGistReply } from '@/app/actions'
 import type { Post, ThreadReply } from '@/lib/api'
-import type { ThreadRow } from '@/lib/thread-state'
+import type { ReplyOrder, ThreadRow } from '@/lib/thread-state'
 import { PostItem } from './post-item'
 import { SubmitButton } from './submit-button'
 import { ThreadBranch, ThreadReplyAction, ThreadToggle } from './thread-conversation'
@@ -12,7 +12,7 @@ export function renderThreadRow(
   depth: number,
   parentHandle: string | null,
   root = false,
-  gist?: { id: string; viewerIsHost: boolean },
+  gist?: { id: string; viewerIsHost: boolean; order?: ReplyOrder },
 ): ThreadRow {
   const unavailable = post.unavailable === true
   return {

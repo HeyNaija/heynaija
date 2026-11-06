@@ -1,4 +1,4 @@
-import { gistReplyHref } from '@/lib/thread-state'
+import { gistReplyHref, replyQuery, type ReplyOrder } from '@/lib/thread-state'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { deletePost, hideGistReply, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin, setReplyAudience } from '@/app/actions'
@@ -100,13 +100,13 @@ export function PostItem({
   /** Shown above the list as the profile's or the community's pinned post. */
   pinned?: 'profile' | 'community'
   /** A reply in this Gist's comment section: read, liked and hidden through the Gist, never reposted, saved or shared. */
-  gist?: { id: string; viewerIsHost: boolean }
+  gist?: { id: string; viewerIsHost: boolean; order?: ReplyOrder }
 }) {
   if (post.deleted) {
     return <p className="post-card text-sm italic text-muted">This post is no longer available.</p>
   }
 
-  const href = gist ? gistReplyHref(gist.id, post.id) : `/p/${post.id}`
+  const href = gist ? gistReplyHref(gist.id, post.id, replyQuery(gist.order ?? 'newest', null)) : `/p/${post.id}`
   const compact = inThread && !focused
   const openLabel = `Open ${post.replyParentId ? 'reply' : 'post'} by @${post.authorHandle}`
   const parts = textParts(post.text, post.mentions, post.links, post.hashtags)

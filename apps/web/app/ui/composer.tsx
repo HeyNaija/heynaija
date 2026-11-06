@@ -20,6 +20,7 @@ import { useFixedPlacement } from './use-fixed-placement'
 import { useMentionSuggestions } from './use-mention-suggestions'
 import { PostVideo } from './post-video'
 import { composerOffers } from '@/lib/composer-offers'
+import { postedReplyHref } from '@/lib/posted-href'
 import { graphemes, POST_MAX } from '@/lib/post-length'
 
 const LIMIT = POST_MAX
@@ -41,6 +42,8 @@ type Props = {
   /** Makes this a quote post of that post, shown under the box as `preview`. */
   quote?: { id: string; preview: ReactNode }
   submitAction?: (previous: ComposeState, data: FormData) => Promise<ComposeState>
+  /** Where "View reply" goes for the reply just posted; a Gist's replies are not served on /p/. */
+  postedHref?: (id: string) => string
   onPosted?: (state: ComposeState) => void
   onPendingChange?: (pending: boolean) => void
   /** The Composer stays mounted when its form moves to another reply row. */
@@ -58,7 +61,7 @@ type Props = {
   videoLimits?: VideoLimits | null
 }
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, media = true, videoLimits = null }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, media = true, videoLimits = null }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -541,7 +544,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
       </p>
       {submitAction && state.postId ? (
         <p role="status" className="composer-posted">
-          Reply posted. <Link prefetch={false} href={`/p/${state.postId}#post-${state.postId}`}>View reply</Link>
+          Reply posted. <Link prefetch={false} href={postedHref(state.postId)}>View reply</Link>
         </p>
       ) : null}
     </form>

@@ -80,7 +80,7 @@ export async function loadGistReplies(
     ])
     if (!page) return { error: 'These replies are no longer available.' }
     const viewerId = viewer.state === 'member' ? viewer.me.id : null
-    const gist = { id: gistId, viewerIsHost: 'viewerIsHost' in page && page.viewerIsHost === true }
+    const gist = { id: gistId, viewerIsHost: 'viewerIsHost' in page && page.viewerIsHost === true, order }
     const now = Date.now()
     return { rows: page.replies.map((post) => renderThreadRow(post, viewerId, now, depth, parentHandle, false, gist)), cursor: page.cursor }
   } catch {

@@ -54,7 +54,7 @@ export function threadHref(gistId: string | null | undefined, postId: string, qu
 }
 
 /** A link to one reply in a Gist: the page opens it as the conversation in focus, so it is there however deep or old it is. */
-export const gistReplyHref = (gistId: string, postId: string): string => `${threadHref(gistId, postId)}#post-${postId}`
+export const gistReplyHref = (gistId: string, postId: string, query = ''): string => `${threadHref(gistId, postId, query)}#post-${postId}`
 
 /** The page's address for an order and, for reading on without JavaScript, a page of replies. */
 export function replyQuery(order: ReplyOrder, cursor: string | null): string {
