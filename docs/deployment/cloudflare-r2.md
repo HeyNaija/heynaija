@@ -63,6 +63,36 @@ with the site's real address:
 Add the staging origin too if staging uses the same bucket (better: give staging
 its own pair of buckets).
 
+### And let the site's video player read the media bucket
+
+Where the browser cannot play HLS itself (Firefox, and Chrome before it learned
+to), hls.js plays post videos, and it fetches their playlists and pieces from the
+media domain, another origin (ADR 0021 section 7). `heynaija-media` → **Settings**
+→ **CORS policy** → add, with the site's real address (staging's media bucket takes
+`https://staging.heynaija.ng`):
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://heynaija.ng"],
+    "AllowedMethods": ["GET", "HEAD"],
+    "MaxAgeSeconds": 86400
+  }
+]
+```
+
+Without it those browsers say "This video could not be played." Safari and every
+browser on iPhones play HLS themselves and never need it. To check, a preflight
+should answer 200 with an `access-control-allow-origin` header, not 403:
+
+```bash
+curl -s -o /dev/null -D - -X OPTIONS -H 'Origin: https://heynaija.ng' -H 'Access-Control-Request-Method: GET' https://media.heynaija.ng/videos/x/hls/master.m3u8
+```
+
+Once the Cache Rule caches playlists and pieces (ADR 0021 section 4), check a
+cached piece still carries the header: a copy first cached for Safari's own
+player, which sends no `Origin`, may not **(unverified)**.
+
 ## 5. Clean up abandoned uploads automatically
 
 `heynaija-uploads` → **Settings** → **Object lifecycle rules** → add rules that
