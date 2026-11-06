@@ -18,6 +18,7 @@ import { type VideoDraft, useVideoDraft } from './use-video-draft'
 import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
 import { useFixedPlacement } from './use-fixed-placement'
 import { useMentionSuggestions } from './use-mention-suggestions'
+import { PostVideo } from './post-video'
 import { composerOffers } from '@/lib/composer-offers'
 import { graphemes, POST_MAX } from '@/lib/post-length'
 
@@ -557,7 +558,46 @@ const VIDEO_STATUS: Record<VideoDraft['status'], string> = {
   failed: '',
 }
 
-/** The video being attached: its name, upload progress, description, and what went wrong if it did. */
+/**
+ * The member's own clip, played from their device while it uploads (ADR 0021 section 6), so they
+ * can check it is the right one before posting. Where this browser cannot play it (HEVC on some
+ * desktop browsers) it says so, and shows the worker's poster once the video is ready. A preview
+ * that fails changes nothing else: the upload goes on, and the video can still be posted.
+ */
+function VideoPreview({ draft }: { draft: VideoDraft }) {
+  const [unplayable, setUnplayable] = useState(false)
+  const [ratio, setRatio] = useState<number | null>(null)
+  if (unplayable) {
+    if (draft.video) return <PostVideo video={draft.video} />
+    const coming = draft.status === 'uploading' || draft.status === 'processing'
+    return (
+      <p className="composer-video-note">
+        This browser cannot play this video, so there is no preview.{coming ? ' A still from it will show here once it is ready.' : ''}
+      </p>
+    )
+  }
+  return (
+    // At most 320px tall: a tall clip is narrowed to fit rather than shown as a black band.
+    <div className="composer-video-preview" style={ratio ? { aspectRatio: ratio, maxWidth: `${Math.round(320 * ratio)}px` } : undefined}>
+      <video
+        src={draft.preview ?? undefined}
+        controls
+        playsInline
+        preload="metadata"
+        aria-label={`Preview of ${draft.name}`}
+        onLoadedMetadata={(e) => {
+          const { videoWidth: width, videoHeight: height } = e.currentTarget
+          // No picture (a codec this browser lacks, with sound it can play) counts as no preview.
+          if (width && height) setRatio(Math.min(Math.max(width / height, 9 / 16), 2))
+          else setUnplayable(true)
+        }}
+        onError={() => setUnplayable(true)}
+      />
+    </div>
+  )
+}
+
+/** The video being attached: its preview, name, upload progress, description, and what went wrong if it did. */
 function VideoRow({
   draft,
   onRemove,
@@ -574,6 +614,7 @@ function VideoRow({
   return (
     <li className="composer-video">
       <div className="min-w-0 flex-1">
+        {draft.preview ? <VideoPreview key={draft.preview} draft={draft} /> : null}
         <p className="truncate text-sm font-medium">{draft.name}</p>
         {sending ? <progress value={Math.round(draft.progress * 100)} max={100} aria-label={`Uploading ${draft.name}`} /> : null}
         <label htmlFor={id} className="sr-only">Describe this video</label>

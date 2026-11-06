@@ -152,6 +152,17 @@ export async function seedPosts(handle: string, count: number): Promise<string[]
   }
 }
 
+/** Dates a member's account `days` back, for rules that wait on its age (video waits VIDEO_MIN_ACCOUNT_AGE_DAYS, 7 by default). */
+export async function ageAccount(handle: string, days: number) {
+  const db = pool()
+  try {
+    const { rowCount } = await db.query('update members set created_at = now() - make_interval(days => $2) where handle = $1', [handle, days])
+    if (!rowCount) throw new Error(`no member @${handle} to age`)
+  } finally {
+    await db.end()
+  }
+}
+
 /** A wide conversation plus a branch through two deleted intermediate replies. */
 export async function seedThread(handle: string) {
   const db = pool()

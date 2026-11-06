@@ -1846,6 +1846,20 @@ html:has(.image-viewer[open]) {
 /* A video being attached in the composer: progress under its name. */
 .composer-video { display: flex; align-items: flex-start; gap: 10px; }
 .composer-video progress { display: block; width: 100%; height: 6px; margin-top: 6px; accent-color: var(--accent); }
+/* Its preview, played from the member's own device, whole (never cropped); the clip's own shape once known. */
+.composer-video-preview {
+  width: 100%;
+  max-width: 569px;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  background: #000;
+}
+.composer-video-preview video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.composer-video .post-video { max-height: 320px; margin-bottom: 8px; }
+.composer-video-note { margin-bottom: 6px; font-size: 13px; color: var(--muted); }
 .composer-image {
   display: flex;
   align-items: flex-start;
