@@ -13,8 +13,9 @@ const OK = 3000
 const MIN_EDGE = 160
 // Hashes survive resizing, so large images are sent smaller to keep requests quick.
 const MAX_EDGE = 2048
-/** Frames of an animation that are scanned, spread evenly from the first to the last. */
-export const MAX_SCANNED_FRAMES = 20
+/** Requests in flight at once while scanning the frames of an animation. */
+const SCAN_CONCURRENCY = 4
+const MAX_INPUT_PIXELS = 40_000_000
 
 type MatchResponse = { Status?: { Code?: number; Description?: string }; IsMatch?: boolean }
 
@@ -31,8 +32,11 @@ export class PhotoDnaScanner implements ContentScanner {
   ) {}
 
   async scan(image: Buffer): Promise<'clear' | 'match'> {
-    for (const frame of await framesToScan(image)) {
-      if (await this.matches(frame)) return 'match'
+    const pages = await framePages(image)
+    for (let from = 0; from < pages; from += SCAN_CONCURRENCY) {
+      const batch = Array.from({ length: Math.min(SCAN_CONCURRENCY, pages - from) }, (_, i) => from + i)
+      const results = await Promise.all(batch.map(async (page) => this.matches(await frameJpeg(image, page))))
+      if (results.includes(true)) return 'match'
     }
     return 'clear'
   }
@@ -77,25 +81,23 @@ export async function normaliseFrame(image: Buffer): Promise<Buffer> {
 }
 
 /**
- * The image as the JPEGs that are sent for matching: a still image once, an
- * animation as a spread of its frames (the first always among them, since that
- * is also the still we publish). Each is upright and within the service's sizes.
+ * Every frame of the image as a JPEG for matching, since an animation is
+ * published frame by frame. Each is upright and within the service's sizes.
  */
 export async function framesToScan(image: Buffer): Promise<Buffer[]> {
-  const limitInputPixels = 40_000_000
-  const pages = (await sharp(image, { limitInputPixels }).metadata()).pages ?? 1
-  const picks =
-    pages <= MAX_SCANNED_FRAMES
-      ? Array.from({ length: pages }, (_, i) => i)
-      : Array.from({ length: MAX_SCANNED_FRAMES }, (_, i) => Math.round((i * (pages - 1)) / (MAX_SCANNED_FRAMES - 1)))
-  return Promise.all(
-    picks.map(async (page) => {
-      const frame = await sharp(image, { limitInputPixels, page, pages: 1 }).rotate().png().toBuffer({ resolveWithObject: true })
-      const { width, height } = frame.info
-      const sized = sharp(frame.data)
-      if (Math.min(width, height) < MIN_EDGE) sized.resize(MIN_EDGE, MIN_EDGE, { fit: 'outside' })
-      else if (Math.max(width, height) > MAX_EDGE) sized.resize(MAX_EDGE, MAX_EDGE, { fit: 'inside' })
-      return sized.jpeg({ quality: 90 }).toBuffer()
-    }),
-  )
+  const pages = await framePages(image)
+  return Promise.all(Array.from({ length: pages }, (_, page) => frameJpeg(image, page)))
+}
+
+async function framePages(image: Buffer): Promise<number> {
+  return (await sharp(image, { limitInputPixels: MAX_INPUT_PIXELS }).metadata()).pages ?? 1
+}
+
+async function frameJpeg(image: Buffer, page: number): Promise<Buffer> {
+  const frame = await sharp(image, { limitInputPixels: MAX_INPUT_PIXELS, page, pages: 1 }).rotate().png().toBuffer({ resolveWithObject: true })
+  const { width, height } = frame.info
+  const sized = sharp(frame.data)
+  if (Math.min(width, height) < MIN_EDGE) sized.resize(MIN_EDGE, MIN_EDGE, { fit: 'outside' })
+  else if (Math.max(width, height) > MAX_EDGE) sized.resize(MAX_EDGE, MAX_EDGE, { fit: 'inside' })
+  return sized.jpeg({ quality: 90 }).toBuffer()
 }
