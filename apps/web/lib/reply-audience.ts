@@ -19,3 +19,11 @@ export const GIST_REPLY_AUDIENCE_LABEL = {
   mentioned: 'Only people you mention can reply',
   off: 'Replies off',
 } satisfies Record<GistReplyAudience, string>
+
+/** The note under a Gist's replies: the host's own wording for the host, a neutral one for everyone else. */
+export function gistReplyAudienceNote(audience: GistReplyAudience, hostHandle: string, viewerIsHost: boolean): string {
+  if (viewerIsHost) return GIST_REPLY_AUDIENCE_LABEL[audience]
+  if (audience === 'following') return `People @${hostHandle} follows can reply`
+  if (audience === 'mentioned') return 'Only people mentioned can reply'
+  return GIST_REPLY_AUDIENCE_LABEL[audience]
+}

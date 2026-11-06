@@ -6,7 +6,7 @@ import { ThreadBranch, ThreadConversation } from '@/app/ui/thread-conversation'
 import { renderThreadRow } from '@/app/ui/thread-row'
 import Link from 'next/link'
 import type { GistReplies as GistRepliesPage, Post, ReplyPage } from '@/lib/api'
-import { GIST_REPLY_AUDIENCE_LABEL, GIST_REPLY_AUDIENCES } from '@/lib/reply-audience'
+import { GIST_REPLY_AUDIENCE_LABEL, GIST_REPLY_AUDIENCES, gistReplyAudienceNote } from '@/lib/reply-audience'
 import type { ReplyOrder } from '@/lib/thread-state'
 
 export function GistReplies({
@@ -50,7 +50,7 @@ export function GistReplies({
         </div>
       ) : null}
       {page.replyAudience !== 'everyone' ? (
-        <p className="reply-audience-note">{GIST_REPLY_AUDIENCE_LABEL[page.replyAudience]}</p>
+        <p className="reply-audience-note">{gistReplyAudienceNote(page.replyAudience, hostHandle, page.viewerIsHost)}</p>
       ) : null}
       {focus ? (
         <p className="thread-recipient">
