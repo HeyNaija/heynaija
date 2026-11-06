@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { Avatar } from '@/app/ui/avatar'
-import { MicOffIcon } from '@/app/ui/icons'
+import { MicOffIcon, SignalIcon } from '@/app/ui/icons'
+import { weakQuality, type Quality } from '@/lib/gist-connection'
 import { elapsedLabel } from '@/lib/gist-mic'
 import { personName, type Person } from '@/lib/gists'
 
@@ -10,14 +11,17 @@ export type StagePerson = Person & { label: 'Host' | 'Co-host' | 'Speaker' }
 
 /**
  * Who is on stage. State is never colour alone: a speaking tile has a ring and
- * the word "Speaking", a silent microphone has an icon and the word "Muted", and
- * the role is a word. Under reduced motion the ring is static (see globals.css).
+ * the word "Speaking", a silent microphone has an icon and the word "Muted", a
+ * weak connection has an icon and the words "Weak connection" (so a listener knows
+ * a voice breaking up is that speaker's network, not theirs), and the role is a
+ * word. Under reduced motion the ring is static (see globals.css).
  */
 export function StageGrid({
   people,
   meId,
   speaking,
   mics,
+  quality,
   level,
 }: {
   people: StagePerson[]
@@ -25,6 +29,8 @@ export function StageGrid({
   speaking: string[]
   /** Member id to true when their microphone is live. */
   mics: Record<string, boolean>
+  /** Member id to how their connection is doing. */
+  quality: Record<string, Quality>
   /** The member's own input level, 0..1. */
   level: number
 }) {
@@ -53,6 +59,11 @@ export function StageGrid({
               {talking ? (
                 <span className="gist-badge gist-badge-speaking" aria-hidden="true">
                   Speaking
+                </span>
+              ) : null}
+              {weakQuality(quality[p.id]) ? (
+                <span className="gist-badge gist-badge-weak">
+                  <SignalIcon size={12} /> Weak connection
                 </span>
               ) : null}
             </span>

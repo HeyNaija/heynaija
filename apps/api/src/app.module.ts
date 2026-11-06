@@ -23,7 +23,7 @@ import { GamesModule } from './games/games.module.js'
 import { GistReconciler } from './gists/gist-queue.js'
 import { GistsController, LiveKitWebhookController } from './gists/gists.controller.js'
 import { GISTS_CONFIG, GistsService } from './gists/gists.service.js'
-import { GistsEnabledGuard } from './gists/gists-enabled.guard.js'
+import { GistsEnabledGuard, GistsGate, LiveKitConfiguredGuard } from './gists/gists-enabled.guard.js'
 import { roomServiceFor } from './gists/livekit-room-service.js'
 import { ROOM_SERVICE } from './gists/room-service.js'
 import { GovernanceController } from './governance/governance.controller.js'
@@ -36,9 +36,9 @@ import { SafeFetcher } from './links/safe-fetch.js'
 import { CDN_PURGER, CloudflarePurger, NoPurger } from './media/cdn-purge.js'
 import { CommunityPhotoController, MediaController, PostImagesController } from './media/media.controller.js'
 import { BullMediaJobs, MediaWorker } from './media/media-queue.js'
-import { CONTENT_SCANNER, MEDIA_JOBS, MediaService, NoScanner, OBJECT_STORE } from './media/media.service.js'
+import { CONTENT_SCANNER, MEDIA_JOBS, MediaService, OBJECT_STORE } from './media/media.service.js'
 import { S3ObjectStore } from './media/object-store.js'
-import { PhotoDnaScanner } from './media/photodna.js'
+import { scannerFromEnv } from './media/scanners.js'
 import { s3Config } from './media/s3-config.js'
 import { MembersController, OwnProfileController } from './members/members.controller.js'
 import { MembersService } from './members/members.service.js'
@@ -59,6 +59,11 @@ import { SearchController } from './search/search.controller.js'
 import { ENV } from './tokens.js'
 import { TopicsController } from './topics/topics.controller.js'
 import { TopicsService } from './topics/topics.service.js'
+import { videoConfig } from './video/video-config.js'
+import { VideoGate, VideoPostsGuard } from './video/video-gate.js'
+import { BullVideoJobs } from './video/video-queue.js'
+import { VideosController } from './video/video.controller.js'
+import { VIDEO_CONFIG, VIDEO_JOBS, VIDEO_STORE, VideoService } from './video/video.service.js'
 
 @Controller()
 class HealthController {
@@ -71,19 +76,14 @@ class HealthController {
 @Module({
   // Settings, the database, sign-in, feature flags and rate limits; then the modules built on them.
   imports: [PlatformModule, GamesModule],
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController, AccountController, FlagsController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, LiveKitWebhookController, AccountController, FlagsController, VideosController],
   providers: [
     ModerationService,
     { provide: OBJECT_STORE, useFactory: (env: Env) => new S3ObjectStore(s3Config(env)), inject: [ENV] },
     { provide: MEDIA_JOBS, useClass: BullMediaJobs },
-    // Until PhotoDNA approves us there is no key, and every image passes; see
-    // docs/safety/abuse-material-scanning.md.
-    {
-      provide: CONTENT_SCANNER,
-      useFactory: (env: Env) =>
-        env.PHOTODNA_SUBSCRIPTION_KEY ? new PhotoDnaScanner(env.PHOTODNA_SUBSCRIPTION_KEY, env.PHOTODNA_MATCH_URL) : new NoScanner(),
-      inject: [ENV],
-    },
+    // Arachnid Shield and PhotoDNA, each once its key is set; with neither every image
+    // passes and every video is held (docs/safety/abuse-material-scanning.md).
+    { provide: CONTENT_SCANNER, useFactory: (env: Env) => scannerFromEnv(env), inject: [ENV] },
     {
       provide: CDN_PURGER,
       useFactory: (env: Env) =>
@@ -150,12 +150,11 @@ class HealthController {
     RetentionService,
     BullAccountJobs,
     AccountWorker,
-    // Gists (docs/adr/0017): dark unless CALLS_ENABLED, CALLS_GISTS_ENABLED and the LIVEKIT_* settings are all set.
+    // Gists (docs/adr/0017): dark unless the gists flag is on and the LIVEKIT_* settings are all set.
     { provide: ROOM_SERVICE, useFactory: roomServiceFor, inject: [ENV] },
     {
       provide: GISTS_CONFIG,
       useFactory: (env: Env) => ({
-        callsMembers: env.CALLS_MEMBERS,
         maxCohosts: env.GISTS_MAX_COHOSTS,
         maxSpeakers: env.GISTS_MAX_SPEAKERS,
         listenerCap: env.GISTS_LISTENER_CAP,
@@ -163,9 +162,27 @@ class HealthController {
       }),
       inject: [ENV],
     },
+    GistsGate,
     GistsService,
     GistsEnabledGuard,
+    LiveKitConfiguredGuard,
     GistReconciler,
+    // Video posts (docs/adr/0019): dark behind the videoPosts flag and, in production, a bound scanner.
+    // The encoding runs in the separate video-worker process; these are the API's half.
+    { provide: VIDEO_STORE, useExisting: OBJECT_STORE },
+    { provide: VIDEO_CONFIG, useFactory: (env: Env) => videoConfig(env), inject: [ENV] },
+    BullVideoJobs,
+    {
+      provide: VIDEO_JOBS,
+      useFactory: (video: BullVideoJobs, media: BullMediaJobs) => ({
+        processVideo: (id: string) => video.processVideo(id),
+        purgeCdn: (keys: string[]) => media.purgeCdn(keys),
+      }),
+      inject: [BullVideoJobs, MEDIA_JOBS],
+    },
+    VideoService,
+    VideoGate,
+    VideoPostsGuard,
   ],
 })
 export class AppModule {}

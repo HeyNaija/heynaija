@@ -6,6 +6,7 @@ import { and, eq } from 'drizzle-orm'
 import { MemoryRateLimiter } from '../rate-limit.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { FakeRoomService, type FakeToken } from './fake-room-service.js'
+import type { GistsGate } from './gists-enabled.guard.js'
 import { GistError, GistsService, type GistsConfig } from './gists.service.js'
 
 const people = ['ada', 'bayo', 'chi', 'dayo', 'efe', 'femi', 'gozie', 'outsider'] as const
@@ -13,12 +14,14 @@ const id = Object.fromEntries(people.map((p) => [p, randomUUID()])) as Record<(t
 const as = (p: (typeof people)[number]) => ({ id: id[p], handle: p })
 
 const config: GistsConfig = {
-  callsMembers: ['ada', 'bayo', 'chi', 'dayo', 'efe', 'femi', 'gozie'],
   maxCohosts: 2,
   maxSpeakers: 2,
   listenerCap: 3,
   livekitUrl: 'wss://livekit.test',
 }
+
+// The gists flag: on for everyone here but the outsider.
+const gate: Pick<GistsGate, 'access'> = { access: async () => ({ member: (memberId) => memberId !== id.outsider, anyone: true }) }
 
 let rooms: FakeRoomService
 let service: GistsService
@@ -52,7 +55,7 @@ beforeEach(async () => {
   await reset()
   await db.insert(members).values(people.map((p) => ({ id: id[p], handle: p })))
   rooms = new FakeRoomService()
-  service = new GistsService(db, rooms, config, new MemoryRateLimiter())
+  service = new GistsService(db, rooms, config, new MemoryRateLimiter(), gate)
   gist = (await service.create(as('ada'), { title: 'Jollof wars' })).id
 })
 after(() => pool.end())

@@ -22,6 +22,7 @@ import {
   Flame,
   Hash,
   Pin,
+  Headphones,
   Heart,
   History,
   House,
@@ -50,11 +51,13 @@ import {
   Share,
   Share2,
   Shield,
+  Signal,
   Trophy,
   User,
   UserPlus,
   Users,
   Vote,
+  Video,
   Wallet,
   X,
 } from 'lucide-react'
@@ -103,6 +106,7 @@ export const PinIcon = icon(Pin)
 export const ShieldIcon = icon(Shield)
 export const VoteIcon = icon(Vote)
 export const ImageIcon = icon(ImagePlus)
+export const VideoIcon = icon(Video)
 export const CloseIcon = icon(X)
 export const PlayIcon = icon(Play)
 export const PauseIcon = icon(Pause)
@@ -126,6 +130,8 @@ export const MicOffIcon = icon(MicOff)
 export const LiveIcon = icon(Radio)
 export const LockIcon = icon(Lock)
 export const LeaveIcon = icon(LogOut)
+export const SignalIcon = icon(Signal)
+export const HeadphonesIcon = icon(Headphones)
 export const HandIcon = icon(Hand)
 
 export const AwardIcon = icon(Award)

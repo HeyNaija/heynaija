@@ -7,6 +7,7 @@ import type { Env } from '../env.js'
 import { removeFromAllowLists } from '../flags/feature-flags.js'
 import { GistsService } from '../gists/gists.service.js'
 import { ACCOUNT_MEDIA_KINDS, MediaService } from '../media/media.service.js'
+import { VideoService } from '../video/video.service.js'
 import { HANDLE_HOLD_DAYS, MembersService } from '../members/members.service.js'
 import { DB, ENV } from '../tokens.js'
 import { DAY_MS, OPEN_REQUEST } from './privacy-requests.service.js'
@@ -65,6 +66,8 @@ export class AccountDeletionService {
     @Inject(MembersService) private readonly memberships: Pick<MembersService, 'holdHandle'>,
     @Inject(GistsService) private readonly gists: Pick<GistsService, 'endHostedBy'>,
     @Optional() @Inject(DELETION_NOTICES) private readonly notices?: DeletionNotices,
+    // Their videos out of storage (ADR 0019). Optional like the notices: tests and the CLI that never erase need none.
+    @Optional() @Inject(VideoService) private readonly videos?: Pick<VideoService, 'eraseFilesOf'>,
     @Optional() @Inject(GAMES_ERASER) private readonly games?: GamesEraser,
   ) {}
 
@@ -258,6 +261,7 @@ export class AccountDeletionService {
     if (!erased) return 'cancelled'
     // 5. Their images out of storage and the CDN's cache; evidence kept privately.
     await this.media.eraseFilesOf(memberId)
+    await this.videos?.eraseFilesOf(memberId)
     // 6. The last email, then the identity switched off, which hides its address
     //    from step 1: a retry after that sends nothing. Only a failure between the
     //    two can send it twice.
@@ -322,6 +326,14 @@ export class AccountDeletionService {
           and not (kind = 'avatar' and id is not distinct from (select avatar_media_id from members where id = ${memberId})
             and exists(select 1 from reports r where r.member_id = ${memberId} and r.post_id is null
               and r.status = 'open' and r.reason <> 'appeal'))`)
+
+      // Videos (ADR 0019): the same rule as images. Kept while the post is evidence (a still-public one is
+      // moved to the private bucket afterwards), as is a blocked one; every other, of any state, is marked
+      // deleted and its files, scan results and renditions go after the transaction (VideoService.eraseFilesOf).
+      await run(sql`update media set status = 'deleted'
+        where owner_id = ${memberId} and kind = 'post_video'
+          and status in ('pending', 'uploading', 'processing', 'ready', 'quarantined', 'rejected', 'failed')
+          and not (post_id is not null and post_id in ${evidence})`)
 
       // Posts stay as rows: the parents of other people's replies, and what
       // reports, likes and notifications point at. The author is inactive, so

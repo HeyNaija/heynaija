@@ -3,18 +3,17 @@ import { MARK } from '../lib/env.ts'
 import { codeFor } from '../lib/mailpit.ts'
 import { signUpOverHttp } from '../lib/members.ts'
 
-// Gists need a LiveKit server and an API started with the Gists switches on, so
-// CI (which has neither) skips this file. To run it locally, on your own stack:
+// Gists need a LiveKit server and an API that knows it, so CI (which has neither)
+// skips this file. To run it locally, on your own stack:
 //
 //   pnpm infra:livekit
-//   CALLS_ENABLED=true CALLS_GISTS_ENABLED=true \
-//   CALLS_MEMBERS=e2e_gist_host,e2e_gist_ear \
-//   LIVEKIT_URL=ws://127.0.0.1:7880 (and the LIVEKIT_* keys from .env) pnpm dev:api
+//   pnpm dev:api, with the LIVEKIT_* settings `pnpm infra:env` put in .env
 //   E2E_GISTS=1 pnpm e2e gists
 //
-// The allow-list takes exact handles (ADR 0017's gate is temporary), hence the
-// fixed ones below. Chromium's fake-media flags stand in for a microphone.
-test.skip(!process.env.E2E_GISTS, 'needs LiveKit and the API with CALLS_* set; see the comment at the top of this file')
+// The gists flag is on for everyone in development; if it has been limited to a
+// list, add the two fixed handles below to it (or set it back to the default).
+// Chromium's fake-media flags stand in for a microphone.
+test.skip(!process.env.E2E_GISTS, 'needs LiveKit and the API configured for it; see the comment at the top of this file')
 
 test.use({
   launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },
@@ -42,6 +41,15 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
   await expect(host.getByRole('button', { name: 'Microphone', exact: true, pressed: false })).toBeVisible()
 
   const earContext = await browser.newContext()
+  // Headless Chromium runs audio at 16 kHz, where RNNoise cannot work; a phone or laptop runs at 48 kHz.
+  await earContext.addInitScript(() => {
+    const Base = window.AudioContext
+    window.AudioContext = class extends Base {
+      constructor(options?: AudioContextOptions) {
+        super({ sampleRate: 48_000, ...options })
+      }
+    }
+  })
   const ear = await earContext.newPage()
   const earEmail = await signUpOverHttp(ear, EAR)
 
@@ -82,6 +90,24 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
 
   await expect(ear.getByRole('button', { name: 'Microphone', exact: true, pressed: false })).toBeVisible({ timeout: 15_000 })
   await expect(ear.getByRole('status').filter({ hasText: 'You are now a speaker' })).toBeAttached()
+
+  // A new speaker is told about earphones until they speak. Turning the microphone on also starts
+  // noise removal, which must never stop it: the button says On, and the tip has done its job.
+  await expect(ear.getByText('Use earphones when you speak.')).toBeVisible()
+  await ear.getByRole('button', { name: 'Microphone', exact: true }).click()
+  await expect(ear.getByRole('button', { name: 'Microphone', exact: true, pressed: true })).toBeVisible()
+  await expect(ear.getByText('Use earphones when you speak.')).toHaveCount(0)
+  // RNNoise (fetched now, the first time) is cleaning up the microphone.
+  await ear.getByRole('button', { name: 'Microphone settings' }).click()
+  const micSettings = ear.getByRole('dialog', { name: 'Microphone settings' })
+  await expect(micSettings.getByText('Strong noise removal is on.')).toBeVisible({ timeout: 10_000 })
+  await micSettings.getByRole('button', { name: 'Close Microphone settings' }).click()
+  // The Connection sheet reads the speaker's own stream and offers the figures to copy.
+  await ear.getByRole('button', { name: 'Connection', exact: true }).click()
+  const connection = ear.getByRole('dialog', { name: 'Connection' })
+  await expect(connection.getByText('Sound lost on the way')).toBeVisible()
+  await expect(connection.getByRole('button', { name: 'Copy figures' })).toBeEnabled({ timeout: 10_000 })
+  await connection.getByRole('button', { name: 'Close Connection' }).click()
 
   // Anyone in the room but the host can report the Gist itself; the room keeps playing.
   await expect(host.getByRole('button', { name: 'Report', exact: true })).toHaveCount(0)

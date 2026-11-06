@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnModuleD
 import { type ConnectionOptions, Queue, Worker } from 'bullmq'
 import type { Env } from '../env.js'
 import { ENV } from '../tokens.js'
-import { gistsEnabled } from './gists-enabled.guard.js'
+import { livekitConfigured } from './gists-enabled.guard.js'
 import { GistsService } from './gists.service.js'
 
 const QUEUE = 'gists'
@@ -18,9 +18,11 @@ const connection = (env: Env): ConnectionOptions => ({
 })
 
 /**
- * Runs GistsService.reconcile once a minute while Gists are on. BullMQ's job
- * scheduler keeps it to one run a minute however many API processes there are.
- * With Gists off the schedule is taken away, so a dark feature leaves nothing running.
+ * Runs GistsService.reconcile once a minute while LiveKit is configured. BullMQ's
+ * job scheduler keeps it to one run a minute however many API processes there are.
+ * It runs whatever the `gists` flag says, since the flag can change at any time:
+ * with it off, the reconcile takes everyone out of Gists still live, and their
+ * rooms then end. Without LiveKit the schedule is taken away, so nothing runs.
  */
 @Injectable()
 export class GistReconciler implements OnApplicationBootstrap, OnModuleDestroy {
@@ -38,7 +40,7 @@ export class GistReconciler implements OnApplicationBootstrap, OnModuleDestroy {
       connection: connection(this.env),
       defaultJobOptions: { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
     })
-    if (!gistsEnabled(this.env)) {
+    if (!livekitConfigured(this.env)) {
       await this.queue.removeJobScheduler(SCHEDULER)
       return
     }

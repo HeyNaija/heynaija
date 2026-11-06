@@ -1,6 +1,6 @@
 {
-  "id": "3ac320da-100a-4c23-8492-27d3e71711c6",
-  "prevId": "6a6c4814-47be-4e11-84ca-e6a2d31b628e",
+  "id": "6a6c4814-47be-4e11-84ca-e6a2d31b628e",
+  "prevId": "88379af3-71a6-46ef-a885-a34d1ae67b48",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -959,99 +959,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "games.community_teams": {
-      "name": "community_teams",
-      "schema": "games",
-      "columns": {
-        "community_id": {
-          "name": "community_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "lichess_team_id": {
-          "name": "lichess_team_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "team_name": {
-          "name": "team_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "nb_members": {
-          "name": "nb_members",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "linked_by": {
-          "name": "linked_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "linked_at": {
-          "name": "linked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "refreshed_at": {
-          "name": "refreshed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "community_teams_community_id_communities_id_fk": {
-          "name": "community_teams_community_id_communities_id_fk",
-          "tableFrom": "community_teams",
-          "tableTo": "communities",
-          "columnsFrom": [
-            "community_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "community_teams_linked_by_members_id_fk": {
-          "name": "community_teams_linked_by_members_id_fk",
-          "tableFrom": "community_teams",
-          "tableTo": "members",
-          "columnsFrom": [
-            "linked_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "community_teams_lichess_team_id_unique": {
-          "name": "community_teams_lichess_team_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "lichess_team_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "games.competition_entries": {
       "name": "competition_entries",
       "schema": "games",
@@ -1083,12 +990,6 @@
         },
         "score": {
           "name": "score",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_rank": {
-          "name": "source_rank",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
@@ -1321,25 +1222,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "lichess_tournament_id": {
-          "name": "lichess_tournament_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "settings": {
-          "name": "settings",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "standings_at": {
-          "name": "standings_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1366,22 +1248,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "competitions_lichess_tournament_idx": {
-          "name": "competitions_lichess_tournament_idx",
-          "columns": [
-            {
-              "expression": "lichess_tournament_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "lichess_tournament_id is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1432,10 +1298,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "competitions_chess_check": {
-          "name": "competitions_chess_check",
-          "value": "game <> 'chess' or (lichess_tournament_id is not null and eligibility = 'community')"
-        },
         "competitions_eligibility_check": {
           "name": "competitions_eligibility_check",
           "value": "eligibility in ('open', 'community', 'invite')"
@@ -3538,13 +3400,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "scopes": {
-          "name": "scopes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'challenge:read challenge:write board:play'"
         },
         "expires_at": {
           "name": "expires_at",
@@ -6402,6 +6257,189 @@
           "columns": [
             "member_id",
             "post_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.video_details": {
+      "name": "video_details",
+      "schema": "",
+      "columns": {
+        "media_id": {
+          "name": "media_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "upload_id": {
+          "name": "upload_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "part_size": {
+          "name": "part_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fps": {
+          "name": "fps",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "original_sha256": {
+          "name": "original_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "frames_scanned": {
+          "name": "frames_scanned",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "match_frame_ms": {
+          "name": "match_frame_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scan_result": {
+          "name": "scan_result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "poster_key": {
+          "name": "poster_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rejection_reason": {
+          "name": "rejection_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "video_details_media_id_media_id_fk": {
+          "name": "video_details_media_id_media_id_fk",
+          "tableFrom": "video_details",
+          "tableTo": "media",
+          "columnsFrom": [
+            "media_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.video_renditions": {
+      "name": "video_renditions",
+      "schema": "",
+      "columns": {
+        "media_id": {
+          "name": "media_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bytes": {
+          "name": "bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bitrate_kbps": {
+          "name": "bitrate_kbps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "video_renditions_media_id_media_id_fk": {
+          "name": "video_renditions_media_id_media_id_fk",
+          "tableFrom": "video_renditions",
+          "tableTo": "media",
+          "columnsFrom": [
+            "media_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "video_renditions_media_id_height_pk": {
+          "name": "video_renditions_media_id_height_pk",
+          "columns": [
+            "media_id",
+            "height"
           ]
         }
       },

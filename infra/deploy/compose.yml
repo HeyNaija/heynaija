@@ -43,12 +43,10 @@ x-api-env: &api-env
   PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
   PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
   WEB_PUBLIC_URL: ${SITE_URL:?}
-  # Calls and Gists (docs/adr/0017). All optional: empty means off, and with the
-  # switches false every Gists route answers 404. There is no media server on
-  # these hosts; LIVEKIT_URL points at its own server once one exists.
-  CALLS_ENABLED: ${CALLS_ENABLED:-false}
-  CALLS_GISTS_ENABLED: ${CALLS_GISTS_ENABLED:-false}
-  CALLS_MEMBERS: ${CALLS_MEMBERS:-}
+  # Gists (docs/adr/0017). All optional: empty means off, and every Gists route
+  # answers 404. With these set, the `gists` feature flag decides who has Gists
+  # (docs/feature-flags.md). There is no media server on these hosts; LIVEKIT_URL
+  # points at its own server.
   LIVEKIT_URL: ${LIVEKIT_URL:-}
   LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
   LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
@@ -58,14 +56,28 @@ x-api-env: &api-env
   # connecting Lichess is not offered.
   GAMES_TOKEN_KEY: ${GAMES_TOKEN_KEY:-}
   # Safety (docs/safety/abuse-material-scanning.md): where alerts are emailed, the
-  # PhotoDNA key once approved, and what purging Cloudflare's cache needs. Each
-  # is optional; without them alerts are only logged, nothing is scanned and
-  # nothing is purged.
+  # upload scanners' logins (Arachnid Shield, PhotoDNA once approved), and what
+  # purging Cloudflare's cache needs. Each is optional; without them alerts are
+  # only logged, nothing is scanned and nothing is purged.
   SAFETY_ALERT_EMAIL: ${SAFETY_ALERT_EMAIL:-}
+  ARACHNID_SHIELD_USERNAME: ${ARACHNID_SHIELD_USERNAME:-}
+  ARACHNID_SHIELD_PASSWORD: ${ARACHNID_SHIELD_PASSWORD:-}
   PHOTODNA_SUBSCRIPTION_KEY: ${PHOTODNA_SUBSCRIPTION_KEY:-}
   CLOUDFLARE_ZONE_ID: ${CLOUDFLARE_ZONE_ID:-}
   CLOUDFLARE_PURGE_TOKEN: ${CLOUDFLARE_PURGE_TOKEN:-}
   MEDIA_ORIGIN: ${MEDIA_ORIGIN:-}
+  # Video limits (docs/video-spike.md); empty means the ADR 0019 default. The video worker
+  # reads the same settings.
+  VIDEO_MAX_SECONDS: ${VIDEO_MAX_SECONDS:-}
+  VIDEO_MIN_SECONDS: ${VIDEO_MIN_SECONDS:-}
+  VIDEO_MAX_BYTES: ${VIDEO_MAX_BYTES:-}
+  VIDEO_MAX_EDGE: ${VIDEO_MAX_EDGE:-}
+  VIDEO_KEEP_ORIGINALS: ${VIDEO_KEEP_ORIGINALS:-}
+  VIDEO_MIN_ACCOUNT_AGE_DAYS: ${VIDEO_MIN_ACCOUNT_AGE_DAYS:-}
+  VIDEO_UPHELD_LOOKBACK_DAYS: ${VIDEO_UPHELD_LOOKBACK_DAYS:-}
+  VIDEO_MAX_LIVE_PER_MEMBER: ${VIDEO_MAX_LIVE_PER_MEMBER:-}
+  VIDEO_PART_BYTES: ${VIDEO_PART_BYTES:-}
+  VIDEO_UPLOAD_WINDOW_HOURS: ${VIDEO_UPLOAD_WINDOW_HOURS:-}
   API_HOST: 0.0.0.0
   S3_ENDPOINT: ${S3_ENDPOINT:?}
   S3_REGION: ${S3_REGION:-auto}
@@ -121,6 +133,75 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+
+  # Transcodes and scans uploaded videos. Runs only on a server whose .env sets
+  # COMPOSE_PROFILES=video: deploy.sh then pulls its image with the others and `up`
+  # starts it. Elsewhere nothing processes uploads, so leave it off only where the
+  # videoPosts flag is off too. With no scanner it holds every video quarantined
+  # (docs/safety/video-scanning.md). Production runs it on a server of its own
+  # instead, from compose.worker.yml, which repeats this service: change both.
+  #
+  # ffmpeg parses files strangers send us, so this container is confined (ADR 0019
+  # section 3.4): its own environment (only what apps/api/src/video/worker-env.ts reads:
+  # no Kratos, session, push, LiveKit or Cloudflare secrets), a read-only root with a
+  # 2 GB scratch tmpfs, no capabilities, no privilege escalation, and its own network
+  # that holds only Postgres and Redis besides this service. It is NOT on the default
+  # network, so it cannot reach Kratos (public or admin), the API or the web app by
+  # name or address. It can still reach the internet (object storage, the scanners, SMTP):
+  # there is no per-host egress filter in this compose layout, and that stays a
+  # firewall job (docs/video-spike.md, "What the worker's container does not do").
+  video-worker:
+    image: ${IMAGE_PREFIX:-heynaija}-video-worker:${RELEASE:-latest}
+    profiles: ["video"]
+    build:
+      context: ../..
+      target: video-worker
+    environment:
+      DATABASE_URL: postgres://heynaija:${POSTGRES_PASSWORD:?}@postgres:5432/heynaija
+      REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
+      S3_ENDPOINT: ${S3_ENDPOINT:?}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?}
+      S3_UPLOADS_BUCKET: ${S3_UPLOADS_BUCKET:?}
+      S3_MEDIA_BUCKET: ${S3_MEDIA_BUCKET:?}
+      ARACHNID_SHIELD_USERNAME: ${ARACHNID_SHIELD_USERNAME:-}
+      ARACHNID_SHIELD_PASSWORD: ${ARACHNID_SHIELD_PASSWORD:-}
+      PHOTODNA_SUBSCRIPTION_KEY: ${PHOTODNA_SUBSCRIPTION_KEY:-}
+      PHOTODNA_MATCH_URL: ${PHOTODNA_MATCH_URL:-}
+      SAFETY_ALERT_EMAIL: ${SAFETY_ALERT_EMAIL:-}
+      SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:-}
+      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-HeyNaija}
+      WEB_PUBLIC_URL: ${SITE_URL:?}
+      # The limits, each empty (unset in .env) for the default.
+      VIDEO_MAX_SECONDS: ${VIDEO_MAX_SECONDS:-}
+      VIDEO_MIN_SECONDS: ${VIDEO_MIN_SECONDS:-}
+      VIDEO_MAX_BYTES: ${VIDEO_MAX_BYTES:-}
+      VIDEO_MAX_EDGE: ${VIDEO_MAX_EDGE:-}
+      VIDEO_KEEP_ORIGINALS: ${VIDEO_KEEP_ORIGINALS:-}
+    networks: [video]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=2g,mode=1777
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # Staging shares its server and sets 1 and 1g in .env. (Production's worker has
+    # a server of its own: compose.worker.yml.)
+    cpus: ${VIDEO_WORKER_CPUS:-2}
+    mem_limit: ${VIDEO_WORKER_MEMORY:-1.5g}
+    pids_limit: 256
+    # A deploy replaces it: the worker stops taking jobs on SIGTERM and finishes the one
+    # it has (a minute's clip encodes in a minute or two), rather than being killed
+    # mid-encode and leaving the job to be found stalled and run again.
+    stop_grace_period: 3m
     restart: unless-stopped
     logging: *logging
 
@@ -216,6 +297,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    networks: [default, video]
     restart: unless-stopped
     logging: *logging
 
@@ -231,8 +313,13 @@ services:
       retries: 20
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks: [default, video]
     restart: unless-stopped
     logging: *logging
+
+networks:
+  # Holds only the video worker, Postgres and Redis: the worker is on no other network.
+  video: {}
 
 volumes:
   postgres-data:

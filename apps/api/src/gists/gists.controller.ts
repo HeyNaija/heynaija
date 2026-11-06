@@ -16,12 +16,12 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import { z } from 'zod'
-import { type AuthedRequest, SessionGuard } from '../auth/session.guard.js'
+import { type AuthedRequest, OptionalSessionGuard, SessionGuard } from '../auth/session.guard.js'
 import { parse, routeNotFound } from '../http.js'
 import { RateLimiter } from '../rate-limit.js'
 import { WebhookRejectedError } from './room-service.js'
 import { GistError, GistsService } from './gists.service.js'
-import { GistsEnabledGuard } from './gists-enabled.guard.js'
+import { GistsEnabledGuard, LiveKitConfiguredGuard } from './gists-enabled.guard.js'
 
 const createBody = z.object({
   title: z.string().min(1).max(200),
@@ -69,7 +69,7 @@ const messages: Record<GistError['code'], string> = {
 }
 
 @Controller('v1/gists')
-@UseGuards(GistsEnabledGuard, SessionGuard)
+@UseGuards(OptionalSessionGuard, GistsEnabledGuard, SessionGuard)
 export class GistsController {
   constructor(
     @Inject(GistsService) private readonly gists: GistsService,
@@ -199,7 +199,7 @@ export class GistsController {
  * covers its exact bytes.
  */
 @Controller('internal/livekit')
-@UseGuards(GistsEnabledGuard)
+@UseGuards(LiveKitConfiguredGuard)
 export class LiveKitWebhookController {
   constructor(@Inject(GistsService) private readonly gists: GistsService) {}
 

@@ -40,12 +40,13 @@ import {
 import { Inject, Injectable } from '@nestjs/common'
 import { aliasedTable, and, asc, eq, isNotNull, or, sql } from 'drizzle-orm'
 import { avatarPath, postImagePath } from '../media/media.service.js'
+import { videoPath } from '../video/video-keys.js'
 import { preferencesWithout } from '../notifications/notifications.service.js'
 import { describeTime } from '../games/chess/time-controls.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/17'
+export const EXPORT_FORMAT = 'heynaija-export/18'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -68,6 +69,7 @@ export class ExportService {
     const [
       ownPosts,
       images,
+      videos,
       mentioned,
       createdPollOptions,
       pollVotesCast,
@@ -111,6 +113,11 @@ export class ExportService {
         .from(media)
         .where(and(eq(media.ownerId, memberId), eq(media.kind, 'post_image'), isNotNull(media.postId)))
         .orderBy(asc(media.position)),
+      // Their published videos (ADR 0019): only ones on a post and ready, as for images.
+      db
+        .select({ id: media.id, postId: media.postId })
+        .from(media)
+        .where(and(eq(media.ownerId, memberId), eq(media.kind, 'post_video'), eq(media.status, 'ready'), isNotNull(media.postId))),
       db
         .select({ postId: postMentions.postId, handle: other.handle })
         .from(postMentions)
@@ -262,6 +269,13 @@ export class ExportService {
       list.push({ url: postImagePath(image.id), description: image.alt })
       imagesByPost.set(image.postId, list)
     }
+    const videosByPost = new Map<string, { url: string; poster: string }[]>()
+    for (const video of videos) {
+      if (!video.postId) continue
+      const list = videosByPost.get(video.postId) ?? []
+      list.push({ url: videoPath(video.id), poster: `${videoPath(video.id)}/poster.webp` })
+      videosByPost.set(video.postId, list)
+    }
     // The members each post mentions, once each, by the handle they have now.
     const mentionsByPost = new Map<string, string[]>()
     for (const { postId, handle } of mentioned) {
@@ -311,6 +325,7 @@ export class ExportService {
       posts: ownPosts.map((p) => ({
         ...p,
         images: imagesByPost.get(p.id) ?? [],
+        videos: videosByPost.get(p.id) ?? [],
         mentions: mentionsByPost.get(p.id) ?? [],
         poll: pollsByPost.get(p.id) ?? null,
       })),

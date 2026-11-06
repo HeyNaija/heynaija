@@ -73,6 +73,18 @@ export const FLAGS = {
     owner: 'games',
     defaults: { development: true, staging: true, production: false }, // not in main yet
   },
+  videoPosts: {
+    description:
+      'Attaching one short video to a post (ADR 0019). Gating creation only: videos already published keep playing. Also needs an upload scanner in production: with none bound, video stays closed even if this is on.',
+    owner: 'media',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
+  gists: {
+    description:
+      'Live audio rooms (ADR 0017): starting, finding and joining a Gist. Also needs LiveKit configured, and in production it opens only to the members on an allow-list, never to everyone, until the age check exists. Turning it off (or taking a member off the list) closes the routes at once and takes people out of Gists already live within a minute.',
+    owner: 'gists',
+    defaults: { development: true, staging: true, production: false }, // code in main, but never switched on in production; LIVE_IN_MAIN is false
+  },
 } as const satisfies Record<string, FlagDefinition>
 
 export type FlagKey = keyof typeof FLAGS

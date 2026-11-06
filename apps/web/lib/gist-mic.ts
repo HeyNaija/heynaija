@@ -1,9 +1,11 @@
 // Pure rules for a speaker's microphone and for how the room talks about who is
 // speaking. No browser APIs here, so tests/gist-mic.test.mjs covers them.
 //
-// The audio path stays a clean pass-through: only the browser's own processing
-// switches (noise suppression, echo cancellation, auto gain) are offered. There is
-// deliberately no pitch shifting or voice changing (ADR 0017, open question 20).
+// The audio path cleans up the sound around a voice and never changes the voice:
+// the browser's own processing (noise suppression, echo cancellation, auto gain),
+// plus RNNoise noise removal on the device when noise suppression is on
+// (app/ui/gists/noise.ts). There is deliberately no pitch shifting or voice
+// changing (ADR 0017, open question 20).
 
 export type MicSettings = {
   /** null: the browser's default input. */
@@ -34,6 +36,18 @@ export function readMicSettings(raw: string | null): MicSettings {
 }
 
 export const writeMicSettings = (settings: MicSettings) => JSON.stringify(settings)
+
+/** RNNoise works on 48 kHz audio only. */
+export const NOISE_REMOVAL_RATE = 48_000
+
+/**
+ * Whether RNNoise can run here: an audio graph at 48 kHz (the device's own rate; resampling
+ * the microphone is not something every browser allows), with AudioWorklet and WebAssembly.
+ * Where it cannot, the browser's own noise suppression is all there is.
+ */
+export function canRemoveNoise(env: { sampleRate: number; audioWorklet: boolean; webAssembly: boolean }): boolean {
+  return env.sampleRate === NOISE_REMOVAL_RATE && env.audioWorklet && env.webAssembly
+}
 
 export type InputDevice = { deviceId: string; label: string }
 

@@ -53,14 +53,14 @@ jobs:
           IMAGE_PREFIX: ${{ steps.prefix.outputs.value }}
         run: |
           tree=$(git rev-parse 'HEAD^{tree}')
-          for image in "api:staged-$tree" "web:staged-$tree" "kratos:$(git rev-parse HEAD:infra/kratos)"; do
+          for image in "api:staged-$tree" "web:staged-$tree" "video-worker:staged-$tree" "kratos:$(git rev-parse HEAD:infra/kratos)"; do
             if ! docker buildx imagetools inspect "$IMAGE_PREFIX-$image" >/dev/null 2>&1; then
               echo "Staging is not running this code ($IMAGE_PREFIX-$image is missing), so it is checked and built here."
               echo "found=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           done
-          for app in api web; do
+          for app in api web video-worker; do
             docker buildx imagetools create --prefer-index=false \
               --tag "$IMAGE_PREFIX-$app:$GITHUB_SHA" "$IMAGE_PREFIX-$app:staged-$tree"
           done
@@ -111,3 +111,41 @@ jobs:
           printf '%s\n%s\n' "$GITHUB_ACTOR" "$REGISTRY_TOKEN" | ssh -i ~/.ssh/deploy -p "${DEPLOY_SSH_PORT:-22}" \
             -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=30 -o ServerAliveInterval=30 \
             "heynaija@$DEPLOY_HOST" deploy "$GITHUB_SHA"
+
+  # Production's video worker runs on a server of its own (docs/deployment/production.md,
+  # section 7). It goes second, once production has run the release's migrations, with
+  # the same key and forced command. Until the production environment has a
+  # VIDEO_WORKER_HOST, there is no such server and this does nothing.
+  deploy-video-worker:
+    name: Deploy the video worker
+    needs: deploy
+    # Without a condition of its own GitHub skips a job when any job before it was
+    # skipped, and check and images are, whenever staging's images are reused.
+    if: ${{ !cancelled() && needs.deploy.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: production
+    # A deploy waits for the video being encoded to finish (stop_grace_period in
+    # compose.worker.yml).
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Deploy the video worker ${{ github.sha }}
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          VIDEO_WORKER_KNOWN_HOSTS: ${{ secrets.VIDEO_WORKER_KNOWN_HOSTS }}
+          VIDEO_WORKER_HOST: ${{ secrets.VIDEO_WORKER_HOST }}
+          VIDEO_WORKER_SSH_PORT: ${{ secrets.VIDEO_WORKER_SSH_PORT }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ -z $VIDEO_WORKER_HOST ]]; then
+            echo "No VIDEO_WORKER_HOST in the production environment: no video worker's server to deploy."
+            exit 0
+          fi
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$VIDEO_WORKER_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n%s\n' "$GITHUB_ACTOR" "$REGISTRY_TOKEN" | ssh -i ~/.ssh/deploy -p "${VIDEO_WORKER_SSH_PORT:-22}" \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=30 -o ServerAliveInterval=30 \
+            "heynaija@$VIDEO_WORKER_HOST" deploy "$GITHUB_SHA"

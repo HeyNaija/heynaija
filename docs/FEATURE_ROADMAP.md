@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 18 | 15 | 13 | 91 |
+| 45 | 19 | 16 | 12 | 92 |
 
 ## Priority order
 
@@ -575,13 +575,23 @@ This tracks product development, not formal governance decisions. Priority means
 
 ### Safety and privacy
 
+#### Date of birth at signup and 18+ labels
+
+- **ID:** `adult-content-labels`
+- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
+- **Description:** Ask for a date of birth at signup and keep only the age band; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.
+- **Inspected evidence:** `docs/adr/0020-under-18-accounts-and-adult-labels.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`
+- **Audit notes:** Phase 1 of ADR 0020 (proposed, 3 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs.
+
 #### Safeguards for under-18 access
 
 - **ID:** `minor-safeguards`
 - **Priority:** P2 · **Status:** Blocked · **Availability:** Not live
 - **Description:** Prepare approved age assurance, consent, content and contact safeguards before opening younger accounts.
 - **Remaining work / caveat:** Child-safety decisions, approvals and implementation must precede any change to the temporary adult-only beta.
-- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`
+- **Dependencies:** `adult-content-labels`
+- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`, `docs/adr/0020-under-18-accounts-and-adult-labels.md`
+- **Audit notes:** Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Waits for counsel (minimum age, guardian consent), phase 1 in production, upload hash-matching and the rest of the under-18 rollout checklist, then a written sign-off.
 
 #### Age verification for adults
 
@@ -739,9 +749,9 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `video`
 - **Priority:** P2 · **Status:** Planned · **Availability:** Not live
 - **Description:** Support video with accessible playback and appropriate safety processing.
-- **Dependencies:** `upload-scanning`
-- **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`
-- **Audit notes:** Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built.
+- **Dependencies:** `upload-scanning`, `low-data-controls`
+- **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`, `docs/adr/0019-video-posts.md`, `docs/adr/0021-video-hls-on-r2.md`
+- **Audit notes:** Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built. Designed in ADR 0019 (proposed): one 60-second clip a post, uploaded in parts, scanned by sampled frames and transcoded by a self-hosted ffmpeg worker, behind a videoPosts flag that stays off in production until the scanner is real and a named person signs off.
 
 #### Games section
 
@@ -750,7 +760,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** A Games page with your Game Score, the games you can play, season leaderboards, competitions and posts from games, all in one place.
 - **Remaining work / caveat:** Behind the games feature flag (on in staging, off in production). Competitions are Keno only until chess tournaments (phase 6), and entrants are not notified when one starts or ends.
 - **Dependencies:** `communities`, `in-app-notifications`, `data-export`
-- **Inspected evidence:** `apps/api/src/games/games.module.ts`, `apps/api/src/games/core/registry.ts`, `apps/api/src/games/core/games.controller.ts`, `packages/db/drizzle/0035_games_core.sql`, `apps/web/app/(main)/games/page.tsx`, `apps/api/src/games/core/games.controller.test.ts`, `apps/api/src/games/core/registry.test.ts`, `apps/api/src/games/core/scoring.ts`, `apps/api/src/games/core/leaderboards.ts`, `apps/api/src/games/core/competitions.ts`, `apps/web/app/(main)/games/scoring/page.tsx`, `e2e/tests/competitions.spec.ts`, `docs/adr/0018-games.md`, `docs/games/GAMES.md`
+- **Inspected evidence:** `apps/api/src/games/games.module.ts`, `apps/api/src/games/core/registry.ts`, `apps/api/src/games/core/games.controller.ts`, `packages/db/drizzle/0036_games_core.sql`, `apps/web/app/(main)/games/page.tsx`, `apps/api/src/games/core/games.controller.test.ts`, `apps/api/src/games/core/registry.test.ts`, `apps/api/src/games/core/scoring.ts`, `apps/api/src/games/core/leaderboards.ts`, `apps/api/src/games/core/competitions.ts`, `apps/web/app/(main)/games/scoring/page.tsx`, `e2e/tests/competitions.spec.ts`, `docs/adr/0018-games.md`, `docs/games/GAMES.md`
 - **Audit notes:** Phase 1 built 3 Nov 2026 (ADR 0018): the module, the game registry, the games database schema, the games feature flag and a games homepage. Phase 5 built 4 Nov 2026: monthly seasons (Lagos time), the Game Score (XP from chess games, Keno rounds and competition places, stored on each game event and kept in precomputed totals), leaderboards for the Game Score, Chess and Keno by season or all time, narrowed to people you follow or a community, with blocks, mutes and suspensions left out; a How games scoring works page; and competitions run by site moderators (Keno for now) with results posted by The Arbiter in Game Night.
 
 #### Chess on Lichess
@@ -760,7 +770,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Link your Lichess account, challenge other members, play and watch games inside HeyNaija, and share results as posts.
 - **Remaining work / caveat:** Linking, ratings, challenges, playing and watching inside HeyNaija, Chess Arena, result posts and community tournaments are built (phases 2, 3 and 6). Tournament games are played on lichess.org, not inside HeyNaija. Behind the games flag; connecting needs GAMES_TOKEN_KEY.
 - **Dependencies:** `games-core`
-- **Inspected evidence:** `apps/api/src/games/chess/chess.service.ts`, `apps/api/src/games/chess/chess.controller.ts`, `apps/api/src/games/chess/lichess.ts`, `packages/db/drizzle/0036_chess_linking.sql`, `apps/web/app/(main)/games/chess/page.tsx`, `apps/api/src/games/chess/chess.service.test.ts`, `apps/api/src/games/chess/lichess.test.ts`, `e2e/tests/chess.spec.ts`, `docs/adr/0018-games.md`, `apps/api/src/games/chess/chess-games.service.ts`, `apps/api/src/games/chess/game-watcher.ts`, `packages/db/drizzle/0037_chess_play.sql`, `apps/web/app/(main)/games/chess/games/[id]/page.tsx`, `apps/api/src/games/chess/chess-games.service.test.ts`, `apps/api/src/games/chess/teams.ts`, `apps/api/src/games/chess/teams.test.ts`, `packages/db/drizzle/0040_games_teams.sql`, `apps/web/app/(main)/games/chess/teams/[slug]/page.tsx`, `e2e/tests/chess-teams.spec.ts`
+- **Inspected evidence:** `apps/api/src/games/chess/chess.service.ts`, `apps/api/src/games/chess/chess.controller.ts`, `apps/api/src/games/chess/lichess.ts`, `packages/db/drizzle/0037_chess_linking.sql`, `apps/web/app/(main)/games/chess/page.tsx`, `apps/api/src/games/chess/chess.service.test.ts`, `apps/api/src/games/chess/lichess.test.ts`, `e2e/tests/chess.spec.ts`, `docs/adr/0018-games.md`, `apps/api/src/games/chess/chess-games.service.ts`, `apps/api/src/games/chess/game-watcher.ts`, `packages/db/drizzle/0038_chess_play.sql`, `apps/web/app/(main)/games/chess/games/[id]/page.tsx`, `apps/api/src/games/chess/chess-games.service.test.ts`, `apps/api/src/games/chess/teams.ts`, `apps/api/src/games/chess/teams.test.ts`, `packages/db/drizzle/0041_games_teams.sql`, `apps/web/app/(main)/games/chess/teams/[slug]/page.tsx`, `e2e/tests/chess-teams.spec.ts`
 - **Audit notes:** Phase 2 built 3 Nov 2026: connect Lichess, ratings, challenges. Phase 3 built 3 Nov 2026: play and watch inside HeyNaija through the Lichess Board API (the browser long-polls; one watcher per game), Chess Arena threads by The Arbiter (an automated account) with spectators’ replies hidden from the players until the end, and the result posted there. Phase 6 built 5 Nov 2026: a community moderator who leads a Lichess team links it to the community and makes Arena and Swiss tournaments for it; members play on lichess.org, HeyNaija reads the standings and finishes them as community competitions (placement XP, The Arbiter's result post). Lichess runs the games, ratings and fair play.
 
 #### Keno (free to play)
@@ -788,12 +798,12 @@ This tracks product development, not formal governance decisions. Priority means
 #### Calls, meetings, Gists and screen sharing
 
 - **ID:** `calls-and-meetings`
-- **Priority:** P3 · **Status:** Blocked · **Availability:** Not live
+- **Priority:** P3 · **Status:** Partial · **Availability:** Not live
 - **Description:** Voice and video calls between age-verified adults, then small group meetings, screen sharing and Gists (live audio rooms with a few speakers and a large audience), on a self-hosted LiveKit server.
-- **Remaining work / caveat:** Design only. Needs direct messages and age verification first; recording, moderator access and retention need counsel and governance.
-- **Dependencies:** `minor-safeguards`
-- **Inspected evidence:** `docs/adr/0017-calls-and-meetings.md`, `docs/governance/under-18-rollout.md`
-- **Audit notes:** Also depends on direct-messages and age-verification (ADR 0016, PR #42): add them to the dependencies when that PR merges. Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers).
+- **Remaining work / caveat:** Gists (live audio rooms) are built and being tested with a small list of members; they are not available to everyone yet. 1:1 calls, meetings and screen sharing are paused and remain a design: they need direct messages and age verification first, and recording, moderator access and retention need counsel and governance.
+- **Dependencies:** `minor-safeguards`, `direct-messages`, `age-verification`
+- **Inspected evidence:** `docs/adr/0017-calls-and-meetings.md`, `docs/governance/under-18-rollout.md`, `apps/api/src/gists/gists.service.ts`, `apps/api/src/gists/eligibility.ts`, `apps/web/app/ui/gists/gist-room.tsx`
+- **Audit notes:** Gists are built and in main: off unless LIVEKIT_* is set, then open to the members the gists feature flag is on for, and in production only through its allow-list, a temporary gate with no age check (apps/api/src/gists/eligibility.ts; the flag replaced the CALLS_* env switches on 3 Nov 2026). On in staging since 31 Oct 2026 (the owner tested them there). 1:1 calls and meetings were dropped by the owner on 1 Nov 2026 (PRs #54 and #62 closed, work parked); they, not Gists, need direct-messages and age-verification (docs/adr/0016-direct-messages.md). Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers).
 
 #### Native mobile apps
 

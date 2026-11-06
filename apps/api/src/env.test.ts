@@ -36,6 +36,15 @@ test('the API refuses to start with any of them switched on', () => {
   }
 })
 
+test('the Arachnid Shield login is both halves or neither', () => {
+  assert.doesNotThrow(() => loadEnv(base))
+  assert.doesNotThrow(() => loadEnv({ ...base, ARACHNID_SHIELD_USERNAME: 'u', ARACHNID_SHIELD_PASSWORD: 'p' }))
+  assert.throws(() => loadEnv({ ...base, ARACHNID_SHIELD_USERNAME: 'u' }), /set both ARACHNID_SHIELD_USERNAME and ARACHNID_SHIELD_PASSWORD/)
+  assert.throws(() => loadEnv({ ...base, ARACHNID_SHIELD_PASSWORD: 'p' }), /set both/)
+  // Empty is unset, as compose passes it.
+  assert.doesNotThrow(() => loadEnv({ ...base, ARACHNID_SHIELD_USERNAME: '', ARACHNID_SHIELD_PASSWORD: '' }))
+})
+
 test('the person-key secret must be long enough when given', () => {
   assert.throws(() => loadEnv({ ...base, IDENTITY_KEY_SECRET: 'short' }))
   assert.equal(loadEnv({ ...base, IDENTITY_KEY_SECRET: 'k'.repeat(32) }).IDENTITY_KEY_SECRET, 'k'.repeat(32))
@@ -151,21 +160,12 @@ test('the privacy-request command needs no storage keys, and checks the deletion
   assert.throws(() => loadPrivacyToolEnv({ DATABASE_URL: base.DATABASE_URL, REDIS_URL: base.REDIS_URL }), /KRATOS_ADMIN_URL/)
 })
 
-test('calls and Gists are off by default, with nobody on the allow-list', () => {
+test('Gists have no LiveKit by default, and the limits ADR 0017 recommends', () => {
   const env = loadEnv(base)
-  assert.equal(env.CALLS_ENABLED, false)
-  assert.equal(env.CALLS_GISTS_ENABLED, false)
-  assert.deepEqual(env.CALLS_MEMBERS, [])
   assert.equal(env.LIVEKIT_URL, undefined)
   assert.equal(env.GISTS_LISTENER_CAP, 200)
   assert.equal(env.GISTS_MAX_COHOSTS, 2)
   assert.equal(env.GISTS_MAX_SPEAKERS, 10)
-})
-
-test('the Gists switches accept only true or false, and the allow-list is a trimmed, lower-cased handle list', () => {
-  assert.equal(loadEnv({ ...base, CALLS_ENABLED: 'true', CALLS_GISTS_ENABLED: 'true' }).CALLS_GISTS_ENABLED, true)
-  assert.throws(() => loadEnv({ ...base, CALLS_ENABLED: '1' }))
-  assert.deepEqual(loadEnv({ ...base, CALLS_MEMBERS: ' Ada, bayo ,,' }).CALLS_MEMBERS, ['ada', 'bayo'])
 })
 
 test('LiveKit settings may be empty (compose passes them empty), and key and secret come as a pair', () => {

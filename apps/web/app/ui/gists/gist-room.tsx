@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FlagIcon, GearIcon, HandIcon, LeaveIcon, LockIcon, MicIcon, MicOffIcon, PeopleIcon } from '@/app/ui/icons'
+import { FlagIcon, GearIcon, HandIcon, HeadphonesIcon, LeaveIcon, LockIcon, MicIcon, MicOffIcon, PeopleIcon, SignalIcon } from '@/app/ui/icons'
+import { weakQuality, type Quality } from '@/lib/gist-connection'
 import {
   chooseDevice,
   createSpeakingAnnouncer,
@@ -35,6 +36,7 @@ import {
 } from '@/lib/gists'
 import { gistCall } from './api'
 import type { GistAudio } from './audio'
+import { ConnectionPanel } from './connection-panel'
 import { HostPanel } from './host-panel'
 import { MicPanel } from './mic-panel'
 import { ReportGist } from './report-gist'
@@ -42,6 +44,8 @@ import { Sheet } from './sheet'
 import { Elapsed, StageGrid, type StagePerson } from './stage'
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+/** Set once a speaker has seen the earphones tip, so it is not shown on every Gist. */
+const EARPHONES_TIP_KEY = 'hn-gist-earphones-tip'
 
 export function GistRoom({ initial, meId }: { initial: GistView; meId: string }) {
   const router = useRouter()
@@ -57,6 +61,9 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
   const [requests, setRequests] = useState<SpeakRequest[]>([])
   const [hint, setHint] = useState(() => dataUseHint(undefined))
   const [mics, setMics] = useState<Record<string, boolean>>({})
+  const [quality, setQuality] = useState<Record<string, Quality>>({})
+  const [noiseRemoval, setNoiseRemoval] = useState<boolean | null>(null)
+  const [tipSeen, setTipSeen] = useState(true)
   const [level, setLevel] = useState(0)
   const [micSettings, setMicSettings] = useState<MicSettings>(DEFAULT_MIC)
   const [devices, setDevices] = useState<InputDevice[]>([])
@@ -64,6 +71,7 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
   const [listenersOpen, setListenersOpen] = useState(false)
   const [micSheet, setMicSheet] = useState(false)
   const [reportSheet, setReportSheet] = useState(false)
+  const [connectionSheet, setConnectionSheet] = useState(false)
   const [speakingNote, setSpeakingNote] = useState('')
 
   const audio = useRef<GistAudio | null>(null)
@@ -176,6 +184,8 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
           speaking: setSpeaking,
           micOff: () => setMic(false),
           mics: setMics,
+          quality: setQuality,
+          noise: setNoiseRemoval,
         },
       })
     }
@@ -296,9 +306,21 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
 
   // ---- controls ----------------------------------------------------------------------
 
+  const readConnection = useCallback(() => audio.current?.sample() ?? Promise.resolve(null), [])
+
+  function seeTip() {
+    setTipSeen(true)
+    try {
+      localStorage.setItem(EARPHONES_TIP_KEY, '1')
+    } catch {
+      // No storage: it shows again next time.
+    }
+  }
+
   async function toggleMic() {
     setMicProblem(null)
     const want = !micOn
+    if (want) seeTip()
     try {
       await audio.current?.setMic(want, effective, effKey)
       setMic(want)
@@ -336,12 +358,14 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [devices])
 
-  // What the member chose last time on this browser.
+  // What the member chose last time on this browser, and whether they have seen the earphones tip.
   useEffect(() => {
     try {
       setMicSettings(readMicSettings(localStorage.getItem(MIC_SETTINGS_KEY)))
+      setTipSeen(localStorage.getItem(EARPHONES_TIP_KEY) === '1')
     } catch {
-      // No storage: defaults.
+      // No storage: defaults, and the tip shows.
+      setTipSeen(false)
     }
   }, [])
 
@@ -480,6 +504,12 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
               <PeopleIcon size={18} />
               {listenerLabel(view.listenerCount)}
             </button>
+            {polling ? (
+              <button type="button" className="btn btn-secondary gist-btn" aria-haspopup="dialog" onClick={() => setConnectionSheet(true)}>
+                <SignalIcon size={18} />
+                Connection
+              </button>
+            ) : null}
             {/* Anyone in the room may report it, except its host (docs/adr/0017). */}
             {polling && role !== 'host' ? (
               <button type="button" className="btn btn-secondary gist-btn" aria-haspopup="dialog" onClick={() => setReportSheet(true)}>
@@ -588,12 +618,22 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
               {problem}
             </p>
           ) : null}
+          {/* The member's own network, as the server sees it: said before they blame the speaker or the app. */}
+          {phase === 'live' && weakQuality(quality[meId]) ? (
+            <div role="status" className="notice gist-tip">
+              <SignalIcon size={18} />
+              <p>Your connection is weak, so the sound may break up{controls.mic ? ' and others may not hear you clearly' : ''}.</p>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConnectionSheet(true)}>
+                Details
+              </button>
+            </div>
+          ) : null}
 
           <section className="square-card gist-section" aria-labelledby="gist-stage-heading">
             <h2 id="gist-stage-heading" className="section-title">
               On stage
             </h2>
-            <StageGrid people={people} meId={meId} speaking={speaking} mics={mics} level={level} />
+            <StageGrid people={people} meId={meId} speaking={speaking} mics={mics} quality={quality} level={level} />
           </section>
 
           {moderator && role ? (
@@ -614,6 +654,16 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
             </p>
           ) : null}
           {choice.fellBack && controls.mic && !micSheet ? <p className="notice">The microphone you chose is not plugged in. Using the default one.</p> : null}
+          {/* A web page cannot send sound to the earpiece as a phone call does, so a loudspeaker echoes into the microphone. */}
+          {controls.mic && !micOn && !tipSeen ? (
+            <div className="notice gist-tip">
+              <HeadphonesIcon size={18} />
+              <p>Use earphones when you speak. Without them, the Gist can echo back through your microphone. Wired ones sound clearest.</p>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={seeTip}>
+                Got it
+              </button>
+            </div>
+          ) : null}
 
           {blocked ? (
             <button type="button" className="btn btn-primary btn-lg gist-btn" onClick={() => void audio.current?.startAudio().then(() => setBlocked(false))}>
@@ -670,6 +720,9 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
         </Sheet>
       ) : null}
 
+      <Sheet open={connectionSheet} onClose={() => setConnectionSheet(false)} title="Connection">
+        <ConnectionPanel read={readConnection} speaker={controls.mic} />
+      </Sheet>
       <Sheet open={reportSheet} onClose={() => setReportSheet(false)} title="Report this Gist">
         <ReportGist gistId={id} onDone={() => setReportSheet(false)} />
       </Sheet>
@@ -682,6 +735,7 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
           failure={micProblem}
           live={micOn}
           level={level}
+          noiseRemoval={noiseRemoval}
           onChange={changeMicSettings}
         />
       </Sheet>

@@ -37,7 +37,8 @@ after(() => pool.end())
  *   quotePosts     posts.service.ts     newPost `quote`
  *   linkPreviews   posts.controller.ts  links.request(linkUrl) on create
  * A flag for a feature that is NOT in main yet is added here as false. Changing a
- * value is a deliberate, visible diff.
+ * value is a deliberate, visible diff. `gists` is false too: its code is in main,
+ * but production never switched it on (it was off unless env switches were set).
  */
 const LIVE_IN_MAIN: Record<FlagKey, boolean> = {
   polls: true,
@@ -50,6 +51,8 @@ const LIVE_IN_MAIN: Record<FlagKey, boolean> = {
   quotePosts: true,
   linkPreviews: true,
   games: false,
+  videoPosts: false,
+  gists: false,
 }
 
 /** The real registry, except that `polls` is not launched in production: for tests of that case. */
@@ -150,6 +153,19 @@ test('service: an allow-list is on for those members only, in an environment whe
   // Emptying the list returns to the default.
   await flags.set(ada, 'polls', { enabled: null, handles: [] })
   assert.equal(await flags.isEnabled('polls', chi), true)
+})
+
+test('service: a reading answers for any number of viewers from one read, and says whether it is an allow-list', async () => {
+  const flags = new FeatureFlags(db, 'staging')
+  const open = await flags.reading('polls')
+  assert.deepEqual([open.isEnabled(bayo), open.isEnabled(null), open.listed], [true, true, false])
+  await flags.set(ada, 'polls', { enabled: null, handles: ['bayo'] })
+  const listed = await flags.reading('polls')
+  assert.deepEqual([listed.isEnabled(bayo), listed.isEnabled(chi), listed.isEnabled(null), listed.listed], [true, false, false, true])
+  // A reading keeps the answer it was read with.
+  await flags.set(ada, 'polls', { enabled: false })
+  assert.equal(listed.isEnabled(bayo), true)
+  assert.deepEqual([(await flags.reading('polls')).isEnabled(bayo), (await flags.reading('polls')).listed], [false, false])
 })
 
 test('service: a key the code does not know is ignored, whatever the database says', async () => {

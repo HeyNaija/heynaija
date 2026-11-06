@@ -4,14 +4,14 @@ import { canHostGist, canJoinGist } from './eligibility.js'
 
 const ada = { id: 'a', handle: 'ada', active: true }
 const open = { status: 'live' as const, communityId: null }
-const allow = { callsMembers: ['ada'] }
+const allow = { allowed: (memberId: string) => memberId === 'a' }
 
-test('only handles on the beta allow-list may join or host', () => {
+test('only members the gists flag is on for may join or host', () => {
   assert.equal(canJoinGist(ada, open, { ...allow, inCommunity: false }), true)
   assert.equal(canHostGist(ada, allow), true)
-  assert.equal(canJoinGist({ ...ada, handle: 'bayo' }, open, { ...allow, inCommunity: false }), false)
-  assert.equal(canHostGist({ ...ada, handle: 'bayo' }, allow), false)
-  assert.equal(canHostGist(ada, { callsMembers: [] }), false)
+  assert.equal(canJoinGist({ ...ada, id: 'b', handle: 'bayo' }, open, { ...allow, inCommunity: false }), false)
+  assert.equal(canHostGist({ ...ada, id: 'b', handle: 'bayo' }, allow), false)
+  assert.equal(canHostGist(ada, { allowed: () => false }), false)
 })
 
 test('a suspended member can neither join nor host', () => {

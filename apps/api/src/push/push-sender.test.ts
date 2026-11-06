@@ -61,7 +61,10 @@ after(() => new Promise<void>((resolve) => server.close(() => resolve())))
 function vapidKeys() {
   const ecdh = createECDH('prime256v1')
   ecdh.generateKeys()
-  return { PUSH_VAPID_PUBLIC_KEY: ecdh.getPublicKey().toString('base64url'), PUSH_VAPID_PRIVATE_KEY: ecdh.getPrivateKey().toString('base64url') }
+  // getPrivateKey() drops leading zero bytes (about 1 run in 256); a VAPID private key is exactly 32 bytes.
+  const raw = ecdh.getPrivateKey()
+  const privateKey = Buffer.concat([Buffer.alloc(32 - raw.length), raw])
+  return { PUSH_VAPID_PUBLIC_KEY: ecdh.getPublicKey().toString('base64url'), PUSH_VAPID_PRIVATE_KEY: privateKey.toString('base64url') }
 }
 
 /** A browser's side of a subscription: its key pair and auth secret. */

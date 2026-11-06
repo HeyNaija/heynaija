@@ -51,7 +51,7 @@ and `/games` answer 404 like an address that does not exist.
   client code is loaded only on its own pages, so `/games` stays light.
 - **Database:** a separate Postgres schema, `games`, kept apart from the social
   tables as `restricted` is (ADR 0005), though unlike `restricted` it is not a
-  privacy boundary. Migration `0035_games_core` creates the schema and the shared
+  privacy boundary. Migration `0036_games_core` creates the schema and the shared
   tables: `game_profiles`, `seasons`, `season_scores`, `competitions`,
   `competition_entries` and `game_events` (append-only, the audit trail and the
   source of game posts). Chess and Keno add their own tables in their phases.
@@ -466,7 +466,7 @@ to the community's page from the callback.
 
 ## Data export and account deletion
 
-- The export is `heynaija-export/17`: a `games` section with the member's game
+- The export is `heynaija-export/18`: a `games` section with the member's game
   profiles, season scores and competition entries, the linked Lichess account
   (username, when linked, ratings; never the token), their chess challenges and the
   games they played, with every move, their Keno tickets (round, numbers, hits,
@@ -518,6 +518,6 @@ Revert the code. Then, before any real game data exists:
 `chess_game_started` (after deleting those rows), `alter table notifications drop
 column game_id;`, `drop schema games cascade;`, delete The Arbiter's posts and
 membership, Chess Arena and The Arbiter's member row, and delete the
-`0035_games_core`, `0036_chess_linking`, `0037_chess_play`, `0038_keno`, `0039_games_scoring` and `0040_games_teams` entries from
+`0036_games_core`, `0037_chess_linking`, `0038_chess_play`, `0039_keno`, `0040_games_scoring` and `0041_games_teams` entries from
 `drizzle.__drizzle_migrations` (and `packages/db/drizzle/meta/_journal.json`).
 Put `EXPORT_FORMAT` back only together with the code that reads the tables.

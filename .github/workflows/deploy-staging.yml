@@ -88,12 +88,12 @@ jobs:
       # Adds a tag in the registry; nothing is downloaded or rebuilt. Without
       # --prefer-index=false, a single image is wrapped in a new index with a new
       # digest. Kratos's image is already tagged with the contents of infra/kratos.
-      - name: Tag the API and web images
+      - name: Tag the API, web and video worker images
         env:
           IMAGE_PREFIX: ${{ needs.images.outputs.image_prefix }}
         run: |
           tree=$(git rev-parse 'HEAD^{tree}')
-          for app in api web; do
+          for app in api web video-worker; do
             docker buildx imagetools create --prefer-index=false \
               --tag "$IMAGE_PREFIX-$app:staged-$tree" "$IMAGE_PREFIX-$app:$GITHUB_SHA"
           done

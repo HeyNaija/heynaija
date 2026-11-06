@@ -1,6 +1,6 @@
 {
-  "id": "a2ca5dcd-0fd9-4030-b88a-de6d0f8128ae",
-  "prevId": "0ca18bed-6de5-45fe-8ec9-85821b2ed1cf",
+  "id": "0ca18bed-6de5-45fe-8ec9-85821b2ed1cf",
+  "prevId": "af5f262d-fa59-411c-a8f8-694addd187e5",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -274,210 +274,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "games.chess_challenges": {
-      "name": "chess_challenges",
-      "schema": "games",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "challenger_id": {
-          "name": "challenger_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "challenged_id": {
-          "name": "challenged_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rated": {
-          "name": "rated",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "clock_limit": {
-          "name": "clock_limit",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "clock_increment": {
-          "name": "clock_increment",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "days": {
-          "name": "days",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "color": {
-          "name": "color",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'random'"
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "lichess_game_id": {
-          "name": "lichess_game_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "responded_at": {
-          "name": "responded_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "chess_challenges_pending_pair_idx": {
-          "name": "chess_challenges_pending_pair_idx",
-          "columns": [
-            {
-              "expression": "challenger_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "challenged_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "status = 'pending'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "chess_challenges_challenged_idx": {
-          "name": "chess_challenges_challenged_idx",
-          "columns": [
-            {
-              "expression": "challenged_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "chess_challenges_challenger_idx": {
-          "name": "chess_challenges_challenger_idx",
-          "columns": [
-            {
-              "expression": "challenger_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "chess_challenges_challenger_id_members_id_fk": {
-          "name": "chess_challenges_challenger_id_members_id_fk",
-          "tableFrom": "chess_challenges",
-          "tableTo": "members",
-          "columnsFrom": [
-            "challenger_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "chess_challenges_challenged_id_members_id_fk": {
-          "name": "chess_challenges_challenged_id_members_id_fk",
-          "tableFrom": "chess_challenges",
-          "tableTo": "members",
-          "columnsFrom": [
-            "challenged_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "chess_challenges_status_check": {
-          "name": "chess_challenges_status_check",
-          "value": "status in ('pending', 'accepted', 'declined', 'cancelled', 'failed')"
-        },
-        "chess_challenges_color_check": {
-          "name": "chess_challenges_color_check",
-          "value": "color in ('random', 'white', 'black')"
-        },
-        "chess_challenges_time_check": {
-          "name": "chess_challenges_time_check",
-          "value": "(clock_limit is not null and clock_increment is not null and days is null) or (clock_limit is null and clock_increment is null and days is not null)"
-        },
-        "chess_challenges_self_check": {
-          "name": "chess_challenges_self_check",
-          "value": "challenger_id <> challenged_id"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.communities": {
@@ -2636,164 +2432,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "games.lichess_accounts": {
-      "name": "lichess_accounts",
-      "schema": "games",
-      "columns": {
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "lichess_id": {
-          "name": "lichess_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "username": {
-          "name": "username",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "token_box": {
-          "name": "token_box",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "token_expires_at": {
-          "name": "token_expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "scopes": {
-          "name": "scopes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ratings": {
-          "name": "ratings",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "ratings_refreshed_at": {
-          "name": "ratings_refreshed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "linked_at": {
-          "name": "linked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "lichess_accounts_member_id_members_id_fk": {
-          "name": "lichess_accounts_member_id_members_id_fk",
-          "tableFrom": "lichess_accounts",
-          "tableTo": "members",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "lichess_accounts_lichess_id_unique": {
-          "name": "lichess_accounts_lichess_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "lichess_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "games.lichess_link_attempts": {
-      "name": "lichess_link_attempts",
-      "schema": "games",
-      "columns": {
-        "state_hash": {
-          "name": "state_hash",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "verifier_box": {
-          "name": "verifier_box",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "lichess_link_attempts_member_idx": {
-          "name": "lichess_link_attempts_member_idx",
-          "columns": [
-            {
-              "expression": "member_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "lichess_link_attempts_member_id_members_id_fk": {
-          "name": "lichess_link_attempts_member_id_members_id_fk",
-          "tableFrom": "lichess_link_attempts",
-          "tableTo": "members",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.likes": {
       "name": "likes",
       "schema": "",
@@ -3643,7 +3281,7 @@
       "checkConstraints": {
         "notification_opt_outs_kind_check": {
           "name": "notification_opt_outs_kind_check",
-          "value": "kind in ('reply', 'like', 'repost', 'quote', 'mention', 'follow', 'chess_challenge')"
+          "value": "kind in ('reply', 'like', 'repost', 'quote', 'mention', 'follow')"
         }
       },
       "isRLSEnabled": false
@@ -3698,12 +3336,6 @@
         "detail": {
           "name": "detail",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "challenge_id": {
-          "name": "challenge_id",
-          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -3968,22 +3600,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "notifications_challenge_once_idx": {
-          "name": "notifications_challenge_once_idx",
-          "columns": [
-            {
-              "expression": "challenge_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "kind = 'chess_challenge'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -4050,20 +3666,6 @@
             "id"
           ],
           "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "notifications_challenge_id_chess_challenges_id_fk": {
-          "name": "notifications_challenge_id_chess_challenges_id_fk",
-          "tableFrom": "notifications",
-          "tableTo": "chess_challenges",
-          "schemaTo": "games",
-          "columnsFrom": [
-            "challenge_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -5569,6 +5171,189 @@
           "columns": [
             "member_id",
             "post_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.video_details": {
+      "name": "video_details",
+      "schema": "",
+      "columns": {
+        "media_id": {
+          "name": "media_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "upload_id": {
+          "name": "upload_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "part_size": {
+          "name": "part_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fps": {
+          "name": "fps",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "original_sha256": {
+          "name": "original_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "frames_scanned": {
+          "name": "frames_scanned",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "match_frame_ms": {
+          "name": "match_frame_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scan_result": {
+          "name": "scan_result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "poster_key": {
+          "name": "poster_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rejection_reason": {
+          "name": "rejection_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "video_details_media_id_media_id_fk": {
+          "name": "video_details_media_id_media_id_fk",
+          "tableFrom": "video_details",
+          "tableTo": "media",
+          "columnsFrom": [
+            "media_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.video_renditions": {
+      "name": "video_renditions",
+      "schema": "",
+      "columns": {
+        "media_id": {
+          "name": "media_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bytes": {
+          "name": "bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bitrate_kbps": {
+          "name": "bitrate_kbps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "video_renditions_media_id_media_id_fk": {
+          "name": "video_renditions_media_id_media_id_fk",
+          "tableFrom": "video_renditions",
+          "tableTo": "media",
+          "columnsFrom": [
+            "media_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "video_renditions_media_id_height_pk": {
+          "name": "video_renditions_media_id_height_pk",
+          "columns": [
+            "media_id",
+            "height"
           ]
         }
       },

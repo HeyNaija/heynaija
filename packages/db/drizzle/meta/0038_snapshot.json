@@ -1,6 +1,6 @@
 {
-  "id": "88379af3-71a6-46ef-a885-a34d1ae67b48",
-  "prevId": "c2086811-3256-46f2-9aa1-810e840a2284",
+  "id": "c2086811-3256-46f2-9aa1-810e840a2284",
+  "prevId": "a2ca5dcd-0fd9-4030-b88a-de6d0f8128ae",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1708,24 +1708,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "game_profiles_keno_points_idx": {
-          "name": "game_profiles_keno_points_idx",
-          "columns": [
-            {
-              "expression": "((stats->>'points')::int) desc",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "game = 'keno'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "game_profiles_member_id_members_id_fk": {
           "name": "game_profiles_member_id_members_id_fk",
@@ -2947,246 +2930,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "games.keno_rounds": {
-      "name": "keno_rounds",
-      "schema": "games",
-      "columns": {
-        "number": {
-          "name": "number",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "always",
-            "name": "keno_rounds_number_seq",
-            "schema": "games",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "2147483647",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "draws_at": {
-          "name": "draws_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "seed_hash": {
-          "name": "seed_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "seed_sealed": {
-          "name": "seed_sealed",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "seed": {
-          "name": "seed",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "numbers": {
-          "name": "numbers",
-          "type": "smallint[]",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "drawn_at": {
-          "name": "drawn_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "keno_rounds_undrawn_idx": {
-          "name": "keno_rounds_undrawn_idx",
-          "columns": [
-            {
-              "expression": "draws_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "drawn_at is null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "keno_rounds_draws_at_unique": {
-          "name": "keno_rounds_draws_at_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "draws_at"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "keno_rounds_drawn_check": {
-          "name": "keno_rounds_drawn_check",
-          "value": "(drawn_at is null) = (seed is null) and (drawn_at is null) = (numbers is null)"
-        },
-        "keno_rounds_numbers_check": {
-          "name": "keno_rounds_numbers_check",
-          "value": "numbers is null or cardinality(numbers) = 20"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "games.keno_tickets": {
-      "name": "keno_tickets",
-      "schema": "games",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "round_number": {
-          "name": "round_number",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "numbers": {
-          "name": "numbers",
-          "type": "smallint[]",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "table_version": {
-          "name": "table_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "hits": {
-          "name": "hits",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "points": {
-          "name": "points",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "keno_tickets_member_idx": {
-          "name": "keno_tickets_member_idx",
-          "columns": [
-            {
-              "expression": "member_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "keno_tickets_round_idx": {
-          "name": "keno_tickets_round_idx",
-          "columns": [
-            {
-              "expression": "round_number",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "keno_tickets_member_id_members_id_fk": {
-          "name": "keno_tickets_member_id_members_id_fk",
-          "tableFrom": "keno_tickets",
-          "tableTo": "members",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "keno_tickets_round_number_keno_rounds_number_fk": {
-          "name": "keno_tickets_round_number_keno_rounds_number_fk",
-          "tableFrom": "keno_tickets",
-          "tableTo": "keno_rounds",
-          "schemaTo": "games",
-          "columnsFrom": [
-            "round_number"
-          ],
-          "columnsTo": [
-            "number"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "keno_tickets_numbers_check": {
-          "name": "keno_tickets_numbers_check",
-          "value": "cardinality(numbers) between 1 and 10"
-        }
-      },
       "isRLSEnabled": false
     },
     "games.lichess_accounts": {
@@ -6158,6 +5901,189 @@
           "columns": [
             "member_id",
             "post_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.video_details": {
+      "name": "video_details",
+      "schema": "",
+      "columns": {
+        "media_id": {
+          "name": "media_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "upload_id": {
+          "name": "upload_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "part_size": {
+          "name": "part_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fps": {
+          "name": "fps",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "original_sha256": {
+          "name": "original_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "frames_scanned": {
+          "name": "frames_scanned",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "match_frame_ms": {
+          "name": "match_frame_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scan_result": {
+          "name": "scan_result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "poster_key": {
+          "name": "poster_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rejection_reason": {
+          "name": "rejection_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "video_details_media_id_media_id_fk": {
+          "name": "video_details_media_id_media_id_fk",
+          "tableFrom": "video_details",
+          "tableTo": "media",
+          "columnsFrom": [
+            "media_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.video_renditions": {
+      "name": "video_renditions",
+      "schema": "",
+      "columns": {
+        "media_id": {
+          "name": "media_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bytes": {
+          "name": "bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bitrate_kbps": {
+          "name": "bitrate_kbps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "video_renditions_media_id_media_id_fk": {
+          "name": "video_renditions_media_id_media_id_fk",
+          "tableFrom": "video_renditions",
+          "tableTo": "media",
+          "columnsFrom": [
+            "media_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "video_renditions_media_id_height_pk": {
+          "name": "video_renditions_media_id_height_pk",
+          "columns": [
+            "media_id",
+            "height"
           ]
         }
       },

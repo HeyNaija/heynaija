@@ -51,6 +51,8 @@ function rig({ join, createAudio, holdScreen } = {}) {
       speaking: () => {},
       micOff: () => {},
       mics: () => {},
+      quality: () => {},
+      noise: () => {},
     },
   }
   const session = new GistSession(deps)

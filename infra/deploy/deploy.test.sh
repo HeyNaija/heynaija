@@ -24,12 +24,14 @@ set -euo pipefail
 printf 'docker %s\n' "$*" >> "$DEPLOY_TEST_EVENTS"
 case "$*" in
   'image inspect '*) exit 1 ;;
-  'compose pull --quiet api web kratos')
+  'compose pull --quiet api web kratos'|'compose pull --quiet api web kratos video-worker'|'compose pull --quiet video-worker')
     # Fail the first DEPLOY_TEST_PULL_FAILURES pulls, as a dropped connection would.
     (( $(grep -c '^docker compose pull ' "$DEPLOY_TEST_EVENTS") > ${DEPLOY_TEST_PULL_FAILURES:-0} )) ;;
   'compose config kratos') printf 'kratos config\n' ;;
   'compose up -d --remove-orphans --wait')
-    [[ "$KRATOS_INPUTS" == "$DEPLOY_TEST_EXPECTED_HASH" && "$KRATOS_RELEASE" == "$DEPLOY_TEST_KRATOS_TREE" ]] ;;
+    # The video worker's own server runs no Kratos (DEPLOY_ROLE, from its .env).
+    [[ ${DEPLOY_ROLE:-} == video-worker ]] \
+      || [[ "$KRATOS_INPUTS" == "$DEPLOY_TEST_EXPECTED_HASH" && "$KRATOS_RELEASE" == "$DEPLOY_TEST_KRATOS_TREE" ]] ;;
   'image ls '*|'image prune -f') ;;
   'login '*) read -r password; printf 'docker password %s\n' "$password" >> "$DEPLOY_TEST_EVENTS" ;;
   'logout '*) ;;
@@ -105,7 +107,7 @@ prepare_case() {
   : > "$DEPLOY_TEST_EVENTS"
   "$DEPLOY_TEST_GIT" clone --quiet "$test_dir/origin.git" "$DEPLOY_TEST_REPO"
   "$DEPLOY_TEST_GIT" -C "$DEPLOY_TEST_REPO" -c advice.detachedHead=false checkout --quiet --detach "$start_ref"
-  printf 'IMAGE_PREFIX=ghcr.io/HeyNaija/heynaija\nDEPLOY_BRANCH=main\nBUILD=0\n' > "$DEPLOY_TEST_REPO/infra/deploy/.env"
+  printf 'IMAGE_PREFIX=ghcr.io/HeyNaija/heynaija\nDEPLOY_BRANCH=main\nBUILD=0\n%s' "${DEPLOY_TEST_ENV_EXTRA:-}" > "$DEPLOY_TEST_REPO/infra/deploy/.env"
   # The deploy key's forced command: a copy installed outside the checkout.
   export DEPLOY_TEST_WRAPPER="$case_dir/ssh-deploy.sh" DEPLOY_CHECKOUT="$DEPLOY_TEST_REPO"
   install -m 700 "$repo_root/infra/deploy/ssh-deploy.sh" "$DEPLOY_TEST_WRAPPER"
@@ -155,8 +157,13 @@ run_case() {
 
   grep -Fxq "$expected_version" "$DEPLOY_TEST_EVENTS"
   [[ $(grep -Ec '^(older|newer)$' "$DEPLOY_TEST_EVENTS") == 1 ]]
-  grep -Fxq 'docker compose pull --quiet api web kratos' "$DEPLOY_TEST_EVENTS"
-  grep -Fxq "docker image inspect ghcr.io/heynaija/heynaija-api:$target_ref ghcr.io/heynaija/heynaija-web:$target_ref ghcr.io/heynaija/heynaija-kratos:$DEPLOY_TEST_KRATOS_TREE" "$DEPLOY_TEST_EVENTS"
+  # The video worker's image too, where the server runs it (COMPOSE_PROFILES=video).
+  local worker_pull='' worker_image=''
+  if [[ ${DEPLOY_TEST_ENV_EXTRA:-} == *COMPOSE_PROFILES=video* ]]; then
+    worker_pull=' video-worker' worker_image=" ghcr.io/heynaija/heynaija-video-worker:$target_ref"
+  fi
+  grep -Fxq "docker compose pull --quiet api web kratos$worker_pull" "$DEPLOY_TEST_EVENTS"
+  grep -Fxq "docker image inspect ghcr.io/heynaija/heynaija-api:$target_ref ghcr.io/heynaija/heynaija-web:$target_ref ghcr.io/heynaija/heynaija-kratos:$DEPLOY_TEST_KRATOS_TREE$worker_image" "$DEPLOY_TEST_EVENTS"
   grep -Fxq 'docker compose up -d --remove-orphans --wait' "$DEPLOY_TEST_EVENTS"
   grep -Fq "$target_ref" "$DEPLOY_TEST_REPO/infra/deploy/releases.log"
   echo "PASS: $name"
@@ -169,6 +176,65 @@ run_case ssh-rollback "$newer_ref" "$older_ref" older ssh
 run_case manual-upgrade "$older_ref" "$newer_ref" newer
 run_case manual-rollback "$newer_ref" "$older_ref" older
 run_case unchanged-script "$newer_ref" "$newer_ref" newer
+
+# A server that runs the video worker pulls its image with the others, and only there.
+DEPLOY_TEST_ENV_EXTRA=$'COMPOSE_PROFILES=video\n' run_case video-worker "$newer_ref" "$newer_ref" newer
+DEPLOY_TEST_ENV_EXTRA=$'COMPOSE_PROFILES=other\n' run_case no-video-worker "$newer_ref" "$newer_ref" newer
+! grep -Fq video-worker "$test_dir/no-video-worker/events"
+echo "PASS: no-video-worker-image"
+
+# Production's video worker on a server of its own (DEPLOY_ROLE=video-worker): only
+# its image, and neither Kratos's config nor the site's check, which it does not run.
+# By hand, and through the production workflow's second job, which does nothing
+# until the environment names the server.
+run_worker_case() {
+  local name=$1 target_ref=$2 how=${3:-} host=${4-test-host}
+  local case_dir
+  DEPLOY_TEST_ENV_EXTRA=$'DEPLOY_ROLE=video-worker\nCOMPOSE_FILE=compose.worker.yml\n' prepare_case "$name" "$older_ref"
+  if [[ -n $how ]]; then
+    awk '
+      /^      - name: Deploy the video worker / { deploy = 1 }
+      deploy && /^        run: \|$/ { body = 1; next }
+      body && $0 != "" && !/^          / { exit }
+      body && /^          / { sub(/^          /, ""); print }
+    ' "$repo_root/.github/workflows/$how" > "$case_dir/run.sh"
+    HOME="$case_dir/home" GITHUB_SHA="$target_ref" GITHUB_ACTOR=deployer REGISTRY_TOKEN=registry-token \
+      DEPLOY_SSH_KEY='test key' VIDEO_WORKER_KNOWN_HOSTS='test-host ssh-ed25519 test' VIDEO_WORKER_HOST="$host" \
+      VIDEO_WORKER_SSH_PORT='' bash "$case_dir/run.sh" > "$case_dir/output" 2>&1 || { cat "$case_dir/output"; return 1; }
+    if [[ -z $host ]]; then
+      grep -Fq 'No VIDEO_WORKER_HOST' "$case_dir/output"
+      ! grep -Eq '^(ssh|git|docker) ' "$DEPLOY_TEST_EVENTS"
+      echo "PASS: $name"
+      return
+    fi
+    grep -Eq "^ssh -i .*/home/\.ssh/deploy -p 22 .*-o StrictHostKeyChecking=yes .*heynaija@test-host deploy $target_ref\$" "$DEPLOY_TEST_EVENTS"
+    grep -Fxq 'docker password registry-token' "$DEPLOY_TEST_EVENTS"
+  else
+    bash "$DEPLOY_TEST_REPO/infra/deploy/deploy.sh" "$target_ref" > "$case_dir/output" 2>&1 \
+      || { cat "$case_dir/output"; return 1; }
+  fi
+  grep -Fxq 'docker compose pull --quiet video-worker' "$DEPLOY_TEST_EVENTS"
+  grep -Fxq "docker image inspect ghcr.io/heynaija/heynaija-video-worker:$target_ref" "$DEPLOY_TEST_EVENTS"
+  grep -Fxq 'docker compose up -d --remove-orphans --wait' "$DEPLOY_TEST_EVENTS"
+  ! grep -Eq '^(curl |docker compose config kratos)' "$DEPLOY_TEST_EVENTS"
+  ! grep -Eq '^docker image ls .*-(api|web|kratos)$' "$DEPLOY_TEST_EVENTS"
+  grep -Fq "$target_ref" "$DEPLOY_TEST_REPO/infra/deploy/releases.log"
+  echo "PASS: $name"
+}
+run_worker_case worker-server "$newer_ref"
+run_worker_case worker-server-workflow "$newer_ref" deploy-production.yml
+run_worker_case worker-server-not-set-up "$newer_ref" deploy-production.yml ''
+
+# GitHub skips a job when any job before it was skipped, unless the job has a
+# condition of its own, and production skips check and images whenever staging's
+# images are reused. So every production job that needs another says when it runs.
+awk '
+  /^  [a-z-]+:$/ { if (needs && !cond) { print "No condition of its own: " job; bad = 1 } job = $1; sub(/:$/, "", job); needs = cond = 0 }
+  /^    needs:/ { needs = 1 }
+  /^    if: \$\{\{ !cancelled\(\)/ { cond = 1 }
+  END { if (needs && !cond) { print "No condition of its own: " job; bad = 1 } exit bad }
+' "$repo_root/.github/workflows/deploy-production.yml"
+echo "PASS: production-jobs-after-skips"
 
 # A dropped connection while pulling is tried again; a registry that stays down is
 # reported after PULL_ATTEMPTS tries, saying why it may have failed.
