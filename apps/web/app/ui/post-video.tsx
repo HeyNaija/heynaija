@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { PostVideo as PostVideoData } from '@/lib/api'
 import { formatDuration, formatSize, videoFiles } from '@/lib/video'
 import { PlayIcon } from './icons'
+import { useHls } from './use-hls'
 import { useOneVideo } from './use-one-video'
 import { VideoPlayer } from './video-player'
 
@@ -13,9 +14,9 @@ import { VideoPlayer } from './video-player'
  * (`useOneVideo`). It plays under our own controls (`VideoPlayer`), and when it ends the
  * poster comes back.
  *
- * It plays HLS from the media domain (ADR 0021 section 7) where the browser plays HLS
- * itself (Safari, every browser on iPhones); hls.js for the rest comes with the player's
- * own pull request (PR 4), as does the `full` data setting.
+ * It plays HLS from the media domain (ADR 0021 section 7): the browser's own where it has
+ * it (Safari, every browser on iPhones, recent Chrome), hls.js elsewhere (`useHls`). The
+ * `full` data setting is still to come.
  *
  * `held` is the low-data hold (ADR 0019 section 5.2): nothing, not even the poster, is
  * fetched until the reader taps. PostItem sets it from the reader's low-data choice
@@ -35,6 +36,7 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
 
   // Starting another puts the poster back.
   const playing = useOneVideo(player, started, () => setStarted(false))
+  const hls = useHls(player, started ? files.playlist : null)
 
   // Scrolled fully out of view: pause (by putting the poster back).
   useEffect(() => {
@@ -51,6 +53,7 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
 
   const play = () => {
     playing()
+    hls.start()
     setLoaded(true)
     setStarted(true)
   }
@@ -59,12 +62,12 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
     <div className="post-video" style={{ aspectRatio: ratio }}>
       {started ? (
         // It replaces the poster's button, so focus moves to its own play button.
-        <VideoPlayer player={player} length={video.durationMs / 1000} autoFocus>
+        <VideoPlayer player={player} length={video.durationMs / 1000} failed={hls.failed} autoFocus>
           <video
             ref={player}
-            src={files.playlist}
+            src={hls.src}
             poster={files.poster}
-            autoPlay
+            autoPlay={hls.src !== undefined}
             playsInline
             preload="auto"
             aria-label={label}
