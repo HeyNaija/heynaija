@@ -1073,17 +1073,18 @@
     {
       "id": "adult-content-labels",
       "name": "Date of birth at signup and 18+ labels",
-      "description": "Ask for a date of birth at signup and keep only the age band; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.",
+      "description": "Ask for a date of birth at signup, confirmed with a tick, and keep it with the age record; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.",
       "category": "safety",
       "priority": "P2",
-      "status": "planned",
+      "status": "partial",
       "availability": "not_live",
+      "caveat": "Only the first part is built: new members give a date of birth at signup. Posts and communities cannot be marked 18+ yet.",
       "evidence": [
         "docs/adr/0020-under-18-accounts-and-adult-labels.md",
         "apps/api/src/governance/age.ts",
         "docs/governance/under-18-rollout.md"
       ],
-      "notes": "Phase 1 of ADR 0020 (proposed, 3 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs."
+      "notes": "Phase 1 of ADR 0020 (accepted 6 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth at signup is built (birth_date on restricted.age_assurances, the /join fields and confirmation, POST /v1/signup/age, Settings and the export); asking members with no age on record, the labels and their enforcement are not yet. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs."
     },
     {
       "id": "minor-safeguards",
@@ -1103,7 +1104,7 @@
       "dependency": [
         "adult-content-labels"
       ],
-      "notes": "Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Waits for counsel (minimum age, guardian consent), phase 1 in production, upload hash-matching and the rest of the under-18 rollout checklist, then a written sign-off."
+      "notes": "Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Owner decisions of 5 and 6 Nov 2026: 13 to 17 year olds join the beta the way X lets them in, with protections on by default; 13 is the minimum on the web and in the app stores. First come dates of birth at signup, labels enforced, Arachnid Shield on in production and the minors' protections (ADR 0020 sections 4 and 5); counsel's answers and the rest of the under-18 rollout checklist follow during the beta. Minors listen to Gists but never host or speak."
     },
     {
       "id": "age-verification",
@@ -1119,7 +1120,7 @@
         "apps/api/src/governance/age.ts",
         "docs/governance/under-18-rollout.md"
       ],
-      "notes": "The model exists (restricted.age_assurances, ageStatus) but nothing can yet produce a verified assurance: NIN verification is locked off and no age-assurance provider is chosen. Direct messages need this. The provider must not require a NIN (under-18 rollout section 2)."
+      "notes": "The model exists (restricted.age_assurances, ageStatus) but nothing can yet produce a verified assurance: NIN verification is locked off and no age-assurance provider is chosen. Direct messages and calls are not built until it exists (owner, 6 Nov 2026, ADR 0020); meanwhile hosting and speaking in Gists read the stated age. Governance voting always needs an ID-verified age. The provider must not require a NIN (under-18 rollout section 2)."
     },
     {
       "id": "direct-messages",
@@ -1135,7 +1136,7 @@
         "packages/db/src/schema.ts",
         "docs/governance/under-18-rollout.md"
       ],
-      "caveat": "Design only. Messages will be limited to members who are 18 or over, have completed age verification and have turned messages on. Age verification, message-request and abuse handling, retention and safeguarding approval are needed first.",
+      "caveat": "Design only. Messages will be limited to members who are 18 or over, have completed age verification and have turned messages on; not built until age verification exists (owner, 6 Nov 2026). Age verification, message-request and abuse handling, retention and safeguarding approval are needed first.",
       "dependency": [
         "minor-safeguards",
         "age-verification"

@@ -10,6 +10,15 @@ has to be decided, approved and built before it can be lifted.
 kept: a date of birth at signup and 18+ labels (sections 2 and 4). Phase 2: the rest,
 then opening to minors.
 
+**Owner decisions, 5 and 6 November 2026** (ADR 0020, "Decision"): the beta opens
+to 13 to 17 year olds the way X lets them in, with protections on by default; 13 is
+the minimum on the web and in the app stores; signup asks for a date of birth and a
+confirmation that it is true; until an age check exists, that stated age is what the
+age gates read; minors listen to Gists but never host or speak; direct messages and
+calls are not built until the ID check for age exists; governance voting needs an
+ID-verified age. What still comes before the first minor joins is in ADR 0020,
+section 5; the other items below follow during the beta.
+
 **Intended model (owner, 16 October 2026):**
 
 - General social networking will eventually be open to eligible people under 18,
@@ -37,9 +46,11 @@ including for members who live outside Nigeria.
 
 ## 1. Decisions needed before any building
 
-- [ ] **Minimum age** (for example 13) and whether 13–15 and 16–17 need different
-      protections. Add finer bands to `AGE_BANDS` only if a protection actually
-      differs; otherwise `under_18` is enough.
+- [x] **Minimum age:** 13, on the web and in the app stores (owner, 3 and 5
+      November 2026; ADR 0020, question 1).
+- [ ] Whether 13–15 and 16–17 need different protections. Add finer bands to
+      `AGE_BANDS` only if a protection actually differs; otherwise `under_18` is
+      enough.
 - [ ] **Legal basis and duties for children's data.** The Nigeria Data Protection
       Act 2023 has specific rules for processing children's personal data,
       including parent or guardian consent and appropriate age verification
@@ -63,6 +74,8 @@ including for members who live outside Nigeria.
       2026: signup asks for a date of birth, derives the band from it, and keeps the
       date with the age record, seen only by the member (ADR 0020, section 1, with
       the reasons in question 5); counsel to confirm (ADR 0020, section 7, item 3).
+      Owner decision, 5 November 2026: the date comes with a tick confirming it is
+      the person's real date of birth.
 - [ ] Below the minimum age: refuse, explain kindly, keep no age record.
 - [ ] Minors get `review_after` (the month they turn 18, rounded up, or a periodic
       re-check) and move to adult only after a fresh statement or check.
@@ -109,6 +122,11 @@ including for members who live outside Nigeria.
       default, never from adults the minor does not follow, message requests rather
       than open inboxes, block and report inside the conversation, and a published
       retention and scanning policy.
+- [ ] Direct messages and calls are not built until the ID check for age exists
+      (ADR 0018), and then need it (owner, 6 November 2026).
+- [ ] Gists: `under_18` and unknown ages listen only, never host, co-host or
+      speaker (owner, 6 November 2026). Gists check no age today: `isCallsMember`
+      in `apps/api/src/gists/eligibility.ts` reads only the `gists` flag's list.
 - [ ] Replies and mentions: minors can limit replies to people they follow, and
       mentions from strangers are limited by default.
 - [ ] Discovery: minors are not suggested to adults, and are left out of member
@@ -124,7 +142,9 @@ including for members who live outside Nigeria.
       authorities.
 - [ ] Hash-matching of known abuse material in place for all uploads (PhotoDNA or
       equivalent; see docs/safety/abuse-material-scanning.md), not only the
-      Cloudflare tool.
+      Cloudflare tool. Built: Arachnid Shield (`apps/api/src/media/scanners.ts`);
+      done once `ARACHNID_SHIELD_USERNAME` and `ARACHNID_SHIELD_PASSWORD` are set in
+      production.
 - [ ] Moderators see only "minor" or "adult" where they need it, never more.
 - [ ] The mistaken-age process (rules, "Who can join") updated for a world with
       minors: notice, appeal, and no public documents.
@@ -139,5 +159,13 @@ including for members who live outside Nigeria.
       published through the governance process.
 - [ ] Security review; end-to-end tests for minor signup, consent, content
       restriction and contact limits.
+- [ ] App store listings rated 13+, from each store's questionnaire answered for
+      what the app shows (ADR 0020, question 11). The rating keeps nobody out:
+      signup applies the minimum age on every platform, the web included.
+- [ ] Store policies for social apps met before the first submission: Google
+      Play's Child Safety Standards (published standards against child sexual abuse
+      and exploitation, in-app reporting, a child-safety contact:
+      contact@heynaija.ng) and Apple's rules for user-generated content (filtering,
+      reporting, blocking, published contact details).
 - [ ] Only then: change `UNDER_18_ACCOUNTS_ENABLED` in `env.ts`, in review, and
       extend the `/join` age question and `infra/kratos/invite-check.jsonnet`.

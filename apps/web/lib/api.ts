@@ -695,6 +695,8 @@ export type GovernanceStatus = {
     band: 'unknown' | 'under_18' | '18_plus'
     assurance: 'none' | 'declared' | 'reviewed' | 'verified'
     reviewDue: boolean
+    /** The date of birth they gave at signup (YYYY-MM-DD), or null for an account from before it was asked. */
+    birthDate: string | null
   }
   verification: {
     status: 'none' | 'pending' | 'verified' | 'rejected' | 'expired' | 'revoked'

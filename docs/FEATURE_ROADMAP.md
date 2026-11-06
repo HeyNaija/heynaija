@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 16 | 16 | 12 | 89 |
+| 45 | 17 | 15 | 12 | 89 |
 
 ## Priority order
 
@@ -578,10 +578,11 @@ This tracks product development, not formal governance decisions. Priority means
 #### Date of birth at signup and 18+ labels
 
 - **ID:** `adult-content-labels`
-- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
-- **Description:** Ask for a date of birth at signup and keep only the age band; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
+- **Description:** Ask for a date of birth at signup, confirmed with a tick, and keep it with the age record; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.
+- **Remaining work / caveat:** Only the first part is built: new members give a date of birth at signup. Posts and communities cannot be marked 18+ yet.
 - **Inspected evidence:** `docs/adr/0020-under-18-accounts-and-adult-labels.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`
-- **Audit notes:** Phase 1 of ADR 0020 (proposed, 3 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs.
+- **Audit notes:** Phase 1 of ADR 0020 (accepted 6 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth at signup is built (birth_date on restricted.age_assurances, the /join fields and confirmation, POST /v1/signup/age, Settings and the export); asking members with no age on record, the labels and their enforcement are not yet. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs.
 
 #### Safeguards for under-18 access
 
@@ -591,7 +592,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Remaining work / caveat:** Child-safety decisions, approvals and implementation must precede any change to the temporary adult-only beta.
 - **Dependencies:** `adult-content-labels`
 - **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`, `docs/adr/0020-under-18-accounts-and-adult-labels.md`
-- **Audit notes:** Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Waits for counsel (minimum age, guardian consent), phase 1 in production, upload hash-matching and the rest of the under-18 rollout checklist, then a written sign-off.
+- **Audit notes:** Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Owner decisions of 5 and 6 Nov 2026: 13 to 17 year olds join the beta the way X lets them in, with protections on by default; 13 is the minimum on the web and in the app stores. First come dates of birth at signup, labels enforced, Arachnid Shield on in production and the minors' protections (ADR 0020 sections 4 and 5); counsel's answers and the rest of the under-18 rollout checklist follow during the beta. Minors listen to Gists but never host or speak.
 
 #### Age verification for adults
 
@@ -599,7 +600,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P2 · **Status:** Planned · **Availability:** Not live
 - **Description:** Check that a member is 18 or over, separately from identity verification, for features that need a verified adult.
 - **Inspected evidence:** `docs/adr/0006-age-status-model.md`, `docs/adr/0016-direct-messages.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`
-- **Audit notes:** The model exists (restricted.age_assurances, ageStatus) but nothing can yet produce a verified assurance: NIN verification is locked off and no age-assurance provider is chosen. Direct messages need this. The provider must not require a NIN (under-18 rollout section 2).
+- **Audit notes:** The model exists (restricted.age_assurances, ageStatus) but nothing can yet produce a verified assurance: NIN verification is locked off and no age-assurance provider is chosen. Direct messages and calls are not built until it exists (owner, 6 Nov 2026, ADR 0020); meanwhile hosting and speaking in Gists read the stated age. Governance voting always needs an ID-verified age. The provider must not require a NIN (under-18 rollout section 2).
 
 ### Transparency and governance
 
@@ -693,7 +694,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `direct-messages`
 - **Priority:** P2 · **Status:** Blocked · **Availability:** Not live
 - **Description:** Support opt-in private conversations between age-verified adults, with message requests, blocking and reporting.
-- **Remaining work / caveat:** Design only. Messages will be limited to members who are 18 or over, have completed age verification and have turned messages on. Age verification, message-request and abuse handling, retention and safeguarding approval are needed first.
+- **Remaining work / caveat:** Design only. Messages will be limited to members who are 18 or over, have completed age verification and have turned messages on; not built until age verification exists (owner, 6 Nov 2026). Age verification, message-request and abuse handling, retention and safeguarding approval are needed first.
 - **Dependencies:** `minor-safeguards`, `age-verification`
 - **Inspected evidence:** `docs/adr/0016-direct-messages.md`, `PRODUCT.md`, `packages/db/src/schema.ts`, `docs/governance/under-18-rollout.md`
 - **Audit notes:** No message model or delivery endpoint exists. Design in ADR 0016 (proposed 30 Oct 2026). Staged plan: 1 design (this ADR); 2 backend behind a default-off flag; 3 UI behind the flag; 4 safeguards sign-off (age verification, counsel on privacy copy and retention, moderator runbook, governance answer on emergency access); 5 enable for a named adult allow-list, then all eligible members. Minors, unverified and unknown-age members are never eligible.

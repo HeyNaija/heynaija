@@ -22,6 +22,9 @@ search. A verified adult must also turn DMs on in Settings (default off). Both
 sides of every conversation must be verified and opted in. The feature ships
 dark as well: off by default in every environment.
 
+**Owner decision (6 November 2026, ADR 0020):** DMs are not built until the ID
+check for age (ADR 0018) exists. A stated age is never enough.
+
 The recommendation in each section below is what this ADR proposes; the open
 questions (end of file) need the owner or governance before building.
 
