@@ -90,7 +90,7 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
   )
   switch (n.kind) {
     case 'reply':
-      return { icon: <BubbleIcon size={18} />, text: <>{who} replied to your post</> }
+      return { icon: <BubbleIcon size={18} />, text: <>{who} {n.post?.gistId ? 'replied in a Gist' : 'replied to your post'}</> }
     case 'like':
       return { icon: <HeartIcon size={18} filled />, text: <>{who} liked your post</> }
     case 'repost':
@@ -98,7 +98,7 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
     case 'quote':
       return { icon: <QuoteIcon size={17} />, text: <>{who} quoted your post</> }
     case 'mention':
-      return { icon: <MentionIcon size={18} />, text: <>{who} mentioned you</> }
+      return { icon: <MentionIcon size={18} />, text: <>{who} mentioned you{n.post?.gistId ? ' in a Gist' : ''}</> }
     case 'follow':
       return { icon: <FollowIcon size={18} />, text: <>{who} followed you</> }
     case 'post_removed':

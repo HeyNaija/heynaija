@@ -77,7 +77,7 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
   })
 
   const post = (id: string | null, gistId?: string | null) =>
-    gistId ? `${webUrl}/gists/${gistId}` : id ? `${webUrl}/p/${id}` : `${webUrl}/notifications`
+    gistId ? `${webUrl}/gists/${gistId}${id ? `#post-${id}` : ''}` : id ? `${webUrl}/p/${id}` : `${webUrl}/notifications`
   return [...groups.values()].map(({ items, actors }) => ({ ...describe(items[0]!, actors, items.length), items }))
 
   function describe(item: DigestItem, actors: string[], count: number): Omit<Line, 'items'> {
@@ -89,13 +89,13 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
       case 'reply':
         return { headline: item.gistId ? `${who} replied in a Gist` : `${who} replied to your post`, quote, href: post(item.postId, item.gistId) }
       case 'quote':
-        return { headline: `${who} quoted your post`, quote, href: post(item.postId) }
+        return { headline: `${who} quoted your post`, quote, href: post(item.postId, item.gistId) }
       case 'mention':
-        return { headline: `${who} mentioned you`, quote, href: post(item.postId) }
+        return { headline: item.gistId ? `${who} mentioned you in a Gist` : `${who} mentioned you`, quote, href: post(item.postId, item.gistId) }
       case 'like':
-        return { headline: `${who} liked your post`, quote, href: post(item.postId) }
+        return { headline: `${who} liked your post`, quote, href: post(item.postId, item.gistId) }
       case 'repost':
-        return { headline: `${who} reposted your post`, quote, href: post(item.postId) }
+        return { headline: `${who} reposted your post`, quote, href: post(item.postId, item.gistId) }
       case 'follow':
         return { headline: `${who} followed you`, quote: null, href: actors.length === 1 ? `${webUrl}/u/${actors[0]}` : inApp }
       case 'post_removed':
@@ -116,7 +116,7 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
         return { headline: `You are no longer a moderator of ${item.community ?? 'a community'}`, quote: null, href: inApp }
       case 'idea_status':
         // Newest first, so this is the latest status.
-        return { headline: ideaHeadline(item.idea ?? { kind: 'idea', yours: false }, item.idea?.status ?? null), quote, href: post(item.postId) }
+        return { headline: ideaHeadline(item.idea ?? { kind: 'idea', yours: false }, item.idea?.status ?? null), quote, href: post(item.postId, item.gistId) }
     }
   }
 }

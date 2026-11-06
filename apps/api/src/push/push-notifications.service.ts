@@ -269,6 +269,7 @@ export class PushNotificationsService {
       kind: r.kind,
       actor: r.actor_handle,
       postId: r.post_id,
+      gistId: r.gist_id,
       excerpt: r.post_text ? excerpt(r.post_text, EXCERPT_MAX) : null,
       community: r.community_name,
       idea: r.idea_kind ? { status: r.detail, kind: r.idea_kind, yours: r.idea_yours } : null,
