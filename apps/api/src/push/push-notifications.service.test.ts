@@ -304,3 +304,32 @@ test('a browser given a new address keeps its subscription, and its ID, under th
   const rows = await db.select({ endpoint: pushSubscriptions.endpoint, p256dh: pushSubscriptions.p256dh }).from(pushSubscriptions)
   assert.deepEqual(rows, [{ endpoint: fresh, p256dh: 'b' }])
 })
+
+test('a member keeps their newest ten browsers; older ones drop off and other members are untouched', async () => {
+  const address = (n: number) => `https://fcm.googleapis.com/fcm/send/ada-many-${n}`
+  const bayoPhone = await browser(bayo)
+  for (let n = 1; n <= 12; n++) await push.subscribe(ada, { endpoint: address(n), p256dh: 'a', auth: 'a' })
+
+  const kept = async () =>
+    (await db.select({ endpoint: pushSubscriptions.endpoint }).from(pushSubscriptions).where(eq(pushSubscriptions.memberId, ada))).map((r) => r.endpoint).sort()
+  const newest = Array.from({ length: 10 }, (_, i) => address(i + 3)).sort()
+  assert.deepEqual(await kept(), newest)
+  assert.equal(await push.isSubscribed(bayo, bayoPhone), true)
+
+  await push.subscribe(ada, { endpoint: address(3), p256dh: 'b', auth: 'b' })
+  assert.deepEqual(await kept(), newest)
+
+  await push.subscribe(ada, { endpoint: address(13), p256dh: 'a', auth: 'a' })
+  assert.equal((await kept()).includes(address(3)), false)
+  assert.equal((await kept()).length, 10)
+})
+
+test('a browser taken over from another member survives the cap even though its row is the oldest', async () => {
+  const old = 'https://fcm.googleapis.com/fcm/send/bayo-old'
+  await push.subscribe(bayo, { endpoint: old, p256dh: 'a', auth: 'a' })
+  for (let n = 1; n <= 10; n++) await push.subscribe(ada, { endpoint: `https://fcm.googleapis.com/fcm/send/ada-full-${n}`, p256dh: 'a', auth: 'a' })
+  await push.subscribe(ada, { endpoint: old, p256dh: 'b', auth: 'b' })
+  assert.equal(await push.isSubscribed(ada, old), true)
+  const rows = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.memberId, ada))
+  assert.equal(rows.length, 10)
+})
