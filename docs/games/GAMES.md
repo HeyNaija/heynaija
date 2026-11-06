@@ -6,6 +6,9 @@ agent working on games code reads this first: `apps/api/src/games`,
 this document, stop and ask rather than working around it. Change this document
 in the same pull request as any agreed change to the rules.
 
+For a plain-language explanation of how Games works, for anyone on the team, see
+[HOW-GAMES-WORKS.md](HOW-GAMES-WORKS.md). Keep it in step when the rules change.
+
 Progress and status are not tracked here. They live in `docs/feature-roadmap.json`
 (rendered at `/progress`), like every other feature.
 
