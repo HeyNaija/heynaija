@@ -4,6 +4,17 @@
 # On the staging server this sits beside Koinovera's sites in the same nginx; it
 # only answers for ${SITE_ADDRESS} and only proxies to HeyNaija's loopback port.
 
+# Kratos form submissions (registration, sign-in, recovery, settings) each can make
+# Kratos email a code, and the invite check only runs after the code is entered, so
+# anyone can ask for emails to any address. Limit them per visitor address, POST
+# only: an empty key is not counted, so page loads and the Google callback are free.
+# Both names carry heynaija_ because this file shares one nginx with other sites.
+map $request_method $heynaija_kratos_submit_key {
+    default "";
+    POST    $binary_remote_addr;
+}
+limit_req_zone $heynaija_kratos_submit_key zone=heynaija_kratos_submit:10m rate=10r/m;
+
 server {
     listen 80;
     listen [::]:80;
@@ -83,6 +94,21 @@ ${LIVEKIT_WEBHOOK_ALLOW}
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # Kratos's self-service flows, through the web app's /kratos proxy. Same proxying
+    # as the location below, plus the submission limit above (429 when exceeded).
+    location /kratos/self-service/ {
+        limit_req zone=heynaija_kratos_submit burst=10 nodelay;
+        limit_req_status 429;
+        proxy_pass http://${WEB_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 60s;
     }
 
     # Everything else: the web app, which also proxies /api/v1 and /kratos.
