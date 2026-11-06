@@ -4,8 +4,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { after, before, beforeEach, test } from 'node:test'
+import { after, before, beforeEach, mock, test } from 'node:test'
 import { media, members, reports, videoDetails, videoRenditions } from '@heynaija/db'
+import { Logger } from '@nestjs/common'
 import { UnrecoverableError } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { type ContentScanner, type FrameScan, NoScanner, type VideoScan } from '../media/media.service.js'
@@ -83,7 +84,10 @@ const detailsOf = async (id: string) => (await db.select().from(videoDetails).wh
 test('a clear video is probed, scanned, encoded, published and only then made ready; the original goes', { skip, timeout: 120_000 }, async () => {
   const id = await queued()
   const scanner = clear()
+  const logged: string[] = []
+  mock.method(Logger.prototype, 'log', (message: string) => void logged.push(message))
   await processor(scanner).process(id, { lastAttempt: false })
+  mock.restoreAll()
 
   assert.deepEqual(scanner.seen.map((s) => s.publicFiles), [0], 'scanned before anything was written publicly')
   assert.ok(scanner.seen[0]!.frames >= 4)
@@ -103,6 +107,11 @@ test('a clear video is probed, scanned, encoded, published and only then made re
   assert.deepEqual([d.width, d.height, d.posterKey], [854, 480, posterKey(id)])
   assert.ok(d.framesScanned! >= 4)
   assert.deepEqual((await readdir(dir)).filter((f) => f.startsWith('video-')), [], 'scratch space is cleaned up')
+  // A video that went through says so, so a quiet log means no work came.
+  assert.ok(
+    logged.some((line) => new RegExp(`^video ${id} ready in \\d+\\.\\d s \\(854x480, \\d+\\.\\d s long, 3 sizes\\)$`).test(line)),
+    logged.join('\n'),
+  )
 })
 
 test('with no scanner bound a video is NEVER made ready: it is held quarantined, nothing is published, the original is kept privately', { skip, timeout: 120_000 }, async () => {
