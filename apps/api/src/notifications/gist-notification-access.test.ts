@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import { blocks, communities, communityMemberships, gistMembers, gists, members, notifications } from '@heynaija/db'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import type { EmailAddresses } from '../email/addresses.js'
 import { type EmailJobs, EmailNotificationsService, type EmailSettings } from '../email/email-notifications.service.js'
 import type { Mail, Mailer } from '../email/mailer.js'
@@ -114,6 +114,28 @@ test('it reaches the email digest only for someone who can open the Gist', async
     assert.ok(!mail.text.includes(`/p/${reply}`))
   }
   assert.equal(outbox.sent.filter((m) => cannot.some((p) => m.to === `${id[p]}@example.test`)).length, 0)
+})
+
+const eraseHost = () => db.update(members).set({ deletedAt: new Date() }).where(eq(members.id, id.ada))
+
+test('when the host erases their account, the list withholds replies in the Gist from everyone who could open it', async () => {
+  await eraseHost()
+  assert.equal((await list.list(id.chi, 20)).notifications.length, 0)
+  assert.equal(await list.unreadCount(id.chi), 0)
+})
+
+test('when the host erases their account, no push is sent about replies in the Gist', async () => {
+  await eraseHost()
+  await push.sweep()
+  await push.send(id.chi)
+  assert.equal(browser.sent.filter((m) => m.body.includes('secret')).length, 0)
+})
+
+test('when the host erases their account, the email digest leaves out replies in the Gist', async () => {
+  await eraseHost()
+  await email.sweep()
+  await email.sendDigest(id.chi)
+  assert.equal(outbox.sent.filter((m) => m.text.includes('secret')).length, 0)
 })
 
 test('a member who is removed from the Gist later stops seeing the old notification', async () => {
