@@ -32,10 +32,10 @@ export class PhotoDnaScanner implements ContentScanner {
   ) {}
 
   async scan(image: Buffer): Promise<'clear' | 'match'> {
-    const pages = await framePages(image)
+    const { pages, jpeg } = await frameSource(image)
     for (let from = 0; from < pages; from += SCAN_CONCURRENCY) {
       const batch = Array.from({ length: Math.min(SCAN_CONCURRENCY, pages - from) }, (_, i) => from + i)
-      const results = await Promise.all(batch.map(async (page) => this.matches(await frameJpeg(image, page))))
+      const results = await Promise.all(batch.map(async (page) => this.matches(await jpeg(page))))
       if (results.includes(true)) return 'match'
     }
     return 'clear'
@@ -85,18 +85,40 @@ export async function normaliseFrame(image: Buffer): Promise<Buffer> {
  * published frame by frame. Each is upright and within the service's sizes.
  */
 export async function framesToScan(image: Buffer): Promise<Buffer[]> {
-  const pages = await framePages(image)
-  return Promise.all(Array.from({ length: pages }, (_, page) => frameJpeg(image, page)))
+  const { pages, jpeg } = await frameSource(image)
+  return Promise.all(Array.from({ length: pages }, (_, page) => jpeg(page)))
 }
 
-async function framePages(image: Buffer): Promise<number> {
-  return (await sharp(image, { limitInputPixels: MAX_INPUT_PIXELS }).metadata()).pages ?? 1
+/**
+ * The frames of an image, each as a JPEG on request. An animation is decoded once and
+ * sliced: asking sharp for page N decodes every page before it, so doing that per frame
+ * made a 300-frame GIF take about 12 times longer (16 s against 1.3 s at the size limit).
+ */
+async function frameSource(image: Buffer): Promise<{ pages: number; jpeg: (page: number) => Promise<Buffer> }> {
+  const meta = await sharp(image, { limitInputPixels: MAX_INPUT_PIXELS }).metadata()
+  const pages = meta.pages ?? 1
+  const perPage = { pages, jpeg: (page: number) => frameJpeg(image, page) }
+  // A turn from EXIF is applied per page; the raw bytes below no longer carry it.
+  if (pages === 1 || (meta.orientation ?? 1) !== 1) return perPage
+
+  const { data, info } = await sharp(image, { limitInputPixels: MAX_INPUT_PIXELS, animated: true }).raw().toBuffer({ resolveWithObject: true })
+  const height = info.pageHeight ?? info.height
+  // Every frame is scanned or none is trusted: a different count falls back to the slow way.
+  if (Math.round(info.height / height) !== pages) return perPage
+  const size = info.width * height * info.channels
+  const raw = { width: info.width, height, channels: info.channels }
+  return {
+    pages,
+    jpeg: (page) => toScanJpeg(sharp(data.subarray(page * size, (page + 1) * size), { raw }), info.width, height),
+  }
 }
 
 async function frameJpeg(image: Buffer, page: number): Promise<Buffer> {
   const frame = await sharp(image, { limitInputPixels: MAX_INPUT_PIXELS, page, pages: 1 }).rotate().png().toBuffer({ resolveWithObject: true })
-  const { width, height } = frame.info
-  const sized = sharp(frame.data)
+  return toScanJpeg(sharp(frame.data), frame.info.width, frame.info.height)
+}
+
+async function toScanJpeg(sized: ReturnType<typeof sharp>, width: number, height: number): Promise<Buffer> {
   if (Math.min(width, height) < MIN_EDGE) sized.resize(MIN_EDGE, MIN_EDGE, { fit: 'outside' })
   else if (Math.max(width, height) > MAX_EDGE) sized.resize(MAX_EDGE, MAX_EDGE, { fit: 'inside' })
   return sized.jpeg({ quality: 90 }).toBuffer()

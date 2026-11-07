@@ -79,8 +79,10 @@ before the public copies are written.
   published (up to the 300-frame limit) goes to PhotoDNA, four requests at a time,
   and a match on any frame blocks the upload. Each frame is sent as a JPEG at least
   160px on its short side and at most 2048px on its long side. A frame that gets no
-  clear answer fails the scan, so the upload waits. Check the request volume against
-  the rate limit that comes with the key.
+  clear answer fails the scan, so the upload waits. The file is decoded once and the
+  frames are sliced from that, not decoded again per frame: a 300-frame 360px GIF
+  takes about 0.6 s of CPU to prepare, where per-frame decoding took 16 s. Check the
+  request volume against the rate limit that comes with the key.
 - **To do once approved:** check `apps/api/src/media/photodna.ts` against the
   documentation that comes with the key: the Match address (`PHOTODNA_MATCH_URL`
   overrides it without a code change), the success status code (3000), the size
