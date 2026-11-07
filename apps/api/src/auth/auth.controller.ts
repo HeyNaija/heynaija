@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto'
-import { type Db, members } from '@heynaija/db'
+import { type Db, members, REPLY_AUDIENCES } from '@heynaija/db'
 import {
   BadRequestException,
   Body,
@@ -30,6 +30,7 @@ import { avatarPath } from '../media/media.service.js'
 import { videoConfig, videoLimitsOf } from '../video/video-config.js'
 import { VideoGate } from '../video/video-gate.js'
 import { MembersService } from '../members/members.service.js'
+import { isMinor, MINOR_REPLY_AUDIENCES } from '../governance/minors.js'
 import { NotificationsService } from '../notifications/notifications.service.js'
 import { RateLimiter, visitor } from '../rate-limit.js'
 import { DB, ENV } from '../tokens.js'
@@ -110,6 +111,7 @@ export class AuthController {
           labelPosts: members.labelPosts,
           showSensitiveMedia: members.showSensitiveMedia,
           adult: seesAdultContent(req.member.id),
+          minor: isMinor(req.member.id),
         })
         .from(members)
         .where(eq(members.id, req.member.id)),
@@ -146,6 +148,9 @@ export class AuthController {
         markPosts: row?.labelPosts ?? null,
         showMedia: row?.showSensitiveMedia ?? false,
       },
+      // Who the composer may let reply to a new post, the default first: a minor's
+      // conversations open as far as "following" at most (ADR 0020).
+      replyAudiences: row?.minor ? MINOR_REPLY_AUDIENCES : REPLY_AUDIENCES,
       // The limits the composer checks a chosen video against before sending it: this server's own settings.
       videoLimits: videoPosts ? videoLimitsOf(videoConfig(this.env)) : null,
     }

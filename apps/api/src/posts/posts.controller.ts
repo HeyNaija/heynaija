@@ -51,6 +51,7 @@ import {
   VideoNotReadyError,
 } from './posts.service.js'
 import { LabelNotAllowedError } from '../governance/adult-content.js'
+import { ReplyAudienceNotAllowedError } from '../governance/minors.js'
 import { DISCOVER_RULES, discoverPageQuery } from './discover.js'
 import { parseHashtag } from './hashtags.js'
 import { replyOrderQuery, replyPageQuery } from './reply-cursor.js'
@@ -233,7 +234,12 @@ export class PostsController {
   async setReplyAudience(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
     const { audience } = parse(replyAudienceBody, body)
     await this.limits.hit('action', req.member.id)
-    if (!(await this.posts.setReplyAudience(req.member.id, postId(id), audience))) throw new NotFoundException()
+    try {
+      if (!(await this.posts.setReplyAudience(req.member.id, postId(id), audience))) throw new NotFoundException()
+    } catch (err) {
+      if (err instanceof ReplyAudienceNotAllowedError) throw new ForbiddenException({ code: 'reply_audience_not_allowed', message: err.message })
+      throw err
+    }
   }
 
   /** The author marks their own post sensitive (ADR 0020). Taking their own mark off always works. */

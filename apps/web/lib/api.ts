@@ -23,6 +23,11 @@ export type Me = {
   /** Shown as a badge on the Notifications link. */
   unreadNotifications: number
   moderates: boolean
+  /**
+   * Who this member may let reply to a new post, the default first. A minor never
+   * opens a conversation to everyone (ADR 0020). Missing from an older API: all of them.
+   */
+  replyAudiences?: ReplyAudience[]
   /** False until they finish or skip the welcome flow, which the home page sends them to. */
   onboarded: boolean
   /**
