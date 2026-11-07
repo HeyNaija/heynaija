@@ -1,22 +1,24 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import type { Post } from '@/lib/api'
-import { ChevronIcon, PlusIcon } from './icons'
+import { ChevronIcon } from './icons'
 import { PostItem } from './post-item'
 
 /**
  * A story's updates under its first post, oldest first, joined by a line in the
  * gutter that curves into each one. With `folded`, the earlier updates wait
- * behind one link. Replies to an update are on its own page.
+ * behind one link. For its author, `writer` is the box at the end that adds the
+ * next one. Replies to an update are on its own page.
  */
-export function StorySpine({ story, updates, folded, viewerId, now }: {
+export function StorySpine({ story, updates, folded, viewerId, now, writer }: {
   story: Post
   updates: Post[]
   /** How many earlier updates are left out. */
   folded: number
   viewerId: string | null
   now: number
+  writer?: ReactNode
 }) {
-  const next = (story.story?.updates ?? 0) + 1
   return (
     <ol id="updates" className="story-spine" aria-label="Updates">
       {folded > 0 ? (
@@ -32,14 +34,7 @@ export function StorySpine({ story, updates, folded, viewerId, now }: {
           <PostItem post={update} viewerId={viewerId} now={now} inThread />
         </li>
       ))}
-      {viewerId === story.authorId ? (
-        <li className="story-add">
-          <Link prefetch={false} href={`/p/${story.id}/update`}>
-            <PlusIcon size={16} />
-            Add update {next}
-          </Link>
-        </li>
-      ) : null}
+      {writer ? <li className="story-add">{writer}</li> : null}
     </ol>
   )
 }

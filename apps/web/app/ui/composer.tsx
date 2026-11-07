@@ -45,8 +45,11 @@ type Props = {
   choices?: { slug: string; name: string }[]
   /** Makes this a quote post of that post, shown under the box as `preview`. */
   quote?: { id: string; preview: ReactNode }
-  /** Makes this an update to that story (docs/adr/0024), its first post shown under the box as `preview`. */
-  story?: { id: string; preview: ReactNode }
+  /**
+   * Makes this an update to that story (docs/adr/0024), written at the end of the
+   * story as a reply is under its post: the same small box, opened by `#add-update`.
+   */
+  story?: { id: string }
   submitAction?: (previous: ComposeState, data: FormData) => Promise<ComposeState>
   /** Where "View reply" goes for the reply just posted; a Gist's replies are not served on /p/. */
   postedHref?: (id: string) => string
@@ -114,9 +117,12 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const offers = composerOffers({ media, polls, videoAvailable: videoLimits !== null, replyTo, pollOpen, videoDrafted: video.draft !== null })
   const form = useRef<HTMLFormElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
+  // A reply or an update is the small box, in place under what it follows.
+  const inline = !!replyTo || !!story
+  const formId = story ? 'add-update' : 'compose'
   // A quote keeps the box open: the post being quoted is shown under it.
-  const active = expanded || text.length > 0 || images.drafts.length > 0 || !!video.draft || !!quote || !!story || pollOpen
-  const rows = active ? (replyTo ? 2 : 3) : 1
+  const active = expanded || text.length > 0 || images.drafts.length > 0 || !!video.draft || !!quote || pollOpen
+  const rows = active ? (inline ? 2 : 3) : 1
   useAutoGrow(input, text, rows)
 
   // The @mention being typed at the caret, and members to offer for it.
@@ -179,10 +185,10 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     }
   }
 
-  // Arriving through a "Reply" or "New post" link (…#compose) puts the cursor in the box.
+  // Arriving through a "Reply", "New post" or "Add update" link (…#compose, …#add-update) puts the cursor in the box.
   useEffect(() => {
-    if (window.location.hash === '#compose' || focusRequest > 0) input.current?.focus({ preventScroll: true })
-  }, [portalTarget, focusRequest])
+    if (window.location.hash === `#${formId}` || focusRequest > 0) input.current?.focus({ preventScroll: true })
+  }, [portalTarget, focusRequest, formId])
 
   useEffect(() => { onPendingChange?.(pending) }, [pending, onPendingChange])
 
@@ -241,7 +247,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const pollReady = !pollOpen || (text.trim().length > 0 && pollOptions.length >= 2 && pollOptions.every((option) => option.trim().length > 0))
 
   const content = (
-    <form ref={form} id="compose" action={action} className={`${replyTo ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''}${answeringReply ? ' is-answering' : ''} scroll-mt-32`}>
+    <form ref={form} id={formId} action={action} className={`${inline ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''}${answeringReply ? ' is-answering' : ''} scroll-mt-32`}>
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
       {replyDepth ? <input type="hidden" name="threadDepth" value={replyDepth} /> : null}
       {replyHandle ? <input type="hidden" name="replyHandle" value={replyHandle} /> : null}
@@ -255,11 +261,11 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       {replyTo && replyHandle ? (
         <p id={recipientId} className="composer-recipient">Replying to <strong>{replyLabel ?? `@${replyHandle}`}</strong></p>
       ) : null}
-      <div className={replyTo ? 'composer-reply-writing' : 'flex gap-3'}>
-        {replyTo ? (
-          <div className="composer-reply-avatar" title={`Replying as @${handle}`}>
+      <div className={inline ? 'composer-reply-writing' : 'flex gap-3'}>
+        {inline ? (
+          <div className="composer-reply-avatar" title={`${replyTo ? 'Replying' : 'Posting'} as @${handle}`}>
             <Avatar handle={handle} src={avatar} size={32} />
-            <span className="sr-only">Replying as @{handle}</span>
+            <span className="sr-only">{replyTo ? 'Replying' : 'Posting'} as @{handle}</span>
           </div>
         ) : (
           <Avatar handle={handle} src={avatar} size={42} />
@@ -379,7 +385,6 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
             </button>
           ) : null}
           {quote ? <div className="composer-quote">{quote.preview}</div> : null}
-          {story ? <div className="composer-quote">{story.preview}</div> : null}
         </div>
       </div>
       {pollOpen ? (
@@ -576,12 +581,14 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       </div>
 
       <p id={privacyId} className="composer-privacy">
-        {replyTo ? 'Replies' : 'Posts'} are public. Anyone can see and copy them.
+        {replyTo ? 'Replies' : story ? 'Updates' : 'Posts'} are public. Anyone can see and copy them.
         {!replyTo && replyAudience !== 'everyone' ? ' This post limits who may join its replies.' : ''}
       </p>
       <p role="alert" className="mt-1 text-sm text-danger empty:hidden">
         {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : state.error}
       </p>
+      {/* An update shows up in the story right above the box, so this is only said aloud. */}
+      {story && state.postId ? <p key={state.postedAt} role="status" className="sr-only">Update posted.</p> : null}
       {submitAction && state.postId ? (
         <p role="status" className="composer-posted">
           Reply posted. <Link prefetch={false} href={postedHref(state.postId)}>View reply</Link>

@@ -23,9 +23,14 @@ export function NewPostLink({ expanded = false }: { expanded?: boolean }) {
   )
 }
 
-/** Focus inside the tap so mobile keyboards also open for replies on the current thread. */
+/**
+ * Focus inside the tap so mobile keyboards also open for replies on the current
+ * thread. The href's #fragment names the composer (#compose, or a story's
+ * #add-update); one already on this page is used in place, whatever the query.
+ */
 export function ComposeLink({ href, label, className, children, prefetch }: { href: string; label: string; className: string; children: ReactNode; prefetch?: boolean }) {
   const pathname = usePathname()
+  const [target, form = 'compose'] = href.split('#')
   return (
     <Link
       href={href}
@@ -33,9 +38,9 @@ export function ComposeLink({ href, label, className, children, prefetch }: { hr
       aria-label={label}
       onClick={(e) => {
         if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-        if (pathname !== href.split('#')[0] || !document.querySelector('#compose textarea')) return
+        if (pathname !== target!.split('?')[0] || !document.querySelector(`#${form} textarea`)) return
         e.preventDefault()
-        focusComposer()
+        focusComposer(form)
       }}
       className={className}
     >
@@ -51,11 +56,11 @@ export function ComposeLink({ href, label, className, children, prefetch }: { hr
  * tries again each frame until React has moved it into place. That later focus
  * is outside the tap, so a phone may want a second tap to show its keyboard.
  */
-function focusComposer(frames = 120) {
-  const box = document.querySelector<HTMLTextAreaElement>('#compose textarea')
+function focusComposer(form: string, frames = 120) {
+  const box = document.querySelector<HTMLTextAreaElement>(`#${form} textarea`)
   if (!box) return
   if (box.getClientRects().length === 0) {
-    if (frames > 0) requestAnimationFrame(() => focusComposer(frames - 1))
+    if (frames > 0) requestAnimationFrame(() => focusComposer(form, frames - 1))
     return
   }
   box.focus({ preventScroll: true })
