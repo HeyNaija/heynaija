@@ -209,7 +209,7 @@ async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) 
       {me?.features.gists ? (
         <>
           <LiveNow />
-          <StartGist />
+          {me.gistStage ? <StartGist /> : null}
         </>
       ) : null}
       {me ? (

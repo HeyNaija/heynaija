@@ -54,6 +54,26 @@ export type RevocationReason = 'member_withdrew' | 'provider_revoked' | 'fraud' 
 
 const LIVE = ['pending', 'verified'] as const
 
+/** Every age record of a member, live or withdrawn, for `ageStatus`. Takes a transaction too. */
+export const ageRecordsOf = (q: Pick<Db, 'select'>, memberId: string): Promise<AgeRecord[]> =>
+  q
+    .select({
+      band: ageAssurances.band,
+      method: ageAssurances.method,
+      birthDate: ageAssurances.birthDate,
+      assuredAt: ageAssurances.assuredAt,
+      withdrawnAt: ageAssurances.withdrawnAt,
+    })
+    .from(ageAssurances)
+    .where(eq(ageAssurances.memberId, memberId))
+
+/**
+ * The age a member is treated as having, read where a rule needs it (Gists,
+ * video), in that rule's transaction if it has one. Unknown when nothing is on record.
+ */
+export const ageStatusOf = async (q: Pick<Db, 'select'>, memberId: string, now = new Date()): Promise<AgeStatus> =>
+  ageStatus(await ageRecordsOf(q, memberId), now)
+
 // The member's green tick row. Their other badges (Founder) are not this service's.
 const identityTick = (memberId: string) =>
   and(eq(profileBadges.memberId, memberId), eq(profileBadges.kind, 'nin_identity_verified'))
@@ -143,16 +163,7 @@ export class GovernanceService {
   }
 
   private ageRecords(memberId: string): Promise<AgeRecord[]> {
-    return this.db
-      .select({
-        band: ageAssurances.band,
-        method: ageAssurances.method,
-        birthDate: ageAssurances.birthDate,
-        assuredAt: ageAssurances.assuredAt,
-        withdrawnAt: ageAssurances.withdrawnAt,
-      })
-      .from(ageAssurances)
-      .where(eq(ageAssurances.memberId, memberId))
+    return ageRecordsOf(this.db, memberId)
   }
 
   async statusFor(memberId: string, now = new Date()): Promise<OwnGovernanceStatus> {

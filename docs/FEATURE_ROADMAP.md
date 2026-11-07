@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 17 | 15 | 12 | 89 |
+| 45 | 17 | 16 | 12 | 90 |
 
 ## Priority order
 
@@ -424,6 +424,15 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Let authors set clearer boundaries around replies to their posts.
 - **Inspected evidence:** `packages/db/src/schema.ts`, `packages/db/drizzle/0028_polls_reply_controls.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/ui/post-item.tsx`, `apps/api/src/posts/posts.service.test.ts`, `e2e/tests/polls-reply-controls.spec.ts`
 - **Audit notes:** A root post allows everyone, accounts its author follows plus mentioned accounts, or mentioned accounts only. The root setting governs direct and nested replies, can be changed for future replies, and does not restrict quotes, likes, reposts or poll votes. Deleted roots no longer restrict surviving replies.
+
+#### Stories
+
+- **ID:** `stories`
+- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Description:** Add updates to your own post over time, so people can follow one story from start to latest, and reply to the update they are about.
+- **Dependencies:** `threaded-replies`
+- **Inspected evidence:** `docs/adr/0024-stories.md`, `packages/db/drizzle/0040_stories.sql`, `apps/api/src/posts/stories.test.ts`, `apps/web/app/ui/story.tsx`, `e2e/tests/stories.spec.ts`
+- **Audit notes:** Proposed 7 Nov 2026 (ADR 0024); web built on feat/stories, the apps not yet. Only the author adds updates; each update is a post of its own, and replies go under the update they are about. Feeds show a story once, as its newest update with the first post above it. Follow story notifies on each new update (story_update, optional).
 
 ### People and discovery
 

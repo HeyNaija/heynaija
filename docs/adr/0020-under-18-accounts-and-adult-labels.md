@@ -292,12 +292,12 @@ place:
   labelled.
 - **Contact.** No direct messages or calls (ADR 0016, 0017, 0018). In Gists, a
   listener only: never host, co-host or speaker, and the host cannot hand them the
-  microphone (6 November). Replies limited to people they follow, and mentions
-  from strangers limited, by default. Not suggested to adults and left out of
-  member search. Minimal profile: no age band, no location, no follower lists to
-  strangers.
+  microphone (6 November); built: `gist_stage` in `apps/api/src/governance/age.ts`.
+  Replies limited to people they follow, and mentions from strangers limited, by
+  default. Not suggested to adults and left out of member search. Minimal profile:
+  no age band, no location, no follower lists to strangers.
 - **Visibility** of minors' own posts: question 7.
-- **Video.** Minors cannot post video (ADR 0019, section 4.6).
+- **Video.** Minors cannot post video (ADR 0019, section 4.6). Built: `video_posting`.
 - **Governance.** Never voting members.
 
 **Contact, as built** (questions 12 to 15, `apps/api/src/governance/minors.ts`,
@@ -540,7 +540,7 @@ from building section 4's contact protections (7 November).
     13 to 17 signup needs a guardian's consent (question 2), and signup cannot work
     without it. Before the first minor, Gists must check the age band:
     `isCallsMember` in `apps/api/src/gists/eligibility.ts` checks only the `gists`
-    flag's list today.
+    flag's list today. (Since built: `canHostGist` needs `gist_stage`.)
     - Answer: The way X allows 13 to 17 year olds: they join the beta with the
       protections in section 4 on by default, without waiting for the rest of
       section 5 (section 5 says what still comes first). In Gists they listen only.

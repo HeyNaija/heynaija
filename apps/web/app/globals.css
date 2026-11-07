@@ -1457,24 +1457,40 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-branch { position: relative; }
 .thread-row { position: relative; }
 /* The line runs in the gutter, never across a card: it starts at the parent card's bottom
-   edge, on its avatar's axis (1px border + 14px padding + half a 32px avatar), and an
-   elbow at each answer's avatar height (1 + 12 + 16) meets that answer's card at its edge.
-   "Your reply" answers below the dashed marker get their elbows too. */
-.thread-children { margin-left: 30px; border-left: 2px solid var(--line-strong); padding: var(--reply-gap) 0 0 12px; }
-.thread-branch.is-root > .thread-children { margin: var(--reply-gap) 0 0; border-left: 0; padding: 0; }
-.thread-children > .thread-list > li > .thread-branch > .thread-row::before,
-.thread-children > .thread-recent > .thread-list > li > .thread-branch > .thread-row::before { content: ''; position: absolute; top: 28px; left: -14px; width: 14px; border-top: 2px solid var(--line-strong); }
-.thread-branch.is-root > .thread-children > .thread-list > li > .thread-branch > .thread-row::before,
-.thread-branch.is-root > .thread-children > .thread-recent > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
+   edge, on its avatar's axis (1px border + 14px padding + half a 32px avatar), and curves
+   into each answer's card at that answer's avatar height (1 + 12 + 16). It runs on past an
+   answer only to what comes next (another answer, "Your reply", an error, "More replies"),
+   so the last one ends in a curve, not a straight line beside it. "More replies" and
+   "No available replies" get a curve at their middle. */
+.thread-children { --thread-gutter: 14px; margin-left: 30px; padding: var(--reply-gap) 0 0 var(--thread-gutter); }
+.thread-branch.is-root > .thread-children { margin: var(--reply-gap) 0 0; padding: 0; }
+.thread-children > :is(.thread-list, .thread-recent > .thread-list) > li,
+.thread-children > :is(.thread-more, .thread-empty, .thread-error, .thread-recent > .thread-gap) { position: relative; }
+.thread-children > :is(.thread-list, .thread-recent > .thread-list) > li > .thread-branch > .thread-row::before,
+.thread-children > :is(.thread-more, .thread-empty)::before { content: ''; position: absolute; top: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--thread-gutter)); width: var(--thread-gutter); height: calc(var(--reply-gap) + 30px); border-bottom: 2px solid var(--line-strong); border-left: 2px solid var(--line-strong); border-bottom-left-radius: 10px; pointer-events: none; }
+.thread-children > :is(.thread-more, .thread-empty)::before { height: calc(var(--reply-gap) + 50% + 1px); }
+.thread-children > :is(.thread-list, .thread-recent > .thread-list) > li:not(:last-child)::after,
+.thread-children:has(> .thread-recent, > .thread-error, > .thread-more) > .thread-list > li:last-child::after,
+.thread-children:has(> .thread-error, > .thread-more) > .thread-recent > .thread-list > li:last-child::after { content: ''; position: absolute; top: 28px; bottom: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--thread-gutter)); border-left: 2px solid var(--line-strong); pointer-events: none; }
+/* Across the 14px before "Your reply", and on through its words and an error's. */
+.thread-children:has(> .thread-recent, > .thread-error, > .thread-more) > .thread-list > li:last-child::after,
+.thread-children:has(> .thread-error, > .thread-more) > .thread-recent > .thread-list > li:last-child::after { bottom: -14px; }
+.thread-children > .thread-recent > .thread-gap::before,
+.thread-children > .thread-error::before { content: ''; position: absolute; top: -13px; bottom: -12px; left: calc(-1 * var(--thread-gutter)); border-left: 2px solid var(--line-strong); pointer-events: none; }
+.thread-children > .thread-error::before { top: -10px; bottom: 0; }
+.thread-branch.is-root > .thread-children > :is(.thread-list, .thread-recent > .thread-list) > li::after,
+.thread-branch.is-root > .thread-children > :is(.thread-list, .thread-recent > .thread-list) > li > .thread-branch > .thread-row::before,
+.thread-branch.is-root > .thread-children > :is(.thread-more, .thread-empty, .thread-error, .thread-recent > .thread-gap)::before { display: none; }
 /* Nothing to show yet while a branch loads, so no space either: the next reply stays put. */
 .thread-children[hidden], .thread-children:empty { display: none; }
 /* Replies stop at THREAD_MAX_DEPTH (5), and every level indents: 44px on a desktop,
    12px on a phone (below). Only the replies behind a deleted post go further
-   (.is-beyond). They keep the width they have, and a second line beside them, in
-   the gutter, shows where their run starts and ends. */
-.thread-children.is-beyond { margin-left: -7px; padding-left: 5px; }
-.thread-children.is-beyond > .thread-list > li > .thread-branch > .thread-row::before,
-.thread-children.is-beyond > .thread-recent > .thread-list > li > .thread-branch > .thread-row::before { display: none; }
+   (.is-beyond). They keep the width they have, and a second, straight line beside
+   them, in the gutter, shows where their run starts and ends. */
+.thread-children.is-beyond { margin-left: -7px; border-left: 2px solid var(--line-strong); padding-left: 5px; }
+.thread-children.is-beyond > :is(.thread-list, .thread-recent > .thread-list) > li::after,
+.thread-children.is-beyond > :is(.thread-list, .thread-recent > .thread-list) > li > .thread-branch > .thread-row::before,
+.thread-children.is-beyond > :is(.thread-more, .thread-empty, .thread-error, .thread-recent > .thread-gap)::before { display: none; }
 .thread-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
 /* In a reply's action row, as tall as its buttons, so a reply with answers is no taller. */
 .thread-toggle { display: inline-flex; min-height: var(--touch-target); align-items: center; padding-inline: 6px; color: var(--accent-strong); font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -1498,6 +1514,38 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-recent { margin-top: 14px; border-top: 1px dashed var(--line-strong); }
 .thread-editor-host:not(:empty) { margin-top: 14px; }
 .thread-editor-host:empty { display: none; }
+/* Stories (docs/adr/0024). Above an update away from its story, the story's first post on
+   one line, joined to the update's card by a short line in the gap on the card's avatar
+   axis (1px border + 20px padding + half a 42px avatar); the box's own avatar is centred
+   on it. The line stays between the two, never on either. */
+.story-entry { --story-axis: 42px; display: flex; flex-direction: column; gap: var(--reply-gap); }
+ol.post-list .story-entry { --story-axis: 40px; }
+.story-start { position: relative; display: flex; min-height: var(--touch-target); align-items: center; gap: 8px; padding: 6px 14px 6px calc(var(--story-axis, 32px) - 11px); border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); color: var(--muted); font-size: 13px; line-height: 18px; }
+a.story-start:hover { border-color: var(--line-strong); }
+a.story-start:hover .story-start-text { color: var(--ink); }
+.story-start-text { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.story-start-count { display: inline-flex; flex: none; align-items: center; gap: 4px; color: var(--accent-strong); font-size: 12px; font-weight: 600; }
+.story-entry > .story-start::after { content: ''; position: absolute; top: calc(100% + 1px); left: calc(var(--story-axis) - 2px); width: 2px; height: var(--reply-gap); background: var(--line-strong); pointer-events: none; }
+.story-label { color: var(--accent-strong); font-weight: 600; }
+/* Above an update on its own page there is no line to meet, so the box keeps its own inset (the fallback above). */
+.story-context { display: flex; flex-direction: column; gap: 2px; }
+/* Under a story's first post: its counts and Follow story, then its updates oldest first,
+   joined by a line in the gutter that curves into each card as the reply lines do, in the
+   accent colour so the author's own run reads apart from replies. */
+.story-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.story-bar-text { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.story-bar-text svg { color: var(--accent-strong); }
+.story-spine { --story-gutter: 14px; display: flex; flex-direction: column; gap: var(--reply-gap); margin: 6px 0 0 30px; padding: var(--reply-gap) 0 0 var(--story-gutter); }
+.story-spine > li { position: relative; }
+.story-spine > li::before { content: ''; position: absolute; top: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--story-gutter)); width: var(--story-gutter); height: calc(var(--reply-gap) + 30px); border-bottom: 2px solid var(--accent); border-left: 2px solid var(--accent); border-bottom-left-radius: 10px; pointer-events: none; }
+.story-spine > li:is(.story-fold, .story-add)::before { height: calc(var(--reply-gap) + 50% + 1px); }
+.story-spine > li:not(:last-child)::after { content: ''; position: absolute; top: 28px; bottom: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--story-gutter)); border-left: 2px solid var(--accent); pointer-events: none; }
+.story-spine > li.story-fold:not(:last-child)::after { top: 50%; }
+.story-fold > a, .story-add > a { display: inline-flex; min-height: var(--touch-target); align-items: center; gap: 6px; padding: 0 14px; border-radius: var(--r-control); font-size: 13px; font-weight: 600; }
+.story-fold > a { border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+.story-fold > a:hover { border-color: var(--line-strong); color: var(--ink); }
+.story-add > a { border: 1px dashed var(--accent); color: var(--accent-strong); }
+.story-add > a:hover { background: var(--accent-soft); }
 .composer-posted { margin-top: 6px; color: var(--muted); font-size: 12px; }
 .thread-list > li > .thread-branch > .thread-row > .post-card { content-visibility: auto; contain-intrinsic-size: auto 156px; }
 .thread-list > li > .thread-branch > .thread-row > .post-card:has(details[open]) { content-visibility: visible; }
@@ -2382,10 +2430,16 @@ a.result-row:hover { color: var(--accent-strong); }
   .post-card.is-focused { padding: 20px 18px 10px; }
   /* Narrow indents, 12px a level, so the fifth level still keeps most of the width. The line
      stays clear of the card's rounded corner, so it starts a gap below it. */
-  .thread-children { margin-top: var(--reply-gap); margin-left: 2px; padding: 0 0 0 8px; }
-  .thread-children > .thread-list > li > .thread-branch > .thread-row::before,
-  .thread-children > .thread-recent > .thread-list > li > .thread-branch > .thread-row::before { left: -9px; width: 9px; }
+  .thread-children { --thread-gutter: 10px; margin-top: var(--reply-gap); margin-left: 2px; padding: 0 0 0 var(--thread-gutter); }
+  .thread-children > :is(.thread-list, .thread-recent > .thread-list) > li > .thread-branch > .thread-row::before,
+  .thread-children > :is(.thread-more, .thread-empty)::before { top: 0; height: 30px; border-bottom-left-radius: 8px; }
+  .thread-children > :is(.thread-more, .thread-empty)::before { height: calc(50% + 1px); }
   .thread-children.is-beyond { margin-left: -5px; padding-left: 3px; }
+  /* The card's avatar axis is 1 + 16 + 21 here; the spine indents as replies do. */
+  .story-entry { --story-axis: 38px; }
+  .story-spine { --story-gutter: 10px; margin-left: 2px; }
+  .story-spine > li::before { top: 0; height: 30px; border-bottom-left-radius: 8px; }
+  .story-spine > li:is(.story-fold, .story-add)::before { height: calc(50% + 1px); }
   .notification-row { padding: 16px; }
   .page-header, .content-panel, .community-card, .governance-section { padding: 20px; }
 }
@@ -2409,6 +2463,7 @@ a.result-row:hover { color: var(--accent-strong); }
   .composer-submit { min-width: 54px; padding-inline: 12px; font-size: 12px; }
   .post-card, .post-list .post-card { padding: 16px 14px 6px; }
   .post-card > .flex { gap: 10px; }
+  .story-entry { --story-axis: 36px; }
   .page-header, .content-panel, .community-card, .governance-section { padding: 18px; }
   .bottom-tab { font-size: 11px; letter-spacing: -0.025em; }
 }

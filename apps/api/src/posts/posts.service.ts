@@ -15,6 +15,7 @@ import {
   posts,
   REPLY_AUDIENCES,
   reposts,
+  storyFollows,
 } from '@heynaija/db'
 import { Inject, Injectable, Optional } from '@nestjs/common'
 import { and, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
@@ -108,9 +109,12 @@ export const newPost = (slug: z.ZodType<string>) =>
       images: postImagesInput,
       video: postVideoInput.optional(),
       poll: pollInput.optional(),
-      replyAudience: z.enum(REPLY_AUDIENCES).default('everyone'),
+      /** Left out: everyone, or for an update the story's first post's setting. */
+      replyAudience: z.enum(REPLY_AUDIENCES).optional(),
       /** Marked sensitive by its author (ADR 0020). Only acted on while the adultLabels flag is on. */
       sensitive: z.boolean().default(false),
+      /** An update to a story (docs/adr/0024): its first post. */
+      storyOf: z.uuid().optional(),
     })
     .refine((p) => p.text.length > 0 || p.images.length > 0 || p.video, { message: 'post is empty', path: ['text'] })
     // One video, and nothing else of that kind beside it; and, to start with, not in replies (ADR 0019 section 1).
@@ -119,6 +123,7 @@ export const newPost = (slug: z.ZodType<string>) =>
     .refine((p) => !p.video || !p.poll, { message: 'a video cannot be added to a poll', path: ['video'] })
     .refine((p) => !p.poll || p.text.length > 0, { message: 'a poll needs a question', path: ['text'] })
     .refine((p) => !p.poll || !p.replyTo, { message: 'a poll cannot be added to a reply', path: ['poll'] })
+    .refine((p) => !p.storyOf || !p.replyTo, { message: 'an update to a story is not a reply', path: ['storyOf'] })
 
 export type PostLink = FoundLink
 
@@ -173,6 +178,22 @@ export type QuotedPost =
   // was blocked by or muted, or marked sensitive and the reader is not an adult.
   // One placeholder for all, so it gives nothing away.
   | { unavailable: true }
+
+/** A story (docs/adr/0024) as each of its posts carries it. */
+export type PostStory = {
+  /** The story's first post. */
+  id: string
+  /** 0 on the first post. On an update, its place among the story's live updates, from 1. */
+  number: number
+  /** How many live updates the story has. */
+  updates: number
+  /** How many active members follow it. Who they are is not shown. */
+  followers: number
+  /** Always false for anonymous viewers. */
+  following: boolean
+  /** On an update, the first post as a quoted post is shown: a placeholder when gone or hidden. Null on the first post. */
+  start: QuotedPost | null
+}
 
 /** The post a reply answers: a preview, or one placeholder for every reason the viewer cannot read it. */
 export type ReplyContext =
@@ -266,6 +287,8 @@ export type PostView = {
   community: { slug: string; name: string } | null
   /** A quote post's quoted post. Null for other posts, and when `deleted`. */
   quote: QuotedPost | null
+  /** The story it is part of (docs/adr/0024): its first post with updates, or one of them. Null for other posts. */
+  story: PostStory | null
   /**
    * Why it is in the viewer's Following feed or Discover. On a profile, 'repost'
    * marks the member's reposts. Null everywhere else.
@@ -341,6 +364,12 @@ export type GistReplyPage = ReplyPage & { viewerCanReply: boolean }
 export type Thread = {
   ancestors: PostView[]
   post: PostView
+  /**
+   * On a story's first post, its newest updates, oldest first: all of them up to
+   * STORY_UPDATES_SHOWN + 1, otherwise the newest STORY_UPDATES_SHOWN (the rest
+   * are folded, and paged with `storyUpdates`). Empty for other posts.
+   */
+  updates: PostView[]
   replies: ThreadReply[]
   replyCursor: string | null
   ancestorsTruncated: boolean
@@ -359,6 +388,7 @@ export class NotACommunityMemberError extends Error {}
 export class ImagesNotReadyError extends Error {}
 export class VideoNotReadyError extends Error {}
 export class QuotedPostNotFoundError extends Error {}
+export class StoryNotFoundError extends Error {}
 export class NotACommunityModeratorError extends Error {}
 
 const MAX_THREAD_DEPTH = 50
@@ -383,6 +413,8 @@ const pollExpiresAt = (expiresIn: PollInput['expiresIn']): Date | null => {
 }
 
 const topLevel = sql`${posts.replyParentId} is null and ${posts.gistId} is null`
+// The top-level posts lists show: a story once, as its newest update (docs/adr/0024).
+const inFeeds = sql`${topLevel} and not ${posts.superseded}`
 
 // Neither deleted by the author, taken down by a moderator, nor hidden by a Gist's host.
 const live = and(isNull(posts.deletedAt), isNull(posts.removedAt), isNull(posts.hiddenByHostAt))
@@ -428,7 +460,7 @@ const outerId = sql`"posts"."id"`
 const withMedia = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.kind in ('post_image', 'post_video') and m.status = 'ready')`
 
 const profileFilter: Record<ProfileFilter, SQL> = {
-  posts: topLevel,
+  posts: inFeeds,
   replies: isNotNull(posts.replyParentId),
   media: withMedia,
 }
@@ -622,6 +654,34 @@ const toReplyContext = (row: ReplyContextRow | null): ReplyContext | null => {
   return { ...parent, authorAvatar: avatarPath(authorAvatarId), excerpt: excerpt(text, REPLY_CONTEXT_EXCERPT) }
 }
 
+type StoryRow = Omit<PostStory, 'start'> & { start: QuoteRow | null }
+
+/** How many of a story's newest updates its page shows before folding the rest. */
+export const STORY_UPDATES_SHOWN = 3
+
+const liveUpdate = (alias: string) =>
+  sql.raw(`${alias}.deleted_at is null and ${alias}.removed_at is null and ${alias}.hidden_by_host_at is null`)
+
+/**
+ * The story a post is part of, as JSON, for any query with `posts` in scope. An
+ * update counts its place among the live updates up to itself. A first post is
+ * a story while it has a live update.
+ */
+const storyOf = (viewerId: string | null) => {
+  const story = sql`coalesce(${posts.storyId}, ${posts.id})`
+  return sql<StoryRow | null>`case when ${posts.storyId} is not null or ${posts.storyUpdates} > 0 then json_build_object(
+    'id', ${story},
+    'number', case when ${posts.storyId} is null then 0 else (select count(*)::int from posts su
+      where su.story_id = ${posts.storyId} and ${liveUpdate('su')} and (su.created_at, su.id) <= (${posts.createdAt}, ${posts.id})) end,
+    'updates', coalesce((select sp.story_updates from posts sp where sp.id = ${story}), 0),
+    'followers', (select count(*)::int from story_follows sf join members fm on fm.id = sf.member_id and fm.active where sf.story_id = ${story}),
+    'following', ${viewerId ? sql`exists(select 1 from story_follows sf where sf.story_id = ${story} and sf.member_id = ${viewerId})` : sql`false`},
+    'start', case when ${posts.storyId} is null then null else ${quoteOf(viewerId, sql`${posts.storyId}`)} end
+  ) end`
+}
+
+const toStory = (row: StoryRow | null): PostStory | null => (row ? { ...row, start: toQuote(row.start) } : null)
+
 @Injectable()
 export class PostsService {
   constructor(
@@ -702,6 +762,7 @@ export class PostsService {
         communitySlug: communities.slug,
         communityName: communities.name,
         quote: sql<QuoteRow | null>`case when ${shownTo} then ${quoteOf(viewerId, sql`${posts.quotePostId}`)} end`,
+        story: storyOf(viewerId),
         reason: opts.reason ?? sql<null>`null`,
       })
       .from(posts)
@@ -725,7 +786,7 @@ export class PostsService {
       .orderBy(...(opts.order ?? []))
       .limit(opts.limit ?? 1000)
 
-    return rows.map(({ communitySlug, communityName, authorAvatarId, images, video, quote, linkPreview, poll, replyContext, ...row }) => ({
+    return rows.map(({ communitySlug, communityName, authorAvatarId, images, video, quote, linkPreview, poll, replyContext, story, ...row }) => ({
       ...row,
       replyTo: toReplyContext(replyContext),
       images: toPostImages(images),
@@ -735,6 +796,7 @@ export class PostsService {
       authorAvatar: avatarPath(authorAvatarId),
       community: communitySlug && communityName ? { slug: communitySlug, name: communityName } : null,
       quote: toQuote(quote),
+      story: toStory(story),
       poll: toPoll(poll),
       repostedBy: null,
     }))
@@ -769,7 +831,7 @@ export class PostsService {
 
   /** Everyone's top-level posts. */
   feed(viewerId: string | null, limit: number, cursor?: string): Promise<PostPage> {
-    return this.page(viewerId, topLevel, limit, cursor)
+    return this.page(viewerId, inFeeds, limit, cursor)
   }
 
   /**
@@ -854,7 +916,7 @@ export class PostsService {
       with entries as (
         (select p.id as post_id, p.created_at as at, null::uuid as reposter_id
         from posts p join members a on a.id = p.author_id
-        where p.reply_parent_id is null and p.gist_id is null
+        where p.reply_parent_id is null and p.gist_id is null and not p.superseded
           and (${byMember(sql`p.author_id`)}${communityIds.length ? sql` or p.community_id = any(${ids(communityIds)})` : sql``})
           and ${postVisible} and not ${memberRepost(sql`p.id`)}
           ${before(sql`p.created_at`, sql`p.id`)}
@@ -950,7 +1012,7 @@ export class PostsService {
         ? this.select(
             viewerId,
             and(
-              topLevel,
+              inFeeds,
               eq(posts.authorId, viewerId),
               sql`${posts.createdAt} > now() - make_interval(mins => ${DISCOVER_RULES.ownPostsMinutes}::int)`,
             ),
@@ -1019,7 +1081,7 @@ export class PostsService {
               where cm.member_id = ${viewerId} and cm.community_id = p.community_id)`
             : sql`false`} as in_joined
         from posts p join members a on a.id = p.author_id
-        where p.reply_parent_id is null and p.gist_id is null and p.created_at > ${since} and p.created_at <= ${until}
+        where p.reply_parent_id is null and p.gist_id is null and not p.superseded and p.created_at > ${since} and p.created_at <= ${until}
           and p.deleted_at is null and p.removed_at is null
           -- Posts marked sensitive are never recommended, to anyone (ADR 0020).
           and p.adult_label is null
@@ -1105,7 +1167,7 @@ export class PostsService {
 
   /** Top-level posts in one community. */
   inCommunity(viewerId: string | null, communityId: string, limit: number, cursor?: string): Promise<PostPage> {
-    return this.page(viewerId, and(topLevel, eq(posts.communityId, communityId)), limit, cursor)
+    return this.page(viewerId, and(inFeeds, eq(posts.communityId, communityId)), limit, cursor)
   }
 
   /**
@@ -1259,7 +1321,7 @@ export class PostsService {
     const { rows } = await this.db.execute<{ id: string }>(sql`
       select p.id from posts p
       join members m on m.id = p.author_id and m.active
-      where p.reply_parent_id is null and p.gist_id is null and p.deleted_at is null and p.removed_at is null and p.created_at > ${since}
+      where p.reply_parent_id is null and p.gist_id is null and not p.superseded and p.deleted_at is null and p.removed_at is null and p.created_at > ${since}
         and p.like_count + p.reply_count > 0
         -- Posts marked sensitive never trend (ADR 0020).
         and p.adult_label is null
@@ -1298,17 +1360,19 @@ export class PostsService {
       : { rows: [] }
     const ancestorIds = chain.rows.slice(0, MAX_THREAD_DEPTH).map((r) => r.id).reverse()
 
-    const [ancestors, replies] = await Promise.all([
+    const [ancestors, replies, updates] = await Promise.all([
       ancestorIds.length
         ? this.select(viewerId, inArray(posts.id, ancestorIds), { includeDeleted: true, withReplyContext: false })
         : Promise.resolve([]),
       this.replyPage(viewerId, id, REPLY_PAGE_SIZE, order),
+      post.story?.number === 0 ? this.newestUpdates(viewerId, id, post.story.updates) : Promise.resolve([]),
     ])
     // Root first. An ancestor by a now-inactive member is simply absent.
     ancestors.sort((a, b) => ancestorIds.indexOf(a.id) - ancestorIds.indexOf(b.id))
     return {
       ancestors,
       post,
+      updates,
       replies: replies.replies,
       replyCursor: replies.cursor,
       ancestorsTruncated: chain.rows.length > MAX_THREAD_DEPTH,
@@ -1316,6 +1380,56 @@ export class PostsService {
       // be deleted or blocked and would make a broken continuation permalink.
       earlierAncestorId: chain.rows.length > MAX_THREAD_DEPTH ? ancestors.find((ancestor) => !ancestor.deleted)?.id ?? null : null,
     }
+  }
+
+  /** A story's newest updates, oldest first: all of them when one more would be folded, otherwise the newest few. */
+  private async newestUpdates(viewerId: string | null, storyId: string, updates: number): Promise<PostView[]> {
+    const shown = updates <= STORY_UPDATES_SHOWN + 1 ? STORY_UPDATES_SHOWN + 1 : STORY_UPDATES_SHOWN
+    const rows = await this.select(viewerId, eq(posts.storyId, storyId), {
+      withReplyContext: false,
+      order: [desc(posts.createdAt), desc(posts.id)],
+      limit: shown,
+    })
+    return rows.reverse()
+  }
+
+  /**
+   * A story's updates, oldest first, for unfolding the ones its page leaves out.
+   * Null when `storyId` is not a story the viewer can read.
+   */
+  async storyUpdates(viewerId: string | null, storyId: string, limit: number, cursor?: string): Promise<PostPage | null> {
+    const [story] = await this.select(viewerId, and(eq(posts.id, storyId), isNull(posts.storyId)), { limit: 1, withReplyContext: false })
+    if (!story) return null
+    const after = cursor ? decodeExactCursor(cursor) : null
+    const rows = await this.db.execute<{ id: string; at: string }>(sql`
+      select u.id, to_char(u.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at from posts u
+      where u.story_id = ${storyId} and ${liveUpdate('u')}
+        ${after ? sql`and (u.created_at, u.id) > (${after[0]}::timestamptz, ${after[1]}::uuid)` : sql``}
+      order by u.created_at, u.id
+      limit ${limit + 1}`)
+    const page = rows.rows.slice(0, limit)
+    const found = page.length ? await this.select(viewerId, inArray(posts.id, page.map((r) => r.id)), { withReplyContext: false, limit: page.length }) : []
+    const byId = new Map(found.map((p) => [p.id, p]))
+    const last = page.at(-1)
+    return {
+      posts: page.flatMap((r) => byId.get(r.id) ?? []),
+      cursor: rows.rows.length > limit && last ? encodeExactCursor(last.at, last.id) : null,
+    }
+  }
+
+  /**
+   * Follow a story, to be told about each new update. False when it is not a story
+   * the member can read, or it is their own.
+   */
+  async followStory(memberId: string, storyId: string): Promise<boolean> {
+    const [story] = await this.select(memberId, and(eq(posts.id, storyId), isNull(posts.storyId)), { limit: 1, withReplyContext: false })
+    if (!story || story.story?.number !== 0 || story.authorId === memberId) return false
+    await this.db.insert(storyFollows).values({ storyId, memberId }).onConflictDoNothing()
+    return true
+  }
+
+  async unfollowStory(memberId: string, storyId: string): Promise<void> {
+    await this.db.delete(storyFollows).where(and(eq(storyFollows.storyId, storyId), eq(storyFollows.memberId, memberId)))
   }
 
   /** A lightweight read for confirmed inline replies; no ancestors or children. */
@@ -1527,6 +1641,8 @@ export class PostsService {
           'viewerBookmarked', ${viewerId ? sql`exists(select 1 from bookmarks b where b.post_id = p.id and b.member_id = ${viewerId})` : sql`false`},
           'viewerReposted', ${viewerId ? sql`exists(select 1 from reposts r where r.post_id = p.id and r.member_id = ${viewerId})` : sql`false`},
           'quote', ${quoteOf(viewerId, sql`p.quote_post_id`)},
+          -- A reply is never part of a story: updates and first posts are top-level posts.
+          'story', null,
           'deleted', false, 'reason', null, 'repostedBy', null,
           'pinnedOnProfile', false, 'pinnedInCommunity', false, 'viewerCanPinInCommunity', false,
           'community', case when c.id is null then null else json_build_object('slug', c.slug, 'name', c.name) end
@@ -1588,12 +1704,13 @@ export class PostsService {
       video,
       quote,
       poll,
-      replyAudience = 'everyone',
+      replyAudience,
       sensitive = false,
       anyMember = false,
       alongside,
       gist,
       gistAccess,
+      storyOf: storyId,
     }: {
       replyTo?: string
       communitySlug?: string
@@ -1610,11 +1727,26 @@ export class PostsService {
       gist?: string
       /** With `gist`: whether the `gists` flag is on for a member; left out, it is not checked. */
       gistAccess?: (memberId: string) => boolean
+      /** An update to this story (docs/adr/0024): the first post's ID. Only its author adds one. */
+      storyOf?: string
     } = {},
   ): Promise<{ id: string; linkUrl: string | null }> {
     let parent: { id: string; authorId: string; rootId: string | null; communityId: string | null } | undefined
     let communityId: string | null = null
     let quoted: { id: string; authorId: string } | undefined
+    let story: { id: string; communityId: string | null; replyAudience: ReplyAudience } | undefined
+
+    if (storyId) {
+      // An update answers no one, and goes on the author's own live top-level post,
+      // which is not itself an update.
+      if (replyTo || gist) throw new StoryNotFoundError('an update to a story is not a reply')
+      ;[story] = await this.db
+        .select({ id: posts.id, communityId: posts.communityId, replyAudience: posts.replyAudience })
+        .from(posts)
+        .where(and(eq(posts.id, storyId), eq(posts.authorId, authorId), topLevel, isNull(posts.storyId), live))
+      if (!story) throw new StoryNotFoundError('you can only add updates to your own posts')
+      communityId = story.communityId
+    }
 
     if (quote) {
       // The same test as for replying: live, by an active member, no block either way.
@@ -1653,7 +1785,7 @@ export class PostsService {
         )
       if (!parent) throw new ParentNotFoundError('the post you are replying to no longer exists')
       communityId = gist ? null : parent.communityId
-    } else if (communitySlug && !gist) {
+    } else if (communitySlug && !gist && !story) {
       const [community] = await this.db
         .select({
           id: communities.id,
@@ -1671,6 +1803,8 @@ export class PostsService {
       if (!author?.adult) throw new LabelNotAllowedError('only adults can mark a post sensitive')
     }
 
+    // An update to a story takes the story's reply setting unless it asks for its own.
+    const audience = replyAudience ?? story?.replyAudience ?? 'everyone'
     // The first web address gets a preview card; asking for it is up to the caller,
     // once the post exists (see `LinksService.request`).
     const linkUrl = previewUrlOf(text)
@@ -1717,12 +1851,13 @@ export class PostsService {
           replyParentId: parent?.id ?? null,
           rootId: parent ? (parent.rootId ?? parent.id) : null,
           quotePostId: quoted?.id ?? null,
+          storyId: story?.id ?? null,
           // A minor's conversation is open as far as "following" at most (ADR 0020).
           replyAudience: parent
             ? 'everyone'
-            : replyAudience === 'everyone'
+            : audience === 'everyone'
               ? sql`case when ${isMinor(authorId)} then 'following' else 'everyone' end`
-              : replyAudience,
+              : audience,
           // Settings' "mark everything I post" (or a moderator's) wins over the post's own choice.
           adultLabel: sql`coalesce((select m.label_posts from members m where m.id = ${authorId}), ${sensitive ? 'author' : null}::text)`,
         })
@@ -1779,10 +1914,16 @@ export class PostsService {
         if (attached.length === 0) throw new VideoNotReadyError('the video is missing, still processing, held for review or already used')
       }
       await recordHashtags(tx, { id: row!.id, text })
-      // Someone told about this post as a reply or a quote is not told again that
-      // it mentions them, and only the first few others named are told at all.
+      // A story's followers are told about each update (story_update).
+      const followers = story
+        ? (await tx.select({ id: storyFollows.memberId }).from(storyFollows).where(eq(storyFollows.storyId, story.id))).map((f) => f.id)
+        : []
+      // Someone told about this post as a reply, a quote or a story's update is not
+      // told again that it mentions them, and only the first few others named are told at all.
       const replyRecipient = parent?.authorId ?? gistHost
-      const named = (await recordMentions(tx, { id: row!.id, authorId, text })).filter((id) => id !== replyRecipient && id !== quoted?.authorId)
+      const named = (await recordMentions(tx, { id: row!.id, authorId, text })).filter(
+        (id) => id !== replyRecipient && id !== quoted?.authorId && !followers.includes(id),
+      )
       const told = gist ? new Set(await this.whoOpensGist(tx, gist, [...named, ...(replyRecipient ? [replyRecipient] : [])], gistAccess)) : null
       const mentioned = named.filter((id) => !told || told.has(id)).slice(0, MENTIONS_NOTIFIED_MAX)
       await notify(tx, [
@@ -1794,6 +1935,9 @@ export class PostsService {
           ? [{ recipientId: quoted.authorId, kind: 'quote' as const, actorId: authorId, postId: row!.id }]
           : []),
         ...mentioned.map((recipientId) => ({ recipientId, kind: 'mention' as const, actorId: authorId, postId: row!.id })),
+        ...followers
+          .filter((recipientId) => recipientId !== quoted?.authorId)
+          .map((recipientId) => ({ recipientId, kind: 'story_update' as const, actorId: authorId, postId: row!.id })),
       ])
       await alongside?.(tx, row!.id)
       return { id: row!.id, linkUrl }

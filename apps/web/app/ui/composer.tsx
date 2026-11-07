@@ -45,6 +45,8 @@ type Props = {
   choices?: { slug: string; name: string }[]
   /** Makes this a quote post of that post, shown under the box as `preview`. */
   quote?: { id: string; preview: ReactNode }
+  /** Makes this an update to that story (docs/adr/0024), its first post shown under the box as `preview`. */
+  story?: { id: string; preview: ReactNode }
   submitAction?: (previous: ComposeState, data: FormData) => Promise<ComposeState>
   /** Where "View reply" goes for the reply just posted; a Gist's replies are not served on /p/. */
   postedHref?: (id: string) => string
@@ -62,7 +64,8 @@ type Props = {
   media?: boolean
   /**
    * From `me.videoLimits`: the API's video limits, present only while video is open to this member
-   * (the videoPosts flag and, in production, a bound scanner). Null hides the button.
+   * (the videoPosts flag, in production a bound scanner, and an adult by their date of birth). Null
+   * hides the button.
    */
   videoLimits?: VideoLimits | null
   /**
@@ -79,7 +82,7 @@ const REPLY_AUDIENCE_CHOICE = {
   mentioned: 'Only people mentioned',
 } satisfies Record<ReplyAudience, string>
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, replyAudiences = REPLY_AUDIENCES, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, choices, quote, story, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, replyAudiences = REPLY_AUDIENCES, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -112,7 +115,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const form = useRef<HTMLFormElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   // A quote keeps the box open: the post being quoted is shown under it.
-  const active = expanded || text.length > 0 || images.drafts.length > 0 || !!video.draft || !!quote || pollOpen
+  const active = expanded || text.length > 0 || images.drafts.length > 0 || !!video.draft || !!quote || !!story || pollOpen
   const rows = active ? (replyTo ? 2 : 3) : 1
   useAutoGrow(input, text, rows)
 
@@ -244,6 +247,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       {replyHandle ? <input type="hidden" name="replyHandle" value={replyHandle} /> : null}
       {community ? <input type="hidden" name="community" value={community} /> : null}
       {quote ? <input type="hidden" name="quote" value={quote.id} /> : null}
+      {story ? <input type="hidden" name="storyOf" value={story.id} /> : null}
       {!replyTo && replyControls ? <input type="hidden" name="replyAudience" value={replyAudience} /> : null}
       {pollOpen ? <input type="hidden" name="poll" value="1" /> : null}
       {markable && sensitive ? <input type="hidden" name="sensitive" value="1" /> : null}
@@ -262,7 +266,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
         )}
         <div className="min-w-0 flex-1">
           <label htmlFor={inputId} className="sr-only">
-            {replyTo ? 'Your reply' : 'New post'}
+            {replyTo ? 'Your reply' : story ? 'Your update' : 'New post'}
           </label>
           <div ref={writingRow} className="composer-writing-row">
             <textarea
@@ -375,6 +379,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
             </button>
           ) : null}
           {quote ? <div className="composer-quote">{quote.preview}</div> : null}
+          {story ? <div className="composer-quote">{story.preview}</div> : null}
         </div>
       </div>
       {pollOpen ? (

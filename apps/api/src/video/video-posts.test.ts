@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { featureFlags, media, members, moderationActions, posts, videoDetails, videoRenditions } from '@heynaija/db'
+import { ageAssurances, featureFlags, media, members, moderationActions, posts, videoDetails, videoRenditions } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { AuthController } from '../auth/auth.controller.js'
 import type { AuthedRequest } from '../auth/session.guard.js'
@@ -10,7 +10,7 @@ import { slugParam } from '../http.js'
 import { NoScanner } from '../media/media.service.js'
 import { PhotoDnaScanner } from '../media/photodna.js'
 import { newPost, PostsService, VideoNotReadyError } from '../posts/posts.service.js'
-import { db, migrate, pool, reset } from '../test-db.js'
+import { bornYearsAgo, db, giveBirthDates, migrate, pool, reset } from '../test-db.js'
 import { DEFAULT_VIDEO_CONFIG } from './video-config.js'
 import { VideoGate } from './video-gate.js'
 import { VideoError } from './video-error.js'
@@ -29,6 +29,7 @@ beforeEach(async () => {
     { id: ada, handle: 'ada', createdAt: old },
     { id: bayo, handle: 'bayo', createdAt: old },
   ])
+  await giveBirthDates([ada, bayo])
 })
 after(() => pool.end())
 
@@ -162,6 +163,18 @@ test('/v1/me features.videoPosts: the flag AND the scanner rule, never the flag 
   assert.equal((await meWith(off, 'production', new PhotoDnaScanner('k')).me(asAda)).features.videoPosts, false, 'production default is off')
 })
 
+test('/v1/me: video is off for a member under 18 or with no date of birth, whatever the flag says', async () => {
+  await db.insert(featureFlags).values({ key: 'videoPosts', enabled: true })
+  const me = async () => meWith(new FeatureFlags(db, 'staging'), 'staging', new NoScanner()).me(asAda)
+  assert.equal((await me()).features.videoPosts, true)
+  await db.update(ageAssurances).set({ withdrawnAt: new Date() }).where(eq(ageAssurances.memberId, ada))
+  const unknown = await me()
+  assert.deepEqual([unknown.features.videoPosts, unknown.videoLimits], [false, null], 'no date of birth')
+  await giveBirthDates([ada], 16)
+  const minor = await me()
+  assert.deepEqual([minor.features.videoPosts, minor.videoLimits], [false, null], 'under 18')
+})
+
 // --- The trust rules hold when the video is attached, not only when the upload starts (ADR 0019 section 4.7) ---
 
 const capped = new PostsService(db, { ...DEFAULT_VIDEO_CONFIG, maxLivePerMember: 2 })
@@ -194,6 +207,7 @@ test('attach: creates racing at the cap let exactly the cap through, the rest ge
   for (let round = 0; round < 3; round++) {
     await reset()
     await db.insert(members).values({ id: ada, handle: 'ada', createdAt: new Date(Date.now() - 30 * 86_400_000) })
+    await giveBirthDates([ada])
     const ids = await Promise.all(Array.from({ length: 8 }, () => video()))
     const results = await Promise.allSettled(ids.map((id, i) => capped.create(ada, `r${round}-${i}`, { video: { id, description: '' } })))
     const refused = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
@@ -207,6 +221,18 @@ test('attach: an upheld action between the upload and the post refuses the post'
   await db.insert(moderationActions).values({ actorId: bayo, action: 'remove_avatar', memberId: ada })
   assert.equal(await code(() => service.create(ada, 'late', { video: { id, description: '' } })), 'not_eligible')
   assert.equal((await db.select().from(posts).where(eq(posts.authorId, ada))).length, 0)
+})
+
+test('attach: a member under 18 or with no date of birth is refused, even with a video uploaded before', async () => {
+  const id = await video()
+  // A moderator corrects ada's date of birth after the upload.
+  await db.insert(ageAssurances).values({ memberId: ada, band: 'under_18', method: 'moderator_review', birthDate: bornYearsAgo(16) })
+  assert.equal(await code(() => service.create(ada, 'mine', { video: { id, description: '' } })), 'not_eligible')
+  await db.update(ageAssurances).set({ withdrawnAt: new Date() }).where(eq(ageAssurances.memberId, ada))
+  assert.equal(await code(() => service.create(ada, 'mine', { video: { id, description: '' } })), 'not_eligible')
+  assert.equal((await db.select().from(posts).where(eq(posts.authorId, ada))).length, 0)
+  const [row] = await db.select().from(media).where(eq(media.id, id))
+  assert.equal(row!.postId, null, 'the video is not attached')
 })
 
 test('attach: an account that is too new is refused', async () => {

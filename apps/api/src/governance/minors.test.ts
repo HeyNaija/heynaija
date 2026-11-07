@@ -99,6 +99,16 @@ test('a minor can narrow who replies, but never open it to everyone', async () =
   assert.equal(await posts_().setReplyAudience(bayo, adults.id, 'everyone'), true, 'an adult can')
 })
 
+test("a minor's update to their story is limited like the story, even one written before they were known to be under 18", async () => {
+  const [old] = await db.insert(posts).values({ authorId: kid, text: 'the start', replyAudience: 'everyone' }).returning({ id: posts.id })
+  for (const asked of [undefined, 'everyone'] as const) {
+    const update = await posts_().create(kid, 'what happened next', { storyOf: old!.id, replyAudience: asked })
+    const [row] = await db.select({ audience: posts.replyAudience }).from(posts).where(eq(posts.id, update.id))
+    assert.equal(row!.audience, 'following', `asked for ${asked ?? 'nothing'}`)
+    await refused(posts_().create(ada, 'hi', { replyTo: update.id }), ReplyNotAllowedError)
+  }
+})
+
 test('a post a minor wrote before they were known to be under 18 is limited too', async () => {
   const [old] = await db.insert(posts).values({ authorId: kid, text: 'from before', replyAudience: 'everyone' }).returning({ id: posts.id })
   assert.equal((await posts_().post(ada, old!.id))!.replyAudience, 'following')

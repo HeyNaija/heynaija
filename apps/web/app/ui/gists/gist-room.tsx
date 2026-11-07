@@ -47,7 +47,8 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 /** Set once a speaker has seen the earphones tip, so it is not shown on every Gist. */
 const EARPHONES_TIP_KEY = 'hn-gist-earphones-tip'
 
-export function GistRoom({ initial, meId }: { initial: GistView; meId: string }) {
+/** `mayTakeStage` is `gistStage` from /v1/me: false for a member who may only listen. */
+export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; meId: string; mayTakeStage: boolean }) {
   const router = useRouter()
   const id = initial.id
   const [view, setView] = useState(initial)
@@ -94,7 +95,7 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
 
   const announce = useCallback((text: string) => setAnnouncement(text), [])
   const role = view.viewer.role
-  const controls = controlsFor(view)
+  const controls = controlsFor({ ...view, mayTakeStage })
   const polling = phase === 'live' || phase === 'reconnecting'
   const moderating = role === 'host' || role === 'cohost'
   // A modal sheet opens only when asked. A moderator's list lives in the host panel, which exists only while
@@ -530,7 +531,7 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
             <strong>Keep this screen open.</strong> If your phone locks or you switch to another app, the sound can stop. Audio only: no camera, and no recording.
           </p>
           <p className="mt-2 text-sm text-muted">{hint}</p>
-          <p className="mt-2 text-sm text-muted">The sound starts when you tap Join. You only need your microphone if the host lets you speak.</p>
+          <p className="mt-2 text-sm text-muted">The sound starts when you tap Join.{mayTakeStage ? ' You only need your microphone if the host lets you speak.' : ''}</p>
           <button type="button" className="btn btn-primary btn-lg gist-btn mt-4" onClick={join}>
             Join the Gist
           </button>
@@ -703,7 +704,7 @@ export function GistRoom({ initial, meId }: { initial: GistView; meId: string })
                 Cancel request
               </button>
             ) : null}
-            {role === 'listener' && !controls.request && !controls.cancelRequest ? <span className="gist-note gist-main">The host is not taking requests to speak.</span> : null}
+            {controls.requestsClosed ? <span className="gist-note gist-main">The host is not taking requests to speak.</span> : null}
             <button type="button" className="btn btn-secondary gist-btn" onClick={leave}>
               <LeaveIcon size={20} />
               Leave

@@ -10,6 +10,7 @@ export const NOTIFICATION_SETTINGS = [
   { kind: 'repost', label: 'Someone reposts your post' },
   { kind: 'quote', label: 'Someone quotes your post' },
   { kind: 'follow', label: 'Someone follows you' },
+  { kind: 'story_update', label: 'Someone adds to a story you follow' },
 ] as const
 
 export type OptionalNotificationKind = (typeof NOTIFICATION_SETTINGS)[number]['kind']

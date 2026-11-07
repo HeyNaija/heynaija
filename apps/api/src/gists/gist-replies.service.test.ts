@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm'
 import { ModerationService } from '../moderation/moderation.service.js'
 import { PostsService } from '../posts/posts.service.js'
 import { MemoryRateLimiter } from '../rate-limit.js'
-import { db, migrate, pool, reset } from '../test-db.js'
+import { db, giveBirthDates, migrate, pool, reset } from '../test-db.js'
 import { FakeRoomService } from './fake-room-service.js'
 import type { GistsGate } from './gists-enabled.guard.js'
 import { GistRepliesService } from './gist-replies.service.js'
@@ -47,6 +47,7 @@ beforeEach(async () => {
   repliesOn = true
   previewsOn = true
   await db.insert(members).values(people.map((p) => ({ id: id[p], handle: p })))
+  await giveBirthDates(people.map((p) => id[p]))
   rooms = new FakeRoomService()
   gistsService = new GistsService(db, rooms, config, new MemoryRateLimiter(), gate)
   requested = []

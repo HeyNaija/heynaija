@@ -12,6 +12,7 @@ export function notificationTarget(n: Pick<Notification, 'kind' | 'post' | 'acto
     case 'post_restored':
     case 'post_labelled':
     case 'idea_status':
+    case 'story_update':
       if (!n.post) return null
       return postedReplyHref(n.post.gistId, n.post.id)
     case 'follow':

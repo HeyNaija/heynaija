@@ -99,6 +99,15 @@ export function ageStatus(records: AgeRecord[], now: Date): AgeStatus {
 export const ADULT_ASSURANCE_REQUIRED = {
   /** Posts marked sensitive, the 18+ label (adult-content.ts holds the SQL copy of this rule). */
   age_restricted_content: 'declared',
+  /**
+   * Hosting a Gist, being its co-host or speaker, asking to speak, and the
+   * microphone itself (gists/eligibility.ts). Everyone else listens only (ADR
+   * 0020, section 4). A stated age until an age check exists (owner, 6 November
+   * 2026); not direct messages or calls, which will need the check (ADR 0018).
+   */
+  gist_stage: 'declared',
+  /** Posting a video, at upload and when it goes on a post (ADR 0019, section 4.6, which needs no age check). */
+  video_posting: 'declared',
   /** Draft constitution Article 2: voting members are verified adults. */
   governance_vote: 'verified',
 } as const satisfies Record<string, AgeAssurance>

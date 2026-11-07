@@ -60,7 +60,9 @@ including for members who live outside Nigeria.
       live.
 - [ ] **How strong age assurance must be**, at signup for minors and for seeing
       adult-only content (today `age_restricted_content` accepts a stated adult age:
-      confirm or raise it).
+      confirm or raise it). Hosting and speaking in Gists (`gist_stage`) and posting
+      video (`video_posting`) accept a stated adult age too, by the owner's decisions
+      of 5 and 6 November 2026 and ADR 0019 section 4.6.
 - [ ] **Whether minors' posts are public.** Every post is public today; that may
       not be acceptable for children.
 - [ ] **What happens to existing accounts with no age on record.** Owner decision,
@@ -131,6 +133,13 @@ including for members who live outside Nigeria.
       bypasses the API. Adult-only images need signed or proxied URLs, or must not
       be allowed.
 - [ ] Minors cannot join communities marked for adults.
+- [ ] Minors cannot post video (ADR 0019, section 4.6). Built (branch
+      `feat/under-18-gists-video`): `assertVideoEligible` in
+      `apps/api/src/video/video-eligibility.ts` needs an adult by stated age
+      (`video_posting`) when an upload starts and again when the video goes on a
+      post, so under 18 and unknown ages can do neither, and `/v1/me` turns
+      `videoPosts` off for them, which hides the video button. Done once it is in
+      production.
 - [ ] Unlawful material stays prohibited for everyone, whatever the label.
 
 ## 5. Contact and messaging safeguards
@@ -142,8 +151,16 @@ including for members who live outside Nigeria.
 - [ ] Direct messages and calls are not built until the ID check for age exists
       (ADR 0018), and then need it (owner, 6 November 2026).
 - [ ] Gists: `under_18` and unknown ages listen only, never host, co-host or
-      speaker (owner, 6 November 2026). Gists check no age today: `isCallsMember`
-      in `apps/api/src/gists/eligibility.ts` reads only the `gists` flag's list.
+      speaker (owner, 6 November 2026). Built (branch `feat/under-18-gists-video`):
+      `canHostGist` in `apps/api/src/gists/eligibility.ts` needs an adult by stated
+      age (`gist_stage` in `apps/api/src/governance/age.ts`). It is checked when a
+      Gist starts, on a request to speak, when a host makes someone a speaker or
+      co-host (refused as for a block, so the host learns nothing about the
+      listener's age), and every time the room's permissions are set, so LiveKit
+      never lets them publish, even with a role given before. They still see and
+      join Gists as listeners; the web app does not offer them Start a Gist or
+      Request to speak (`gistStage` in `/v1/me`). Members who have not given a
+      date of birth are unknown and listen only too. Done once it is in production.
 - [ ] Replies and mentions: minors can limit replies to people they follow, and
       mentions from strangers are limited by default. Built (branch
       `feat/under-18-contact`, `apps/api/src/governance/minors.ts`): a minor's

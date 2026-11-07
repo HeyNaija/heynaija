@@ -47,7 +47,15 @@ export type Me = {
    * `gists` (docs/adr/0017). A missing key counts as off.
    */
   features: { gists: boolean } & Record<string, boolean>
-  /** The API's limits for a post's video while video is open to this member (`features.videoPosts`); null otherwise. */
+  /**
+   * Whether they may start a Gist and speak in one, or only listen: under 18 and
+   * no date of birth listen (ADR 0020). Never true without `features.gists`.
+   */
+  gistStage: boolean
+  /**
+   * The API's limits for a post's video while video is open to this member
+   * (`features.videoPosts`, which is off under 18 and with no date of birth); null otherwise.
+   */
   videoLimits?: VideoLimits | null
 }
 
@@ -181,6 +189,8 @@ export type Post = {
   community: { slug: string; name: string } | null
   /** A quote post's quoted post; null for other posts. */
   quote: QuotedPost | null
+  /** The story it is part of (docs/adr/0024): its first post with updates, or one of them. Null for other posts. */
+  story: PostStory | null
   /**
    * Why the post is in the Following feed or Discover, or 'repost' on a profile;
    * null elsewhere. 'network', 'active' and 'recent' are Discover's.
@@ -222,9 +232,24 @@ export type GistReplies = ReplyPage & {
   viewerIsHost: boolean
   replyAudience: GistReplyAudience
 }
+/** A story as each of its posts carries it. */
+export type PostStory = {
+  /** The story's first post. */
+  id: string
+  /** 0 on the first post; an update's place among the live updates, from 1. */
+  number: number
+  updates: number
+  followers: number
+  following: boolean
+  /** On an update, the first post (a placeholder when gone or hidden). Null on the first post. */
+  start: QuotedPost | null
+}
+
 export type Thread = {
   ancestors: Post[]
   post: Post
+  /** On a story's first post, its newest updates, oldest first (the rest are folded). Empty otherwise. */
+  updates: Post[]
   replies: ThreadReply[]
   replyCursor: string | null
   ancestorsTruncated: boolean
@@ -487,6 +512,12 @@ export const getPollVoters = (id: string, cursor?: string) => getOrNull<PollVote
   `/v1/posts/${encodeURIComponent(id)}/poll/votes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
 )
 
+/** A page of a story's updates, oldest first. */
+export const getStoryUpdates = (id: string, cursor?: string) =>
+  getOrNull<{ posts: Post[]; cursor: string | null }>(
+    `/v1/posts/${encodeURIComponent(id)}/updates?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+  )
+
 /** A branch is always an explicit, bounded page; it never fetches descendants. */
 export async function getReplies(id: string, cursor?: string, order: ReplyOrder = 'newest'): Promise<ReplyPage | null> {
   const query = new URLSearchParams({ order })
@@ -676,6 +707,7 @@ export type NotificationKind =
   | 'moderator_granted'
   | 'moderator_revoked'
   | 'idea_status'
+  | 'story_update'
 
 export type Notification = {
   id: string

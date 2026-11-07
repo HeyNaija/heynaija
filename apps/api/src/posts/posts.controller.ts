@@ -48,6 +48,7 @@ import {
   PostsService,
   QuotedPostNotFoundError,
   ReplyNotAllowedError,
+  StoryNotFoundError,
   VideoNotReadyError,
 } from './posts.service.js'
 import { LabelNotAllowedError } from '../governance/adult-content.js'
@@ -165,6 +166,15 @@ export class PostsController {
     return page
   }
 
+  @Get('posts/:id/updates')
+  @UseGuards(OptionalSessionGuard)
+  async storyUpdates(@Req() req: MaybeAuthedRequest, @Param('id') id: string, @Query() query: unknown) {
+    const { limit, cursor } = parse(pageQuery, query)
+    const page = await paged(() => this.posts.storyUpdates(req.member?.id ?? null, postId(id), limit, cursor))
+    if (!page) throw new NotFoundException()
+    return page
+  }
+
   @Get('posts/:id/post')
   @UseGuards(OptionalSessionGuard)
   async post(@Req() req: MaybeAuthedRequest, @Param('id') id: string) {
@@ -176,12 +186,12 @@ export class PostsController {
   @Post('posts')
   @UseGuards(SessionGuard)
   async create(@Req() req: AuthedRequest, @Body() body: unknown) {
-    const { text, replyTo, community, images, video, quote, poll, replyAudience, sensitive } = parse(createPostBody, body)
+    const { text, replyTo, community, images, video, quote, poll, replyAudience, sensitive, storyOf } = parse(createPostBody, body)
     if (video && !(await this.videoGate?.isOpen(req.member.id))) {
       throw new BadRequestException({ code: 'feature_unavailable', message: 'Videos are not available yet' })
     }
     if (poll) await this.requireFeature(req, 'polls', 'Polls')
-    if (replyAudience !== 'everyone') await this.requireFeature(req, 'replyControls', 'Reply controls')
+    if (replyAudience && replyAudience !== 'everyone') await this.requireFeature(req, 'replyControls', 'Reply controls')
     if (quote) await this.requireFeature(req, 'quotePosts', 'Quote posts')
     if (sensitive) await this.requireFeature(req, 'adultLabels', 'Content warnings')
     await this.limits.hit('post', req.member.id)
@@ -195,6 +205,7 @@ export class PostsController {
         poll,
         replyAudience,
         sensitive,
+        storyOf,
       })
       // The card appears once the page has been read, a few seconds on; the post does not wait for it.
       if (linkUrl && (await this.flags.isEnabled('linkPreviews', req.member.id))) await this.links.request(linkUrl)
@@ -211,6 +222,8 @@ export class PostsController {
           ? 'parent_gone'
           : err instanceof QuotedPostNotFoundError
             ? 'quote_gone'
+            : err instanceof StoryNotFoundError
+            ? 'story_gone'
             : err instanceof CommunityNotFoundError
             ? 'community_gone'
             : err instanceof NotACommunityMemberError
@@ -385,5 +398,20 @@ export class PostsController {
   @UseGuards(SessionGuard)
   async unbookmark(@Req() req: AuthedRequest, @Param('id') id: string) {
     await this.posts.unbookmark(req.member.id, postId(id))
+  }
+
+  @Put('posts/:id/story-follow')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async followStory(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await this.limits.hit('action', req.member.id)
+    if (!(await this.posts.followStory(req.member.id, postId(id)))) throw new NotFoundException()
+  }
+
+  @Delete('posts/:id/story-follow')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async unfollowStory(@Req() req: AuthedRequest, @Param('id') id: string) {
+    await this.posts.unfollowStory(req.member.id, postId(id))
   }
 }
