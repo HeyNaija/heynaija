@@ -28,8 +28,10 @@ case, a match, a trip.
   updates oldest first. A line in the gutter joins them and curves into each
   update's card. With more than four updates, the middle ones fold: the page
   shows the first post, "Updates 1 to 4" folded, then the newest three. Each
-  update shows its reply count; its replies are on its own page. The first
-  post's own replies come after the updates, as on any post. At the end of the
+  update has its reply count and **View replies**, which opens its replies
+  under it, one level in, as a reply's open; the story's line runs on past
+  them to the next update. Answering an update opens the reply box there. The
+  first post's own replies come after the updates, as on any post. At the end of the
   spine the author has a box, "Add update 8…", in which the next update is
   written where it will go, as a reply is written under its post. It is not
   a quote: the story is right above it, so it needs no card of the first post.
