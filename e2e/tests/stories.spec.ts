@@ -7,9 +7,13 @@ import { newMember, post } from '../lib/members.ts'
 const idOf = async (page: Page, text: string) =>
   (await page.locator('article', { hasText: text }).first().getAttribute('id'))!.replace('post-', '')
 
-/** Writes an update in the box at the end of a story and waits for it to show above the box. */
+/**
+ * Writes an update in the box at the end of a story and waits for it to show
+ * above the box. `?add=update` brings the box to a post that is not a story yet,
+ * as its menu does.
+ */
 async function addUpdate(page: Page, storyId: string, text: string) {
-  await page.goto(`/p/${storyId}#add-update`)
+  await page.goto(`/p/${storyId}?add=update#add-update`)
   await writeUpdate(page, text)
 }
 
