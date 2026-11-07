@@ -476,7 +476,7 @@ test('an answer is joined to its parent by a line in the gutter that curves into
       const avatar = card.querySelector('.post-header a')!.getBoundingClientRect()
       // Each answer row's ::before is the line down to it and the curve into its card; the
       // answer's ::after carries the line on to the next answer.
-      const curve = (id: string) => {
+      const curve = (id: string | undefined) => {
         const row = document.getElementById(`post-${id}`)!.closest('.thread-row')!
         const box = row.getBoundingClientRect()
         const style = getComputedStyle(row, '::before')
