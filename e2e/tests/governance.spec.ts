@@ -181,7 +181,7 @@ test('a member downloads their data as JSON', async ({ browser }) => {
   expect(data.posts).toContainEqual(expect.objectContaining({ text, quoteOf: null, mentions: [] }))
   expect(data.reposts).toEqual([])
   // Every kind of notification is on until they turn one off.
-  expect(data.notificationPreferences).toEqual({ reply: true, like: true, repost: true, quote: true, mention: true, follow: true })
+  expect(data.notificationPreferences).toEqual({ reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true })
   // New members are emailed their notifications until they turn it off.
   expect(data.emailNotifications).toBe(true)
   // Push is per browser, and they have not turned it on anywhere.
