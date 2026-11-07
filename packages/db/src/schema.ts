@@ -24,6 +24,10 @@ const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' 
 export const REPLY_AUDIENCES = ['everyone', 'following', 'mentioned'] as const
 export const GIST_REPLY_AUDIENCES = [...REPLY_AUDIENCES, 'off'] as const
 
+// Who marked something sensitive (ADR 0020, the 18+ label): its author, or a
+// moderator, whose mark the author cannot take off.
+export const ADULT_LABELS = ['author', 'moderator'] as const
+
 // A member of the network. `id` is the Ory Kratos identity ID: Kratos owns the
 // email, password and sessions; this table holds only what the app itself needs.
 export const members = pgTable(
@@ -70,8 +74,15 @@ export const members = pgTable(
     // When the erase finished. From then on the row is a blank tombstone, kept so
     // that reports, moderation records and other people's replies still point somewhere.
     deletedAt: ts('deleted_at'),
+    // Every post they write from now on is marked sensitive (ADR 0020): their own
+    // choice in Settings ('author'), or a moderator's, which they cannot undo.
+    labelPosts: text('label_posts', { enum: ADULT_LABELS }),
+    // Show the images and video of posts marked sensitive straight away, without
+    // the cover. Only ever read for members who count as adults.
+    showSensitiveMedia: boolean('show_sensitive_media').notNull().default(false),
   },
   (t) => [
+    check('members_label_posts_check', sql.raw(`label_posts in (${ADULT_LABELS.map((value) => `'${value}'`).join(', ')})`)),
     index('members_handle_idx').on(t.handle),
     // Prefix lookups for @mention suggestions; "C" so LIKE 'ad%' can use them.
     index('members_handle_prefix_idx').on(sql`handle collate "C"`).where(sql`active`),
@@ -274,6 +285,10 @@ export const posts = pgTable(
     // A reply in a Gist's comment section, inherited by the replies under it. Read only through the Gist's routes.
     gistId: uuid('gist_id').references((): AnyPgColumn => gists.id),
     createdAt: ts('created_at').notNull().defaultNow(),
+    // Marked sensitive (ADR 0020, the 18+ label), with everything attached to it:
+    // never shown to anyone who does not count as an adult, and its images and
+    // video covered until an adult chooses to see them. Null when unmarked.
+    adultLabel: text('adult_label', { enum: ADULT_LABELS }),
     // Soft delete: the row stays for moderation and audit, but leaves every feed.
     deletedAt: ts('deleted_at'),
     // Taken down by a moderator (as opposed to deleted by its author). Reversible.
@@ -297,6 +312,7 @@ export const posts = pgTable(
     index('posts_gist_created_idx').on(t.gistId, t.createdAt, t.id).where(sql`gist_id is not null`),
     check('posts_gist_reply_check', sql`${t.gistId} is null or ${t.quotePostId} is null`),
     check('posts_reply_audience_check', sql.raw(`reply_audience in (${REPLY_AUDIENCES.map((value) => `'${value}'`).join(', ')})`)),
+    check('posts_adult_label_check', sql.raw(`adult_label in (${ADULT_LABELS.map((value) => `'${value}'`).join(', ')})`)),
     // Full-text search. 'simple' (no stemming) suits mixed English, Pidgin and names.
     index('posts_text_search_idx').using('gin', sql`to_tsvector('simple', ${t.text})`),
   ],
@@ -512,7 +528,8 @@ export const mutes = pgTable(
   (t) => [primaryKey({ columns: [t.muterId, t.mutedId] })],
 )
 
-export const REPORT_REASONS = ['spam', 'harassment', 'hate', 'scam', 'illegal', 'other', 'appeal'] as const
+// needs_label: sensitive content that is not marked as sensitive (ADR 0020).
+export const REPORT_REASONS = ['spam', 'harassment', 'hate', 'scam', 'illegal', 'needs_label', 'other', 'appeal'] as const
 
 // A report about a post, an account, a Gist or a community's photo. An appeal is a report a suspended member
 // files about themselves (reason 'appeal'), so it lands in the same queue. A
@@ -552,6 +569,9 @@ export const MODERATION_ACTIONS = [
   'grant_community_moderator',
   'revoke_community_moderator',
   'end_gist',
+  // Marking a post sensitive, and taking a moderator's mark off again (ADR 0020).
+  'label_post',
+  'unlabel_post',
 ] as const
 
 // Append-only record of every moderator decision: who did what, to what, and why.
@@ -593,6 +613,8 @@ export const NOTIFICATION_KINDS = [
   'moderator_revoked',
   // An idea you sent or voted for changed status; detail is the new status.
   'idea_status',
+  // The moderators marked your post sensitive (ADR 0020).
+  'post_labelled',
 ] as const
 
 // Something that happened to a member: a reply, like, repost, quote, mention or follow by

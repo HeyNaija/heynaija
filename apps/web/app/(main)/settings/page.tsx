@@ -8,9 +8,11 @@ import { InstallApp } from '@/app/ui/install-app'
 import { NotificationPreferencesForm } from '@/app/ui/notification-preferences-form'
 import { ProfileForm } from '@/app/ui/profile-form'
 import { PushSwitch } from '@/app/ui/push-switch'
+import { SensitiveSettingsForm } from '@/app/ui/sensitive-settings-form'
 import { ThemeSwitch } from '@/app/ui/theme-switch'
 import { type GovernanceStatus, getGovernanceStatus, getNotificationPreferences, getPushKey, getViewer } from '@/lib/api'
 import { currentDataMode } from '@/lib/low-data-server'
+import { canMarkSensitive } from '@/lib/sensitive'
 import { AuthForm } from '@/lib/auth/server'
 
 export const metadata: Metadata = { title: 'Settings' }
@@ -52,6 +54,9 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
           <DataUse />
         </Suspense>
       </section>
+      <Suspense fallback={null}>
+        <SensitiveContent />
+      </Suspense>
       <section className="content-panel settings-section" aria-labelledby="notifications-heading">
         <div>
           <h2 id="notifications-heading" className="section-title">Notifications</h2>
@@ -266,6 +271,27 @@ const DATA_CHOICES = [
   { value: 'saver', label: 'Save data' },
   { value: 'full', label: 'Always load' },
 ] as const
+
+/**
+ * Posts marked sensitive (ADR 0020). Only for adults: nobody else is ever shown
+ * such a post, or may mark one.
+ */
+async function SensitiveContent() {
+  const viewer = await getViewer()
+  if (viewer.state !== 'member' || !viewer.me.sensitive?.adult) return null
+  return (
+    <section className="content-panel settings-section" aria-labelledby="sensitive-heading">
+      <div>
+        <h2 id="sensitive-heading" className="section-title">Sensitive content</h2>
+        <p className="field-hint mt-1">
+          Posts with graphic violence, nudity that is not sexual, or sexual talk are marked sensitive. They are never
+          shown to anyone under 18.
+        </p>
+      </div>
+      <SensitiveSettingsForm settings={viewer.me.sensitive} offerMark={canMarkSensitive(viewer.me)} />
+    </section>
+  )
+}
 
 /** Saves with a plain form post, so it works without JavaScript. */
 async function DataUse() {

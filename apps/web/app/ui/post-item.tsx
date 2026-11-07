@@ -2,14 +2,15 @@ import { reportPostHref } from '@/lib/report-href'
 import { gistReplyHref, replyQuery, type ReplyOrder } from '@/lib/thread-state'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { deletePost, hideGistReply, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin, setReplyAudience } from '@/app/actions'
-import type { Post } from '@/lib/api'
+import { deletePost, hideGistReply, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin, setReplyAudience, setSensitive } from '@/app/actions'
+import { getViewer, type Post } from '@/lib/api'
 import { currentDataSaver } from '@/lib/low-data-server'
 import { textParts } from '@/lib/mentions'
 import { previewParts } from '@/lib/post-length'
 import { excerpt } from '@/lib/previews'
 import { REPLY_AUDIENCES } from '@/lib/reply-audience'
 import { replyContextView } from '@/lib/reply-context'
+import { canMarkSensitive } from '@/lib/sensitive'
 import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
 import type { FeedSource } from './feed-source'
@@ -21,6 +22,7 @@ import { LocalTime } from './local-time'
 import { Menu } from './menu'
 import { MorePosts } from './more-posts'
 import { PollCard } from './poll-card'
+import { MediaCover } from './media-cover'
 import { PostImages } from './post-images'
 import { PostVideo } from './post-video'
 import { PostPermalink } from './post-permalink'
@@ -67,6 +69,26 @@ async function SaverQuote({ quote, now }: { quote: NonNullable<Post['quote']>; n
 }
 async function SaverLinkCard({ preview }: { preview: NonNullable<Post['linkPreview']> }) {
   return <LinkCard preview={preview} saver={await currentDataSaver()} />
+}
+
+/**
+ * The author's own sensitive mark (ADR 0020): offered while they may mark posts,
+ * and taking their own mark off always works. A moderator's mark is not theirs to change.
+ */
+async function SensitiveMenuItem({ post }: { post: Post }) {
+  if (post.sensitive === 'moderator') return null
+  const marked = post.sensitive === 'author'
+  if (!marked) {
+    const viewer = await getViewer()
+    if (viewer.state !== 'member' || !canMarkSensitive(viewer.me)) return null
+  }
+  return (
+    <form action={setSensitive}>
+      <input type="hidden" name="id" value={post.id} />
+      <input type="hidden" name="on" value={marked ? '0' : '1'} />
+      <SubmitButton className="menu-item">{marked ? 'Remove sensitive mark' : 'Mark as sensitive'}</SubmitButton>
+    </form>
+  )
 }
 
 export function PostItem({
@@ -277,6 +299,7 @@ export function PostItem({
                       </>
                     )}
                     {communityPin}
+                    {gist ? null : <SensitiveMenuItem post={post} />}
                     <form action={deletePost}>
                       <input type="hidden" name="id" value={post.id} />
                       <SubmitButton
@@ -349,12 +372,16 @@ export function PostItem({
       {post.poll ? <PollCard postId={post.id} poll={post.poll} member={viewerId !== null} /> : null}
       {post.images.length ? (
         <div className="mt-3">
-          <SaverImages images={post.images} />
+          <MediaCover covered={post.coverMedia}>
+            <SaverImages images={post.images} />
+          </MediaCover>
         </div>
       ) : null}
       {post.video ? (
         <div className="mt-3">
-          <SaverVideo video={post.video} />
+          <MediaCover covered={post.coverMedia}>
+            <SaverVideo video={post.video} />
+          </MediaCover>
         </div>
       ) : null}
       {post.quote ? (

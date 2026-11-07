@@ -28,7 +28,9 @@ export function QuotedPostCard({ quote, now, saver = false }: { quote: QuotedPos
       </span>
       {quote.replyParentId ? <span className="quoted-post-note">Replying to a post</span> : null}
       {quote.text ? <span className="quoted-post-text">{quote.text}</span> : null}
-      {quote.images.length && saver ? (
+      {quote.images.length && quote.coverMedia ? (
+        <span className="quoted-post-note">Sensitive content. Open the post to see it.</span>
+      ) : quote.images.length && saver ? (
         <span className="quoted-post-note">{quote.images.length === 1 ? '1 image' : `${quote.images.length} images`} not loaded. Open the post to load.</span>
       ) : quote.images.length ? (
         <span className="quoted-post-images" data-count={quote.images.length}>

@@ -116,10 +116,17 @@ including for members who live outside Nigeria.
 ## 4. Content restricted to adults
 
 - [ ] A label for posts, communities and images that are for adults only, set by
-      authors, community settings and moderators.
+      authors, community settings and moderators. Built for posts (branch
+      `feat/sensitive-labels`): shown as "sensitive", the way X does it (ADR 0020,
+      owner decision of 7 November 2026), set by the author in the composer or the
+      post's menu, by Settings for everything they post, and by moderators. Not
+      yet for whole communities.
 - [ ] Enforced on the server in every read path: feeds, threads, replies, search,
       trending, profiles, notifications, community pages and the data export of
-      other people's posts. Default deny for `under_18` and unknown ages.
+      other people's posts. Default deny for `under_18` and unknown ages. Built for
+      posts (`adultContentAllowed` in `apps/api/src/governance/adult-content.ts`,
+      tested route by route in `apps/api/src/posts/sensitive.test.ts`); marked posts
+      also never trend and are never in Discover. Done once it is in production.
 - [ ] Images: processed media is served from a public bucket under `/media`, which
       bypasses the API. Adult-only images need signed or proxied URLs, or must not
       be allowed.

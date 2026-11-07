@@ -55,7 +55,14 @@ async function Report({ searchParams }: Pick<PageProps<'/report'>, 'searchParams
         </div>
       ) : null}
       <div className="mt-4">
-        <ReportForm postId={post?.id} gist={gistPost ? gistId : undefined} handle={profile?.handle} community={community?.slug} />
+        <ReportForm
+          postId={post?.id}
+          gist={gistPost ? gistId : undefined}
+          handle={profile?.handle}
+          community={community?.slug}
+          // A post not marked already, while marking is switched on (ADR 0020).
+          needsLabel={Boolean(post && !gistPost && !post.sensitive && viewer.me.features?.adultLabels)}
+        />
       </div>
     </div>
   )

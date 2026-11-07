@@ -71,7 +71,7 @@ export function ThreadConversation({
 }: {
   focus: ReplyTarget
   /** Null for a visitor, and for a member who may not reply here (`limited`). */
-  member: { handle: string; avatar: string | null } | null
+  member: { handle: string; avatar: string | null; sensitiveLabels?: boolean } | null
   limited: boolean
   initialRows: ThreadRow[]
   cursor: string | null
@@ -229,6 +229,7 @@ export function ThreadConversation({
       onPosted={onPosted}
       onPendingChange={setPosting}
       media={!gist}
+      sensitiveLabels={member.sensitiveLabels ?? false}
       portalTarget={portalTarget}
       focusRequest={focusRequest}
     />

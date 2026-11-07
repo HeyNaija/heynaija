@@ -32,6 +32,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common'
 import { aliasedTable, and, asc, eq, isNotNull, or, sql } from 'drizzle-orm'
 import { avatarPath, postImagePath } from '../media/media.service.js'
 import { masterKey, posterKey } from '../video/video-keys.js'
+import { adultContentAllowed } from '../governance/adult-content.js'
 import { gistsOpenTo, postShown, preferencesWithout } from '../notifications/notifications.service.js'
 import { GistsGate } from '../gists/gists-enabled.guard.js'
 import { DB } from '../tokens.js'
@@ -101,6 +102,8 @@ export class ExportService {
           removedByModeratorAt: posts.removedAt,
           gistId: posts.gistId,
           hiddenByHostAt: posts.hiddenByHostAt,
+          // Marked sensitive (ADR 0020): 'author' or 'moderator', or null.
+          markedSensitive: posts.adultLabel,
         })
         .from(posts)
         .leftJoin(communities, eq(communities.id, posts.communityId))
@@ -211,7 +214,8 @@ export class ExportService {
       db
         .select({
           kind: notifications.kind,
-          postId: sql<string | null>`case when ${postShown(memberId, gistsOn, { gist: sql`${posts.gistId}`, author: sql`${posts.authorId}`, recipient: sql`${notifications.recipientId}` })} then ${notifications.postId} end`,
+          postId: sql<string | null>`case when ${postShown(memberId, gistsOn, { gist: sql`${posts.gistId}`, author: sql`${posts.authorId}`, recipient: sql`${notifications.recipientId}` })}
+            and ${adultContentAllowed(memberId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)} then ${notifications.postId} end`,
           at: notifications.createdAt,
           readAt: notifications.readAt,
         })
@@ -362,6 +366,11 @@ export class ExportService {
       notificationPreferences: preferencesWithout(turnedOff.map((r) => r.kind)),
       // Whether those notifications are also sent to your email address.
       emailNotifications: me.emailNotifications,
+      // Whether everything you post is marked sensitive: your choice ('author'),
+      // a moderator's ('moderator'), or not (null). And whether pictures and video
+      // in posts marked sensitive are shown to you without a cover.
+      markPostsSensitive: me.labelPosts,
+      showSensitiveMedia: me.showSensitiveMedia,
       // The browsers they are pushed to: when each was turned on and last sent one.
       // A browser's push address is left out; it is only good for sending to it.
       pushNotifications: pushedTo,

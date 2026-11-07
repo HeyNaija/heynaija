@@ -8,6 +8,7 @@ import { PostsSkeleton } from '@/app/ui/post-item'
 import { QuotedPostCard } from '@/app/ui/quoted-post'
 import { getCommunities, getPost, getViewer } from '@/lib/api'
 import { currentDataSaver } from '@/lib/low-data-server'
+import { composerOffersMark } from '@/lib/sensitive'
 
 export const metadata: Metadata = { title: 'Quote post' }
 
@@ -45,6 +46,7 @@ async function QuoteView({ params }: Props) {
         choices={joined}
         polls={viewer.me.features?.polls ?? false}
         replyControls={viewer.me.features?.replyControls ?? false}
+        sensitiveLabels={composerOffersMark(viewer.me)}
         placeholder="Add your thoughts…"
         submitAction={createQuote}
         quote={{ id: post.id, preview: <QuotedPostCard quote={post} now={Date.now()} saver={saver} /> }}

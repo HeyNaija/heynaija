@@ -1078,11 +1078,13 @@
       "priority": "P2",
       "status": "partial",
       "availability": "not_live",
-      "caveat": "Only the first part is built: every member gives a date of birth, new members at signup and everyone else before they carry on. Posts and communities cannot be marked 18+ yet.",
+      "caveat": "Every member gives a date of birth, new members at signup and everyone else before they carry on. Posts can be marked sensitive (the 18+ label, shown the way X does it), on the web and in the apps, behind the adultLabels flag, which is off in production. Whole communities cannot be marked yet, and marked pictures and video are still served from the public media bucket.",
       "evidence": [
         "docs/adr/0020-under-18-accounts-and-adult-labels.md",
         "apps/api/src/governance/age.ts",
-        "docs/governance/under-18-rollout.md"
+        "docs/governance/under-18-rollout.md",
+        "apps/api/src/governance/adult-content.ts",
+        "apps/api/src/posts/sensitive.test.ts"
       ],
       "notes": "Phase 1 of ADR 0020 (accepted 6 Nov 2026): the 18+ beta rule stays while this ships; a member already here whose date gives under 18 is kept as a minor and moderators are told. The date of birth is built: at signup (birth_date on restricted.age_assurances, the /join fields and confirmation, POST /v1/signup/age, Settings and the export), and asked once of everyone already here, who sees only /birth-date until they answer (POST /v1/me/birth-date). The age is worked out from the date on every check. The labels and their enforcement are not yet. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs."
     },

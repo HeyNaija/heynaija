@@ -107,6 +107,24 @@ while the flag is off. Before rolling back past 0037 on an environment that has 
 soft-hide them (`update posts set removed_at = now() where gist_id is not null`) or accept
 that they appear. Do not give them a sentinel `reply_parent_id`.
 
+## `adultLabels`
+
+`adultLabels` (off in production, on in staging and development) gates marking posts
+sensitive (ADR 0020, the 18+ label): the "Mark as sensitive" switch under attached media
+in the composer, the item in a post's menu, the Settings switch that marks everything a
+member posts, the moderators' "Mark sensitive" decision and the report reason "Sensitive,
+but not marked sensitive". `/v1/me` reports it in `features.adultLabels`.
+
+It gates making marks only. Enforcement never reads it: a post already marked is kept from
+signed-out visitors, members with no date of birth and anyone under 18 whatever the flag
+says, and adults keep its media covered unless they chose otherwise. Taking your own mark
+off, and a moderator taking theirs off, always work.
+
+Rollback. A release before migration 0039 does not know `posts.adult_label` and would show
+marked posts to everyone. Before rolling back past 0039 on an environment with marked posts,
+take them down (`update posts set removed_at = now() where adult_label is not null`) and
+restore them afterwards, or accept that they show.
+
 ## Flipping a flag
 
 Site moderators (the site-wide role) use **Moderation, Feature flags** in the web app,
