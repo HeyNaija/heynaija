@@ -17,12 +17,13 @@ import {
   reposts,
   storyFollows,
 } from '@heynaija/db'
-import { Inject, Injectable, Optional } from '@nestjs/common'
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { findLinks, type FoundLink, previewUrlOf } from '../links/link-text.js'
 import { type LinkPreview, type LinkPreviewRow, linkPreviewOf, toLinkPreview } from '../links/links.service.js'
-import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/media.service.js'
+import { ALT_MAX, avatarPath, MEDIA_JOBS, type PlacementJobs, POST_IMAGES_MAX } from '../media/media.service.js'
+import { localMediaUrls, MEDIA_URLS, type MediaUrls } from '../media/media-urls.js'
 import { type VideoConfig, DEFAULT_VIDEO_CONFIG } from '../video/video-config.js'
 import { assertVideoEligible } from '../video/video-eligibility.js'
 import { VIDEO_CONFIG } from '../video/video.service.js'
@@ -128,7 +129,7 @@ export const newPost = (slug: z.ZodType<string>) =>
 export type PostLink = FoundLink
 
 export type PostImage = {
-  /** Path without the size suffix (see `postImagePath`). */
+  /** Path without the size suffix (see `postImagePath`), signed while the post is marked sensitive (ADR 0025). */
   src: string
   alt: string
   width: number
@@ -155,7 +156,7 @@ export type PollVoterPage = {
   cursor: string | null
 }
 
-type ImageRow = { id: string; alt: string; width: number; height: number; animated: boolean }
+export type ImageRow = { id: string; alt: string; width: number; height: number; animated: boolean; servedPrivately: boolean }
 
 /** The post a quote post quotes, as the reader sees it inside the quote. */
 export type QuotedPost =
@@ -467,10 +468,14 @@ const profileFilter: Record<ProfileFilter, SQL> = {
 
 /** A post's ready images in order, as JSON, for any query with `posts` in scope. */
 export const imagesOf = (postId: SQL) =>
-  sql<ImageRow[]>`coalesce((select json_agg(json_build_object('id', m.id, 'alt', m.alt, 'width', m.width, 'height', m.height, 'animated', m.animated) order by m.position) from media m where m.post_id = ${postId} and m.kind = 'post_image' and m.status = 'ready'), '[]'::json)`
+  sql<ImageRow[]>`coalesce((select json_agg(json_build_object('id', m.id, 'alt', m.alt, 'width', m.width, 'height', m.height, 'animated', m.animated, 'servedPrivately', m.served_privately) order by m.position) from media m where m.post_id = ${postId} and m.kind = 'post_image' and m.status = 'ready'), '[]'::json)`
 
-export const toPostImages = (rows: ImageRow[]): PostImage[] =>
-  rows.map(({ id, alt, width, height, animated }) => ({ src: postImagePath(id), alt, width, height, animated }))
+/**
+ * Only ever for a viewer who may see the post: a marked one's images are in the
+ * private place (ADR 0025), and their paths are signed for whoever is given them.
+ */
+export const toPostImages = (rows: ImageRow[], urls: MediaUrls): PostImage[] =>
+  rows.map(({ id, alt, width, height, animated, servedPrivately }) => ({ src: urls.postImage(id, servedPrivately), alt, width, height, animated }))
 
 type QuoteRow =
   | (Omit<Extract<QuotedPost, { id: string }>, 'images' | 'createdAt' | 'authorAvatar'> & {
@@ -495,11 +500,11 @@ const quoteOf = (viewerId: string | null, quotePostId: SQL) => sql<QuoteRow | nu
     and ${adultContentAllowed(viewerId, sql`q.adult_label`, sql`q.author_id`)}
 ), json_build_object('unavailable', true)) end`
 
-const toQuote = (row: QuoteRow | null): QuotedPost | null => {
+const toQuote = (row: QuoteRow | null, urls: MediaUrls): QuotedPost | null => {
   if (!row) return null
   if ('unavailable' in row) return { unavailable: true }
   const { images, createdAt, authorAvatarId, ...quote } = row
-  return { ...quote, images: toPostImages(images), createdAt: new Date(createdAt), authorAvatar: avatarPath(authorAvatarId) }
+  return { ...quote, images: toPostImages(images, urls), createdAt: new Date(createdAt), authorAvatar: avatarPath(authorAvatarId) }
 }
 
 type PollRow = Omit<PollView, 'expiresAt'> & { expiresAt: string | null }
@@ -680,14 +685,20 @@ const storyOf = (viewerId: string | null) => {
   ) end`
 }
 
-const toStory = (row: StoryRow | null): PostStory | null => (row ? { ...row, start: toQuote(row.start) } : null)
+const toStory = (row: StoryRow | null, urls: MediaUrls): PostStory | null => (row ? { ...row, start: toQuote(row.start, urls) } : null)
 
 @Injectable()
 export class PostsService {
+  private readonly log = new Logger(PostsService.name)
+
   constructor(
     @Inject(DB) private readonly db: Db,
     // The trust rules for video are checked again when a video is attached (ADR 0019 section 4.7).
     @Optional() @Inject(VIDEO_CONFIG) private readonly videoCfg: VideoConfig = DEFAULT_VIDEO_CONFIG,
+    // Signs a marked post's media for the viewer it is shown to (ADR 0025).
+    @Optional() @Inject(MEDIA_URLS) private readonly urls: MediaUrls = localMediaUrls(videoCfg.filesBase),
+    // Moves a post's files when its sensitive mark changes. Optional so tests about posts alone need no queue.
+    @Optional() @Inject(MEDIA_JOBS) private readonly placement?: PlacementJobs,
   ) {}
 
   /**
@@ -789,14 +800,14 @@ export class PostsService {
     return rows.map(({ communitySlug, communityName, authorAvatarId, images, video, quote, linkPreview, poll, replyContext, story, ...row }) => ({
       ...row,
       replyTo: toReplyContext(replyContext),
-      images: toPostImages(images),
-      video: toPostVideo(video, this.videoCfg.filesBase),
+      images: toPostImages(images, this.urls),
+      video: toPostVideo(video, this.urls),
       links: findLinks(row.text),
       linkPreview: toLinkPreview(linkPreview),
       authorAvatar: avatarPath(authorAvatarId),
       community: communitySlug && communityName ? { slug: communitySlug, name: communityName } : null,
-      quote: toQuote(quote),
-      story: toStory(story),
+      quote: toQuote(quote, this.urls),
+      story: toStory(story, this.urls),
       poll: toPoll(poll),
       repostedBy: null,
     }))
@@ -1668,13 +1679,13 @@ export class PostsService {
         const { images, video, createdAt, authorAvatarId, quote, poll, linkPreview, ...post } = row.view
         return {
           ...post,
-          images: toPostImages(images),
-          video: toPostVideo(video, this.videoCfg.filesBase),
+          images: toPostImages(images, this.urls),
+          video: toPostVideo(video, this.urls),
           links: findLinks(post.text),
           linkPreview: toLinkPreview(linkPreview),
           createdAt: new Date(createdAt),
           authorAvatar: avatarPath(authorAvatarId),
-          quote: toQuote(quote),
+          quote: toQuote(quote, this.urls),
           poll: toPoll(poll),
         }
       }),
@@ -1809,7 +1820,7 @@ export class PostsService {
     // once the post exists (see `LinksService.request`).
     const linkUrl = previewUrlOf(text)
     let gistHost: string | null = null
-    return this.db.transaction(async (tx) => {
+    const created = await this.db.transaction(async (tx) => {
       if (parent) {
         // Locking the root waits out a change to its reply audience, so a reply
         // already in flight cannot slip past a new restriction. Only the root
@@ -1861,7 +1872,7 @@ export class PostsService {
           // Settings' "mark everything I post" (or a moderator's) wins over the post's own choice.
           adultLabel: sql`coalesce((select m.label_posts from members m where m.id = ${authorId}), ${sensitive ? 'author' : null}::text)`,
         })
-        .returning({ id: posts.id })
+        .returning({ id: posts.id, adultLabel: posts.adultLabel })
       if (poll) {
         await tx.insert(postPolls).values({ postId: row!.id, multiple: poll.multiple, expiresAt: pollExpiresAt(poll.expiresIn) })
         // `pollInput` already refused options that differ only in case, but the
@@ -1940,8 +1951,11 @@ export class PostsService {
           .map((recipientId) => ({ recipientId, kind: 'story_update' as const, actorId: authorId, postId: row!.id })),
       ])
       await alongside?.(tx, row!.id)
-      return { id: row!.id, linkUrl }
+      return { id: row!.id, linkUrl, marked: row!.adultLabel !== null }
     })
+    // Its pictures or video were published before it was marked: they move to the private place (ADR 0025).
+    if (created.marked && (images.length > 0 || video)) await this.placeMedia(created.id)
+    return { id: created.id, linkUrl: created.linkUrl }
   }
 
   private async whoOpensGist(q: Pick<Db, 'execute'>, gistId: string, ids: string[], flagAllows: ((memberId: string) => boolean) | undefined): Promise<string[]> {
@@ -1995,7 +2009,22 @@ export class PostsService {
         sql`${posts.adultLabel} is distinct from 'moderator'`,
       ))
       .returning({ id: posts.id })
+    // Its pictures and video follow the mark: private while it is on (ADR 0025).
+    if (changed.length > 0) await this.placeMedia(postId)
     return changed.length > 0
+  }
+
+  /**
+   * Queues moving a post's files to where its mark says. The post has changed
+   * already, so a queue that cannot take the job does not fail the request: the
+   * hourly sweep moves files whose place and mark disagree.
+   */
+  private async placeMedia(postId: string): Promise<void> {
+    try {
+      await this.placement?.placePostMedia(postId)
+    } catch (err) {
+      this.log.error(`queueing the move of post ${postId}'s media for its sensitive mark failed; the hourly sweep will move it: ${(err as Error).message}`)
+    }
   }
 
   /** Records one immutable ballot. A multiple-choice ballot creates several option rows atomically. */

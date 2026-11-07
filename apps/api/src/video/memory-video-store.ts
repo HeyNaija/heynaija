@@ -81,6 +81,9 @@ export class MemoryVideoStore implements VideoStore {
   async list(bucket: Bucket, prefix: string) {
     return this.keys(bucket).filter((k) => k.startsWith(prefix))
   }
+  async presignRead(bucket: Bucket, key: string, window: { expiresAt: Date }) {
+    return `memory://read/${bucket}/${key}?until=${window.expiresAt.toISOString()}`
+  }
 
   /** What a browser does with a part URL. */
   putPart(uploadId: string, partNumber: number, body: Buffer) {

@@ -10,6 +10,7 @@ import type { VideoStore } from '../media/object-store.js'
 import type { SafetyAlerts } from '../moderation/safety-alerts.js'
 import { checkLimits, type Deadline, DurationMismatch, extractFrames, extractPoster, FfmpegTimeout, jobTimeoutMs, newDeadline, type Probe, probe, type Rejection, type SampledFrame } from './ffmpeg.js'
 import { encodeHls, HLS_CONTENT_TYPES, hlsLadder, upTo480 } from './hls.js'
+import { inTurn } from './in-turn.js'
 import type { VideoConfig } from './video-config.js'
 import { hlsKey, originalKey, posterKey, quarantineOriginalKey } from './video-keys.js'
 
@@ -223,14 +224,6 @@ export class VideoProcessor {
 
 /** A 3-minute clip is about 190 files; sent a few at a time, not one by one. */
 const UPLOADS_AT_ONCE = 8
-
-/** Runs `fn` on every item, at most `n` at once. */
-async function inTurn<T>(items: T[], n: number, fn: (item: T) => Promise<void>): Promise<void> {
-  const queue = [...items]
-  await Promise.all(Array.from({ length: n }, async () => {
-    for (let item = queue.shift(); item !== undefined; item = queue.shift()) await fn(item)
-  }))
-}
 
 /**
  * One verdict on a video from whatever the scanner can look at: the whole file (Arachnid Shield)

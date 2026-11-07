@@ -4,7 +4,7 @@ import type { Env } from '../env.js'
 import { ENV } from '../tokens.js'
 import { VideoService } from '../video/video.service.js'
 import { CDN_PURGER, type CdnPurger } from './cdn-purge.js'
-import { MEDIA_JOBS, type MediaJobs, MediaService } from './media.service.js'
+import { MEDIA_JOBS, type MediaJobs, MediaService, type PlacementJobs } from './media.service.js'
 
 const QUEUE = 'media'
 const SWEEP_EVERY_MS = 60 * 60 * 1000
@@ -18,6 +18,7 @@ const PURGE_ATTEMPTS = 11
 type Job =
   | { name: 'post-image'; data: { mediaId: string } }
   | { name: 'purge-cdn'; data: { keys: string[] } }
+  | { name: 'place-post-media'; data: { postId: string } }
   | { name: 'sweep'; data: Record<string, never> }
 
 const connection = (env: Env): ConnectionOptions => ({
@@ -28,7 +29,7 @@ const connection = (env: Env): ConnectionOptions => ({
 
 /** The producer side: a BullMQ queue on Redis. */
 @Injectable()
-export class BullMediaJobs implements MediaJobs, OnModuleDestroy {
+export class BullMediaJobs implements MediaJobs, PlacementJobs, OnModuleDestroy {
   readonly queue: Queue
 
   constructor(@Inject(ENV) env: Env) {
@@ -52,6 +53,11 @@ export class BullMediaJobs implements MediaJobs, OnModuleDestroy {
     await this.queue.add('purge-cdn', { keys }, { attempts: PURGE_ATTEMPTS, backoff: { type: 'exponential', delay: 5000 } })
   }
 
+  async placePostMedia(postId: string): Promise<void> {
+    // No job ID: a later change of mark must run again, after one that has finished.
+    await this.queue.add('place-post-media', { postId })
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.queue.close()
   }
@@ -59,8 +65,9 @@ export class BullMediaJobs implements MediaJobs, OnModuleDestroy {
 
 /**
  * The consumer side, in the API process for now: processes post images, purges
- * taken-down images from the CDN and, hourly, clears uploads nobody finished or
- * used. It can move to its own process later without changing the producer.
+ * taken-down images from the CDN, moves a post's files when its sensitive mark
+ * changes and, hourly, clears uploads nobody finished or used. It can move to its
+ * own process later without changing the producer.
  */
 @Injectable()
 export class MediaWorker implements OnApplicationBootstrap, OnModuleDestroy {
@@ -84,6 +91,10 @@ export class MediaWorker implements OnApplicationBootstrap, OnModuleDestroy {
         const { name, data } = job as unknown as Job
         if (name === 'post-image') await this.media.processPostImage(data.mediaId)
         else if (name === 'purge-cdn') await this.purger.purge(data.keys)
+        else if (name === 'place-post-media') {
+          await this.media.placePostImages(data.postId)
+          await this.videos?.placePostVideos(data.postId)
+        }
         else if (name === 'sweep') {
           await this.media.sweepAbandoned()
           await this.videos?.sweepAbandoned()

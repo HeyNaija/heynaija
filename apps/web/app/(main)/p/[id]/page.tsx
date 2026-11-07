@@ -7,7 +7,7 @@ import { ThreadConversation } from '@/app/ui/thread-conversation'
 import { renderThreadRow } from '@/app/ui/thread-row'
 import { IdeaPanel } from '@/app/ui/idea-panel'
 import { getIdea, getReplies, getStoryUpdates, getThread, getViewer, type Post } from '@/lib/api'
-import { defaultPreviewImage, excerpt, siteOpenGraph } from '@/lib/previews'
+import { defaultPreviewImage, postPreview, siteOpenGraph } from '@/lib/previews'
 import type { ReplyOrder } from '@/lib/thread-state'
 import { ChevronIcon } from '@/app/ui/icons'
 import { ThreadAuthorProvider } from '@/app/ui/thread-author'
@@ -50,15 +50,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!post || post.deleted) return { title: 'Post', openGraph: { ...siteOpenGraph, type: 'website', images: [defaultPreviewImage] } }
 
   const title = `@${post.authorHandle} on HeyNaija`
-  // A post always has text, images or both.
-  const photos = post.images.length === 1 ? 'a photo' : `${post.images.length} photos`
-  const description = post.text ? excerpt(post.text) : `@${post.authorHandle} shared ${photos}.`
-  const first = post.images[0]
-  // The 640px copy (a GIF's first frame): big enough for a preview card, small enough for WhatsApp to fetch.
-  const scale = first ? Math.min(1, 640 / Math.max(first.width, first.height)) : 1
-  const image = first
-    ? { url: `${first.src}/${first.animated ? 'still' : '640'}.webp`, width: Math.round(first.width * scale), height: Math.round(first.height * scale), alt: first.alt }
-    : defaultPreviewImage
+  const { description, image } = postPreview(post)
 
   return {
     title: { absolute: title },
