@@ -1080,7 +1080,7 @@
       "availability": "not_live",
       "evidence": [
         "docs/adr/0024-stories.md",
-        "packages/db/drizzle/0039_stories.sql",
+        "packages/db/drizzle/0040_stories.sql",
         "apps/api/src/posts/stories.test.ts",
         "apps/web/app/ui/story.tsx",
         "e2e/tests/stories.spec.ts"
