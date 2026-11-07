@@ -396,13 +396,13 @@ export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
 // Written out so the outer post is unambiguous inside subqueries.
 const outerId = sql`"posts"."id"`
 
-// Has at least one image a reader can see.
-const withImages = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.kind = 'post_image' and m.status = 'ready')`
+// Has at least one image, or its video, that a reader can see.
+const withMedia = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.kind in ('post_image', 'post_video') and m.status = 'ready')`
 
 const profileFilter: Record<ProfileFilter, SQL> = {
   posts: topLevel,
   replies: isNotNull(posts.replyParentId),
-  media: withImages,
+  media: withMedia,
 }
 
 /** A post's ready images in order, as JSON, for any query with `posts` in scope. */
@@ -1042,7 +1042,7 @@ export class PostsService {
 
   /**
    * One list from a member's profile: their top-level posts and reposts, their
-   * replies, or everything they posted with images (replies included).
+   * replies, or everything they posted with images or a video (replies included).
    */
   byAuthor(
     viewerId: string | null,

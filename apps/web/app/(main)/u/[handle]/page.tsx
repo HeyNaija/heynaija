@@ -53,7 +53,7 @@ const count = (n: number, one: string, many: string) => (
 const TABS: Record<ProfileFilter, { label: string; listLabel: string; none: string; older: string }> = {
   posts: { label: 'Posts', listLabel: 'Posts and reposts', none: 'has not posted yet', older: 'No older posts' },
   replies: { label: 'Replies', listLabel: 'Replies', none: 'has not replied to anyone yet', older: 'No older replies' },
-  media: { label: 'Media', listLabel: 'Posts with images', none: 'has not posted any images yet', older: 'No older posts' },
+  media: { label: 'Media', listLabel: 'Posts with images or videos', none: 'has not posted any images or videos yet', older: 'No older posts' },
 }
 
 const tabHref = (handle: string, tab: ProfileFilter) =>
