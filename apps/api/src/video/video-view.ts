@@ -1,9 +1,11 @@
 import { type SQL, sql } from 'drizzle-orm'
+import type { MediaUrls } from '../media/media-urls.js'
 import { master480Key, masterKey, playlistKey, posterKey } from './video-keys.js'
 
 /**
  * A ready video as readers get it in a post (ADR 0021 section 9). Every URL is absolute on
- * the media domain (`filesBase` in the video config), where Cloudflare's terms allow video.
+ * the media domain (`filesBase` in the video config), where Cloudflare's terms allow video;
+ * a marked post's are signed, on the site, and short-lived (ADR 0025).
  */
 export type PostVideo = {
   id: string
@@ -22,6 +24,8 @@ export type PostVideo = {
 export type VideoRow = {
   id: string
   alt: string
+  /** Its files are in the private place (ADR 0025). */
+  servedPrivately: boolean
   durationMs: number
   width: number
   height: number
@@ -30,15 +34,16 @@ export type VideoRow = {
 
 /** A post's ready video, as JSON, for any query with `posts` in scope; null when there is none. */
 export const videoOf = (postId: SQL) =>
-  sql<VideoRow | null>`(select json_build_object('id', m.id, 'alt', m.alt, 'durationMs', d.duration_ms, 'width', d.width, 'height', d.height,
+  sql<VideoRow | null>`(select json_build_object('id', m.id, 'alt', m.alt, 'servedPrivately', m.served_privately, 'durationMs', d.duration_ms, 'width', d.width, 'height', d.height,
       'renditions', coalesce((select json_agg(json_build_object('height', r.height, 'width', r.width, 'bytes', r.bytes) order by r.height)
         from video_renditions r where r.media_id = m.id), '[]'::json))
     from media m join video_details d on d.media_id = m.id
     where m.post_id = ${postId} and m.kind = 'post_video' and m.status = 'ready' limit 1)`
 
-/** `base` is where the files are served from, ending without a slash (`VideoConfig.filesBase`). */
-export const toPostVideo = (row: VideoRow | null, base: string): PostVideo | null => {
+/** Only ever for a viewer who may see the post: a marked one's URLs are signed for them. */
+export const toPostVideo = (row: VideoRow | null, urls: MediaUrls): PostVideo | null => {
   if (!row) return null
+  const base = urls.videoBase(row.id, row.servedPrivately)
   const url = (key: string) => `${base}/${key}`
   return {
     id: row.id,

@@ -46,7 +46,10 @@ export type Me = {
   videoLimits?: VideoLimits | null
 }
 
-/** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
+/**
+ * `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. On a post marked
+ * sensitive it is signed for this viewer and runs out within two hours (ADR 0025): never store it.
+ */
 export type PostImage = {
   src: string
   alt: string
@@ -56,7 +59,10 @@ export type PostImage = {
   animated: boolean
 }
 
-/** A post's one video, once it is ready (ADR 0021 section 9). Every URL is absolute on the media domain. */
+/**
+ * A post's one video, once it is ready (ADR 0021 section 9). Every URL is absolute on the media domain,
+ * or, on a post marked sensitive, signed for this viewer on the site (ADR 0025).
+ */
 export type PostVideo = {
   id: string
   durationMs: number

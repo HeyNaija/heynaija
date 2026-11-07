@@ -148,6 +148,12 @@ export const media = pgTable(
     // Community photos only: the community the upload was started for, the only
     // one it can become the photo of.
     communityId: uuid('community_id').references(() => communities.id),
+    // Post images and videos only (ADR 0025): a ready one's files are in the
+    // private bucket under `sensitive/`, served by signed URL, because its post
+    // is marked sensitive; false while they are in the public bucket. Where the
+    // files are, not where they should be: the post's adult_label says that, and
+    // moving them catches this up.
+    servedPrivately: boolean('served_privately').notNull().default(false),
     createdAt: ts('created_at').notNull().defaultNow(),
     readyAt: ts('ready_at'),
   },

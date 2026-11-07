@@ -129,7 +129,15 @@ including for members who live outside Nigeria.
       also never trend and are never in Discover. Done once it is in production.
 - [ ] Images: processed media is served from a public bucket under `/media`, which
       bypasses the API. Adult-only images need signed or proxied URLs, or must not
-      be allowed.
+      be allowed. Built for posts' pictures, GIFs and video
+      ([ADR 0025](../adr/0025-private-sensitive-media.md)): a marked post's files
+      move to the private bucket and are reached only by signed URLs, lasting at most
+      two hours, that the API gives viewers who pass the post's own check; marking
+      purges the public copies from Cloudflare, and nothing private is cached there.
+      Tested in `apps/api/src/media/private-media.test.ts` and `e2e/tests/sensitive.spec.ts`.
+      Done once it is in production with the R2 setup in
+      `docs/deployment/cloudflare-r2.md` (a `GET` CORS rule on the uploads bucket, no
+      lifecycle rule on `sensitive/`) and checked there.
 - [ ] Minors cannot join communities marked for adults.
 - [ ] Unlawful material stays prohibited for everyone, whatever the label.
 

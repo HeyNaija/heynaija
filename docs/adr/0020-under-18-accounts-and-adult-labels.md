@@ -3,9 +3,9 @@
 **Date:** 3 November 2026 · **Status:** Accepted, 6 November 2026 (owner). Section
 1 is built: the date of birth at signup (PR #102) and asking everyone already here
 for theirs (PR #103). The label on posts and its enforcement (sections 2 and 3,
-as changed on 7 November below) are built on branch `feat/sensitive-labels`, with
-the apps; whole communities marked for adults and labelled media served privately
-are not yet, nor is phase 2. ·
+as changed on 7 November below) are built (PR #110), with the apps, and
+labelled media is served privately ([ADR 0025](0025-private-sensitive-media.md));
+whole communities marked for adults are not yet, nor is phase 2. ·
 **Roadmap:** `adult-content-labels`
 (phase 1), `minor-safeguards` (phase 2) · **Related:**
 [ADR 0006](0006-age-status-model.md), [ADR 0016](0016-direct-messages.md),
@@ -270,7 +270,8 @@ added after posting moves the files and purges the CDN, as moderator removal
 already does (`apps/api/src/media/cdn-purge.ts`). Video (PR #70) follows the same
 rule. This is required before phase 2 (rollout doc section 4) and is cheaper built
 once now, while video's serving is still being designed. The unguessable public URL
-is not a control: anyone allowed to see it can share it.
+is not a control: anyone allowed to see it can share it. How, video included:
+[ADR 0025](0025-private-sensitive-media.md).
 
 ## 4. Opening to minors (phase 2)
 

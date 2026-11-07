@@ -16,9 +16,10 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, desc, eq, isNull, ne, or, sql } from 'drizzle-orm'
 import { managesPhoto } from '../communities/photo-managers.js'
 import { GistsService } from '../gists/gists.service.js'
-import { avatarPath, communityPhotoPath, MediaService } from '../media/media.service.js'
+import { avatarPath, communityPhotoPath, MEDIA_JOBS, MediaService, type PlacementJobs } from '../media/media.service.js'
+import { localMediaUrls, MEDIA_URLS, type MediaUrls } from '../media/media-urls.js'
 import { type NewNotification, notify } from '../notifications/notifications.service.js'
-import { imagesOf, type PostImage, toPostImages } from '../posts/posts.service.js'
+import { type ImageRow, imagesOf, type PostImage, toPostImages } from '../posts/posts.service.js'
 import { VideoService } from '../video/video.service.js'
 import { DB } from '../tokens.js'
 import { SAFETY_ALERTS, type SafetyAlerts } from './safety-alerts.js'
@@ -104,6 +105,10 @@ export class ModerationService {
     @Optional() @Inject(GistsService) private readonly gists?: Pick<GistsService, 'endNow'>,
     // Takes a post's video down with it (ADR 0019 section 4.3). Optional like media.
     @Optional() @Inject(VideoService) private readonly videos?: VideoService,
+    // Moves a post's files when a moderator marks it sensitive or takes the mark off (ADR 0025).
+    @Optional() @Inject(MEDIA_JOBS) private readonly placement?: PlacementJobs,
+    // Signs a marked post's pictures for the moderators reviewing it.
+    @Optional() @Inject(MEDIA_URLS) private readonly urls: MediaUrls = localMediaUrls('/media'),
   ) {}
 
   /**
@@ -316,7 +321,7 @@ export class ModerationService {
       report_count: number
       post_id: string | null
       post_text: string | null
-      post_images: { id: string; alt: string; width: number; height: number; animated: boolean }[]
+      post_images: ImageRow[]
       post_has_video: boolean | null
       post_author: string | null
       community_name: string | null
@@ -380,7 +385,7 @@ export class ModerationService {
       reporterHandle: r.reporter_handle,
       reportCount: r.report_count,
       post: r.post_id
-        ? { id: r.post_id, text: r.post_text!, images: toPostImages(r.post_images), hasVideo: r.post_has_video === true, authorHandle: r.post_author!, communityName: r.community_name }
+        ? { id: r.post_id, text: r.post_text!, images: toPostImages(r.post_images, this.urls), hasVideo: r.post_has_video === true, authorHandle: r.post_author!, communityName: r.community_name }
         : null,
       member: r.member_handle
         ? {
@@ -420,6 +425,7 @@ export class ModerationService {
 
     let removedAvatar: string | null = null
     let removedPost: string | null = null
+    let labelledPost: string | null = null
     let removedCommunityPhoto: string | null = null
     let dismissedCommunityPhoto: string | null = null
     let dismissedPost: string | null = null
@@ -470,6 +476,7 @@ export class ModerationService {
         if (!report.postId) throw new ModerationTargetError('this report is not about a post')
         await tx.update(posts).set({ adultLabel: 'moderator' }).where(eq(posts.id, report.postId))
         action = 'label_post'
+        labelledPost = report.postId
       } else if (resolution === 'remove_community_photo') {
         // Like any takedown of a community's photo, this is for site moderators only.
         if (!scope.siteWide) throw new NotAModeratorError()
@@ -595,6 +602,11 @@ export class ModerationService {
       await this.afterwards(`quarantining images of post ${postId}`, async () => void (await this.media?.quarantinePostImages(postId)))
       await this.afterwards(`quarantining the video of post ${postId}`, async () => void (await this.videos?.quarantinePostVideos(postId)))
     }
+    if (labelledPost) {
+      // Its pictures and video leave the public bucket (ADR 0025).
+      const postId = labelledPost
+      await this.afterwards(`queueing the move of post ${postId}'s media to the private place`, async () => void (await this.placement?.placePostMedia(postId)))
+    }
     if (removedCommunityPhoto) {
       const mediaId = removedCommunityPhoto
       await this.afterwards(`quarantining community photo ${mediaId}`, async () => void (await this.media?.quarantineCommunityPhoto(mediaId)))
@@ -716,6 +728,8 @@ export class ModerationService {
       .returning({ id: posts.id })
     if (unlabelled.length === 0) throw new ModerationTargetError('that post has no mark from a moderator')
     await this.db.insert(moderationActions).values({ actorId: moderatorId, action: 'unlabel_post', postId, note })
+    // Back on the public path with the mark gone (ADR 0025).
+    await this.afterwards(`queueing the move of post ${postId}'s media to the public place`, async () => void (await this.placement?.placePostMedia(postId)))
   }
 
   /**
