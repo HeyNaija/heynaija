@@ -29,9 +29,10 @@ case, a match, a trip.
   update's card. With more than four updates, the middle ones fold: the page
   shows the first post, "Updates 1 to 4" folded, then the newest three. Each
   update shows its reply count; its replies are on its own page. The first
-  post's own replies come after the updates, as on any post. At the end, the
-  author sees **Add update 8**, which opens a page of its own with the
-  composer, as quoting a post does.
+  post's own replies come after the updates, as on any post. At the end of the
+  spine the author has a box, "Add update 8…", in which the next update is
+  written where it will go, as a reply is written under its post. It is not
+  a quote: the story is right above it, so it needs no card of the first post.
 - **An update's own page**, `/p/<id>`, is its conversation, as for any post,
   with the first post as a box above it and "Update 6 of 7 · Read the story".
 - **Following a story** is a choice made with **Follow story**. It has nothing
@@ -132,14 +133,19 @@ by tomorrow.
   in the same transaction (actor: the author; post: the update). Blocks, mutes
   and deletions are applied when it is read, as for every kind. Email and push
   say "@psami added to their story" and quote its start.
-- **Web:** Add update in the post menu opens the composer with the first post
-  above it and "Update 8 to your story". The feed card is the update's card
+- **Web:** the author's box at the end of the spine is the reply box, posting
+  with `storyOf`. Add update in a post's menu goes to it (`/p/<story>#add-update`)
+  and puts the cursor in it; on a post that is not a story yet it opens the
+  post with the box under it (`?add=update`) and a line saying it will become
+  one. The feed card is the update's card
   with the first post's box and line above it. The story page's spine uses the
   curved reply lines (branch `style/curved-thread-lines`). The feed note says
   "A story shows once, at its newest update."
 - **Mobile** (`HeyNaija/heynaija-mobile`), on the same API: the feed card, the
-  story screen with its curved spine, Add update, Follow story, and the
-  notification row.
+  story screen with its curved spine, Follow story, and the notification row.
+  The spine ends in "Add update 8…", which opens the sheet replies are written
+  in over the story, headed by its first post and "Update 8 of your story";
+  Add update in a post's menu opens the story and that sheet.
 - **Data export** (format 14): the stories you follow. Your updates are already
   in it as posts, now with `storyId`.
 - **Account deletion:** a member's `story_follows` rows go with them, as their

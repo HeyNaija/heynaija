@@ -13,8 +13,9 @@ import { ChevronIcon } from '@/app/ui/icons'
 import { ThreadAuthorProvider } from '@/app/ui/thread-author'
 import { BackToFeed } from '@/app/ui/back-to-feed'
 import { composerOffersMark } from '@/lib/sensitive'
-import { StoryBar, StoryStart } from '@/app/ui/story'
+import { StoryBar, StoryNew, StoryStart } from '@/app/ui/story'
 import { StorySpine } from '@/app/ui/story-spine'
+import { Composer } from '@/app/ui/composer'
 
 type Props = PageProps<'/p/[id]'>
 
@@ -99,10 +100,28 @@ async function ThreadView({ params, searchParams }: Props) {
   const everyUpdate = storyPage && query.updates === 'all' && story.updates > thread.updates.length
   const updates = everyUpdate ? await allUpdates(id) : thread.updates
   const foldedUpdates = storyPage ? Math.max(0, story.updates - updates.length) : 0
-  const storyParts = storyPage ? (
+  // Its author writes the next update at the end, where it will go. Any other
+  // top-level post of theirs gets the same box from Add update in its menu
+  // (?add=update), and becomes a story with the first.
+  const me = viewer.state === 'member' && viewer.me.id === thread.post.authorId ? viewer.me : null
+  const starting = !!me && !story && query.add === 'update' && !thread.post.replyParentId && !thread.post.deleted
+  const writer = me && (storyPage || starting) ? (
+    <Composer
+      handle={me.handle}
+      avatar={me.avatar}
+      polls={me.features?.polls ?? false}
+      // An update starts with the first post's reply setting; it is changed from the post's menu.
+      replyControls={false}
+      videoLimits={me.videoLimits ?? null}
+      sensitiveLabels={composerOffersMark(me)}
+      placeholder={`Add update ${(story?.updates ?? 0) + 1}…`}
+      story={{ id }}
+    />
+  ) : null
+  const storyParts = storyPage || starting ? (
     <>
-      <StoryBar post={thread.post} viewerId={viewerId} />
-      <StorySpine story={thread.post} updates={updates} folded={foldedUpdates} viewerId={viewerId} now={now} />
+      {storyPage ? <StoryBar post={thread.post} viewerId={viewerId} /> : <StoryNew />}
+      <StorySpine story={thread.post} updates={updates} folded={foldedUpdates} viewerId={viewerId} now={now} writer={writer} />
     </>
   ) : undefined
 

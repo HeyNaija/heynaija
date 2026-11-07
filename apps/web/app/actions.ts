@@ -110,13 +110,6 @@ export async function createQuote(prev: ComposeState, formData: FormData): Promi
   return state
 }
 
-/** Posts an update to a story, then opens the story at it. */
-export async function createUpdate(prev: ComposeState, formData: FormData): Promise<ComposeState> {
-  const state = await createPost(prev, formData, false)
-  if (state.postId) redirect(`/p/${encodeURIComponent(String(formData.get('storyOf') ?? ''))}#post-${encodeURIComponent(state.postId)}`)
-  return state
-}
-
 /** `upTo` is the newest notification the member has seen. */
 export async function markNotificationsRead(upTo: string): Promise<void> {
   await api('/v1/notifications/read', {

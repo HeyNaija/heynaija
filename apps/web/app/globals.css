@@ -1538,14 +1538,19 @@ a.story-start:hover .story-start-text { color: var(--ink); }
 .story-spine { --story-gutter: 14px; display: flex; flex-direction: column; gap: var(--reply-gap); margin: 6px 0 0 30px; padding: var(--reply-gap) 0 0 var(--story-gutter); }
 .story-spine > li { position: relative; }
 .story-spine > li::before { content: ''; position: absolute; top: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--story-gutter)); width: var(--story-gutter); height: calc(var(--reply-gap) + 30px); border-bottom: 2px solid var(--accent); border-left: 2px solid var(--accent); border-bottom-left-radius: 10px; pointer-events: none; }
-.story-spine > li:is(.story-fold, .story-add)::before { height: calc(var(--reply-gap) + 50% + 1px); }
-.story-spine > li:not(:last-child)::after { content: ''; position: absolute; top: 28px; bottom: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--story-gutter)); border-left: 2px solid var(--accent); pointer-events: none; }
-.story-spine > li.story-fold:not(:last-child)::after { top: 50%; }
-.story-fold > a, .story-add > a { display: inline-flex; min-height: var(--touch-target); align-items: center; gap: 6px; padding: 0 14px; border-radius: var(--r-control); font-size: 13px; font-weight: 600; }
+.story-spine > li.story-fold::before { height: calc(var(--reply-gap) + 50% + 1px); }
+/* The author's box for the next update sits at the end, as the reply box does under a
+   post, and the line curves into its avatar (10px padding + 6px + half of 32px). Closed,
+   its field keeps the dashed accent edge the spine's other way in had. */
+.story-spine > li.story-add::before { height: calc(var(--reply-gap) + 32px); }
+.story-add .reply-composer:not(.is-expanded):not(:focus-within) .composer-input { border-style: dashed; border-color: var(--accent); }
+/* Running on, the line starts at the top of the item, over the curve's straight part, so
+   the curve branches off one line; started lower, below where the curve turns away (its
+   radius above its foot), it read as a second line beginning under the card. */
+.story-spine > li:not(:last-child)::after { content: ''; position: absolute; top: 0; bottom: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--story-gutter)); border-left: 2px solid var(--accent); pointer-events: none; }
+.story-fold > a { display: inline-flex; min-height: var(--touch-target); align-items: center; gap: 6px; padding: 0 14px; border-radius: var(--r-control); font-size: 13px; font-weight: 600; }
 .story-fold > a { border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
 .story-fold > a:hover { border-color: var(--line-strong); color: var(--ink); }
-.story-add > a { border: 1px dashed var(--accent); color: var(--accent-strong); }
-.story-add > a:hover { background: var(--accent-soft); }
 .composer-posted { margin-top: 6px; color: var(--muted); font-size: 12px; }
 .thread-list > li > .thread-branch > .thread-row > .post-card { content-visibility: auto; contain-intrinsic-size: auto 156px; }
 .thread-list > li > .thread-branch > .thread-row > .post-card:has(details[open]) { content-visibility: visible; }
@@ -2439,7 +2444,8 @@ a.result-row:hover { color: var(--accent-strong); }
   .story-entry { --story-axis: 38px; }
   .story-spine { --story-gutter: 10px; margin-left: 2px; }
   .story-spine > li::before { top: 0; height: 30px; border-bottom-left-radius: 8px; }
-  .story-spine > li:is(.story-fold, .story-add)::before { height: calc(50% + 1px); }
+  .story-spine > li.story-fold::before { height: calc(50% + 1px); }
+  .story-spine > li.story-add::before { height: 32px; }
   .notification-row { padding: 16px; }
   .page-header, .content-panel, .community-card, .governance-section { padding: 20px; }
 }
