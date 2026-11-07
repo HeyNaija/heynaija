@@ -28,9 +28,10 @@ case, a match, a trip.
   updates oldest first. A line in the gutter joins them and curves into each
   update's card. With more than four updates, the middle ones fold: the page
   shows the first post, "Updates 1 to 4" folded, then the newest three. Each
-  update shows its reply count and opens its replies in place. The first post's
-  own replies are a branch under it, the same way. At the end, the author sees
-  **Add update 8**.
+  update shows its reply count; its replies are on its own page. The first
+  post's own replies come after the updates, as on any post. At the end, the
+  author sees **Add update 8**, which opens a page of its own with the
+  composer, as quoting a post does.
 - **An update's own page**, `/p/<id>`, is its conversation, as for any post,
   with the first post as a box above it and "Update 6 of 7 · Read the story".
 - **Following a story** is a choice made with **Follow story**. It has nothing
@@ -146,6 +147,8 @@ by tomorrow.
 
 ## Not done
 
+- **Replies in place on the story page:** an update's replies open on its own
+  page for now.
 - **Co-authors.**
 - **Rearranging:** reordering updates, moving one to another story, or turning
   a reply, or an earlier post, into an update.

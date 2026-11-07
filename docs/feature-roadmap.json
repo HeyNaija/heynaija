@@ -1079,12 +1079,16 @@
       "status": "planned",
       "availability": "not_live",
       "evidence": [
-        "docs/adr/0024-stories.md"
+        "docs/adr/0024-stories.md",
+        "packages/db/drizzle/0039_stories.sql",
+        "apps/api/src/posts/stories.test.ts",
+        "apps/web/app/ui/story.tsx",
+        "e2e/tests/stories.spec.ts"
       ],
       "dependency": [
         "threaded-replies"
       ],
-      "notes": "Proposed 7 Nov 2026 (ADR 0024). Only the author adds updates; each update is a post of its own, and replies go under the update they are about. Feeds show a story once, as its newest update with the first post above it. Follow story notifies on each new update (story_update, optional)."
+      "notes": "Proposed 7 Nov 2026 (ADR 0024); web built on feat/stories, the apps not yet. Only the author adds updates; each update is a post of its own, and replies go under the update they are about. Feeds show a story once, as its newest update with the first post above it. Follow story notifies on each new update (story_update, optional)."
     },
     {
       "id": "adult-content-labels",

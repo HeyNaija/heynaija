@@ -431,8 +431,8 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P1 · **Status:** Planned · **Availability:** Not live
 - **Description:** Add updates to your own post over time, so people can follow one story from start to latest, and reply to the update they are about.
 - **Dependencies:** `threaded-replies`
-- **Inspected evidence:** `docs/adr/0024-stories.md`
-- **Audit notes:** Proposed 7 Nov 2026 (ADR 0024). Only the author adds updates; each update is a post of its own, and replies go under the update they are about. Feeds show a story once, as its newest update with the first post above it. Follow story notifies on each new update (story_update, optional).
+- **Inspected evidence:** `docs/adr/0024-stories.md`, `packages/db/drizzle/0039_stories.sql`, `apps/api/src/posts/stories.test.ts`, `apps/web/app/ui/story.tsx`, `e2e/tests/stories.spec.ts`
+- **Audit notes:** Proposed 7 Nov 2026 (ADR 0024); web built on feat/stories, the apps not yet. Only the author adds updates; each update is a post of its own, and replies go under the update they are about. Feeds show a story once, as its newest update with the first post above it. Follow story notifies on each new update (story_update, optional).
 
 ### People and discovery
 

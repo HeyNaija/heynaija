@@ -1498,6 +1498,38 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-recent { margin-top: 14px; border-top: 1px dashed var(--line-strong); }
 .thread-editor-host:not(:empty) { margin-top: 14px; }
 .thread-editor-host:empty { display: none; }
+/* Stories (docs/adr/0024). Above an update away from its story, the story's first post on
+   one line, joined to the update's card by a short line in the gap on the card's avatar
+   axis (1px border + 20px padding + half a 42px avatar); the box's own avatar is centred
+   on it. The line stays between the two, never on either. */
+.story-entry { --story-axis: 42px; display: flex; flex-direction: column; gap: var(--reply-gap); }
+ol.post-list .story-entry { --story-axis: 40px; }
+.story-start { position: relative; display: flex; min-height: var(--touch-target); align-items: center; gap: 8px; padding: 6px 14px 6px calc(var(--story-axis) - 11px); border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); color: var(--muted); font-size: 13px; line-height: 18px; }
+a.story-start:hover { border-color: var(--line-strong); }
+a.story-start:hover .story-start-text { color: var(--ink); }
+.story-start-text { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.story-start-count { display: inline-flex; flex: none; align-items: center; gap: 4px; color: var(--accent-strong); font-size: 12px; font-weight: 600; }
+.story-entry > .story-start::after { content: ''; position: absolute; top: calc(100% + 1px); left: calc(var(--story-axis) - 2px); width: 2px; height: var(--reply-gap); background: var(--line-strong); pointer-events: none; }
+.story-label { color: var(--accent-strong); font-weight: 600; }
+/* Above an update on its own page, with no line to meet: the box's avatar sits as a card's would. */
+.story-context { --story-axis: 32px; display: flex; flex-direction: column; gap: 2px; }
+/* Under a story's first post: its counts and Follow story, then its updates oldest first,
+   joined by a line in the gutter that curves into each card as the reply lines do, in the
+   accent colour so the author's own run reads apart from replies. */
+.story-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.story-bar-text { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.story-bar-text svg { color: var(--accent-strong); }
+.story-spine { --story-gutter: 14px; display: flex; flex-direction: column; gap: var(--reply-gap); margin: 6px 0 0 30px; padding: var(--reply-gap) 0 0 var(--story-gutter); }
+.story-spine > li { position: relative; }
+.story-spine > li::before { content: ''; position: absolute; top: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--story-gutter)); width: var(--story-gutter); height: calc(var(--reply-gap) + 30px); border-bottom: 2px solid var(--accent); border-left: 2px solid var(--accent); border-bottom-left-radius: 10px; pointer-events: none; }
+.story-spine > li:is(.story-fold, .story-add)::before { height: calc(var(--reply-gap) + 50% + 1px); }
+.story-spine > li:not(:last-child)::after { content: ''; position: absolute; top: 28px; bottom: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--story-gutter)); border-left: 2px solid var(--accent); pointer-events: none; }
+.story-spine > li.story-fold:not(:last-child)::after { top: 50%; }
+.story-fold > a, .story-add > a { display: inline-flex; min-height: var(--touch-target); align-items: center; gap: 6px; padding: 0 14px; border-radius: var(--r-control); font-size: 13px; font-weight: 600; }
+.story-fold > a { border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+.story-fold > a:hover { border-color: var(--line-strong); color: var(--ink); }
+.story-add > a { border: 1px dashed var(--accent); color: var(--accent-strong); }
+.story-add > a:hover { background: var(--accent-soft); }
 .composer-posted { margin-top: 6px; color: var(--muted); font-size: 12px; }
 .thread-list > li > .thread-branch > .thread-row > .post-card { content-visibility: auto; contain-intrinsic-size: auto 156px; }
 .thread-list > li > .thread-branch > .thread-row > .post-card:has(details[open]) { content-visibility: visible; }
@@ -2386,6 +2418,11 @@ a.result-row:hover { color: var(--accent-strong); }
   .thread-children > .thread-list > li > .thread-branch > .thread-row::before,
   .thread-children > .thread-recent > .thread-list > li > .thread-branch > .thread-row::before { left: -9px; width: 9px; }
   .thread-children.is-beyond { margin-left: -5px; padding-left: 3px; }
+  /* The card's avatar axis is 1 + 16 + 21 here; the spine indents as replies do. */
+  .story-entry { --story-axis: 38px; }
+  .story-spine { --story-gutter: 10px; margin-left: 2px; }
+  .story-spine > li::before { top: 0; height: 30px; border-bottom-left-radius: 8px; }
+  .story-spine > li:is(.story-fold, .story-add)::before { height: calc(50% + 1px); }
   .notification-row { padding: 16px; }
   .page-header, .content-panel, .community-card, .governance-section { padding: 20px; }
 }
@@ -2409,6 +2446,7 @@ a.result-row:hover { color: var(--accent-strong); }
   .composer-submit { min-width: 54px; padding-inline: 12px; font-size: 12px; }
   .post-card, .post-list .post-card { padding: 16px 14px 6px; }
   .post-card > .flex { gap: 10px; }
+  .story-entry { --story-axis: 36px; }
   .page-header, .content-panel, .community-card, .governance-section { padding: 18px; }
   .bottom-tab { font-size: 11px; letter-spacing: -0.025em; }
 }
