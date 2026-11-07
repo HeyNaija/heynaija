@@ -1504,15 +1504,15 @@ ol.post-list .post-card { padding-inline: 18px; }
    on it. The line stays between the two, never on either. */
 .story-entry { --story-axis: 42px; display: flex; flex-direction: column; gap: var(--reply-gap); }
 ol.post-list .story-entry { --story-axis: 40px; }
-.story-start { position: relative; display: flex; min-height: var(--touch-target); align-items: center; gap: 8px; padding: 6px 14px 6px calc(var(--story-axis) - 11px); border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); color: var(--muted); font-size: 13px; line-height: 18px; }
+.story-start { position: relative; display: flex; min-height: var(--touch-target); align-items: center; gap: 8px; padding: 6px 14px 6px calc(var(--story-axis, 32px) - 11px); border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); color: var(--muted); font-size: 13px; line-height: 18px; }
 a.story-start:hover { border-color: var(--line-strong); }
 a.story-start:hover .story-start-text { color: var(--ink); }
 .story-start-text { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .story-start-count { display: inline-flex; flex: none; align-items: center; gap: 4px; color: var(--accent-strong); font-size: 12px; font-weight: 600; }
 .story-entry > .story-start::after { content: ''; position: absolute; top: calc(100% + 1px); left: calc(var(--story-axis) - 2px); width: 2px; height: var(--reply-gap); background: var(--line-strong); pointer-events: none; }
 .story-label { color: var(--accent-strong); font-weight: 600; }
-/* Above an update on its own page, with no line to meet: the box's avatar sits as a card's would. */
-.story-context { --story-axis: 32px; display: flex; flex-direction: column; gap: 2px; }
+/* Above an update on its own page there is no line to meet, so the box keeps its own inset (the fallback above). */
+.story-context { display: flex; flex-direction: column; gap: 2px; }
 /* Under a story's first post: its counts and Follow story, then its updates oldest first,
    joined by a line in the gutter that curves into each card as the reply lines do, in the
    accent colour so the author's own run reads apart from replies. */
