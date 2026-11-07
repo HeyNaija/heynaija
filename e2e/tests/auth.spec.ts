@@ -29,6 +29,10 @@ test('refuses a wrong invite code', async ({ page }) => {
   // Next's route announcer is also an alert, so look for the message itself.
   await expect(page.getByText('That code is not valid')).toBeVisible()
   await expect(page).toHaveURL(/\/join/)
+  // What was chosen stays chosen, so only the code needs putting right.
+  await expect(page.getByLabel('Day')).toHaveValue('27')
+  await expect(page.getByLabel('Month')).toHaveValue('3')
+  await expect(page.getByLabel('Year')).toHaveValue('1990')
 })
 
 test('without an invite, the sign-up page sends people to join first', async ({ page }) => {
@@ -43,7 +47,7 @@ test('joining needs a date of birth, confirmed as real @mobile', async ({ page }
   await page.getByRole('button', { name: 'Check invite code' }).click()
   // The fields are required, so the browser keeps the form here.
   await expect(page).toHaveURL(/\/join/)
-  expect(await page.getByLabel('Day').evaluate((el: HTMLInputElement) => el.validity.valueMissing)).toBe(true)
+  expect(await page.getByLabel('Day').evaluate((el: HTMLSelectElement) => el.validity.valueMissing)).toBe(true)
   expect(await confirm.evaluate((el: HTMLInputElement) => el.validity.valueMissing)).toBe(true)
 })
 

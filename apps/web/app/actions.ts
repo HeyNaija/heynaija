@@ -719,7 +719,7 @@ export async function skipOnboarding(): Promise<void> {
   redirect('/')
 }
 
-/** The date of birth on /join as typed, so a mistake is put right without typing it all again. */
+/** The date of birth on /join as chosen, so a mistake is put right without choosing it all again. */
 export type BirthFields = { day: string; month: string; year: string }
 
 export type JoinState = {
@@ -769,7 +769,7 @@ export async function acceptInvite(_prev: JoinState, formData: FormData): Promis
   const confirmed = formData.get('confirm') === 'yes'
   const birthDate = birthDateOf(birth)
   if (!birthDate) {
-    return { code: typed, birth, confirmed, dateError: 'Enter your date of birth as numbers: the day, the month and the year, for example 27 3 2004.' }
+    return { code: typed, birth, confirmed, dateError: 'Choose the day, the month and the year you were born.' }
   }
   if (!confirmed) return { code: typed, birth, confirmed, confirmError: 'Confirm that this is your real date of birth.' }
 
@@ -831,7 +831,7 @@ export async function giveBirthDate(_prev: BirthDateState, formData: FormData): 
   const confirmed = formData.get('confirm') === 'yes'
   const birthDate = birthDateOf(birth)
   if (!birthDate) {
-    return { birth, confirmed, dateError: 'Enter your date of birth as numbers: the day, the month and the year, for example 27 3 2004.' }
+    return { birth, confirmed, dateError: 'Choose the day, the month and the year you were born.' }
   }
   if (!confirmed) return { birth, confirmed, confirmError: 'Confirm that this is your real date of birth.' }
 
