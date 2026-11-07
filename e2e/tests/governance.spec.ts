@@ -178,8 +178,10 @@ test('a member downloads their data as JSON', async ({ browser }) => {
   expect(data.votingMembership).toBeNull()
   expect(data.posts).toContainEqual(expect.objectContaining({ text, quoteOf: null, mentions: [] }))
   expect(data.reposts).toEqual([])
-  // Every kind of notification is on until they turn one off.
-  expect(data.notificationPreferences).toEqual({ reply: true, like: true, repost: true, quote: true, mention: true, follow: true })
+  // Every kind of notification is on until they turn one off, the chess ones included.
+  expect(data.notificationPreferences).toEqual({
+    reply: true, like: true, repost: true, quote: true, mention: true, follow: true, chess_challenge: true, chess_game_started: true,
+  })
   // New members are emailed their notifications until they turn it off.
   expect(data.emailNotifications).toBe(true)
   // Push is per browser, and they have not turned it on anywhere.

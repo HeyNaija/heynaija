@@ -77,7 +77,16 @@ test('nothing in the sidebar moves when a member’s page fills in', async ({ br
       await expect(page.locator('.sidebar-compose')).toHaveAttribute('href', '/#compose')
       await page.waitForTimeout(300)
       const seen = await places()
-      for (const name of watched) expect(seen[name], `${name} at ${height}px`).toHaveLength(1)
+      // Games is the last link (docs/games/GAMES.md) and arrives with the member, so in the
+      // list it moves only the button below it, once and by one row.
+      const games = await page.locator('.sidebar-nav-list > li[data-tier] a[href="/games"]').isVisible()
+      for (const name of watched) {
+        const at = seen[name]!
+        if (name === 'compose' && games && at.length === 2) {
+          const [[x0, y0], [x1, y1]] = at.map((place) => place.split(',').map(Number))
+          expect([x1! - x0!, y1! - y0!], `${name} at ${height}px: ${at.join(' then ')}`).toEqual([0, 50])
+        } else expect(at, `${name} at ${height}px`).toHaveLength(1)
+      }
     }
   } finally {
     await member.context.close()
