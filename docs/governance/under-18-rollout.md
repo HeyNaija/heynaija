@@ -122,7 +122,8 @@ including for members who live outside Nigeria.
       `feat/sensitive-labels`): shown as "sensitive", the way X does it (ADR 0020,
       owner decision of 7 November 2026), set by the author in the composer or the
       post's menu, by Settings for everything they post, and by moderators. Not
-      yet for whole communities.
+      yet for whole communities. Only a post whose author counts as an adult can be
+      marked; a moderator removes a minor's post that needs a mark instead.
 - [ ] Enforced on the server in every read path: feeds, threads, replies, search,
       trending, profiles, notifications, community pages and the data export of
       other people's posts. Default deny for `under_18` and unknown ages. Built for

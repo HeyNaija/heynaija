@@ -227,6 +227,10 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
         </p>
       ) : null}
 
+      {item.reason === 'needs_label' && item.post && !item.post.markable ? (
+        <p className="text-sm text-muted">Its author isn’t counted as an adult, so it can’t be marked sensitive. Remove it if it needs a mark.</p>
+      ) : null}
+
       <label className="flex flex-col gap-1 text-sm">
         <span className="field-label">
           Note for the record <span className="font-normal text-muted">(optional)</span>
@@ -241,7 +245,7 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
           </SubmitButton>
         ) : (
           <>
-            {item.post ? (
+            {item.post?.markable ? (
               <SubmitButton name="resolution" value="label_post" className={button}>
                 Mark sensitive
               </SubmitButton>

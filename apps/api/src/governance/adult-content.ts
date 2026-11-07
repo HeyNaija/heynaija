@@ -37,18 +37,21 @@ export const fromAgeRecord = (member: SQL | string, answer: SQL): SQL<boolean> =
 export const underAdultAge = sql<boolean>`(${band}) = 'under_18'`
 
 /**
- * True when `viewerId` counts as an adult for content marked sensitive. The
- * strongest live record wins, the newest between equals; a record with a date of
- * birth gives its band from that date, on today's date in Lagos. Signed out, no
- * record and under 18 are all false.
+ * True when `member` (an id, or a column such as a post's author) counts as an
+ * adult for content marked sensitive. The strongest live record wins, the newest
+ * between equals; a record with a date of birth gives its band from that date, on
+ * today's date in Lagos. No record and under 18 are both false.
+ */
+export const countsAsAdult = (member: SQL | string): SQL<boolean> =>
+  fromAgeRecord(member, sql`${rank} >= ${rankRequired('age_restricted_content')}::int and (${band}) = '18_plus'`)
+
+/**
+ * `countsAsAdult` for the member reading, and false signed out.
  *
  * It reads nothing from the row around it, so Postgres works it out once per
  * query, however many posts the query reads.
  */
-export const seesAdultContent = (viewerId: string | null): SQL<boolean> =>
-  viewerId
-    ? fromAgeRecord(viewerId, sql`${rank} >= ${rankRequired('age_restricted_content')}::int and (${band}) = '18_plus'`)
-    : sql<boolean>`false`
+export const seesAdultContent = (viewerId: string | null): SQL<boolean> => (viewerId ? countsAsAdult(viewerId) : sql<boolean>`false`)
 
 /**
  * Whether a post carrying `label` (its adult_label) may reach `viewerId`: it is

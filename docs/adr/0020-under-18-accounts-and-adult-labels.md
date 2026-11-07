@@ -92,6 +92,10 @@ background." This changes question 4 and parts of sections 2 and 3:
   sensitive"), so someone who often posts such things never has to think about it,
   and a moderator's mark, on a post or (later) on an account, stays. The post's
   menu can add or take off the author's own mark afterwards.
+- **Only an adult's post is marked.** An author who is not counted as an adult (under
+  18, or no date of birth yet) cannot mark a post, and a moderator cannot mark one
+  either: the queue offers only Remove post for it, and says why. A minor's post
+  that needs a mark is removed, not marked (section 4).
 - **Nothing says why a post is missing.** Signed out, no date of birth and under 18
   never get a marked post: it is left out of lists, and where a conversation needs
   a stand-in (an ancestor, a reply with replies under it, a quote, a reply's
