@@ -103,6 +103,8 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
         return { headline: `A moderator removed ${plural(count, 'one of your posts', `${count} of your posts`)}`, quote: null, href: inApp }
       case 'post_restored':
         return { headline: `A moderator restored ${plural(count, 'one of your posts', `${count} of your posts`)}`, quote: null, href: inApp }
+      case 'post_labelled':
+        return { headline: `A moderator marked ${plural(count, 'one of your posts', `${count} of your posts`)} as sensitive`, quote: null, href: inApp }
       case 'report_resolved':
         return { headline: `A moderator reviewed ${plural(count, 'a report', `${count} reports`)} you made`, quote: null, href: inApp }
       case 'account_reinstated':

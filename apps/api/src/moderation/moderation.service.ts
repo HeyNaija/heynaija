@@ -27,6 +27,7 @@ export type ReportReason = Exclude<(typeof REPORT_REASONS)[number], 'appeal'>
 export const RESOLUTIONS = [
   'dismiss',
   'remove_post',
+  'label_post',
   'suspend_member',
   'reinstate_member',
   'remove_avatar',
@@ -464,6 +465,11 @@ export class ModerationService {
         await tx.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, report.postId))
         action = 'remove_post'
         removedPost = report.postId
+      } else if (resolution === 'label_post') {
+        // Marked sensitive (ADR 0020): it stays up, for adults only, and its author cannot take the mark off.
+        if (!report.postId) throw new ModerationTargetError('this report is not about a post')
+        await tx.update(posts).set({ adultLabel: 'moderator' }).where(eq(posts.id, report.postId))
+        action = 'label_post'
       } else if (resolution === 'remove_community_photo') {
         // Like any takedown of a community's photo, this is for site moderators only.
         if (!scope.siteWide) throw new NotAModeratorError()
@@ -546,6 +552,9 @@ export class ModerationService {
       const told: NewNotification[] = []
       if (action === 'remove_post' && report.postAuthorId) {
         told.push({ recipientId: report.postAuthorId, kind: 'post_removed', postId: report.postId, detail: report.reason })
+      }
+      if (action === 'label_post' && report.postAuthorId) {
+        told.push({ recipientId: report.postAuthorId, kind: 'post_labelled', postId: report.postId })
       }
       if (action === 'reinstate_member' && targetMemberId) {
         told.push({ recipientId: targetMemberId, kind: 'account_reinstated' })
@@ -692,6 +701,21 @@ export class ModerationService {
     await notify(this.db, [{ recipientId: restored[0]!.authorId, kind: 'post_restored', postId }])
     await this.afterwards(`releasing images of post ${postId}`, async () => void (await this.media?.releasePostImages(postId)))
     await this.afterwards(`releasing the video of post ${postId}`, async () => void (await this.videos?.releasePostVideos(postId)))
+  }
+
+  /**
+   * Takes a moderator's sensitive mark off a post, on appeal (ADR 0020). Site
+   * moderators only. The author's own mark is theirs to take off.
+   */
+  async unlabelPost(moderatorId: string, postId: string, note = ''): Promise<void> {
+    if (!(await this.requireModerator(moderatorId)).siteWide) throw new NotAModeratorError()
+    const unlabelled = await this.db
+      .update(posts)
+      .set({ adultLabel: null })
+      .where(and(eq(posts.id, postId), eq(posts.adultLabel, 'moderator')))
+      .returning({ id: posts.id })
+    if (unlabelled.length === 0) throw new ModerationTargetError('that post has no mark from a moderator')
+    await this.db.insert(moderationActions).values({ actorId: moderatorId, action: 'unlabel_post', postId, note })
   }
 
   /**

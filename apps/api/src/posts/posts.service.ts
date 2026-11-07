@@ -28,6 +28,7 @@ import { VIDEO_CONFIG } from '../video/video.service.js'
 import { type PostVideo, toPostVideo, type VideoRow, videoOf } from '../video/video-view.js'
 import { isFounder } from '../members/badges.js'
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
+import { adultContentAllowed, LabelNotAllowedError, seesAdultContent } from '../governance/adult-content.js'
 import { excerpt, notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { Refreshing } from '../refreshing.js'
@@ -107,6 +108,8 @@ export const newPost = (slug: z.ZodType<string>) =>
       video: postVideoInput.optional(),
       poll: pollInput.optional(),
       replyAudience: z.enum(REPLY_AUDIENCES).default('everyone'),
+      /** Marked sensitive by its author (ADR 0020). Only acted on while the adultLabels flag is on. */
+      sensitive: z.boolean().default(false),
     })
     .refine((p) => p.text.length > 0 || p.images.length > 0 || p.video, { message: 'post is empty', path: ['text'] })
     // One video, and nothing else of that kind beside it; and, to start with, not in replies (ADR 0019 section 1).
@@ -160,11 +163,14 @@ export type QuotedPost =
       authorFounder: boolean
       text: string
       images: PostImage[]
+      /** Its images wait behind a cover (see `PostView.coverMedia`). */
+      coverMedia: boolean
       createdAt: Date
       replyParentId: string | null
     }
-  // Deleted, taken down, by an inactive member, or by someone the reader blocked,
-  // was blocked by or muted. One placeholder for all, so it gives nothing away.
+  // Deleted, taken down, by an inactive member, by someone the reader blocked,
+  // was blocked by or muted, or marked sensitive and the reader is not an adult.
+  // One placeholder for all, so it gives nothing away.
   | { unavailable: true }
 
 /** The post a reply answers: a preview, or one placeholder for every reason the viewer cannot read it. */
@@ -194,6 +200,17 @@ export type PostView = {
   images: PostImage[]
   /** The post's one video, once it is ready (a held, blocked or unfinished one is never shown). Null when none, and when `deleted`. */
   video: PostVideo | null
+  /**
+   * Marked sensitive (ADR 0020), by its author or a moderator; null when not.
+   * Only adults and its author are ever shown a marked post.
+   */
+  sensitive: 'author' | 'moderator' | null
+  /**
+   * Its images and video wait behind a cover until the viewer taps: it is marked
+   * sensitive, it is not the viewer's own, and the viewer has not chosen in
+   * Settings to see such media straight away. The text is never covered.
+   */
+  coverMedia: boolean
   /**
    * The @handles in `text` that lead to a member the viewer can see, in order,
    * each with the handle that member has now. Empty when `deleted`.
@@ -384,6 +401,16 @@ export const visibleAuthor = (viewerId: string | null, authorId: SQL, active: SQ
       : undefined,
   )
 
+/**
+ * Whether a marked post's media waits behind a cover for `viewerId` (see
+ * `PostView.coverMedia`). Signed out never matters: no marked post reaches them.
+ */
+const coverMediaFor = (viewerId: string | null, label: SQL, authorId: SQL) =>
+  viewerId
+    ? sql<boolean>`(${label} is not null and ${authorId} <> ${viewerId}
+        and not coalesce((select vm.show_sensitive_media from members vm where vm.id = ${viewerId}), false))`
+    : sql<boolean>`(${label} is not null)`
+
 /** True when `memberId` moderates the community: as one of its moderators, or site-wide. */
 const moderatesCommunity = (memberId: string, communityId: SQL) =>
   sql<boolean>`(exists(select 1 from members sm where sm.id = ${memberId} and sm.role = 'moderator')
@@ -396,13 +423,13 @@ export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
 // Written out so the outer post is unambiguous inside subqueries.
 const outerId = sql`"posts"."id"`
 
-// Has at least one image a reader can see.
-const withImages = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.kind = 'post_image' and m.status = 'ready')`
+// Has at least one image, or its video, that a reader can see.
+const withMedia = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.kind in ('post_image', 'post_video') and m.status = 'ready')`
 
 const profileFilter: Record<ProfileFilter, SQL> = {
   posts: topLevel,
   replies: isNotNull(posts.replyParentId),
-  media: withImages,
+  media: withMedia,
 }
 
 /** A post's ready images in order, as JSON, for any query with `posts` in scope. */
@@ -427,10 +454,12 @@ type QuoteRow =
 const quoteOf = (viewerId: string | null, quotePostId: SQL) => sql<QuoteRow | null>`case when ${quotePostId} is null then null else coalesce((
   select json_build_object('id', q.id, 'authorId', q.author_id, 'authorHandle', qa.handle, 'authorName', qa.display_name,
     'authorAvatarId', qa.avatar_media_id, 'authorFounder', ${isFounder(sql`q.author_id`)}, 'text', q.text, 'images', ${imagesOf(sql`q.id`)},
+    'coverMedia', ${coverMediaFor(viewerId, sql`q.adult_label`, sql`q.author_id`)},
     'createdAt', q.created_at, 'replyParentId', q.reply_parent_id)
   from posts q join members qa on qa.id = q.author_id
   where q.id = ${quotePostId} and q.deleted_at is null and q.removed_at is null and q.gist_id is null
     and ${visibleAuthor(viewerId, sql`q.author_id`, sql`qa.active`)}
+    and ${adultContentAllowed(viewerId, sql`q.adult_label`, sql`q.author_id`)}
 ), json_build_object('unavailable', true)) end`
 
 const toQuote = (row: QuoteRow | null): QuotedPost | null => {
@@ -539,7 +568,11 @@ export const gistAllowsReply = (viewerId: string, gistId: SQL) => {
  * joining post_polls to posts and the author in members.
  */
 const pollReadableBy = (viewerId: string | null) =>
-  and(live, visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`))
+  and(
+    live,
+    visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`),
+    adultContentAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`),
+  )
 type ReplyContextRow =
   | { id: string; authorHandle: string; authorName: string | null; authorAvatarId: string | null; text: string }
   | { unavailable: true }
@@ -556,6 +589,7 @@ const replyContextOf = (viewerId: string | null, parentId: SQL) => sql<ReplyCont
   from posts rp join members ra on ra.id = rp.author_id
   where rp.id = ${parentId} and rp.deleted_at is null and rp.removed_at is null
     and ${visibleAuthor(viewerId, sql`rp.author_id`, sql`ra.active`)}
+    and ${adultContentAllowed(viewerId, sql`rp.adult_label`, sql`rp.author_id`)}
 ), json_build_object('unavailable', true)) end`
 
 const toReplyContext = (row: ReplyContextRow | null): ReplyContext | null => {
@@ -594,6 +628,10 @@ export class PostsService {
       limit?: number
     } = {},
   ): Promise<PostView[]> {
+    // A post marked sensitive that the viewer may not see is left out, or, where
+    // deleted posts stand in as placeholders (a thread's ancestors), is one.
+    const allowed = adultContentAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)
+    const shownTo = sql`${shown} and ${allowed}`
     const rows = await this.db
       .select({
         id: posts.id,
@@ -602,19 +640,21 @@ export class PostsService {
         authorName: members.displayName,
         authorAvatarId: members.avatarMediaId,
         authorFounder: isFounder(sql`${posts.authorId}`),
-        text: sql<string>`case when ${shown} then ${posts.text} else '' end`,
+        text: sql<string>`case when ${shownTo} then ${posts.text} else '' end`,
         images: sql<
           ImageRow[]
-        >`case when ${shown} then ${imagesOf(outerId)} else '[]'::json end`,
-        video: sql<VideoRow | null>`case when ${shown} then ${videoOf(outerId)} end`,
-        mentions: sql<PostMention[]>`case when ${shown} then ${mentionsOf(viewerId, outerId)} else '[]'::json end`,
-        hashtags: sql<PostHashtag[]>`case when ${shown} then ${hashtagsOf(outerId)} else '[]'::json end`,
-        linkPreview: sql<LinkPreviewRow | null>`case when ${shown} then ${linkPreviewOf(sql`"posts"."link_url"`)} end`,
+        >`case when ${shownTo} then ${imagesOf(outerId)} else '[]'::json end`,
+        video: sql<VideoRow | null>`case when ${shownTo} then ${videoOf(outerId)} end`,
+        sensitive: sql<PostView['sensitive']>`case when ${shownTo} then ${posts.adultLabel} end`,
+        coverMedia: sql<boolean>`(${shownTo} and ${coverMediaFor(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)})`,
+        mentions: sql<PostMention[]>`case when ${shownTo} then ${mentionsOf(viewerId, outerId)} else '[]'::json end`,
+        hashtags: sql<PostHashtag[]>`case when ${shownTo} then ${hashtagsOf(outerId)} else '[]'::json end`,
+        linkPreview: sql<LinkPreviewRow | null>`case when ${shownTo} then ${linkPreviewOf(sql`"posts"."link_url"`)} end`,
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
         replyAudience: replyAudienceOf(outerId, sql`"posts"."root_id"`),
         viewerCanReply: canReplyTo(viewerId, outerId, sql`"posts"."root_id"`, sql`"posts"."gist_id"`),
-        poll: sql<PollRow | null>`case when ${shown} then ${pollOf(viewerId, outerId)} end`,
+        poll: sql<PollRow | null>`case when ${shownTo} then ${pollOf(viewerId, outerId)} end`,
         replyContext: opts.withReplyContext === false ? sql<null>`null` : replyContextOf(viewerId, sql`${posts.replyParentId}`),
         // Kept on the row by triggers (see the posts schema): only active
         // members' likes and live replies count, as a reader would see them.
@@ -630,7 +670,7 @@ export class PostsService {
         viewerBookmarked: viewerId
           ? sql<boolean>`exists(select 1 from bookmarks b where b.post_id = ${outerId} and b.member_id = ${viewerId})`
           : sql<boolean>`false`,
-        deleted: sql<boolean>`${posts.deletedAt} is not null or ${posts.removedAt} is not null or ${posts.hiddenByHostAt} is not null`,
+        deleted: sql<boolean>`not (${shownTo})`,
         pinnedOnProfile: sql<boolean>`coalesce(${members.pinnedPostId} = ${posts.id}, false)`,
         pinnedInCommunity: sql<boolean>`coalesce(${communities.pinnedPostId} = ${posts.id}, false)`,
         viewerCanPinInCommunity: viewerId
@@ -638,7 +678,7 @@ export class PostsService {
           : sql<boolean>`false`,
         communitySlug: communities.slug,
         communityName: communities.name,
-        quote: sql<QuoteRow | null>`case when ${shown} then ${quoteOf(viewerId, sql`${posts.quotePostId}`)} end`,
+        quote: sql<QuoteRow | null>`case when ${shownTo} then ${quoteOf(viewerId, sql`${posts.quotePostId}`)} end`,
         reason: opts.reason ?? sql<null>`null`,
       })
       .from(posts)
@@ -654,7 +694,7 @@ export class PostsService {
             opts.includeDeleted ? sql`(${members.active} or ${members.deletedAt} is not null)` : sql`${members.active}`,
             opts.unmuted,
           ),
-          opts.includeDeleted ? undefined : live,
+          opts.includeDeleted ? undefined : and(live, allowed),
           opts.gist ? eq(posts.gistId, opts.gist) : isNull(posts.gistId),
           where,
         ),
@@ -768,7 +808,8 @@ export class PostsService {
     const after = cursor ? decodeExactCursor(cursor) : null
     const before = (at: SQL, id: SQL) =>
       after ? sql`and (${at}, ${id}) < (${after[0]}::timestamptz, ${after[1]}::uuid)` : sql``
-    const postVisible = sql`p.deleted_at is null and p.removed_at is null and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`, unmuted)}`
+    const postVisible = sql`p.deleted_at is null and p.removed_at is null and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`, unmuted)}
+      and ${adultContentAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)}`
     // A repost of `post` by one of `members`, made after `since` (if given). A few
     // members are each looked up in the index. For a long list it is cheaper to
     // read the post's reposts and find the members in a hash: `is true` stops the
@@ -957,6 +998,8 @@ export class PostsService {
         from posts p join members a on a.id = p.author_id
         where p.reply_parent_id is null and p.gist_id is null and p.created_at > ${since} and p.created_at <= ${until}
           and p.deleted_at is null and p.removed_at is null
+          -- Posts marked sensitive are never recommended, to anyone (ADR 0020).
+          and p.adult_label is null
           ${viewerId ? sql`and p.author_id <> ${viewerId}` : sql``}
           and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)}
           and not exists(select 1 from held h where h.post_id = p.id)
@@ -1042,7 +1085,7 @@ export class PostsService {
 
   /**
    * One list from a member's profile: their top-level posts and reposts, their
-   * replies, or everything they posted with images (replies included).
+   * replies, or everything they posted with images or a video (replies included).
    */
   byAuthor(
     viewerId: string | null,
@@ -1193,6 +1236,8 @@ export class PostsService {
       join members m on m.id = p.author_id and m.active
       where p.reply_parent_id is null and p.gist_id is null and p.deleted_at is null and p.removed_at is null and p.created_at > ${since}
         and p.like_count + p.reply_count > 0
+        -- Posts marked sensitive never trend (ADR 0020).
+        and p.adult_label is null
       order by p.reply_count * 2 + p.like_count desc, p.created_at desc, p.id desc
       limit ${TRENDING_CANDIDATES}`)
     return rows.map((r) => r.id)
@@ -1287,7 +1332,10 @@ export class PostsService {
           eq(posts.id, parentId),
           eq(posts.gistId, gistId),
           visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`),
-          or(live, sql`exists(select 1 from posts child where child.reply_parent_id = ${posts.id})`),
+          or(
+            and(live, adultContentAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)),
+            sql`exists(select 1 from posts child where child.reply_parent_id = ${posts.id})`,
+          ),
         ),
       )
       .limit(1)
@@ -1341,7 +1389,11 @@ export class PostsService {
           eq(posts.id, parentId),
           isNull(posts.gistId),
           visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`),
-          or(live, sql`exists(select 1 from posts child where child.reply_parent_id = ${posts.id})`),
+          // A parent the viewer may not see (gone, or marked sensitive) is a placeholder that keeps the replies under it in reach.
+          or(
+            and(live, adultContentAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)),
+            sql`exists(select 1 from posts child where child.reply_parent_id = ${posts.id})`,
+          ),
         ),
       )
       .limit(1)
@@ -1380,6 +1432,8 @@ export class PostsService {
     const parentAuthor = parentId ? sql`(select author_id from posts where id = ${parentId})` : sql`(select host_id from gists where id = ${gist})`
     const within = parentId ? sql`p.reply_parent_id = ${parentId}` : sql`(p.reply_parent_id is null and p.gist_id = ${gist})`
     const visible = visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)
+    // A reply marked sensitive that the viewer may not see is a placeholder, like a deleted one.
+    const allowed = adultContentAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)
     type ReplyRow = {
       id: string
       reply_parent_id: string | null
@@ -1404,21 +1458,22 @@ export class PostsService {
           from posts p join members a on a.id = p.author_id
           where ${within}
             and p.author_id = ${parentAuthor} and p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null
-            and ${visible}
+            and ${visible} and ${allowed}
             ${beyond(0)}
           order by p.created_at ${direction}, p.id ${direction}
           limit ${limit + 1})
           union all
           (select p.id, p.reply_parent_id, p.created_at,
-            p.deleted_at is not null or p.removed_at is not null or p.hidden_by_host_at is not null as unavailable,
+            p.deleted_at is not null or p.removed_at is not null or p.hidden_by_host_at is not null or not ${allowed} as unavailable,
             p.hidden_by_host_at is not null and p.deleted_at is null and p.removed_at is null as hidden, 1 as grp
           from posts p join members a on a.id = p.author_id
           where ${within}
-            and (p.author_id is distinct from ${parentAuthor} or p.deleted_at is not null or p.removed_at is not null or p.hidden_by_host_at is not null)
+            and (p.author_id is distinct from ${parentAuthor} or p.deleted_at is not null or p.removed_at is not null or p.hidden_by_host_at is not null
+              or not ${allowed})
             -- An erased account's replies are all deleted, so they come only as
             -- placeholders keeping other people's replies under them in reach.
             and (${visible} or a.deleted_at is not null)
-            and ((p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null)
+            and ((p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null and ${allowed})
               or (p.hidden_by_host_at is not null and p.deleted_at is null and p.removed_at is null)
               or exists(select 1 from posts child where child.reply_parent_id = p.id))
             ${beyond(1)}
@@ -1434,6 +1489,7 @@ export class PostsService {
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
           'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id, 'authorFounder', ${isFounder(sql`p.author_id`)},
           'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'video', ${videoOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
+          'sensitive', p.adult_label, 'coverMedia', ${coverMediaFor(viewerId, sql`p.adult_label`, sql`p.author_id`)},
           'hashtags', ${hashtagsOf(sql`p.id`)},
           'linkPreview', ${linkPreviewOf(sql`p.link_url`)},
           'createdAt', p.created_at, 'replyParentId', p.reply_parent_id, 'replyTo', null,
@@ -1493,7 +1549,9 @@ export class PostsService {
    * must be the author's own uploads, processed and not on another post. `quote`
    * makes it a quote post of a post the author can currently see. Members named
    * with @handle in `text` are recorded and told (see `recordMentions`), and
-   * its #hashtags recorded (see `recordHashtags`).
+   * its #hashtags recorded (see `recordHashtags`). `sensitive` marks it as the
+   * author's choice; an author whose Settings mark everything they post (or whose
+   * moderator did) gets the mark whatever they ask.
    */
   async create(
     authorId: string,
@@ -1506,6 +1564,7 @@ export class PostsService {
       quote,
       poll,
       replyAudience = 'everyone',
+      sensitive = false,
       anyMember = false,
       alongside,
       gist,
@@ -1518,6 +1577,7 @@ export class PostsService {
       quote?: string
       poll?: PollInput
       replyAudience?: ReplyAudience
+      sensitive?: boolean
       /** Any member may post in the community, joined or not (the ideas board). */
       anyMember?: boolean
       /** More to write in the same transaction, once the post has its ID. */
@@ -1544,6 +1604,7 @@ export class PostsService {
             live,
             eq(members.active, true),
             sql`not ${blockedEitherWay(authorId, sql`"posts"."author_id"`)}`,
+            adultContentAllowed(authorId, sql`"posts"."adult_label"`, sql`"posts"."author_id"`),
           ),
         )
       if (!quoted) throw new QuotedPostNotFoundError('the post you are quoting is no longer available')
@@ -1562,6 +1623,7 @@ export class PostsService {
             live,
             eq(members.active, true),
             sql`not ${blockedEitherWay(authorId, sql`"posts"."author_id"`)}`,
+            adultContentAllowed(authorId, sql`"posts"."adult_label"`, sql`"posts"."author_id"`),
           ),
         )
       if (!parent) throw new ParentNotFoundError('the post you are replying to no longer exists')
@@ -1577,6 +1639,11 @@ export class PostsService {
       if (!community) throw new CommunityNotFoundError('no such community')
       if (!community.joined && !anyMember) throw new NotACommunityMemberError('join the community to post in it')
       communityId = community.id
+    }
+
+    if (sensitive) {
+      const [author] = await this.db.execute<{ adult: boolean }>(sql`select ${seesAdultContent(authorId)} as adult`).then((r) => r.rows)
+      if (!author?.adult) throw new LabelNotAllowedError('only adults can mark a post sensitive')
     }
 
     // The first web address gets a preview card; asking for it is up to the caller,
@@ -1619,6 +1686,8 @@ export class PostsService {
           rootId: parent ? (parent.rootId ?? parent.id) : null,
           quotePostId: quoted?.id ?? null,
           replyAudience: parent ? 'everyone' : replyAudience,
+          // Settings' "mark everything I post" (or a moderator's) wins over the post's own choice.
+          adultLabel: sql`coalesce((select m.label_posts from members m where m.id = ${authorId}), ${sensitive ? 'author' : null}::text)`,
         })
         .returning({ id: posts.id })
       if (poll) {
@@ -1713,6 +1782,29 @@ export class PostsService {
         isNull(posts.replyParentId),
         isNull(posts.gistId),
         live,
+      ))
+      .returning({ id: posts.id })
+    return changed.length > 0
+  }
+
+  /**
+   * Marks one of the author's own live posts sensitive, or takes their own mark
+   * off. A moderator's mark stays: false, as for a post that is not theirs. Only
+   * an adult may add the mark (LabelNotAllowedError).
+   */
+  async setAdultLabel(authorId: string, postId: string, on: boolean): Promise<boolean> {
+    if (on) {
+      const [author] = await this.db.execute<{ adult: boolean }>(sql`select ${seesAdultContent(authorId)} as adult`).then((r) => r.rows)
+      if (!author?.adult) throw new LabelNotAllowedError('only adults can mark a post sensitive')
+    }
+    const changed = await this.db
+      .update(posts)
+      .set({ adultLabel: on ? 'author' : null })
+      .where(and(
+        eq(posts.id, postId),
+        eq(posts.authorId, authorId),
+        live,
+        sql`${posts.adultLabel} is distinct from 'moderator'`,
       ))
       .returning({ id: posts.id })
     return changed.length > 0

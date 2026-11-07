@@ -16,19 +16,22 @@ import {
 } from '@nestjs/common'
 import { z } from 'zod'
 import { type AuthedRequest, SessionGuard, SuspendedAllowedGuard } from '../auth/session.guard.js'
+import { FeatureFlags } from '../flags/feature-flags.js'
 import { handleParam, parse, slugParam } from '../http.js'
 import { RateLimiter } from '../rate-limit.js'
 import { ModerationService, ModerationTargetError, NotAModeratorError, RESOLUTIONS } from './moderation.service.js'
 
 const reasons = REPORT_REASONS.filter((r) => r !== 'appeal')
+// Only a post can be marked sensitive, so only a post can be reported for not being marked.
+const unlabellable = reasons.filter((r) => r !== 'needs_label')
 const details = z.string().trim().max(500).default('')
 const note = z.object({ note: z.string().trim().max(500).default('') })
 
 const reportBody = z.union([
   z.object({ postId: z.uuid(), reason: z.enum(reasons), details }),
-  z.object({ handle: handleParam, reason: z.enum(reasons), details }),
-  z.object({ gistId: z.uuid(), reason: z.enum(reasons), details }),
-  z.object({ communitySlug: slugParam, reason: z.enum(reasons), details }),
+  z.object({ handle: handleParam, reason: z.enum(unlabellable), details }),
+  z.object({ gistId: z.uuid(), reason: z.enum(unlabellable), details }),
+  z.object({ communitySlug: slugParam, reason: z.enum(unlabellable), details }),
 ])
 const appealBody = z.object({ message: z.string().trim().min(10).max(1000) })
 const resolveBody = note.extend({ resolution: z.enum(RESOLUTIONS) })
@@ -49,6 +52,7 @@ export class ModerationController {
   constructor(
     @Inject(ModerationService) private readonly moderation: ModerationService,
     @Inject(RateLimiter) private readonly limits: RateLimiter,
+    @Inject(FeatureFlags) private readonly flags: FeatureFlags,
   ) {}
 
   @Post('reports')
@@ -56,6 +60,9 @@ export class ModerationController {
   @UseGuards(SessionGuard)
   async report(@Req() req: AuthedRequest, @Body() body: unknown) {
     const input = parse(reportBody, body)
+    if (input.reason === 'needs_label' && !(await this.flags.isEnabled('adultLabels', req.member.id))) {
+      throw new BadRequestException({ code: 'feature_unavailable', message: 'Content warnings are not available yet' })
+    }
     await this.limits.hit('report', req.member.id)
     await guarded(() => this.moderation.report(req.member.id, input, input.reason, input.details))
   }
@@ -103,6 +110,15 @@ export class ModerationController {
   async restore(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
     const postId = parse(z.uuid(), id)
     await guarded(() => this.moderation.restorePost(req.member.id, postId, parse(note, body ?? {}).note))
+  }
+
+  /** Takes a moderator's sensitive mark off a post, on appeal (ADR 0020). */
+  @Post('moderation/posts/:id/unlabel')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async unlabel(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: unknown) {
+    const postId = parse(z.uuid(), id)
+    await guarded(() => this.moderation.unlabelPost(req.member.id, postId, parse(note, body ?? {}).note))
   }
 
   @Post('moderation/members/:handle/reinstate')

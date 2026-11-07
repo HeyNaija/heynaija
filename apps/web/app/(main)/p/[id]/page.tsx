@@ -12,6 +12,7 @@ import type { ReplyOrder } from '@/lib/thread-state'
 import { ChevronIcon } from '@/app/ui/icons'
 import { ThreadAuthorProvider } from '@/app/ui/thread-author'
 import { BackToFeed } from '@/app/ui/back-to-feed'
+import { composerOffersMark } from '@/lib/sensitive'
 
 type Props = PageProps<'/p/[id]'>
 
@@ -139,7 +140,7 @@ async function ThreadView({ params, searchParams }: Props) {
       <ThreadConversation
         key={`${viewerId ?? 'visitor'}:${id}:${order}`}
         focus={{ id, parentId: thread.post.replyParentId, handle: thread.post.authorHandle, depth: 0 }}
-        member={viewer.state === 'member' && thread.post.viewerCanReply ? { handle: viewer.me.handle, avatar: viewer.me.avatar } : null}
+        member={viewer.state === 'member' && thread.post.viewerCanReply ? { handle: viewer.me.handle, avatar: viewer.me.avatar, sensitiveLabels: composerOffersMark(viewer.me) } : null}
         limited={viewer.state === 'member' && !thread.post.viewerCanReply}
         initialRows={replies.map((post) => renderThreadRow(post, viewerId, now, 1, thread.post.authorHandle))}
         cursor={cursor}

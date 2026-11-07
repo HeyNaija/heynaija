@@ -2,8 +2,10 @@
 
 **Date:** 3 November 2026 · **Status:** Accepted, 6 November 2026 (owner). Section
 1 is built: the date of birth at signup (PR #102) and asking everyone already here
-for theirs (branch `feat/date-of-birth-everyone`). The labels, enforcement and
-phase 2 are not yet. ·
+for theirs (PR #103). The label on posts and its enforcement (sections 2 and 3,
+as changed on 7 November below) are built on branch `feat/sensitive-labels`, with
+the apps; whole communities marked for adults and labelled media served privately
+are not yet, nor is phase 2. ·
 **Roadmap:** `adult-content-labels`
 (phase 1), `minor-safeguards` (phase 2) · **Related:**
 [ADR 0006](0006-age-status-model.md), [ADR 0016](0016-direct-messages.md),
@@ -70,6 +72,31 @@ check in ADR 0018, and never counts for `governance_vote`.
 - **The beta opens to 13 to 17 year olds the way X does** (question 10, 6
   November): with section 4's protections on by default, without waiting for the
   rest of section 5. Upload hash-matching is built: Arachnid Shield.
+
+**Owner decision, 7 November 2026: subtle, the way X does it.** "Don't want to be
+scrolling and seeing 18+ on posts. Most things should be happening in the
+background." This changes question 4 and parts of sections 2 and 3:
+
+- **No "18+" anywhere in a feed.** The word people see is "sensitive", as on X. The
+  label is still the 18+ label underneath (`posts.adult_label`): who may see it is
+  decided by age, as before.
+- **Only pictures and video are covered**, blurred behind one line, "Sensitive
+  content", and a Show button. The words of a post are never covered, and a post
+  with no media looks like any other. An adult can switch the cover off in Settings
+  ("Show sensitive pictures and video"; off by default, as on X).
+- **Marking happens mostly in the background.** The composer offers a small "Mark as
+  sensitive" switch only once pictures or a video are attached (X's flag on media).
+  Settings can mark everything a member posts (X's "mark media you post as
+  sensitive"), so someone who often posts such things never has to think about it,
+  and a moderator's mark, on a post or (later) on an account, stays. The post's
+  menu can add or take off the author's own mark afterwards.
+- **Nothing says why a post is missing.** Signed out, no date of birth and under 18
+  never get a marked post: it is left out of lists, and where a conversation needs
+  a stand-in (an ancestor, a reply with replies under it, a quote, a reply's
+  preview) it is the same placeholder as for a deleted post. No "Sign in to see it".
+- **Kept out of what is recommended.** Marked posts never trend and Discover never
+  ranks them, for anyone; adults find them through people they follow, profiles,
+  communities, search and hashtags.
 
 ## Context
 
@@ -227,15 +254,15 @@ A test lists every route that returns posts and checks that a labelled post, and
 reply under it, never reaches a signed-out viewer or an `unknown` member. A new
 read path that is missing from the list fails it.
 
-**What a viewer who cannot see it gets.** In a thread, a placeholder, so the
-conversation still makes sense: signed out, "This post is marked 18+. Sign in to
-see it."; `unknown`, "Add your date of birth to see posts marked 18+."; and in
-phase 2, for a minor, "This post isn't available", with no hint of why. Elsewhere it
-is left out.
+**What a viewer who cannot see it gets.** In a thread, the placeholder a deleted post
+gets ("This post is no longer available"), so the conversation still makes sense,
+with no hint of why, for everyone who may not see it (7 November). Elsewhere it is
+left out.
 
-**Adults** see labelled posts behind a "Marked 18+" cover, tap to show, built like
-the low-data hold (`media-held` in `apps/web/app/ui/post-images.tsx`), with a
-Settings switch to show them straight away (question 4).
+**Adults** see labelled posts as any other, with their pictures and video blurred
+behind "Sensitive content" and a Show button (`MediaCover` in
+`apps/web/app/ui/media-cover.tsx`), and a Settings switch to show them straight away
+(question 4, as changed on 7 November). Their own posts are never covered.
 
 **Media.** Labelled media is not served from the public bucket: it is kept in a
 private location and served to allowed viewers by short-lived signed URLs. A label
@@ -414,6 +441,9 @@ accepted. Questions 10 and 11 come from the decisions of 5 November.
    tap to show, with a Settings switch to show them straight away.
    - Answer: Agreed.
    - Answered by / date: Psami-wondah, 3 November 2026
+   - Changed 7 November 2026 (owner): subtle, the way X does it. Only the pictures
+     and video are covered, under "Sensitive content", never the text, and no "18+"
+     shows in a feed (Decision, above).
 
 5. **Keep the date of birth, or only the age band it gives?** The band is the age
    group, `under_18` or `18_plus`, the only two values `age_assurances` holds.

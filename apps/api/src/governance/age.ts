@@ -97,7 +97,7 @@ export function ageStatus(records: AgeRecord[], now: Date): AgeStatus {
  * check is needed (docs/governance/under-18-rollout.md).
  */
 export const ADULT_ASSURANCE_REQUIRED = {
-  /** Posts, communities or media labelled 18+ (no such label exists yet). */
+  /** Posts marked sensitive, the 18+ label (adult-content.ts holds the SQL copy of this rule). */
   age_restricted_content: 'declared',
   /** Draft constitution Article 2: voting members are verified adults. */
   governance_vote: 'verified',
@@ -109,6 +109,12 @@ export type AdultPurpose = keyof typeof ADULT_ASSURANCE_REQUIRED
 export function isAdultFor(status: AgeStatus, purpose: AdultPurpose): boolean {
   return status.band === '18_plus' && RANK[status.assurance] >= RANK[ADULT_ASSURANCE_REQUIRED[purpose]]
 }
+
+/** How strong a record of `method` is, as `ageStatus` ranks them. For the SQL copy of these rules (adult-content.ts). */
+export const methodRank = (method: AgeMethod): number => RANK[ASSURANCE_OF[method]]
+
+/** The weakest rank `purpose` accepts. */
+export const rankRequired = (purpose: AdultPurpose): number => RANK[ADULT_ASSURANCE_REQUIRED[purpose]]
 
 /** Nobody younger can join, ever (ADR 0020, question 1), on the web or in the app stores. */
 export const MINIMUM_AGE = 13

@@ -10,7 +10,7 @@ export default function RulesPage() {
       eyebrow="How we treat each other"
       title="HeyNaija rules"
       summary="HeyNaija is for real conversations between Nigerians, at home and abroad. These rules apply everywhere on the site. Every post is public, so write as you would in a town square."
-      updated="6 November 2026"
+      updated="7 November 2026"
       sections={[
         {
           id: 'rules',
@@ -45,6 +45,35 @@ export default function RulesPage() {
                 checked against lists of known abuse material.
               </li>
             </ol>
+          ),
+        },
+        {
+          id: 'sensitive',
+          title: 'Sensitive posts',
+          body: (
+            <>
+              <p>Some things may be posted, but must be <strong>marked as sensitive</strong>:</p>
+              <ul>
+                <li>graphic violence or injury, news footage included;</li>
+                <li>nudity that is not sexual;</li>
+                <li>sexual talk, without explicit pictures.</li>
+              </ul>
+              <p>
+                When in doubt, mark it. Explicit sexual pictures or video are not allowed anywhere, marked or not. Profile
+                photos, names, bios, community photos and Gist titles can never be marked, so nothing sensitive belongs in
+                them.
+              </p>
+              <p>
+                To mark a post, tap <strong>Mark as sensitive</strong> under the pictures or video you attach, or choose it
+                from the post’s menu afterwards. If you often post such things, Settings can mark everything you post.
+              </p>
+              <p>
+                A post marked sensitive is never shown to anyone under 18, to anyone who has not given a date of birth, or to
+                visitors who are not signed in. For everyone else its pictures and video are covered until they tap Show,
+                unless they choose otherwise in Settings. Moderators can mark a post themselves, and only a moderator can
+                take that mark off. Leaving sensitive posts unmarked again and again breaks these rules.
+              </p>
+            </>
           ),
         },
         {
@@ -112,12 +141,13 @@ export default function RulesPage() {
             <>
               <p>
                 Moderators look at every report. Depending on what they find, they can dismiss the
-                report, remove the post, remove a profile photo or clear a name and bio, or suspend the
-                account. A suspended account cannot post or interact until it is reinstated.
+                report, mark the post as sensitive, remove the post, remove a profile photo or clear a name
+                and bio, or suspend the account. A suspended account cannot post or interact until it is
+                reinstated.
               </p>
               <p>
-                You are told when a decision affects you: when your post is removed or restored, when a
-                report you made is resolved, and when your account is reinstated. Every decision is kept
+                You are told when a decision affects you: when your post is marked sensitive, removed or
+                restored, when a report you made is resolved, and when your account is reinstated. Every decision is kept
                 in a permanent record that moderators can see, so decisions can be checked later.
               </p>
             </>
@@ -129,8 +159,8 @@ export default function RulesPage() {
           body: (
             <p>
               If your account is suspended, you can appeal from the home page: say why the decision
-              should be looked at again, and a moderator will review it. Removed posts can be restored
-              when a removal was a mistake. If you think a decision is unfair and an appeal did not help,
+              should be looked at again, and a moderator will review it. Removed posts can be restored,
+              and a moderator’s sensitive mark taken off, when the decision was a mistake. If you think a decision is unfair and an appeal did not help,
               write to <ContactEmail />.
             </p>
           ),

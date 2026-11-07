@@ -3,10 +3,18 @@
 import Link from 'next/link'
 import { useActionState } from 'react'
 import { type FormState, submitReport } from '@/app/actions'
-import { REPORT_REASONS as REASONS } from '@/lib/report-reasons'
+import { NEEDS_LABEL_REASON, REPORT_REASONS } from '@/lib/report-reasons'
 
-export function ReportForm({ postId, handle, community, gist }: { postId?: string; handle?: string; community?: string; gist?: string }) {
+export function ReportForm({ postId, handle, community, gist, needsLabel = false }: {
+  postId?: string
+  handle?: string
+  community?: string
+  gist?: string
+  /** Offer "not marked sensitive": a post, while the adultLabels flag is on. */
+  needsLabel?: boolean
+}) {
   const [state, action, pending] = useActionState<FormState, FormData>(submitReport, {})
+  const reasons = needsLabel ? [...REPORT_REASONS.slice(0, -1), NEEDS_LABEL_REASON, REPORT_REASONS.at(-1)!] : REPORT_REASONS
 
   if (state.done) {
     return (
@@ -30,7 +38,7 @@ export function ReportForm({ postId, handle, community, gist }: { postId?: strin
       <fieldset>
         <legend className="field-label">What is wrong?</legend>
         <div className="mt-2 flex flex-col gap-2">
-          {REASONS.map(([value, label]) => (
+          {reasons.map(([value, label]) => (
             <label key={value} className="flex min-h-9 items-center gap-2.5 text-[15px]">
               <input type="radio" name="reason" value={value} required className="size-4 accent-[var(--accent)]" />
               {label}

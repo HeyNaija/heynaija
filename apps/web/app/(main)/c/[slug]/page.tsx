@@ -7,6 +7,7 @@ import { CommunityMark } from '@/app/ui/community-mark'
 import { CommunityPhotoEditor } from '@/app/ui/community-photo-editor'
 import { PostItem, PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { getCommunity, getCommunityPosts, getViewer } from '@/lib/api'
+import { composerOffersMark } from '@/lib/sensitive'
 
 type Props = PageProps<'/c/[slug]'>
 
@@ -107,6 +108,7 @@ async function CommunityView({ params, searchParams }: Props) {
           polls={viewer.me.features?.polls ?? false}
           replyControls={viewer.me.features?.replyControls ?? false}
           videoLimits={viewer.me.videoLimits ?? null}
+          sensitiveLabels={composerOffersMark(viewer.me)}
           placeholder={`Say something to ${community.name}`}
         />
       ) : viewerId ? (

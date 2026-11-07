@@ -51,7 +51,7 @@ import { CONTENT_SCANNER, MEDIA_JOBS, MediaService, OBJECT_STORE } from './media
 import { S3ObjectStore } from './media/object-store.js'
 import { scannerFromEnv } from './media/scanners.js'
 import { s3Config } from './media/s3-config.js'
-import { MembersController, OwnProfileController } from './members/members.controller.js'
+import { MembersController, OwnProfileController, OwnSensitiveSettingsController } from './members/members.controller.js'
 import { MembersService } from './members/members.service.js'
 import { ModerationController } from './moderation/moderation.controller.js'
 import { ModerationService } from './moderation/moderation.service.js'
@@ -87,7 +87,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, GistRepliesController, LiveKitWebhookController, AccountController, FlagsController, VideosController],
+  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, OwnSensitiveSettingsController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, GistRepliesController, LiveKitWebhookController, AccountController, FlagsController, VideosController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },

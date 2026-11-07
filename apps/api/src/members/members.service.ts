@@ -4,6 +4,7 @@ import { and, asc, eq, ilike, like, ne, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { packCursor, unpackCursor } from '../cursor.js'
 import type { Env } from '../env.js'
+import { LabelNotAllowedError, seesAdultContent } from '../governance/adult-content.js'
 import { avatarPath } from '../media/media.service.js'
 import { notify } from '../notifications/notifications.service.js'
 import { cleanLine, cleanLines, graphemes } from '../text.js'
@@ -102,6 +103,11 @@ export type Profile = {
 }
 
 export class CannotFollowSelfError extends Error {}
+/** A moderator marked everything the member posts as sensitive; only a moderator can take that off. */
+export class MarkSetByModeratorError extends Error {}
+
+/** Changes to the member's own settings for content marked sensitive; a missing one stays as it is. */
+export const sensitiveSettingsInput = z.object({ markPosts: z.boolean().optional(), showMedia: z.boolean().optional() })
 export class NoSuchMemberError extends Error {}
 
 // Written out because Drizzle drops the table name from `${members.id}` in a query
@@ -231,6 +237,29 @@ export class MembersService {
     await this.db
       .update(members)
       .set({ displayName: profile.displayName, bio: profile.bio })
+      .where(eq(members.id, memberId))
+  }
+
+  /**
+   * The member's own choices about content marked sensitive (ADR 0020): whether
+   * everything they post is marked, and whether its pictures and video are shown
+   * to them without a cover. Only an adult may start marking their posts
+   * (LabelNotAllowedError); a moderator's mark stays (MarkSetByModeratorError).
+   */
+  async setSensitiveSettings(memberId: string, { markPosts, showMedia }: z.infer<typeof sensitiveSettingsInput>): Promise<void> {
+    const [me] = await this.db
+      .select({ labelPosts: members.labelPosts, adult: seesAdultContent(memberId) })
+      .from(members)
+      .where(eq(members.id, memberId))
+    if (!me) return
+    if (markPosts !== undefined && me.labelPosts === 'moderator') throw new MarkSetByModeratorError('a moderator marked your posts as sensitive')
+    if (markPosts && !me.adult) throw new LabelNotAllowedError('only adults can mark their posts sensitive')
+    await this.db
+      .update(members)
+      .set({
+        ...(markPosts === undefined ? {} : { labelPosts: markPosts ? ('author' as const) : null }),
+        ...(showMedia === undefined ? {} : { showSensitiveMedia: showMedia }),
+      })
       .where(eq(members.id, memberId))
   }
 

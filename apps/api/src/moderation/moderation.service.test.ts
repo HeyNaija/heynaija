@@ -137,6 +137,32 @@ test('removing a post hides it everywhere, closes every report on it, and is log
   await assert.rejects(service.restorePost(sam, id), ModerationTargetError)
 })
 
+test('marking a reported post sensitive keeps it up for adults only, tells its author, and is undone only by a site moderator', async () => {
+  const { id } = await postsService.create(bayo, 'graphic footage')
+  await service.report(ada, { postId: id }, 'needs_label')
+  const [item] = await service.queue(sam)
+  assert.equal(item!.reason, 'needs_label')
+
+  await service.resolve(sam, item!.id, 'label_post', 'injury footage')
+
+  const label = async () => (await db.select({ l: posts.adultLabel }).from(posts).where(eq(posts.id, id)))[0]!.l
+  assert.equal(await label(), 'moderator')
+  assert.deepEqual(await feedTexts(), [], 'signed out, it is gone from the feed')
+  assert.equal(await openReports(), 0)
+  const told = await db.select().from(notifications).where(eq(notifications.recipientId, bayo))
+  assert.deepEqual(told.map((n) => [n.kind, n.postId]), [['post_labelled', id]])
+  assert.equal((await service.log(sam))[0]!.action, 'label_post')
+  // The author cannot take a moderator's mark off.
+  assert.equal(await postsService.setAdultLabel(bayo, id, false), false)
+
+  await assert.rejects(service.unlabelPost(lola, id), NotAModeratorError)
+  await service.unlabelPost(sam, id, 'on appeal')
+  assert.equal(await label(), null)
+  assert.deepEqual(await feedTexts(), ['graphic footage'])
+  assert.equal((await service.log(sam))[0]!.action, 'unlabel_post')
+  await assert.rejects(service.unlabelPost(sam, id), ModerationTargetError)
+})
+
 test('dismissing leaves the post alone', async () => {
   const { id } = await postsService.create(bayo, 'fine post')
   await service.report(ada, { postId: id }, 'other')

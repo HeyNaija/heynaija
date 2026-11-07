@@ -11,7 +11,7 @@ import type { ReplyAudience } from '@/lib/reply-audience'
 import { limitSize, type VideoLimits } from '@/lib/video'
 import { Avatar } from './avatar'
 import { FounderBadge } from './founder-badge'
-import { BubbleIcon, CloseIcon, GifIcon, ImageIcon, PeopleIcon, PlusIcon, VideoIcon, VoteIcon } from './icons'
+import { BubbleIcon, CloseIcon, GifIcon, ImageIcon, PeopleIcon, PlusIcon, SensitiveIcon, VideoIcon, VoteIcon } from './icons'
 import { IMAGE_TYPES } from './shrink-image'
 import { useAutoGrow } from './use-auto-grow'
 import { type VideoDraft, useVideoDraft } from './use-video-draft'
@@ -63,9 +63,15 @@ type Props = {
    * (the videoPosts flag and, in production, a bound scanner). Null hides the button.
    */
   videoLimits?: VideoLimits | null
+  /**
+   * From `me` (`canMarkSensitive`): the member may mark a post sensitive (ADR 0020).
+   * Offered only once pictures or a video are attached, as X does, and never to a
+   * member whose Settings already mark everything they post.
+   */
+  sensitiveLabels?: boolean
 }
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, media = true, videoLimits = null }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -78,6 +84,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const [pollOptions, setPollOptions] = useState(['', ''])
   const [pollMultiple, setPollMultiple] = useState(false)
   const [pollExpiry, setPollExpiry] = useState('7_days')
+  const [sensitive, setSensitive] = useState(false)
   const prompt = placeholder ?? (audience ? `Start a conversation in ${choices?.find((c) => c.slug === audience)?.name ?? 'your community'}…` : 'Start a conversation…')
   const [expanded, setExpanded] = useState(false)
   // Disabled for an empty box only once the page is alive; before that (or without JavaScript) the button works.
@@ -200,6 +207,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       setPollOptions(['', ''])
       setPollMultiple(false)
       setPollExpiry('7_days')
+      setSensitive(false)
       clear()
       setExpanded(false)
       onPosted?.(state)
@@ -214,6 +222,8 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   }
 
   const left = LIMIT - graphemes(text.trim())
+  // The mark goes with pictures and video; with none attached there is nothing to offer.
+  const markable = sensitiveLabels && (images.drafts.length > 0 || video.draft !== null)
   // A video that is held, rejected or failed blocks the post until it is removed: only a ready one can go.
   const waiting = images.drafts.some((d) => d.status !== 'ready') || (video.draft !== null && video.draft.status !== 'ready')
   const empty = left === LIMIT && images.drafts.length === 0 && !video.draft
@@ -228,6 +238,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       {quote ? <input type="hidden" name="quote" value={quote.id} /> : null}
       {!replyTo && replyControls ? <input type="hidden" name="replyAudience" value={replyAudience} /> : null}
       {pollOpen ? <input type="hidden" name="poll" value="1" /> : null}
+      {markable && sensitive ? <input type="hidden" name="sensitive" value="1" /> : null}
 
       {replyTo && replyHandle ? (
         <p id={recipientId} className="composer-recipient">Replying to <strong>{replyLabel ?? `@${replyHandle}`}</strong></p>
@@ -342,6 +353,18 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
             <ul className="composer-images" aria-label="Video">
               <VideoRow draft={video.draft} onRemove={video.remove} onRetry={video.retry} onSend={video.send} onDescribe={video.describe} />
             </ul>
+          ) : null}
+          {markable ? (
+            <button
+              type="button"
+              className="composer-sensitive"
+              aria-pressed={sensitive}
+              title="Hides it from anyone under 18, and covers it until people tap Show"
+              onClick={() => setSensitive((on) => !on)}
+            >
+              <SensitiveIcon size={15} />
+              {sensitive ? 'Marked sensitive' : 'Mark as sensitive'}
+            </button>
           ) : null}
           {quote ? <div className="composer-quote">{quote.preview}</div> : null}
         </div>

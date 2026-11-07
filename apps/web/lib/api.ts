@@ -31,6 +31,13 @@ export type Me = {
    */
   birthDateNeeded: boolean
   /**
+   * Posts marked sensitive (ADR 0020): whether this member counts as an adult for
+   * them (only then can they see or mark any), whether everything they post is
+   * marked (by them, or by a moderator, which they cannot undo), and whether
+   * their pictures and video are shown without a cover.
+   */
+  sensitive: { adult: boolean; markPosts: 'author' | 'moderator' | null; showMedia: boolean }
+  /**
    * What is switched on for this member: the API's feature flags by key (docs/feature-flags.md) and
    * `gists` (docs/adr/0017). A missing key counts as off.
    */
@@ -75,6 +82,8 @@ export type QuotedPost =
       authorFounder: boolean
       text: string
       images: PostImage[]
+      /** Its images wait behind a cover (see `Post.coverMedia`). */
+      coverMedia: boolean
       createdAt: string
       replyParentId: string | null
     }
@@ -130,6 +139,10 @@ export type Post = {
   images: PostImage[]
   /** The post's video once it is ready; a held or unfinished one is never sent. */
   video: PostVideo | null
+  /** Marked sensitive (ADR 0020), by its author or a moderator. Only adults and its author are sent such a post. */
+  sensitive: 'author' | 'moderator' | null
+  /** Its pictures and video wait behind a cover until the reader taps Show (`MediaCover`). The text never does. */
+  coverMedia: boolean
   /** Mentions of members the viewer can see, in order. Other @text stays plain. */
   mentions: PostMention[]
   /** Hashtags in the text, in order. */
@@ -650,6 +663,7 @@ export type NotificationKind =
   | 'follow'
   | 'post_removed'
   | 'post_restored'
+  | 'post_labelled'
   | 'report_resolved'
   | 'account_reinstated'
   | 'avatar_removed'

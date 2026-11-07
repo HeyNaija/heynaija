@@ -7,3 +7,9 @@ export const REPORT_REASONS = [
   ['illegal', 'Illegal content'],
   ['other', 'Something else'],
 ] as const
+
+/**
+ * Only for a post, while marking posts sensitive is switched on (the adultLabels
+ * flag): listed before "Something else".
+ */
+export const NEEDS_LABEL_REASON = ['needs_label', 'Sensitive, but not marked sensitive'] as const

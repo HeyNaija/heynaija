@@ -23,6 +23,7 @@ import { FeatureFlags } from '../flags/feature-flags.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
 import { GistsGate, gistsShownTo } from '../gists/gists-enabled.guard.js'
+import { seesAdultContent } from '../governance/adult-content.js'
 import { ADULT_AGE, MINIMUM_AGE, type SignupAgeDecision, signupAgeDecision } from '../governance/age.js'
 import { GovernanceService } from '../governance/governance.service.js'
 import { avatarPath } from '../media/media.service.js'
@@ -106,6 +107,9 @@ export class AuthController {
           displayName: members.displayName,
           bio: members.bio,
           onboardedAt: members.onboardedAt,
+          labelPosts: members.labelPosts,
+          showSensitiveMedia: members.showSensitiveMedia,
+          adult: seesAdultContent(req.member.id),
         })
         .from(members)
         .where(eq(members.id, req.member.id)),
@@ -133,6 +137,15 @@ export class AuthController {
       // What is switched on for this member: the database-backed flags (docs/feature-flags.md),
       // with videoPosts and gists as they take effect, rules in code included.
       features: { ...features, videoPosts, gists },
+      // Posts marked sensitive (ADR 0020): whether this member counts as an adult for
+      // them (only then can they see or mark any), whether everything they post is
+      // marked (by them, or by a moderator), and whether their pictures and video
+      // are shown to them without a cover.
+      sensitive: {
+        adult: row?.adult ?? false,
+        markPosts: row?.labelPosts ?? null,
+        showMedia: row?.showSensitiveMedia ?? false,
+      },
       // The limits the composer checks a chosen video against before sending it: this server's own settings.
       videoLimits: videoPosts ? videoLimitsOf(videoConfig(this.env)) : null,
     }
