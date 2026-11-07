@@ -14,7 +14,14 @@ export type ReplyOrder = 'newest' | 'oldest'
 export function branchOrder(focusOrder: ReplyOrder, isFocus: boolean): ReplyOrder {
   return isFocus ? focusOrder : 'oldest'
 }
-export type ReplyTarget = { id: string; parentId: string | null; handle: string; depth: number }
+export type ReplyTarget = {
+  id: string
+  parentId: string | null
+  handle: string
+  depth: number
+  /** It had no replies when the page drew it, so a new one is all there is to show. */
+  empty?: boolean
+}
 export type BranchState = {
   parentId: string | null
   items: ThreadRow[]

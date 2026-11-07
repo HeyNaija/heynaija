@@ -63,6 +63,7 @@ export function renderThreadRow(
                 handle={post.authorHandle}
                 depth={depth}
                 count={post.replyCount}
+                empty={post.hasReplies !== true && post.replyCount === 0}
               />
             )}
             threadToggle={<ThreadToggle />}

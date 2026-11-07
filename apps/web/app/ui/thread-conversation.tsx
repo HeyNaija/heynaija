@@ -206,7 +206,10 @@ export function ThreadConversation({
     const { parentId, row } = state.reply
     setIncrements((current) => ({ ...current, [parentId]: (current[parentId] ?? 0) + 1 }))
     setBranches((current) => {
-      const parent = current[parentId] ?? emptyBranch(selected.current.id === parentId ? selected.current.parentId : null)
+      const answered = selected.current.id === parentId ? selected.current : null
+      // A reply that had none has nothing left to load, so the new one joins its list rather
+      // than a "Your reply" spot waiting for the rest.
+      const parent = current[parentId] ?? { ...emptyBranch(answered?.parentId ?? null), loaded: answered?.empty === true }
       return {
         ...current,
         [parentId]: { ...insertConfirmedReply(parent, row, branchOrder(order, parentId === focus.id)), touched: Date.now() },
@@ -252,7 +255,7 @@ export function ThreadConversation({
 }
 
 /** The normal anchor remains usable without JavaScript and with modifier keys. */
-export function ThreadReplyAction({ id, parentId, handle, depth, count }: ReplyTarget & { count: number }) {
+export function ThreadReplyAction({ id, parentId, handle, depth, empty, count }: ReplyTarget & { count: number }) {
   const context = useContext(Conversation)
   const added = context?.increments[id] ?? 0
   const total = count + added
@@ -277,7 +280,7 @@ export function ThreadReplyAction({ id, parentId, handle, depth, count }: ReplyT
         // A reply at the limit would not be drawn in this view, so open the post to answer it.
         if (!context?.canReply || depth >= THREAD_MAX_DEPTH) return
         event.preventDefault()
-        context.select({ id, parentId, handle, depth })
+        context.select({ id, parentId, handle, depth, empty })
       }}
     >
       <BubbleIcon size={18} />
@@ -384,12 +387,9 @@ export function ThreadBranch({
           {root ? <RepliesHeading id={id} gist={context?.gist} handle={handle} order={order} ordered={items.length + recent.length > 0 || !!state?.cursor} /> : null}
           {items.length ? <ul className="thread-list">{items.map((row) => <li key={row.id}>{row.node}</li>)}</ul> : null}
           {empty ? <p className="thread-empty">{root && total === 0 ? 'No replies yet.' : 'No available replies.'}</p> : null}
-          {recent.length ? (
-            <div className="thread-recent">
-              <p className="thread-gap">Your reply · Some replies are not loaded yet.</p>
-              <ul className="thread-list">{recent.map((row) => <li key={row.id}>{row.node}</li>)}</ul>
-            </div>
-          ) : null}
+          {/* Beside the loaded list, not inside a group of their own, so the same line runs through both. */}
+          {recent.length ? <p className="thread-gap">Your reply · Some replies are not loaded yet.</p> : null}
+          {recent.length ? <ul className="thread-list">{recent.map((row) => <li key={row.id}>{row.node}</li>)}</ul> : null}
           {state?.error ? <p role="alert" className="thread-error">{state.error}</p> : null}
           {state?.cursor || state?.status === 'error' ? (
             <Link

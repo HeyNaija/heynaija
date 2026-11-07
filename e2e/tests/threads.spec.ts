@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import { pool, seedThread } from '../lib/db.ts'
 import { newMember, replyBox } from '../lib/members.ts'
 
@@ -515,6 +515,8 @@ test('an answer is joined to its parent by a line in the gutter that curves into
     // It runs on past the first answer to the next, and ends in the last one's curve.
     expect(placed.first.onward).toBe(true)
     expect(placed.last.onward).toBe(false)
+    // ...as one line, the curve branching off it, not a second line starting below the curve.
+    expect(await breaks(page)).toEqual([])
     // The curve stops at the answer card's edge, level with its avatar.
     expect(Math.abs(placed.last.right - placed.lastCardLeft)).toBeLessThanOrEqual(1)
     expect(Math.abs(placed.last.y - placed.lastAvatarY)).toBeLessThanOrEqual(1)
@@ -526,6 +528,211 @@ test('an answer is joined to its parent by a line in the gutter that curves into
       expect(line).toBeLessThan(placed.avatarLeft)
     } else {
       expect(Math.abs(line - placed.avatarCentre)).toBeLessThanOrEqual(1)
+    }
+  } finally {
+    await context.close()
+  }
+})
+
+/**
+ * Every connector drawn under the replies, as boxes on the page: its vertical run, and an
+ * elbow's foot. `own` is whether it is drawn against its own element: one that is not
+ * positioned is drawn against whichever ancestor is, and lands somewhere else. `crosses`
+ * names the cards and the inline reply box it overlaps by more than a pixel; a line may
+ * meet a card at its edge, never lie across it. (The phone's fixed bar floats over the
+ * page, so it is not counted.)
+ */
+async function connectors(page: Page) {
+  return page.evaluate(() => {
+    const blocks = Array.from(document.querySelectorAll('.post-card, .thread-branch:not(.is-root) > .thread-editor-host :is(.composer-reply-writing, .composer-recipient)'))
+      .map((node) => ({ name: node.closest('article')?.id ?? 'reply box', box: node.getBoundingClientRect() }))
+      .filter(({ box }) => box.height > 0)
+    const lines: { from: string; own: boolean; crosses: string[] }[] = []
+    for (const node of Array.from(document.querySelectorAll('.thread-branch *'))) {
+      for (const pseudo of ['::before', '::after']) {
+        const style = getComputedStyle(node, pseudo)
+        if (style.content === 'none' || style.display === 'none' || style.position !== 'absolute') continue
+        const left = parseFloat(style.borderLeftWidth)
+        const foot = parseFloat(style.borderBottomWidth)
+        if (!left && !foot) continue
+        let block = node as HTMLElement
+        while (block.parentElement && getComputedStyle(block).position === 'static') block = block.parentElement
+        const at = block.getBoundingClientRect()
+        const x = at.left + parseFloat(getComputedStyle(block).borderLeftWidth) + parseFloat(style.left)
+        const y = at.top + parseFloat(getComputedStyle(block).borderTopWidth) + parseFloat(style.top)
+        const width = parseFloat(style.width)
+        const height = parseFloat(style.height)
+        // An elbow's corner is rounded, so its run stops short of the foot.
+        const parts = [{ x, y, right: x + (left || width), bottom: y + height - (foot ? parseFloat(style.borderBottomLeftRadius) : 0) }]
+        if (foot) parts.push({ x: x + parseFloat(style.borderBottomLeftRadius), y: y + height - foot, right: x + width, bottom: y + height })
+        const crosses = blocks
+          .filter(({ box }) => parts.some((part) => part.x < box.right - 1 && part.right > box.left + 1 && part.y < box.bottom - 1 && part.bottom > box.top + 1))
+          .map(({ name }) => name)
+        lines.push({ from: `${node.className || node.tagName}${pseudo}`, own: block === node, crosses })
+      }
+    }
+    return lines
+  })
+}
+
+/**
+ * Where the line runs on past a curve (to the next answer, "Your reply" or "More replies"),
+ * the answers that start it. It must leave the straight run above the curve and carry
+ * on as one line; if it starts again below where the curve turns away, the two read as
+ * separate lines, one of them ending in the card.
+ */
+async function breaks(page: Page) {
+  return page.evaluate(() => Array.from(document.querySelectorAll('.thread-children > .thread-list > li, .thread-branch:not(.is-root) > .thread-editor-host'))
+    .flatMap((node) => {
+      const onward = getComputedStyle(node, '::after')
+      if (onward.content === 'none' || onward.display === 'none') return []
+      const curved = node.matches('li') ? node.querySelector(':scope > .thread-branch > .thread-row')! : node
+      const curve = getComputedStyle(curved, '::before')
+      const turns = curved.getBoundingClientRect().top + parseFloat(curve.top) + parseFloat(curve.height) - parseFloat(curve.borderBottomLeftRadius)
+      const starts = node.getBoundingClientRect().top + parseFloat(onward.top)
+      return starts > turns + 0.5 ? [node.querySelector('article')?.id ?? 'reply box'] : []
+    }))
+}
+
+test('replies just posted join the thread with the same lines, and the reply box sits beside the line, never on it @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'posted')
+  try {
+    const fixture = await seedThread(handle)
+    // The first nested reply has an answer of its own, so its branch starts closed.
+    const db = pool()
+    try {
+      await db.query(
+        `insert into posts (author_id, text, reply_parent_id, root_id)
+         select id, $2, $3, $4 from members where handle = $1`,
+        [handle, `Earlier answer to the nested reply from ${handle}`, fixture.nested[0], fixture.root],
+      )
+    } finally {
+      await db.end()
+    }
+    await page.goto(`/p/${fixture.root}?replies=oldest`)
+    const phone = (page.viewportSize()?.width ?? 1280) < 1024
+    const answer = async (id: string, text: string) => {
+      // Reply is turned off while the last answer is still being sent; a click then is ignored.
+      const reply = page.locator(`#post-${id}`).getByRole('link', { name: /^Reply \(/ })
+      await expect(reply).not.toHaveAttribute('aria-disabled', 'true')
+      await reply.click()
+      await (await replyBox(page, id)).fill(text)
+      await page.getByRole('button', { name: 'Reply', exact: true }).click()
+      await expect(page.locator('article', { hasText: text })).toBeVisible()
+    }
+    const branch = page.locator(`.thread-branch[data-thread-id="${fixture.first}"]`)
+    // Answered while its own two replies are still closed: the new ones wait under "Your reply".
+    const answers = [`First posted answer from ${handle}`, `Second posted answer from ${handle}`]
+    for (const text of answers) await answer(fixture.first, text)
+    await expect(branch.getByText('Your reply · Some replies are not loaded yet.')).toBeVisible()
+    await page.getByRole('heading', { name: 'Replies', exact: true }).click()
+
+    const ids = await branch.locator(`.thread-branch[data-parent-id="${fixture.first}"]`)
+      .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.threadId!))
+    expect(ids).toHaveLength(2)
+    const placed = await page.evaluate(([parent, ids]) => {
+      const card = document.getElementById(`post-${parent}`)!
+      const avatar = card.querySelector('.post-header a')!.getBoundingClientRect()
+      const curve = (row: Element, into: DOMRect) => {
+        const box = row.getBoundingClientRect()
+        const style = getComputedStyle(row, '::before')
+        const left = box.left + parseFloat(style.left)
+        const top = box.top + parseFloat(style.top)
+        return {
+          drawn: style.content !== 'none',
+          line: left + parseFloat(style.borderLeftWidth) / 2,
+          top,
+          right: left + parseFloat(style.width),
+          y: top + parseFloat(style.height) - parseFloat(style.borderBottomWidth) / 2,
+          left: into.left,
+          centre: into.top + into.height / 2,
+        }
+      }
+      const answers = ids.map((id) => {
+        const row = document.getElementById(`post-${id}`)!.closest('.thread-row')!
+        const curved = curve(row, document.getElementById(`post-${id}`)!.getBoundingClientRect())
+        const face = document.querySelector(`#post-${id} .post-header a`)!.getBoundingClientRect()
+        return { ...curved, centre: face.top + face.height / 2, onward: getComputedStyle(row.closest('li')!, '::after').content !== 'none' }
+      })
+      const host = document.getElementById(`thread-editor-${parent}`)!
+      const face = host.querySelector('.composer-reply-avatar > :first-child')?.getBoundingClientRect()
+      const box = host.childElementCount && face ? { ...curve(host, face), onward: getComputedStyle(host, '::after').content !== 'none' } : null
+      // The run from the parent: past the box on a desktop, else through "Your reply".
+      const gap = document.querySelector(`#replies-${parent} .thread-gap`)!
+      const gapStyle = getComputedStyle(gap, '::before')
+      return {
+        answers,
+        box,
+        gapLine: gap.getBoundingClientRect().left + parseFloat(gapStyle.left) + parseFloat(gapStyle.borderLeftWidth) / 2,
+        gapTop: gap.getBoundingClientRect().top + parseFloat(getComputedStyle(gap).borderTopWidth) + parseFloat(gapStyle.top),
+        cardBottom: card.getBoundingClientRect().bottom,
+        avatarCentre: avatar.left + avatar.width / 2,
+        avatarLeft: avatar.left,
+      }
+    }, [fixture.first, ids] as const)
+    expect(placed.answers.map((curved) => curved.drawn)).toEqual([true, true])
+    const line = placed.answers[0]!.line
+    if (phone) {
+      expect(line).toBeLessThan(placed.avatarLeft)
+      expect(placed.box).toBeNull()
+      expect(placed.gapTop).toBeGreaterThanOrEqual(placed.cardBottom - 0.5)
+    } else {
+      expect(Math.abs(line - placed.avatarCentre)).toBeLessThanOrEqual(1)
+      // The box opens where an answer would: the line leaves the parent card's edge, curves
+      // into the box's avatar and runs on, beside it, to the answers.
+      expect(placed.box!.top).toBeGreaterThanOrEqual(placed.cardBottom - 0.5)
+      expect(Math.abs(placed.box!.line - line)).toBeLessThanOrEqual(0.5)
+      expect(Math.abs(placed.box!.right - placed.box!.left)).toBeLessThanOrEqual(1)
+      expect(Math.abs(placed.box!.y - placed.box!.centre)).toBeLessThanOrEqual(1)
+      expect(placed.box!.onward).toBe(true)
+    }
+    // One line, on through "Your reply", curving into each new answer at its avatar.
+    expect(Math.abs(placed.gapLine - line)).toBeLessThanOrEqual(0.5)
+    for (const curved of placed.answers) {
+      expect(Math.abs(curved.line - line)).toBeLessThanOrEqual(0.5)
+      expect(Math.abs(curved.right - curved.left)).toBeLessThanOrEqual(1)
+      expect(Math.abs(curved.y - curved.centre)).toBeLessThanOrEqual(1)
+    }
+    expect(placed.answers.map((curved) => curved.onward)).toEqual([true, false])
+    const drawn = await connectors(page)
+    expect(drawn.length).toBeGreaterThan(0)
+    expect(drawn.filter((drawn) => !drawn.own || drawn.crosses.length)).toEqual([])
+    expect(await breaks(page)).toEqual([])
+    const wrong = (lines: Awaited<ReturnType<typeof connectors>>) => lines.filter((drawn) => !drawn.own || drawn.crosses.length)
+
+    // The rest load, and the new answers take their places among them.
+    await page.locator(`.thread-branch[data-thread-id="${fixture.first}"] > .thread-row a.thread-toggle`).click()
+    await expect(page.locator(`#post-${fixture.nested[1]}`)).toBeVisible()
+    await expect(branch.getByText('Your reply · Some replies are not loaded yet.')).toHaveCount(0)
+    expect(wrong(await connectors(page))).toEqual([])
+    expect(await breaks(page)).toEqual([])
+
+    // One level down, as the user found it: a reply whose own answer is still closed, the
+    // box open under it, its new answer in "Your reply", and its next sibling after it.
+    // The line from above passes all of that as one line and curves into the sibling.
+    const nested = page.locator(`.thread-branch[data-thread-id="${fixture.nested[0]}"]`)
+    await answer(fixture.nested[0]!, `Answer to the nested reply from ${handle}`)
+    await expect(nested.getByText('Your reply · Some replies are not loaded yet.')).toBeVisible()
+    await expect(nested.locator('.thread-gap + .thread-list article')).toHaveCount(1)
+    expect(wrong(await connectors(page))).toEqual([])
+    expect(await breaks(page)).toEqual([])
+
+    // A reply that had none: the answer is all there is, so it joins the list straight away,
+    // and the box under it stays beside the line that runs on to the next answer.
+    const last = `Answer to a reply with none from ${handle}`
+    await answer(fixture.nested[1]!, last)
+    const empty = page.locator(`.thread-branch[data-thread-id="${fixture.nested[1]}"]`)
+    const emptyToggle = page.locator(`.thread-branch[data-thread-id="${fixture.nested[1]}"] > .thread-row a.thread-toggle`)
+    await expect(empty.locator(`#replies-${fixture.nested[1]} article`, { hasText: last })).toBeVisible()
+    await expect(empty.locator('.thread-gap')).toHaveCount(0)
+    await expect(emptyToggle).toHaveText('Hide replies')
+    expect(wrong(await connectors(page))).toEqual([])
+    expect(await breaks(page)).toEqual([])
+    if (!phone) {
+      // Hidden, the answers take their line with them; the box keeps only its own curve.
+      await emptyToggle.click()
+      await expect(page.locator(`#replies-${fixture.nested[1]}`)).toBeHidden()
+      expect(await page.locator(`#thread-editor-${fixture.nested[1]}`).evaluate((host) => getComputedStyle(host, '::after').content)).toBe('none')
     }
   } finally {
     await context.close()
