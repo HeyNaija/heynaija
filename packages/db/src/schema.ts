@@ -302,6 +302,16 @@ export const posts = pgTable(
     // Reposts by active members, kept the same way (migration 0015). Quotes are
     // posts of their own and are not counted here.
     repostCount: integer('repost_count').notNull().default(0),
+    // A story's update (docs/adr/0024): the story's first post. An update is a
+    // top-level post of its own, not a reply. No foreign key, like reply_parent_id.
+    storyId: uuid('story_id'),
+    // On a story's first post: how many live updates it has. Kept by a trigger
+    // (migration 0040), with `superseded`, whenever an update is added, deleted,
+    // taken down, hidden or restored.
+    storyUpdates: integer('story_updates').notNull().default(0),
+    // A story shows once in feeds, as its newest live update (or its first post
+    // while it has none). Every other post of the story is superseded.
+    superseded: boolean('superseded').notNull().default(false),
   },
   (t) => [
     index('posts_created_idx').on(t.createdAt, t.id),
@@ -310,6 +320,7 @@ export const posts = pgTable(
     index('posts_community_created_idx').on(t.communityId, t.createdAt),
     index('posts_quote_idx').on(t.quotePostId).where(sql`quote_post_id is not null`),
     index('posts_gist_created_idx').on(t.gistId, t.createdAt, t.id).where(sql`gist_id is not null`),
+    index('posts_story_created_idx').on(t.storyId, t.createdAt, t.id).where(sql`story_id is not null`),
     check('posts_gist_reply_check', sql`${t.gistId} is null or ${t.quotePostId} is null`),
     check('posts_reply_audience_check', sql.raw(`reply_audience in (${REPLY_AUDIENCES.map((value) => `'${value}'`).join(', ')})`)),
     check('posts_adult_label_check', sql.raw(`adult_label in (${ADULT_LABELS.map((value) => `'${value}'`).join(', ')})`)),
@@ -497,6 +508,25 @@ export const follows = pgTable(
   ],
 )
 
+// A member following a story (docs/adr/0024): told about each new update. Nothing
+// to do with following its author. How many follow is public; who is not.
+export const storyFollows = pgTable(
+  'story_follows',
+  {
+    storyId: uuid('story_id')
+      .notNull()
+      .references(() => posts.id),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.storyId, t.memberId] }),
+    index('story_follows_member_idx').on(t.memberId),
+  ],
+)
+
 // Blocking is mutual invisibility: neither side sees the other's posts, and the
 // blocked member cannot follow, reply to or like the blocker.
 export const blocks = pgTable(
@@ -615,6 +645,8 @@ export const NOTIFICATION_KINDS = [
   'idea_status',
   // The moderators marked your post sensitive (ADR 0020).
   'post_labelled',
+  // A story you follow has a new update; post is the update.
+  'story_update',
 ] as const
 
 // Something that happened to a member: a reply, like, repost, quote, mention or follow by
@@ -699,6 +731,7 @@ export const OPTIONAL_NOTIFICATION_KINDS = [
   'quote',
   'mention',
   'follow',
+  'story_update',
 ] as const satisfies readonly (typeof NOTIFICATION_KINDS)[number][]
 
 // A kind of notification a member has turned off. Everything is on until they

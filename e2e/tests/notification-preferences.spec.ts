@@ -22,6 +22,7 @@ test('a member who turns off like notifications is not told of likes, and still 
     'Someone reposts your post',
     'Someone quotes your post',
     'Someone follows you',
+    'Someone adds to a story you follow',
   ]
   for (const label of labels) await expect(section.getByLabel(label)).toBeChecked()
   // The kinds, and the box that says whether they are also emailed (on for a new member).

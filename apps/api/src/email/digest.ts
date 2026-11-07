@@ -21,7 +21,7 @@ export type DigestItem = {
 export type Digest = { subject: string; text: string; html: string }
 
 /** The kinds whose email shows a piece of a post. Moderation notices never do. */
-export const KINDS_WITH_EXCERPT: readonly NotificationKind[] = ['reply', 'like', 'repost', 'quote', 'mention', 'idea_status']
+export const KINDS_WITH_EXCERPT: readonly NotificationKind[] = ['reply', 'like', 'repost', 'quote', 'mention', 'idea_status', 'story_update']
 
 /** Longest piece of a post an email shows, in characters. */
 export const EXCERPT_MAX = 80
@@ -58,6 +58,7 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
       case 'reply':
       case 'quote':
       case 'mention':
+      case 'story_update':
         return `${item.kind}:${i}`
       case 'moderator_granted':
       case 'moderator_revoked':
@@ -97,6 +98,8 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
         return { headline: `${who} liked your post`, quote, href: post(item.postId, item.gistId) }
       case 'repost':
         return { headline: `${who} reposted your post`, quote, href: post(item.postId, item.gistId) }
+      case 'story_update':
+        return { headline: `${who} added to their story`, quote, href: post(item.postId, item.gistId) }
       case 'follow':
         return { headline: `${who} followed you`, quote: null, href: actors.length === 1 ? `${webUrl}/u/${actors[0]}` : inApp }
       case 'post_removed':

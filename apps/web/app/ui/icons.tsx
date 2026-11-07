@@ -5,6 +5,7 @@ import {
   BadgeCheck,
   Bell,
   Bookmark,
+  BookOpen,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -88,6 +89,8 @@ export const GearIcon = icon(Settings)
 export const SearchIcon = icon(Search)
 export const HeartIcon = icon(Heart)
 export const BubbleIcon = icon(MessageCircle)
+/** A story (docs/adr/0024): one author's updates to a post, in order. */
+export const StoryIcon = icon(BookOpen)
 export const ShareIcon = icon(Share2)
 /** Safari's Share button on iPhone and iPad, a box with an arrow, as the install steps describe it. */
 export const AppleShareIcon = icon(Share)
