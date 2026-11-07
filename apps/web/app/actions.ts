@@ -41,6 +41,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   const community = String(formData.get('community') ?? '') || undefined
   const quote = String(formData.get('quote') ?? '') || undefined
   const replyAudience = String(formData.get('replyAudience') ?? 'everyone')
+  const sensitive = formData.get('sensitive') === '1'
   const poll = formData.get('poll') === '1'
     ? {
         multiple: formData.get('pollMultiple') === '1',
@@ -60,7 +61,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   const res = await api('/v1/posts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, replyTo, community, images, video, quote, poll, replyAudience }),
+    body: JSON.stringify({ text, replyTo, community, images, video, quote, poll, replyAudience, sensitive }),
   }).catch(() => null)
 
   if (!res) return { error: 'Could not post. Check your connection and try again.' }
@@ -71,6 +72,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
     // The session itself can be refused with a 403 too (a suspension, say).
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     if (body.code === 'reply_not_allowed') return { error: 'The author has limited who can reply to this conversation.' }
+    if (body.code === 'label_not_allowed') return { error: 'Only people 18 or older can mark a post as sensitive.' }
     // The video rules, checked again when the video goes on the post.
     if (video && body.code === 'not_eligible') return { error: VIDEO_REFUSALS.not_eligible! }
   }
@@ -204,6 +206,14 @@ export async function setReplyAudience(formData: FormData): Promise<void> {
   refresh()
 }
 
+/** The author marks their own post sensitive (on=1, ADR 0020), or takes their own mark off. */
+export async function setSensitive(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '')
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/sensitive`, { method: formData.get('on') === '1' ? 'PUT' : 'DELETE' })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
 /** The host hides a reply in their Gist (on=1) or shows it again. */
 export async function hideGistReply(formData: FormData): Promise<void> {
   const gist = String(formData.get('gist') ?? '')
@@ -303,6 +313,27 @@ export async function updateNotificationPreferences(_prev: FormState, formData: 
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(preferencesFromForm(formData)),
+  }).catch(() => null)
+  if (!res) return { error: 'Could not save. Check your connection and try again.' }
+  if (res.status === 401) redirect('/login')
+  if (res.status === 429) return { error: 'You are changing settings very fast. Wait a minute and try again.' }
+  if (!res.ok) return { error: 'Could not save. Try again in a moment.' }
+  refresh()
+  return { done: true }
+}
+
+/**
+ * The member's choices about posts marked sensitive (ADR 0020). `markPosts` is sent
+ * only when the form offered it, so a form without it leaves it as it is.
+ */
+export async function updateSensitiveSettings(_prev: FormState, formData: FormData): Promise<FormState> {
+  const res = await api('/v1/me/sensitive', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      showMedia: formData.get('showMedia') === 'on',
+      ...(formData.get('markPostsOffered') === '1' ? { markPosts: formData.get('markPosts') === 'on' } : {}),
+    }),
   }).catch(() => null)
   if (!res) return { error: 'Could not save. Check your connection and try again.' }
   if (res.status === 401) redirect('/login')
@@ -661,6 +692,17 @@ export async function setCommunityModerator(_prev: FormState, formData: FormData
 export async function restorePost(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '')
   await api(`/v1/moderation/posts/${encodeURIComponent(id)}/restore`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  })
+  refresh()
+}
+
+/** Takes a moderator's sensitive mark off a post, on appeal (ADR 0020). */
+export async function unlabelPost(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '')
+  await api(`/v1/moderation/posts/${encodeURIComponent(id)}/unlabel`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: '{}',

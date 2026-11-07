@@ -78,6 +78,7 @@ const REASONS: Record<string, string> = {
   hate: 'hate speech',
   scam: 'being a scam',
   illegal: 'illegal content',
+  needs_label: 'sensitive content that was not marked',
   other: 'breaking the community rules',
 }
 
@@ -108,6 +109,11 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
       }
     case 'post_restored':
       return { icon: <ShieldIcon size={18} />, text: <>A moderator restored your post.</> }
+    case 'post_labelled':
+      return {
+        icon: <ShieldIcon size={18} />,
+        text: <>A moderator marked your post as sensitive. People under 18 won’t see it, and its pictures and video show behind a warning.</>,
+      }
     case 'report_resolved': {
       const gist = n.detail?.startsWith('gist_') ?? false
       const about = gist ? 'a Gist' : n.subjectHandle ? `@${n.subjectHandle}` : n.community ? `the photo of ${n.community.name}` : 'a post'

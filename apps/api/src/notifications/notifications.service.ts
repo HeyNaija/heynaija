@@ -2,6 +2,7 @@ import { type Db, members, NOTIFICATION_KINDS, notificationOptOuts, OPTIONAL_NOT
 import { Inject, Injectable, Optional } from '@nestjs/common'
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm'
 import { decodeCursor, encodeCursor } from '../cursor.js'
+import { adultContentAllowed } from '../governance/adult-content.js'
 import { memberOpensGist } from '../gists/gist-open.js'
 import { GistsGate } from '../gists/gists-enabled.guard.js'
 import { avatarPath } from '../media/media.service.js'
@@ -96,6 +97,8 @@ const EXCERPT = 140
  * follow has not been taken back. A moderation decision about your own post
  * shows even though the post is down. A reply in a Gist shows only to someone who
  * can open it now, and `gistsOn` (the `gists` flag for the viewer) is part of that.
+ * Nothing about a post marked sensitive reaches anyone it would not be shown to
+ * (ADR 0020), so push and email leave it out too.
  */
 export const visible = (viewerId: string, gistsOn: boolean) => sql`
   n.recipient_id = ${viewerId}
@@ -103,7 +106,8 @@ export const visible = (viewerId: string, gistsOn: boolean) => sql`
     a.active
     and not exists(select 1 from blocks b where (b.blocker_id = ${viewerId} and b.blocked_id = n.actor_id) or (b.blocker_id = n.actor_id and b.blocked_id = ${viewerId}))
     and not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = n.actor_id)))
-  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'idea_status') or (p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null))
+  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'post_labelled', 'idea_status') or (p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null))
+  and (p.id is null or ${adultContentAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)})
   and (p.gist_id is null or n.kind in ('post_removed', 'report_resolved') or (${gistsOn}::boolean and ${memberOpensGist(viewerId, sql`p.gist_id`)}))
   and (n.kind <> 'like' or exists(select 1 from likes l where l.post_id = n.post_id and l.member_id = n.actor_id))
   and (n.kind <> 'repost' or exists(select 1 from reposts r where r.post_id = n.post_id and r.member_id = n.actor_id))

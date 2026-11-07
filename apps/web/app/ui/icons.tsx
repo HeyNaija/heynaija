@@ -14,6 +14,7 @@ import {
   CircleDashed,
   CircleDot,
   Ellipsis,
+  EyeOff,
   FileText,
   Flag,
   Flame,
@@ -129,6 +130,7 @@ export const MicIcon = icon(Mic)
 export const MicOffIcon = icon(MicOff)
 export const LiveIcon = icon(Radio)
 export const LockIcon = icon(Lock)
+export const SensitiveIcon = icon(EyeOff)
 export const LeaveIcon = icon(LogOut)
 export const SignalIcon = icon(Signal)
 export const HeadphonesIcon = icon(Headphones)
