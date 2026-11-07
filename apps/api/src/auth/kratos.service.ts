@@ -8,6 +8,13 @@ import { SESSION_CACHE, type SessionCache } from './session-cache.js'
 /** Name of the Kratos session cookie (set in infra/kratos/kratos.yml). */
 export const SESSION_COOKIE = 'hn_session'
 
+/**
+ * How a session reached us: the browser's cookie, or the session token the
+ * Android and iOS apps were given by a native Kratos flow. Kratos takes the token
+ * in its `X-Session-Token` header.
+ */
+export type SessionVia = 'cookie' | 'token'
+
 const whoami = z.object({
   active: z.boolean(),
   // When the member last proved who they are on this session: signing in, or
@@ -29,8 +36,13 @@ export type Identity = { id: string; handle: string }
 const cachedIdentity = z.object({ id: z.string(), handle: z.string() })
 
 // Kratos compares the cookie byte for byte, so it is passed through unencoded;
-// refuse anything that could smuggle a second cookie or header.
+// refuse anything that could smuggle a second cookie or header. Tokens are held
+// to the same rule.
 const plausibleCookie = (sessionCookie: string) => /^[A-Za-z0-9_\-=.~+/%|]+$/.test(sessionCookie)
+
+// Tokens are cached apart from cookies. A plausible cookie never has a colon, so
+// neither can be taken for the other.
+const cacheKeyOf = (secret: string, via: SessionVia) => (via === 'token' ? `token:${secret}` : secret)
 
 const parseCached = (raw: string | null): Identity | null => {
   if (!raw) return null
@@ -49,7 +61,8 @@ export class KratosService {
   ) {}
 
   /**
-   * Who a session cookie belongs to, or null if it is not a live session.
+   * Who a session cookie (or an app's session token) belongs to, or null if it is
+   * not a live session.
    *
    * Kratos is the authority on sessions, but a page view makes 3–5 API calls and
    * each would otherwise ask Kratos (and Kratos its Postgres) the same question
@@ -68,24 +81,25 @@ export class KratosService {
    * Only valid sessions are cached; an unknown cookie always goes to Kratos, so
    * nobody can fill Redis by sending made-up cookies.
    */
-  async identityForSession(sessionCookie: string): Promise<Identity | null> {
+  async identityForSession(sessionCookie: string, via: SessionVia = 'cookie'): Promise<Identity | null> {
     if (!plausibleCookie(sessionCookie)) return null
 
     const ttl = this.env.WHOAMI_CACHE_TTL_S
+    const key = cacheKeyOf(sessionCookie, via)
     if (ttl > 0) {
       // A cache that fails is a miss: Kratos still decides.
-      const hit = parseCached(await this.cache.get(sessionCookie).catch(() => null))
+      const hit = parseCached(await this.cache.get(key).catch(() => null))
       if (hit) return hit
     }
-    const identity = await this.whoami(sessionCookie)
+    const identity = await this.whoami(sessionCookie, via)
     // Nor can a failed write undo an answer Kratos has already given.
-    if (identity && ttl > 0) await this.cache.set(sessionCookie, JSON.stringify(identity), ttl).catch(() => {})
+    if (identity && ttl > 0) await this.cache.set(key, JSON.stringify(identity), ttl).catch(() => {})
     return identity
   }
 
-  /** Stops reusing a cached answer for this cookie; called when someone signs out. */
-  async forgetSession(sessionCookie: string): Promise<void> {
-    await this.cache.delete(sessionCookie)
+  /** Stops reusing a cached answer for this cookie or token; called when someone signs out. */
+  async forgetSession(sessionCookie: string, via: SessionVia = 'cookie'): Promise<void> {
+    await this.cache.delete(cacheKeyOf(sessionCookie, via))
   }
 
   /**
@@ -93,8 +107,8 @@ export class KratosService {
    * (never cached, unlike the identity above). Null if the session has ended.
    * Only the member's own data export needs it.
    */
-  async emailForSession(sessionCookie: string): Promise<string | null> {
-    const session = await this.session(sessionCookie)
+  async emailForSession(sessionCookie: string, via: SessionVia = 'cookie'): Promise<string | null> {
+    const session = await this.session(sessionCookie, via)
     return session?.identity.traits.email ?? null
   }
 
@@ -104,25 +118,27 @@ export class KratosService {
    * cookie and only moves this forward, so a cached answer could be up to
    * WHOAMI_CACHE_TTL_S old just when it matters. Null if the session has ended.
    */
-  async authenticatedAtForSession(sessionCookie: string): Promise<Date | null> {
-    const session = await this.session(sessionCookie)
+  async authenticatedAtForSession(sessionCookie: string, via: SessionVia = 'cookie'): Promise<Date | null> {
+    const session = await this.session(sessionCookie, via)
     if (!session) return null
     const at = timestamp.safeParse(session.authenticated_at)
     if (!at.success) throw new AuthProviderError('protocol')
     return at.data
   }
 
-  private async whoami(sessionCookie: string): Promise<Identity | null> {
-    const session = await this.session(sessionCookie)
+  private async whoami(sessionCookie: string, via: SessionVia): Promise<Identity | null> {
+    const session = await this.session(sessionCookie, via)
     return session ? { id: session.identity.id, handle: session.identity.traits.handle } : null
   }
 
-  private async session(sessionCookie: string): Promise<z.infer<typeof whoami> | null> {
+  private async session(sessionCookie: string, via: SessionVia): Promise<z.infer<typeof whoami> | null> {
     if (!plausibleCookie(sessionCookie)) return null
+    const credential: Record<string, string> =
+      via === 'token' ? { 'x-session-token': sessionCookie } : { cookie: `${SESSION_COOKIE}=${sessionCookie}` }
     let res: Response
     try {
       res = await fetch(`${this.env.KRATOS_PUBLIC_URL}/sessions/whoami`, {
-        headers: { cookie: `${SESSION_COOKIE}=${sessionCookie}`, accept: 'application/json' },
+        headers: { ...credential, accept: 'application/json' },
         signal: AbortSignal.timeout(5000),
       })
     } catch {

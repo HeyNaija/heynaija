@@ -44,6 +44,48 @@ test('a missing, empty or doubled session cookie is anonymous without asking Kra
   assert.equal(fetch.mock.callCount(), 0)
 })
 
+test('a session token from the apps reaches Kratos as X-Session-Token, never as a cookie', async () => {
+  const fetch = mock.method(globalThis, 'fetch', async (_url: string, init: RequestInit) => {
+    assert.deepEqual(init?.headers, { 'x-session-token': 'ory_st_abc123', accept: 'application/json' })
+    return valid()
+  })
+  // A token wins over a cookie: only the apps send one.
+  for (const cookieHeader of [undefined, 'hn_session=other']) {
+    assert.deepEqual(await setup().identityForRequest({ authorization: 'Bearer ory_st_abc123', cookieHeader }), identity)
+  }
+  assert.equal(fetch.mock.callCount(), 2)
+})
+
+test('an Authorization header that is not a plausible bearer token is ignored', async () => {
+  const fetch = mock.method(globalThis, 'fetch', async () => valid())
+  const auth = setup()
+  for (const authorization of ['Basic YWRhOnB3', 'Bearer', 'Bearer ', 'bearer x', 'Bearer a b', 'Bearer a\r\nx-evil: 1', 'Bearer a;b']) {
+    assert.equal(await auth.identityForRequest({ authorization }), null, authorization)
+  }
+  assert.equal(fetch.mock.callCount(), 0)
+  // Without a usable token the browser's cookie still counts.
+  assert.deepEqual(await auth.identityForRequest({ authorization: 'Basic YWRhOnB3', cookieHeader: 'hn_session=good' }), identity)
+})
+
+test('a token and a cookie with the same value are cached apart, and signing out drops the entry for the token', async () => {
+  let calls = 0
+  mock.method(globalThis, 'fetch', async (_url: string, init: RequestInit) => {
+    calls++
+    const headers = init.headers as Record<string, string>
+    return headers['x-session-token'] === 'same' ? valid() : new Response(null, { status: 401 })
+  })
+  const auth = setup()
+  const app = { authorization: 'Bearer same' }
+  assert.deepEqual(await auth.identityForRequest(app), identity)
+  // The cookie of that value is not a live session, whatever the token's entry says.
+  assert.equal(await auth.identityForRequest({ cookieHeader: 'hn_session=same' }), null)
+  assert.deepEqual(await auth.identityForRequest(app), identity)
+  assert.equal(calls, 2)
+  await auth.invalidateSessionCache(app)
+  await auth.identityForRequest(app)
+  assert.equal(calls, 3)
+})
+
 test('a session Kratos rejects, or an inactive one, is anonymous', async () => {
   for (const response of [
     new Response(null, { status: 401 }),
