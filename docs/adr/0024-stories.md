@@ -20,8 +20,9 @@ case, a match, a trip.
   update. Above the update, a one-line box of the first post is joined to it by
   a short line in the gap, and the card says "Story · 7 updates". The first post
   and the older updates step out of Latest, Following, Discover, communities,
-  hashtags, trending and the profile's Posts tab. If the newest update is
-  deleted or taken down, the one before it takes its place.
+  trending and the profile's Posts tab. If the newest update is deleted or
+  taken down, the one before it takes its place. A hashtag's page still lists
+  every post that uses it, updates included, because it is a search for words.
 - **The story page** is the first post's page, `/p/<id>`. It shows the first
   post, "Story · 7 updates · 23 following" and **Follow story**, then the
   updates oldest first. A line in the gutter joins them and curves into each
@@ -92,7 +93,7 @@ by tomorrow.
 
 ## How
 
-- **Tables** (migration 0040; 0039 is the sensitive labels in PR #110):
+- **Tables** (migration `0040_stories`):
   - `posts.story_id`: on an update, its story's first post. Null on everything
     else.
   - `posts.story_updates`: on a first post, how many live updates it has.
@@ -115,19 +116,21 @@ by tomorrow.
     caller's own live top-level post, not itself an update, and not in a Gist.
     The update takes the first post's community, and its reply audience starts
     as the first post's. It counts toward the posting limit.
-  - Every post carries `story`, or null: `{ id, number, updates, following }`.
-    `number` is 0 on the first post. In feeds, an update's `story` also has
-    `start`, the first post in the shape a quoted post has. That shape already
-    covers a post that is gone or that the reader cannot see.
-  - `GET /v1/posts/:id` on a first post also returns its newest three updates.
-    `GET /v1/posts/:id/updates` pages the rest, oldest first, 20 at a time,
-    with the same keyset cursors as replies.
+  - Every post carries `story`, or null:
+    `{ id, number, updates, followers, following, start }`. `number` is 0 on
+    the first post. On an update, `start` is the first post in the shape a
+    quoted post has, for the box above it in feeds. That shape already covers a
+    post that is gone or that the reader cannot see.
+  - `GET /v1/posts/:id` on a first post also returns `updates`: all of them up
+    to four, otherwise the newest three, oldest first. `GET
+    /v1/posts/:id/updates` pages every update oldest first, for unfolding the
+    rest, with exact-time keyset cursors.
   - `PUT` and `DELETE /v1/posts/:id/story-follow`.
 - **Notifications:** a new kind, `story_update`, added to
   `OPTIONAL_NOTIFICATION_KINDS`. Posting an update writes one row per follower
   in the same transaction (actor: the author; post: the update). Blocks, mutes
   and deletions are applied when it is read, as for every kind. Email and push
-  say "@psami added update 7 to their story" and quote its start.
+  say "@psami added to their story" and quote its start.
 - **Web:** Add update in the post menu opens the composer with the first post
   above it and "Update 8 to your story". The feed card is the update's card
   with the first post's box and line above it. The story page's spine uses the

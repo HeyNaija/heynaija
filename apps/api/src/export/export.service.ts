@@ -27,6 +27,7 @@ import {
   pushSubscriptions,
   reports,
   reposts,
+  storyFollows,
 } from '@heynaija/db'
 import { Inject, Injectable, Optional } from '@nestjs/common'
 import { aliasedTable, and, asc, eq, isNotNull, or, sql } from 'drizzle-orm'
@@ -38,7 +39,7 @@ import { GistsGate } from '../gists/gists-enabled.guard.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/13'
+export const EXPORT_FORMAT = 'heynaija-export/14'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -76,6 +77,7 @@ export class ExportService {
       votedFor,
       following,
       followers,
+      followedStories,
       muted,
       blocked,
       joined,
@@ -96,6 +98,7 @@ export class ExportService {
           createdAt: posts.createdAt,
           replyTo: posts.replyParentId,
           quoteOf: posts.quotePostId,
+          storyOf: posts.storyId,
           replyAudience: posts.replyAudience,
           community: communities.slug,
           deletedAt: posts.deletedAt,
@@ -177,6 +180,11 @@ export class ExportService {
         .innerJoin(other, eq(other.id, follows.followerId))
         .where(eq(follows.followeeId, memberId))
         .orderBy(asc(follows.createdAt)),
+      db
+        .select({ postId: storyFollows.storyId, since: storyFollows.createdAt })
+        .from(storyFollows)
+        .where(eq(storyFollows.memberId, memberId))
+        .orderBy(asc(storyFollows.createdAt)),
       db
         .select({ handle: other.handle, since: mutes.createdAt })
         .from(mutes)
@@ -356,6 +364,8 @@ export class ExportService {
       ideaVotes: votedFor,
       following,
       followers,
+      // The stories you follow (docs/adr/0024), by their first post. Your own updates are among your posts, with storyOf.
+      storiesFollowed: followedStories,
       muted,
       blocked,
       communities: joined,

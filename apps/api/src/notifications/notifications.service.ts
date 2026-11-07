@@ -93,8 +93,9 @@ const EXCERPT = 140
 
 /**
  * Which of `viewer`'s notifications are still worth showing: the actor is active
- * and neither blocked nor muted, the post is still up, and a like, repost or
- * follow has not been taken back. A moderation decision about your own post
+ * and neither blocked nor muted, the post is still up, a like, repost or
+ * follow has not been taken back, and a story's update is shown only while the
+ * viewer still follows the story. A moderation decision about your own post
  * shows even though the post is down. A reply in a Gist shows only to someone who
  * can open it now, and `gistsOn` (the `gists` flag for the viewer) is part of that.
  * Nothing about a post marked sensitive reaches anyone it would not be shown to
@@ -106,12 +107,13 @@ export const visible = (viewerId: string, gistsOn: boolean) => sql`
     a.active
     and not exists(select 1 from blocks b where (b.blocker_id = ${viewerId} and b.blocked_id = n.actor_id) or (b.blocker_id = n.actor_id and b.blocked_id = ${viewerId}))
     and not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = n.actor_id)))
-  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'post_labelled', 'idea_status') or (p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null))
+  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'post_labelled', 'idea_status', 'story_update') or (p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null))
   and (p.id is null or ${adultContentAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)})
   and (p.gist_id is null or n.kind in ('post_removed', 'report_resolved') or (${gistsOn}::boolean and ${memberOpensGist(viewerId, sql`p.gist_id`)}))
   and (n.kind <> 'like' or exists(select 1 from likes l where l.post_id = n.post_id and l.member_id = n.actor_id))
   and (n.kind <> 'repost' or exists(select 1 from reposts r where r.post_id = n.post_id and r.member_id = n.actor_id))
-  and (n.kind <> 'follow' or exists(select 1 from follows f where f.follower_id = n.actor_id and f.followee_id = ${viewerId}))`
+  and (n.kind <> 'follow' or exists(select 1 from follows f where f.follower_id = n.actor_id and f.followee_id = ${viewerId}))
+  and (n.kind <> 'story_update' or exists(select 1 from story_follows sf where sf.story_id = p.story_id and sf.member_id = ${viewerId}))`
 
 /**
  * Whether the post a notification names may be shown to its recipient: not in a Gist, or in one they can
