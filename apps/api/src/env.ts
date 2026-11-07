@@ -1,3 +1,4 @@
+import { createPrivateKey } from 'node:crypto'
 import { z } from 'zod'
 import { videoEnvShape } from './video/video-config.js'
 
@@ -17,6 +18,44 @@ const lockedOff = (name: string) =>
 
 /** An optional setting that may also be given empty (compose passes `${NAME:-}`), which means unset. */
 const optional = <T extends z.ZodType>(type: T) => z.preprocess((value) => (value === '' ? undefined : value), type.optional())
+
+const isPrivateKey = (pem: string) => {
+  try {
+    createPrivateKey(pem)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * A Google service account key in base64, kept to what sending through Firebase
+ * Cloud Messaging needs. Its project is where the app's own google-services.json
+ * comes from.
+ */
+const fcmServiceAccount = z
+  .string()
+  .transform((value): unknown => {
+    try {
+      return JSON.parse(Buffer.from(value, 'base64').toString('utf8'))
+    } catch {
+      return null
+    }
+  })
+  .pipe(
+    z.object(
+      {
+        type: z.literal('service_account'),
+        project_id: z.string().regex(/^[a-z][a-z0-9-]{4,29}$/, 'a Firebase project ID'),
+        client_email: z.email(),
+        private_key: z.string().refine(isPrivateKey, 'a private key in PEM'),
+      },
+      { error: 'a service account key (the JSON file) in base64' },
+    ),
+  )
+  .transform((key) => ({ projectId: key.project_id, clientEmail: key.client_email, privateKey: key.private_key }))
+
+export type FcmServiceAccount = z.infer<typeof fcmServiceAccount>
 
 export const APP_ENVS = ['development', 'staging', 'production'] as const
 export type AppEnv = (typeof APP_ENVS)[number]
@@ -108,6 +147,10 @@ const schema = z.object({
   PUSH_CONTACT: optional(z.string().regex(/^(mailto:|https:\/\/)\S+$/, 'a mailto: or https:// address')),
   // How often the job that pushes new notifications runs, in seconds.
   PUSH_SWEEP_EVERY_S: z.coerce.number().int().min(1).max(600).default(10),
+  // Push to the Android app (docs/adr/0023): the Firebase project's service
+  // account key, the JSON file its console downloads, in base64 so that it is one
+  // line. Without it the app is not offered push; browsers are unaffected.
+  FCM_SERVICE_ACCOUNT: optional(fcmServiceAccount),
   // Safety (docs/safety/abuse-material-scanning.md). Where alerts about matched
   // uploads and reports of illegal content are emailed; without it they are only
   // logged. Needs the SMTP settings above.

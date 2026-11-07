@@ -145,8 +145,8 @@ async function HomeHeader({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
       <div className={`${card} p-5`}>
         <h1 className="page-title">Your account is suspended</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          A moderator suspended this account, so you cannot post or interact for now. If you
-          think that was a mistake, tell us why and a moderator will look again.
+          You cannot post or interact for now. If you think that was a mistake, tell us why and
+          a moderator will look again.
         </p>
         <AppealStatus />
         <p className="mt-4 text-sm leading-relaxed text-muted">

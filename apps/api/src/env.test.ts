@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { generateKeyPairSync } from 'node:crypto'
 import { test } from 'node:test'
 import { loadEnv, loadPrivacyToolEnv } from './env.js'
 
@@ -183,4 +184,29 @@ test('APP_ENV names the environment and, unset, is production so a forgotten var
   assert.equal(loadEnv({ ...base, APP_ENV: '' }).APP_ENV, 'production')
   for (const name of ['development', 'staging', 'production'] as const) assert.equal(loadEnv({ ...base, APP_ENV: name }).APP_ENV, name)
   assert.throws(() => loadEnv({ ...base, APP_ENV: 'prod' }))
+})
+
+test('FCM’s service account is its JSON key in base64, kept to what sending needs', () => {
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+  const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+  const key = {
+    type: 'service_account',
+    project_id: 'heynaija-ed259',
+    private_key_id: 'abc',
+    private_key: pem,
+    client_email: 'firebase-adminsdk-x@heynaija-ed259.iam.gserviceaccount.com',
+    token_uri: 'https://oauth2.googleapis.com/token',
+  }
+  const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64')
+  assert.deepEqual(loadEnv({ ...base, FCM_SERVICE_ACCOUNT: b64(key) }).FCM_SERVICE_ACCOUNT, {
+    projectId: 'heynaija-ed259',
+    clientEmail: 'firebase-adminsdk-x@heynaija-ed259.iam.gserviceaccount.com',
+    privateKey: pem,
+  })
+  assert.equal(loadEnv(base).FCM_SERVICE_ACCOUNT, undefined)
+  assert.equal(loadEnv({ ...base, FCM_SERVICE_ACCOUNT: '' }).FCM_SERVICE_ACCOUNT, undefined)
+  // The JSON itself, not in base64; google-services.json, which is the app's; a broken key.
+  assert.throws(() => loadEnv({ ...base, FCM_SERVICE_ACCOUNT: JSON.stringify(key) }), /service account key/)
+  assert.throws(() => loadEnv({ ...base, FCM_SERVICE_ACCOUNT: b64({ project_info: { project_id: 'heynaija-ed259' } }) }), /FCM_SERVICE_ACCOUNT/)
+  assert.throws(() => loadEnv({ ...base, FCM_SERVICE_ACCOUNT: b64({ ...key, private_key: 'not a key' }) }), /private key/)
 })

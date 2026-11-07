@@ -152,6 +152,24 @@ export async function seedPosts(handle: string, count: number): Promise<string[]
   }
 }
 
+/**
+ * Makes a member look like one who joined before signup asked for a date of
+ * birth: their date goes, leaving the old "I am 18 or older" statement
+ * (`ticked`) or no age record at all.
+ */
+export async function forgetBirthDate(handle: string, { ticked = false } = {}) {
+  const db = pool()
+  try {
+    const member = `(select id from members where handle = $1)`
+    const { rowCount } = ticked
+      ? await db.query(`update restricted.age_assurances set birth_date = null where member_id = ${member}`, [handle])
+      : await db.query(`delete from restricted.age_assurances where member_id = ${member}`, [handle])
+    if (!rowCount) throw new Error(`no age record for @${handle}`)
+  } finally {
+    await db.end()
+  }
+}
+
 /** Dates a member's account `days` back, for rules that wait on its age (video waits VIDEO_MIN_ACCOUNT_AGE_DAYS, 7 by default). */
 export async function ageAccount(handle: string, days: number) {
   const db = pool()

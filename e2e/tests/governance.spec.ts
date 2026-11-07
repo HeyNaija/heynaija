@@ -15,7 +15,7 @@ test('the rules say the 18+ account rule is temporary, and voting stays 18+', as
   await expect(age).toContainText('The 18+ rule is temporary, for the beta.')
   await expect(age).toContainText('voting in HeyNaija’s governance would stay 18+')
   await page.goto('/privacy#age')
-  await expect(page.locator('#age')).toContainText('not treated as confirmed adults')
+  await expect(page.locator('#age')).toContainText('not treated as a confirmed adult')
 })
 
 test('the governance documents are public and say they are drafts @mobile', async ({ page }) => {
@@ -139,9 +139,11 @@ test('a member sees their real status in Settings, and no tick on their profile'
   const { page, handle, context } = await newMember(browser, 'citizen')
   await page.goto('/settings')
   const section = page.locator('section', { has: page.getByRole('heading', { name: 'Identity and governance' }) })
-  // They confirmed their age on /join: a stated age, not a verified one.
+  // They gave their date of birth on /join: a stated age, not a verified one,
+  // and the date, which only they see.
   await expect(section).toContainText('18 or older')
   await expect(section).toContainText('It is not a verified age.')
+  await expect(section).toContainText('27 March 1990')
   await expect(section).toContainText('Not verified')
   await expect(section).toContainText('HeyNaija is not collecting NIN details.')
   await expect(section).toContainText('Not shown')
@@ -165,7 +167,7 @@ test('a member downloads their data as JSON', async ({ browser }) => {
   ])
   expect(download.suggestedFilename()).toMatch(new RegExp(`^heynaija-${handle}-\\d{4}-\\d{2}-\\d{2}\\.json$`))
   const data = JSON.parse(await readFile((await download.path())!, 'utf8'))
-  expect(data.format).toBe('heynaija-export/12')
+  expect(data.format).toBe('heynaija-export/13')
   expect(data.account).toMatchObject({ handle, email })
   // They skipped the welcome flow on joining (newMember does), and the export says when.
   expect(Date.parse(data.account.onboardedAt)).not.toBeNaN()

@@ -41,6 +41,29 @@ export const THREAD_MAX_DEPTH = 5
  */
 export const THREAD_MAX_GAPS = 6
 
+/**
+ * Where a conversation is read: a reply in a Gist on the Gist's page, with `reply` naming the one
+ * in focus unless it is the whole comment section (`postId` is the Gist); any other on the post's own.
+ */
+export function threadHref(gistId: string | null | undefined, postId: string, query = ''): string {
+  if (!gistId) return `/p/${postId}${query}`
+  if (postId === gistId) return `/gists/${gistId}${query}`
+  const params = new URLSearchParams({ reply: postId })
+  for (const [key, value] of new URLSearchParams(query)) params.append(key, value)
+  return `/gists/${gistId}?${params}`
+}
+
+/** A link to one reply in a Gist: the page opens it as the conversation in focus, so it is there however deep or old it is. */
+export const gistReplyHref = (gistId: string, postId: string, query = ''): string => `${threadHref(gistId, postId, query)}#post-${postId}`
+
+/** The page's address for an order and, for reading on without JavaScript, a page of replies. */
+export function replyQuery(order: ReplyOrder, cursor: string | null): string {
+  const query = new URLSearchParams()
+  if (order === 'oldest') query.set('replies', 'oldest')
+  if (cursor) query.set('repliesCursor', cursor)
+  return query.size ? `?${query}` : ''
+}
+
 /** Scope cycle detection to the rendered ancestry, never to unrelated branches. */
 export function nextThreadPath(ancestors: readonly string[], id: string): readonly string[] | null {
   return ancestors.includes(id) ? null : [...ancestors, id]

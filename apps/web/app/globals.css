@@ -1091,6 +1091,17 @@ summary.menu::-webkit-details-marker {
 .settings-status-value { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; font-weight: 600; }
 .join-age { display: flex; min-height: 44px; cursor: pointer; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; }
 .join-age input { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--accent); }
+.join-dob { display: flex; min-width: 0; flex-direction: column; gap: 8px; border: 0; margin: 0; padding: 0; }
+.join-dob legend { margin-bottom: 8px; padding: 0; }
+/* Day and year as wide as their digits and the chevron, the month never narrower
+   than "September", so the three read as one date. Where they do not fit on one
+   line (a phone), the year goes under the day. */
+.join-dob-fields { display: flex; flex-wrap: wrap; gap: 10px 8px; }
+.join-dob-fields > :nth-child(1) { flex: 0 0 4.25rem; }
+.join-dob-fields > :nth-child(2) { flex: 1 0 8.25rem; }
+.join-dob-fields > :nth-child(3) { flex: 0 0 5.75rem; }
+.join-dob-fields select { --select-inset: 10px; padding-left: 10px; }
+.join-dob-fields label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 13px; }
 @media (max-width: 1023px) { .governance-summary { padding: 20px; } }
 @media (max-width: 419px) {
   .governance-summary { padding: 18px; }
@@ -1236,7 +1247,12 @@ summary.menu::-webkit-details-marker {
      starts a tap elsewhere would move the page under the finger and the tap would miss. It
      covers an open bar of the usual size; scrolling something into view stops short of it. */
   .thread-view:has(> .thread-branch.is-root > .thread-editor-host:not(:empty)) { padding-bottom: min(220px, calc(100dvh - 135px)); }
+  .gist-replies:has(.thread-branch.is-root > .thread-editor-host:not(:empty)) { padding-bottom: min(220px, calc(100dvh - 135px)); }
   html:has(.thread-branch.is-root > .thread-editor-host:not(:empty)) { scroll-padding-bottom: min(270px, calc(100dvh - 135px)); }
+  /* A Gist's own bar sticks above the tabs, where the reply bar is. With the reply bar there it
+     rides above it, so neither hides the other; once the reply box is in use it goes behind it. */
+  body:has(.gist-replies .thread-editor-host:not(:empty)) .gist-bar { bottom: calc(63px + 72px + env(safe-area-inset-bottom, 0px) + 8px); }
+  body:has(.gist-replies .reply-composer:is(.is-expanded, :focus-within)) .gist-bar { z-index: 3; }
 }
 @media (max-width: 419px) { .thread-branch.is-root > .thread-editor-host { padding-inline: 12px; } }
 @media (max-width: 1023px) and (max-height: 520px) { .thread-branch.is-root > .thread-editor-host .composer-privacy { display: none; } }

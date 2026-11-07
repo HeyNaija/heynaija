@@ -35,7 +35,7 @@ const auth = (flags: FeatureFlags) =>
     db,
     {} as never,
     {} as never,
-    {} as never,
+    { birthDateNeeded: async () => false } as never,
     flags,
     { effective: (on: boolean) => on },
     new GistsGate(flags, { APP_ENV: flags === production ? 'production' : 'development', ...livekit }),

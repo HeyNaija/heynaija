@@ -23,19 +23,21 @@ import {
   postPolls,
   posts,
   problemDetails,
+  pushDevices,
   pushSubscriptions,
   reports,
   reposts,
 } from '@heynaija/db'
-import { Inject, Injectable } from '@nestjs/common'
-import { aliasedTable, and, asc, eq, isNotNull, or } from 'drizzle-orm'
+import { Inject, Injectable, Optional } from '@nestjs/common'
+import { aliasedTable, and, asc, eq, isNotNull, or, sql } from 'drizzle-orm'
 import { avatarPath, postImagePath } from '../media/media.service.js'
 import { masterKey, posterKey } from '../video/video-keys.js'
-import { preferencesWithout } from '../notifications/notifications.service.js'
+import { gistsOpenTo, postShown, preferencesWithout } from '../notifications/notifications.service.js'
+import { GistsGate } from '../gists/gists-enabled.guard.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/12'
+export const EXPORT_FORMAT = 'heynaija-export/13'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -46,10 +48,14 @@ export const EXPORT_FORMAT = 'heynaija-export/12'
  */
 @Injectable()
 export class ExportService {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    @Optional() @Inject(GistsGate) private readonly gate: Pick<GistsGate, 'access'> | null = null,
+  ) {}
 
   async export(memberId: string, email: string | null) {
     const db = this.db
+    const gistsOn = await gistsOpenTo(this.gate, memberId)
     const [me] = await db.select().from(members).where(eq(members.id, memberId))
     if (!me) return null
 
@@ -77,6 +83,7 @@ export class ExportService {
       received,
       turnedOff,
       pushedTo,
+      pushedToApps,
       ageRecords,
       verifications,
       [membership],
@@ -92,6 +99,8 @@ export class ExportService {
           community: communities.slug,
           deletedAt: posts.deletedAt,
           removedByModeratorAt: posts.removedAt,
+          gistId: posts.gistId,
+          hiddenByHostAt: posts.hiddenByHostAt,
         })
         .from(posts)
         .leftJoin(communities, eq(communities.id, posts.communityId))
@@ -200,8 +209,14 @@ export class ExportService {
         .where(or(eq(moderationActions.memberId, memberId), eq(posts.authorId, memberId)))
         .orderBy(asc(moderationActions.createdAt)),
       db
-        .select({ kind: notifications.kind, postId: notifications.postId, at: notifications.createdAt, readAt: notifications.readAt })
+        .select({
+          kind: notifications.kind,
+          postId: sql<string | null>`case when ${postShown(memberId, gistsOn, { gist: sql`${posts.gistId}`, author: sql`${posts.authorId}`, recipient: sql`${notifications.recipientId}` })} then ${notifications.postId} end`,
+          at: notifications.createdAt,
+          readAt: notifications.readAt,
+        })
         .from(notifications)
+        .leftJoin(posts, eq(posts.id, notifications.postId))
         .where(eq(notifications.recipientId, memberId))
         .orderBy(asc(notifications.createdAt)),
       db.select({ kind: notificationOptOuts.kind }).from(notificationOptOuts).where(eq(notificationOptOuts.memberId, memberId)),
@@ -211,11 +226,18 @@ export class ExportService {
         .where(eq(pushSubscriptions.memberId, memberId))
         .orderBy(asc(pushSubscriptions.createdAt)),
       db
+        .select({ since: pushDevices.createdAt, lastPushedAt: pushDevices.lastPushedAt })
+        .from(pushDevices)
+        .where(eq(pushDevices.memberId, memberId))
+        .orderBy(asc(pushDevices.createdAt)),
+      db
         .select({
           band: ageAssurances.band,
           method: ageAssurances.method,
           at: ageAssurances.assuredAt,
           reviewAfter: ageAssurances.reviewAfter,
+          // The date of birth you gave at signup, on the row it came with.
+          birthDate: ageAssurances.birthDate,
           withdrawnAt: ageAssurances.withdrawnAt,
         })
         .from(ageAssurances)
@@ -307,8 +329,9 @@ export class ExportService {
         role: me.role,
         active: me.active,
       },
-      // Every statement about your age band and how it was made: empty for
-      // accounts made before HeyNaija asked, which HeyNaija treats as unknown.
+      // Every statement about your age band and how it was made, with the date
+      // of birth you gave at signup: empty for accounts made before HeyNaija
+      // asked, which HeyNaija treats as unknown.
       age: ageRecords,
       identityVerifications: verifications,
       votingMembership: membership ?? null,
@@ -342,6 +365,8 @@ export class ExportService {
       // The browsers they are pushed to: when each was turned on and last sent one.
       // A browser's push address is left out; it is only good for sending to it.
       pushNotifications: pushedTo,
+      // The same for the HeyNaija app on your phones; its token is left out likewise.
+      appPushNotifications: pushedToApps,
       notifications: received,
     }
   }

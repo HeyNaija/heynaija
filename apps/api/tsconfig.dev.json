@@ -1,0 +1,12 @@
+{
+  // For `pnpm dev` only. Incremental, so the watcher's first pass writes just
+  // what changed since the build before it. Without that it wrote all of dist
+  // again a few seconds after the API had started, node --watch restarted it,
+  // and e2e tests that had just begun lost their requests. The record is kept
+  // in dist, so deleting dist starts afresh.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
+  }
+}

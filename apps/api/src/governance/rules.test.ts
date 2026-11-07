@@ -36,7 +36,7 @@ const verified = (over: Partial<VerificationFacts> = {}): VerificationFacts => (
   personKey: 'key',
   ...over,
 })
-const verifiedAdult: AgeStatus = { band: '18_plus', assurance: 'verified', reviewDue: false }
+const verifiedAdult: AgeStatus = { band: '18_plus', assurance: 'verified' }
 const legalMembership = { status: 'admitted' as const, admittedAt: daysAgo(40) }
 const activeMember: MembershipFacts = { status: 'active', optedInAt: daysAgo(35), suspendedUntil: null }
 
@@ -82,9 +82,9 @@ test('voting membership needs a verified adult age, kept apart from the identity
   assert.deepEqual(check(verifiedAdult), [])
   // Unknown (an older account), a stated adult age, a moderator's view, or a minor: no vote.
   assert.deepEqual(check(UNKNOWN_AGE), ['age_not_verified'])
-  assert.deepEqual(check({ band: '18_plus', assurance: 'declared', reviewDue: false }), ['age_not_verified'])
-  assert.deepEqual(check({ band: '18_plus', assurance: 'reviewed', reviewDue: false }), ['age_not_verified'])
-  assert.deepEqual(check({ band: 'under_18', assurance: 'verified', reviewDue: false }), ['age_not_verified'])
+  assert.deepEqual(check({ band: '18_plus', assurance: 'declared' }), ['age_not_verified'])
+  assert.deepEqual(check({ band: '18_plus', assurance: 'reviewed' }), ['age_not_verified'])
+  assert.deepEqual(check({ band: 'under_18', assurance: 'verified' }), ['age_not_verified'])
 })
 
 test('voting membership needs a reviewed verification and a person key', () => {

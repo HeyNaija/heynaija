@@ -3,6 +3,7 @@ import {
   type AnyPgColumn,
   boolean,
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -21,6 +22,7 @@ import {
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
 
 export const REPLY_AUDIENCES = ['everyone', 'following', 'mentioned'] as const
+export const GIST_REPLY_AUDIENCES = [...REPLY_AUDIENCES, 'off'] as const
 
 // A member of the network. `id` is the Ory Kratos identity ID: Kratos owns the
 // email, password and sessions; this table holds only what the app itself needs.
@@ -269,11 +271,14 @@ export const posts = pgTable(
     linkUrl: text('link_url'),
     // At most one community per post. Replies inherit their parent's.
     communityId: uuid('community_id').references(() => communities.id),
+    // A reply in a Gist's comment section, inherited by the replies under it. Read only through the Gist's routes.
+    gistId: uuid('gist_id').references((): AnyPgColumn => gists.id),
     createdAt: ts('created_at').notNull().defaultNow(),
     // Soft delete: the row stays for moderation and audit, but leaves every feed.
     deletedAt: ts('deleted_at'),
     // Taken down by a moderator (as opposed to deleted by its author). Reversible.
     removedAt: ts('removed_at'),
+    hiddenByHostAt: ts('hidden_by_host_at'),
     // Likes by active members, and direct replies that are live and by active
     // members: what readers see. Kept by triggers (migration 0011), in the same
     // transaction as the like, reply, deletion or suspension that changes them.
@@ -289,6 +294,8 @@ export const posts = pgTable(
     index('posts_reply_parent_created_idx').on(t.replyParentId, t.createdAt, t.id),
     index('posts_community_created_idx').on(t.communityId, t.createdAt),
     index('posts_quote_idx').on(t.quotePostId).where(sql`quote_post_id is not null`),
+    index('posts_gist_created_idx').on(t.gistId, t.createdAt, t.id).where(sql`gist_id is not null`),
+    check('posts_gist_reply_check', sql`${t.gistId} is null or ${t.quotePostId} is null`),
     check('posts_reply_audience_check', sql.raw(`reply_audience in (${REPLY_AUDIENCES.map((value) => `'${value}'`).join(', ')})`)),
     // Full-text search. 'simple' (no stemming) suits mixed English, Pidgin and names.
     index('posts_text_search_idx').using('gin', sql`to_tsvector('simple', ${t.text})`),
@@ -716,6 +723,38 @@ export const pushSubscriptions = pgTable(
   (t) => [uniqueIndex('push_subscriptions_endpoint_idx').on(t.endpoint), index('push_subscriptions_member_idx').on(t.memberId)],
 )
 
+// The push services the apps register with (docs/adr/0023): Firebase Cloud
+// Messaging, for the Android app. Apple's (apns) comes with the iOS app's push.
+export const PUSH_DEVICE_SERVICES = ['fcm'] as const
+export type PushDeviceService = (typeof PUSH_DEVICE_SERVICES)[number]
+
+// An installation of the Android or iOS app that shows a member's notifications
+// (docs/adr/0023): the token its push service gave it, and the key the app made
+// that encrypts what is sent there, so that the push service cannot read it. One
+// row per installation: whoever signs in on it next takes the row, and signing out
+// deletes it. Kept apart from browsers' subscriptions, whose keys work differently.
+export const pushDevices = pgTable(
+  'push_devices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    service: text('service').$type<PushDeviceService>().notNull(),
+    token: text('token').notNull(),
+    // AES-256-GCM, 32 bytes in base64url.
+    key: text('key').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    // When its push service last accepted a notification for it.
+    lastPushedAt: ts('last_pushed_at'),
+  },
+  (t) => [
+    uniqueIndex('push_devices_token_idx').on(t.service, t.token),
+    index('push_devices_member_idx').on(t.memberId),
+    check('push_devices_service_check', sql.raw(`service in (${PUSH_DEVICE_SERVICES.map((value) => `'${value}'`).join(', ')})`)),
+  ],
+)
+
 // Signup is invite-only. Only the SHA-256 of a code is stored.
 export const invites = pgTable('invites', {
   codeHash: text('code_hash').primaryKey(),
@@ -747,20 +786,23 @@ export const inviteRedemptions = pgTable('invite_redemptions', {
 // can get its own database role, encrypted storage and separate admin access.
 // Ordinary reads (profiles, posts, feeds, search) never join it; the public
 // badge has its own table below. Never store a raw NIN, a plain hash of one, a
-// date of birth, a legal name or a provider's raw response anywhere.
+// legal name or a provider's raw response anywhere, nor a date of birth outside
+// age_assurances.birth_date.
 // ---------------------------------------------------------------------------
 export const restricted = pgSchema('restricted')
 
 // Age is its own thing, separate from having an account, from identity
 // verification and from voting membership (ADR 0006). Each row is one statement
-// about which age band an account holder is in, and how we know it. Only a band
-// is ever stored: never an age, a birth date or a document. An account with no
-// live row has an unknown age, which never counts as an adult (accounts created
-// before 16 October 2026 start that way). The status a feature acts on is worked
-// out from these rows by ageStatus() in apps/api/src/governance/age.ts.
+// about how old an account holder is, and how we know it. Never an age or a
+// document; a date of birth only as the member gave it (ADR 0020, section 1). An
+// account with no live row with a date has an unknown age, which never counts as
+// an adult, and is asked for its date. The status a feature acts on is worked out
+// from these rows by ageStatus() in apps/api/src/governance/age.ts: from the date
+// of birth, on the day, wherever a row has one.
 export const AGE_BANDS = ['under_18', '18_plus'] as const
 
-// self_declared: the person said so (the "I am 18 or older" box on /join).
+// self_declared: the person said so (their date of birth, on /join or when asked
+// later; or the "I am 18 or older" box before that, which no longer counts).
 // moderator_review: a moderator decided it, e.g. under the mistaken-age process
 // in the rules (not built). identity_provider: an age result from an identity
 // check such as NINAuth. age_assurance_provider: an age check that is not an
@@ -774,6 +816,8 @@ export const ageAssurances = restricted.table(
     // The Kratos identity, which becomes members.id. No foreign key: the signup
     // webhook writes the first row before the members row exists.
     memberId: uuid('member_id').notNull(),
+    // From a date of birth, the band it gave on the day it was given; the rules
+    // work it out from the date again on every check.
     band: text('band', { enum: AGE_BANDS }).notNull(),
     method: text('method', { enum: AGE_ASSURANCE_METHODS }).notNull(),
     // identity_provider: the verification the result came from, so revoking that
@@ -781,10 +825,14 @@ export const ageAssurances = restricted.table(
     verificationId: uuid('verification_id').references(() => identityVerifications.id),
     // moderator_review: who decided. Null when the member or a provider did.
     recordedBy: uuid('recorded_by'),
-    // under_18 only: when to check the band again, at the latest the month the
-    // person turns 18 (rounded up), so the account can move to adult without a
-    // birth date being kept. Nothing writes under_18 yet.
+    // Not written any more: an age from a date of birth is worked out on the day,
+    // so it needs no date to check again (ADR 0020, section 1).
     reviewAfter: ts('review_after'),
+    // The date of birth the member gave, on /join or when asked later (ADR 0020,
+    // section 1), or a correction made through support. Seen only by the member
+    // (Settings, the data export): never logged, never public. Null for the old
+    // "18 or older" box and for an ID check's yes-or-no answer.
+    birthDate: date('birth_date', { mode: 'string' }),
     assuredAt: ts('assured_at').notNull().defaultNow(),
     // Set when the statement stops counting: its source was revoked, consent was
     // withdrawn, or a moderator decision was overturned on appeal. Kept as history.
@@ -874,6 +922,9 @@ export const GOVERNANCE_AUDIT_EVENTS = [
   'age_declared',
   'age_recorded',
   'age_withdrawn',
+  // A member already here gave a date of birth under MINIMUM_AGE, and their
+  // account was suspended until a moderator looks (ADR 0020, section 1).
+  'age_below_minimum',
   'verification_recorded',
   'verification_rejected',
   'verification_reviewed',
@@ -1070,9 +1121,11 @@ export const gists = pgTable(
     locked: boolean('locked').notNull().default(false),
     listenerCap: integer('listener_cap'),
     requestsOpen: boolean('requests_open').notNull().default(true),
+    replyAudience: text('reply_audience', { enum: GIST_REPLY_AUDIENCES }).notNull().default('everyone'),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [
+    check('gists_reply_audience_check', sql.raw(`reply_audience in (${GIST_REPLY_AUDIENCES.map((value) => `'${value}'`).join(', ')})`)),
     // One live Gist per host, enforced here so two racing requests cannot make two.
     uniqueIndex('gists_one_live_per_host_idx')
       .on(t.hostId)

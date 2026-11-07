@@ -24,6 +24,22 @@ export function handleFor(role: string) {
   return `${MARK.handlePrefix}${run}${counter}_${role}`.slice(0, 20).toLowerCase()
 }
 
+/** The date of birth test members give: an adult's, so they can join the 18+ beta. */
+export const ADULT_BIRTH_DATE = '1990-03-27'
+
+/**
+ * Chooses the date of birth on /join or /birth-date (day, month, year) and
+ * ticks that it is real. `date` is YYYY-MM-DD.
+ */
+export async function fillBirthDate(page: Page, date = ADULT_BIRTH_DATE) {
+  const [year = '', month = '', day = ''] = date.split('-')
+  // The year and month first: the day list follows them.
+  await page.getByLabel('Year').selectOption(year)
+  await page.getByLabel('Month').selectOption(String(Number(month)))
+  await page.getByLabel('Day').selectOption(String(Number(day)))
+  await page.getByLabel('This is my real date of birth').check()
+}
+
 /**
  * Signs a new member up through the sign-up pages in `page`. Newcomers land on
  * the welcome flow; this skips it and waits for the home page, unless `welcome`
@@ -47,7 +63,7 @@ export async function signUp(page: Page, handle: string, { welcome = 'skip' }: {
  */
 export async function submitSignUp(page: Page, handle: string, email = `${handle}@${MARK.emailDomain}`) {
   await page.goto(`/join?code=${createInvite()}`)
-  await page.getByLabel('I am 18 or older').check()
+  await fillBirthDate(page)
   await page.getByRole('button', { name: 'Check invite code' }).click()
   await page.waitForURL(/\/signup/)
 
@@ -93,7 +109,7 @@ type KratosFlow = {
 
 /**
  * Kratos's browser registration flow, driven with fetch the way the sign-up form
- * drives it: the invite and the age confirmation in the cookies /join sets
+ * drives it: the invite and the date of birth in the cookies /join sets
  * (Kratos hands them to the API's invite webhook), the traits, then the emailed
  * code. Returns the new session cookie's value.
  */
@@ -101,7 +117,7 @@ async function register(email: string, handle: string): Promise<string> {
   // Stored as acceptInvite (apps/web/app/actions.ts) stores them.
   const jar = new Map([
     ['hn_invite', createInvite().replace(/[^0-9A-Z]/g, '')],
-    ['hn_age', '18-plus'],
+    ['hn_age', ADULT_BIRTH_DATE],
   ])
   const call = async (path: string, body?: object) => {
     const res = await fetch(`${env.kratosPublicUrl}${path}`, {

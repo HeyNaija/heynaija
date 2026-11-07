@@ -5,7 +5,7 @@ import { useActionState } from 'react'
 import { type FormState, submitReport } from '@/app/actions'
 import { REPORT_REASONS as REASONS } from '@/lib/report-reasons'
 
-export function ReportForm({ postId, handle, community }: { postId?: string; handle?: string; community?: string }) {
+export function ReportForm({ postId, handle, community, gist }: { postId?: string; handle?: string; community?: string; gist?: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(submitReport, {})
 
   if (state.done) {
@@ -14,8 +14,8 @@ export function ReportForm({ postId, handle, community }: { postId?: string; han
         <p className="notice">
           Thank you. A moderator will review this. You will not be named to the person you reported.
         </p>
-        <Link href="/" className="btn btn-secondary mt-4">
-          Back to the feed
+        <Link href={gist ? `/gists/${gist}` : '/'} className="btn btn-secondary mt-4">
+          {gist ? 'Back to the Gist' : 'Back to the feed'}
         </Link>
       </div>
     )

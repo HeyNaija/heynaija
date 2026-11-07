@@ -1,5 +1,8 @@
-/** The credentials AuthService reads from a request. Secret: never log or return them. */
-export type AuthRequest = { cookieHeader?: string }
+/**
+ * The credentials AuthService reads from a request: the browser's cookies, or the
+ * `Authorization` header the Android and iOS apps send. Secret: never log or return them.
+ */
+export type AuthRequest = { cookieHeader?: string; authorization?: string }
 
 /** Who is signed in, as the app sees it: `id` is the member ID. */
 export type MemberIdentity = { id: string; handle: string }

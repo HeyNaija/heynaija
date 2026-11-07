@@ -1,3 +1,4 @@
+import { isUuid } from './uuid.ts'
 // The decision proxy.ts makes about /gists/*, kept free of Next so it can be tested.
 // It fails CLOSED: anything but a clear "yes, this member is on the Gists list" is
 // a no, and a no looks exactly like a URL that does not exist (docs/adr/0017 section 4a).
@@ -56,5 +57,5 @@ export async function gistsGate(
 
 /** The Gist address (`/gists/<uuid>`) to send a visitor back to after signing in, or null if `path` is not one. */
 export function gistReturnPath(path: unknown): string | null {
-  return typeof path === 'string' && /^\/gists\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(path) ? path : null
+  return typeof path === 'string' && path.startsWith('/gists/') && isUuid(path.slice('/gists/'.length)) ? path : null
 }

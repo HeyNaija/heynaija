@@ -1,7 +1,9 @@
 import { type Db, members, NOTIFICATION_KINDS, notificationOptOuts, OPTIONAL_NOTIFICATION_KINDS } from '@heynaija/db'
-import { Inject, Injectable } from '@nestjs/common'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { Inject, Injectable, Optional } from '@nestjs/common'
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm'
 import { decodeCursor, encodeCursor } from '../cursor.js'
+import { memberOpensGist } from '../gists/gist-open.js'
+import { GistsGate } from '../gists/gists-enabled.guard.js'
 import { avatarPath } from '../media/media.service.js'
 import { isFounder } from '../members/badges.js'
 import { DB } from '../tokens.js'
@@ -73,7 +75,7 @@ export type NotificationView = {
   /** Null for moderation decisions. `founder`: one of the people who founded HeyNaija. */
   actor: { handle: string; displayName: string | null; avatar: string | null; founder: boolean } | null
   /** The post concerned, with its text shortened. */
-  post: { id: string; excerpt: string } | null
+  post: { id: string; excerpt: string; gistId: string | null } | null
   /** report_resolved about an account: whose. */
   subjectHandle: string | null
   /** moderator_granted / moderator_revoked: which community. */
@@ -92,18 +94,34 @@ const EXCERPT = 140
  * Which of `viewer`'s notifications are still worth showing: the actor is active
  * and neither blocked nor muted, the post is still up, and a like, repost or
  * follow has not been taken back. A moderation decision about your own post
- * shows even though the post is down.
+ * shows even though the post is down. A reply in a Gist shows only to someone who
+ * can open it now, and `gistsOn` (the `gists` flag for the viewer) is part of that.
  */
-export const visible = (viewerId: string) => sql`
+export const visible = (viewerId: string, gistsOn: boolean) => sql`
   n.recipient_id = ${viewerId}
   and (n.actor_id is null or (
     a.active
     and not exists(select 1 from blocks b where (b.blocker_id = ${viewerId} and b.blocked_id = n.actor_id) or (b.blocker_id = n.actor_id and b.blocked_id = ${viewerId}))
     and not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = n.actor_id)))
-  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'idea_status') or (p.deleted_at is null and p.removed_at is null))
+  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'idea_status') or (p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null))
+  and (p.gist_id is null or n.kind in ('post_removed', 'report_resolved') or (${gistsOn}::boolean and ${memberOpensGist(viewerId, sql`p.gist_id`)}))
   and (n.kind <> 'like' or exists(select 1 from likes l where l.post_id = n.post_id and l.member_id = n.actor_id))
   and (n.kind <> 'repost' or exists(select 1 from reposts r where r.post_id = n.post_id and r.member_id = n.actor_id))
   and (n.kind <> 'follow' or exists(select 1 from follows f where f.follower_id = n.actor_id and f.followee_id = ${viewerId}))`
+
+/**
+ * Whether the post a notification names may be shown to its recipient: not in a Gist, or in one they can
+ * open, or their own. A moderation outcome stays listed after they lose the Gist, but without the reply.
+ */
+export const postShown = (
+  viewerId: string,
+  gistsOn: boolean,
+  cols: { gist: SQL; author: SQL; recipient: SQL } = { gist: sql`p.gist_id`, author: sql`p.author_id`, recipient: sql`n.recipient_id` },
+) => sql`(${cols.gist} is null or ${cols.author} = ${cols.recipient} or (${gistsOn}::boolean and ${memberOpensGist(viewerId, cols.gist)}))`
+
+/** Whether Gists are open to this member, which a notification about a Gist reply needs. Closed without a gate. */
+export const gistsOpenTo = async (gate: Pick<GistsGate, 'access'> | null, memberId: string): Promise<boolean> =>
+  gate ? (await gate.access()).member(memberId) : false
 
 export const joins = sql`
   from notifications n
@@ -115,7 +133,10 @@ export const joins = sql`
 
 @Injectable()
 export class NotificationsService {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    @Optional() @Inject(GistsGate) private readonly gate: Pick<GistsGate, 'access'> | null = null,
+  ) {}
 
   /** Newest first, cursor-paginated. */
   async list(viewerId: string, limit: number, cursor?: string): Promise<NotificationPage> {
@@ -124,6 +145,8 @@ export class NotificationsService {
       const [createdAt, id] = decodeCursor(cursor)
       before = sql`(n.created_at, n.id) < (${createdAt.toISOString()}::timestamptz, ${id}::uuid)`
     }
+    const gistsOn = await gistsOpenTo(this.gate, viewerId)
+    const shown = postShown(viewerId, gistsOn)
     const { rows } = await this.db.execute<{
       id: string
       kind: NotificationKind
@@ -136,6 +159,7 @@ export class NotificationsService {
       actor_founder: boolean
       post_id: string | null
       post_text: string | null
+      gist_id: string | null
       subject_handle: string | null
       community_slug: string | null
       community_name: string | null
@@ -145,11 +169,11 @@ export class NotificationsService {
       select n.id, n.kind, n.created_at, n.read_at, n.detail,
         a.handle as actor_handle, a.display_name as actor_name, a.avatar_media_id as actor_avatar,
         ${isFounder(sql`a.id`)} as actor_founder,
-        p.id as post_id, p.text as post_text, s.handle as subject_handle,
+        case when ${shown} then p.id end as post_id, case when ${shown} then p.text end as post_text, case when ${shown} then p.gist_id end as gist_id, s.handle as subject_handle,
         c.slug as community_slug, c.name as community_name,
         i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours
       ${joins}
-      where ${visible(viewerId)} and ${before}
+      where ${visible(viewerId, gistsOn)} and ${before}
       order by n.created_at desc, n.id desc
       limit ${limit + 1}`)
 
@@ -162,7 +186,7 @@ export class NotificationsService {
         actor: r.actor_handle
           ? { handle: r.actor_handle, displayName: r.actor_name, avatar: avatarPath(r.actor_avatar), founder: r.actor_founder }
           : null,
-        post: r.post_id ? { id: r.post_id, excerpt: excerpt(r.post_text ?? '') } : null,
+        post: r.post_id ? { id: r.post_id, excerpt: excerpt(r.post_text ?? ''), gistId: r.gist_id } : null,
         subjectHandle: r.subject_handle,
         community: r.community_slug ? { slug: r.community_slug, name: r.community_name! } : null,
         detail: r.detail,
@@ -176,7 +200,7 @@ export class NotificationsService {
   /** How many unread notifications would show. */
   async unreadCount(viewerId: string): Promise<number> {
     const { rows } = await this.db.execute<{ count: number }>(sql`
-      select count(*)::int as count ${joins} where ${visible(viewerId)} and n.read_at is null`)
+      select count(*)::int as count ${joins} where ${visible(viewerId, await gistsOpenTo(this.gate, viewerId))} and n.read_at is null`)
     return rows[0]?.count ?? 0
   }
 

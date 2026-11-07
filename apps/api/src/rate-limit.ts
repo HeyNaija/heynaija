@@ -25,6 +25,10 @@ export const LIMITS = {
   // Site admins changing feature flags: rare, and each change is audited.
   flagChange: [{ max: 30, windowMs: HOUR }],
   inviteCheck: [{ max: 20, windowMs: MINUTE }],
+  // /join's age check, beside the invite check.
+  signupAge: [{ max: 20, windowMs: MINUTE }],
+  // A member already here giving their date of birth: once, but typing mistakes happen.
+  birthDate: [{ max: 10, windowMs: MINUTE }],
   // Name and bio changes.
   profile: [{ max: 20, windowMs: HOUR }],
   // Profile photo changes.

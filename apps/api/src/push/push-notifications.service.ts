@@ -1,11 +1,14 @@
-import { type Db, members, notifications, OPTIONAL_NOTIFICATION_KINDS, pushSubscriptions } from '@heynaija/db'
+import { type Db, members, notifications, OPTIONAL_NOTIFICATION_KINDS, type PushDeviceService, pushDevices, pushSubscriptions } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { EXCERPT_MAX, KINDS_WITH_EXCERPT } from '../email/digest.js'
-import { excerpt, joins, type NotificationKind, visible } from '../notifications/notifications.service.js'
+import { GistsGate } from '../gists/gists-enabled.guard.js'
+import { excerpt, gistsOpenTo, joins, type NotificationKind, postShown, visible } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 import { type PushItem, pushMessages } from './push-message.js'
 import {
+  APP_PUSH_SENDER,
+  type AppPushSender,
   PermanentPushError,
   PUSH_SENDER,
   type PushMessage,
@@ -30,6 +33,8 @@ const DUE_PER_SWEEP = 500
 // Waiting notifications one push looks at; a member with more is told about the
 // newest and the rest are passed over.
 const PENDING_MAX = 200
+// Installations of the app kept per member; registering past it drops the oldest.
+const DEVICES_PER_MEMBER = 10
 // How far back already-pushed likes, reposts and follows are counted in.
 const COUNTED_IN_S = 24 * 60 * 60
 // Notifications one push reads, waiting and counted in together.
@@ -40,8 +45,9 @@ const READ_MAX = 300
  * happened and never waits on a push. Every few seconds `sweep` passes over what
  * nothing will be pushed for and asks for one push per member with something
  * waiting; `send` then decides what to say and sends it to each of the member's
- * browsers. As with email, everything is decided from what is true at that
- * moment. What a browser took is marked `pushed_at`, and email leaves it out.
+ * browsers and installations of the app (docs/adr/0023). As with email,
+ * everything is decided from what is true at that moment. What a browser or the
+ * app took is marked `pushed_at`, and email leaves it out.
  */
 @Injectable()
 export class PushNotificationsService {
@@ -51,11 +57,18 @@ export class PushNotificationsService {
     @Inject(DB) private readonly db: Db,
     @Inject(PUSH_JOBS) private readonly jobs: PushJobs,
     @Optional() @Inject(PUSH_SENDER) private readonly sender: PushSender | null = null,
+    @Optional() @Inject(GistsGate) private readonly gate: Pick<GistsGate, 'access'> | null = null,
+    @Optional() @Inject(APP_PUSH_SENDER) private readonly apps: AppPushSender | null = null,
   ) {}
 
-  /** False when no VAPID keys are configured: nothing is pushed, and browsers are not offered it. */
+  /** False when neither VAPID keys nor FCM's service account are configured: nothing is pushed. */
   get enabled(): boolean {
-    return this.sender !== null
+    return this.sender !== null || this.apps !== null
+  }
+
+  /** False without FCM's service account: the app is not offered push. */
+  get appsEnabled(): boolean {
+    return this.apps !== null
   }
 
   /** The key browsers subscribe with, or null when push is off. */
@@ -122,20 +135,62 @@ export class PushNotificationsService {
   }
 
   /**
+   * Starts pushing the member's notifications to an installation of the app,
+   * which sends its token and key each time it starts signed in. A token is one
+   * installation: if someone else was signed in there, it is now this member's,
+   * with a fresh start date. A member has at most DEVICES_PER_MEMBER; the oldest go.
+   */
+  async register(memberId: string, service: PushDeviceService, token: string, key: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(pushDevices)
+        .values({ memberId, service, token, key })
+        .onConflictDoUpdate({
+          target: [pushDevices.service, pushDevices.token],
+          set: {
+            memberId,
+            key,
+            createdAt: sql`case when push_devices.member_id = excluded.member_id then push_devices.created_at else now() end`,
+            lastPushedAt: sql`case when push_devices.member_id = excluded.member_id then push_devices.last_pushed_at end`,
+          },
+        })
+        .returning({ id: pushDevices.id })
+      await tx.execute(sql`
+        delete from push_devices
+        where member_id = ${memberId}
+          and id not in (
+            select id from push_devices where member_id = ${memberId}
+            order by (id = ${row!.id}) desc, created_at desc, id desc
+            limit ${DEVICES_PER_MEMBER})`)
+    })
+  }
+
+  /** Signing out of the app: stops pushing to it, if it is still the member's. */
+  async unregister(memberId: string, service: PushDeviceService, token: string): Promise<void> {
+    await this.db
+      .delete(pushDevices)
+      .where(and(eq(pushDevices.service, service), eq(pushDevices.token, token), eq(pushDevices.memberId, memberId)))
+  }
+
+  /**
    * Run every few seconds. Passes over what nothing will be pushed for, then asks
    * for a push for each member with something waiting. Returns how many it asked for.
    */
   async sweep(): Promise<number> {
     // Settled so it is never looked at again: read in the app already, too old, or
-    // for a member who is suspended or has no browser to push to. Subscribing later
-    // does not bring these back.
+    // for a member who is suspended or has no browser or app to push to.
+    // Subscribing later does not bring these back.
+    const places = [
+      this.sender && sql`exists(select 1 from push_subscriptions s where s.member_id = n.recipient_id)`,
+      this.apps && sql`exists(select 1 from push_devices d where d.member_id = n.recipient_id)`,
+    ].filter((place) => place !== null)
     await this.db.execute(sql`
       update notifications n set push_settled_at = now()
       where n.push_settled_at is null
         and (n.read_at is not null
           or n.created_at < now() - make_interval(secs => ${STALE_AFTER_S})
           or exists(select 1 from members m where m.id = n.recipient_id and not m.active)
-          or not exists(select 1 from push_subscriptions s where s.member_id = n.recipient_id))`)
+          or not (${places.length ? sql.join(places, sql` or `) : sql`false`}))`)
 
     const { rows } = await this.db.execute<{ id: string }>(sql`
       select distinct n.recipient_id as id from notifications n
@@ -146,13 +201,14 @@ export class PushNotificationsService {
   }
 
   /**
-   * Pushes what is waiting for one member to each of their browsers, if anything
-   * in it is still worth telling them. Returns how many push notifications each
-   * browser was sent. Throws when no browser could be reached, leaving the
+   * Pushes what is waiting for one member to each of their browsers and apps, if
+   * anything in it is still worth telling them. Returns how many push
+   * notifications each was sent. Throws when none could be reached, leaving the
    * notifications waiting, so that the job is retried.
    */
   async send(memberId: string): Promise<number> {
-    if (!this.sender) return 0
+    const { sender: web, apps } = this
+    if (!web && !apps) return 0
     const { rows: waiting } = await this.db.execute<{ id: string }>(sql`
       select id from notifications where recipient_id = ${memberId} and push_settled_at is null
       order by created_at desc limit ${PENDING_MAX}`)
@@ -166,10 +222,24 @@ export class PushNotificationsService {
         where id = any(${pgUuids(ids)})`)
 
     const [member] = await this.db.select({ active: members.active }).from(members).where(eq(members.id, memberId))
-    const browsers = member?.active
-      ? await this.db.select().from(pushSubscriptions).where(eq(pushSubscriptions.memberId, memberId))
-      : []
-    if (!browsers.length) {
+    const places: Place[] = []
+    if (member?.active && web) {
+      for (const browser of await this.db.select().from(pushSubscriptions).where(eq(pushSubscriptions.memberId, memberId))) {
+        places.push({ kind: 'browser', id: browser.id, send: (message) => web.send(browser, message) })
+      }
+    }
+    if (member?.active && apps) {
+      const devices = await this.db
+        .select()
+        .from(pushDevices)
+        .where(eq(pushDevices.memberId, memberId))
+        .orderBy(desc(pushDevices.createdAt))
+        .limit(DEVICES_PER_MEMBER)
+      for (const device of devices) {
+        places.push({ kind: 'app', id: device.id, send: (message) => apps.send({ service: device.service, token: device.token, key: device.key, memberId }, message) })
+      }
+    }
+    if (!places.length) {
       await settle()
       return 0
     }
@@ -180,17 +250,18 @@ export class PushNotificationsService {
       return 0
     }
 
-    const reached: string[] = []
+    const reached: Place[] = []
     let retry: unknown = null
-    for (const browser of browsers) {
+    for (const place of places) {
       try {
-        await this.deliver(this.sender, browser, messages)
-        reached.push(browser.id)
+        await this.deliver(place, messages)
+        reached.push(place)
       } catch (error) {
         if (error instanceof SubscriptionGoneError) {
-          await this.db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, browser.id))
+          if (place.kind === 'browser') await this.db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, place.id))
+          else await this.db.delete(pushDevices).where(eq(pushDevices.id, place.id))
         } else if (error instanceof PermanentPushError) {
-          this.log.warn(`push to subscription ${browser.id} was refused for good: ${error.message}`)
+          this.log.warn(`push to ${place.kind === 'browser' ? 'subscription' : 'app'} ${place.id} was refused for good: ${error.message}`)
         } else {
           retry ??= error
         }
@@ -198,25 +269,29 @@ export class PushNotificationsService {
     }
     if (!reached.length && retry) throw retry
 
-    // No browser took it (each one gone or refusing): settled unpushed, so it is emailed.
+    // Nothing took it (each one gone or refusing): settled unpushed, so it is emailed.
     if (!reached.length) {
       await settle()
       return 0
     }
     await settle(pushed)
-    await this.db.update(pushSubscriptions).set({ lastPushedAt: new Date() }).where(inArray(pushSubscriptions.id, reached))
+    const now = new Date()
+    const browsers = reached.filter((place) => place.kind === 'browser').map((place) => place.id)
+    const devices = reached.filter((place) => place.kind === 'app').map((place) => place.id)
+    if (browsers.length) await this.db.update(pushSubscriptions).set({ lastPushedAt: now }).where(inArray(pushSubscriptions.id, browsers))
+    if (devices.length) await this.db.update(pushDevices).set({ lastPushedAt: now }).where(inArray(pushDevices.id, devices))
     return messages.length
   }
 
   /**
-   * One browser's messages, in order. A browser that took the first and failed on
-   * a later one counts as reached: sending them all again would repeat the first.
+   * One browser's or app's messages, in order. One that took the first and failed
+   * on a later one counts as reached: sending them all again would repeat the first.
    */
-  private async deliver(sender: PushSender, browser: PushTarget, messages: PushMessage[]): Promise<void> {
+  private async deliver(place: Place, messages: PushMessage[]): Promise<void> {
     let sent = 0
     for (const message of messages) {
       try {
-        await sender.send(browser, message)
+        await place.send(message)
         sent++
       } catch (error) {
         if (sent && !(error instanceof SubscriptionGoneError)) return
@@ -231,6 +306,8 @@ export class PushNotificationsService {
    * pushed that the new ones are counted in with. Newest first within each.
    */
   private async eligible(memberId: string, ids: string[]): Promise<PushItem[]> {
+    const gistsOn = await gistsOpenTo(this.gate, memberId)
+    const shown = postShown(memberId, gistsOn)
     const optional = sql.join(OPTIONAL_NOTIFICATION_KINDS.map((k) => sql`${k}`), sql`, `)
     const excerptKinds = sql.join(KINDS_WITH_EXCERPT.map((k) => sql`${k}`), sql`, `)
     const { rows } = await this.db.execute<{
@@ -238,6 +315,7 @@ export class PushNotificationsService {
       kind: NotificationKind
       actor_handle: string | null
       post_id: string | null
+      gist_id: string | null
       post_text: string | null
       community_name: string | null
       detail: string | null
@@ -245,12 +323,12 @@ export class PushNotificationsService {
       idea_yours: boolean
       pending: boolean
     }>(sql`
-      select n.id, n.kind, a.handle as actor_handle, n.post_id,
+      select n.id, n.kind, a.handle as actor_handle, case when ${shown} then n.post_id end as post_id, case when ${shown} then p.gist_id end as gist_id,
         -- The text of a post is read only for the kinds that quote it.
         case when n.kind in (${excerptKinds}) then p.text end as post_text,
         c.name as community_name, n.detail, i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, n.push_settled_at is null as pending
       ${joins}
-      where ${visible(memberId)} and n.read_at is null
+      where ${visible(memberId, gistsOn)} and n.read_at is null
         and (n.kind not in (${optional})
           or not exists(select 1 from notification_opt_outs o where o.member_id = n.recipient_id and o.kind = n.kind))
         and (n.id = any(${pgUuids(ids)})
@@ -264,12 +342,16 @@ export class PushNotificationsService {
       kind: r.kind,
       actor: r.actor_handle,
       postId: r.post_id,
+      gistId: r.gist_id,
       excerpt: r.post_text ? excerpt(r.post_text, EXCERPT_MAX) : null,
       community: r.community_name,
       idea: r.idea_kind ? { status: r.detail, kind: r.idea_kind, yours: r.idea_yours } : null,
     }))
   }
 }
+
+/** A browser or an installation of the app, ready to be sent a member's messages. */
+type Place = { kind: 'browser' | 'app'; id: string; send: (message: PushMessage) => Promise<void> }
 
 /** A list of IDs as one Postgres uuid[] parameter. */
 const pgUuids = (ids: string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`
