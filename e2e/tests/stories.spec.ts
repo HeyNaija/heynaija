@@ -97,6 +97,19 @@ test('a member follows a story and is told about its next update', async ({ brow
     await expect(reader.page.locator('#add-update')).toHaveCount(0)
     const lastOnward = await reader.page.locator('.story-spine > li').last().evaluate((li) => getComputedStyle(li, '::after').content)
     expect(lastOnward).toBe('none')
+
+    // An update is answered under it, in the story, and its replies open there as a reply's do.
+    const dayOne = reader.page.locator('.story-spine > li', { hasText: `Day one, from ${author.handle}` })
+    await dayOne.getByRole('link', { name: /^Reply \(/ }).click()
+    await dayOne.getByRole('textbox').fill(`Which road did you take, ${reader.handle}?`)
+    await dayOne.getByRole('button', { name: 'Reply', exact: true }).click()
+    const answer = dayOne.locator('.thread-children article', { hasText: `Which road did you take, ${reader.handle}?` })
+    await expect(answer).toBeVisible()
+    await reader.page.reload()
+    await expect(answer).toBeHidden()
+    await dayOne.getByRole('link', { name: 'View replies' }).click()
+    await expect(answer).toBeVisible()
+
     await reader.page.getByRole('button', { name: 'Follow story' }).click()
     await expect(reader.page.getByRole('button', { name: 'Following' })).toBeVisible()
     await expect(reader.page.locator('.story-bar')).toContainText('1 following')
