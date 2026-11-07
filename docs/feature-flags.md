@@ -63,6 +63,9 @@ upload scanner other than `NoScanner` is bound **or** `APP_ENV` is not `producti
 Every video route (`/v1/me/videos/...`) answers the same 404 as a route that does not
 exist when it is not effective, signed in or not, and `/v1/me` reports
 `features.videoPosts` as the effective value. See `docs/safety/video-scanning.md`.
+On top of that, only an adult by stated age may post one (ADR 0019 section 4.6):
+the upload and the post refuse anyone else, and `/v1/me` reports `videoPosts` off
+for them.
 
 ## Flags with a code rule on top: `gists`
 
@@ -85,6 +88,8 @@ route that does not exist. A signed-out caller is let on to the sign-in 401 whil
 Gists are open to anyone, so a shared Gist link asks them to sign in. `/v1/me` reports
 `features.gists` as the effective value, and every eligibility check in the Gists
 service reads the flag again (once per request, so the checks stay synchronous).
+The flag opens Gists to listen to; hosting and speaking also need an adult by
+stated age (ADR 0020), which `/v1/me` reports as `gistStage`.
 LiveKit's webhook and the once-a-minute reconcile run while LiveKit is configured,
 whatever the flag says: turning `gists` off, or taking a member off its list, takes
 people out of Gists already live within a minute, and the empty rooms then end.

@@ -21,7 +21,8 @@ export default function NewGistPage() {
 
 async function NewGist() {
   const viewer = await getViewer()
-  if (viewer.state !== 'member' || !viewer.me.features.gists) notFound()
+  // Only a member who may host has this page; one who may only listen is not offered it.
+  if (viewer.state !== 'member' || !viewer.me.features.gists || !viewer.me.gistStage) notFound()
   return (
     <>
       <StartGist heading={false} />

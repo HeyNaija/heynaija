@@ -42,7 +42,15 @@ export type Me = {
    * `gists` (docs/adr/0017). A missing key counts as off.
    */
   features: { gists: boolean } & Record<string, boolean>
-  /** The API's limits for a post's video while video is open to this member (`features.videoPosts`); null otherwise. */
+  /**
+   * Whether they may start a Gist and speak in one, or only listen: under 18 and
+   * no date of birth listen (ADR 0020). Never true without `features.gists`.
+   */
+  gistStage: boolean
+  /**
+   * The API's limits for a post's video while video is open to this member
+   * (`features.videoPosts`, which is off under 18 and with no date of birth); null otherwise.
+   */
   videoLimits?: VideoLimits | null
 }
 

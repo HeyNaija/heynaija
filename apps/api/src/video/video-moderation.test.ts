@@ -5,7 +5,7 @@ import { media, members, posts, reports, videoDetails, videoRenditions } from '@
 import { eq } from 'drizzle-orm'
 import { ModerationService } from '../moderation/moderation.service.js'
 import { PostsService } from '../posts/posts.service.js'
-import { db, migrate, pool, reset } from '../test-db.js'
+import { db, giveBirthDates, migrate, pool, reset } from '../test-db.js'
 import { MemoryVideoStore } from './memory-video-store.js'
 import { DEFAULT_VIDEO_CONFIG } from './video-config.js'
 import { posterKey, playlistKey } from './video-keys.js'
@@ -41,6 +41,7 @@ beforeEach(async () => {
     { id: bayo, handle: 'bayo', createdAt: old },
     { id: sam, handle: 'sam', createdAt: old },
   ])
+  await giveBirthDates([ada, bayo, sam])
   store = new FlakyStore()
   videos = new VideoService(db, store, jobs, DEFAULT_VIDEO_CONFIG)
   moderation = new ModerationService(db, undefined, undefined, undefined, videos)

@@ -62,7 +62,8 @@ type Props = {
   media?: boolean
   /**
    * From `me.videoLimits`: the API's video limits, present only while video is open to this member
-   * (the videoPosts flag and, in production, a bound scanner). Null hides the button.
+   * (the videoPosts flag, in production a bound scanner, and an adult by their date of birth). Null
+   * hides the button.
    */
   videoLimits?: VideoLimits | null
   /**

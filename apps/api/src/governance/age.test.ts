@@ -28,6 +28,17 @@ test('a date of birth the member gave makes a stated adult: enough for adult con
   assert.equal(isAdultFor(status, 'governance_vote'), false)
 })
 
+test('a stated adult age hosts and speaks in Gists and posts video; under 18 and unknown do neither', () => {
+  const adult = ageStatus([record({})], now)
+  const minor = ageStatus([record({ band: 'under_18', birthDate: '2012-05-01' })], now)
+  for (const purpose of ['gist_stage', 'video_posting'] as const) {
+    assert.equal(isAdultFor(adult, purpose), true, purpose)
+    assert.equal(isAdultFor(minor, purpose), false, purpose)
+    assert.equal(isAdultFor(UNKNOWN_AGE, purpose), false, purpose)
+    assert.equal(isAdultFor(ageStatus([ticked], now), purpose), false, purpose)
+  }
+})
+
 test('the old "18 or older" box counts for nothing, and its owner is asked for a date', () => {
   assert.deepEqual(ageStatus([ticked], now), UNKNOWN_AGE)
   assert.equal(birthDateNeeded([]), true)

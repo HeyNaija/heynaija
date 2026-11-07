@@ -8,7 +8,7 @@ import { FakeRoomService } from '../gists/fake-room-service.js'
 import { GistsService } from '../gists/gists.service.js'
 import { PostsService } from '../posts/posts.service.js'
 import { MemoryRateLimiter } from '../rate-limit.js'
-import { db, migrate, pool, reset } from '../test-db.js'
+import { db, giveBirthDates, migrate, pool, reset } from '../test-db.js'
 import { ModerationService, ModerationTargetError, NotAModeratorError } from './moderation.service.js'
 import type { SafetyAlerts } from './safety-alerts.js'
 
@@ -34,6 +34,7 @@ beforeEach(async () => {
     { id: sam, handle: 'sam' },
     { id: lola, handle: 'lola' },
   ])
+  await giveBirthDates([ada, bayo, sam, lola])
   await db.insert(communities).values([
     { slug: 'lagos', name: 'Lagos', description: '' },
     { slug: 'abuja', name: 'Abuja', description: '' },

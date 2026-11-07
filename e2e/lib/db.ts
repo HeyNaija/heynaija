@@ -170,6 +170,24 @@ export async function forgetBirthDate(handle: string, { ticked = false } = {}) {
   }
 }
 
+/**
+ * Makes a member 15 by the date of birth on record, as a member already here who
+ * gave such a date is kept (ADR 0020): listening to Gists, never hosting or speaking.
+ */
+export async function makeMinor(handle: string) {
+  const db = pool()
+  try {
+    const { rowCount } = await db.query(
+      `update restricted.age_assurances set band = 'under_18', birth_date = ((now() at time zone 'Africa/Lagos')::date - interval '15 years')::date
+        where member_id = (select id from members where handle = $1) and withdrawn_at is null`,
+      [handle],
+    )
+    if (!rowCount) throw new Error(`no age record for @${handle}`)
+  } finally {
+    await db.end()
+  }
+}
+
 /** Dates a member's account `days` back, for rules that wait on its age (video waits VIDEO_MIN_ACCOUNT_AGE_DAYS, 7 by default). */
 export async function ageAccount(handle: string, days: number) {
   const db = pool()
