@@ -349,6 +349,8 @@ export class AccountDeletionService {
       await run(sql`delete from bookmarks where member_id = ${memberId}`)
       await run(sql`delete from idea_votes where member_id = ${memberId}`)
       await run(sql`delete from follows where follower_id = ${memberId} or followee_id = ${memberId}`)
+      // The stories they followed, and everyone's follows of their stories (docs/adr/0024).
+      await run(sql`delete from story_follows where member_id = ${memberId} or story_id in ${own}`)
       await run(sql`delete from blocks where blocker_id = ${memberId} or blocked_id = ${memberId}`)
       await run(sql`delete from mutes where muter_id = ${memberId} or muted_id = ${memberId}`)
 

@@ -1,5 +1,5 @@
 {
-  "id": "8fcb5723-7439-4fcc-98f4-bca4fdabbe5b",
+  "id": "e719cd4a-65a6-4a4d-ba21-35b90be9b193",
   "prevId": "3757cf66-1694-414e-85ea-0029009aeb0f",
   "version": "7",
   "dialect": "postgresql",
@@ -2161,13 +2161,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "served_privately": {
-          "name": "served_privately",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -2775,7 +2768,7 @@
       "checkConstraints": {
         "notification_opt_outs_kind_check": {
           "name": "notification_opt_outs_kind_check",
-          "value": "kind in ('reply', 'like', 'repost', 'quote', 'mention', 'follow')"
+          "value": "kind in ('reply', 'like', 'repost', 'quote', 'mention', 'follow', 'story_update')"
         }
       },
       "isRLSEnabled": false
@@ -3786,6 +3779,26 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "story_id": {
+          "name": "story_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "story_updates": {
+          "name": "story_updates",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "superseded": {
+          "name": "superseded",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         }
       },
       "indexes": {
@@ -3919,6 +3932,34 @@
           ],
           "isUnique": false,
           "where": "gist_id is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "posts_story_created_idx": {
+          "name": "posts_story_created_idx",
+          "columns": [
+            {
+              "expression": "story_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "story_id is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4845,6 +4886,89 @@
           "columns": [
             "member_id",
             "post_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.story_follows": {
+      "name": "story_follows",
+      "schema": "",
+      "columns": {
+        "story_id": {
+          "name": "story_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "story_follows_member_idx": {
+          "name": "story_follows_member_idx",
+          "columns": [
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "story_follows_story_id_posts_id_fk": {
+          "name": "story_follows_story_id_posts_id_fk",
+          "tableFrom": "story_follows",
+          "tableTo": "posts",
+          "columnsFrom": [
+            "story_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "story_follows_member_id_members_id_fk": {
+          "name": "story_follows_member_id_members_id_fk",
+          "tableFrom": "story_follows",
+          "tableTo": "members",
+          "columnsFrom": [
+            "member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "story_follows_story_id_member_id_pk": {
+          "name": "story_follows_story_id_member_id_pk",
+          "columns": [
+            "story_id",
+            "member_id"
           ]
         }
       },

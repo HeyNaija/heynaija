@@ -45,8 +45,10 @@ export async function cleanTestData(log = (_: string) => {}) {
     try {
       await client.query('begin')
       await client.query(`create temp table e2e_m on commit drop as select unnest($1::uuid[]) as id`, [ids])
-      await client.query(`create temp table e2e_p on commit drop as select id from posts where author_id in (select id from e2e_m)`)
       await client.query(`create temp table e2e_g on commit drop as select id from gists where host_id in (select id from e2e_m)`)
+      // A test Gist's comment section goes with it, whoever wrote the replies.
+      await client.query(`create temp table e2e_p on commit drop as select id from posts where author_id in (select id from e2e_m)
+         or gist_id in (select id from e2e_g)`)
       const steps: [string, string][] = [
         ['notifications', `delete from notifications where recipient_id in (select id from e2e_m) or actor_id in (select id from e2e_m)
            or subject_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
@@ -78,7 +80,6 @@ export async function cleanTestData(log = (_: string) => {}) {
            or gist_id in (select id from gists where host_id in (select id from e2e_m))`],
         ['gist role changes', `update gist_members set role_changed_by = null where role_changed_by in (select id from e2e_m)`],
         ['gist removals', `update gist_members set removed_by = null where removed_by in (select id from e2e_m)`],
-        ['gists', `delete from gists where id in (select id from e2e_g)`],
         // A community photo points at a media row by id only, so unlink before the media goes.
         ['community photos', `update communities set photo_media_id = null where photo_media_id in (select id from media where owner_id in (select id from e2e_m))`],
         ['media', `delete from media where owner_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
@@ -89,6 +90,8 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['duplicates reopened', `update ideas set status = 'under_review', duplicate_of = null where duplicate_of in (select id from e2e_p) and post_id not in (select id from e2e_p)`],
         ['ideas', `delete from ideas where post_id in (select id from e2e_p)`],
         ['posts', `delete from posts where id in (select id from e2e_p)`],
+        // After the posts: a Gist's replies point at it.
+        ['gists', `delete from gists where id in (select id from e2e_g)`],
         ['invite redemptions', `delete from invite_redemptions where identity_id in (select id from e2e_m)
            or code_hash in (select code_hash from invites where note = $1)`],
         ['released handles', `delete from released_handles where member_id in (select id from e2e_m)`],
@@ -164,6 +167,24 @@ export async function forgetBirthDate(handle: string, { ticked = false } = {}) {
     const { rowCount } = ticked
       ? await db.query(`update restricted.age_assurances set birth_date = null where member_id = ${member}`, [handle])
       : await db.query(`delete from restricted.age_assurances where member_id = ${member}`, [handle])
+    if (!rowCount) throw new Error(`no age record for @${handle}`)
+  } finally {
+    await db.end()
+  }
+}
+
+/**
+ * Makes a member 15 by the date of birth on record, as a member already here who
+ * gave such a date is kept (ADR 0020): listening to Gists, never hosting or speaking.
+ */
+export async function makeMinor(handle: string) {
+  const db = pool()
+  try {
+    const { rowCount } = await db.query(
+      `update restricted.age_assurances set band = 'under_18', birth_date = ((now() at time zone 'Africa/Lagos')::date - interval '15 years')::date
+        where member_id = (select id from members where handle = $1) and withdrawn_at is null`,
+      [handle],
+    )
     if (!rowCount) throw new Error(`no age record for @${handle}`)
   } finally {
     await db.end()

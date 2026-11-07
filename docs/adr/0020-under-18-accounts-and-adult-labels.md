@@ -5,7 +5,9 @@
 for theirs (PR #103). The label on posts and its enforcement (sections 2 and 3,
 as changed on 7 November below) are built (PR #110), with the apps, and
 labelled media is served privately ([ADR 0025](0025-private-sensitive-media.md));
-whole communities marked for adults are not yet, nor is phase 2. ·
+whole communities marked for adults are not yet. Of phase 2, section 4's contact
+and discovery protections are built on branch `feat/under-18-contact` (questions
+12 to 15); the rest is not. ·
 **Roadmap:** `adult-content-labels`
 (phase 1), `minor-safeguards` (phase 2) · **Related:**
 [ADR 0006](0006-age-status-model.md), [ADR 0016](0016-direct-messages.md),
@@ -292,13 +294,40 @@ place:
   labelled.
 - **Contact.** No direct messages or calls (ADR 0016, 0017, 0018). In Gists, a
   listener only: never host, co-host or speaker, and the host cannot hand them the
-  microphone (6 November). Replies limited to people they follow, and mentions
-  from strangers limited, by default. Not suggested to adults and left out of
-  member search. Minimal profile: no age band, no location, no follower lists to
-  strangers.
+  microphone (6 November); built: `gist_stage` in `apps/api/src/governance/age.ts`.
+  Replies limited to people they follow, and mentions from strangers limited, by
+  default. Not suggested to adults and left out of member search. Minimal profile:
+  no age band, no location, no follower lists to strangers.
 - **Visibility** of minors' own posts: question 7.
-- **Video.** Minors cannot post video (ADR 0019, section 4.6).
+- **Video.** Minors cannot post video (ADR 0019, section 4.6). Built: `video_posting`.
 - **Governance.** Never voting members.
+
+**Contact, as built** (questions 12 to 15, `apps/api/src/governance/minors.ts`,
+tested in `minors.test.ts`), the way X keeps a minor's account to the people they
+chose: a minor's circle is the people they follow, and everyone else is a
+stranger, whatever the stranger's own age.
+- *Replies.* A conversation a minor starts is limited to people they follow
+  (`replyAudience` "following", from the existing reply controls); asking for
+  "everyone" gets "following", and their posts from before they were known to be
+  minors read the same way. They can narrow it to people they mention. Replying
+  straight to anything a minor wrote, in anyone's conversation, needs them to
+  follow you or to have mentioned you there; the rest of that conversation stays
+  as its author set it.
+- *Mentions.* A stranger's @handle for a minor is plain text, as for a handle
+  nobody has: not linked, not recorded, and no notification. The post still goes
+  up, so nothing tells the writer the account is a minor's.
+- *Discovery.* A minor is in no one's Discover, member search, @mention
+  suggestions or welcome-flow suggestions except their own circle's, and never a
+  signed-out visitor's.
+- *Profile.* A profile has no age band, no location and no lists of followers or
+  followings, for anyone; the counts stay, as on X. A test pins the profile's
+  fields, so adding one is a decision here first.
+- *Not loosened.* A minor cannot loosen any of this before 18 (question 13); the
+  apps are told which reply choices a member has (`replyAudiences` on `/v1/me`).
+- *Unknown ages.* These follow the age the rules work out. A member with no date
+  of birth yet is not treated as a minor, since that would hide every member who
+  has not answered yet, and they cannot use the app until they do. No protection
+  here asks whether a viewer is an adult, so an unknown age never counts as one.
 
 ## 5. What phase 2 waits for
 
@@ -416,7 +445,8 @@ world with minors), `/privacy` for children's data, Terms, and ADR 0019 section 
 Answer under each question (edit this file in a PR, or reply on the PR and the
 answer gets written back here). Each has a recommendation, so "agreed" is a complete
 answer. Questions 1 to 9 are answered, so phase 1 can start once this ADR is
-accepted. Questions 10 and 11 come from the decisions of 5 November.
+accepted. Questions 10 and 11 come from the decisions of 5 November, and 12 to 15
+from building section 4's contact protections (7 November).
 
 1. **What is the minimum age?** Recommendation: 13, subject to counsel (section 7,
    item 1); nobody under it, ever.
@@ -512,7 +542,7 @@ accepted. Questions 10 and 11 come from the decisions of 5 November.
     13 to 17 signup needs a guardian's consent (question 2), and signup cannot work
     without it. Before the first minor, Gists must check the age band:
     `isCallsMember` in `apps/api/src/gists/eligibility.ts` checks only the `gists`
-    flag's list today.
+    flag's list today. (Since built: `canHostGist` needs `gist_stage`.)
     - Answer: The way X allows 13 to 17 year olds: they join the beta with the
       protections in section 4 on by default, without waiting for the rest of
       section 5 (section 5 says what still comes first). In Gists they listen only.
@@ -529,7 +559,50 @@ accepted. Questions 10 and 11 come from the decisions of 5 November.
     - Answer:
     - Answered by / date:
 
+12. **What does "mentions from strangers limited" mean for a minor?** A stranger is
+    someone the minor does not follow. Recommendation: no notification and no
+    link; the @handle stays plain text, as for a handle nobody has, and the post
+    still goes up, so nothing tells its writer the account is a minor's. Refusing
+    the post would tell them.
+    - Answer: Agreed.
+    - Answered by / date: Psami-wondah, 7 November 2026
+
+13. **Can a minor loosen these defaults themselves?** Recommendation: no, fixed
+    until they turn 18. They can narrow replies to people they mention, but not
+    open them to everyone, allow strangers' mentions or appear in search. Nobody
+    accountable can approve loosening while there is no guardian consent; revisit
+    with counsel's answer (section 7, item 1).
+    - Answer: Agreed.
+    - Answered by / date: Psami-wondah, 7 November 2026
+
+14. **Do minors appear in search and suggestions for other minors?** Ages are
+    stated, not checked, so an adult can claim to be 15.
+    - Answer: The way X does it. X defaults a known minor's account to protected
+      posts, searchable "only by them and their followers", whatever the
+      searcher's age (help.x.com, "Information for Parents and Minor Users", read 7
+      November 2026). So a viewer's own age opens nothing: a minor appears only to
+      the people they follow.
+    - Answered by / date: Psami-wondah, 7 November 2026
+
+15. **In someone else's open conversation, can strangers answer a minor's reply?**
+    Recommendation: no. Replying straight to anything a minor wrote needs them to
+    follow you (or to have mentioned you there); others can still reply elsewhere
+    in the conversation.
+    - Answer: Agreed.
+    - Answered by / date: Psami-wondah, 7 November 2026
+
 ### Smaller open items
+
+- **Quotes and reposts of a minor's posts.** A stranger can still quote or repost a
+  minor's post, and the minor is told of a quote. X allows quotes of a conversation
+  with limited replies; X's protected posts cannot be quoted by strangers at all.
+  Not decided; it goes with question 7.
+- **Visibility of minors' posts (question 7) against X.** X defaults a minor's
+  account to protected posts: only followers they approve see them, and their
+  posts are kept out of public search. Question 7's answer is narrower (signed-in
+  members only), and post search, hashtag and topic pages still list minors' posts.
+  If the X-style answer to question 14 should reach posts too, question 7 is the
+  place to change it.
 
 - **Gists.** Minors and unknown ages listen only (6 November): `canHostGist` needs
   a stated adult age, and `canJoinGist` does not. Gist titles cannot be labelled;

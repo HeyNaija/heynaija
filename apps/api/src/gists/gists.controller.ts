@@ -64,6 +64,7 @@ const messages: Record<GistError['code'], string> = {
   requests_closed: 'The host is not taking requests to speak.',
   not_in_gist: 'Join the Gist first.',
   not_eligible: 'That member cannot be given the microphone.',
+  listen_only: 'You can listen to Gists, but not host or speak in them.',
   already_speaker: 'You are already on the stage.',
   livekit_unavailable: 'The audio service is not available. Try again in a moment.',
   reply_not_allowed: 'The host limited who can reply.',

@@ -15,7 +15,7 @@ Now:
    the key they had (`sensitive/posts/<id>/640.webp`,
    `sensitive/videos/<id>/hls/240/piece-000.m4s`). Unmarked media stays in the
    public bucket, on the fast path, unchanged. `media.served_privately` (migration
-   0040) records where a ready file is; the post's mark says where it should be.
+   0041) records where a ready file is; the post's mark says where it should be.
 2. **The only way to them is a signed URL the API makes while answering a read
    that has just passed the post's own check** (`adultContentAllowed`). Every read
    path builds post media URLs in one place (`MediaUrls`,

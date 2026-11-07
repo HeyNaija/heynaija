@@ -60,7 +60,9 @@ including for members who live outside Nigeria.
       live.
 - [ ] **How strong age assurance must be**, at signup for minors and for seeing
       adult-only content (today `age_restricted_content` accepts a stated adult age:
-      confirm or raise it).
+      confirm or raise it). Hosting and speaking in Gists (`gist_stage`) and posting
+      video (`video_posting`) accept a stated adult age too, by the owner's decisions
+      of 5 and 6 November 2026 and ADR 0019 section 4.6.
 - [ ] **Whether minors' posts are public.** Every post is public today; that may
       not be acceptable for children.
 - [ ] **What happens to existing accounts with no age on record.** Owner decision,
@@ -139,6 +141,13 @@ including for members who live outside Nigeria.
       `docs/deployment/cloudflare-r2.md` (a `GET` CORS rule on the uploads bucket, no
       lifecycle rule on `sensitive/`) and checked there.
 - [ ] Minors cannot join communities marked for adults.
+- [ ] Minors cannot post video (ADR 0019, section 4.6). Built (branch
+      `feat/under-18-gists-video`): `assertVideoEligible` in
+      `apps/api/src/video/video-eligibility.ts` needs an adult by stated age
+      (`video_posting`) when an upload starts and again when the video goes on a
+      post, so under 18 and unknown ages can do neither, and `/v1/me` turns
+      `videoPosts` off for them, which hides the video button. Done once it is in
+      production.
 - [ ] Unlawful material stays prohibited for everyone, whatever the label.
 
 ## 5. Contact and messaging safeguards
@@ -150,14 +159,33 @@ including for members who live outside Nigeria.
 - [ ] Direct messages and calls are not built until the ID check for age exists
       (ADR 0018), and then need it (owner, 6 November 2026).
 - [ ] Gists: `under_18` and unknown ages listen only, never host, co-host or
-      speaker (owner, 6 November 2026). Gists check no age today: `isCallsMember`
-      in `apps/api/src/gists/eligibility.ts` reads only the `gists` flag's list.
+      speaker (owner, 6 November 2026). Built (branch `feat/under-18-gists-video`):
+      `canHostGist` in `apps/api/src/gists/eligibility.ts` needs an adult by stated
+      age (`gist_stage` in `apps/api/src/governance/age.ts`). It is checked when a
+      Gist starts, on a request to speak, when a host makes someone a speaker or
+      co-host (refused as for a block, so the host learns nothing about the
+      listener's age), and every time the room's permissions are set, so LiveKit
+      never lets them publish, even with a role given before. They still see and
+      join Gists as listeners; the web app does not offer them Start a Gist or
+      Request to speak (`gistStage` in `/v1/me`). Members who have not given a
+      date of birth are unknown and listen only too. Done once it is in production.
 - [ ] Replies and mentions: minors can limit replies to people they follow, and
-      mentions from strangers are limited by default.
+      mentions from strangers are limited by default. Built (branch
+      `feat/under-18-contact`, `apps/api/src/governance/minors.ts`): a minor's
+      conversations are limited to people they follow, and replying straight to
+      anything they wrote needs them to follow you; a stranger's @mention of them
+      is plain text with no notification; a minor cannot loosen either (ADR 0020,
+      questions 12, 13 and 15). Done once it is in production.
 - [ ] Discovery: minors are not suggested to adults, and are left out of member
-      search by default.
+      search by default. Built (same branch): a minor is in nobody's Discover,
+      member search, @mention suggestions or welcome-flow suggestions but the
+      people they follow, whatever the viewer's age, as X does (ADR 0020, question
+      14). Done once it is in production.
 - [ ] Profiles of minors show the minimum: no location, no age band, no follower
       lists to strangers unless counsel and safeguarding review agree otherwise.
+      Met: profiles have no age band, location or follower lists for anyone, and
+      `minors.test.ts` pins a profile's fields so a new one is decided in ADR 0020
+      first. Done once it is in production.
 
 ## 6. Moderation and safety
 

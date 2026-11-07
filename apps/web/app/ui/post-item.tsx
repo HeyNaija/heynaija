@@ -31,6 +31,7 @@ import { QuotedPostCard } from './quoted-post'
 import { ReplyLink } from './reply-link'
 import { RepostButton } from './repost-button'
 import { ShareButton } from './share-button'
+import { StoryStart } from './story'
 import { SubmitButton } from './submit-button'
 import { ThreadAuthorLabel } from './thread-author'
 
@@ -89,6 +90,21 @@ async function SensitiveMenuItem({ post }: { post: Post }) {
       <SubmitButton className="menu-item">{marked ? 'Remove sensitive mark' : 'Mark as sensitive'}</SubmitButton>
     </form>
   )
+}
+
+/** The author's choices of who may reply, as far as the API lets them go: a minor's never include everyone (ADR 0020). */
+async function ReplyAudienceMenuItems({ post }: { post: Post }) {
+  const viewer = await getViewer()
+  const allowed = viewer.state === 'member' ? (viewer.me.replyAudiences ?? REPLY_AUDIENCES) : REPLY_AUDIENCES
+  return REPLY_AUDIENCES.filter((audience) => allowed.includes(audience)).map((audience) => (
+    <form action={setReplyAudience} key={audience}>
+      <input type="hidden" name="id" value={post.id} />
+      <input type="hidden" name="audience" value={audience} />
+      <SubmitButton className="menu-item" pressed={post.replyAudience === audience}>
+        {REPLY_AUDIENCE_LABEL[audience]}
+      </SubmitButton>
+    </form>
+  ))
 }
 
 export function PostItem({
@@ -229,7 +245,7 @@ export function PostItem({
       <Link prefetch={false} href={context.href} className="reply-to block hover:underline">{context.label}</Link>
     ) : null
 
-  return (
+  const card = (
     <article id={`post-${post.id}`} className={`post-card ${focused ? 'is-focused' : 'is-clickable'}${compact ? ' is-reply' : ''}`}>
       {why ? <p className="post-context">{why}</p> : null}
 
@@ -256,6 +272,19 @@ export function PostItem({
                   {focused ? <LocalTime at={post.createdAt} as="posted" title /> : <LocalTime at={post.createdAt} now={now} title />}
                 </Link>
                 {focused && inThread ? <ThreadAuthorLabel authorId={post.authorId} separator /> : null}
+                {/* A story's first post in focus has the story bar under it instead. */}
+                {post.story && (post.story.number > 0 || !focused) ? (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    {post.story.number > 0 ? (
+                      <Link prefetch={false} href={`/p/${post.story.id}#post-${post.id}`} className="story-label shrink-0 hover:underline">
+                        Update {post.story.number}
+                      </Link>
+                    ) : (
+                      <span className="story-label shrink-0">Story</span>
+                    )}
+                  </>
+                ) : null}
               </p>
               {showChip ? (
                 <Link prefetch={false} href={`/c/${post.community!.slug}`} className="chip mt-1.5">
@@ -280,6 +309,10 @@ export function PostItem({
                   <>
                     {post.replyParentId || gist ? null : (
                       <>
+                        {/* Any of your top-level posts becomes a story with its first update (docs/adr/0024). */}
+                        <Link prefetch={false} href={`/p/${post.story?.id ?? post.id}/update`} className="menu-item">
+                          Add update
+                        </Link>
                         <form action={setProfilePin}>
                           <input type="hidden" name="id" value={post.id} />
                           <input type="hidden" name="on" value={post.pinnedOnProfile ? '0' : '1'} />
@@ -287,15 +320,7 @@ export function PostItem({
                             {post.pinnedOnProfile ? 'Unpin from your profile' : 'Pin to your profile'}
                           </SubmitButton>
                         </form>
-                        {REPLY_AUDIENCES.map((audience) => (
-                          <form action={setReplyAudience} key={audience}>
-                            <input type="hidden" name="id" value={post.id} />
-                            <input type="hidden" name="audience" value={audience} />
-                            <SubmitButton className="menu-item" pressed={post.replyAudience === audience}>
-                              {REPLY_AUDIENCE_LABEL[audience]}
-                            </SubmitButton>
-                          </form>
-                        ))}
+                        <ReplyAudienceMenuItems post={post} />
                       </>
                     )}
                     {communityPin}
@@ -443,6 +468,17 @@ export function PostItem({
       </div>
     </article>
   )
+  // An update away from its story shows where it comes from: a story is shown once
+  // in feeds, as its newest update, with its first post above it (docs/adr/0024).
+  if (post.story && post.story.number > 0 && !inThread && !focused) {
+    return (
+      <div className="story-entry">
+        <StoryStart story={post.story} />
+        {card}
+      </div>
+    )
+  }
+  return card
 }
 
 export function PostList({

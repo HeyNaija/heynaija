@@ -131,7 +131,7 @@ test('an export includes reply boundaries, polls the member created and their pu
 })
 
 test('an export says which kinds of activity the member is notified about', async () => {
-  const allOn = { reply: true, like: true, repost: true, quote: true, mention: true, follow: true }
+  const allOn = { reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true }
   assert.deepEqual((await service.export(ada, null))!.notificationPreferences, allOn)
   await notificationsService.setPreferences(ada, { like: false, follow: false })
   assert.deepEqual((await service.export(ada, null))!.notificationPreferences, { ...allOn, like: false, follow: false })
@@ -191,7 +191,7 @@ test('an export lists a post’s ready video (path and poster); held, unattached
   await row(bayo, 'ready', other.id)
 
   const data = (await service.export(ada, null))!
-  assert.equal(data.format, 'heynaija-export/13')
+  assert.equal(data.format, 'heynaija-export/14')
   const byText = (text: string) => data.posts.find((p) => p.text === text)!
   assert.deepEqual(byText('my clip').videos, [{ url: `/media/videos/${ready}/hls/master.m3u8`, poster: `/media/videos/${ready}/poster.webp` }])
   assert.deepEqual(byText('no clip').videos, [])

@@ -6,10 +6,12 @@ import { sql } from 'drizzle-orm'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { seesAdultContent } from './adult-content.js'
 import { type AgeRecord, ageStatus, isAdultFor } from './age.js'
+import { isMinor } from './minors.js'
 
 // seesAdultContent is ageStatus + isAdultFor written again in SQL, so every read
-// path can ask it inside the query that reads the posts. Here the two are held to
-// the same answer for every kind of record there is.
+// path can ask it inside the query that reads the posts, and isMinor (minors.ts)
+// is ageStatus's under-18 band the same way. Here each is held to the same answer
+// as age.ts for every kind of record there is.
 
 before(migrate)
 beforeEach(reset)
@@ -71,9 +73,13 @@ for (const [name, rows, expected] of CASES) {
     if (records.length) {
       await db.insert(ageAssurances).values(records.map((record) => ({ memberId: id, ...record })))
     }
-    const { rows: [answer] } = await db.execute<{ adult: boolean }>(sql`select ${seesAdultContent(id)} as adult`)
-    assert.equal(isAdultFor(ageStatus(records, new Date()), 'age_restricted_content'), expected, 'ageStatus')
+    const { rows: [answer] } = await db.execute<{ adult: boolean; minor: boolean }>(
+      sql`select ${seesAdultContent(id)} as adult, ${isMinor(id)} as minor`,
+    )
+    const status = ageStatus(records, new Date())
+    assert.equal(isAdultFor(status, 'age_restricted_content'), expected, 'ageStatus')
     assert.equal(answer!.adult, expected, 'seesAdultContent')
+    assert.equal(answer!.minor, status.band === 'under_18', 'isMinor')
   })
 }
 

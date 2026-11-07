@@ -48,7 +48,7 @@ async function GistView({ params, searchParams }: Pick<PageProps<'/gists/[id]'>,
   const writable = viewer.me.features.gistReplies === true
   return (
     <>
-      <GistRoom initial={gist} meId={viewer.me.id} />
+      <GistRoom initial={gist} meId={viewer.me.id} mayTakeStage={viewer.me.gistStage === true} />
       {replies && (writable || replies.count > 0) ? (
         <GistReplies
           gistId={id}

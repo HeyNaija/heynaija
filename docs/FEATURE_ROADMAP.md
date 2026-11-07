@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 17 | 15 | 12 | 89 |
+| 45 | 17 | 16 | 12 | 90 |
 
 ## Priority order
 
@@ -425,6 +425,15 @@ This tracks product development, not formal governance decisions. Priority means
 - **Inspected evidence:** `packages/db/src/schema.ts`, `packages/db/drizzle/0028_polls_reply_controls.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/ui/post-item.tsx`, `apps/api/src/posts/posts.service.test.ts`, `e2e/tests/polls-reply-controls.spec.ts`
 - **Audit notes:** A root post allows everyone, accounts its author follows plus mentioned accounts, or mentioned accounts only. The root setting governs direct and nested replies, can be changed for future replies, and does not restrict quotes, likes, reposts or poll votes. Deleted roots no longer restrict surviving replies.
 
+#### Stories
+
+- **ID:** `stories`
+- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Description:** Add updates to your own post over time, so people can follow one story from start to latest, and reply to the update they are about.
+- **Dependencies:** `threaded-replies`
+- **Inspected evidence:** `docs/adr/0024-stories.md`, `packages/db/drizzle/0040_stories.sql`, `apps/api/src/posts/stories.test.ts`, `apps/web/app/ui/story.tsx`, `e2e/tests/stories.spec.ts`
+- **Audit notes:** Proposed 7 Nov 2026 (ADR 0024); web built on feat/stories, the apps not yet. Only the author adds updates; each update is a post of its own, and replies go under the update they are about. Feeds show a story once, as its newest update with the first post above it. Follow story notifies on each new update (story_update, optional).
+
 ### People and discovery
 
 #### Basic trending conversations
@@ -591,8 +600,8 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Prepare approved age assurance, consent, content and contact safeguards before opening younger accounts.
 - **Remaining work / caveat:** Child-safety decisions, approvals and implementation must precede any change to the temporary adult-only beta.
 - **Dependencies:** `adult-content-labels`
-- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`, `docs/adr/0020-under-18-accounts-and-adult-labels.md`
-- **Audit notes:** Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Owner decisions of 5 and 6 Nov 2026: 13 to 17 year olds join the beta the way X lets them in, with protections on by default; 13 is the minimum on the web and in the app stores. First come dates of birth at signup, labels enforced, Arachnid Shield on in production and the minors' protections (ADR 0020 sections 4 and 5); counsel's answers and the rest of the under-18 rollout checklist follow during the beta. Minors listen to Gists but never host or speak.
+- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`, `apps/api/src/governance/minors.ts`, `docs/adr/0020-under-18-accounts-and-adult-labels.md`
+- **Audit notes:** Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Owner decisions of 5 and 6 Nov 2026: 13 to 17 year olds join the beta the way X lets them in, with protections on by default; 13 is the minimum on the web and in the app stores. First come dates of birth at signup, labels enforced, Arachnid Shield on in production and the minors' protections (ADR 0020 sections 4 and 5); counsel's answers and the rest of the under-18 rollout checklist follow during the beta. Minors listen to Gists but never host or speak. Contact and discovery protections built 7 Nov 2026 (branch feat/under-18-contact): replies limited to people a minor follows, strangers' mentions plain text, minors in no stranger's Discover, search or suggestions, none of it loosened before 18 (ADR 0020, questions 12 to 15).
 
 #### Age verification for adults
 

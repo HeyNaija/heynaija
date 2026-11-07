@@ -1,1 +1,0 @@
-ALTER TABLE "media" ADD COLUMN "served_privately" boolean DEFAULT false NOT NULL;

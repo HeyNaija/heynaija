@@ -6,18 +6,37 @@ import { PostItem, PostsSkeleton } from '@/app/ui/post-item'
 import { ThreadConversation } from '@/app/ui/thread-conversation'
 import { renderThreadRow } from '@/app/ui/thread-row'
 import { IdeaPanel } from '@/app/ui/idea-panel'
-import { getIdea, getReplies, getThread, getViewer } from '@/lib/api'
+import { getIdea, getReplies, getStoryUpdates, getThread, getViewer, type Post } from '@/lib/api'
 import { defaultPreviewImage, postPreview, siteOpenGraph } from '@/lib/previews'
 import type { ReplyOrder } from '@/lib/thread-state'
 import { ChevronIcon } from '@/app/ui/icons'
 import { ThreadAuthorProvider } from '@/app/ui/thread-author'
 import { BackToFeed } from '@/app/ui/back-to-feed'
 import { composerOffersMark } from '@/lib/sensitive'
+import { StoryBar, StoryStart } from '@/app/ui/story'
+import { StorySpine } from '@/app/ui/story-spine'
 
 type Props = PageProps<'/p/[id]'>
 
 /** How many posts above the parent stay open before the rest fold into one disclosure. */
 const CHAIN_OPEN = 12
+
+/** Pages of a story's updates read for "show them all": 100 each. */
+const STORY_PAGES_MAX = 10
+
+/** Every update of a story, oldest first, up to STORY_PAGES_MAX pages. */
+async function allUpdates(id: string): Promise<Post[]> {
+  const all: Post[] = []
+  let cursor: string | undefined
+  for (let i = 0; i < STORY_PAGES_MAX; i++) {
+    const page = await getStoryUpdates(id, cursor)
+    if (!page) break
+    all.push(...page.posts)
+    if (!page.cursor) break
+    cursor = page.cursor
+  }
+  return all
+}
 
 /**
  * What a link to the post shows when pasted into WhatsApp or X. It asks the API
@@ -73,6 +92,19 @@ async function ThreadView({ params, searchParams }: Props) {
   // A truncated or unavailable root must not make the focused reply's author
   // look like the original poster. Only identify a visible top-level post.
   const original = [...thread.ancestors, thread.post].find((post) => !post.replyParentId && !post.deleted)
+  // A story's first post shows its updates under it (docs/adr/0024): the newest
+  // few, or all of them once asked.
+  const story = thread.post.story
+  const storyPage = story?.number === 0
+  const everyUpdate = storyPage && query.updates === 'all' && story.updates > thread.updates.length
+  const updates = everyUpdate ? await allUpdates(id) : thread.updates
+  const foldedUpdates = storyPage ? Math.max(0, story.updates - updates.length) : 0
+  const storyParts = storyPage ? (
+    <>
+      <StoryBar post={thread.post} viewerId={viewerId} />
+      <StorySpine story={thread.post} updates={updates} folded={foldedUpdates} viewerId={viewerId} now={now} />
+    </>
+  ) : undefined
 
   return (
     <ThreadAuthorProvider authorId={original?.authorId ?? null}>
@@ -80,6 +112,16 @@ async function ThreadView({ params, searchParams }: Props) {
       <BackToFeed className="self-start text-sm font-medium text-muted hover:text-ink hover:underline" />
 
       {idea ? <IdeaPanel idea={idea} member={viewer.state === 'member'} /> : null}
+
+      {story && story.number > 0 ? (
+        <div className="story-context">
+          <StoryStart story={story} />
+          <p className="thread-context-note">
+            Update {story.number} of {story.updates} ·{' '}
+            <Link prefetch={false} href={`/p/${story.id}#post-${thread.post.id}`}>Read the whole story</Link>
+          </p>
+        </div>
+      ) : null}
 
       {/* The conversation so far, each post leading down to the one in focus. Short
           lines between the cards join them (decorative: the order and the "Replying
@@ -139,7 +181,7 @@ async function ThreadView({ params, searchParams }: Props) {
         order={order}
         version={now}
       >
-        {renderThreadRow(thread.post, viewerId, now, 0, parent && !parent.deleted ? parent.authorHandle : null, true).node}
+        {renderThreadRow(thread.post, viewerId, now, 0, parent && !parent.deleted ? parent.authorHandle : null, true, undefined, storyParts).node}
       </ThreadConversation>
     </div>
     </ThreadAuthorProvider>

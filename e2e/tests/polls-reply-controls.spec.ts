@@ -1,5 +1,6 @@
 import { expect, test, type Locator } from '@playwright/test'
-import { newMember, replyBox } from '../lib/members.ts'
+import { makeMinor } from '../lib/db.ts'
+import { newMember, post, replyBox } from '../lib/members.ts'
 
 const postId = async (article: Locator) =>
   (await article.getAttribute('id'))!.replace('post-', '')
@@ -85,4 +86,46 @@ test('mentioned-only control admits the mentioned member and blocks the whole ne
   await creator.context.close()
   await invited.context.close()
   await outsider.context.close()
+})
+
+test('a member under 18 starts conversations only people they follow can join, and a stranger\u2019s @mention of them stays plain text', async ({ browser }) => {
+  const minor = await newMember(browser, 'minor')
+  const friend = await newMember(browser, 'friend')
+  const stranger = await newMember(browser, 'stranger')
+  await makeMinor(minor.handle)
+
+  await minor.page.goto(`/u/${friend.handle}`)
+  await minor.page.getByRole('main').getByRole('button', { name: 'Follow', exact: true }).click()
+  await expect(minor.page.getByRole('main').getByRole('button', { name: 'Following' })).toBeVisible()
+
+  // The composer offers no "Everyone can reply", and starts on the people they follow.
+  await minor.page.goto('/')
+  const choice = minor.page.getByLabel('Who can reply')
+  await expect(choice).toHaveValue('following')
+  await expect(choice.locator('option')).toHaveText(['People you follow', 'Only people mentioned'])
+  const text = `A first post from ${minor.handle}`
+  const article = await post(minor.page, text)
+  await expect(article.locator('.reply-audience-note')).toHaveText('People you follow can reply')
+  const id = await postId(article)
+
+  await stranger.page.goto(`/p/${id}`)
+  await expect(stranger.page.getByText('The conversation author has limited who can reply.')).toBeVisible()
+  await expect(stranger.page.getByRole('textbox', { name: 'Your reply' })).toHaveCount(0)
+
+  await friend.page.goto(`/p/${id}`)
+  const answer = `Hello from ${friend.handle}`
+  await (await replyBox(friend.page)).fill(answer)
+  await friend.page.getByRole('button', { name: 'Reply', exact: true }).click()
+  await expect(friend.page.locator('article', { hasText: answer })).toBeVisible()
+
+  // Named by someone they do not follow, they are not linked, and not told.
+  const mention = await post(stranger.page, `Hi @${minor.handle} and @${friend.handle}`)
+  await expect(mention.getByRole('link', { name: `@${friend.handle}`, exact: true })).toBeVisible()
+  await expect(mention.getByRole('link', { name: `@${minor.handle}`, exact: true })).toHaveCount(0)
+  await minor.page.goto('/notifications')
+  await expect(minor.page.getByText('mentioned you')).toHaveCount(0)
+
+  await minor.context.close()
+  await friend.context.close()
+  await stranger.context.close()
 })

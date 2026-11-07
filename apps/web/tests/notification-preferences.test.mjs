@@ -17,6 +17,7 @@ test('the Settings form saves every kind: ticked boxes on, the rest off', () => 
     repost: false,
     quote: false,
     follow: false,
+    story_update: false,
   })
   // No boxes ticked turns everything off, rather than changing nothing.
   assert.ok(Object.values(preferencesFromForm(form())).every((on) => on === false))
@@ -39,6 +40,6 @@ test('a kind that cannot be turned off is never sent, even if a form names it', 
 })
 
 test('only other members’ activity is offered, each with a plain label', () => {
-  assert.deepEqual(NOTIFICATION_SETTINGS.map(({ kind }) => kind).sort(), ['follow', 'like', 'mention', 'quote', 'reply', 'repost'])
-  for (const { label } of NOTIFICATION_SETTINGS) assert.match(label, /^Someone .+ (you|your post)$/)
+  assert.deepEqual(NOTIFICATION_SETTINGS.map(({ kind }) => kind).sort(), ['follow', 'like', 'mention', 'quote', 'reply', 'repost', 'story_update'])
+  for (const { label } of NOTIFICATION_SETTINGS) assert.match(label, /^Someone .+ (you|your post|a story you follow)$/)
 })

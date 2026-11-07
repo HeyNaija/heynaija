@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import { media, members, moderationActions, posts, videoDetails, videoRenditions } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
-import { db, migrate, pool, reset } from '../test-db.js'
+import { db, giveBirthDates, migrate, pool, reset } from '../test-db.js'
 import { MemoryVideoStore } from './memory-video-store.js'
 import { DEFAULT_VIDEO_CONFIG as defaults } from './video-config.js'
 import { hlsKey, master480Key, masterKey, originalKey, playlistKey, posterKey, quarantineOriginalKey, videoFolder } from './video-keys.js'
@@ -39,6 +39,7 @@ beforeEach(async () => {
     { id: bayo, handle: 'bayo', createdAt: old },
     { id: newbie, handle: 'newbie' },
   ])
+  await giveBirthDates([ada, bayo, newbie])
   store = new MemoryVideoStore()
   jobs = new Jobs()
   service = make()
@@ -125,6 +126,21 @@ test('start: accounts under 7 days old, and members with a recent upheld action,
 
   await db.insert(moderationActions).values({ actorId: mod, action: 'suspend_member', memberId: ada })
   assert.equal(await refusal(() => service.startUpload(ada, { contentType: 'video/mp4', bytes: 1000 })), 'not_eligible')
+})
+
+test('start: a member under 18, or with no date of birth on record, cannot post video (ADR 0019 section 4.6)', async () => {
+  const kid = randomUUID()
+  const unknown = randomUUID()
+  const old = new Date(Date.now() - 30 * 86_400_000)
+  await db.insert(members).values([
+    { id: kid, handle: 'kid', createdAt: old },
+    { id: unknown, handle: 'unknown', createdAt: old },
+  ])
+  await giveBirthDates([kid], 16)
+  for (const who of [kid, unknown]) {
+    assert.equal(await refusal(() => service.startUpload(who, { contentType: 'video/mp4', bytes: 1000 })), 'not_eligible')
+  }
+  assert.equal((await db.select().from(media)).length, 0, 'nothing was started')
 })
 
 test('start: a member whose upload the scanner blocked is not eligible either', async () => {

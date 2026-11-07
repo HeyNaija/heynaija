@@ -46,6 +46,7 @@ async function QuoteView({ params }: Props) {
         choices={joined}
         polls={viewer.me.features?.polls ?? false}
         replyControls={viewer.me.features?.replyControls ?? false}
+        replyAudiences={viewer.me.replyAudiences}
         sensitiveLabels={composerOffersMark(viewer.me)}
         placeholder="Add your thoughts…"
         submitAction={createQuote}
