@@ -162,11 +162,22 @@ including for members who live outside Nigeria.
       Request to speak (`gistStage` in `/v1/me`). Members who have not given a
       date of birth are unknown and listen only too. Done once it is in production.
 - [ ] Replies and mentions: minors can limit replies to people they follow, and
-      mentions from strangers are limited by default.
+      mentions from strangers are limited by default. Built (branch
+      `feat/under-18-contact`, `apps/api/src/governance/minors.ts`): a minor's
+      conversations are limited to people they follow, and replying straight to
+      anything they wrote needs them to follow you; a stranger's @mention of them
+      is plain text with no notification; a minor cannot loosen either (ADR 0020,
+      questions 12, 13 and 15). Done once it is in production.
 - [ ] Discovery: minors are not suggested to adults, and are left out of member
-      search by default.
+      search by default. Built (same branch): a minor is in nobody's Discover,
+      member search, @mention suggestions or welcome-flow suggestions but the
+      people they follow, whatever the viewer's age, as X does (ADR 0020, question
+      14). Done once it is in production.
 - [ ] Profiles of minors show the minimum: no location, no age band, no follower
       lists to strangers unless counsel and safeguarding review agree otherwise.
+      Met: profiles have no age band, location or follower lists for anyone, and
+      `minors.test.ts` pins a profile's fields so a new one is decided in ADR 0020
+      first. Done once it is in production.
 
 ## 6. Moderation and safety
 

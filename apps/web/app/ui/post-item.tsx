@@ -92,6 +92,21 @@ async function SensitiveMenuItem({ post }: { post: Post }) {
   )
 }
 
+/** The author's choices of who may reply, as far as the API lets them go: a minor's never include everyone (ADR 0020). */
+async function ReplyAudienceMenuItems({ post }: { post: Post }) {
+  const viewer = await getViewer()
+  const allowed = viewer.state === 'member' ? (viewer.me.replyAudiences ?? REPLY_AUDIENCES) : REPLY_AUDIENCES
+  return REPLY_AUDIENCES.filter((audience) => allowed.includes(audience)).map((audience) => (
+    <form action={setReplyAudience} key={audience}>
+      <input type="hidden" name="id" value={post.id} />
+      <input type="hidden" name="audience" value={audience} />
+      <SubmitButton className="menu-item" pressed={post.replyAudience === audience}>
+        {REPLY_AUDIENCE_LABEL[audience]}
+      </SubmitButton>
+    </form>
+  ))
+}
+
 export function PostItem({
   post,
   viewerId,
@@ -305,15 +320,7 @@ export function PostItem({
                             {post.pinnedOnProfile ? 'Unpin from your profile' : 'Pin to your profile'}
                           </SubmitButton>
                         </form>
-                        {REPLY_AUDIENCES.map((audience) => (
-                          <form action={setReplyAudience} key={audience}>
-                            <input type="hidden" name="id" value={post.id} />
-                            <input type="hidden" name="audience" value={audience} />
-                            <SubmitButton className="menu-item" pressed={post.replyAudience === audience}>
-                              {REPLY_AUDIENCE_LABEL[audience]}
-                            </SubmitButton>
-                          </form>
-                        ))}
+                        <ReplyAudienceMenuItems post={post} />
                       </>
                     )}
                     {communityPin}

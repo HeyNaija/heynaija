@@ -30,6 +30,7 @@ import { type PostVideo, toPostVideo, type VideoRow, videoOf } from '../video/vi
 import { isFounder } from '../members/badges.js'
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
 import { adultContentAllowed, LabelNotAllowedError, seesAdultContent } from '../governance/adult-content.js'
+import { isMinor, ReplyAudienceNotAllowedError, strangerToMinor } from '../governance/minors.js'
 import { excerpt, notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { Refreshing } from '../refreshing.js'
@@ -532,15 +533,36 @@ const toPoll = (row: PollRow | null): PollView | null => row
   ? { ...row, expiresAt: row.expiresAt ? new Date(row.expiresAt) : null }
   : null
 
+/**
+ * Who may reply to the conversation that root `r` starts, as its author chose,
+ * except that a minor's conversation never opens wider than "following"
+ * (ADR 0020), even one written before they were known to be under 18.
+ */
+const audienceOfRoot = sql`case when r.reply_audience = 'everyone' and ${isMinor(sql`r.author_id`)} then 'following' else r.reply_audience end`
+
 /** A reply inherits the root post's setting; a deleted root no longer restricts its surviving conversation. */
 const replyAudienceOf = (postId: SQL, rootId: SQL) => sql<ReplyAudience>`coalesce((
-  select case when r.deleted_at is not null or r.removed_at is not null or not ra.active then 'everyone' else r.reply_audience end
+  select case when r.deleted_at is not null or r.removed_at is not null or not ra.active then 'everyone' else ${audienceOfRoot} end
   from posts r join members ra on ra.id = r.author_id
   where r.id = coalesce(${rootId}, ${postId})
 ), 'everyone')`
 
 /**
- * Whether the conversation's root lets the viewer reply: the one rule, used for
+ * Whether `viewerId` may answer the post `postId` itself, as far as its author's
+ * age goes: replying straight to anything a minor wrote, in anyone's
+ * conversation, needs the minor to follow the viewer or to have mentioned them
+ * in it (ADR 0020). Others can still reply elsewhere in that conversation.
+ */
+const minorTakesReplyFrom = (viewerId: string, postId: SQL) => sql<boolean>`not exists(
+  select 1 from posts mp
+  where mp.id = ${postId}
+    and not exists(select 1 from post_mentions mpm where mpm.post_id = mp.id and mpm.member_id = ${viewerId})
+    and ${strangerToMinor(viewerId, sql`mp.author_id`)}
+)`
+
+/**
+ * Whether the conversation's root lets the viewer reply, and the post's author
+ * does too if they are a minor (`minorTakesReplyFrom`): the one rule, used for
  * the reply buttons and, under a lock, when a reply is written. Like
  * `replyAudienceOf`, a root that is deleted, taken down, by an inactive member or
  * gone altogether restricts no one, though a block with its author still does.
@@ -554,14 +576,15 @@ const canReplyTo = (viewerId: string | null, postId: SQL, rootId: SQL, postGistI
           or (
             r.deleted_at is null and r.removed_at is null and ra.active
             and r.author_id <> ${viewerId}
-            and r.reply_audience <> 'everyone'
+            and ${audienceOfRoot} <> 'everyone'
             and not exists(select 1 from post_mentions pm where pm.post_id = r.id and pm.member_id = ${viewerId})
-            and not (r.reply_audience = 'following' and exists(
+            and not (${audienceOfRoot} = 'following' and exists(
               select 1 from follows f where f.follower_id = r.author_id and f.followee_id = ${viewerId}
             ))
           )
         )
-    ) and (${postGistId} is null or ${gistAllowsReply(viewerId, postGistId)}))`
+    ) and ${minorTakesReplyFrom(viewerId, postId)}
+      and (${postGistId} is null or ${gistAllowsReply(viewerId, postGistId)}))`
   : sql<boolean>`false`
 
 /**
@@ -1065,6 +1088,8 @@ export class PostsService {
           ${viewerId ? sql`and p.author_id <> ${viewerId}` : sql``}
           and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)}
           and not exists(select 1 from held h where h.post_id = p.id)
+          -- A minor is recommended to nobody but the people they follow (ADR 0020).
+          and not ${strangerToMinor(viewerId, sql`p.author_id`)}
       ),
       -- Who replied (anywhere in the conversation), quoted or reposted, up to the
       -- moment. A reply or quote comes after its post, so all of them are in the
@@ -1778,6 +1803,8 @@ export class PostsService {
       if (!author?.adult) throw new LabelNotAllowedError('only adults can mark a post sensitive')
     }
 
+    // An update to a story takes the story's reply setting unless it asks for its own.
+    const audience = replyAudience ?? story?.replyAudience ?? 'everyone'
     // The first web address gets a preview card; asking for it is up to the caller,
     // once the post exists (see `LinksService.request`).
     const linkUrl = previewUrlOf(text)
@@ -1795,6 +1822,13 @@ export class PostsService {
           .where(eq(posts.id, parent.rootId ?? parent.id))
           .for('no key update')
         if (root && !root.allowed) throw new ReplyNotAllowedError('the conversation author limited who can reply')
+        // A reply further down answers its parent's author too, who may be a minor.
+        if (parent.rootId) {
+          const [direct] = await tx
+            .execute<{ allowed: boolean }>(sql`select ${minorTakesReplyFrom(authorId, sql`${parent.id}::uuid`)} as allowed`)
+            .then((r) => r.rows)
+          if (!direct?.allowed) throw new ReplyNotAllowedError('the author limited who can reply')
+        }
       }
       if (gist) {
         const [locked] = await tx
@@ -1818,7 +1852,12 @@ export class PostsService {
           rootId: parent ? (parent.rootId ?? parent.id) : null,
           quotePostId: quoted?.id ?? null,
           storyId: story?.id ?? null,
-          replyAudience: parent ? 'everyone' : (replyAudience ?? story?.replyAudience ?? 'everyone'),
+          // A minor's conversation is open as far as "following" at most (ADR 0020).
+          replyAudience: parent
+            ? 'everyone'
+            : audience === 'everyone'
+              ? sql`case when ${isMinor(authorId)} then 'following' else 'everyone' end`
+              : audience,
           // Settings' "mark everything I post" (or a moderator's) wins over the post's own choice.
           adultLabel: sql`coalesce((select m.label_posts from members m where m.id = ${authorId}), ${sensitive ? 'author' : null}::text)`,
         })
@@ -1913,8 +1952,15 @@ export class PostsService {
     return rows.map((r) => r.id)
   }
 
-  /** Changes only future replies. Existing replies remain in the conversation. */
+  /**
+   * Changes only future replies. Existing replies remain in the conversation. A
+   * minor cannot open a conversation to everyone (ReplyAudienceNotAllowedError).
+   */
   async setReplyAudience(authorId: string, postId: string, audience: ReplyAudience): Promise<boolean> {
+    if (audience === 'everyone') {
+      const [author] = await this.db.execute<{ minor: boolean }>(sql`select ${isMinor(authorId)} as minor`).then((r) => r.rows)
+      if (author?.minor) throw new ReplyAudienceNotAllowedError('members under 18 cannot open replies to everyone')
+    }
     const changed = await this.db
       .update(posts)
       .set({ replyAudience: audience })

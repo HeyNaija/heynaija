@@ -107,6 +107,7 @@ async function CommunityView({ params, searchParams }: Props) {
           community={community.slug}
           polls={viewer.me.features?.polls ?? false}
           replyControls={viewer.me.features?.replyControls ?? false}
+          replyAudiences={viewer.me.replyAudiences}
           videoLimits={viewer.me.videoLimits ?? null}
           sensitiveLabels={composerOffersMark(viewer.me)}
           placeholder={`Say something to ${community.name}`}

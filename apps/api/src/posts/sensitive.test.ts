@@ -134,6 +134,8 @@ test('marked posts never trend and are never recommended in Discover, to anyone'
 })
 
 test('a minor is told nothing about a marked post, and cannot reply to it, quote it or like it', async () => {
+  // A minor hears of a mention only from someone they follow (ADR 0020, minors.ts).
+  await db.insert(follows).values({ followerId: kid, followeeId: ada })
   const marked = await service().create(ada, `${SECRET} @kid @bayo`, { sensitive: true })
   await service().create(ada, 'plain @kid')
   const notified = async (who: string) => (await new NotificationsService(db).list(who, 20)).notifications

@@ -7,7 +7,7 @@ import { Globe } from 'lucide-react'
 import { type ComposeState, createPost } from '@/app/actions'
 import { insertMention, mentionBeforeCaret } from '@/lib/mention-suggest'
 import { POLL_OPTION_INPUT_MAX, POLL_OPTIONS_MAX } from '@/lib/polls'
-import type { ReplyAudience } from '@/lib/reply-audience'
+import { REPLY_AUDIENCES, type ReplyAudience } from '@/lib/reply-audience'
 import { limitSize, type VideoLimits } from '@/lib/video'
 import { Avatar } from './avatar'
 import { FounderBadge } from './founder-badge'
@@ -58,6 +58,8 @@ type Props = {
   /** From `me.features`: whether polls and reply limits are switched on. Off hides them. */
   polls?: boolean
   replyControls?: boolean
+  /** Who the member may let reply, the default first (`Me.replyAudiences`): a minor's never include everyone. */
+  replyAudiences?: readonly ReplyAudience[]
   /** False for a text-only box: no pictures, GIFs or video to attach. */
   media?: boolean
   /**
@@ -74,7 +76,13 @@ type Props = {
   sensitiveLabels?: boolean
 }
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, choices, quote, story, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
+const REPLY_AUDIENCE_CHOICE = {
+  everyone: 'Everyone can reply',
+  following: 'People you follow',
+  mentioned: 'Only people mentioned',
+} satisfies Record<ReplyAudience, string>
+
+export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, choices, quote, story, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, replyAudiences = REPLY_AUDIENCES, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -82,7 +90,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const [text, setText] = useState('')
   // The prompt follows the audience picker; the toolbar keeps visibility and posting explicit.
   const [audience, setAudience] = useState('')
-  const [replyAudience, setReplyAudience] = useState<ReplyAudience>('everyone')
+  const [replyAudience, setReplyAudience] = useState<ReplyAudience>(replyAudiences[0] ?? 'everyone')
   const [pollOpen, setPollOpen] = useState(false)
   const [pollOptions, setPollOptions] = useState(['', ''])
   const [pollMultiple, setPollMultiple] = useState(false)
@@ -205,7 +213,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       lastPosted.current = state.postedAt
       setText('')
       setAudience('')
-      setReplyAudience('everyone')
+      setReplyAudience(replyAudiences[0] ?? 'everyone')
       setPollOpen(false)
       setPollOptions(['', ''])
       setPollMultiple(false)
@@ -543,9 +551,9 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
             <BubbleIcon size={16} />
             <span className="sr-only">Who can reply</span>
             <select key={results} value={replyAudience} onChange={(event) => setReplyAudience(event.target.value as ReplyAudience)}>
-              <option value="everyone">Everyone can reply</option>
-              <option value="following">People you follow</option>
-              <option value="mentioned">Only people mentioned</option>
+              {replyAudiences.map((choice) => (
+                <option key={choice} value={choice}>{REPLY_AUDIENCE_CHOICE[choice]}</option>
+              ))}
             </select>
           </label>
         ) : null}
