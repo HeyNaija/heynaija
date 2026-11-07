@@ -35,6 +35,7 @@ import {
   privacyRequests,
   problemDetails,
   profileBadges,
+  pushDevices,
   pushSubscriptions,
   releasedHandles,
   reports,
@@ -438,6 +439,7 @@ test('the erase removes what is personal and keeps what is evidence', async () =
   await postsService.pinInCommunity(sam, ordinary)
   await db.insert(notificationOptOuts).values({ memberId: xena, kind: 'like' })
   await db.insert(pushSubscriptions).values({ memberId: xena, endpoint: 'https://push.example/x', p256dh: 'k', auth: 'a' })
+  await db.insert(pushDevices).values({ memberId: xena, service: 'fcm', token: 'xena-android:APA91b', key: 'k' })
   await membersService.setFounder('xena', true)
   await db.insert(releasedHandles).values([
     { handle: 'xena_old', memberId: xena, releasedAt: days(-5) },
@@ -496,6 +498,7 @@ test('the erase removes what is personal and keeps what is evidence', async () =
   assert.equal(await count(notifications, or(eq(notifications.recipientId, xena), eq(notifications.actorId, xena))), 0)
   assert.equal(await count(notificationOptOuts, eq(notificationOptOuts.memberId, xena)), 0)
   assert.equal(await count(pushSubscriptions, eq(pushSubscriptions.memberId, xena)), 0)
+  assert.equal(await count(pushDevices, eq(pushDevices.memberId, xena)), 0)
   assert.equal(await count(profileBadges, eq(profileBadges.memberId, xena)), 0)
   assert.equal(await count(inviteRedemptions, eq(inviteRedemptions.identityId, xena)), 0)
   assert.equal(await count(invites, eq(invites.codeHash, 'hash')), 1, 'the invite itself is the operator’s record')

@@ -23,6 +23,7 @@ import {
   postPolls,
   posts,
   problemDetails,
+  pushDevices,
   pushSubscriptions,
   reports,
   reposts,
@@ -82,6 +83,7 @@ export class ExportService {
       received,
       turnedOff,
       pushedTo,
+      pushedToApps,
       ageRecords,
       verifications,
       [membership],
@@ -224,6 +226,11 @@ export class ExportService {
         .where(eq(pushSubscriptions.memberId, memberId))
         .orderBy(asc(pushSubscriptions.createdAt)),
       db
+        .select({ since: pushDevices.createdAt, lastPushedAt: pushDevices.lastPushedAt })
+        .from(pushDevices)
+        .where(eq(pushDevices.memberId, memberId))
+        .orderBy(asc(pushDevices.createdAt)),
+      db
         .select({
           band: ageAssurances.band,
           method: ageAssurances.method,
@@ -358,6 +365,8 @@ export class ExportService {
       // The browsers they are pushed to: when each was turned on and last sent one.
       // A browser's push address is left out; it is only good for sending to it.
       pushNotifications: pushedTo,
+      // The same for the HeyNaija app on your phones; its token is left out likewise.
+      appPushNotifications: pushedToApps,
       notifications: received,
     }
   }
