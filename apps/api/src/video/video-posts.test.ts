@@ -122,6 +122,16 @@ test('a video taken down is not shown in its post', async () => {
   assert.equal(post.video, null)
 })
 
+test('a post with a video is under its author’s media, until the video is taken down', async () => {
+  const id = await video()
+  await service.create(ada, 'with a video', { video: { id, description: '' } })
+  await service.create(ada, 'just words')
+  const listed = async () => (await service.byAuthor(null, ada, 10, undefined, 'media')).posts.map((p) => p.text)
+  assert.deepEqual(await listed(), ['with a video'])
+  await db.update(media).set({ status: 'quarantined' }).where(eq(media.id, id))
+  assert.deepEqual(await listed(), [])
+})
+
 // --- /v1/me ---
 
 const meWith = (flags: FeatureFlags, appEnv: 'production' | 'staging', scanner: NoScanner | PhotoDnaScanner) =>
