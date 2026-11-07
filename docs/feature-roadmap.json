@@ -1071,6 +1071,22 @@
       "notes": "Decided 28 Oct 2026 (ADR 0014). A third choice beside Newest (still the default) and Oldest, for the replies to the post in focus; branches stay oldest first. The post author’s replies still come first, then everyone else’s by (2 × members who answered the reply + its likes) / (hours old + 2)^1.5, worked out as of the first page. Nothing depends on who the reader follows or on payment. Offered on posts with up to 2,000 direct replies until wide threads are measured."
     },
     {
+      "id": "stories",
+      "name": "Stories",
+      "description": "Add updates to your own post over time, so people can follow one story from start to latest, and reply to the update they are about.",
+      "category": "conversations",
+      "priority": "P1",
+      "status": "planned",
+      "availability": "not_live",
+      "evidence": [
+        "docs/adr/0024-stories.md"
+      ],
+      "dependency": [
+        "threaded-replies"
+      ],
+      "notes": "Proposed 7 Nov 2026 (ADR 0024). Only the author adds updates; each update is a post of its own, and replies go under the update they are about. Feeds show a story once, as its newest update with the first post above it. Follow story notifies on each new update (story_update, optional)."
+    },
+    {
       "id": "adult-content-labels",
       "name": "Date of birth at signup and 18+ labels",
       "description": "Ask for a date of birth at signup, confirmed with a tick, and keep it with the age record; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.",
