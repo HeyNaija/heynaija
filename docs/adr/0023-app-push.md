@@ -12,8 +12,9 @@ sent Web Push; the app is sent a message through **Firebase Cloud Messaging**
 (FCM) to the token Firebase gave that installation.
 
 - **One row per installation** in `push_devices` (migration 0038): the member, the
-  push service (`fcm`), the token, and the installation's key (below). It is a
-  table of its own, not more rows in
+  push service (`fcm`), the token, and the installation's key (below), at most
+  ten per member (registering an eleventh drops the oldest). It is a table of its
+  own, not more rows in
   `push_subscriptions`, whose address and keys an app does not have; older code
   rolled back onto the new schema never sees it.
 - **Registering.** The app sends its token and key to `POST /v1/push/devices` each
