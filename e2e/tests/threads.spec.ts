@@ -463,7 +463,7 @@ test('a signed-out visitor is asked to sign in to reply, right under the post, a
   }
 })
 
-test('an answer is joined to its parent by a line in the gutter that never crosses a card @mobile', async ({ browser }) => {
+test('an answer is joined to its parent by a line in the gutter that curves into its card and never crosses one @mobile', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'branch')
   try {
     const fixture = await seedThread(handle)
@@ -471,49 +471,61 @@ test('an answer is joined to its parent by a line in the gutter that never cross
     const branch = page.locator(`.thread-branch[data-thread-id="${fixture.first}"]`)
     await branch.getByRole('link', { name: /^View.*replies/i }).first().click()
     await expect(page.locator(`#post-${fixture.nested[1]}`)).toBeVisible()
-    const placed = await page.evaluate(([parent, last]) => {
+    const placed = await page.evaluate(([parent, first, last]) => {
       const card = document.getElementById(`post-${parent}`)!
       const avatar = card.querySelector('.post-header a')!.getBoundingClientRect()
-      // The line is the answers' container's left border; the elbow is the answer row's ::before.
-      const answers = document.getElementById(`replies-${parent}`)!
-      const border = parseFloat(getComputedStyle(answers).borderLeftWidth)
-      const row = document.getElementById(`post-${last}`)!.closest('.thread-row')!
-      const elbow = getComputedStyle(row, '::before')
-      const rowBox = row.getBoundingClientRect()
+      // Each answer row's ::before is the line down to it and the curve into its card; the
+      // answer's ::after carries the line on to the next answer.
+      const curve = (id: string) => {
+        const row = document.getElementById(`post-${id}`)!.closest('.thread-row')!
+        const box = row.getBoundingClientRect()
+        const style = getComputedStyle(row, '::before')
+        const left = box.left + parseFloat(style.left)
+        const top = box.top + parseFloat(style.top)
+        return {
+          border: parseFloat(style.borderLeftWidth),
+          radius: parseFloat(style.borderBottomLeftRadius),
+          line: left + parseFloat(style.borderLeftWidth) / 2,
+          top,
+          right: left + parseFloat(style.width),
+          y: top + parseFloat(style.height) - parseFloat(style.borderBottomWidth) / 2,
+          onward: getComputedStyle(row.closest('li')!, '::after').content !== 'none',
+        }
+      }
       const lastCard = document.getElementById(`post-${last}`)!.getBoundingClientRect()
       const lastAvatar = document.querySelector(`#post-${last} .post-header a`)!.getBoundingClientRect()
       return {
-        border,
-        line: answers.getBoundingClientRect().left + border / 2,
-        lineTop: answers.getBoundingClientRect().top,
+        first: curve(first),
+        last: curve(last),
         cardBottom: card.getBoundingClientRect().bottom,
         avatarCentre: avatar.left + avatar.width / 2,
         avatarLeft: avatar.left,
         textLeft: card.querySelector('.post-body')!.getBoundingClientRect().left,
-        elbowLeft: rowBox.left + parseFloat(elbow.left),
-        elbowRight: rowBox.left + parseFloat(elbow.left) + parseFloat(elbow.width),
-        elbowY: rowBox.top + parseFloat(elbow.top) + parseFloat(elbow.borderTopWidth) / 2,
         lastCardLeft: lastCard.left,
         lastAvatarY: lastAvatar.top + lastAvatar.height / 2,
         phone: window.innerWidth < 1024,
       }
-    }, [fixture.first, fixture.nested[1]!])
-    expect(placed.border).toBe(2)
+    }, [fixture.first, fixture.nested[0]!, fixture.nested[1]!])
+    expect(placed.last.border).toBe(2)
+    expect(placed.last.radius).toBeGreaterThan(0)
     // The line starts at or below the parent card's bottom edge, never inside it.
-    expect(placed.lineTop).toBeGreaterThanOrEqual(placed.cardBottom - 0.5)
-    // The elbow leaves the line (it starts on it) and stops at the answer card's edge, level
-    // with its avatar.
-    expect(placed.elbowLeft).toBeGreaterThanOrEqual(placed.line - placed.border / 2 - 0.5)
-    expect(placed.elbowLeft).toBeLessThanOrEqual(placed.line + placed.border / 2)
-    expect(Math.abs(placed.elbowRight - placed.lastCardLeft)).toBeLessThanOrEqual(1)
-    expect(Math.abs(placed.elbowY - placed.lastAvatarY)).toBeLessThanOrEqual(1)
+    expect(placed.first.top).toBeGreaterThanOrEqual(placed.cardBottom - 0.5)
+    // One straight line down: every answer's curve leaves it at the same place.
+    expect(Math.abs(placed.first.line - placed.last.line)).toBeLessThanOrEqual(0.5)
+    // It runs on past the first answer to the next, and ends in the last one's curve.
+    expect(placed.first.onward).toBe(true)
+    expect(placed.last.onward).toBe(false)
+    // The curve stops at the answer card's edge, level with its avatar.
+    expect(Math.abs(placed.last.right - placed.lastCardLeft)).toBeLessThanOrEqual(1)
+    expect(Math.abs(placed.last.y - placed.lastAvatarY)).toBeLessThanOrEqual(1)
+    const line = placed.last.line
     // Text uses the card's full width, starting under the avatar.
     expect(Math.abs(placed.textLeft - placed.avatarLeft)).toBeLessThanOrEqual(1)
     if (placed.phone) {
       // A 12px indent cannot reach the avatar: the line stays in the gutter, left of it.
-      expect(placed.line).toBeLessThan(placed.avatarLeft)
+      expect(line).toBeLessThan(placed.avatarLeft)
     } else {
-      expect(Math.abs(placed.line - placed.avatarCentre)).toBeLessThanOrEqual(1)
+      expect(Math.abs(line - placed.avatarCentre)).toBeLessThanOrEqual(1)
     }
   } finally {
     await context.close()
