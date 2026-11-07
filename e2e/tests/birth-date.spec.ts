@@ -25,13 +25,15 @@ test('a member who ticked "18 or older" gives a date of birth before anything el
   await expect(page.getByLabel('Account menu')).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Sign out' })).toBeVisible()
 
-  // The tick is needed, and an impossible date is a typing mistake.
-  await page.getByLabel('Day').fill('30')
-  await page.getByLabel('Month').fill('2')
-  await page.getByLabel('Year').fill('1990')
-  await page.getByLabel('This is my real date of birth').check()
-  await page.getByRole('button', { name: 'Save date of birth' }).click()
-  await expect(page.getByText('That date is not possible.')).toBeVisible()
+  // The day list follows the month and the year, so a day that does not exist
+  // cannot be chosen, and one the month no longer has is cleared.
+  const day = page.getByLabel('Day')
+  await day.selectOption('31')
+  await page.getByLabel('Month').selectOption('2')
+  await expect(day).toHaveValue('')
+  await expect(day.locator('option')).toHaveCount(1 + 29)
+  await page.getByLabel('Year').selectOption('1990')
+  await expect(day.locator('option')).toHaveCount(1 + 28)
 
   await fillBirthDate(page, '1985-06-14')
   await page.getByRole('button', { name: 'Save date of birth' }).click()

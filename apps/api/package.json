@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "APP_ENV=${APP_ENV:-development} node --env-file=../../.env dist/main.js",
-    "dev": "tsc -p tsconfig.json && (tsc -p tsconfig.json --watch --preserveWatchOutput & APP_ENV=${APP_ENV:-development} node --watch --env-file=../../.env dist/main.js)",
+    "dev": "tsc -p tsconfig.dev.json && (tsc -p tsconfig.dev.json --watch --preserveWatchOutput & APP_ENV=${APP_ENV:-development} node --watch --env-file=../../.env dist/main.js)",
     "test": "pnpm build && ../../infra/scripts/with-test-db.sh node --test --test-concurrency=1 'dist/**/*.test.js'",
     "video:worker": "APP_ENV=${APP_ENV:-development} node --env-file=../../.env dist/video/worker-main.js",
     "video:trial": "node --env-file=../../.env dist/cli/video-trial.js",

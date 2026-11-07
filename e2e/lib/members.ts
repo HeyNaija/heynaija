@@ -28,14 +28,15 @@ export function handleFor(role: string) {
 export const ADULT_BIRTH_DATE = '1990-03-27'
 
 /**
- * Fills in the date of birth on /join (day, month, year) and ticks that it is
- * real. `date` is YYYY-MM-DD.
+ * Chooses the date of birth on /join or /birth-date (day, month, year) and
+ * ticks that it is real. `date` is YYYY-MM-DD.
  */
 export async function fillBirthDate(page: Page, date = ADULT_BIRTH_DATE) {
   const [year = '', month = '', day = ''] = date.split('-')
-  await page.getByLabel('Day').fill(String(Number(day)))
-  await page.getByLabel('Month').fill(String(Number(month)))
-  await page.getByLabel('Year').fill(year)
+  // The year and month first: the day list follows them.
+  await page.getByLabel('Year').selectOption(year)
+  await page.getByLabel('Month').selectOption(String(Number(month)))
+  await page.getByLabel('Day').selectOption(String(Number(day)))
   await page.getByLabel('This is my real date of birth').check()
 }
 
