@@ -30,12 +30,13 @@ const guardFor = (identity: Identity) =>
     invites,
   )
 
-const request = (over: { method?: string; origin?: string; cookie?: string } = {}) => {
+const request = (over: { method?: string; origin?: string; cookie?: string; token?: string } = {}) => {
   const req = {
     method: over.method ?? 'GET',
     headers: {
       ...(over.origin ? { origin: over.origin } : {}),
       ...(over.cookie ? { cookie: `hn_session=${over.cookie}` } : {}),
+      ...(over.token ? { authorization: `Bearer ${over.token}` } : {}),
     },
   } as unknown as AuthedRequest
   const context = { switchToHttp: () => ({ getRequest: () => req }) } as unknown as ExecutionContext
@@ -51,6 +52,14 @@ const invited = async (handle: string): Promise<Identity> => {
 before(migrate)
 beforeEach(reset)
 after(() => pool.end())
+
+test('the apps are signed in by a session token, and write without an Origin', async () => {
+  const guard = guardFor(await invited('ada'))
+  const { req, context } = request({ method: 'POST', token: 'good' })
+  assert.equal(await guard.canActivate(context), true)
+  assert.equal(req.member.handle, 'ada')
+  await assert.rejects(guard.canActivate(request({ method: 'POST', token: 'stale' }).context), UnauthorizedException)
+})
 
 test('no cookie, or a cookie Kratos does not recognise, is 401', async () => {
   const guard = guardFor(await invited('ada'))
