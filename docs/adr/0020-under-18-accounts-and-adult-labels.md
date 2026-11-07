@@ -7,7 +7,8 @@ as changed on 7 November below) are built (PR #110), with the apps, and
 labelled media is served privately ([ADR 0025](0025-private-sensitive-media.md));
 whole communities marked for adults are not yet. Of phase 2, section 4's contact
 and discovery protections are built on branch `feat/under-18-contact` (questions
-12 to 15); the rest is not. ·
+12 to 15), and question 7's limit on who sees minors' posts on branch
+`feat/minor-posts-signed-in-only`; the rest is not. ·
 **Roadmap:** `adult-content-labels`
 (phase 1), `minor-safeguards` (phase 2) · **Related:**
 [ADR 0006](0006-age-status-model.md), [ADR 0016](0016-direct-messages.md),
@@ -298,7 +299,8 @@ place:
   Replies limited to people they follow, and mentions from strangers limited, by
   default. Not suggested to adults and left out of member search. Minimal profile:
   no age band, no location, no follower lists to strangers.
-- **Visibility** of minors' own posts: question 7.
+- **Visibility** of minors' own posts: signed-in members only (question 7,
+  reaffirmed 7 November); built, below.
 - **Video.** Minors cannot post video (ADR 0019, section 4.6). Built: `video_posting`.
 - **Governance.** Never voting members.
 
@@ -328,6 +330,30 @@ stranger, whatever the stranger's own age.
   of birth yet is not treated as a minor, since that would hide every member who
   has not answered yet, and they cannot use the app until they do. No protection
   here asks whether a viewer is an adult, so an unknown age never counts as one.
+
+**Visibility, as built** (question 7, `reachesViewer` in
+`apps/api/src/governance/minors.ts`, tested per read path in
+`apps/api/src/posts/minor-posts.test.ts`): a minor's posts reach any signed-in
+member, whatever their age, and never a signed-out visitor, which takes in search
+engines and link previews. The check sits beside the 18+ label's in one condition
+on posts (`postAllowed`, beside `visibleAuthor` in `posts.service.ts`), so every
+read path that keeps a marked post from a viewer keeps a minor's from a signed-out
+one in the same way.
+- *Missing, never "a minor's".* To a signed-out visitor a minor's post is what a
+  deleted one is: left out of lists, search, hashtag and community pages, trending
+  and the ideas board, and where a conversation needs a stand-in (an ancestor, a
+  reply with replies under it, a quote, a reply's preview) the same placeholder.
+  Its page is not found, and a link to it previews as nothing.
+- *Reposts and poll votes.* A signed-out visitor is shown neither; a poll's counts
+  still include a minor's vote.
+- *Profile.* Still found signed out, as any member's is, with no age band (section
+  4, Contact), but counting no posts and listing none. A profile with no posts to
+  show is kept out of search (`noindex`), whoever it belongs to, so a minor's looks
+  like anyone's who has not posted yet; a missing post's page is kept out too.
+- *Not covered.* A picture's or video's address, which a member can copy, is as
+  public as any unmarked post's: the files are not served privately the way
+  marked media is (ADR 0025). Trending topics count a minor's hashtags; they show
+  a tag and counts, never a post.
 
 ## 5. What phase 2 waits for
 
@@ -518,6 +544,12 @@ from building section 4's contact protections (7 November).
    they follow by default.
    - Answer: Agreed.
    - Answered by / date: Psami-wondah, 3 November 2026
+   - Reaffirmed 7 November 2026 (owner), asked against X's protected posts (only
+     followers the minor approves see the posts, kept out of search, no quotes by
+     strangers) and against a middle way (only the people the minor follows):
+     build question 7 as recorded. Any signed-in member sees a minor's posts,
+     search, hashtags and topics included, and may quote or repost them; a
+     signed-out visitor never does. Built: section 4, "Visibility, as built".
 
 8. **Can a whole community be marked 18+?** Recommendation: yes, by its moderators
    or a site moderator; every post in it counts as labelled, and minors cannot see
@@ -593,16 +625,17 @@ from building section 4's contact protections (7 November).
 
 ### Smaller open items
 
-- **Quotes and reposts of a minor's posts.** A stranger can still quote or repost a
-  minor's post, and the minor is told of a quote. X allows quotes of a conversation
-  with limited replies; X's protected posts cannot be quoted by strangers at all.
-  Not decided; it goes with question 7.
+- **Quotes and reposts of a minor's posts.** Decided with question 7 (7 November
+  2026): any signed-in member may quote or repost a minor's post, and the minor is
+  told of a quote, as for anyone's. A signed-out visitor sees the quote with the
+  quoted post unavailable, and the repost not at all.
 - **Visibility of minors' posts (question 7) against X.** X defaults a minor's
   account to protected posts: only followers they approve see them, and their
-  posts are kept out of public search. Question 7's answer is narrower (signed-in
-  members only), and post search, hashtag and topic pages still list minors' posts.
-  If the X-style answer to question 14 should reach posts too, question 7 is the
-  place to change it.
+  posts are kept out of public search. Asked on 7 November 2026, the owner kept
+  question 7's answer (signed-in members only), so post search, hashtag and topic
+  pages still list minors' posts to signed-in members. Protected posts would need
+  follow requests, which HeyNaija does not have; question 7 is the place to
+  change it.
 
 - **Gists.** Minors and unknown ages listen only (6 November): `canHostGist` needs
   a stated adult age, and `canJoinGist` does not. Gist titles cannot be labelled;
