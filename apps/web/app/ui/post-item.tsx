@@ -21,6 +21,7 @@ import { LinkCard } from './link-card'
 import { LocalTime } from './local-time'
 import { Menu } from './menu'
 import { MorePosts } from './more-posts'
+import { ComposeLink } from './new-post-link'
 import { PollCard } from './poll-card'
 import { MediaCover } from './media-cover'
 import { PostImages } from './post-images'
@@ -294,10 +295,16 @@ export function PostItem({
                   <>
                     {post.replyParentId || gist ? null : (
                       <>
-                        {/* Any of your top-level posts becomes a story with its first update (docs/adr/0024). */}
-                        <Link prefetch={false} href={`/p/${post.story?.id ?? post.id}/update`} className="menu-item">
+                        {/* Any of your top-level posts becomes a story with its first update (docs/adr/0024),
+                            written in the box at the end of the story. */}
+                        <ComposeLink
+                          prefetch={false}
+                          href={post.story ? `/p/${post.story.id}#add-update` : `/p/${post.id}?add=update#add-update`}
+                          label="Add update"
+                          className="menu-item"
+                        >
                           Add update
-                        </Link>
+                        </ComposeLink>
                         <form action={setProfilePin}>
                           <input type="hidden" name="id" value={post.id} />
                           <input type="hidden" name="on" value={post.pinnedOnProfile ? '0' : '1'} />

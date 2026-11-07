@@ -7,13 +7,17 @@ import { newMember, post } from '../lib/members.ts'
 const idOf = async (page: Page, text: string) =>
   (await page.locator('article', { hasText: text }).first().getAttribute('id'))!.replace('post-', '')
 
-/** Writes an update from a story's Add update page and waits for the story to open at it. */
+/** Writes an update in the box at the end of a story and waits for it to show above the box. */
 async function addUpdate(page: Page, storyId: string, text: string) {
-  await page.goto(`/p/${storyId}/update`)
-  const box = page.getByRole('textbox', { name: 'Your update' })
-  await box.fill(text)
-  await page.getByRole('button', { name: 'Post', exact: true }).click()
-  await page.waitForURL((url) => url.pathname === `/p/${storyId}`)
+  await page.goto(`/p/${storyId}#add-update`)
+  await writeUpdate(page, text)
+}
+
+/** Posts `text` from the story's own box, already on the page. */
+async function writeUpdate(page: Page, text: string) {
+  const form = page.locator('#add-update')
+  await form.getByRole('textbox', { name: 'Your update' }).fill(text)
+  await form.getByRole('button', { name: 'Post', exact: true }).click()
   await expect(page.locator('.story-spine article', { hasText: text })).toBeVisible()
 }
 
@@ -24,23 +28,25 @@ test('a post becomes a story with its first update, and Latest shows the story o
     const article = await post(page, start)
     const storyId = await idOf(page, start)
 
-    // Add update is in the post's menu, and says what is about to happen.
+    // Add update is in the post's menu. It opens the post with a box under it, the
+    // cursor in it, and says what is about to happen.
     await article.getByLabel('Post options').click()
     await article.getByRole('link', { name: 'Add update' }).click()
-    await expect(page.getByRole('heading', { name: 'Add update 1' })).toBeVisible()
-    await page.getByRole('textbox', { name: 'Your update' }).fill(`Curtains up, from ${handle}`)
-    await page.getByRole('button', { name: 'Post', exact: true }).click()
-    await page.waitForURL((url) => url.pathname === `/p/${storyId}`)
+    await page.waitForURL((url) => url.pathname === `/p/${storyId}` && url.searchParams.get('add') === 'update')
+    const box = page.locator('#add-update').getByRole('textbox', { name: 'Your update' })
+    await expect(box).toBeFocused()
+    await expect(box).toHaveAttribute('placeholder', 'Add update 1…')
+    await expect(page.locator('.story-bar')).toContainText('New story')
+    await writeUpdate(page, `Curtains up, from ${handle}`)
     await expect(page.locator('.story-bar')).toContainText('Story · 1 update')
     await expect(page.locator('.story-spine article', { hasText: `Curtains up, from ${handle}` })).toContainText('Update 1')
 
-    // The next one is added from the end of the story.
-    await page.getByRole('link', { name: 'Add update 2' }).click()
-    await page.getByRole('textbox', { name: 'Your update' }).fill(`First print, from ${handle}`)
-    await page.getByRole('button', { name: 'Post', exact: true }).click()
-    await page.waitForURL((url) => url.pathname === `/p/${storyId}`)
+    // The next one is written in the same box, which stays at the end of the story.
+    await expect(box).toHaveAttribute('placeholder', 'Add update 2…')
+    await writeUpdate(page, `First print, from ${handle}`)
     await expect(page.locator('.story-bar')).toContainText('Story · 2 updates')
-    // The author follows nothing of their own, and the line ends at the last update.
+    await expect(page.locator('.story-spine > li').last()).toHaveClass(/story-add/)
+    // The author follows nothing of their own, and the line ends at the box.
     await expect(page.getByRole('button', { name: /Follow story/ })).toHaveCount(0)
     const lastOnward = await page.locator('.story-spine > li').last().evaluate((li) => getComputedStyle(li, '::after').content)
     expect(lastOnward).toBe('none')
@@ -73,6 +79,10 @@ test('a member follows a story and is told about its next update', async ({ brow
     await addUpdate(author.page, storyId, `Day one, from ${author.handle}`)
 
     await reader.page.goto(`/p/${storyId}`)
+    // Only its author has a box to add to it; for everyone else the line ends at the last update.
+    await expect(reader.page.locator('#add-update')).toHaveCount(0)
+    const lastOnward = await reader.page.locator('.story-spine > li').last().evaluate((li) => getComputedStyle(li, '::after').content)
+    expect(lastOnward).toBe('none')
     await reader.page.getByRole('button', { name: 'Follow story' }).click()
     await expect(reader.page.getByRole('button', { name: 'Following' })).toBeVisible()
     await expect(reader.page.locator('.story-bar')).toContainText('1 following')

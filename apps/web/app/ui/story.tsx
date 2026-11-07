@@ -42,6 +42,18 @@ export function StoryStart({ story }: { story: PostStory }) {
   )
 }
 
+/** In the bar's place while the author writes the first update of a post that is not a story yet. */
+export function StoryNew() {
+  return (
+    <div className="story-bar">
+      <p className="story-bar-text">
+        <StoryIcon size={16} />
+        <span>New story: updates go under this post in order, and feeds show it once, at its newest.</span>
+      </p>
+    </div>
+  )
+}
+
 /** Under a story's first post: how many updates and followers, and Follow story for everyone but its author. */
 export function StoryBar({ post, viewerId }: { post: Post; viewerId: string | null }) {
   const story = post.story!
