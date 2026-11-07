@@ -7,7 +7,8 @@ import { type SQL, sql } from 'drizzle-orm'
  * anyone on it. A Gist whose host erased their account is gone.
  *
  * A second copy of the rule in `isCallsMember` (eligibility.ts), which SQL cannot call: when
- * that gains conditions (18+, verification, opt-in), add them here in the same change.
+ * that gains conditions (verification, opt-in), add them here in the same change. Age
+ * is not one: members of any age may listen, and only the stage (`canHostGist`) needs an adult.
  */
 export const memberOpensGist = (memberId: SQL | string, gistId: SQL): SQL<boolean> => sql<boolean>`(
   exists(select 1 from members om where om.id = ${memberId} and om.active)

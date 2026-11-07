@@ -1,5 +1,7 @@
 import { type Db, media, members, moderationActions } from '@heynaija/db'
 import { and, count, eq, gt, inArray, isNotNull, or, sql } from 'drizzle-orm'
+import { isAdultFor } from '../governance/age.js'
+import { ageStatusOf } from '../governance/governance.service.js'
 import type { VideoConfig } from './video-config.js'
 import { VideoError } from './video-error.js'
 
@@ -7,14 +9,18 @@ import { VideoError } from './video-error.js'
 const UPHELD_AGAINST_MEMBER = ['suspend_member', 'remove_avatar', 'clear_profile'] as const
 
 /**
- * The trust rules of ADR 0019 section 4.7: account age, nothing upheld or blocked
- * lately, and the live-video cap. The allow-list is the feature flag's. Checked when
- * an upload starts AND again when the video is attached to a post, because both can
- * change in between.
+ * Who may post a video: an adult by their stated age (ADR 0019 section 4.6; under
+ * 18 and unknown ages never), and the trust rules of section 4.7: account age,
+ * nothing upheld or blocked lately, and the live-video cap. The allow-list is the
+ * feature flag's. Checked when an upload starts AND again when the video is
+ * attached to a post, because all of these can change in between.
  */
 export async function assertVideoEligible(q: Pick<Db, 'select'>, ownerId: string, cfg: VideoConfig): Promise<void> {
   const [member] = await q.select({ createdAt: members.createdAt }).from(members).where(eq(members.id, ownerId))
   if (!member) throw new VideoError('not_found', 'no such member')
+  if (!isAdultFor(await ageStatusOf(q, ownerId), 'video_posting')) {
+    throw new VideoError('not_eligible', 'video is not available to this account')
+  }
   const oldEnough = Date.now() - member.createdAt.getTime() >= cfg.minAccountAgeDays * 86_400_000
   if (!oldEnough) {
     throw new VideoError('not_eligible', `videos can be posted once an account is ${cfg.minAccountAgeDays} days old`)

@@ -35,21 +35,27 @@ type ControlsInput = {
   status: GistView['status']
   requestsOpen: boolean
   viewer: { role: GistRole | null; requestedToSpeak: boolean }
+  /** `gistStage` from /v1/me: false for a member who may only listen (under 18, or no date of birth). */
+  mayTakeStage?: boolean
 }
 
 /**
  * The role-to-controls map. The API enforces every one of these again; this only
- * decides what to draw, so a listener is never shown a microphone.
+ * decides what to draw, so a listener is never shown a microphone, and a member who
+ * may only listen is never offered to speak.
  */
-export function controlsFor({ status, requestsOpen, viewer }: ControlsInput) {
-  const none = { mic: false, request: false, cancelRequest: false, moderate: false, settings: false, end: false, appointCohost: false }
+export function controlsFor({ status, requestsOpen, viewer, mayTakeStage = true }: ControlsInput) {
+  const none = { mic: false, request: false, cancelRequest: false, requestsClosed: false, moderate: false, settings: false, end: false, appointCohost: false }
   if (status !== 'live' || !viewer.role) return none
   const { role } = viewer
   const stage = role === 'host' || role === 'cohost' || role === 'speaker'
+  const asking = role === 'listener' && mayTakeStage && !viewer.requestedToSpeak
   return {
-    mic: stage,
-    request: role === 'listener' && requestsOpen && !viewer.requestedToSpeak,
+    mic: stage && mayTakeStage,
+    request: asking && requestsOpen,
     cancelRequest: role === 'listener' && viewer.requestedToSpeak,
+    /** Say that the host is not taking requests: only to someone who could otherwise ask. */
+    requestsClosed: asking && !requestsOpen,
     moderate: role === 'host' || role === 'cohost',
     settings: role === 'host',
     end: role === 'host',

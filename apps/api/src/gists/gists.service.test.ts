@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { blocks, communities, communityMemberships, gistMembers, gists, members } from '@heynaija/db'
+import { ageAssurances, blocks, communities, communityMemberships, gistMembers, gists, members } from '@heynaija/db'
 import { and, eq } from 'drizzle-orm'
 import { MemoryRateLimiter } from '../rate-limit.js'
-import { db, migrate, pool, reset } from '../test-db.js'
+import { bornYearsAgo, db, giveBirthDates, migrate, pool, reset } from '../test-db.js'
 import { FakeRoomService, type FakeToken } from './fake-room-service.js'
 import type { GistsGate } from './gists-enabled.guard.js'
 import { GistError, GistsService, type GistsConfig } from './gists.service.js'
@@ -54,6 +54,7 @@ before(migrate)
 beforeEach(async () => {
   await reset()
   await db.insert(members).values(people.map((p) => ({ id: id[p], handle: p })))
+  await giveBirthDates(people.map((p) => id[p]))
   rooms = new FakeRoomService()
   service = new GistsService(db, rooms, config, new MemoryRateLimiter(), gate)
   gist = (await service.create(as('ada'), { title: 'Jollof wars' })).id
@@ -633,4 +634,72 @@ test('Live now never lists a Gist the member would be refused: a block with its 
   assert.equal(gozie[0]!.community!.slug, 'lagos')
   // Not in the community: only the open Gist.
   assert.deepEqual(await liveIds('bayo'), [gist])
+})
+
+// ---- age (ADR 0020, section 4) ------------------------------------------------------
+
+/** A member under 18 and one with no date of birth on record, both on the gists list. */
+const listenOnly = async () => {
+  const kid = { id: randomUUID(), handle: 'kid' }
+  const unknown = { id: randomUUID(), handle: 'unknown' }
+  await db.insert(members).values([kid, unknown])
+  await giveBirthDates([kid.id], 15)
+  return [kid, unknown]
+}
+
+test('under 18 and unknown ages see live Gists and join them as listeners', async () => {
+  for (const who of await listenOnly()) {
+    assert.deepEqual((await service.live(who)).map((g) => g.id), [gist], who.handle)
+    const joined = await service.join(who, gist)
+    assert.equal(joined.role, 'listener')
+    assert.equal(token(joined.token).canPublish, false)
+  }
+})
+
+test('under 18 and unknown ages cannot start a Gist or ask to speak', async () => {
+  for (const who of await listenOnly()) {
+    assert.equal(await codeOf(service.create(who, { title: 'Mine' })), 'listen_only', who.handle)
+    await service.join(who, gist)
+    rooms.connect(gist, who.id)
+    assert.equal(await codeOf(service.requestToSpeak(who, gist)), 'listen_only', who.handle)
+  }
+  assert.equal((await db.select().from(gists).where(eq(gists.status, 'live'))).length, 1)
+  assert.deepEqual(await service.requests(as('ada'), gist), [])
+})
+
+test('a host cannot make a member under 18 or of unknown age a speaker or co-host, and learns no more than for a block', async () => {
+  await enter('ada', gist)
+  for (const who of await listenOnly()) {
+    await service.join(who, gist)
+    rooms.connect(gist, who.id)
+    assert.equal(await codeOf(service.setSpeaker(as('ada'), gist, who.id)), 'not_eligible', who.handle)
+    assert.equal(await codeOf(service.setCohost(as('ada'), gist, who.id)), 'not_eligible', who.handle)
+    const [row] = await db.select().from(gistMembers).where(and(eq(gistMembers.gistId, gist), eq(gistMembers.memberId, who.id)))
+    assert.equal(row!.role, 'listener')
+    assert.deepEqual(rooms.permissionsOf(gist, who.id), { canPublish: false, hidden: true })
+  }
+})
+
+test('LiveKit never gives the microphone to someone on the stage who is no longer an adult by their age on record', async () => {
+  await enter('ada', gist)
+  await enter('bayo', gist)
+  await service.setSpeaker(as('ada'), gist, id.bayo)
+  assert.equal(rooms.permissionsOf(gist, id.bayo)!.canPublish, true)
+
+  // A moderator corrects bayo's date of birth to a 16 year old's while he is speaking.
+  await db.insert(ageAssurances).values({ memberId: id.bayo, band: 'under_18', method: 'moderator_review', birthDate: bornYearsAgo(16) })
+  await service.reconcile(later(MINUTE))
+  assert.deepEqual(rooms.permissionsOf(gist, id.bayo), { canPublish: false, hidden: true })
+  // Neither his own sync nor a join webhook gives it back, and the reconcile does not keep resetting it.
+  assert.equal((await service.sync(as('bayo'), gist)).role, 'listener')
+  await service.handleWebhook(JSON.stringify({ id: 'e1', kind: 'participant_joined', room: gist, identity: id.bayo }), rooms.validAuthorization)
+  assert.equal(rooms.permissionsOf(gist, id.bayo)!.canPublish, false)
+  const resets = rooms.calls.filter((c) => c === 'setPermissions').length
+  await service.reconcile(later(MINUTE))
+  assert.equal(rooms.calls.filter((c) => c === 'setPermissions').length, resets)
+
+  // A host whose age is no longer on record (their record withdrawn) keeps the room but not the microphone.
+  await db.update(ageAssurances).set({ withdrawnAt: new Date() }).where(eq(ageAssurances.memberId, id.ada))
+  assert.equal((await service.sync(as('ada'), gist)).role, 'listener')
+  assert.equal(rooms.permissionsOf(gist, id.ada)!.canPublish, false)
 })

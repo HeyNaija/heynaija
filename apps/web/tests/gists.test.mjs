@@ -30,6 +30,17 @@ test('only the stage gets a microphone; a listener may ask while requests are op
   assert.equal(controlsFor(view('speaker')).request, false)
 })
 
+test('a member who may only listen is offered neither the microphone nor a request, and told nothing about requests', () => {
+  for (const requestsOpen of [true, false]) {
+    const listener = controlsFor(view('listener', { requestsOpen, mayTakeStage: false }))
+    assert.deepEqual([listener.mic, listener.request, listener.requestsClosed], [false, false, false])
+  }
+  assert.equal(controlsFor(view('speaker', { mayTakeStage: false })).mic, false)
+  // Anyone else is told when the host closes requests.
+  assert.equal(controlsFor(view('listener', { requestsOpen: false })).requestsClosed, true)
+  assert.equal(controlsFor(view('listener')).requestsClosed, false)
+})
+
 test('a listener with an open request can withdraw it and cannot ask twice', () => {
   const waiting = controlsFor(view('listener', { viewer: { role: 'listener', requestedToSpeak: true } }))
   assert.equal(waiting.request, false)
