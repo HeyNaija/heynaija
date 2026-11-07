@@ -5,6 +5,7 @@ CREATE TABLE "story_follows" (
 	CONSTRAINT "story_follows_story_id_member_id_pk" PRIMARY KEY("story_id","member_id")
 );
 --> statement-breakpoint
+-- allow-breaking: the check comes straight back below with one more kind, in this same transaction, so nothing the previous release writes is ever unchecked or refused
 ALTER TABLE "notification_opt_outs" DROP CONSTRAINT "notification_opt_outs_kind_check";--> statement-breakpoint
 ALTER TABLE "posts" ADD COLUMN "story_id" uuid;--> statement-breakpoint
 ALTER TABLE "posts" ADD COLUMN "story_updates" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
@@ -12,8 +13,10 @@ ALTER TABLE "posts" ADD COLUMN "superseded" boolean DEFAULT false NOT NULL;--> s
 ALTER TABLE "story_follows" ADD CONSTRAINT "story_follows_story_id_posts_id_fk" FOREIGN KEY ("story_id") REFERENCES "public"."posts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "story_follows" ADD CONSTRAINT "story_follows_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "story_follows_member_idx" ON "story_follows" USING btree ("member_id");--> statement-breakpoint
+-- allow-breaking: the index is empty (no post has a story_id yet), but building it still scans every posts row once, under the lock ADD COLUMN already holds until this migration commits; a few seconds at this table size
 CREATE INDEX "posts_story_created_idx" ON "posts" USING btree ("story_id","created_at","id") WHERE story_id is not null;--> statement-breakpoint
-ALTER TABLE "notification_opt_outs" ADD CONSTRAINT "notification_opt_outs_kind_check" CHECK (kind in ('reply', 'like', 'repost', 'quote', 'mention', 'follow', 'story_update'));--> statement-breakpoint
+-- NOT VALID: every existing row holds one of the kinds allowed before, all of which are still allowed, so there is nothing to check.
+ALTER TABLE "notification_opt_outs" ADD CONSTRAINT "notification_opt_outs_kind_check" CHECK (kind in ('reply', 'like', 'repost', 'quote', 'mention', 'follow', 'story_update')) NOT VALID;--> statement-breakpoint
 -- A story's first post knows how many live updates it has, and every post of a
 -- story but one is superseded: the newest live update, or the first post while it
 -- has none, is the one feeds show (docs/adr/0024). Worked out again whenever an
