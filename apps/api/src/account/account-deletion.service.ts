@@ -390,6 +390,7 @@ export class AccountDeletionService {
       await run(sql`delete from notifications where recipient_id = ${memberId} or actor_id = ${memberId}`)
       await run(sql`delete from notification_opt_outs where member_id = ${memberId}`)
       await run(sql`delete from push_subscriptions where member_id = ${memberId}`)
+      await run(sql`delete from push_devices where member_id = ${memberId}`)
       await run(sql`delete from profile_badges where member_id = ${memberId}`)
       await run(sql`delete from invite_redemptions where identity_id = ${memberId}`)
       // Their place on feature flags' allow-lists goes. Flag changes they made as a

@@ -65,7 +65,8 @@ import { PostsService } from './posts/posts.service.js'
 import { PushController } from './push/push.controller.js'
 import { PUSH_JOBS, PushNotificationsService } from './push/push-notifications.service.js'
 import { BullPushJobs, PushWorker } from './push/push-queue.js'
-import { PUSH_SENDER, webPushSender } from './push/push-sender.js'
+import { fcmSender } from './push/fcm-sender.js'
+import { APP_PUSH_SENDER, PUSH_SENDER, webPushSender } from './push/push-sender.js'
 import { RateLimiter, RedisRateLimiter } from './rate-limit.js'
 import { SearchController } from './search/search.controller.js'
 import { DB, ENV } from './tokens.js'
@@ -150,7 +151,7 @@ class HealthController {
         delayS: env.EMAIL_DIGEST_DELAY_S,
         gapS: env.EMAIL_DIGEST_GAP_S,
         // Whatever is pushed is not emailed, so email waits for the push side.
-        waitForPush: Boolean(env.PUSH_VAPID_PUBLIC_KEY),
+        waitForPush: Boolean(env.PUSH_VAPID_PUBLIC_KEY || env.FCM_SERVICE_ACCOUNT),
       }),
       inject: [ENV],
     },
@@ -159,6 +160,8 @@ class HealthController {
     { provide: PUSH_JOBS, useClass: BullPushJobs },
     // Without VAPID keys (PUSH_VAPID_*) this is null and nothing is pushed.
     { provide: PUSH_SENDER, useFactory: webPushSender, inject: [ENV] },
+    // Without FCM's service account (FCM_SERVICE_ACCOUNT) this is null and the app is not pushed to.
+    { provide: APP_PUSH_SENDER, useFactory: fcmSender, inject: [ENV] },
     PushNotificationsService,
     PushWorker,
     ExportService,

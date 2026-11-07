@@ -83,6 +83,7 @@ async function clean() {
         or post_id in (select id from d_p) or resolved_by in (select id from d_m)`],
       ['notification settings', 'delete from notification_opt_outs where member_id in (select id from d_m)'],
       ['push subscriptions', 'delete from push_subscriptions where member_id in (select id from d_m)'],
+      ['app push devices', 'delete from push_devices where member_id in (select id from d_m)'],
       ['mentions', 'delete from post_mentions where member_id in (select id from d_m) or post_id in (select id from d_p)'],
       ['hashtags', 'delete from post_hashtags where post_id in (select id from d_p)'],
       ['likes', 'delete from likes where member_id in (select id from d_m) or post_id in (select id from d_p)'],

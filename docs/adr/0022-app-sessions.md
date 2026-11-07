@@ -42,5 +42,6 @@ no Origin.
   platforms' own sign-in kits, with client IDs for each app. Offering Google on iOS
   also means offering Sign in with Apple (App Review Guideline 4.8). Until both are
   set up the apps offer the emailed code only.
-- **Push to the apps.** Push is Web Push today (ADR 0011); the apps need FCM and
-  APNs, which need the Firebase project and Apple key first.
+- **Push to the iOS app.** Android has push through FCM since
+  [ADR 0023](0023-app-push.md); iOS waits for the Apple developer account and its
+  APNs key.

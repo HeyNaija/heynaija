@@ -42,6 +42,8 @@ x-api-env: &api-env
   # at WEB_PUBLIC_URL (docs/adr/0011).
   PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
   PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
+  # And to the Android app through FCM (docs/adr/0023); without it the app gets none.
+  FCM_SERVICE_ACCOUNT: ${FCM_SERVICE_ACCOUNT:-}
   WEB_PUBLIC_URL: ${SITE_URL:?}
   # Gists (docs/adr/0017). All optional: empty means off, and every Gists route
   # answers 404. With these set, the `gists` feature flag decides who has Gists

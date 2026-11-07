@@ -10,7 +10,7 @@ export default function PrivacyPage() {
       eyebrow="Your data"
       title="Privacy policy"
       summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, and how you get your data or have it deleted. No ads, no selling data, no trackers."
-      updated="6 November 2026"
+      updated="7 November 2026"
       sections={[
         {
           id: 'who',
@@ -74,7 +74,9 @@ export default function PrivacyPage() {
               <dt>Push notifications</dt>
               <dd>
                 If you turn them on in a browser: the address its push service gave it, the keys that encrypt what is
-                sent there, and when it last got one. Turning push off, or signing out there, deletes them.
+                sent there, and when it last got one. In the Android app: the token Google’s Firebase Cloud Messaging
+                gave it, the key the app made to encrypt what is sent there, and when it last got one. Turning push
+                off, or signing out there, deletes them.
               </dd>
               <dt>Technical data</dt>
               <dd>
@@ -93,7 +95,7 @@ export default function PrivacyPage() {
                 <li>To run HeyNaija: show posts, deliver notifications, sign you in.</li>
                 <li>To keep it safe: rate limits, moderation, and checking images against lists of known child abuse material.</li>
                 <li>To email you sign-in codes and account messages, and, if notification emails are on for you, a short email when there is something new for you (grouped, at most about twice an hour). Every one has a link that turns them off. We send no newsletters or marketing.</li>
-                <li>If you turn on push notifications in a browser, to show your notifications there as they happen. What reaches you that way is not emailed as well.</li>
+                <li>If you turn on push notifications in a browser or the app, to show your notifications there as they happen. What reaches you that way is not emailed as well.</li>
               </ul>
               <p>
                 Latest and Following are in time order. <Link href="/about/discover">Discover</Link> ranks recent
@@ -117,6 +119,11 @@ export default function PrivacyPage() {
                   <strong>Your browser’s push service</strong>, only if you turn on push notifications: Google for Chrome
                   and most Android browsers, Apple for Safari, Mozilla for Firefox, Microsoft for Edge on Windows. It
                   carries them to your device encrypted, so it cannot read them, but it does see when they are sent.
+                </li>
+                <li>
+                  <strong>Google’s Firebase Cloud Messaging</strong>, only if you allow notifications in the Android app:
+                  it carries them to your phone, encrypted with a key only the app and HeyNaija have, so it cannot read
+                  them either, but it does see when they are sent.
                 </li>
                 <li><strong>netcup</strong> and <strong>Contabo</strong>: the servers HeyNaija runs on, in <Placeholder>data centre location</Placeholder>.</li>
                 <li><strong>Google</strong>: only if you choose to sign in with Google.</li>

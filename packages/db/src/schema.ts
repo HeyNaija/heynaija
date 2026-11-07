@@ -723,6 +723,38 @@ export const pushSubscriptions = pgTable(
   (t) => [uniqueIndex('push_subscriptions_endpoint_idx').on(t.endpoint), index('push_subscriptions_member_idx').on(t.memberId)],
 )
 
+// The push services the apps register with (docs/adr/0023): Firebase Cloud
+// Messaging, for the Android app. Apple's (apns) comes with the iOS app's push.
+export const PUSH_DEVICE_SERVICES = ['fcm'] as const
+export type PushDeviceService = (typeof PUSH_DEVICE_SERVICES)[number]
+
+// An installation of the Android or iOS app that shows a member's notifications
+// (docs/adr/0023): the token its push service gave it, and the key the app made
+// that encrypts what is sent there, so that the push service cannot read it. One
+// row per installation: whoever signs in on it next takes the row, and signing out
+// deletes it. Kept apart from browsers' subscriptions, whose keys work differently.
+export const pushDevices = pgTable(
+  'push_devices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    service: text('service').$type<PushDeviceService>().notNull(),
+    token: text('token').notNull(),
+    // AES-256-GCM, 32 bytes in base64url.
+    key: text('key').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    // When its push service last accepted a notification for it.
+    lastPushedAt: ts('last_pushed_at'),
+  },
+  (t) => [
+    uniqueIndex('push_devices_token_idx').on(t.service, t.token),
+    index('push_devices_member_idx').on(t.memberId),
+    check('push_devices_service_check', sql.raw(`service in (${PUSH_DEVICE_SERVICES.map((value) => `'${value}'`).join(', ')})`)),
+  ],
+)
+
 // Signup is invite-only. Only the SHA-256 of a code is stored.
 export const invites = pgTable('invites', {
   codeHash: text('code_hash').primaryKey(),

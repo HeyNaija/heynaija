@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Req, UseGuards } from '@nestjs/common'
+import { PUSH_DEVICE_SERVICES } from '@heynaija/db'
+import { Body, Controller, Delete, Get, HttpCode, Inject, NotFoundException, Param, Post, Req, UseGuards } from '@nestjs/common'
 import { z } from 'zod'
 import { type AuthedRequest, SessionGuard, SuspendedAllowedGuard } from '../auth/session.guard.js'
 import type { Env } from '../env.js'
@@ -32,10 +33,21 @@ const subscribeBody = (loopback: boolean) =>
 
 const endpointBody = (loopback: boolean) => z.object({ endpoint: endpoint(loopback) })
 
+/** An installation of the app: its push service and the token that service gave it. */
+const deviceBody = z.object({
+  service: z.enum(PUSH_DEVICE_SERVICES),
+  // FCM's tokens are some 160 characters of base64url with a colon.
+  token: z.string().regex(/^[\w:.-]{32,4096}$/, 'a push token'),
+})
+
+/** Registering also gives the key the app made, that what is sent to it is sealed with. */
+const registerBody = deviceBody.extend({ key: key(32) })
+
 /**
  * The browsers a member's notifications are pushed to. Settings subscribes and
  * unsubscribes the browser it is open in; every page load checks that the
- * browser's subscription is the signed-in member's; signing out removes it.
+ * browser's subscription is the signed-in member's; signing out removes it. The
+ * apps register in the same way under `devices` (docs/adr/0023).
  */
 @Controller('v1/push')
 export class PushController {
@@ -45,10 +57,10 @@ export class PushController {
     @Inject(ENV) private readonly env: Env,
   ) {}
 
-  /** The key browsers subscribe with, or null when this server does not push. */
+  /** The key browsers subscribe with, or null when this server does not push to browsers; and whether it pushes to the app. */
   @Get('key')
   key() {
-    return { publicKey: this.push.publicKey }
+    return { publicKey: this.push.publicKey, app: this.push.appsEnabled }
   }
 
   /** Pushes the member's notifications to this browser from now on. Answers with the subscription's ID. */
@@ -86,5 +98,30 @@ export class PushController {
   @UseGuards(SuspendedAllowedGuard)
   async remove(@Req() req: AuthedRequest, @Param('id') id: string) {
     await this.push.remove(req.member.id, parse(z.uuid(), id))
+  }
+
+  /**
+   * Pushes the member's notifications to this installation of the app from now on.
+   * The app sends it whenever it starts signed in, and when its token changes.
+   * 404 when this server cannot push to the app (no FCM service account).
+   */
+  @Post('devices')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async register(@Req() req: AuthedRequest, @Body() body: unknown) {
+    if (!this.push.appsEnabled) throw new NotFoundException('This server does not push to the app')
+    const { service, token, key } = parse(registerBody, body)
+    await this.limits.hit('action', req.member.id)
+    await this.push.register(req.member.id, service, token, key)
+  }
+
+  /** Signing out of the app: stops pushing to it. Suspended members can too, as they can sign out. */
+  @Post('devices/remove')
+  @HttpCode(204)
+  @UseGuards(SuspendedAllowedGuard)
+  async unregister(@Req() req: AuthedRequest, @Body() body: unknown) {
+    const { service, token } = parse(deviceBody, body)
+    await this.limits.hit('action', req.member.id)
+    await this.push.unregister(req.member.id, service, token)
   }
 }
