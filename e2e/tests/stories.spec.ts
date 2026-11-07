@@ -50,6 +50,16 @@ test('a post becomes a story with its first update, and Latest shows the story o
     await writeUpdate(page, `First print, from ${handle}`)
     await expect(page.locator('.story-bar')).toContainText('Story · 2 updates')
     await expect(page.locator('.story-spine > li').last()).toHaveClass(/story-add/)
+    // Running on past an update, the line starts no lower than where the curve into it
+    // turns away, so the curve branches off one line rather than a second one starting.
+    const breaks = await page.locator('.story-spine > li:not(:last-child)').evaluateAll((items) =>
+      items.filter((li) => {
+        const curve = getComputedStyle(li, '::before')
+        const turns = parseFloat(curve.top) + parseFloat(curve.height) - parseFloat(curve.borderBottomLeftRadius)
+        return parseFloat(getComputedStyle(li, '::after').top) > turns
+      }).length,
+    )
+    expect(breaks).toBe(0)
     // The author follows nothing of their own, and the line ends at the box.
     await expect(page.getByRole('button', { name: /Follow story/ })).toHaveCount(0)
     const lastOnward = await page.locator('.story-spine > li').last().evaluate((li) => getComputedStyle(li, '::after').content)

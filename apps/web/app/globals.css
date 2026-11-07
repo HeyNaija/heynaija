@@ -1544,8 +1544,10 @@ a.story-start:hover .story-start-text { color: var(--ink); }
    its field keeps the dashed accent edge the spine's other way in had. */
 .story-spine > li.story-add::before { height: calc(var(--reply-gap) + 32px); }
 .story-add .reply-composer:not(.is-expanded):not(:focus-within) .composer-input { border-style: dashed; border-color: var(--accent); }
-.story-spine > li:not(:last-child)::after { content: ''; position: absolute; top: 28px; bottom: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--story-gutter)); border-left: 2px solid var(--accent); pointer-events: none; }
-.story-spine > li.story-fold:not(:last-child)::after { top: 50%; }
+/* Running on, the line starts at the top of the item, over the curve's straight part, so
+   the curve branches off one line; started lower, below where the curve turns away (its
+   radius above its foot), it read as a second line beginning under the card. */
+.story-spine > li:not(:last-child)::after { content: ''; position: absolute; top: 0; bottom: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--story-gutter)); border-left: 2px solid var(--accent); pointer-events: none; }
 .story-fold > a { display: inline-flex; min-height: var(--touch-target); align-items: center; gap: 6px; padding: 0 14px; border-radius: var(--r-control); font-size: 13px; font-weight: 600; }
 .story-fold > a { border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
 .story-fold > a:hover { border-color: var(--line-strong); color: var(--ink); }
