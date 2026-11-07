@@ -1460,7 +1460,10 @@ ol.post-list .post-card { padding-inline: 18px; }
    edge, on its avatar's axis (1px border + 14px padding + half a 32px avatar), and curves
    into each answer's card at that answer's avatar height (1 + 12 + 16). It runs on past an
    answer only to what comes next (another answer, "Your reply", an error, "More replies"),
-   so the last one ends in a curve, not a straight line beside it. "More replies" and
+   so the last one ends in a curve, not a straight line beside it. Running on, it starts at
+   the top of the answer's row, over the curve's straight part, so the curve branches off
+   one line; started lower, below where the curve turns away, it read as a second line
+   beginning under the card. "More replies" and
    "No available replies" get a curve at their middle. Replies just posted ("Your reply")
    are a second list beside the loaded one, so every rule here names .thread-children as
    the list's own parent: `.thread-children > :is(.a > .b)` would ask one element to be
@@ -1473,7 +1476,7 @@ ol.post-list .post-card { padding-inline: 18px; }
 .thread-children > :is(.thread-more, .thread-empty)::before { content: ''; position: absolute; top: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--thread-gutter)); width: var(--thread-gutter); height: calc(var(--reply-gap) + 30px); border-bottom: 2px solid var(--line-strong); border-left: 2px solid var(--line-strong); border-bottom-left-radius: 10px; pointer-events: none; }
 .thread-children > :is(.thread-more, .thread-empty)::before { height: calc(var(--reply-gap) + 50% + 1px); }
 .thread-children > .thread-list > li:not(:last-child)::after,
-.thread-children > .thread-list:not(:last-child) > li:last-child::after { content: ''; position: absolute; top: 28px; bottom: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--thread-gutter)); border-left: 2px solid var(--line-strong); pointer-events: none; }
+.thread-children > .thread-list:not(:last-child) > li:last-child::after { content: ''; position: absolute; top: 0; bottom: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--thread-gutter)); border-left: 2px solid var(--line-strong); pointer-events: none; }
 /* Straight on through "Your reply" (from above its 14px margin and dashed rule to the
    replies under it) and through an error (to "Try again"). First under the post, either
    starts at the top of the replies, where the line leaves the parent. */
@@ -1491,7 +1494,7 @@ ol.post-list .post-card { padding-inline: 18px; }
    never lies across the box. A phone answers from the fixed bar instead. */
 .thread-branch:not(.is-root) > .thread-editor-host:not(:empty) { --thread-gutter: 14px; position: relative; margin: var(--reply-gap) 0 0 calc(30px + var(--thread-gutter)); }
 .thread-branch:not(.is-root) > .thread-editor-host:not(:empty)::before { content: ''; position: absolute; top: calc(-1 * var(--reply-gap)); left: calc(-1 * var(--thread-gutter)); width: var(--thread-gutter); height: calc(var(--reply-gap) + 57px); border-bottom: 2px solid var(--line-strong); border-left: 2px solid var(--line-strong); border-bottom-left-radius: 10px; pointer-events: none; }
-.thread-branch:not(.is-root) > .thread-editor-host:not(:empty):has(+ .thread-children:not([hidden], :empty))::after { content: ''; position: absolute; top: 55px; bottom: 0; left: calc(-1 * var(--thread-gutter)); border-left: 2px solid var(--line-strong); pointer-events: none; }
+.thread-branch:not(.is-root) > .thread-editor-host:not(:empty):has(+ .thread-children:not([hidden], :empty))::after { content: ''; position: absolute; top: 0; bottom: 0; left: calc(-1 * var(--thread-gutter)); border-left: 2px solid var(--line-strong); pointer-events: none; }
 /* Nothing to show yet while a branch loads, so no space either: the next reply stays put. */
 .thread-children[hidden], .thread-children:empty { display: none; }
 /* Replies stop at THREAD_MAX_DEPTH (5), and every level indents: 44px on a desktop,
