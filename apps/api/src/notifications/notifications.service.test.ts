@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { members, notificationOptOuts, notifications, posts, reports } from '@heynaija/db'
+import { gists, members, notificationOptOuts, notifications, posts, reports } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { MembersService } from '../members/members.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
@@ -48,8 +48,8 @@ test('replies, likes and follows notify the person they are about, newest first'
   )
   const [follow, replied, liked] = page.notifications
   assert.deepEqual(follow!.actor, { handle: 'chi', displayName: null, avatar: null, founder: false })
-  assert.deepEqual(replied!.post, { id: reply, excerpt: 'Jollof, obviously' })
-  assert.deepEqual(liked!.post, { id: post, excerpt: 'Jollof or fried rice?' })
+  assert.deepEqual(replied!.post, { id: reply, excerpt: 'Jollof, obviously', gistId: null })
+  assert.deepEqual(liked!.post, { id: post, excerpt: 'Jollof or fried rice?', gistId: null })
   assert.equal(await service.unreadCount(ada), 3)
   // Nothing for the people who acted.
   assert.equal(await service.unreadCount(bayo), 0)
@@ -98,7 +98,7 @@ test('reposting again notifies only once; taking the repost back hides it', asyn
   const [reposted] = (await service.list(ada, 50)).notifications
   assert.deepEqual(await kinds(ada), ['repost:bayo'])
   // Like a like: the excerpt is of your own post.
-  assert.deepEqual(reposted!.post, { id: post, excerpt: 'repost me' })
+  assert.deepEqual(reposted!.post, { id: post, excerpt: 'repost me', gistId: null })
   assert.equal((await db.select().from(notifications)).length, 1)
 
   // Gone with the post.
@@ -111,7 +111,7 @@ test('a quote notifies the quoted author with the quote itself, once even when i
   const { id: quote } = await postsService.create(bayo, 'what she said', { quote: post })
   const [quoted] = (await service.list(ada, 50)).notifications
   assert.equal(quoted!.kind, 'quote')
-  assert.deepEqual(quoted!.post, { id: quote, excerpt: 'what she said' })
+  assert.deepEqual(quoted!.post, { id: quote, excerpt: 'what she said', gistId: null })
 
   // Quoting the post you are replying to is one reply, not a reply and a quote.
   await postsService.create(chi, 'replying with it', { replyTo: post, quote: post })
@@ -232,7 +232,7 @@ test('a mention notifies the person mentioned once, with the post that mentions 
   const [mention] = (await service.list(bayo, 50)).notifications
   assert.equal(mention!.kind, 'mention')
   assert.deepEqual(mention!.actor, { handle: 'ada', displayName: 'Ada Obi', avatar: null, founder: false })
-  assert.deepEqual(mention!.post, { id, excerpt: 'Ask @bayo, @bayo knows suya' })
+  assert.deepEqual(mention!.post, { id, excerpt: 'Ask @bayo, @bayo knows suya', gistId: null })
   assert.deepEqual(await kinds(bayo), ['mention:ada'])
   assert.equal(await service.unreadCount(bayo), 1)
   // Nothing for the author, nor for a handle nobody has.
@@ -293,7 +293,7 @@ test(`only the first ${MENTIONS_NOTIFIED_MAX} members a post names are notified;
   assert.equal((await postsService.post(null, id))!.mentions.length, many.length + 1)
 })
 
-const allOn = { email: true, reply: true, like: true, repost: true, quote: true, mention: true, follow: true }
+const allOn = { email: true, reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true }
 
 test('every kind of activity notifies until the member turns it off', async () => {
   assert.deepEqual(await service.preferences(ada), allOn)
@@ -394,4 +394,18 @@ test('one notify call skips the recipients who turned that kind off and tells th
   await postsService.create(bayo, 'hi @ada @chi @sam')
   assert.deepEqual(await kinds(chi), ['reply:ada'])
   assert.deepEqual(await kinds(ada), ['mention:bayo'])
+})
+
+test('a reply in a Gist says which Gist it is in, and leaves the list when the host hides it', async () => {
+  const service = new NotificationsService(db, { access: async () => ({ member: () => true, anyone: true }) })
+  const [{ id: gist }] = (await db.insert(gists).values({ hostId: ada, title: 'Room' }).returning({ id: gists.id })) as [{ id: string }]
+  const { id: reply } = await postsService.create(bayo, 'Hello host', { gist })
+  const [listed] = (await service.list(ada, 50)).notifications
+  assert.equal(listed!.kind, 'reply')
+  assert.deepEqual(listed!.post, { id: reply, excerpt: 'Hello host', gistId: gist })
+  assert.equal(await service.unreadCount(ada), 1)
+
+  await postsService.hideInGist(gist, reply, true)
+  assert.deepEqual(await kinds(ada), [])
+  assert.equal(await service.unreadCount(ada), 0)
 })

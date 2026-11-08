@@ -80,6 +80,18 @@ export const FLAGS = {
     owner: 'gists',
     defaults: { development: true, staging: true, production: false }, // code in main, but never switched on in production; LIVE_IN_MAIN is false
   },
+  gistReplies: {
+    description:
+      "Writing replies in a Gist's comment section (ADR 0017). Only has an effect where gists is on. Replies already posted stay readable, and a member can still delete their own.",
+    owner: 'gists',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
+  adultLabels: {
+    description:
+      'Marking posts sensitive (ADR 0020): the flag on media in the composer, the post menu item, the Settings switch that marks everything a member posts, the moderators\' mark and the report reason. Gating creation only: a post already marked stays hidden from anyone who is not an adult, whatever this says.',
+    owner: 'posts',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
 } as const satisfies Record<string, FlagDefinition>
 
 export type FlagKey = keyof typeof FLAGS

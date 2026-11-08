@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { grantModerator } from '../lib/cli.ts'
+import { makeMinor } from '../lib/db.ts'
 import { newMember, post } from '../lib/members.ts'
 
 test('a reported post is removed by a moderator and its author is told', async ({ browser }) => {
@@ -32,6 +33,32 @@ test('a reported post is removed by a moderator and its author is told', async (
   await expect(author.page.locator('article', { hasText: text })).toHaveCount(0)
   await author.page.goto('/notifications')
   await expect(author.page.getByText('A moderator removed your post for spam')).toBeVisible()
+
+  await Promise.all([author, reporter, moderator].map((m) => m.context.close()))
+})
+
+test('a minor’s post reported as needing a sensitive mark can be removed, not marked', async ({ browser }) => {
+  const author = await newMember(browser, 'young')
+  const reporter = await newMember(browser, 'report')
+  const moderator = await newMember(browser, 'mod')
+  grantModerator(moderator.handle)
+
+  const text = `Graphic footage, from ${author.handle}`
+  const id = (await (await post(author.page, text)).getAttribute('id'))!.replace('post-', '')
+  await makeMinor(author.handle)
+
+  await reporter.page.goto(`/report?post=${id}`)
+  await reporter.page.getByLabel('Sensitive, but not marked sensitive').check()
+  await reporter.page.getByRole('button', { name: 'Send report' }).click()
+  await expect(reporter.page.getByRole('button', { name: 'Send report' })).toHaveCount(0)
+
+  // Only an adult’s post carries a mark (ADR 0020): the queue offers removal alone, and says why.
+  await moderator.page.goto('/mod')
+  const item = moderator.page.locator('form', { hasText: text })
+  await expect(item).toContainText('can’t be marked sensitive')
+  await expect(item.getByRole('button', { name: 'Mark sensitive' })).toHaveCount(0)
+  await item.getByRole('button', { name: 'Remove post' }).click()
+  await expect(moderator.page.locator('form', { hasText: text })).toHaveCount(0)
 
   await Promise.all([author, reporter, moderator].map((m) => m.context.close()))
 })

@@ -349,6 +349,8 @@ export class AccountDeletionService {
       await run(sql`delete from bookmarks where member_id = ${memberId}`)
       await run(sql`delete from idea_votes where member_id = ${memberId}`)
       await run(sql`delete from follows where follower_id = ${memberId} or followee_id = ${memberId}`)
+      // The stories they followed, and everyone's follows of their stories (docs/adr/0024).
+      await run(sql`delete from story_follows where member_id = ${memberId} or story_id in ${own}`)
       await run(sql`delete from blocks where blocker_id = ${memberId} or blocked_id = ${memberId}`)
       await run(sql`delete from mutes where muter_id = ${memberId} or muted_id = ${memberId}`)
 
@@ -366,18 +368,31 @@ export class AccountDeletionService {
       // (GistsService.reconcile disconnects an inactive member, then ends a Gist whose
       // host has been gone two minutes). A Gist someone reported, or a moderator ended,
       // stays as evidence, like a reported post: its title and host (the tombstone); who
-      // was in it is the report's own record (gist_report_participants), which stays.
+      // was in it is the report's own record (gist_report_participants), which stays. One
+      // with replies from other members stays too, its title blanked: their replies are theirs,
+      // and PostsService reads them only through a Gist whose host is still a member.
       // Their place in other people's Gists goes; `role_changed_by` and `removed_by`
       // naming them stay, pointing at the tombstone.
       await run(sql`delete from gist_members where gist_id in (select id from gists where host_id = ${memberId})`)
+      await run(sql`update gists set title = 'Deleted Gist'
+        where host_id = ${memberId} and id in (select gist_id from posts where gist_id is not null and author_id <> ${memberId})
+          and id not in (select gist_id from reports where gist_id is not null)
+          and id not in (select gist_id from moderation_actions where gist_id is not null)`)
+      await run(sql`update posts set gist_id = null
+        where author_id = ${memberId} and gist_id in (select id from gists where host_id = ${memberId}
+          and id not in (select gist_id from reports where gist_id is not null)
+          and id not in (select gist_id from moderation_actions where gist_id is not null)
+          and id not in (select gist_id from posts where gist_id is not null and author_id <> ${memberId}))`)
       await run(sql`delete from gists where host_id = ${memberId}
         and id not in (select gist_id from reports where gist_id is not null)
-        and id not in (select gist_id from moderation_actions where gist_id is not null)`)
+        and id not in (select gist_id from moderation_actions where gist_id is not null)
+        and id not in (select gist_id from posts where gist_id is not null)`)
       await run(sql`delete from gist_members where member_id = ${memberId}`)
 
       await run(sql`delete from notifications where recipient_id = ${memberId} or actor_id = ${memberId}`)
       await run(sql`delete from notification_opt_outs where member_id = ${memberId}`)
       await run(sql`delete from push_subscriptions where member_id = ${memberId}`)
+      await run(sql`delete from push_devices where member_id = ${memberId}`)
       await run(sql`delete from profile_badges where member_id = ${memberId}`)
       await run(sql`delete from invite_redemptions where identity_id = ${memberId}`)
       // Their place on feature flags' allow-lists goes. Flag changes they made as a

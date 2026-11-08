@@ -23,19 +23,24 @@ import {
   postPolls,
   posts,
   problemDetails,
+  pushDevices,
   pushSubscriptions,
   reports,
   reposts,
+  storyFollows,
 } from '@heynaija/db'
-import { Inject, Injectable } from '@nestjs/common'
-import { aliasedTable, and, asc, eq, isNotNull, or } from 'drizzle-orm'
-import { avatarPath, postImagePath } from '../media/media.service.js'
+import { Inject, Injectable, Optional } from '@nestjs/common'
+import { aliasedTable, and, asc, eq, isNotNull, or, sql } from 'drizzle-orm'
+import { avatarPath } from '../media/media.service.js'
+import { localMediaUrls, MEDIA_URLS, type MediaUrls } from '../media/media-urls.js'
 import { masterKey, posterKey } from '../video/video-keys.js'
-import { preferencesWithout } from '../notifications/notifications.service.js'
+import { adultContentAllowed } from '../governance/adult-content.js'
+import { gistsOpenTo, postShown, preferencesWithout } from '../notifications/notifications.service.js'
+import { GistsGate } from '../gists/gists-enabled.guard.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/12'
+export const EXPORT_FORMAT = 'heynaija-export/14'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -46,10 +51,16 @@ export const EXPORT_FORMAT = 'heynaija-export/12'
  */
 @Injectable()
 export class ExportService {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    @Optional() @Inject(GistsGate) private readonly gate: Pick<GistsGate, 'access'> | null = null,
+    // A marked post's pictures and video are private (ADR 0025): their URLs are signed for the author.
+    @Optional() @Inject(MEDIA_URLS) private readonly urls: MediaUrls = localMediaUrls('/media'),
+  ) {}
 
   async export(memberId: string, email: string | null) {
     const db = this.db
+    const gistsOn = await gistsOpenTo(this.gate, memberId)
     const [me] = await db.select().from(members).where(eq(members.id, memberId))
     if (!me) return null
 
@@ -69,6 +80,7 @@ export class ExportService {
       votedFor,
       following,
       followers,
+      followedStories,
       muted,
       blocked,
       joined,
@@ -77,6 +89,7 @@ export class ExportService {
       received,
       turnedOff,
       pushedTo,
+      pushedToApps,
       ageRecords,
       verifications,
       [membership],
@@ -88,23 +101,28 @@ export class ExportService {
           createdAt: posts.createdAt,
           replyTo: posts.replyParentId,
           quoteOf: posts.quotePostId,
+          storyOf: posts.storyId,
           replyAudience: posts.replyAudience,
           community: communities.slug,
           deletedAt: posts.deletedAt,
           removedByModeratorAt: posts.removedAt,
+          gistId: posts.gistId,
+          hiddenByHostAt: posts.hiddenByHostAt,
+          // Marked sensitive (ADR 0020): 'author' or 'moderator', or null.
+          markedSensitive: posts.adultLabel,
         })
         .from(posts)
         .leftJoin(communities, eq(communities.id, posts.communityId))
         .where(eq(posts.authorId, memberId))
         .orderBy(asc(posts.createdAt)),
       db
-        .select({ id: media.id, postId: media.postId, position: media.position, alt: media.alt, status: media.status })
+        .select({ id: media.id, postId: media.postId, position: media.position, alt: media.alt, status: media.status, servedPrivately: media.servedPrivately })
         .from(media)
         .where(and(eq(media.ownerId, memberId), eq(media.kind, 'post_image'), isNotNull(media.postId)))
         .orderBy(asc(media.position)),
       // Their published videos (ADR 0019): only ones on a post and ready, as for images.
       db
-        .select({ id: media.id, postId: media.postId })
+        .select({ id: media.id, postId: media.postId, servedPrivately: media.servedPrivately })
         .from(media)
         .where(and(eq(media.ownerId, memberId), eq(media.kind, 'post_video'), eq(media.status, 'ready'), isNotNull(media.postId))),
       db
@@ -166,6 +184,11 @@ export class ExportService {
         .where(eq(follows.followeeId, memberId))
         .orderBy(asc(follows.createdAt)),
       db
+        .select({ postId: storyFollows.storyId, since: storyFollows.createdAt })
+        .from(storyFollows)
+        .where(eq(storyFollows.memberId, memberId))
+        .orderBy(asc(storyFollows.createdAt)),
+      db
         .select({ handle: other.handle, since: mutes.createdAt })
         .from(mutes)
         .innerJoin(other, eq(other.id, mutes.mutedId))
@@ -200,8 +223,15 @@ export class ExportService {
         .where(or(eq(moderationActions.memberId, memberId), eq(posts.authorId, memberId)))
         .orderBy(asc(moderationActions.createdAt)),
       db
-        .select({ kind: notifications.kind, postId: notifications.postId, at: notifications.createdAt, readAt: notifications.readAt })
+        .select({
+          kind: notifications.kind,
+          postId: sql<string | null>`case when ${postShown(memberId, gistsOn, { gist: sql`${posts.gistId}`, author: sql`${posts.authorId}`, recipient: sql`${notifications.recipientId}` })}
+            and ${adultContentAllowed(memberId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)} then ${notifications.postId} end`,
+          at: notifications.createdAt,
+          readAt: notifications.readAt,
+        })
         .from(notifications)
+        .leftJoin(posts, eq(posts.id, notifications.postId))
         .where(eq(notifications.recipientId, memberId))
         .orderBy(asc(notifications.createdAt)),
       db.select({ kind: notificationOptOuts.kind }).from(notificationOptOuts).where(eq(notificationOptOuts.memberId, memberId)),
@@ -211,11 +241,18 @@ export class ExportService {
         .where(eq(pushSubscriptions.memberId, memberId))
         .orderBy(asc(pushSubscriptions.createdAt)),
       db
+        .select({ since: pushDevices.createdAt, lastPushedAt: pushDevices.lastPushedAt })
+        .from(pushDevices)
+        .where(eq(pushDevices.memberId, memberId))
+        .orderBy(asc(pushDevices.createdAt)),
+      db
         .select({
           band: ageAssurances.band,
           method: ageAssurances.method,
           at: ageAssurances.assuredAt,
           reviewAfter: ageAssurances.reviewAfter,
+          // The date of birth you gave at signup, on the row it came with.
+          birthDate: ageAssurances.birthDate,
           withdrawnAt: ageAssurances.withdrawnAt,
         })
         .from(ageAssurances)
@@ -255,7 +292,7 @@ export class ExportService {
     for (const image of images) {
       if (!image.postId || image.status !== 'ready') continue
       const list = imagesByPost.get(image.postId) ?? []
-      list.push({ url: postImagePath(image.id), description: image.alt })
+      list.push({ url: this.urls.postImage(image.id, image.servedPrivately), description: image.alt })
       imagesByPost.set(image.postId, list)
     }
     const videosByPost = new Map<string, { url: string; poster: string }[]>()
@@ -263,7 +300,8 @@ export class ExportService {
       if (!video.postId) continue
       const list = videosByPost.get(video.postId) ?? []
       // Paths on the site, as for images: the master playlist (every quality) and the poster.
-      list.push({ url: `/media/${masterKey(video.id)}`, poster: `/media/${posterKey(video.id)}` })
+      const base = video.servedPrivately ? this.urls.videoBase(video.id, true) : '/media'
+      list.push({ url: `${base}/${masterKey(video.id)}`, poster: `${base}/${posterKey(video.id)}` })
       videosByPost.set(video.postId, list)
     }
     // The members each post mentions, once each, by the handle they have now.
@@ -289,6 +327,7 @@ export class ExportService {
       exportedAt: new Date(),
       notes: [
         'Image and photo URLs are relative to the site, for example https://heynaija.ng/media/... .',
+        'Pictures and video on posts marked sensitive are kept privately: their URLs are signed for you and stop working within two hours. Download your data again for new ones.',
         'Posts you deleted, and posts a moderator removed, are included with the date that happened: HeyNaija keeps them for moderation records.',
       ],
       account: {
@@ -307,8 +346,9 @@ export class ExportService {
         role: me.role,
         active: me.active,
       },
-      // Every statement about your age band and how it was made: empty for
-      // accounts made before HeyNaija asked, which HeyNaija treats as unknown.
+      // Every statement about your age band and how it was made, with the date
+      // of birth you gave at signup: empty for accounts made before HeyNaija
+      // asked, which HeyNaija treats as unknown.
       age: ageRecords,
       identityVerifications: verifications,
       votingMembership: membership ?? null,
@@ -329,6 +369,8 @@ export class ExportService {
       ideaVotes: votedFor,
       following,
       followers,
+      // The stories you follow (docs/adr/0024), by their first post. Your own updates are among your posts, with storyOf.
+      storiesFollowed: followedStories,
       muted,
       blocked,
       communities: joined,
@@ -339,9 +381,16 @@ export class ExportService {
       notificationPreferences: preferencesWithout(turnedOff.map((r) => r.kind)),
       // Whether those notifications are also sent to your email address.
       emailNotifications: me.emailNotifications,
+      // Whether everything you post is marked sensitive: your choice ('author'),
+      // a moderator's ('moderator'), or not (null). And whether pictures and video
+      // in posts marked sensitive are shown to you without a cover.
+      markPostsSensitive: me.labelPosts,
+      showSensitiveMedia: me.showSensitiveMedia,
       // The browsers they are pushed to: when each was turned on and last sent one.
       // A browser's push address is left out; it is only good for sending to it.
       pushNotifications: pushedTo,
+      // The same for the HeyNaija app on your phones; its token is left out likewise.
+      appPushNotifications: pushedToApps,
       notifications: received,
     }
   }

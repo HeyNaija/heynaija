@@ -1,11 +1,12 @@
 import { communities, type Db, media, members, posts, reports } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
-import { and, eq, inArray, isNotNull, isNull, lt, ne, type SQL, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lt, lte, ne, type SQL, sql } from 'drizzle-orm'
 import sharp from 'sharp'
 import { managesPhoto } from '../communities/photo-managers.js'
 import { SAFETY_ALERTS, type SafetyAlerts } from '../moderation/safety-alerts.js'
 import { DB } from '../tokens.js'
 import type { ObjectStore } from './object-store.js'
+import { type Place, placed, placeFor } from './places.js'
 
 export const OBJECT_STORE = Symbol('OBJECT_STORE')
 export const MEDIA_JOBS = Symbol('MEDIA_JOBS')
@@ -16,6 +17,16 @@ export interface MediaJobs {
   processPostImage(mediaId: string): Promise<void>
   /** Queues dropping these media-bucket files from the CDN's cache, retried until it works. */
   purgeCdn(keys: string[]): Promise<void>
+}
+
+/**
+ * Moving a post's files when its sensitive mark changes (ADR 0025). Queued, so a
+ * video's few hundred files do not hold up the request that marked it, and
+ * retried; the hourly sweep catches up anything still out of place.
+ */
+export interface PlacementJobs {
+  /** Queues moving a post's ready images and video to where its mark says: private while marked, public otherwise. Safe to repeat. */
+  placePostMedia(postId: string): Promise<void>
 }
 
 export const CONTENT_SCANNER = Symbol('CONTENT_SCANNER')
@@ -119,8 +130,11 @@ export const publishedKeys = (kind: Kind, mediaId: string) => [
 ]
 // Private copies of what moderators took down or the scanner blocked, kept as
 // evidence and so a removal can be undone. Never touched by the abandoned-upload
-// clean-up, here or in the bucket's lifecycle rule.
+// clean-up, here or in the bucket's lifecycle rule. A published file's own
+// quarantined copy is its `quarantine` place (places.ts).
 const quarantineKey = (key: string) => `quarantine/${key}`
+// Where a published image of this kind can be served from: only a post's can be private.
+const servedPlaces = (kind: Kind): Place[] => (kind === 'post_image' ? ['public', 'private'] : ['public'])
 
 /**
  * Where a member's avatar is served from, without the size suffix: the web app
@@ -469,17 +483,42 @@ export class MediaService {
   /**
    * Puts a restored post's images back, unless the post has been deleted: then
    * they stay private, as the evidence images of an erased account must
-   * (docs/adr/0016). Idempotent.
+   * (docs/adr/0016). Back to the private place if the post is marked sensitive
+   * (ADR 0025). Idempotent.
    */
   async releasePostImages(postId: string): Promise<void> {
     const rows = await this.db
-      .select({ id: media.id })
+      .select({ id: media.id, marked: sql<boolean>`${posts.adultLabel} is not null` })
       .from(media)
       .innerJoin(posts, eq(posts.id, media.postId))
       .where(and(eq(media.postId, postId), eq(media.kind, 'post_image'), eq(media.status, 'quarantined'), isNull(posts.deletedAt)))
-    for (const { id } of rows) {
-      await this.moveVariants('post_image', id, 'release')
-      await this.db.update(media).set({ status: 'ready' }).where(eq(media.id, id))
+    for (const { id, marked } of rows) {
+      await this.move('post_image', id, ['quarantine'], placeFor(marked))
+      await this.db.update(media).set({ status: 'ready', servedPrivately: marked, quarantinedAt: null }).where(eq(media.id, id))
+    }
+  }
+
+  /**
+   * Moves a post's ready images to where its sensitive mark says (ADR 0025): to
+   * the private bucket while it is marked, so only a signed URL reaches them, and
+   * back to the public one once it is not. The public copies are purged from the
+   * CDN either way: it may hold the picture, or a "not found" from while it was
+   * private. Each file moves on its own, so a move storage failed part-way is
+   * finished by running this again; the hourly sweep does, for any image whose
+   * place and mark disagree. Never touches a taken-down image. Idempotent.
+   */
+  async placePostImages(postId: string): Promise<void> {
+    const rows = await this.db
+      .select({ id: media.id, marked: sql<boolean>`${posts.adultLabel} is not null` })
+      .from(media)
+      .innerJoin(posts, eq(posts.id, media.postId))
+      .where(and(eq(media.postId, postId), eq(media.kind, 'post_image'), eq(media.status, 'ready')))
+    for (const { id, marked } of rows) {
+      const to = placeFor(marked)
+      await this.move('post_image', id, [to === 'private' ? 'public' : 'private'], to)
+      // Only while it is still ready: a takedown in the meantime has the files now.
+      await this.db.update(media).set({ servedPrivately: marked }).where(and(eq(media.id, id), eq(media.status, 'ready')))
+      await this.jobs.purgeCdn(publishedKeys('post_image', id))
     }
   }
 
@@ -592,24 +631,61 @@ export class MediaService {
 
   private async quarantine(kind: Kind, mediaIds: string[]): Promise<void> {
     for (const id of mediaIds) {
-      await this.moveVariants(kind, id, 'quarantine')
+      // From wherever each file is served: a marked post's are in the private place.
+      await this.move(kind, id, servedPlaces(kind), 'quarantine')
       // Out of the bucket, but Cloudflare may still hold a cached copy for a year.
       await this.jobs.purgeCdn(publishedKeys(kind, id))
-      await this.db.update(media).set({ status: 'quarantined' }).where(eq(media.id, id))
+      await this.db.update(media).set({ status: 'quarantined', quarantinedAt: new Date() }).where(eq(media.id, id))
     }
   }
 
-  /** Moves published files between the public bucket and the private quarantine. */
-  private async moveVariants(kind: Kind, mediaId: string, direction: 'quarantine' | 'release'): Promise<void> {
+  /**
+   * Deletes the private copies of images that went to the quarantine (taken down
+   * by a moderator, or kept as evidence) more than `days` ago, as /privacy#keep
+   * says (TAKEN_DOWN_MEDIA_RETENTION_DAYS), unless a report about them, or about
+   * their post, is still open. One quarantined before `quarantined_at` existed is
+   * dated now, so it is kept the full period from today. Files go before the row
+   * changes, so a failure part-way is finished by the next sweep. Returns how many
+   * went. Videos are not touched: a quarantined one may only be waiting for a scan.
+   */
+  async purgeTakenDown(days: number, now = new Date()): Promise<number> {
+    const images = inArray(media.kind, Object.keys(folder) as Kind[])
+    await this.db
+      .update(media)
+      .set({ quarantinedAt: now })
+      .where(and(images, eq(media.status, 'quarantined'), isNull(media.quarantinedAt)))
+    const rows = await this.db
+      .select({ id: media.id, kind: media.kind })
+      .from(media)
+      .where(
+        and(
+          images,
+          eq(media.status, 'quarantined'),
+          lte(media.quarantinedAt, new Date(now.getTime() - days * 24 * 60 * 60 * 1000)),
+          sql`not exists(select 1 from reports r where r.status = 'open' and (r.photo_media_id = ${media.id} or r.post_id = ${media.postId}))`,
+        ),
+      )
+    for (const { id, kind } of rows) {
+      for (const key of publishedKeys(kind as Kind, id)) await this.store.remove(...placed('quarantine', key))
+      await this.db
+        .update(media)
+        .set({ status: 'deleted' })
+        .where(and(eq(media.id, id), eq(media.status, 'quarantined')))
+    }
+    return rows.length
+  }
+
+  /** Moves an image's published files to `to` from any of `from` (places.ts). */
+  private async move(kind: Kind, mediaId: string, from: Place[], to: Place): Promise<void> {
     for (const key of publishedKeys(kind, mediaId)) {
-      const [from, fromKey, to, toKey] =
-        direction === 'quarantine'
-          ? (['media', key, 'uploads', quarantineKey(key)] as const)
-          : (['uploads', quarantineKey(key), 'media', key] as const)
-      // Already moved (a retry): nothing to do for this file.
-      if ((await this.store.size(from, fromKey)) === null) continue
-      await this.store.write(to, toKey, await this.store.read(from, fromKey), 'image/webp')
-      await this.store.remove(from, fromKey)
+      const [toBucket, toKey] = placed(to, key)
+      for (const place of from) {
+        const [fromBucket, fromKey] = placed(place, key)
+        // Already moved (a retry), or never there: nothing to do for this file.
+        if ((await this.store.size(fromBucket, fromKey)) === null) continue
+        await this.store.write(toBucket, toKey, await this.store.read(fromBucket, fromKey), 'image/webp')
+        await this.store.remove(fromBucket, fromKey)
+      }
     }
   }
 
@@ -632,12 +708,12 @@ export class MediaService {
     else await this.discard('post_image', rows.map((r) => r.id))
   }
 
-  /** Deletes published files and marks their rows deleted. */
+  /** Deletes published files, wherever they are served from, and marks their rows deleted. */
   private async discard(kind: Kind, mediaIds: string[]): Promise<void> {
     if (mediaIds.length === 0) return
     await this.db.update(media).set({ status: 'deleted' }).where(inArray(media.id, mediaIds))
     const keys = mediaIds.flatMap((id) => publishedKeys(kind, id))
-    for (const key of keys) await this.store.remove('media', key)
+    for (const key of keys) for (const place of servedPlaces(kind)) await this.store.remove(...placed(place, key))
     // Gone from the bucket, but Cloudflare may still serve a cached copy for a year.
     // One job for them all: the purger splits them into requests Cloudflare takes.
     await this.jobs.purgeCdn(keys)
@@ -730,6 +806,23 @@ export class MediaService {
           ),
         )
       await this.quarantine('community_photo', exposedPhotos.map((r) => r.id))
+
+      // Images whose place disagrees with their post's sensitive mark (ADR 0025):
+      // the move queued when the mark changed failed, or a post was marked before
+      // private serving existed. Live posts only; a removed post's are above.
+      const misplaced = await this.db
+        .selectDistinct({ postId: posts.id })
+        .from(media)
+        .innerJoin(posts, eq(posts.id, media.postId))
+        .where(
+          and(
+            eq(media.kind, 'post_image'),
+            eq(media.status, 'ready'),
+            isNull(posts.removedAt),
+            sql`${media.servedPrivately} <> (${posts.adultLabel} is not null)`,
+          ),
+        )
+      for (const { postId } of misplaced) await this.placePostImages(postId)
     }
   }
 }

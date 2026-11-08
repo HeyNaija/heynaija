@@ -11,7 +11,10 @@ import {
 export type { AuthRequest, MemberIdentity }
 
 /** The credentials AuthService needs from an incoming request. */
-export const authRequest = (req: Pick<FastifyRequest, 'headers'>): AuthRequest => ({ cookieHeader: req.headers.cookie })
+export const authRequest = (req: Pick<FastifyRequest, 'headers'>): AuthRequest => ({
+  cookieHeader: req.headers.cookie,
+  authorization: req.headers.authorization,
+})
 
 /**
  * The API's one way to ask who is signed in (docs/adr/0012). Guards and

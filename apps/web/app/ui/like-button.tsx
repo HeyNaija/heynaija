@@ -11,7 +11,7 @@ import { remember, useMine, withChoice } from './my-activity'
  * server refuses, it changes back. Without JavaScript the form posts to setLike
  * and the page reloads, as before.
  */
-export function LikeButton({ id, liked: drawn, count: drawnCount }: { id: string; liked: boolean; count: number }) {
+export function LikeButton({ id, liked: drawn, count: drawnCount, gistId }: { id: string; liked: boolean; count: number; gistId?: string }) {
   // The server's numbers, with the reader's latest choice in this tab, if any.
   const liked = useMine(id)?.liked ?? drawn
   const count = withChoice(drawnCount, drawn, liked)
@@ -27,12 +27,13 @@ export function LikeButton({ id, liked: drawn, count: drawnCount }: { id: string
         const on = !liked
         remember(id, { liked: on })
         startTransition(async () => {
-          const result = await toggleLike(id, on).catch(() => ({ ok: false }))
+          const result = await toggleLike(id, on, gistId).catch(() => ({ ok: false }))
           if (!result.ok) remember(id, { liked: !on })
         })
       }}
     >
       <input type="hidden" name="id" value={id} />
+      {gistId ? <input type="hidden" name="gist" value={gistId} /> : null}
       <input type="hidden" name="on" value={liked ? '0' : '1'} />
       <button
         type="submit"

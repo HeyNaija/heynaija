@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 16 | 16 | 12 | 89 |
+| 45 | 17 | 16 | 12 | 90 |
 
 ## Priority order
 
@@ -266,7 +266,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `account-deletion`
 - **Priority:** P0 · **Status:** Partial · **Availability:** Not live
 - **Description:** Provide a usable route to delete an account and handle privacy requests.
-- **Remaining work / caveat:** Members can delete their account in Settings, and requests by email are recorded and answered. The operator's name and address, and how long deletion records and moderation evidence are kept, are still placeholders for the operator and counsel.
+- **Remaining work / caveat:** Members can delete their account in Settings, and requests by email are recorded and answered. The privacy policy names the founders as the data controller, and how long deletion records and moderation evidence are kept (set by the operator on 8 Nov 2026, enforced hourly, counsel to confirm).
 - **Dependencies:** `operator-disclosure`
 - **Inspected evidence:** `apps/web/app/(main)/settings/delete/page.tsx`, `apps/web/app/(main)/privacy/page.tsx`, `apps/api/src/account/account-deletion.service.ts`, `apps/api/src/account/account-deletion.service.test.ts`, `apps/api/src/account/account.controller.ts`, `apps/api/src/account/account-queue.ts`, `apps/api/src/cli/privacy-request.ts`, `e2e/tests/account-deletion.spec.ts`, `docs/adr/0016-account-deletion.md`, `docs/governance/privacy-requests.md`
 - **Audit notes:** Built on 30 October 2026 (ADR 0016): an account leaves the site at once and is erased after 14 days unless its owner keeps it; an hourly job erases due accounts; members are emailed at both steps; `pnpm privacy-request` records and closes requests made by email. Waiting on counsel's retention periods (counsel log C-01 to C-15) and on operator-disclosure.
@@ -425,6 +425,15 @@ This tracks product development, not formal governance decisions. Priority means
 - **Inspected evidence:** `packages/db/src/schema.ts`, `packages/db/drizzle/0028_polls_reply_controls.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/ui/post-item.tsx`, `apps/api/src/posts/posts.service.test.ts`, `e2e/tests/polls-reply-controls.spec.ts`
 - **Audit notes:** A root post allows everyone, accounts its author follows plus mentioned accounts, or mentioned accounts only. The root setting governs direct and nested replies, can be changed for future replies, and does not restrict quotes, likes, reposts or poll votes. Deleted roots no longer restrict surviving replies.
 
+#### Stories
+
+- **ID:** `stories`
+- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Description:** Add updates to your own post over time, so people can follow one story from start to latest, and reply to the update they are about.
+- **Dependencies:** `threaded-replies`
+- **Inspected evidence:** `docs/adr/0024-stories.md`, `packages/db/drizzle/0040_stories.sql`, `apps/api/src/posts/stories.test.ts`, `apps/web/app/ui/story.tsx`, `e2e/tests/stories.spec.ts`
+- **Audit notes:** Proposed 7 Nov 2026 (ADR 0024); web built on feat/stories, the apps not yet. Only the author adds updates; each update is a post of its own, and replies go under the update they are about. Feeds show a story once, as its newest update with the first post above it. Follow story notifies on each new update (story_update, optional).
+
 ### People and discovery
 
 #### Basic trending conversations
@@ -575,13 +584,14 @@ This tracks product development, not formal governance decisions. Priority means
 
 ### Safety and privacy
 
-#### Date of birth at signup and 18+ labels
+#### 18+ labels for posts and communities
 
 - **ID:** `adult-content-labels`
-- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
-- **Description:** Ask for a date of birth at signup and keep only the age band; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.
-- **Inspected evidence:** `docs/adr/0020-under-18-accounts-and-adult-labels.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`
-- **Audit notes:** Phase 1 of ADR 0020 (proposed, 3 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs.
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
+- **Description:** Let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.
+- **Remaining work / caveat:** Members confirm they are 18 or older at signup; asking for a date of birth instead was built and is switched off (8 Nov 2026). Posts can be marked sensitive (the 18+ label, shown the way X does it), on the web and in the apps, behind the adultLabels flag, which is off in production. Marked pictures and video are served privately, by signed URLs that last at most two hours. A community's moderators can mark the whole community, which then only adults find.
+- **Inspected evidence:** `docs/adr/0020-under-18-accounts-and-adult-labels.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`, `apps/api/src/governance/adult-content.ts`, `apps/api/src/posts/sensitive.test.ts`, `docs/adr/0025-private-sensitive-media.md`, `apps/api/src/media/private-media.test.ts`
+- **Audit notes:** Phase 1 of ADR 0020 (accepted 6 Nov 2026): the 18+ beta rule stays while this ships; a member already here whose date gives under 18 is kept as a minor and moderators are told. The date of birth is built: at signup (birth_date on restricted.age_assurances, the /join fields and confirmation, POST /v1/signup/age, Settings and the export), and asked once of everyone already here, who sees only /birth-date until they answer (POST /v1/me/birth-date). The age is worked out from the date on every check. The labels and their enforcement are not yet. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs. Owner decision 8 Nov 2026: the beta stays 18+ with the "I am 18 or older" box; asking for a date of birth is switched off (BIRTH_DATE_ENABLED, locked off in env.ts), with its code and the dates already given kept, and /birth-date asks nobody.
 
 #### Safeguards for under-18 access
 
@@ -590,8 +600,8 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Prepare approved age assurance, consent, content and contact safeguards before opening younger accounts.
 - **Remaining work / caveat:** Child-safety decisions, approvals and implementation must precede any change to the temporary adult-only beta.
 - **Dependencies:** `adult-content-labels`
-- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`, `docs/adr/0020-under-18-accounts-and-adult-labels.md`
-- **Audit notes:** Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Waits for counsel (minimum age, guardian consent), phase 1 in production, upload hash-matching and the rest of the under-18 rollout checklist, then a written sign-off.
+- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`, `apps/api/src/governance/minors.ts`, `docs/adr/0020-under-18-accounts-and-adult-labels.md`
+- **Audit notes:** Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Owner decisions of 5 and 6 Nov 2026: 13 to 17 year olds join the beta the way X lets them in, with protections on by default; 13 is the minimum on the web and in the app stores. First come dates of birth at signup, labels enforced, Arachnid Shield on in production and the minors' protections (ADR 0020 sections 4 and 5); counsel's answers and the rest of the under-18 rollout checklist follow during the beta. Minors listen to Gists but never host or speak. Contact and discovery protections built 7 Nov 2026 (branch feat/under-18-contact): replies limited to people a minor follows, strangers' mentions plain text, minors in no stranger's Discover, search or suggestions, none of it loosened before 18 (ADR 0020, questions 12 to 15). Owner decision 8 Nov 2026: the beta stays 18+ and opening to minors is set aside; the protections stay in the code for any member already recorded as under 18.
 
 #### Age verification for adults
 
@@ -599,7 +609,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P2 · **Status:** Planned · **Availability:** Not live
 - **Description:** Check that a member is 18 or over, separately from identity verification, for features that need a verified adult.
 - **Inspected evidence:** `docs/adr/0006-age-status-model.md`, `docs/adr/0016-direct-messages.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`
-- **Audit notes:** The model exists (restricted.age_assurances, ageStatus) but nothing can yet produce a verified assurance: NIN verification is locked off and no age-assurance provider is chosen. Direct messages need this. The provider must not require a NIN (under-18 rollout section 2).
+- **Audit notes:** The model exists (restricted.age_assurances, ageStatus) but nothing can yet produce a verified assurance: NIN verification is locked off and no age-assurance provider is chosen. Direct messages and calls are not built until it exists (owner, 6 Nov 2026, ADR 0020); meanwhile hosting and speaking in Gists read the stated age. Governance voting always needs an ID-verified age. The provider must not require a NIN (under-18 rollout section 2).
 
 ### Transparency and governance
 
@@ -693,7 +703,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `direct-messages`
 - **Priority:** P2 · **Status:** Blocked · **Availability:** Not live
 - **Description:** Support opt-in private conversations between age-verified adults, with message requests, blocking and reporting.
-- **Remaining work / caveat:** Design only. Messages will be limited to members who are 18 or over, have completed age verification and have turned messages on. Age verification, message-request and abuse handling, retention and safeguarding approval are needed first.
+- **Remaining work / caveat:** Design only. Messages will be limited to members who are 18 or over, have completed age verification and have turned messages on; not built until age verification exists (owner, 6 Nov 2026). Age verification, message-request and abuse handling, retention and safeguarding approval are needed first.
 - **Dependencies:** `minor-safeguards`, `age-verification`
 - **Inspected evidence:** `docs/adr/0016-direct-messages.md`, `PRODUCT.md`, `packages/db/src/schema.ts`, `docs/governance/under-18-rollout.md`
 - **Audit notes:** No message model or delivery endpoint exists. Design in ADR 0016 (proposed 30 Oct 2026). Staged plan: 1 design (this ADR); 2 backend behind a default-off flag; 3 UI behind the flag; 4 safeguards sign-off (age verification, counsel on privacy copy and retention, moderator runbook, governance answer on emergency access); 5 enable for a named adult allow-list, then all eligible members. Minors, unverified and unknown-age members are never eligible.

@@ -35,6 +35,7 @@ import {
   privacyRequests,
   problemDetails,
   profileBadges,
+  pushDevices,
   pushSubscriptions,
   releasedHandles,
   reports,
@@ -438,6 +439,7 @@ test('the erase removes what is personal and keeps what is evidence', async () =
   await postsService.pinInCommunity(sam, ordinary)
   await db.insert(notificationOptOuts).values({ memberId: xena, kind: 'like' })
   await db.insert(pushSubscriptions).values({ memberId: xena, endpoint: 'https://push.example/x', p256dh: 'k', auth: 'a' })
+  await db.insert(pushDevices).values({ memberId: xena, service: 'fcm', token: 'xena-android:APA91b', key: 'k' })
   await membersService.setFounder('xena', true)
   await db.insert(releasedHandles).values([
     { handle: 'xena_old', memberId: xena, releasedAt: days(-5) },
@@ -496,6 +498,7 @@ test('the erase removes what is personal and keeps what is evidence', async () =
   assert.equal(await count(notifications, or(eq(notifications.recipientId, xena), eq(notifications.actorId, xena))), 0)
   assert.equal(await count(notificationOptOuts, eq(notificationOptOuts.memberId, xena)), 0)
   assert.equal(await count(pushSubscriptions, eq(pushSubscriptions.memberId, xena)), 0)
+  assert.equal(await count(pushDevices, eq(pushDevices.memberId, xena)), 0)
   assert.equal(await count(profileBadges, eq(profileBadges.memberId, xena)), 0)
   assert.equal(await count(inviteRedemptions, eq(inviteRedemptions.identityId, xena)), 0)
   assert.equal(await count(invites, eq(invites.codeHash, 'hash')), 1, 'the invite itself is the operator’s record')
@@ -783,6 +786,51 @@ test('Gists: one they hosted that was reported stays as evidence, with the repor
   assert.equal(await count(gistMembers, eq(gistMembers.gistId, reported!.id)), 0, 'places in it go; the report keeps its own record')
   assert.equal(await count(gistReportParticipants, eq(gistReportParticipants.reportId, report!.id)), 2)
   assert.equal(await count(reports, eq(reports.id, report!.id)), 1)
+})
+
+test('Gists: one they hosted with replies stays as a tombstone with a blank title; their own replies are erased, other people’s stay unreachable', async () => {
+  const [room, empty] = await db
+    .insert(gists)
+    .values([{ hostId: xena, title: 'Xena’s secret title', status: 'ended' }, { hostId: xena, title: 'No replies here', status: 'ended' }])
+    .returning({ id: gists.id })
+  await db.insert(gistMembers).values([{ gistId: room!.id, memberId: xena, role: 'host' }, { gistId: empty!.id, memberId: xena, role: 'host' }])
+  const hers = await db.insert(posts).values({ authorId: xena, text: 'I said this in my room', gistId: room!.id }).returning({ id: posts.id })
+  const theirs = await db.insert(posts).values({ authorId: yemi, text: 'Yemi’s reply', gistId: room!.id }).returning({ id: posts.id })
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  const [tomb] = await db.select().from(gists).where(eq(gists.id, room!.id))
+  assert.equal(tomb!.title, 'Deleted Gist')
+  assert.equal(tomb!.hostId, xena)
+  assert.equal(await count(gists, eq(gists.id, empty!.id)), 0)
+  const [own] = await db.select().from(posts).where(eq(posts.id, hers[0]!.id))
+  assert.equal(own!.text, '')
+  assert.notEqual(own!.deletedAt, null)
+  const [other] = await db.select().from(posts).where(eq(posts.id, theirs[0]!.id))
+  assert.equal(other!.text, 'Yemi’s reply')
+  assert.equal(other!.deletedAt, null)
+})
+
+test('Gists: one they hosted whose only replies are their own goes entirely; one with another member’s reply stays', async () => {
+  const [alone, shared] = await db
+    .insert(gists)
+    .values([{ hostId: xena, title: 'Only me', status: 'ended' }, { hostId: xena, title: 'Not only me', status: 'ended' }])
+    .returning({ id: gists.id })
+  await db.insert(gistMembers).values([{ gistId: alone!.id, memberId: xena, role: 'host' }, { gistId: shared!.id, memberId: xena, role: 'host' }])
+  await db.insert(posts).values([
+    { authorId: xena, text: 'talking to myself', gistId: alone!.id },
+    { authorId: xena, text: 'my room', gistId: shared!.id },
+    { authorId: yemi, text: 'Yemi was here', gistId: shared!.id },
+  ])
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  assert.equal(await count(gists, eq(gists.id, alone!.id)), 0, 'no tombstone for a Gist nobody else replied in')
+  assert.equal(await count(posts, eq(posts.gistId, alone!.id)), 0)
+  const [kept] = await db.select().from(gists).where(eq(gists.id, shared!.id))
+  assert.equal(kept!.title, 'Deleted Gist')
 })
 
 test('feature flags: they leave every allow-list; one that held only them goes off for everyone, and the log shows the tombstone', async () => {

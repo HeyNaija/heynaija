@@ -439,10 +439,46 @@ test("a moderator's removal moves a post's images out of public view, and a rest
   // And dropped from Cloudflare's cache, which would otherwise serve it for a year.
   assert.deepEqual(jobs.purged, [[`posts/${image}/640.webp`, `posts/${image}/1600.webp`, `posts/${image}/still.webp`]])
 
+  assert.ok((await db.select({ at: media.quarantinedAt }).from(media).where(eq(media.id, image)))[0]!.at, 'dated, for its retention period')
+
   await moderation.restorePost(sam, post)
   assert.equal(await statusOf(image), 'ready')
+  assert.equal((await db.select({ at: media.quarantinedAt }).from(media).where(eq(media.id, image)))[0]!.at, null)
   assert.deepEqual(store.keys('uploads'), [])
   assert.deepEqual((await postsService.thread(null, post))!.post.images.map((i) => i.src), [`/media/posts/${image}`])
+})
+
+test('a taken-down image is kept privately for the period, unless a report is open, then deleted', async () => {
+  const DAY = 24 * 60 * 60 * 1000
+  const moderation = await withModerator()
+  const postsService = new PostsService(db)
+  const taken = async (text: string) => {
+    const image = await readyPostImage(bayo)
+    const { id: post } = await postsService.create(bayo, text, { images: [{ id: image, alt: '' }] })
+    await moderation.report(ada, { postId: post }, 'illegal')
+    await moderation.resolve(sam, (await reportOf(eq(reports.postId, post))).id, 'remove_post')
+    return { image, post }
+  }
+  const old = await taken('old')
+  const reported = await taken('reported again')
+  // A report still open about its post, such as one sent on to the authorities.
+  await db.insert(reports).values({ reporterId: ada, postId: reported.post, reason: 'illegal' })
+  // Quarantined before the column existed: dated by the first sweep, not deleted.
+  const undated = await taken('undated')
+  await db.update(media).set({ quarantinedAt: null }).where(eq(media.id, undated.image))
+  const dated = (await db.select({ at: media.quarantinedAt }).from(media).where(eq(media.id, old.image)))[0]!.at!
+  const after = (days: number) => new Date(dated.getTime() + days * DAY)
+
+  assert.equal(await service.purgeTakenDown(365, after(364)), 0)
+  assert.equal(await statusOf(old.image), 'quarantined')
+
+  assert.equal(await service.purgeTakenDown(365, after(366)), 1)
+  assert.equal(await statusOf(old.image), 'deleted')
+  assert.deepEqual(store.keys('uploads').filter((k) => k.includes(old.image)), [])
+  // Kept: a report about its post is open, or it was only just dated.
+  assert.equal(await statusOf(reported.image), 'quarantined')
+  assert.equal(await statusOf(undated.image), 'quarantined')
+  assert.ok(store.keys('uploads').some((k) => k.includes(undated.image)))
 })
 
 test('restoring a removed post its author has since deleted, as an erase does, keeps its images private', async () => {

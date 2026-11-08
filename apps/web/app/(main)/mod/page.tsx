@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
-import { resolveReport, restorePost } from '@/app/actions'
+import { resolveReport, restorePost, unlabelPost } from '@/app/actions'
 import { Avatar } from '@/app/ui/avatar'
 import { CommunityMark } from '@/app/ui/community-mark'
 import { EmptyState } from '@/app/ui/empty-state'
@@ -23,6 +23,7 @@ const REASONS: Record<string, string> = {
   hate: 'Hate speech',
   scam: 'Scam',
   illegal: 'Illegal content',
+  needs_label: 'Not marked sensitive',
   other: 'Other',
   appeal: 'Appeal',
 }
@@ -39,6 +40,8 @@ const ACTIONS: Record<string, string> = {
   grant_community_moderator: 'made a moderator:',
   revoke_community_moderator: 'removed as moderator:',
   end_gist: 'ended the Gist',
+  label_post: 'marked sensitive a post',
+  unlabel_post: 'took the sensitive mark off a post',
 }
 
 const GIST_ROLES: Record<string, string> = { host: 'Host', cohost: 'Co-host', speaker: 'Speaker', listener: 'Listener' }
@@ -224,6 +227,10 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
         </p>
       ) : null}
 
+      {item.reason === 'needs_label' && item.post && !item.post.markable ? (
+        <p className="text-sm text-muted">Its author isn’t counted as an adult, so it can’t be marked sensitive. Remove it if it needs a mark.</p>
+      ) : null}
+
       <label className="flex flex-col gap-1 text-sm">
         <span className="field-label">
           Note for the record <span className="font-normal text-muted">(optional)</span>
@@ -238,6 +245,11 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
           </SubmitButton>
         ) : (
           <>
+            {item.post?.markable ? (
+              <SubmitButton name="resolution" value="label_post" className={button}>
+                Mark sensitive
+              </SubmitButton>
+            ) : null}
             {item.post ? (
               <SubmitButton name="resolution" value="remove_post" className={danger}>
                 Remove post
@@ -314,6 +326,12 @@ function Decision({ entry, now }: { entry: LogEntry; now: number }) {
         <form action={restorePost} className="w-full">
           <input type="hidden" name="id" value={entry.postId} />
           <SubmitButton className="text-xs font-semibold text-accent-strong hover:underline">Restore this post</SubmitButton>
+        </form>
+      ) : null}
+      {entry.action === 'label_post' && entry.postId ? (
+        <form action={unlabelPost} className="w-full">
+          <input type="hidden" name="id" value={entry.postId} />
+          <SubmitButton className="text-xs font-semibold text-accent-strong hover:underline">Take the mark off</SubmitButton>
         </form>
       ) : null}
     </li>

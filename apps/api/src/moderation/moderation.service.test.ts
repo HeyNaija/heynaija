@@ -8,7 +8,7 @@ import { FakeRoomService } from '../gists/fake-room-service.js'
 import { GistsService } from '../gists/gists.service.js'
 import { PostsService } from '../posts/posts.service.js'
 import { MemoryRateLimiter } from '../rate-limit.js'
-import { db, migrate, pool, reset } from '../test-db.js'
+import { db, giveBirthDates, migrate, pool, reset } from '../test-db.js'
 import { ModerationService, ModerationTargetError, NotAModeratorError } from './moderation.service.js'
 import type { SafetyAlerts } from './safety-alerts.js'
 
@@ -34,6 +34,7 @@ beforeEach(async () => {
     { id: sam, handle: 'sam' },
     { id: lola, handle: 'lola' },
   ])
+  await giveBirthDates([ada, bayo, sam, lola])
   await db.insert(communities).values([
     { slug: 'lagos', name: 'Lagos', description: '' },
     { slug: 'abuja', name: 'Abuja', description: '' },
@@ -98,7 +99,7 @@ test('the queue shows what was reported, by whom, and how many times', async () 
     { reason: queue[0]!.reason, details: queue[0]!.details, by: queue[0]!.reporterHandle, count: queue[0]!.reportCount },
     { reason: 'scam', details: 'crypto scam', by: 'ada', count: 2 },
   )
-  assert.deepEqual(queue[0]!.post, { id, text: 'buy my coin', images: [], hasVideo: false, authorHandle: 'bayo', communityName: null })
+  assert.deepEqual(queue[0]!.post, { id, text: 'buy my coin', images: [], hasVideo: false, authorHandle: 'bayo', communityName: null, markable: true })
 })
 
 test('removing a post hides it everywhere, closes every report on it, and is logged', async () => {
@@ -135,6 +136,54 @@ test('removing a post hides it everywhere, closes every report on it, and is log
   await service.restorePost(sam, id, 'on reflection, fine')
   assert.deepEqual(await feedTexts(), ['bad post'])
   await assert.rejects(service.restorePost(sam, id), ModerationTargetError)
+})
+
+test('marking a reported post sensitive keeps it up for adults only, tells its author, and is undone only by a site moderator', async () => {
+  const { id } = await postsService.create(bayo, 'graphic footage')
+  await service.report(ada, { postId: id }, 'needs_label')
+  const [item] = await service.queue(sam)
+  assert.equal(item!.reason, 'needs_label')
+  assert.equal(item!.post!.markable, true)
+
+  await service.resolve(sam, item!.id, 'label_post', 'injury footage')
+
+  const label = async () => (await db.select({ l: posts.adultLabel }).from(posts).where(eq(posts.id, id)))[0]!.l
+  assert.equal(await label(), 'moderator')
+  assert.deepEqual(await feedTexts(), [], 'signed out, it is gone from the feed')
+  assert.equal(await openReports(), 0)
+  const told = await db.select().from(notifications).where(eq(notifications.recipientId, bayo))
+  assert.deepEqual(told.map((n) => [n.kind, n.postId]), [['post_labelled', id]])
+  assert.equal((await service.log(sam))[0]!.action, 'label_post')
+  // The author cannot take a moderator's mark off.
+  assert.equal(await postsService.setAdultLabel(bayo, id, false), false)
+
+  await assert.rejects(service.unlabelPost(lola, id), NotAModeratorError)
+  await service.unlabelPost(sam, id, 'on appeal')
+  assert.equal(await label(), null)
+  assert.deepEqual(await feedTexts(), ['graphic footage'])
+  assert.equal((await service.log(sam))[0]!.action, 'unlabel_post')
+  await assert.rejects(service.unlabelPost(sam, id), ModerationTargetError)
+})
+
+test('a post by someone not counted as an adult cannot be marked sensitive, only removed', async () => {
+  const kid = randomUUID()
+  const unknown = randomUUID() // no date of birth yet
+  await db.insert(members).values([
+    { id: kid, handle: 'kid' },
+    { id: unknown, handle: 'unknown' },
+  ])
+  await giveBirthDates([kid], 15)
+  for (const author of [kid, unknown]) {
+    const { id } = await postsService.create(author, 'graphic footage')
+    await service.report(ada, { postId: id }, 'needs_label')
+    const item = (await service.queue(sam)).find((i) => i.post?.id === id)!
+    assert.equal(item.post!.markable, false)
+    await assert.rejects(service.resolve(sam, item.id, 'label_post'), ModerationTargetError)
+    assert.equal((await db.select({ l: posts.adultLabel }).from(posts).where(eq(posts.id, id)))[0]!.l, null)
+    assert.equal(await openReports(), 1, 'the report stays open')
+    await service.resolve(sam, item.id, 'remove_post')
+    assert.equal(await openReports(), 0)
+  }
 })
 
 test('dismissing leaves the post alone', async () => {
@@ -477,4 +526,23 @@ test('End the Gist is only for a report about a Gist, and a LiveKit failure leav
   })
   await assert.rejects(failing.resolve(sam, item!.id, 'end_gist'), /LiveKit is down/)
   assert.ok((await gistQueueItem(sam))?.id === item!.id, 'the report is still open to try again')
+})
+
+test('a reply in a Gist is reported, queued with its text, and removed like any post', async () => {
+  const gist = (await gistsService.create(as(ada, 'ada'), { title: 'Jollof wars' })).id
+  const { id: reply } = await postsService.create(bayo, 'buy my coin', { gist })
+
+  await service.report(lola, { postId: reply }, 'scam', 'crypto scam')
+  await assert.rejects(service.report(bayo, { postId: reply }, 'spam'), /your own post/)
+  const [item] = await service.queue(sam)
+  assert.deepEqual(item!.post, { id: reply, text: 'buy my coin', images: [], hasVideo: false, authorHandle: 'bayo', communityName: null, markable: true })
+
+  await service.resolve(sam, item!.id, 'remove_post', 'scam')
+
+  assert.equal((await postsService.gistReplies(ada, gist, 20, 'newest')).replies.length, 0)
+  assert.equal(await openReports(), 0)
+  const [reporter] = await db.select().from(notifications).where(eq(notifications.recipientId, lola))
+  assert.equal(reporter!.kind, 'report_resolved')
+  const [author] = await db.select().from(notifications).where(eq(notifications.recipientId, bayo))
+  assert.deepEqual({ kind: author!.kind, post: author!.postId }, { kind: 'post_removed', post: reply })
 })

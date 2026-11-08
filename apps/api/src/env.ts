@@ -1,3 +1,4 @@
+import { createPrivateKey } from 'node:crypto'
 import { z } from 'zod'
 import { videoEnvShape } from './video/video-config.js'
 
@@ -17,6 +18,44 @@ const lockedOff = (name: string) =>
 
 /** An optional setting that may also be given empty (compose passes `${NAME:-}`), which means unset. */
 const optional = <T extends z.ZodType>(type: T) => z.preprocess((value) => (value === '' ? undefined : value), type.optional())
+
+const isPrivateKey = (pem: string) => {
+  try {
+    createPrivateKey(pem)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * A Google service account key in base64, kept to what sending through Firebase
+ * Cloud Messaging needs. Its project is where the app's own google-services.json
+ * comes from.
+ */
+const fcmServiceAccount = z
+  .string()
+  .transform((value): unknown => {
+    try {
+      return JSON.parse(Buffer.from(value, 'base64').toString('utf8'))
+    } catch {
+      return null
+    }
+  })
+  .pipe(
+    z.object(
+      {
+        type: z.literal('service_account'),
+        project_id: z.string().regex(/^[a-z][a-z0-9-]{4,29}$/, 'a Firebase project ID'),
+        client_email: z.email(),
+        private_key: z.string().refine(isPrivateKey, 'a private key in PEM'),
+      },
+      { error: 'a service account key (the JSON file) in base64' },
+    ),
+  )
+  .transform((key) => ({ projectId: key.project_id, clientEmail: key.client_email, privateKey: key.private_key }))
+
+export type FcmServiceAccount = z.infer<typeof fcmServiceAccount>
 
 export const APP_ENVS = ['development', 'staging', 'production'] as const
 export type AppEnv = (typeof APP_ENVS)[number]
@@ -68,6 +107,12 @@ const schema = z.object({
   // Accounts for people under 18. The 18+ beta rule is temporary; this stays off
   // until docs/governance/under-18-rollout.md is approved and built.
   UNDER_18_ACCOUNTS_ENABLED: lockedOff('UNDER_18_ACCOUNTS_ENABLED'),
+  // Asking for a date of birth: at signup instead of the "I am 18 or older" box,
+  // and once from every member who has none on record (ADR 0020, section 1). Off
+  // since 8 November 2026 (owner): the beta stays 18+ with the box. The code and
+  // the dates already given are kept, so turning it back on is this line, in
+  // review, with /rules and /privacy saying so again.
+  BIRTH_DATE_ENABLED: lockedOff('BIRTH_DATE_ENABLED'),
   // Key for deriving private person keys from a provider's identifier
   // (governance/rules.ts). Only needed once NIN verification exists.
   IDENTITY_KEY_SECRET: z.string().min(32).optional(),
@@ -88,9 +133,19 @@ const schema = z.object({
   // Days HeyNaija gives itself to answer a privacy request (counsel to confirm:
   // docs/governance/counsel-log.md, C-02). Requests past it are flagged.
   PRIVACY_REQUEST_DUE_DAYS: days(30, 1, 90),
-  // Days the text of a deleted post is kept for moderation records before it is
-  // blanked. Unset until counsel sets the period (C-04): nothing is blanked.
-  DELETED_CONTENT_RETENTION_DAYS: optional(z.coerce.number().int().min(1).max(3650)),
+  // How long what is kept for moderation and accountability is kept, as /privacy#keep
+  // says (set by the operator on 8 November 2026; counsel to confirm, C-04, C-06, C-07
+  // and C-09 in docs/governance/counsel-log.md). Change the page with any of them.
+  // Days the text of a deleted post is kept for moderation records before it is blanked.
+  DELETED_CONTENT_RETENTION_DAYS: days(90, 1, 3650),
+  // Days the private copies of images moderators took down (or kept as evidence) are
+  // kept before they are deleted, unless a report about them is still open.
+  TAKEN_DOWN_MEDIA_RETENTION_DAYS: days(365, 1, 3650),
+  // Days an erased account's age and verification audit trail (the record that it
+  // said it was 18 or older, and when) is kept after the erase.
+  ERASED_AGE_RECORD_RETENTION_DAYS: days(730, 1, 3650),
+  // Days the record of a privacy request is kept after it was closed.
+  PRIVACY_REQUEST_RETENTION_DAYS: days(730, 1, 3650),
   // How long a notification waits for company before it is emailed, and the least
   // time between two emails to the same member, in seconds (docs/adr/0009).
   EMAIL_DIGEST_DELAY_S: z.coerce.number().int().min(0).max(3600).default(300),
@@ -108,6 +163,10 @@ const schema = z.object({
   PUSH_CONTACT: optional(z.string().regex(/^(mailto:|https:\/\/)\S+$/, 'a mailto: or https:// address')),
   // How often the job that pushes new notifications runs, in seconds.
   PUSH_SWEEP_EVERY_S: z.coerce.number().int().min(1).max(600).default(10),
+  // Push to the Android app (docs/adr/0023): the Firebase project's service
+  // account key, the JSON file its console downloads, in base64 so that it is one
+  // line. Without it the app is not offered push; browsers are unaffected.
+  FCM_SERVICE_ACCOUNT: optional(fcmServiceAccount),
   // Safety (docs/safety/abuse-material-scanning.md). Where alerts about matched
   // uploads and reports of illegal content are emailed; without it they are only
   // logged. Needs the SMTP settings above.
@@ -190,6 +249,10 @@ const checked = schema.superRefine((env, ctx) => {
   }
   if (Boolean(env.LIVEKIT_API_KEY) !== Boolean(env.LIVEKIT_API_SECRET)) {
     ctx.addIssue({ code: 'custom', path: ['LIVEKIT_API_SECRET'], message: 'set both LIVEKIT_API_KEY and LIVEKIT_API_SECRET, or neither' })
+  }
+  // A 13 to 17 year old is admitted by their date of birth; the box says only "18 or older".
+  if (env.UNDER_18_ACCOUNTS_ENABLED && !env.BIRTH_DATE_ENABLED) {
+    ctx.addIssue({ code: 'custom', path: ['UNDER_18_ACCOUNTS_ENABLED'], message: 'UNDER_18_ACCOUNTS_ENABLED needs BIRTH_DATE_ENABLED' })
   }
   if (env.PUSH_ALLOW_LOOPBACK && new URL(env.WEB_PUBLIC_URL).hostname !== '127.0.0.1') {
     ctx.addIssue({ code: 'custom', path: ['PUSH_ALLOW_LOOPBACK'], message: 'PUSH_ALLOW_LOOPBACK is only for a WEB_PUBLIC_URL on 127.0.0.1' })

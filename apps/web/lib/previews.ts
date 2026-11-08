@@ -30,3 +30,32 @@ export function excerpt(text: string, max = 200) {
   if (space > cut.length * 0.6) cut = cut.slice(0, space)
   return `${cut.trimEnd()}…`
 }
+
+type PreviewedPost = {
+  text: string
+  authorHandle: string
+  sensitive: 'author' | 'moderator' | 'community' | null
+  images: { src: string; alt: string; width: number; height: number; animated: boolean }[]
+}
+
+/**
+ * What a link to a post shows besides whose it is: its text, and its first
+ * picture at 640px (a GIF's first frame), big enough for a preview card and small
+ * enough for WhatsApp to fetch. A post marked sensitive shows neither (ADR 0020):
+ * preview fetchers are signed out and never get one, and for the adult who opens
+ * it, its picture's address is signed for them and runs out within two hours
+ * (ADR 0025), so it never goes into the page's tags.
+ */
+export function postPreview(post: PreviewedPost): { description: string | undefined; image: { url: string; width: number; height: number; alt: string } } {
+  if (post.sensitive) return { description: undefined, image: defaultPreviewImage }
+  // A post always has text, images or both.
+  const photos = post.images.length === 1 ? 'a photo' : `${post.images.length} photos`
+  const description = post.text ? excerpt(post.text) : `@${post.authorHandle} shared ${photos}.`
+  const first = post.images[0]
+  if (!first) return { description, image: defaultPreviewImage }
+  const scale = Math.min(1, 640 / Math.max(first.width, first.height))
+  return {
+    description,
+    image: { url: `${first.src}/${first.animated ? 'still' : '640'}.webp`, width: Math.round(first.width * scale), height: Math.round(first.height * scale), alt: first.alt },
+  }
+}

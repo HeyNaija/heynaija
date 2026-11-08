@@ -1,13 +1,16 @@
+import { reportPostHref } from '@/lib/report-href'
+import { gistReplyHref, replyQuery, type ReplyOrder } from '@/lib/thread-state'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { deletePost, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin, setReplyAudience } from '@/app/actions'
-import type { Post } from '@/lib/api'
+import { deletePost, hideGistReply, setBlock, setBookmark, setCommunityPin, setMute, setProfilePin, setReplyAudience, setSensitive } from '@/app/actions'
+import { getViewer, type Post } from '@/lib/api'
 import { currentDataSaver } from '@/lib/low-data-server'
 import { textParts } from '@/lib/mentions'
 import { previewParts } from '@/lib/post-length'
 import { excerpt } from '@/lib/previews'
 import { REPLY_AUDIENCES } from '@/lib/reply-audience'
 import { replyContextView } from '@/lib/reply-context'
+import { canMarkSensitive } from '@/lib/sensitive'
 import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
 import type { FeedSource } from './feed-source'
@@ -18,7 +21,9 @@ import { LinkCard } from './link-card'
 import { LocalTime } from './local-time'
 import { Menu } from './menu'
 import { MorePosts } from './more-posts'
+import { ComposeLink } from './new-post-link'
 import { PollCard } from './poll-card'
+import { MediaCover } from './media-cover'
 import { PostImages } from './post-images'
 import { PostVideo } from './post-video'
 import { PostPermalink } from './post-permalink'
@@ -27,6 +32,7 @@ import { QuotedPostCard } from './quoted-post'
 import { ReplyLink } from './reply-link'
 import { RepostButton } from './repost-button'
 import { ShareButton } from './share-button'
+import { StoryStart } from './story'
 import { SubmitButton } from './submit-button'
 import { ThreadAuthorLabel } from './thread-author'
 
@@ -67,6 +73,42 @@ async function SaverLinkCard({ preview }: { preview: NonNullable<Post['linkPrevi
   return <LinkCard preview={preview} saver={await currentDataSaver()} />
 }
 
+/**
+ * The author's own sensitive mark (ADR 0020): offered while they may mark posts,
+ * and taking their own mark off always works. A moderator's mark, or the one a
+ * community marked sensitive gives all its posts, is not theirs to change.
+ */
+async function SensitiveMenuItem({ post }: { post: Post }) {
+  if (post.sensitive === 'moderator' || post.sensitive === 'community') return null
+  const marked = post.sensitive === 'author'
+  if (!marked) {
+    const viewer = await getViewer()
+    if (viewer.state !== 'member' || !canMarkSensitive(viewer.me)) return null
+  }
+  return (
+    <form action={setSensitive}>
+      <input type="hidden" name="id" value={post.id} />
+      <input type="hidden" name="on" value={marked ? '0' : '1'} />
+      <SubmitButton className="menu-item">{marked ? 'Remove sensitive mark' : 'Mark as sensitive'}</SubmitButton>
+    </form>
+  )
+}
+
+/** The author's choices of who may reply, as far as the API lets them go: a minor's never include everyone (ADR 0020). */
+async function ReplyAudienceMenuItems({ post }: { post: Post }) {
+  const viewer = await getViewer()
+  const allowed = viewer.state === 'member' ? (viewer.me.replyAudiences ?? REPLY_AUDIENCES) : REPLY_AUDIENCES
+  return REPLY_AUDIENCES.filter((audience) => allowed.includes(audience)).map((audience) => (
+    <form action={setReplyAudience} key={audience}>
+      <input type="hidden" name="id" value={post.id} />
+      <input type="hidden" name="audience" value={audience} />
+      <SubmitButton className="menu-item" pressed={post.replyAudience === audience}>
+        {REPLY_AUDIENCE_LABEL[audience]}
+      </SubmitButton>
+    </form>
+  ))
+}
+
 export function PostItem({
   post,
   viewerId,
@@ -78,6 +120,7 @@ export function PostItem({
   replyAction,
   threadToggle,
   pinned,
+  gist,
 }: {
   post: Post
   /** Null for visitors who are not signed-in members. */
@@ -97,12 +140,14 @@ export function PostItem({
   threadToggle?: ReactNode
   /** Shown above the list as the profile's or the community's pinned post. */
   pinned?: 'profile' | 'community'
+  /** A reply in this Gist's comment section: read, liked and hidden through the Gist, never reposted, saved or shared. */
+  gist?: { id: string; viewerIsHost: boolean; order?: ReplyOrder }
 }) {
   if (post.deleted) {
     return <p className="post-card text-sm italic text-muted">This post is no longer available.</p>
   }
 
-  const href = `/p/${post.id}`
+  const href = gist ? gistReplyHref(gist.id, post.id, replyQuery(gist.order ?? 'newest', null)) : `/p/${post.id}`
   const compact = inThread && !focused
   const openLabel = `Open ${post.replyParentId ? 'reply' : 'post'} by @${post.authorHandle}`
   const parts = textParts(post.text, post.mentions, post.links, post.hashtags)
@@ -202,7 +247,7 @@ export function PostItem({
       <Link prefetch={false} href={context.href} className="reply-to block hover:underline">{context.label}</Link>
     ) : null
 
-  return (
+  const card = (
     <article id={`post-${post.id}`} className={`post-card ${focused ? 'is-focused' : 'is-clickable'}${compact ? ' is-reply' : ''}`}>
       {why ? <p className="post-context">{why}</p> : null}
 
@@ -229,6 +274,19 @@ export function PostItem({
                   {focused ? <LocalTime at={post.createdAt} as="posted" title /> : <LocalTime at={post.createdAt} now={now} title />}
                 </Link>
                 {focused && inThread ? <ThreadAuthorLabel authorId={post.authorId} separator /> : null}
+                {/* A story's first post in focus has the story bar under it instead. */}
+                {post.story && (post.story.number > 0 || !focused) ? (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    {post.story.number > 0 ? (
+                      <Link prefetch={false} href={`/p/${post.story.id}#post-${post.id}`} className="story-label shrink-0 hover:underline">
+                        Update {post.story.number}
+                      </Link>
+                    ) : (
+                      <span className="story-label shrink-0">Story</span>
+                    )}
+                  </>
+                ) : null}
               </p>
               {showChip ? (
                 <Link prefetch={false} href={`/c/${post.community!.slug}`} className="chip mt-1.5">
@@ -239,7 +297,7 @@ export function PostItem({
 
             {viewerId ? (
               <Menu label="Post options" trigger={<DotsIcon />} className="-mr-2 -mt-1.5">
-                {compact ? (
+                {compact && !gist ? (
                   <form action={setBookmark}>
                     <input type="hidden" name="id" value={post.id} />
                     <input type="hidden" name="on" value={post.viewerBookmarked ? '0' : '1'} />
@@ -251,8 +309,18 @@ export function PostItem({
                 ) : null}
                 {post.authorId === viewerId ? (
                   <>
-                    {post.replyParentId ? null : (
+                    {post.replyParentId || gist ? null : (
                       <>
+                        {/* Any of your top-level posts becomes a story with its first update (docs/adr/0024),
+                            written in the box at the end of the story. */}
+                        <ComposeLink
+                          prefetch={false}
+                          href={post.story ? `/p/${post.story.id}#add-update` : `/p/${post.id}?add=update#add-update`}
+                          label="Add update"
+                          className="menu-item"
+                        >
+                          Add update
+                        </ComposeLink>
                         <form action={setProfilePin}>
                           <input type="hidden" name="id" value={post.id} />
                           <input type="hidden" name="on" value={post.pinnedOnProfile ? '0' : '1'} />
@@ -260,18 +328,11 @@ export function PostItem({
                             {post.pinnedOnProfile ? 'Unpin from your profile' : 'Pin to your profile'}
                           </SubmitButton>
                         </form>
-                        {REPLY_AUDIENCES.map((audience) => (
-                          <form action={setReplyAudience} key={audience}>
-                            <input type="hidden" name="id" value={post.id} />
-                            <input type="hidden" name="audience" value={audience} />
-                            <SubmitButton className="menu-item" pressed={post.replyAudience === audience}>
-                              {REPLY_AUDIENCE_LABEL[audience]}
-                            </SubmitButton>
-                          </form>
-                        ))}
+                        <ReplyAudienceMenuItems post={post} />
                       </>
                     )}
                     {communityPin}
+                    {gist ? null : <SensitiveMenuItem post={post} />}
                     <form action={deletePost}>
                       <input type="hidden" name="id" value={post.id} />
                       <SubmitButton
@@ -285,7 +346,15 @@ export function PostItem({
                 ) : (
                   <>
                     {communityPin}
-                    <Link prefetch={false} href={`/report?post=${post.id}`} className="menu-item">
+                    {gist?.viewerIsHost ? (
+                      <form action={hideGistReply}>
+                        <input type="hidden" name="gist" value={gist.id} />
+                        <input type="hidden" name="id" value={post.id} />
+                        <input type="hidden" name="on" value="1" />
+                        <SubmitButton className="menu-item">Hide reply</SubmitButton>
+                      </form>
+                    ) : null}
+                    <Link prefetch={false} href={reportPostHref(post.id, gist?.id)} className="menu-item">
                       Report post
                     </Link>
                     <form action={setMute}>
@@ -336,12 +405,16 @@ export function PostItem({
       {post.poll ? <PollCard postId={post.id} poll={post.poll} member={viewerId !== null} /> : null}
       {post.images.length ? (
         <div className="mt-3">
-          <SaverImages images={post.images} />
+          <MediaCover covered={post.coverMedia}>
+            <SaverImages images={post.images} />
+          </MediaCover>
         </div>
       ) : null}
       {post.video ? (
         <div className="mt-3">
-          <SaverVideo video={post.video} />
+          <MediaCover covered={post.coverMedia}>
+            <SaverVideo video={post.video} />
+          </MediaCover>
         </div>
       ) : null}
       {post.quote ? (
@@ -362,7 +435,7 @@ export function PostItem({
       <div className="post-actions">
         {replyAction ?? <ReplyLink id={post.id} href={`${href}#compose`} count={post.replyCount} disabled={viewerId !== null && !post.viewerCanReply} />}
 
-        {viewerId ? (
+        {gist ? null : viewerId ? (
           <RepostButton id={post.id} reposted={post.viewerReposted} count={post.repostCount} />
         ) : (
           <span className="icon-btn pointer-events-none">
@@ -373,7 +446,7 @@ export function PostItem({
         )}
 
         {viewerId ? (
-          <LikeButton id={post.id} liked={post.viewerLiked} count={post.likeCount} />
+          <LikeButton id={post.id} liked={post.viewerLiked} count={post.likeCount} gistId={gist?.id} />
         ) : (
           <span className="icon-btn pointer-events-none">
             <HeartIcon size={18} />
@@ -385,7 +458,7 @@ export function PostItem({
         {threadToggle}
 
         <div className="post-actions-end">
-          {viewerId && !compact ? (
+          {viewerId && !compact && !gist ? (
             <form action={setBookmark}>
               <input type="hidden" name="id" value={post.id} />
               <input type="hidden" name="on" value={post.viewerBookmarked ? '0' : '1'} />
@@ -398,11 +471,22 @@ export function PostItem({
               </SubmitButton>
             </form>
           ) : null}
-          <ShareButton id={post.id} handle={post.authorHandle} name={post.authorName} avatar={post.authorAvatar} text={excerpt(post.text)} />
+          {gist ? null : <ShareButton id={post.id} handle={post.authorHandle} name={post.authorName} avatar={post.authorAvatar} text={excerpt(post.text)} />}
         </div>
       </div>
     </article>
   )
+  // An update away from its story shows where it comes from: a story is shown once
+  // in feeds, as its newest update, with its first post above it (docs/adr/0024).
+  if (post.story && post.story.number > 0 && !inThread && !focused) {
+    return (
+      <div className="story-entry">
+        <StoryStart story={post.story} />
+        {card}
+      </div>
+    )
+  }
+  return card
 }
 
 export function PostList({

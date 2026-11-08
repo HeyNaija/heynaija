@@ -24,6 +24,11 @@ export function handleFor(role: string) {
   return `${MARK.handlePrefix}${run}${counter}_${role}`.slice(0, 20).toLowerCase()
 }
 
+/** Ticks "I am 18 or older" on /join, which is all the 18+ beta asks of someone's age. */
+export async function confirmAge(page: Page) {
+  await page.getByLabel('I am 18 or older').check()
+}
+
 /**
  * Signs a new member up through the sign-up pages in `page`. Newcomers land on
  * the welcome flow; this skips it and waits for the home page, unless `welcome`
@@ -47,7 +52,7 @@ export async function signUp(page: Page, handle: string, { welcome = 'skip' }: {
  */
 export async function submitSignUp(page: Page, handle: string, email = `${handle}@${MARK.emailDomain}`) {
   await page.goto(`/join?code=${createInvite()}`)
-  await page.getByLabel('I am 18 or older').check()
+  await confirmAge(page)
   await page.getByRole('button', { name: 'Check invite code' }).click()
   await page.waitForURL(/\/signup/)
 
@@ -93,7 +98,7 @@ type KratosFlow = {
 
 /**
  * Kratos's browser registration flow, driven with fetch the way the sign-up form
- * drives it: the invite and the age confirmation in the cookies /join sets
+ * drives it: the invite and the 18+ box in the cookies /join sets
  * (Kratos hands them to the API's invite webhook), the traits, then the emailed
  * code. Returns the new session cookie's value.
  */

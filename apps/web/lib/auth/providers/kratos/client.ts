@@ -1,5 +1,5 @@
 import 'server-only'
-import { cookies, headers } from 'next/headers'
+import { cookies } from 'next/headers'
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
 
@@ -55,7 +55,15 @@ export const startFlowUrl = (kind: FlowKind) => `/kratos/self-service/${kind}/br
 
 // The raw header, byte for byte: Kratos's anti-CSRF cookie is compared exactly, and
 // re-serialising cookies would re-encode its value.
-const cookieHeader = async () => (await headers()).get('cookie') ?? ''
+// The browser's cookies as Kratos needs them, from the parsed values rather than
+// the raw header: once a server action changes any cookie, Next rewrites that
+// header with every value URL-encoded, and Kratos can no longer read its session
+// ("=" arrives as "%3D"), so the page the action renders lost its Sign out link.
+const cookieHeader = async () =>
+  (await cookies())
+    .getAll()
+    .map(({ name, value }) => `${name}=${value}`)
+    .join('; ')
 
 /**
  * Loads the flow the browser was sent back with. A missing, expired or foreign

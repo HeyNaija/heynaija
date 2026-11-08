@@ -3,6 +3,7 @@ import {
   type AnyPgColumn,
   boolean,
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -21,6 +22,15 @@ import {
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
 
 export const REPLY_AUDIENCES = ['everyone', 'following', 'mentioned'] as const
+export const GIST_REPLY_AUDIENCES = [...REPLY_AUDIENCES, 'off'] as const
+
+// Who marked something sensitive (ADR 0020, the 18+ label): its author, or a
+// moderator, whose mark the author cannot take off.
+export const ADULT_LABELS = ['author', 'moderator'] as const
+// A post's mark can also come from its community: every post in a community
+// marked sensitive carries 'community', which only unmarking the community
+// takes off, so a post there is never unmarked (ADR 0020, question 8).
+export const POST_ADULT_LABELS = [...ADULT_LABELS, 'community'] as const
 
 // A member of the network. `id` is the Ory Kratos identity ID: Kratos owns the
 // email, password and sessions; this table holds only what the app itself needs.
@@ -68,8 +78,15 @@ export const members = pgTable(
     // When the erase finished. From then on the row is a blank tombstone, kept so
     // that reports, moderation records and other people's replies still point somewhere.
     deletedAt: ts('deleted_at'),
+    // Every post they write from now on is marked sensitive (ADR 0020): their own
+    // choice in Settings ('author'), or a moderator's, which they cannot undo.
+    labelPosts: text('label_posts', { enum: ADULT_LABELS }),
+    // Show the images and video of posts marked sensitive straight away, without
+    // the cover. Only ever read for members who count as adults.
+    showSensitiveMedia: boolean('show_sensitive_media').notNull().default(false),
   },
   (t) => [
+    check('members_label_posts_check', sql.raw(`label_posts in (${ADULT_LABELS.map((value) => `'${value}'`).join(', ')})`)),
     index('members_handle_idx').on(t.handle),
     // Prefix lookups for @mention suggestions; "C" so LIKE 'ad%' can use them.
     index('members_handle_prefix_idx').on(sql`handle collate "C"`).where(sql`active`),
@@ -135,8 +152,19 @@ export const media = pgTable(
     // Community photos only: the community the upload was started for, the only
     // one it can become the photo of.
     communityId: uuid('community_id').references(() => communities.id),
+    // Post images and videos only (ADR 0025): a ready one's files are in the
+    // private bucket under `sensitive/`, served by signed URL, because its post
+    // is marked sensitive; false while they are in the public bucket. Where the
+    // files are, not where they should be: the post's adult_label says that, and
+    // moving them catches this up.
+    servedPrivately: boolean('served_privately').notNull().default(false),
     createdAt: ts('created_at').notNull().defaultNow(),
     readyAt: ts('ready_at'),
+    // Images only: when its files went to the quarantine (taken down by a moderator,
+    // or kept as evidence). They are deleted TAKEN_DOWN_MEDIA_RETENTION_DAYS later
+    // (/privacy#keep). Null while not quarantined; one quarantined before this
+    // column existed is dated by the first sweep that finds it.
+    quarantinedAt: ts('quarantined_at'),
   },
   (t) => [
     index('media_owner_status_idx').on(t.ownerId, t.status),
@@ -227,6 +255,9 @@ export const communities = pgTable('communities', {
   pinnedPostId: uuid('pinned_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
   // The community's square photo (a media row of kind community_photo); null shows the subject icon.
   photoMediaId: uuid('photo_media_id'),
+  // Marked sensitive by its moderators or a site moderator (ADR 0020, question 8):
+  // only adults see or join it, and every post in it carries the 'community' mark.
+  adultOnly: boolean('adult_only').notNull().default(false),
 })
 
 export const communityMemberships = pgTable(
@@ -269,11 +300,18 @@ export const posts = pgTable(
     linkUrl: text('link_url'),
     // At most one community per post. Replies inherit their parent's.
     communityId: uuid('community_id').references(() => communities.id),
+    // A reply in a Gist's comment section, inherited by the replies under it. Read only through the Gist's routes.
+    gistId: uuid('gist_id').references((): AnyPgColumn => gists.id),
     createdAt: ts('created_at').notNull().defaultNow(),
+    // Marked sensitive (ADR 0020, the 18+ label), with everything attached to it:
+    // never shown to anyone who does not count as an adult, and its images and
+    // video covered until an adult chooses to see them. Null when unmarked.
+    adultLabel: text('adult_label', { enum: POST_ADULT_LABELS }),
     // Soft delete: the row stays for moderation and audit, but leaves every feed.
     deletedAt: ts('deleted_at'),
     // Taken down by a moderator (as opposed to deleted by its author). Reversible.
     removedAt: ts('removed_at'),
+    hiddenByHostAt: ts('hidden_by_host_at'),
     // Likes by active members, and direct replies that are live and by active
     // members: what readers see. Kept by triggers (migration 0011), in the same
     // transaction as the like, reply, deletion or suspension that changes them.
@@ -282,6 +320,16 @@ export const posts = pgTable(
     // Reposts by active members, kept the same way (migration 0015). Quotes are
     // posts of their own and are not counted here.
     repostCount: integer('repost_count').notNull().default(0),
+    // A story's update (docs/adr/0024): the story's first post. An update is a
+    // top-level post of its own, not a reply. No foreign key, like reply_parent_id.
+    storyId: uuid('story_id'),
+    // On a story's first post: how many live updates it has. Kept by a trigger
+    // (migration 0040), with `superseded`, whenever an update is added, deleted,
+    // taken down, hidden or restored.
+    storyUpdates: integer('story_updates').notNull().default(0),
+    // A story shows once in feeds, as its newest live update (or its first post
+    // while it has none). Every other post of the story is superseded.
+    superseded: boolean('superseded').notNull().default(false),
   },
   (t) => [
     index('posts_created_idx').on(t.createdAt, t.id),
@@ -289,7 +337,11 @@ export const posts = pgTable(
     index('posts_reply_parent_created_idx').on(t.replyParentId, t.createdAt, t.id),
     index('posts_community_created_idx').on(t.communityId, t.createdAt),
     index('posts_quote_idx').on(t.quotePostId).where(sql`quote_post_id is not null`),
+    index('posts_gist_created_idx').on(t.gistId, t.createdAt, t.id).where(sql`gist_id is not null`),
+    index('posts_story_created_idx').on(t.storyId, t.createdAt, t.id).where(sql`story_id is not null`),
+    check('posts_gist_reply_check', sql`${t.gistId} is null or ${t.quotePostId} is null`),
     check('posts_reply_audience_check', sql.raw(`reply_audience in (${REPLY_AUDIENCES.map((value) => `'${value}'`).join(', ')})`)),
+    check('posts_adult_label_check', sql.raw(`adult_label in (${POST_ADULT_LABELS.map((value) => `'${value}'`).join(', ')})`)),
     // Full-text search. 'simple' (no stemming) suits mixed English, Pidgin and names.
     index('posts_text_search_idx').using('gin', sql`to_tsvector('simple', ${t.text})`),
   ],
@@ -474,6 +526,25 @@ export const follows = pgTable(
   ],
 )
 
+// A member following a story (docs/adr/0024): told about each new update. Nothing
+// to do with following its author. How many follow is public; who is not.
+export const storyFollows = pgTable(
+  'story_follows',
+  {
+    storyId: uuid('story_id')
+      .notNull()
+      .references(() => posts.id),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.storyId, t.memberId] }),
+    index('story_follows_member_idx').on(t.memberId),
+  ],
+)
+
 // Blocking is mutual invisibility: neither side sees the other's posts, and the
 // blocked member cannot follow, reply to or like the blocker.
 export const blocks = pgTable(
@@ -505,7 +576,8 @@ export const mutes = pgTable(
   (t) => [primaryKey({ columns: [t.muterId, t.mutedId] })],
 )
 
-export const REPORT_REASONS = ['spam', 'harassment', 'hate', 'scam', 'illegal', 'other', 'appeal'] as const
+// needs_label: sensitive content that is not marked as sensitive (ADR 0020).
+export const REPORT_REASONS = ['spam', 'harassment', 'hate', 'scam', 'illegal', 'needs_label', 'other', 'appeal'] as const
 
 // A report about a post, an account, a Gist or a community's photo. An appeal is a report a suspended member
 // files about themselves (reason 'appeal'), so it lands in the same queue. A
@@ -545,6 +617,9 @@ export const MODERATION_ACTIONS = [
   'grant_community_moderator',
   'revoke_community_moderator',
   'end_gist',
+  // Marking a post sensitive, and taking a moderator's mark off again (ADR 0020).
+  'label_post',
+  'unlabel_post',
 ] as const
 
 // Append-only record of every moderator decision: who did what, to what, and why.
@@ -586,6 +661,10 @@ export const NOTIFICATION_KINDS = [
   'moderator_revoked',
   // An idea you sent or voted for changed status; detail is the new status.
   'idea_status',
+  // The moderators marked your post sensitive (ADR 0020).
+  'post_labelled',
+  // A story you follow has a new update; post is the update.
+  'story_update',
 ] as const
 
 // Something that happened to a member: a reply, like, repost, quote, mention or follow by
@@ -670,6 +749,7 @@ export const OPTIONAL_NOTIFICATION_KINDS = [
   'quote',
   'mention',
   'follow',
+  'story_update',
 ] as const satisfies readonly (typeof NOTIFICATION_KINDS)[number][]
 
 // A kind of notification a member has turned off. Everything is on until they
@@ -716,6 +796,38 @@ export const pushSubscriptions = pgTable(
   (t) => [uniqueIndex('push_subscriptions_endpoint_idx').on(t.endpoint), index('push_subscriptions_member_idx').on(t.memberId)],
 )
 
+// The push services the apps register with (docs/adr/0023): Firebase Cloud
+// Messaging, for the Android app. Apple's (apns) comes with the iOS app's push.
+export const PUSH_DEVICE_SERVICES = ['fcm'] as const
+export type PushDeviceService = (typeof PUSH_DEVICE_SERVICES)[number]
+
+// An installation of the Android or iOS app that shows a member's notifications
+// (docs/adr/0023): the token its push service gave it, and the key the app made
+// that encrypts what is sent there, so that the push service cannot read it. One
+// row per installation: whoever signs in on it next takes the row, and signing out
+// deletes it. Kept apart from browsers' subscriptions, whose keys work differently.
+export const pushDevices = pgTable(
+  'push_devices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    service: text('service').$type<PushDeviceService>().notNull(),
+    token: text('token').notNull(),
+    // AES-256-GCM, 32 bytes in base64url.
+    key: text('key').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    // When its push service last accepted a notification for it.
+    lastPushedAt: ts('last_pushed_at'),
+  },
+  (t) => [
+    uniqueIndex('push_devices_token_idx').on(t.service, t.token),
+    index('push_devices_member_idx').on(t.memberId),
+    check('push_devices_service_check', sql.raw(`service in (${PUSH_DEVICE_SERVICES.map((value) => `'${value}'`).join(', ')})`)),
+  ],
+)
+
 // Signup is invite-only. Only the SHA-256 of a code is stored.
 export const invites = pgTable('invites', {
   codeHash: text('code_hash').primaryKey(),
@@ -747,20 +859,23 @@ export const inviteRedemptions = pgTable('invite_redemptions', {
 // can get its own database role, encrypted storage and separate admin access.
 // Ordinary reads (profiles, posts, feeds, search) never join it; the public
 // badge has its own table below. Never store a raw NIN, a plain hash of one, a
-// date of birth, a legal name or a provider's raw response anywhere.
+// legal name or a provider's raw response anywhere, nor a date of birth outside
+// age_assurances.birth_date.
 // ---------------------------------------------------------------------------
 export const restricted = pgSchema('restricted')
 
 // Age is its own thing, separate from having an account, from identity
 // verification and from voting membership (ADR 0006). Each row is one statement
-// about which age band an account holder is in, and how we know it. Only a band
-// is ever stored: never an age, a birth date or a document. An account with no
-// live row has an unknown age, which never counts as an adult (accounts created
-// before 16 October 2026 start that way). The status a feature acts on is worked
-// out from these rows by ageStatus() in apps/api/src/governance/age.ts.
+// about how old an account holder is, and how we know it. Never an age or a
+// document; a date of birth only as the member gave it (ADR 0020, section 1). An
+// account with no live row with a date has an unknown age, which never counts as
+// an adult, and is asked for its date. The status a feature acts on is worked out
+// from these rows by ageStatus() in apps/api/src/governance/age.ts: from the date
+// of birth, on the day, wherever a row has one.
 export const AGE_BANDS = ['under_18', '18_plus'] as const
 
-// self_declared: the person said so (the "I am 18 or older" box on /join).
+// self_declared: the person said so (their date of birth, on /join or when asked
+// later; or the "I am 18 or older" box before that, which no longer counts).
 // moderator_review: a moderator decided it, e.g. under the mistaken-age process
 // in the rules (not built). identity_provider: an age result from an identity
 // check such as NINAuth. age_assurance_provider: an age check that is not an
@@ -774,6 +889,8 @@ export const ageAssurances = restricted.table(
     // The Kratos identity, which becomes members.id. No foreign key: the signup
     // webhook writes the first row before the members row exists.
     memberId: uuid('member_id').notNull(),
+    // From a date of birth, the band it gave on the day it was given; the rules
+    // work it out from the date again on every check.
     band: text('band', { enum: AGE_BANDS }).notNull(),
     method: text('method', { enum: AGE_ASSURANCE_METHODS }).notNull(),
     // identity_provider: the verification the result came from, so revoking that
@@ -781,10 +898,14 @@ export const ageAssurances = restricted.table(
     verificationId: uuid('verification_id').references(() => identityVerifications.id),
     // moderator_review: who decided. Null when the member or a provider did.
     recordedBy: uuid('recorded_by'),
-    // under_18 only: when to check the band again, at the latest the month the
-    // person turns 18 (rounded up), so the account can move to adult without a
-    // birth date being kept. Nothing writes under_18 yet.
+    // Not written any more: an age from a date of birth is worked out on the day,
+    // so it needs no date to check again (ADR 0020, section 1).
     reviewAfter: ts('review_after'),
+    // The date of birth the member gave, on /join or when asked later (ADR 0020,
+    // section 1), or a correction made through support. Seen only by the member
+    // (Settings, the data export): never logged, never public. Null for the old
+    // "18 or older" box and for an ID check's yes-or-no answer.
+    birthDate: date('birth_date', { mode: 'string' }),
     assuredAt: ts('assured_at').notNull().defaultNow(),
     // Set when the statement stops counting: its source was revoked, consent was
     // withdrawn, or a moderator decision was overturned on appeal. Kept as history.
@@ -874,6 +995,9 @@ export const GOVERNANCE_AUDIT_EVENTS = [
   'age_declared',
   'age_recorded',
   'age_withdrawn',
+  // A member already here gave a date of birth under MINIMUM_AGE, and their
+  // account was suspended until a moderator looks (ADR 0020, section 1).
+  'age_below_minimum',
   'verification_recorded',
   'verification_rejected',
   'verification_reviewed',
@@ -1070,9 +1194,11 @@ export const gists = pgTable(
     locked: boolean('locked').notNull().default(false),
     listenerCap: integer('listener_cap'),
     requestsOpen: boolean('requests_open').notNull().default(true),
+    replyAudience: text('reply_audience', { enum: GIST_REPLY_AUDIENCES }).notNull().default('everyone'),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [
+    check('gists_reply_audience_check', sql.raw(`reply_audience in (${GIST_REPLY_AUDIENCES.map((value) => `'${value}'`).join(', ')})`)),
     // One live Gist per host, enforced here so two racing requests cannot make two.
     uniqueIndex('gists_one_live_per_host_idx')
       .on(t.hostId)

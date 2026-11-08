@@ -15,10 +15,12 @@ import {
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, desc, eq, isNull, ne, or, sql } from 'drizzle-orm'
 import { managesPhoto } from '../communities/photo-managers.js'
+import { countsAsAdult } from '../governance/adult-content.js'
 import { GistsService } from '../gists/gists.service.js'
-import { avatarPath, communityPhotoPath, MediaService } from '../media/media.service.js'
+import { avatarPath, communityPhotoPath, MEDIA_JOBS, MediaService, type PlacementJobs } from '../media/media.service.js'
+import { localMediaUrls, MEDIA_URLS, type MediaUrls } from '../media/media-urls.js'
 import { type NewNotification, notify } from '../notifications/notifications.service.js'
-import { imagesOf, type PostImage, toPostImages } from '../posts/posts.service.js'
+import { communityMark, type ImageRow, imagesOf, type PostImage, toPostImages } from '../posts/posts.service.js'
 import { VideoService } from '../video/video.service.js'
 import { DB } from '../tokens.js'
 import { SAFETY_ALERTS, type SafetyAlerts } from './safety-alerts.js'
@@ -27,6 +29,7 @@ export type ReportReason = Exclude<(typeof REPORT_REASONS)[number], 'appeal'>
 export const RESOLUTIONS = [
   'dismiss',
   'remove_post',
+  'label_post',
   'suspend_member',
   'reinstate_member',
   'remove_avatar',
@@ -55,7 +58,17 @@ export type QueueItem = {
   reporterHandle: string | null
   /** How many open reports there are about the same post or account. */
   reportCount: number
-  post: { id: string; text: string; images: PostImage[]; /** Has a video, shown or held: the queue shows a label, not the video (phase 3). */ hasVideo: boolean; authorHandle: string; communityName: string | null } | null
+  post: {
+    id: string
+    text: string
+    images: PostImage[]
+    /** Has a video, shown or held: the queue shows a label, not the video (phase 3). */
+    hasVideo: boolean
+    authorHandle: string
+    communityName: string | null
+    /** Its author counts as an adult, so it can be marked sensitive; a minor's post that needs a mark is removed instead (ADR 0020). */
+    markable: boolean
+  } | null
   /** For reports about an account: what the moderator needs to judge it. */
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
   /** For reports about a community's photo: the photo as reported; `photo` is null once it is no longer published (replaced or removed). */
@@ -103,6 +116,10 @@ export class ModerationService {
     @Optional() @Inject(GistsService) private readonly gists?: Pick<GistsService, 'endNow'>,
     // Takes a post's video down with it (ADR 0019 section 4.3). Optional like media.
     @Optional() @Inject(VideoService) private readonly videos?: VideoService,
+    // Moves a post's files when a moderator marks it sensitive or takes the mark off (ADR 0025).
+    @Optional() @Inject(MEDIA_JOBS) private readonly placement?: PlacementJobs,
+    // Signs a marked post's pictures for the moderators reviewing it.
+    @Optional() @Inject(MEDIA_URLS) private readonly urls: MediaUrls = localMediaUrls('/media'),
   ) {}
 
   /**
@@ -315,9 +332,10 @@ export class ModerationService {
       report_count: number
       post_id: string | null
       post_text: string | null
-      post_images: { id: string; alt: string; width: number; height: number; animated: boolean }[]
+      post_images: ImageRow[]
       post_has_video: boolean | null
       post_author: string | null
+      post_author_adult: boolean | null
       community_name: string | null
       member_handle: string | null
       member_active: boolean | null
@@ -344,7 +362,8 @@ export class ModerationService {
             or (r.post_id is null and r.gist_id is null and r.community_id is null and o.post_id is null and o.gist_id is null
               and o.community_id is null and o.member_id = r.member_id))) as report_count,
         p.id as post_id, p.text as post_text, ${imagesOf(sql`p.id`)} as post_images,
-        exists(select 1 from media vm where vm.post_id = p.id and vm.kind = 'post_video' and vm.status in ('ready', 'quarantined')) as post_has_video, pa.handle as post_author, c.name as community_name,
+        exists(select 1 from media vm where vm.post_id = p.id and vm.kind = 'post_video' and vm.status in ('ready', 'quarantined')) as post_has_video, pa.handle as post_author,
+        case when p.id is null then null else ${countsAsAdult(sql`p.author_id`)} end as post_author_adult, c.name as community_name,
         tm.handle as member_handle, tm.active as member_active, tm.display_name as member_name,
         tm.bio as member_bio, tm.avatar_media_id as member_avatar,
         g.id as gist_id, g.title as gist_title, g.status as gist_status, gh.handle as gist_host, gc.name as gist_community,
@@ -379,7 +398,7 @@ export class ModerationService {
       reporterHandle: r.reporter_handle,
       reportCount: r.report_count,
       post: r.post_id
-        ? { id: r.post_id, text: r.post_text!, images: toPostImages(r.post_images), hasVideo: r.post_has_video === true, authorHandle: r.post_author!, communityName: r.community_name }
+        ? { id: r.post_id, text: r.post_text!, images: toPostImages(r.post_images, this.urls), hasVideo: r.post_has_video === true, authorHandle: r.post_author!, communityName: r.community_name, markable: r.post_author_adult === true }
         : null,
       member: r.member_handle
         ? {
@@ -419,6 +438,7 @@ export class ModerationService {
 
     let removedAvatar: string | null = null
     let removedPost: string | null = null
+    let labelledPost: string | null = null
     let removedCommunityPhoto: string | null = null
     let dismissedCommunityPhoto: string | null = null
     let dismissedPost: string | null = null
@@ -434,6 +454,7 @@ export class ModerationService {
           photoMediaId: reports.photoMediaId,
           gistId: reports.gistId,
           postAuthorId: posts.authorId,
+          postAuthorAdult: countsAsAdult(sql`${posts.authorId}`),
           postCommunityId: posts.communityId,
           gistCommunityId: gists.communityId,
         })
@@ -464,6 +485,14 @@ export class ModerationService {
         await tx.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, report.postId))
         action = 'remove_post'
         removedPost = report.postId
+      } else if (resolution === 'label_post') {
+        // Marked sensitive (ADR 0020): it stays up, for adults only, and its author cannot take the mark off.
+        if (!report.postId) throw new ModerationTargetError('this report is not about a post')
+        // Only an adult's post carries a mark; a minor's that needs one is removed instead.
+        if (!report.postAuthorAdult) throw new ModerationTargetError('its author is not counted as an adult, so it cannot be marked sensitive; remove it if it needs a mark')
+        await tx.update(posts).set({ adultLabel: 'moderator' }).where(eq(posts.id, report.postId))
+        action = 'label_post'
+        labelledPost = report.postId
       } else if (resolution === 'remove_community_photo') {
         // Like any takedown of a community's photo, this is for site moderators only.
         if (!scope.siteWide) throw new NotAModeratorError()
@@ -547,6 +576,9 @@ export class ModerationService {
       if (action === 'remove_post' && report.postAuthorId) {
         told.push({ recipientId: report.postAuthorId, kind: 'post_removed', postId: report.postId, detail: report.reason })
       }
+      if (action === 'label_post' && report.postAuthorId) {
+        told.push({ recipientId: report.postAuthorId, kind: 'post_labelled', postId: report.postId })
+      }
       if (action === 'reinstate_member' && targetMemberId) {
         told.push({ recipientId: targetMemberId, kind: 'account_reinstated' })
       }
@@ -585,6 +617,11 @@ export class ModerationService {
       const postId = removedPost
       await this.afterwards(`quarantining images of post ${postId}`, async () => void (await this.media?.quarantinePostImages(postId)))
       await this.afterwards(`quarantining the video of post ${postId}`, async () => void (await this.videos?.quarantinePostVideos(postId)))
+    }
+    if (labelledPost) {
+      // Its pictures and video leave the public bucket (ADR 0025).
+      const postId = labelledPost
+      await this.afterwards(`queueing the move of post ${postId}'s media to the private place`, async () => void (await this.placement?.placePostMedia(postId)))
     }
     if (removedCommunityPhoto) {
       const mediaId = removedCommunityPhoto
@@ -692,6 +729,24 @@ export class ModerationService {
     await notify(this.db, [{ recipientId: restored[0]!.authorId, kind: 'post_restored', postId }])
     await this.afterwards(`releasing images of post ${postId}`, async () => void (await this.media?.releasePostImages(postId)))
     await this.afterwards(`releasing the video of post ${postId}`, async () => void (await this.videos?.releasePostVideos(postId)))
+  }
+
+  /**
+   * Takes a moderator's sensitive mark off a post, on appeal (ADR 0020). Site
+   * moderators only. The author's own mark is theirs to take off, and in a
+   * community marked sensitive the post keeps the community's.
+   */
+  async unlabelPost(moderatorId: string, postId: string, note = ''): Promise<void> {
+    if (!(await this.requireModerator(moderatorId)).siteWide) throw new NotAModeratorError()
+    const unlabelled = await this.db
+      .update(posts)
+      .set({ adultLabel: communityMark(sql`"posts"."community_id"`) })
+      .where(and(eq(posts.id, postId), eq(posts.adultLabel, 'moderator')))
+      .returning({ id: posts.id })
+    if (unlabelled.length === 0) throw new ModerationTargetError('that post has no mark from a moderator')
+    await this.db.insert(moderationActions).values({ actorId: moderatorId, action: 'unlabel_post', postId, note })
+    // Back on the public path with the mark gone (ADR 0025).
+    await this.afterwards(`queueing the move of post ${postId}'s media to the public place`, async () => void (await this.placement?.placePostMedia(postId)))
   }
 
   /**

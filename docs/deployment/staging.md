@@ -568,6 +568,7 @@ existing account.
 | Invite people         | `docker compose exec api node dist/cli/create-invite.js --uses 5 --days 14`                                                              |
 | Change the nginx site | edit `infra/deploy/nginx/heynaija.conf.template`, deploy, then `sudo ./install-nginx.sh`                                                     |
 | Gists (LiveKit)       | its own server: [livekit.md](livekit.md); turning Gists on here is its step 5                                                                |
+| Push to the app       | `FCM_SERVICE_ACCOUNT` in `.env`: [app-push.md](app-push.md)                                                                                  |
 
 The server keeps the last five releases' images, so a rollback to one of them
 needs no registry. For an older one, `deploy.sh` pulls from GitHub's registry,
