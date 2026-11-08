@@ -34,7 +34,7 @@ export function excerpt(text: string, max = 200) {
 type PreviewedPost = {
   text: string
   authorHandle: string
-  sensitive: 'author' | 'moderator' | null
+  sensitive: 'author' | 'moderator' | 'community' | null
   images: { src: string; alt: string; width: number; height: number; animated: boolean }[]
 }
 

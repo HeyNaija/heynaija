@@ -20,7 +20,7 @@ import { GistsService } from '../gists/gists.service.js'
 import { avatarPath, communityPhotoPath, MEDIA_JOBS, MediaService, type PlacementJobs } from '../media/media.service.js'
 import { localMediaUrls, MEDIA_URLS, type MediaUrls } from '../media/media-urls.js'
 import { type NewNotification, notify } from '../notifications/notifications.service.js'
-import { type ImageRow, imagesOf, type PostImage, toPostImages } from '../posts/posts.service.js'
+import { communityMark, type ImageRow, imagesOf, type PostImage, toPostImages } from '../posts/posts.service.js'
 import { VideoService } from '../video/video.service.js'
 import { DB } from '../tokens.js'
 import { SAFETY_ALERTS, type SafetyAlerts } from './safety-alerts.js'
@@ -733,13 +733,14 @@ export class ModerationService {
 
   /**
    * Takes a moderator's sensitive mark off a post, on appeal (ADR 0020). Site
-   * moderators only. The author's own mark is theirs to take off.
+   * moderators only. The author's own mark is theirs to take off, and in a
+   * community marked sensitive the post keeps the community's.
    */
   async unlabelPost(moderatorId: string, postId: string, note = ''): Promise<void> {
     if (!(await this.requireModerator(moderatorId)).siteWide) throw new NotAModeratorError()
     const unlabelled = await this.db
       .update(posts)
-      .set({ adultLabel: null })
+      .set({ adultLabel: communityMark(sql`"posts"."community_id"`) })
       .where(and(eq(posts.id, postId), eq(posts.adultLabel, 'moderator')))
       .returning({ id: posts.id })
     if (unlabelled.length === 0) throw new ModerationTargetError('that post has no mark from a moderator')

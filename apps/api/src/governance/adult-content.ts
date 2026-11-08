@@ -62,3 +62,13 @@ export const adultContentAllowed = (viewerId: string | null, label: SQL, authorI
   viewerId
     ? sql<boolean>`(${label} is null or ${authorId} = ${viewerId} or ${seesAdultContent(viewerId)})`
     : sql<boolean>`(${label} is null)`
+
+/**
+ * Whether the community `adultOnly` belongs to may reach `viewerId`: it is not
+ * marked sensitive, or the viewer counts as an adult (ADR 0020, question 8). To
+ * anyone else it does not exist: not listed, found, shown, joined or posted in,
+ * and nothing says why. Its posts carry the 'community' mark, so
+ * `adultContentAllowed` keeps them from the same people.
+ */
+export const communityOpenTo = (viewerId: string | null, adultOnly: SQL = sql`"communities"."adult_only"`): SQL<boolean> =>
+  viewerId ? sql<boolean>`(not ${adultOnly} or ${seesAdultContent(viewerId)})` : sql<boolean>`(not ${adultOnly})`

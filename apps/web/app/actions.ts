@@ -226,6 +226,14 @@ export async function setSensitive(formData: FormData): Promise<void> {
   refresh()
 }
 
+/** A community's moderators mark the whole community sensitive (on=1) or take the mark off (ADR 0020). */
+export async function setCommunitySensitive(formData: FormData): Promise<void> {
+  const slug = String(formData.get('slug') ?? '')
+  const res = await api(`/v1/communities/${encodeURIComponent(slug)}/sensitive`, { method: formData.get('on') === '1' ? 'PUT' : 'DELETE' })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
 /** The host hides a reply in their Gist (on=1) or shows it again. */
 export async function hideGistReply(formData: FormData): Promise<void> {
   const gist = String(formData.get('gist') ?? '')

@@ -11,6 +11,7 @@ import {
   pollVotes,
   postMentions,
   postPolls,
+  type POST_ADULT_LABELS,
   postHashtags,
   posts,
   REPLY_AUDIENCES,
@@ -30,7 +31,7 @@ import { VIDEO_CONFIG } from '../video/video.service.js'
 import { type PostVideo, toPostVideo, type VideoRow, videoOf } from '../video/video-view.js'
 import { isFounder } from '../members/badges.js'
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
-import { adultContentAllowed, LabelNotAllowedError, seesAdultContent } from '../governance/adult-content.js'
+import { adultContentAllowed, communityOpenTo, LabelNotAllowedError, seesAdultContent } from '../governance/adult-content.js'
 import { isMinor, reachesViewer, ReplyAudienceNotAllowedError, strangerToMinor } from '../governance/minors.js'
 import { excerpt, notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
@@ -224,10 +225,11 @@ export type PostView = {
   /** The post's one video, once it is ready (a held, blocked or unfinished one is never shown). Null when none, and when `deleted`. */
   video: PostVideo | null
   /**
-   * Marked sensitive (ADR 0020), by its author or a moderator; null when not.
-   * Only adults and its author are ever shown a marked post.
+   * Marked sensitive (ADR 0020), by its author, a moderator or its community
+   * (one marked sensitive as a whole); null when not. Only adults and its author
+   * are ever shown a marked post, and only the author's own mark is theirs to take off.
    */
-  sensitive: 'author' | 'moderator' | null
+  sensitive: (typeof POST_ADULT_LABELS)[number] | null
   /**
    * Its images and video wait behind a cover until the viewer taps: it is marked
    * sensitive, it is not the viewer's own, and the viewer has not chosen in
@@ -456,6 +458,13 @@ const coverMediaFor = (viewerId: string | null, label: SQL, authorId: SQL) =>
     ? sql<boolean>`(${label} is not null and ${authorId} <> ${viewerId}
         and not coalesce((select vm.show_sensitive_media from members vm where vm.id = ${viewerId}), false))`
     : sql<boolean>`(${label} is not null)`
+
+/**
+ * The mark a post in `communityId` carries for its community: 'community' if it
+ * is marked sensitive (ADR 0020, question 8), otherwise null.
+ */
+export const communityMark = (communityId: SQL) =>
+  sql<'community' | null>`(select 'community' from communities cmk where cmk.id = ${communityId} and cmk.adult_only)`
 
 /** True when `memberId` moderates the community: as one of its moderators, or site-wide. */
 const moderatesCommunity = (memberId: string, communityId: SQL) =>
@@ -1817,7 +1826,8 @@ export class PostsService {
           joined: sql<boolean>`exists(select 1 from community_memberships cm where cm.community_id = "communities"."id" and cm.member_id = ${authorId})`,
         })
         .from(communities)
-        .where(and(eq(communities.slug, communitySlug), eq(communities.active, true)))
+        // One marked sensitive is not there for anyone who is not an adult (ADR 0020).
+        .where(and(eq(communities.slug, communitySlug), eq(communities.active, true), communityOpenTo(authorId)))
       if (!community) throw new CommunityNotFoundError('no such community')
       if (!community.joined && !anyMember) throw new NotACommunityMemberError('join the community to post in it')
       communityId = community.id
@@ -1865,6 +1875,9 @@ export class PostsService {
         if (!locked.allowed) throw new ReplyNotAllowedError('the host limited who can reply')
         gistHost = locked.hostId
       }
+      // Waits out the community's sensitive mark changing, so the post takes the
+      // mark it ends with (CommunitiesService.setSensitive).
+      if (communityId) await tx.select({ id: communities.id }).from(communities).where(eq(communities.id, communityId)).for('share')
       const [row] = await tx
         .insert(posts)
         .values({
@@ -1883,8 +1896,10 @@ export class PostsService {
             : audience === 'everyone'
               ? sql`case when ${isMinor(authorId)} then 'following' else 'everyone' end`
               : audience,
-          // Settings' "mark everything I post" (or a moderator's) wins over the post's own choice.
-          adultLabel: sql`coalesce((select m.label_posts from members m where m.id = ${authorId}), ${sensitive ? 'author' : null}::text)`,
+          // Settings' "mark everything I post" (or a moderator's) wins over the post's own choice,
+          // and in a community marked sensitive, a post is marked whatever it asks (ADR 0020).
+          adultLabel: sql`coalesce((select m.label_posts from members m where m.id = ${authorId}), ${sensitive ? 'author' : null}::text,
+            ${communityId ? communityMark(sql`${communityId}::uuid`) : sql`null`})`,
         })
         .returning({ id: posts.id, adultLabel: posts.adultLabel })
       if (poll) {
@@ -2005,8 +2020,9 @@ export class PostsService {
 
   /**
    * Marks one of the author's own live posts sensitive, or takes their own mark
-   * off. A moderator's mark stays: false, as for a post that is not theirs. Only
-   * an adult may add the mark (LabelNotAllowedError).
+   * off. A moderator's or its community's mark stays: false, as for a post that
+   * is not theirs, and in a community marked sensitive taking their own mark off
+   * leaves the community's. Only an adult may add the mark (LabelNotAllowedError).
    */
   async setAdultLabel(authorId: string, postId: string, on: boolean): Promise<boolean> {
     if (on) {
@@ -2015,12 +2031,12 @@ export class PostsService {
     }
     const changed = await this.db
       .update(posts)
-      .set({ adultLabel: on ? 'author' : null })
+      .set({ adultLabel: on ? 'author' : communityMark(sql`"posts"."community_id"`) })
       .where(and(
         eq(posts.id, postId),
         eq(posts.authorId, authorId),
         live,
-        sql`${posts.adultLabel} is distinct from 'moderator'`,
+        sql`(${posts.adultLabel} is null or ${posts.adultLabel} = 'author')`,
       ))
       .returning({ id: posts.id })
     // Its pictures and video follow the mark: private while it is on (ADR 0025).

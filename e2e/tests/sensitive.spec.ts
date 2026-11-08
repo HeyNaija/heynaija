@@ -1,4 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
+import { grantModerator } from '../lib/cli.ts'
+import { createCommunity, makeMinor } from '../lib/db.ts'
 import { newMember } from '../lib/members.ts'
 import { png } from '../lib/png.ts'
 
@@ -122,5 +124,77 @@ test('a post marked sensitive: covered for an adult until Show, never shown sign
     await visitor.close()
     await author.context.close()
     await reader.context.close()
+  }
+})
+
+test('a community its moderator marks sensitive: adults find it with pictures covered; a minor and a visitor never do', async ({ browser }) => {
+  const slug = `e2e-nights-${Date.now().toString(36)}`
+  const name = `E2E Nights ${slug.slice(-6)}`
+  await createCommunity(slug, name)
+  const mod = await newMember(browser, 'nightmod')
+  grantModerator(mod.handle, slug)
+  const reader = await newMember(browser, 'nightreader')
+  const minor = await newMember(browser, 'nightminor')
+  const visitor = await browser.newContext({ baseURL: test.info().project.use.baseURL })
+  try {
+    // The minor joined while it was an ordinary community.
+    await makeMinor(minor.handle)
+    await minor.page.goto(`/c/${slug}`)
+    await minor.page.getByRole('main').getByRole('button', { name: 'Join', exact: true }).click()
+    await expect(minor.page.getByRole('main').getByRole('button', { name: 'Joined' })).toBeVisible()
+
+    // Its moderator posts a picture there, then marks the whole community.
+    const { page } = mod
+    await page.goto(`/c/${slug}`)
+    const box = page.getByRole('textbox', { name: 'New post' })
+    await box.click()
+    const text = `After dark, from ${mod.handle}`
+    await box.fill(text)
+    await page.locator('#compose input[type="file"]:not([accept*="video"])').setInputFiles({ name: 'night.png', mimeType: 'image/png', buffer: png() })
+    const alt = 'The street at night'
+    await page.getByLabel('Description of image 1').fill(alt)
+    const submit = page.getByRole('button', { name: 'Post', exact: true })
+    await expect(submit).toBeEnabled({ timeout: 45_000 })
+    await submit.click()
+    const article = page.locator('article', { hasText: text }).first()
+    await expect(article.getByRole('img', { name: alt })).toBeVisible({ timeout: 30_000 })
+    const id = (await article.getAttribute('id'))!.replace('post-', '')
+
+    await page.getByRole('button', { name: 'Mark community as sensitive' }).click()
+    await expect(page.getByText('Sensitive community')).toBeVisible()
+
+    // An adult who never joined finds it, and the post's picture is covered until Show.
+    await reader.page.goto('/c')
+    await expect(reader.page.getByRole('main').getByRole('link', { name: new RegExp(name) }).first()).toBeVisible()
+    await reader.page.goto(`/p/${id}`)
+    const post = reader.page.locator(`#post-${id}`)
+    await expect(post.getByText(text)).toBeVisible()
+    await expect(post.locator('.media-cover').getByText('Sensitive content')).toBeVisible()
+    // The mark is the community's: its author's menu offers no way to take it off.
+    await page.goto(`/p/${id}`)
+    await page.locator(`#post-${id}`).getByLabel('Post options').click()
+    await expect(page.getByRole('button', { name: 'Remove sensitive mark' })).toHaveCount(0)
+
+    // For the minor, and a signed-out visitor, the community and its post are not there.
+    for (const who of [minor.page, await visitor.newPage()]) {
+      await who.goto(`/c/${slug}`)
+      await expect(who.getByText('That page does not exist')).toBeVisible()
+      await who.goto('/c')
+      await expect(who.getByRole('main').getByText(name)).toHaveCount(0)
+      await who.goto(`/p/${id}`)
+      await expect(who.getByText(text)).toHaveCount(0)
+    }
+
+    // Taking the mark off puts it back for everyone.
+    await page.goto(`/c/${slug}`)
+    await page.getByRole('button', { name: 'Remove sensitive mark' }).click()
+    await expect(page.getByText('Public community')).toBeVisible()
+    await minor.page.goto(`/p/${id}`)
+    await expect(minor.page.getByText(text)).toBeVisible()
+  } finally {
+    await visitor.close()
+    await mod.context.close()
+    await reader.context.close()
+    await minor.context.close()
   }
 })
