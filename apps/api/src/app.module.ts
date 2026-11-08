@@ -6,6 +6,8 @@ import { AccountWorker, BullAccountJobs } from './account/account-queue.js'
 import { EmailDeletionNotices } from './account/deletion-notices.js'
 import { PrivacyRequestsService } from './account/privacy-requests.service.js'
 import { RetentionService } from './account/retention.service.js'
+import { AppleController } from './apple/apple.controller.js'
+import { AppleTokensService } from './apple/apple-tokens.service.js'
 import { AuthController } from './auth/auth.controller.js'
 import { AuthService } from './auth/auth.service.js'
 import { AUTH_SESSION_PROVIDER } from './auth/auth-session.provider.js'
@@ -22,7 +24,7 @@ import { BullEmailJobs, EmailWorker } from './email/email-queue.js'
 import { EMAIL_JOBS, EMAIL_SETTINGS, EmailNotificationsService } from './email/email-notifications.service.js'
 import { MAILER, type Mailer, smtpMailer } from './email/mailer.js'
 import { unsubscribeKey } from './email/unsubscribe-token.js'
-import { type Env, loadEnv } from './env.js'
+import { appleKey, type Env, loadEnv } from './env.js'
 import { FeatureFlags } from './flags/feature-flags.js'
 import { FeatureGuard } from './flags/feature.guard.js'
 import { FlagsController } from './flags/flags.controller.js'
@@ -67,7 +69,7 @@ import { PostsService } from './posts/posts.service.js'
 import { PushController } from './push/push.controller.js'
 import { PUSH_JOBS, PushNotificationsService } from './push/push-notifications.service.js'
 import { BullPushJobs, PushWorker } from './push/push-queue.js'
-import { fcmSender } from './push/fcm-sender.js'
+import { appPushSender } from './push/app-push-sender.js'
 import { APP_PUSH_SENDER, PUSH_SENDER, webPushSender } from './push/push-sender.js'
 import { RateLimiter, RedisRateLimiter } from './rate-limit.js'
 import { SearchController } from './search/search.controller.js'
@@ -89,7 +91,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, PostsController, MembersController, OwnProfileController, OwnSensitiveSettingsController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, PrivateMediaController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, GistRepliesController, LiveKitWebhookController, AccountController, FlagsController, VideosController],
+  controllers: [HealthController, AuthController, AppleController, PostsController, MembersController, OwnProfileController, OwnSensitiveSettingsController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, PrivateMediaController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, GistRepliesController, LiveKitWebhookController, AccountController, FlagsController, VideosController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -153,7 +155,7 @@ class HealthController {
         delayS: env.EMAIL_DIGEST_DELAY_S,
         gapS: env.EMAIL_DIGEST_GAP_S,
         // Whatever is pushed is not emailed, so email waits for the push side.
-        waitForPush: Boolean(env.PUSH_VAPID_PUBLIC_KEY || env.FCM_SERVICE_ACCOUNT),
+        waitForPush: Boolean(env.PUSH_VAPID_PUBLIC_KEY || env.FCM_SERVICE_ACCOUNT || appleKey(env)),
       }),
       inject: [ENV],
     },
@@ -162,8 +164,8 @@ class HealthController {
     { provide: PUSH_JOBS, useClass: BullPushJobs },
     // Without VAPID keys (PUSH_VAPID_*) this is null and nothing is pushed.
     { provide: PUSH_SENDER, useFactory: webPushSender, inject: [ENV] },
-    // Without FCM's service account (FCM_SERVICE_ACCOUNT) this is null and the app is not pushed to.
-    { provide: APP_PUSH_SENDER, useFactory: fcmSender, inject: [ENV] },
+    // Without FCM's service account (FCM_SERVICE_ACCOUNT) or the Apple key (APPLE_*) this is null and the apps are not pushed to.
+    { provide: APP_PUSH_SENDER, useFactory: appPushSender, inject: [ENV] },
     PushNotificationsService,
     PushWorker,
     ExportService,
@@ -176,6 +178,7 @@ class HealthController {
       inject: [ENV, MAILER, EMAIL_ADDRESSES],
     },
     AccountDeletionService,
+    AppleTokensService,
     PrivacyRequestsService,
     RetentionService,
     BullAccountJobs,

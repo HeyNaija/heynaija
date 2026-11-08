@@ -1,6 +1,7 @@
 import { ageAssurances, type Db, governanceAuditLog, identityVerifications, members, privacyRequests } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, asc, eq, inArray, isNull, lte, or, type SQL, sql } from 'drizzle-orm'
+import { AppleTokensService } from '../apple/apple-tokens.service.js'
 import { AuthService } from '../auth/auth.service.js'
 import { EMAIL_ADDRESSES, type EmailAddresses } from '../email/addresses.js'
 import type { Env } from '../env.js'
@@ -62,6 +63,8 @@ export class AccountDeletionService {
     @Optional() @Inject(DELETION_NOTICES) private readonly notices?: DeletionNotices,
     // Their videos out of storage (ADR 0019). Optional like the notices: tests and the CLI that never erase need none.
     @Optional() @Inject(VideoService) private readonly videos?: Pick<VideoService, 'eraseFilesOf'>,
+    // Sign in with Apple revoked (ADR 0026). Optional likewise.
+    @Optional() @Inject(AppleTokensService) private readonly apple?: Pick<AppleTokensService, 'revokeFor'>,
   ) {}
 
   async state(memberId: string): Promise<DeletionState> {
@@ -247,6 +250,8 @@ export class AccountDeletionService {
     await this.auth.revokeAllSessions(memberId)
     // 3. A live Gist they host ends, room and all: once its rows go, nothing would close the room.
     await this.gists.endHostedBy(memberId)
+    // 3b. Sign in with Apple revoked, as Apple requires, while its token is still kept.
+    await this.apple?.revokeFor(memberId)
     // 4. Everything in the app's database.
     const erased = await this.eraseRows(memberId, now)
     if (!erased) return 'cancelled'
@@ -393,6 +398,7 @@ export class AccountDeletionService {
       await run(sql`delete from notification_opt_outs where member_id = ${memberId}`)
       await run(sql`delete from push_subscriptions where member_id = ${memberId}`)
       await run(sql`delete from push_devices where member_id = ${memberId}`)
+      await run(sql`delete from apple_tokens where member_id = ${memberId}`)
       await run(sql`delete from profile_badges where member_id = ${memberId}`)
       await run(sql`delete from invite_redemptions where identity_id = ${memberId}`)
       // Their place on feature flags' allow-lists goes. Flag changes they made as a

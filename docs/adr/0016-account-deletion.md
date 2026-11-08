@@ -154,6 +154,8 @@ does nothing for an inactive author. The text search index follows the text.
 | "Your report about @… was actioned", to reporters (`subject_id`) | — | kept: the reporter's record; shows the tombstone handle | keep |
 | `notification_opt_outs` | — | deleted | delete |
 | `push_subscriptions` | nothing pushed | deleted | delete |
+| `push_devices` (the apps' installations, ADR 0023) | nothing pushed | deleted | delete |
+| `apple_tokens` (Sign in with Apple, ADR 0026) | — | revoked with Apple, then deleted | delete |
 
 ### Moderation and governance records
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { generateKeyPairSync } from 'node:crypto'
 import { test } from 'node:test'
-import { loadEnv, loadPrivacyToolEnv } from './env.js'
+import { appleKey, loadEnv, loadPrivacyToolEnv } from './env.js'
 
 const base = {
   DATABASE_URL: 'postgres://localhost/heynaija',
@@ -215,4 +215,19 @@ test('FCM’s service account is its JSON key in base64, kept to what sending ne
   assert.throws(() => loadEnv({ ...base, FCM_SERVICE_ACCOUNT: JSON.stringify(key) }), /service account key/)
   assert.throws(() => loadEnv({ ...base, FCM_SERVICE_ACCOUNT: b64({ project_info: { project_id: 'heynaija-ed259' } }) }), /FCM_SERVICE_ACCOUNT/)
   assert.throws(() => loadEnv({ ...base, FCM_SERVICE_ACCOUNT: b64({ ...key, private_key: 'not a key' }) }), /private key/)
+})
+
+test('the Apple key is its .p8 file in base64, with its team and key IDs, all three or none', () => {
+  const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+  const p8 = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+  const apple = { APPLE_TEAM_ID: 'TEAM123456', APPLE_KEY_ID: 'KEY1234567', APPLE_PRIVATE_KEY: Buffer.from(p8).toString('base64') }
+  const env = loadEnv({ ...base, ...apple })
+  assert.deepEqual(appleKey(env), { teamId: 'TEAM123456', keyId: 'KEY1234567', privateKey: p8, bundleId: 'ng.heynaija.app' })
+  assert.equal(appleKey(loadEnv({ ...base, ...apple, APPLE_BUNDLE_ID: 'ng.heynaija.beta' }))?.bundleId, 'ng.heynaija.beta')
+  assert.equal(appleKey(loadEnv(base)), null)
+  assert.equal(appleKey(loadEnv({ ...base, APPLE_TEAM_ID: '', APPLE_KEY_ID: '', APPLE_PRIVATE_KEY: '' })), null)
+  assert.throws(() => loadEnv({ ...base, APPLE_TEAM_ID: apple.APPLE_TEAM_ID }), /together/)
+  // The file itself rather than base64, an ID in the wrong shape.
+  assert.throws(() => loadEnv({ ...base, ...apple, APPLE_PRIVATE_KEY: p8 }), /\.p8/)
+  assert.throws(() => loadEnv({ ...base, ...apple, APPLE_KEY_ID: 'key' }), /APPLE_KEY_ID/)
 })

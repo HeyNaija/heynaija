@@ -1,7 +1,10 @@
-# Push notifications to the Android app
+# Push notifications to the apps
 
 The API pushes to the Android app through Firebase Cloud Messaging
-([ADR 0023](../adr/0023-app-push.md)). The Firebase project is `heynaija-ed259`.
+([ADR 0023](../adr/0023-app-push.md)), and to the iOS app through Apple's push
+service, with the Apple key described in [sign-in-with-apple.md](sign-in-with-apple.md)
+([ADR 0026](../adr/0026-ios-app-push-and-sign-in-with-apple.md)). The rest of this
+page is Android's. The Firebase project is `heynaija-ed259`.
 Each server needs one setting, `FCM_SERVICE_ACCOUNT`; the app needs the project's
 `google-services.json` at build time. Without the setting a server pushes to
 browsers as before, and the app does not offer push.

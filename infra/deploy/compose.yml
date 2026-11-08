@@ -47,6 +47,12 @@ x-api-env: &api-env
   PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
   # And to the Android app through FCM (docs/adr/0023); without it the app gets none.
   FCM_SERVICE_ACCOUNT: ${FCM_SERVICE_ACCOUNT:-}
+  # And to the iOS app through APNs, with Sign in with Apple's tokens revoked when an
+  # account is erased (docs/adr/0026); without the key the iOS app gets no push.
+  APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
+  APPLE_KEY_ID: ${APPLE_KEY_ID:-}
+  APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
+  APPLE_BUNDLE_ID: ${APPLE_BUNDLE_ID:-}
   WEB_PUBLIC_URL: ${SITE_URL:?}
   # Gists (docs/adr/0017). All optional: empty means off, and every Gists route
   # answers 404. With these set, the `gists` feature flag decides who has Gists
@@ -241,6 +247,7 @@ services:
       - ../kratos/invite-check.jsonnet:/etc/config/kratos/invite-check.jsonnet:ro
       - ../kratos/handle-change.jsonnet:/etc/config/kratos/handle-change.jsonnet:ro
       - ../kratos/google.jsonnet:/etc/config/kratos/google.jsonnet:ro
+      - ../kratos/apple.jsonnet:/etc/config/kratos/apple.jsonnet:ro
       - ../kratos/courier-templates:/etc/config/kratos/courier-templates:ro
     configs: &kratos-configs
       - source: kratos
@@ -374,6 +381,19 @@ configs:
                   client_secret: "${GOOGLE_CLIENT_SECRET:-}"
                   mapper_url: file:///etc/config/kratos/google.jsonnet
                   scope: [openid, email]
+                # Apple, in the iOS app only (docs/deployment/sign-in-with-apple.md):
+                # its own sheet gives an ID token for the app's bundle ID, which
+                # Kratos checks against Apple's published keys. Signing in on the web
+                # would need a Services ID and Apple's key here; the web does not
+                # offer it, so they are left empty.
+                - id: apple
+                  provider: apple
+                  client_id: "${APPLE_BUNDLE_ID:-ng.heynaija.app}"
+                  apple_team_id: ""
+                  apple_private_key_id: ""
+                  apple_private_key: ""
+                  mapper_url: file:///etc/config/kratos/apple.jsonnet
+                  scope: [email]
         flows:
           error:
             ui_url: ${SITE_URL}/auth-error

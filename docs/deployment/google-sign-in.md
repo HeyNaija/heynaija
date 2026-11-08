@@ -5,7 +5,9 @@ They sign up and sign in with a one-time code that Kratos emails them, or with
 Google. Signing up still needs an invite, whichever way they choose.
 
 Emailed codes work as soon as email does. Google is **off** until you create an
-OAuth client and switch it on, as below.
+OAuth client and switch it on, as below. The same switch lets the iOS app sign in
+with Apple ([sign-in-with-apple.md](sign-in-with-apple.md)); the web does not offer
+Apple.
 
 ## How it fits together
 

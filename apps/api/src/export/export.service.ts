@@ -241,7 +241,7 @@ export class ExportService {
         .where(eq(pushSubscriptions.memberId, memberId))
         .orderBy(asc(pushSubscriptions.createdAt)),
       db
-        .select({ since: pushDevices.createdAt, lastPushedAt: pushDevices.lastPushedAt })
+        .select({ service: pushDevices.service, since: pushDevices.createdAt, lastPushedAt: pushDevices.lastPushedAt })
         .from(pushDevices)
         .where(eq(pushDevices.memberId, memberId))
         .orderBy(asc(pushDevices.createdAt)),
@@ -389,7 +389,8 @@ export class ExportService {
       // The browsers they are pushed to: when each was turned on and last sent one.
       // A browser's push address is left out; it is only good for sending to it.
       pushNotifications: pushedTo,
-      // The same for the HeyNaija app on your phones; its token is left out likewise.
+      // The same for the HeyNaija app on your phones, with the push service each uses
+      // (fcm on Android; apns, or apns_sandbox for a test build, on iOS); its token is left out likewise.
       appPushNotifications: pushedToApps,
       notifications: received,
     }
