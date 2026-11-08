@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { packCursor, unpackCursor } from '../cursor.js'
 import type { Env } from '../env.js'
 import { LabelNotAllowedError, seesAdultContent } from '../governance/adult-content.js'
-import { strangerToMinor } from '../governance/minors.js'
+import { reachesViewer, strangerToMinor } from '../governance/minors.js'
 import { avatarPath } from '../media/media.service.js'
 import { notify } from '../notifications/notifications.service.js'
 import { cleanLine, cleanLines, graphemes } from '../text.js'
@@ -89,6 +89,7 @@ export type Profile = {
   /** Path of the profile photo without the size suffix, or null. */
   avatar: string | null
   joinedAt: Date
+  /** Their posts that are not deleted, though none of a minor's for a signed-out visitor, who is shown none of them. */
   postCount: number
   followerCount: number
   followingCount: number
@@ -150,7 +151,9 @@ export class MembersService {
         bio: members.bio,
         avatarMediaId: members.avatarMediaId,
         joinedAt: members.createdAt,
-        postCount: sql<number>`(select count(*)::int from posts p where p.author_id = ${outerId} and p.deleted_at is null and p.gist_id is null)`,
+        // None for a signed-out visitor when they are a minor, whose posts such a visitor never sees (ADR 0020).
+        postCount: sql<number>`(select count(*)::int from posts p where p.author_id = ${outerId} and p.deleted_at is null and p.gist_id is null
+          and ${reachesViewer(viewerId, outerId)})`,
         followerCount: sql<number>`(select count(*)::int from follows f join members m on m.id = f.follower_id and m.active where f.followee_id = ${outerId})`,
         followingCount: sql<number>`(select count(*)::int from follows f join members m on m.id = f.followee_id and m.active where f.follower_id = ${outerId})`,
         viewerFollows: viewerId

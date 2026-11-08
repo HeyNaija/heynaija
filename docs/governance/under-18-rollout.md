@@ -63,8 +63,18 @@ including for members who live outside Nigeria.
       confirm or raise it). Hosting and speaking in Gists (`gist_stage`) and posting
       video (`video_posting`) accept a stated adult age too, by the owner's decisions
       of 5 and 6 November 2026 and ADR 0019 section 4.6.
-- [ ] **Whether minors' posts are public.** Every post is public today; that may
-      not be acceptable for children.
+- [x] **Whether minors' posts are public.** No: shown to signed-in members only,
+      never to signed-out visitors, search engines or link previews (owner, 3
+      November 2026, kept on 7 November 2026 over X's protected posts; ADR 0020,
+      question 7). Built: every read path in the API checks it
+      (`reachesViewer` in `apps/api/src/governance/minors.ts`), tested per path
+      for a signed-out visitor, a stranger, a follower and the minor
+      (`apps/api/src/posts/minor-posts.test.ts`). Signed out, a minor's post is
+      missing, as a deleted one is, and their reposts and poll votes are not
+      listed; their profile counts no posts and, like any profile with nothing
+      to show, is kept out of search. Any signed-in member still sees, quotes and
+      reposts a minor's posts, search and hashtags included. A picture's or
+      video's address stays as public as any unmarked post's.
 - [ ] **What happens to existing accounts with no age on record.** Owner decision,
       6 November 2026: everyone already here gives a date of birth before they can
       use the app again; a 13 to 17 year old is kept as a minor and moderators are
