@@ -34,11 +34,11 @@ code works once per sign-in and runs out after 15 minutes.
 
    Deploy again (or `./deploy.sh <current commit>`) so Kratos starts with them.
 
-3. Make the account, in the app or on the web: **Join with an invite**, a date of
-   birth that makes it an adult, the handle `heynaija_review` (or similar), and
-   the review address. No email comes: type the fixed code. Finish the welcome
-   steps and follow a few communities, so the reviewers see a feed rather than an
-   empty screen.
+3. Make the account, in the app or on the web: **Join with an invite**, tick
+   **I am 18 or older** (or, while signup asks for one, a date of birth that makes
+   it an adult), the handle `heynaija_review` (or similar), and the review address.
+   No email comes: type the fixed code. Finish the welcome steps and follow a few
+   communities, so the reviewers see a feed rather than an empty screen.
 
 It is an ordinary member account, with no moderator rights. What reviewers post
 is public, like anyone's; it shows under that handle.
