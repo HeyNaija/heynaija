@@ -17,9 +17,9 @@ const base = {
   S3_MEDIA_BUCKET: 'media',
 }
 
-const locked = ['NIN_VERIFICATION_ENABLED', 'BINDING_GOVERNANCE_VOTING_ENABLED', 'UNDER_18_ACCOUNTS_ENABLED'] as const
+const locked = ['NIN_VERIFICATION_ENABLED', 'BINDING_GOVERNANCE_VOTING_ENABLED', 'UNDER_18_ACCOUNTS_ENABLED', 'BIRTH_DATE_ENABLED'] as const
 
-test('identity checks, binding votes and under-18 accounts are off by default', () => {
+test('identity checks, binding votes, under-18 accounts and dates of birth are off by default', () => {
   const env = loadEnv(base)
   for (const name of locked) assert.equal(env[name], false, name)
   assert.equal(env.IDENTITY_KEY_SECRET, undefined)

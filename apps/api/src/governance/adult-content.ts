@@ -22,13 +22,13 @@ const band = sql`case
 
 /**
  * `answer`, read from the record `a` that `ageStatus` would go by for `member`:
- * the strongest live record, the newest between equals, with the old "18 or
- * older" box (no date) counting for nothing. False when there is none.
+ * the strongest live record, the newest between equals; the "18 or older" box
+ * (no date) counts as the member's statement. False when there is none.
  */
 export const fromAgeRecord = (member: SQL | string, answer: SQL): SQL<boolean> => sql<boolean>`coalesce((
   select ${answer}
   from restricted.age_assurances a
-  where a.member_id = ${member} and a.withdrawn_at is null and (a.birth_date is not null or a.method <> 'self_declared')
+  where a.member_id = ${member} and a.withdrawn_at is null
   order by ${rank} desc, a.assured_at desc
   limit 1
 ), false)`

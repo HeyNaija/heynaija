@@ -14,11 +14,12 @@ const secret = 's'.repeat(32)
 const consent = { version: 'verification-consent-test', at: new Date() }
 
 // Today's switches, exactly as the environment enforces them.
-const locked = { NIN_VERIFICATION_ENABLED: false, BINDING_GOVERNANCE_VOTING_ENABLED: false, UNDER_18_ACCOUNTS_ENABLED: false }
+const locked = { NIN_VERIFICATION_ENABLED: false, BINDING_GOVERNANCE_VOTING_ENABLED: false, UNDER_18_ACCOUNTS_ENABLED: false, BIRTH_DATE_ENABLED: false }
 const today = new GovernanceService(db, locked)
-// A future in which verification has been approved; only constructible in tests,
-// because env.ts refuses to start the API with these switches on.
-const approved = new GovernanceService(db, { ...locked, NIN_VERIFICATION_ENABLED: true, IDENTITY_KEY_SECRET: secret })
+// Futures only constructible in tests, because env.ts refuses to start the API
+// with these switches on: dates of birth asked again, and verification approved.
+const dated = new GovernanceService(db, { ...locked, BIRTH_DATE_ENABLED: true })
+const approved = new GovernanceService(db, { ...locked, BIRTH_DATE_ENABLED: true, NIN_VERIFICATION_ENABLED: true, IDENTITY_KEY_SECRET: secret })
 
 // A date of birth that makes an adult, as typed on /join.
 const BORN = '1990-03-27'
@@ -183,8 +184,8 @@ test('an expired verification shows as expired and hides the badge without a swe
 })
 
 test('a date of birth is recorded once per account, as a statement rather than a check', async () => {
-  await today.recordAgeDeclaration(ada, BORN)
-  await today.recordAgeDeclaration(ada, '1991-01-01')
+  await dated.recordAgeDeclaration(ada, BORN)
+  await dated.recordAgeDeclaration(ada, '1991-01-01')
   const rows = await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, ada))
   assert.equal(rows.length, 1)
   assert.equal(rows[0]!.method, 'self_declared')
@@ -194,45 +195,46 @@ test('a date of birth is recorded once per account, as a statement rather than a
   const audit = await db.select().from(governanceAuditLog).where(eq(governanceAuditLog.subjectId, ada))
   assert.equal(audit.length, 1)
   assert.equal(audit[0]!.reason, '18_plus')
-  assert.deepEqual((await today.statusFor(ada)).age, { band: '18_plus', assurance: 'declared', birthDate: BORN })
+  assert.deepEqual((await dated.statusFor(ada)).age, { band: '18_plus', assurance: 'declared', birthDate: BORN })
 })
 
 test("a minor's age is worked out from their date each time, so they are an adult from their 18th birthday", async () => {
-  await today.recordAgeDeclaration(ada, '2014-03-01', new Date('2027-03-01T12:00:00Z'))
+  await dated.recordAgeDeclaration(ada, '2014-03-01', new Date('2027-03-01T12:00:00Z'))
   const [row] = await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, ada))
   assert.equal(row!.band, 'under_18')
   assert.equal(row!.reviewAfter, null)
-  assert.deepEqual((await today.statusFor(ada, new Date('2027-03-01T12:00:00Z'))).age, {
+  assert.deepEqual((await dated.statusFor(ada, new Date('2027-03-01T12:00:00Z'))).age, {
     band: 'under_18',
     assurance: 'declared',
     birthDate: '2014-03-01',
   })
-  assert.equal((await today.statusFor(ada, new Date('2032-03-01T12:00:00Z'))).age.band, '18_plus')
+  assert.equal((await dated.statusFor(ada, new Date('2032-03-01T12:00:00Z'))).age.band, '18_plus')
 })
 
-test('a member who ticked "18 or older" gives a date once, and it replaces the tick', async () => {
+test('while dates of birth are asked, a member who ticked "18 or older" gives a date once, and it replaces the tick', async () => {
   await db.insert(ageAssurances).values({ memberId: ada, band: '18_plus', method: 'self_declared', assuredAt: new Date('2026-10-20T00:00:00Z') })
-  assert.equal(await today.birthDateNeeded(ada), true)
-  assert.deepEqual((await today.statusFor(ada)).age, { band: 'unknown', assurance: 'none', birthDate: null })
+  assert.equal(await dated.birthDateNeeded(ada), true)
+  // Asked, but their word stands meanwhile.
+  assert.deepEqual((await dated.statusFor(ada)).age, { band: '18_plus', assurance: 'declared', birthDate: null })
 
-  assert.equal(await today.giveBirthDate(ada, BORN), 'recorded')
-  assert.equal(await today.birthDateNeeded(ada), false)
+  assert.equal(await dated.giveBirthDate(ada, BORN), 'recorded')
+  assert.equal(await dated.birthDateNeeded(ada), false)
   const rows = await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, ada))
   assert.equal(rows.length, 2)
   assert.ok(rows.find((r) => r.birthDate === null)!.withdrawnAt)
   assert.equal(rows.find((r) => r.birthDate === BORN)!.withdrawnAt, null)
-  assert.deepEqual((await today.statusFor(ada)).age, { band: '18_plus', assurance: 'declared', birthDate: BORN })
+  assert.deepEqual((await dated.statusFor(ada)).age, { band: '18_plus', assurance: 'declared', birthDate: BORN })
   const audit = await db.select({ event: governanceAuditLog.event, reason: governanceAuditLog.reason }).from(governanceAuditLog).where(eq(governanceAuditLog.subjectId, ada))
   assert.deepEqual(audit.map((a) => [a.event, a.reason]).sort(), [['age_declared', '18_plus'], ['age_withdrawn', 'replaced_by_birth_date']])
 
   // Given once: a second date changes nothing.
-  assert.equal(await today.giveBirthDate(ada, '2001-01-01'), 'already_given')
-  assert.equal((await today.statusFor(ada)).age.birthDate, BORN)
+  assert.equal(await dated.giveBirthDate(ada, '2001-01-01'), 'already_given')
+  assert.equal((await dated.statusFor(ada)).age.birthDate, BORN)
 })
 
-test('a member with no age on record gives a date; two answers at once record only one', async () => {
-  assert.equal(await today.birthDateNeeded(bayo), true)
-  const answers = await Promise.all([today.giveBirthDate(bayo, BORN), today.giveBirthDate(bayo, '1985-06-01')])
+test('while dates of birth are asked, a member with no age on record gives a date; two answers at once record only one', async () => {
+  assert.equal(await dated.birthDateNeeded(bayo), true)
+  const answers = await Promise.all([dated.giveBirthDate(bayo, BORN), dated.giveBirthDate(bayo, '1985-06-01')])
   assert.deepEqual(answers.sort(), ['already_given', 'recorded'])
   const rows = await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, bayo))
   assert.equal(rows.length, 1)
@@ -240,8 +242,26 @@ test('a member with no age on record gives a date; two answers at once record on
 
 test("an existing member's under-18 date is kept, so the rules treat them as a minor at once", async () => {
   const now = new Date('2027-03-01T12:00:00Z')
-  assert.equal(await today.giveBirthDate(ada, '2012-05-01', now), 'recorded')
-  assert.deepEqual((await today.statusFor(ada, now)).age, { band: 'under_18', assurance: 'declared', birthDate: '2012-05-01' })
+  assert.equal(await dated.giveBirthDate(ada, '2012-05-01', now), 'recorded')
+  assert.deepEqual((await dated.statusFor(ada, now)).age, { band: 'under_18', assurance: 'declared', birthDate: '2012-05-01' })
+})
+
+test('during the 18+ beta nobody is asked for a date: the box counts as 18 or older, and a date sent is not taken', async () => {
+  await today.recordAgeDeclaration(ada, null)
+  const [row] = await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, ada))
+  assert.equal(row!.band, '18_plus')
+  assert.equal(row!.birthDate, null)
+  assert.deepEqual((await today.statusFor(ada)).age, { band: '18_plus', assurance: 'declared', birthDate: null })
+  assert.equal(await today.birthDateNeeded(ada), false)
+  assert.equal(await today.birthDateNeeded(bayo), false, 'not even with no age on record')
+  assert.equal(await today.giveBirthDate(bayo, BORN), 'already_given')
+  assert.equal((await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, bayo))).length, 0)
+})
+
+test('a date given while they were asked stays on record, but Settings shows it only while dates are asked', async () => {
+  await dated.recordAgeDeclaration(ada, BORN)
+  assert.deepEqual((await today.statusFor(ada)).age, { band: '18_plus', assurance: 'declared', birthDate: null })
+  assert.equal((await dated.statusFor(ada)).age.birthDate, BORN)
 })
 
 test('an account held for an age under 13 is suspended, with a restricted audit row and nothing public', async () => {
@@ -278,7 +298,7 @@ test('revoking the identity check withdraws the age result that came from it', a
 })
 
 test('voting membership needs the verified age, not the signup declaration', async () => {
-  const voting = new GovernanceService(db, { ...locked, NIN_VERIFICATION_ENABLED: true, BINDING_GOVERNANCE_VOTING_ENABLED: true, IDENTITY_KEY_SECRET: secret })
+  const voting = new GovernanceService(db, { ...locked, BIRTH_DATE_ENABLED: true, NIN_VERIFICATION_ENABLED: true, BINDING_GOVERNANCE_VOTING_ENABLED: true, IDENTITY_KEY_SECRET: secret })
   await voting.recordAgeDeclaration(bayo, BORN)
   await verify(bayo, 'bayo-code', voting)
   await voting.reviewVerification(bayo, reviewer)

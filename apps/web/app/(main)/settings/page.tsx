@@ -153,13 +153,13 @@ function ageLabel({ band, assurance }: GovernanceStatus['age']): { value: string
   if (band === 'unknown') {
     return {
       value: 'Not on record',
-      detail: 'There is no date of birth on record for your account yet. It is not treated as a confirmed adult.',
+      detail: 'There is no age on record for your account. It is not treated as a confirmed adult.',
     }
   }
   const age = band === '18_plus' ? '18 or older' : 'Under 18'
   if (assurance === 'verified') return { value: `${age}, verified`, detail: 'Confirmed by an age or identity check.' }
   if (assurance === 'reviewed') return { value: age, detail: 'Decided by a moderator. You can appeal it.' }
-  return { value: age, detail: 'From the date of birth you gave. It is not a verified age.' }
+  return { value: age, detail: 'As you stated it. It is not a verified age.' }
 }
 
 /** A YYYY-MM-DD date of birth in words, "27 March 1990", the same in every time zone. */

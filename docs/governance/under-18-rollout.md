@@ -10,7 +10,14 @@ has to be decided, approved and built before it can be lifted.
 kept: a date of birth at signup and 18+ labels (sections 2 and 4). Phase 2: the rest,
 then opening to minors.
 
-**Owner decisions, 5 and 6 November 2026** (ADR 0020, "Decision"): the beta opens
+**Owner decision, 8 November 2026: the beta stays 18+, with the "I am 18 or
+older" box at signup.** Asking for a date of birth is switched off
+(`BIRTH_DATE_ENABLED`, locked off), and opening to minors is set aside. What was
+built for it stays in the code, off; see the top of ADR 0020. The checklist below
+is kept for if it is taken up again.
+
+**Owner decisions, 5 and 6 November 2026** (ADR 0020, "Decision"; set aside on 8
+November): the beta opens
 to 13 to 17 year olds the way X lets them in, with protections on by default; 13 is
 the minimum on the web and in the app stores; signup asks for a date of birth and a
 confirmation that it is true; until an age check exists, that stated age is what the

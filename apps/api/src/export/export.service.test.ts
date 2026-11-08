@@ -151,7 +151,7 @@ test('an unknown member has no export', async () => {
 })
 
 test('an export includes the age confirmation and verification history, but never the person key', async () => {
-  const locked = { NIN_VERIFICATION_ENABLED: false, BINDING_GOVERNANCE_VOTING_ENABLED: false, UNDER_18_ACCOUNTS_ENABLED: false }
+  const locked = { NIN_VERIFICATION_ENABLED: false, BINDING_GOVERNANCE_VOTING_ENABLED: false, UNDER_18_ACCOUNTS_ENABLED: false, BIRTH_DATE_ENABLED: false }
   const approved = new GovernanceService(db, { ...locked, NIN_VERIFICATION_ENABLED: true, IDENTITY_KEY_SECRET: 'k'.repeat(32) })
 
   const before = (await service.export(ada, null))!

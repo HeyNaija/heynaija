@@ -12,7 +12,7 @@ const record = (over: Partial<AgeRecord>): AgeRecord => ({
   withdrawnAt: null,
   ...over,
 })
-// The old "I am 18 or older" box, from before signup asked for a date.
+// The "I am 18 or older" box: what signup asks while dates of birth are off.
 const ticked = record({ birthDate: null })
 
 test('no record means an unknown age, never an adult', () => {
@@ -28,19 +28,20 @@ test('a date of birth the member gave makes a stated adult: enough for adult con
   assert.equal(isAdultFor(status, 'governance_vote'), false)
 })
 
-test('a stated adult age hosts and speaks in Gists and posts video; under 18 and unknown do neither', () => {
+test('a stated adult age, by date or by the box, hosts and speaks in Gists and posts video; under 18 and unknown do neither', () => {
   const adult = ageStatus([record({})], now)
   const minor = ageStatus([record({ band: 'under_18', birthDate: '2012-05-01' })], now)
   for (const purpose of ['gist_stage', 'video_posting'] as const) {
     assert.equal(isAdultFor(adult, purpose), true, purpose)
     assert.equal(isAdultFor(minor, purpose), false, purpose)
     assert.equal(isAdultFor(UNKNOWN_AGE, purpose), false, purpose)
-    assert.equal(isAdultFor(ageStatus([ticked], now), purpose), false, purpose)
+    assert.equal(isAdultFor(ageStatus([ticked], now), purpose), true, purpose)
   }
 })
 
-test('the old "18 or older" box counts for nothing, and its owner is asked for a date', () => {
-  assert.deepEqual(ageStatus([ticked], now), UNKNOWN_AGE)
+test('the "18 or older" box is the member\'s own statement; while dates are asked, its owner still lacks one', () => {
+  assert.deepEqual(ageStatus([ticked], now), { band: '18_plus', assurance: 'declared' })
+  assert.deepEqual(ageStatus([{ ...ticked, withdrawnAt: at('2026-12-01T00:00:00Z') }], now), UNKNOWN_AGE)
   assert.equal(birthDateNeeded([]), true)
   assert.equal(birthDateNeeded([ticked]), true)
   assert.equal(birthDateNeeded([record({ withdrawnAt: at('2026-12-01T00:00:00Z') })]), true)

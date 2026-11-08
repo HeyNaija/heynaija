@@ -156,9 +156,8 @@ export async function seedPosts(handle: string, count: number): Promise<string[]
 }
 
 /**
- * Makes a member look like one who joined before signup asked for a date of
- * birth: their date goes, leaving the old "I am 18 or older" statement
- * (`ticked`) or no age record at all.
+ * Takes a member's age away: with `ticked`, any date of birth goes and their "I
+ * am 18 or older" statement stays; otherwise no age record is left at all.
  */
 export async function forgetBirthDate(handle: string, { ticked = false } = {}) {
   const db = pool()

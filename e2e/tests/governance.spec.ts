@@ -14,8 +14,11 @@ test('the rules say the 18+ account rule is temporary, and voting stays 18+', as
   const age = page.locator('#age')
   await expect(age).toContainText('The 18+ rule is temporary, for the beta.')
   await expect(age).toContainText('voting in HeyNaija’s governance would stay 18+')
+  // The box, not a date of birth (BIRTH_DATE_ENABLED is off).
+  await expect(age).toContainText('Everyone confirms they are 18 or older when they join.')
   await page.goto('/privacy#age')
-  await expect(page.locator('#age')).toContainText('not treated as a confirmed adult')
+  await expect(page.locator('#age')).toContainText('When you join, you confirm that you are')
+  await expect(page.locator('#age')).toContainText('We no longer ask.')
 })
 
 test('the governance documents are public and say they are drafts @mobile', async ({ page }) => {
@@ -139,11 +142,9 @@ test('a member sees their real status in Settings, and no tick on their profile'
   const { page, handle, context } = await newMember(browser, 'citizen')
   await page.goto('/settings')
   const section = page.locator('section', { has: page.getByRole('heading', { name: 'Identity and governance' }) })
-  // They gave their date of birth on /join: a stated age, not a verified one,
-  // and the date, which only they see.
+  // They ticked "I am 18 or older" on /join: a stated age, not a verified one.
   await expect(section).toContainText('18 or older')
   await expect(section).toContainText('It is not a verified age.')
-  await expect(section).toContainText('27 March 1990')
   await expect(section).toContainText('Not verified')
   await expect(section).toContainText('HeyNaija is not collecting NIN details.')
   await expect(section).toContainText('Not shown')

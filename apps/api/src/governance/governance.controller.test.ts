@@ -8,7 +8,8 @@ import { db, migrate, pool, reset } from '../test-db.js'
 import { GovernanceController } from './governance.controller.js'
 import { GovernanceService } from './governance.service.js'
 
-const env = { NIN_VERIFICATION_ENABLED: false, BINDING_GOVERNANCE_VOTING_ENABLED: false, UNDER_18_ACCOUNTS_ENABLED: false }
+// Dates of birth asked, as they were until 8 November 2026; env.ts keeps them off today.
+const env = { NIN_VERIFICATION_ENABLED: false, BINDING_GOVERNANCE_VOTING_ENABLED: false, UNDER_18_ACCOUNTS_ENABLED: false, BIRTH_DATE_ENABLED: true }
 const alerts: { subject: string; lines: string[] }[] = []
 const controller = new GovernanceController(new GovernanceService(db, env), new MemoryRateLimiter(), {
   alert: async (subject, lines) => void alerts.push({ subject, lines }),
