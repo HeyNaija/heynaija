@@ -66,7 +66,8 @@ export class BullMediaJobs implements MediaJobs, PlacementJobs, OnModuleDestroy 
 /**
  * The consumer side, in the API process for now: processes post images, purges
  * taken-down images from the CDN, moves a post's files when its sensitive mark
- * changes and, hourly, clears uploads nobody finished or used. It can move to its
+ * changes and, hourly, clears uploads nobody finished or used and deletes
+ * taken-down images once their retention period is over. It can move to its
  * own process later without changing the producer.
  */
 @Injectable()
@@ -98,6 +99,8 @@ export class MediaWorker implements OnApplicationBootstrap, OnModuleDestroy {
         else if (name === 'sweep') {
           await this.media.sweepAbandoned()
           await this.videos?.sweepAbandoned()
+          const purged = await this.media.purgeTakenDown(this.env.TAKEN_DOWN_MEDIA_RETENTION_DAYS)
+          if (purged) this.log.log(`deleted ${purged} taken-down images kept longer than TAKEN_DOWN_MEDIA_RETENTION_DAYS`)
         }
       },
       { connection: connection(this.env), concurrency: CONCURRENCY },

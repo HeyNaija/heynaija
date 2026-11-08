@@ -1092,13 +1092,13 @@
     },
     {
       "id": "adult-content-labels",
-      "name": "Date of birth at signup and 18+ labels",
-      "description": "Ask for a date of birth at signup, confirmed with a tick, and keep it with the age record; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.",
+      "name": "18+ labels for posts and communities",
+      "description": "Let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.",
       "category": "safety",
       "priority": "P2",
       "status": "partial",
       "availability": "not_live",
-      "caveat": "Every member gives a date of birth, new members at signup and everyone else before they carry on. Posts can be marked sensitive (the 18+ label, shown the way X does it), on the web and in the apps, behind the adultLabels flag, which is off in production. Marked pictures and video are served privately, by signed URLs that last at most two hours. Whole communities cannot be marked yet.",
+      "caveat": "Members confirm they are 18 or older at signup; asking for a date of birth instead was built and is switched off (8 Nov 2026). Posts can be marked sensitive (the 18+ label, shown the way X does it), on the web and in the apps, behind the adultLabels flag, which is off in production. Marked pictures and video are served privately, by signed URLs that last at most two hours. A community's moderators can mark the whole community, which then only adults find.",
       "evidence": [
         "docs/adr/0020-under-18-accounts-and-adult-labels.md",
         "apps/api/src/governance/age.ts",
@@ -1108,7 +1108,7 @@
         "docs/adr/0025-private-sensitive-media.md",
         "apps/api/src/media/private-media.test.ts"
       ],
-      "notes": "Phase 1 of ADR 0020 (accepted 6 Nov 2026): the 18+ beta rule stays while this ships; a member already here whose date gives under 18 is kept as a minor and moderators are told. The date of birth is built: at signup (birth_date on restricted.age_assurances, the /join fields and confirmation, POST /v1/signup/age, Settings and the export), and asked once of everyone already here, who sees only /birth-date until they answer (POST /v1/me/birth-date). The age is worked out from the date on every check. The labels and their enforcement are not yet. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs."
+      "notes": "Phase 1 of ADR 0020 (accepted 6 Nov 2026): the 18+ beta rule stays while this ships; a member already here whose date gives under 18 is kept as a minor and moderators are told. The date of birth is built: at signup (birth_date on restricted.age_assurances, the /join fields and confirmation, POST /v1/signup/age, Settings and the export), and asked once of everyone already here, who sees only /birth-date until they answer (POST /v1/me/birth-date). The age is worked out from the date on every check. The labels and their enforcement are not yet. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs. Owner decision 8 Nov 2026: the beta stays 18+ with the \"I am 18 or older\" box; asking for a date of birth is switched off (BIRTH_DATE_ENABLED, locked off in env.ts), with its code and the dates already given kept, and /birth-date asks nobody."
     },
     {
       "id": "minor-safeguards",
@@ -1129,7 +1129,7 @@
       "dependency": [
         "adult-content-labels"
       ],
-      "notes": "Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Owner decisions of 5 and 6 Nov 2026: 13 to 17 year olds join the beta the way X lets them in, with protections on by default; 13 is the minimum on the web and in the app stores. First come dates of birth at signup, labels enforced, Arachnid Shield on in production and the minors' protections (ADR 0020 sections 4 and 5); counsel's answers and the rest of the under-18 rollout checklist follow during the beta. Minors listen to Gists but never host or speak. Contact and discovery protections built 7 Nov 2026 (branch feat/under-18-contact): replies limited to people a minor follows, strangers' mentions plain text, minors in no stranger's Discover, search or suggestions, none of it loosened before 18 (ADR 0020, questions 12 to 15)."
+      "notes": "Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Owner decisions of 5 and 6 Nov 2026: 13 to 17 year olds join the beta the way X lets them in, with protections on by default; 13 is the minimum on the web and in the app stores. First come dates of birth at signup, labels enforced, Arachnid Shield on in production and the minors' protections (ADR 0020 sections 4 and 5); counsel's answers and the rest of the under-18 rollout checklist follow during the beta. Minors listen to Gists but never host or speak. Contact and discovery protections built 7 Nov 2026 (branch feat/under-18-contact): replies limited to people a minor follows, strangers' mentions plain text, minors in no stranger's Discover, search or suggestions, none of it loosened before 18 (ADR 0020, questions 12 to 15). Owner decision 8 Nov 2026: the beta stays 18+ and opening to minors is set aside; the protections stay in the code for any member already recorded as under 18."
     },
     {
       "id": "age-verification",
@@ -1416,7 +1416,7 @@
         "docs/adr/0016-account-deletion.md",
         "docs/governance/privacy-requests.md"
       ],
-      "caveat": "Members can delete their account in Settings, and requests by email are recorded and answered. The operator's name and address, and how long deletion records and moderation evidence are kept, are still placeholders for the operator and counsel.",
+      "caveat": "Members can delete their account in Settings, and requests by email are recorded and answered. The privacy policy names the founders as the data controller, and how long deletion records and moderation evidence are kept (set by the operator on 8 Nov 2026, enforced hourly, counsel to confirm).",
       "dependency": [
         "operator-disclosure"
       ],

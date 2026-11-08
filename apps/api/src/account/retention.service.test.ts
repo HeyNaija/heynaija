@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { ideas, members, pollOptions, pollVotes, postHashtags, postMentions, postPolls, posts, problemDetails, releasedHandles, reports } from '@heynaija/db'
+import { governanceAuditLog, ideas, members, pollOptions, pollVotes, postHashtags, postMentions, postPolls, posts, privacyRequests, problemDetails, releasedHandles, reports } from '@heynaija/db'
 import { asc, eq, sql } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import { ModerationService } from '../moderation/moderation.service.js'
@@ -15,7 +15,10 @@ const days = (n: number) => new Date(now.getTime() + n * DAY)
 
 const postsService = new PostsService(db)
 const moderation = new ModerationService(db)
-const sweep = (retentionDays?: number) => new RetentionService(db, { DELETED_CONTENT_RETENTION_DAYS: retentionDays }).sweep(now)
+// The defaults /privacy#keep states: 90 days for deleted posts, two years for the rest.
+const sweep = (retentionDays = 90) =>
+  new RetentionService(db, { DELETED_CONTENT_RETENTION_DAYS: retentionDays, ERASED_AGE_RECORD_RETENTION_DAYS: 730, PRIVACY_REQUEST_RETENTION_DAYS: 730 }).sweep(now)
+const nothingElse = { handles: 0, ageRecords: 0, requests: 0 }
 
 const ada = randomUUID()
 const bola = randomUUID()
@@ -37,10 +40,10 @@ const deletedDaysAgo = (id: string, n: number) => db.update(posts).set({ deleted
 const countFor = async (table: PgTable, column: PgColumn, id: string) =>
   (await db.select({ n: sql<number>`count(*)::int` }).from(table).where(eq(column, id)))[0]!.n
 
-test('with no period set, a deleted post keeps its text however old it is', async () => {
+test('a deleted post keeps its text for the whole period, 90 days by default', async () => {
   const { id } = await postsService.create(ada, 'old news #lagos')
-  await deletedDaysAgo(id, 1000)
-  assert.deepEqual(await sweep(undefined), { posts: 0, handles: 0 })
+  await deletedDaysAgo(id, 89)
+  assert.deepEqual(await sweep(), { posts: 0, ...nothingElse })
   assert.equal((await post(id)).text, 'old news #lagos')
   assert.equal(await countFor(postHashtags, postHashtags.postId, id), 1)
 })
@@ -62,7 +65,7 @@ test('once the period is over a deleted post is blanked, unless a report about i
   await deletedDaysAgo(recent, 7)
   assert.deepEqual([await countFor(postMentions, postMentions.postId, old), await countFor(postHashtags, postHashtags.postId, old)], [1, 1])
 
-  assert.deepEqual(await sweep(30), { posts: 3, handles: 0 })
+  assert.deepEqual(await sweep(30), { posts: 3, ...nothingElse })
 
   const blanked = await post(old)
   assert.deepEqual([blanked.text, blanked.linkUrl, blanked.quotePostId], ['', null, null])
@@ -77,7 +80,7 @@ test('once the period is over a deleted post is blanked, unless a report about i
   assert.equal((await post(live)).text, 'still up')
   assert.equal((await post(original)).text, 'the original')
 
-  assert.deepEqual(await sweep(30), { posts: 0, handles: 0 }, 'nothing is left to blank')
+  assert.deepEqual(await sweep(30), { posts: 0, ...nothingElse }, 'nothing is left to blank')
 })
 
 test("an erased account's handles are let go once their hold is over; other members' are left alone", async () => {
@@ -86,7 +89,7 @@ test("an erased account's handles are let go once their hold is over; other memb
     { handle: 'still_held', memberId: erased, releasedAt: days(-29) },
     { handle: 'ada_before', memberId: ada, releasedAt: days(-400) },
   ])
-  assert.deepEqual(await sweep(undefined), { posts: 0, handles: 1 })
+  assert.deepEqual(await sweep(), { posts: 0, ...nothingElse, handles: 1 })
   const left = await db.select({ handle: releasedHandles.handle }).from(releasedHandles).orderBy(asc(releasedHandles.handle))
   assert.deepEqual(left.map((r) => r.handle), ['ada_before', 'still_held'])
 })
@@ -113,4 +116,40 @@ test('the poll of an expired deleted post goes with its text, unless a report ab
   for (const id of [underReview, recent]) {
     assert.deepEqual([await countFor(postPolls, postPolls.postId, id), await countFor(pollOptions, pollOptions.postId, id), await countFor(pollVotes, pollVotes.postId, id)], [1, 1, 1], id)
   }
+})
+
+test("an erased account's age audit trail is kept two years after the erase, then deleted; a live member's stays", async () => {
+  const longAgo = randomUUID()
+  await db.insert(members).values({
+    id: longAgo,
+    handle: 'deleted-9f8e7d6c',
+    active: false,
+    deletionRequestedAt: days(-750),
+    deletionScheduledFor: days(-736),
+    deletedAt: days(-731),
+  })
+  await db.insert(governanceAuditLog).values([
+    { subjectId: longAgo, event: 'age_declared', reason: '18_plus', createdAt: days(-900) },
+    { subjectId: erased, event: 'age_declared', reason: '18_plus', createdAt: days(-400) },
+    { subjectId: ada, event: 'age_declared', reason: '18_plus', createdAt: days(-2000) },
+  ])
+  assert.deepEqual(await sweep(), { posts: 0, ...nothingElse, ageRecords: 1 })
+  const left = await db.select({ subjectId: governanceAuditLog.subjectId }).from(governanceAuditLog)
+  assert.deepEqual(left.map((r) => r.subjectId).sort(), [ada, erased].sort())
+})
+
+test('a privacy request is kept two years after it was closed; open ones stay however old', async () => {
+  const request = (status: 'completed' | 'refused' | 'in_progress', closedDaysAgo: number | null) => ({
+    memberId: ada,
+    kind: 'access' as const,
+    channel: 'email' as const,
+    status,
+    receivedAt: days(-1000),
+    dueBy: days(-970),
+    closedAt: closedDaysAgo === null ? null : days(-closedDaysAgo),
+  })
+  await db.insert(privacyRequests).values([request('completed', 731), request('refused', 729), request('in_progress', null)])
+  assert.deepEqual(await sweep(), { posts: 0, ...nothingElse, requests: 1 })
+  const left = await db.select({ status: privacyRequests.status }).from(privacyRequests)
+  assert.deepEqual(left.map((r) => r.status).sort(), ['in_progress', 'refused'])
 })

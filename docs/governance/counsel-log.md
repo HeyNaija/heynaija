@@ -137,6 +137,9 @@ moderator took down from a member who is still on HeyNaija. No period covers
 those yet, so their text is kept with no end date, and a moderator can still
 restore one after a successful appeal.
 
+**Interim (operator, 8 November 2026).** 90 days, on `/privacy#keep` and in
+`DELETED_CONTENT_RETENTION_DAYS`; longer while a report about the post is open.
+
 **Answer.** —
 
 ### C-05 Moderation records about and by a deleted member
@@ -183,6 +186,10 @@ emerges that a child joined. Change `/privacy#keep` to say so.
 `/privacy`. Related: [open-items.md](open-items.md) section 2 asks the lawful
 basis and retention for age records in general.
 
+**Interim (operator, 8 November 2026).** Two years after the erase, on
+`/privacy#keep` and in `ERASED_AGE_RECORD_RETENTION_DAYS`: the hourly sweep then
+deletes the erased account's governance audit trail.
+
 **Answer.** —
 
 ### C-07 Images taken down or blocked, kept privately
@@ -198,6 +205,11 @@ second kind went to counsel on 26 October 2026
 ([abuse-material-scanning.md](../safety/abuse-material-scanning.md)).
 
 **Needed from counsel.** The period for each, and whether erasure changes it.
+
+**Interim (operator, 8 November 2026).** Images moderators took down, or kept
+as evidence: a year, on `/privacy#keep` and in `TAKEN_DOWN_MEDIA_RETENTION_DAYS`;
+longer while a report about them or their post is open. Blocked originals and
+videos are not yet deleted on a schedule.
 
 **Answer.** —
 
@@ -234,6 +246,9 @@ personal data (what the person asked, how they were confirmed).
 requests were handled on time; tell operators to keep notes to the minimum.
 
 **Needed from counsel.** The period, and any limits on what the notes may hold.
+
+**Interim (operator, 8 November 2026).** Two years after a request is closed,
+on `/privacy#keep` and in `PRIVACY_REQUEST_RETENTION_DAYS`.
 
 **Answer.** —
 

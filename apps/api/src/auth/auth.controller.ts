@@ -38,13 +38,16 @@ import { AuthService, authRequest } from './auth.service.js'
 import { type AuthedRequest, SessionGuard } from './session.guard.js'
 
 // identity_id is all zeros in the first hook (the account is not saved yet).
-// birth_date: the date of birth typed on /join, as YYYY-MM-DD (the hn_age
-// cookie, read by infra/kratos/invite-check.jsonnet).
+// adult_declared: the person ticked "I am 18 or older" on /join. birth_date: a
+// date of birth, as YYYY-MM-DD, while signup asks for one (BIRTH_DATE_ENABLED),
+// or from an app that still sends one. Both come from the hn_age cookie or the
+// signup's transient_payload (infra/kratos/invite-check.jsonnet).
 const registrationHook = z.object({
   identity_id: z.guid(),
   invite_code: z.string().max(100),
   handle: z.string().max(100),
   birth_date: z.string().max(20).default(''),
+  adult_declared: z.boolean().default(false),
 })
 type RegistrationHook = z.infer<typeof registrationHook>
 // previous_handle is the member's handle until this save; the same as `handle`
@@ -55,6 +58,8 @@ const settingsHook = z.object({
   previous_handle: z.string().max(100),
 })
 const inviteCheckBody = z.object({ code: z.string().max(100) })
+// The hn_age cookie's value when someone ticks "I am 18 or older" on /join (apps/web/lib/invite.ts).
+const ADULT_BOX = '18-plus'
 const ageCheckBody = z.object({ birthDate: z.string().max(20) })
 
 // The shape Kratos expects from a webhook that aborts a flow; `text` is shown to
@@ -186,10 +191,12 @@ export class AuthController {
    * The youngest age that may join now, for what /join and the apps say before
    * anyone types a date: 18 during the 18+ beta, 13 once under-18 accounts are
    * open (UNDER_18_ACCOUNTS_ENABLED, ADR 0020 section 5). The same for everyone.
+   * With it, whether /join asks for a date of birth or the "I am 18 or older" box
+   * (BIRTH_DATE_ENABLED, off since 8 November 2026).
    */
   @Get('v1/signup/age')
   joinAgeNow() {
-    return { joinAge: this.joinAge() }
+    return { joinAge: this.joinAge(), asksBirthDate: this.env.BIRTH_DATE_ENABLED }
   }
 
   /**
@@ -236,9 +243,11 @@ export class AuthController {
     const age = this.signupAge(parsed.data)
     if (!age.allowed) {
       throw rejectSignup(
-        age.reason === 'age_not_confirmed'
-          ? 'Go back to your invite link and enter your date of birth to join.'
-          : `Sorry, you cannot join HeyNaija yet: it is open to people aged ${this.joinAge()} and over.`,
+        age.reason !== 'age_not_confirmed'
+          ? `Sorry, you cannot join HeyNaija yet: it is open to people aged ${this.joinAge()} and over.`
+          : this.env.BIRTH_DATE_ENABLED
+            ? 'Go back to your invite link and enter your date of birth to join.'
+            : 'Go back to your invite link and confirm you are 18 or older to join.',
       )
     }
     return {}
@@ -288,9 +297,20 @@ export class AuthController {
     return { redeemed }
   }
 
-  /** What a signup's date of birth allows (signupAgeDecision). */
+  /**
+   * What a signup's age allows. While signup asks for a date of birth, only a
+   * date counts (signupAgeDecision). Otherwise the "I am 18 or older" box is
+   * enough, and a date sent instead (the apps still send one) is checked the same
+   * way but not kept: the record says only 18 or older. The box's cookie value
+   * may also arrive as birth_date, from a Kratos still on the webhook body before
+   * adult_declared came back.
+   */
   private signupAge(body: RegistrationHook): SignupAgeDecision {
-    return signupAgeDecision(body.birth_date || null, new Date(), this.env.UNDER_18_ACCOUNTS_ENABLED)
+    const now = new Date()
+    if (this.env.BIRTH_DATE_ENABLED) return signupAgeDecision(body.birth_date || null, now, this.env.UNDER_18_ACCOUNTS_ENABLED)
+    if (body.adult_declared || body.birth_date === ADULT_BOX) return { allowed: true, birthDate: null }
+    const age = signupAgeDecision(body.birth_date || null, now, false)
+    return age.allowed ? { allowed: true, birthDate: null } : age
   }
 
   /** The youngest age that may join now: 18 during the 18+ beta, 13 once under-18 accounts are open. */

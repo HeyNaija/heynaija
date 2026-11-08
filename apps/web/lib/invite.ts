@@ -2,13 +2,15 @@
 export const INVITE_COOKIE = 'hn_invite'
 
 /**
- * Set on /join to the date of birth the person typed, as YYYY-MM-DD. Kratos
- * passes it to our API's registration webhook (infra/kratos/invite-check.jsonnet),
- * which refuses a signup without it and keeps the date with the age record. It
- * carries nothing else, and is cleared when the newcomer finishes or skips the
+ * Set on /join to the age the person stated: AGE_COOKIE_VALUE when they tick "I
+ * am 18 or older", or, while the API asks for one (BIRTH_DATE_ENABLED), the date
+ * of birth they typed, as YYYY-MM-DD. Kratos passes it to our API's registration
+ * webhook (infra/kratos/invite-check.jsonnet), which refuses a signup without it.
+ * It carries nothing else, and is cleared when the newcomer finishes or skips the
  * welcome flow (it lasts an hour at most).
  */
 export const AGE_COOKIE = 'hn_age'
+export const AGE_COOKIE_VALUE = '18-plus'
 
 /**
  * Set for a day when /join refuses someone too young, so changing the year and

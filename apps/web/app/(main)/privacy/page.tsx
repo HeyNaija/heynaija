@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ContactEmail, Placeholder, PolicyPage } from '@/app/ui/policy-page'
+import { ContactEmail, PolicyPage } from '@/app/ui/policy-page'
 
 export const metadata: Metadata = { title: 'Privacy' }
 
@@ -10,16 +10,16 @@ export default function PrivacyPage() {
       eyebrow="Your data"
       title="Privacy policy"
       summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, and how you get your data or have it deleted. No ads, no selling data, no trackers."
-      updated="7 November 2026"
+      updated="8 November 2026"
       sections={[
         {
           id: 'who',
           title: 'Who runs HeyNaija',
           body: (
             <p>
-              HeyNaija is run by <Placeholder>operator name and address</Placeholder>, the “data controller”
-              under the Nigeria Data Protection Act 2023. For anything about your data, write to{' '}
-              <ContactEmail />.
+              HeyNaija is not a registered organisation yet (the <Link href="/governance">governance page</Link> says
+              what is planned). It is run by its founders, who are together the “data controller” under the Nigeria
+              Data Protection Act 2023. For anything about your data, write to <ContactEmail />.
             </p>
           ),
         },
@@ -35,7 +35,7 @@ export default function PrivacyPage() {
                 you have. Anyone can see and copy what is public.
               </p>
               <p>
-                <strong>Private:</strong> your email address, your date of birth and age, your bookmarks, who you mute
+                <strong>Private:</strong> your email address, your age (and date of birth, if you gave one), your bookmarks, who you mute
                 and block, your notifications, and the reports you make. Moderators see who made a report; the
                 person reported does not.
               </p>
@@ -49,12 +49,11 @@ export default function PrivacyPage() {
             <dl>
               <dt>Your account</dt>
               <dd>Your email address, handle, and the invite you joined with. If you sign in with Google, Google tells us your email address.</dd>
-              <dt>Your date of birth and age</dt>
+              <dt>Your age</dt>
               <dd>
-                The date of birth you give when you join (or the first time you come back, if you joined before we asked
-                for it), which you confirm is your real one, and the age band it gives (under 18, or 18 or older), kept
-                apart from your account. We do not ask for any identity document to
-                join.
+                That you confirmed you are 18 or older when you joined, kept apart from your account. If you gave a date
+                of birth while we asked for one, we keep it with your age (see <Link href="#age">Age</Link>). We do not
+                ask for any identity document to join.
               </dd>
               <dt>Your profile</dt>
               <dd>Display name, bio and profile photo, when you add them.</dd>
@@ -125,10 +124,14 @@ export default function PrivacyPage() {
                   it carries them to your phone, encrypted with a key only the app and HeyNaija have, so it cannot read
                   them either, but it does see when they are sent.
                 </li>
-                <li><strong>netcup</strong> and <strong>Contabo</strong>: the servers HeyNaija runs on, in <Placeholder>data centre location</Placeholder>.</li>
+                <li><strong>netcup</strong>: the servers HeyNaija runs on, in Germany.</li>
                 <li><strong>Google</strong>: only if you choose to sign in with Google.</li>
               </ul>
-              <p>Some of them process data outside Nigeria. <Placeholder>transfer safeguards, to be confirmed by counsel</Placeholder></p>
+              <p>
+                So your data is processed outside Nigeria: by netcup in Germany, under the European Union’s data
+                protection law (the GDPR), and by Cloudflare, Resend, Google and the push services, mainly in the United
+                States and Europe, each under its own data protection terms. It is encrypted on its way to each of them.
+              </p>
             </>
           ),
         },
@@ -139,8 +142,7 @@ export default function PrivacyPage() {
             <ul>
               <li><code>hn_session</code>: keeps you signed in, for up to 14 days.</li>
               <li><code>hn_invite</code>: holds your invite code while you sign up, for up to an hour.</li>
-              <li><code>hn_age</code>: holds the date of birth you typed while you sign up, until your account exists, and for up to an hour.</li>
-              <li><code>hn_age_refused</code>: if you cannot join yet because of your age, records only that, for a day.</li>
+              <li><code>hn_age</code>: holds that you confirmed you are 18 or older while you sign up, until your account exists, and for up to an hour.</li>
               <li>A security cookie from our sign-in service, which stops other sites submitting forms as you.</li>
               <li><code>hn_feed</code>: which tab you last chose on Home (Discover, Latest or Following), so Home opens on it, for up to a year.</li>
               <li><code>hn_deletion</code>: the date your account will be erased, shown to you once you ask for it to be deleted, for an hour.</li>
@@ -155,22 +157,25 @@ export default function PrivacyPage() {
           body: (
             <>
               <ul>
-                <li>Your account, profile, date of birth and age: for as long as you have an account.</li>
+                <li>Your account, profile and age (with your date of birth, if you gave one): for as long as you have an account.</li>
                 <li>
-                  Posts you delete leave every page at once, but the record is kept for{' '}
-                  <Placeholder>period</Placeholder> so moderation decisions can be checked.
+                  Posts you delete leave every page at once, but the record is kept for 90 days so moderation decisions
+                  can be checked (longer while a report about the post is still open). Then its text is deleted.
                 </li>
                 <li>Images that were never posted: removed within a few hours.</li>
                 <li>
-                  Images moderators take down are moved out of public view and kept privately as evidence for{' '}
-                  <Placeholder>period, to be confirmed by counsel</Placeholder>.
+                  Images moderators take down are moved out of public view and kept privately as evidence for a year
+                  (longer while a report about them is still open). Then they are deleted.
                 </li>
                 <li>
                   Backups of our two databases (HeyNaija’s, and the sign-in service’s): kept for 30 days, encrypted.
                   Something deleted stays in them until they age out.
                 </li>
                 <li>Copies of the emails our sign-in service sends you, such as sign-in codes: 7 days.</li>
-                <li>Server logs: <Placeholder>period</Placeholder>.</li>
+                <li>
+                  Server logs: about two weeks. The web server keeps its logs for 14 days; the service’s own logs are
+                  capped in size, the oldest deleted first.
+                </li>
               </ul>
               <p>
                 <strong>When you delete your account</strong>, it leaves HeyNaija at once and is erased 14 days later.
@@ -189,12 +194,12 @@ export default function PrivacyPage() {
                   decisions, for the period above, and the reports and decisions themselves.
                 </li>
                 <li>
-                  A record that you declared you were 18 or older, and when, linked only to that placeholder, for{' '}
-                  <Placeholder>period, to be confirmed by counsel</Placeholder>.
+                  A record that you declared you were 18 or older, and when, linked only to that placeholder, for two
+                  years.
                 </li>
                 <li>
-                  The record that you asked for your account to be deleted, and when it was done, for{' '}
-                  <Placeholder>period, to be confirmed by counsel</Placeholder>.
+                  The record that you asked for your account to be deleted, and when it was done, for two years after
+                  it was done. So is the record of any other request you make about your data.
                 </li>
               </ul>
             </>
@@ -232,8 +237,8 @@ export default function PrivacyPage() {
           body: (
             <>
               <p>
-                <strong>HeyNaija does not collect NINs, NIN slips, photos of identity documents or dates of birth, and
-                identity verification is switched off.</strong> Nothing on the site asks for them.
+                <strong>HeyNaija does not collect NINs, NIN slips or photos of identity documents, and identity
+                verification is switched off.</strong> Nothing on the site asks for them.
               </p>
               <p>
                 The <Link href="/governance/constitution#article-4">draft constitution</Link> proposes optional NIN
@@ -251,8 +256,8 @@ export default function PrivacyPage() {
                 </li>
                 <li>The provider authorised, with its data-sharing terms and any transfers outside Nigeria confirmed.</li>
                 <li>
-                  The lawful basis, exactly what is collected, and how long it is kept:{' '}
-                  <Placeholder>retention period for verification results, set after the privacy impact review</Placeholder>.
+                  The lawful basis, exactly what is collected, and how long it is kept, which the privacy impact review
+                  will set.
                 </li>
                 <li>A security review of the integration.</li>
               </ul>
@@ -266,8 +271,7 @@ export default function PrivacyPage() {
             <>
               <p>
                 During the invite-only beta, accounts are for people aged <strong>18 or older</strong>. When you join,
-                you give your date of birth and confirm that it is your real one; accounts for anyone younger are not
-                allowed yet, and nobody under 13 can ever join. See the{' '}
+                you confirm that you are; accounts for anyone younger are not allowed yet. See the{' '}
                 <Link href="/rules#age">rules</Link> for what happens if an account seems to belong to someone under 18.
               </p>
               <p>
@@ -279,15 +283,15 @@ export default function PrivacyPage() {
               <p>
                 We keep your age apart from your account, from identity verification and from voting membership: an age
                 band (under 18, or 18 or older), how it was established (you said so, or a check confirmed it), and when.
-                With it we keep the date of birth you gave, so that if an age in the rules changes your band can be
-                worked out again without asking you, and so a later age check can be compared with what you said. Only
-                you can see your date of birth, in Settings and in your data export; moderators see at most whether an
-                account is an adult. It is never logged, never shown on your profile, and deleted with your account.
-                You cannot change it yourself: to correct it, write to <ContactEmail />. If you joined before we asked
-                for a date of birth, we ask you for it once before you can carry on using HeyNaija; until you give it,
-                you are not treated as a confirmed adult. If the date you give then is under 18, we keep it so we can
-                protect you as a minor, and tell our moderators, who follow the steps in the rules. If it is under 13,
-                your account is suspended until a moderator looks.
+                Moderators see at most whether an account is an adult. Your age is never shown on your profile, and it is
+                deleted with your account.
+              </p>
+              <p>
+                For a short time in November 2026, HeyNaija asked for a date of birth instead, at signup and once from
+                members already here. We no longer ask. If you gave yours then, we keep it with your age, so that if an
+                age in the rules changes your band can be worked out again without asking you, and so a later age check
+                can be compared with what you said. Only you can see it, in your data export; it is never logged, never
+                shown on your profile, and deleted with your account. To correct it, write to <ContactEmail />.
               </p>
             </>
           ),

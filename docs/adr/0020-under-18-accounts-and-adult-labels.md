@@ -17,6 +17,32 @@ and discovery protections are built on branch `feat/under-18-contact` (questions
 verification, PR #61), ADR 0019 (video posts, PR #63),
 `docs/governance/under-18-rollout.md`, `docs/feature-flags.md`
 
+**Owner decision, 8 November 2026: the beta stays 18+.** Signup goes back to the
+"I am 18 or older" box, and nobody is asked for a date of birth. Opening to 13 to
+17 year olds (phase 2) is set aside. Everything built for it stays in the code,
+switched off, in case it comes back:
+- **Dates of birth:** `BIRTH_DATE_ENABLED`, locked off in `apps/api/src/env.ts`.
+  While it is off:
+  - `/join` shows the box (`GET /v1/signup/age` reports `asksBirthDate: false`).
+  - The registration webhooks take the box (`adult_declared`). A date an app
+    still sends is checked the same way but not kept.
+  - `/birth-date` asks nobody, and `POST /v1/me/birth-date` takes nothing.
+  - Settings shows no date.
+- **The box counts as the member's own statement of 18 or older** (`counts` in
+  `age.ts`, `fromAgeRecord` in `adult-content.ts`). It counted for nothing while
+  every member was asked for a date.
+- **Dates already given** are kept with the age record, in the member's export, as
+  `/privacy` says.
+- **`UNDER_18_ACCOUNTS_ENABLED`** stays locked off, and now also needs
+  `BIRTH_DATE_ENABLED`.
+- **The minors' protections** (section 4) stay in force for any member recorded as
+  under 18.
+- **Turning dates of birth back on** is the line in `env.ts`, in review, with
+  `/rules#age` and `/privacy#age` saying so again.
+
+The labels (sections 2 and 3, and whole communities, question 8) are unaffected:
+the box makes a member an adult for them.
+
 Nothing here is legal advice. Every legal point is for Nigerian counsel (section 7).
 This ADR takes the requirements in `docs/governance/under-18-rollout.md` as
 given and orders them; it does not repeat that checklist.
