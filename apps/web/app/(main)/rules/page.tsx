@@ -42,7 +42,8 @@ export default function RulesPage() {
               <li>
                 <strong>Never any sexual content involving children.</strong> It is removed at once, the
                 account is suspended without warning, and it is reported to the authorities. Images are
-                checked against lists of known abuse material.
+                checked against lists of known abuse material. Our{' '}
+                <Link href="/child-safety">child safety standards</Link> say more.
               </li>
             </ol>
           ),
