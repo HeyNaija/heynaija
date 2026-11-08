@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { members, notifications, pushDevices, pushSubscriptions, reports } from '@heynaija/db'
+import { members, notifications, type PushDeviceService, pushDevices, pushSubscriptions, reports } from '@heynaija/db'
 import { eq, sql } from 'drizzle-orm'
 import { MembersService } from '../members/members.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
@@ -42,14 +42,15 @@ class PushServices implements PushSender {
   }
 }
 
-/** FCM, standing in: keeps what each app's token is sent, and whose it was said to be. */
+/** FCM (and, when given, APNs), standing in: keeps what each app's token is sent, and whose it was said to be. */
 class AppServices implements AppPushSender {
-  sent: { token: string; key: string; memberId: string; message: PushMessage }[] = []
+  sent: { service: PushDeviceService; token: string; key: string; memberId: string; message: PushMessage }[] = []
   failing = new Map<string, Error>()
+  constructor(readonly services: readonly PushDeviceService[] = ['fcm']) {}
   async send(target: AppTarget, message: PushMessage) {
     const error = this.failing.get(target.token)
     if (error) throw error
-    this.sent.push({ token: target.token, key: target.key, memberId: target.memberId, message })
+    this.sent.push({ service: target.service, token: target.token, key: target.key, memberId: target.memberId, message })
   }
   /** What one app was sent. */
   to(token: string) {
@@ -91,9 +92,9 @@ async function browser(memberId: string, name = 'phone') {
 const appKey = Buffer.alloc(32, 7).toString('base64url')
 
 /** An installation of the app, signed in as `memberId`. Returns its token. */
-async function app(memberId: string, name = 'android') {
+async function app(memberId: string, name = 'android', service: PushDeviceService = 'fcm') {
   const token = `${handles.get(memberId) ?? memberId}-${name}:APA91b`
-  await push.register(memberId, 'fcm', token, appKey)
+  await push.register(memberId, service, token, appKey)
   return token
 }
 
@@ -357,7 +358,7 @@ test('the app gets the same pushes as the member’s browsers, told whose they a
 test('a member with only the app is pushed to when browsers are off, and one with only a browser is then passed over', async () => {
   const appsOnly = new PushNotificationsService(db, jobs, null, null, apps)
   assert.equal(appsOnly.enabled, true)
-  assert.equal(appsOnly.appsEnabled, true)
+  assert.deepEqual(appsOnly.appServices, ['fcm'])
   assert.equal(appsOnly.publicKey, null)
   const phone = await app(ada)
   await browser(bayo)
@@ -372,8 +373,26 @@ test('a member with only the app is pushed to when browsers are off, and one wit
   assert.deepEqual(await state(bayo), ['passed over'])
   await appsOnly.send(ada)
   assert.deepEqual(apps.to(phone).map((m) => m.tag), [`like:${post}`])
-  assert.equal(push.appsEnabled, true)
-  assert.equal(new PushNotificationsService(db, jobs, services).appsEnabled, false)
+  assert.deepEqual(push.appServices, ['fcm'])
+  assert.deepEqual(new PushNotificationsService(db, jobs, services).appServices, [])
+})
+
+test('an iPhone is pushed to through APNs where the Apple key is set, and waits where it is not', async () => {
+  const iphone = await app(ada, 'iphone', 'apns')
+  const { id: post } = await postsService.create(ada, 'my post')
+  await postsService.like(bayo, post)
+  // Only FCM here: the iPhone is not somewhere to push, so the like is left to email.
+  await deliver()
+  assert.deepEqual(apps.sent, [])
+  assert.deepEqual(await state(ada), ['passed over'])
+  assert.equal((await db.select().from(pushDevices)).length, 1)
+
+  const both = new AppServices(['fcm', 'apns', 'apns_sandbox'])
+  push = new PushNotificationsService(db, jobs, services, null, both)
+  const xcode = await app(ada, 'xcode', 'apns_sandbox')
+  await postsService.like(chi, post)
+  await deliver()
+  assert.deepEqual(both.sent.map((s) => [s.service, s.token]).sort(), [['apns', iphone], ['apns_sandbox', xcode]])
 })
 
 test('an app its push service no longer knows is forgotten; one refused for good is kept and email takes over', async () => {

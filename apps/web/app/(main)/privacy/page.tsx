@@ -49,7 +49,12 @@ export default function PrivacyPage() {
           body: (
             <dl>
               <dt>Your account</dt>
-              <dd>Your email address, handle, and the invite you joined with. If you sign in with Google, Google tells us your email address.</dd>
+              <dd>
+                Your email address, handle, and the invite you joined with. If you sign in with Google, Google tells us
+                your email address. If you sign in with Apple in the iPhone app, Apple tells us your email address, or a
+                relay address that forwards to it if you choose to hide yours, and we keep a token from Apple that lets us
+                end HeyNaija’s access to your Apple Account when your account is erased.
+              </dd>
               <dt>Your age</dt>
               <dd>
                 That you confirmed you are 18 or older when you joined, kept apart from your account. If you gave a date
@@ -75,8 +80,9 @@ export default function PrivacyPage() {
               <dd>
                 If you turn them on in a browser: the address its push service gave it, the keys that encrypt what is
                 sent there, and when it last got one. In the Android app: the token Google’s Firebase Cloud Messaging
-                gave it, the key the app made to encrypt what is sent there, and when it last got one. Turning push
-                off, or signing out there, deletes them.
+                gave it, the key the app made to encrypt what is sent there, and when it last got one. In the iPhone
+                app the same, with the token Apple’s push service gave it. Turning push off, or signing out there,
+                deletes them.
               </dd>
               <dt>Technical data</dt>
               <dd>
@@ -121,17 +127,20 @@ export default function PrivacyPage() {
                   carries them to your device encrypted, so it cannot read them, but it does see when they are sent.
                 </li>
                 <li>
-                  <strong>Google’s Firebase Cloud Messaging</strong>, only if you allow notifications in the Android app:
-                  it carries them to your phone, encrypted with a key only the app and HeyNaija have, so it cannot read
-                  them either, but it does see when they are sent.
+                  <strong>Google’s Firebase Cloud Messaging</strong>, only if you allow notifications in the Android app,
+                  and <strong>Apple’s push service</strong>, only if you allow them in the iPhone app: each carries them
+                  to your phone, encrypted with a key only the app and HeyNaija have, so it cannot read them either, but
+                  it does see when they are sent.
                 </li>
                 <li><strong>netcup</strong>: the servers HeyNaija runs on, in Germany.</li>
                 <li><strong>Google</strong>: only if you choose to sign in with Google.</li>
+                <li><strong>Apple</strong>: only if you choose to sign in with Apple in the iPhone app.</li>
               </ul>
               <p>
                 So your data is processed outside Nigeria: by netcup in Germany, under the European Union’s data
-                protection law (the GDPR), and by Cloudflare, Resend, Google and the push services, mainly in the United
-                States and Europe, each under its own data protection terms. It is encrypted on its way to each of them.
+                protection law (the GDPR), and by Cloudflare, Resend, Google, Apple and the push services, mainly in
+                the United States and Europe, each under its own data protection terms. It is encrypted on its way to
+                each of them.
               </p>
             </>
           ),
@@ -180,7 +189,8 @@ export default function PrivacyPage() {
               </ul>
               <p>
                 <strong>When you delete your account</strong>, it leaves HeyNaija at once and is erased 14 days later.
-                Erasing removes your email address and the ways you sign in, your name, bio and photo, the text and
+                Erasing removes your email address and the ways you sign in (and ends HeyNaija’s access to your Apple
+                Account, if you signed in with Apple), your name, bio and photo, the text and
                 images of your posts and replies, your likes, reposts, bookmarks and votes, who you follow, block and
                 mute, your community memberships and notifications, and your age record. What stays:
               </p>

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import {
   ageAssurances,
+  appleTokens,
   bookmarks,
   communities,
   communityMemberships,
@@ -245,6 +246,36 @@ test('if Kratos cannot be reached the account still leaves the site; the erase s
   kratos.failing.clear()
   await deletion.erase(xena, days(14))
   assert.deepEqual(kratos.revoked, [xena])
+})
+
+test('the erase revokes Sign in with Apple while its token is kept, and is tried again if Apple cannot be reached', async () => {
+  await db.insert(appleTokens).values({ memberId: xena, refreshToken: 'r.apple' })
+  const revoked: string[] = []
+  let appleDown = true
+  const withApple = new AccountDeletionService(
+    db,
+    env,
+    kratos,
+    kratos,
+    { eraseFilesOf: async () => {} },
+    membersService,
+    { endHostedBy: async () => {} },
+    notices,
+    undefined,
+    {
+      revokeFor: async (id) => {
+        if (appleDown) throw new Error('Apple answered 503')
+        revoked.push(`${id} with ${await count(appleTokens, eq(appleTokens.memberId, id))} token`)
+      },
+    },
+  )
+  await withApple.request(xena, { channel: 'self_service' }, now)
+  await assert.rejects(withApple.erase(xena, days(14)), /503/)
+  assert.equal((await member(xena)).deletedAt, null)
+  appleDown = false
+  assert.equal(await withApple.erase(xena, days(14)), 'erased')
+  assert.deepEqual(revoked, [`${xena} with 1 token`])
+  assert.equal(await count(appleTokens, eq(appleTokens.memberId, xena)), 0)
 })
 
 test('a site moderator is demoted before deleting their own account; an operator can delete one', async () => {

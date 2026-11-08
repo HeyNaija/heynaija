@@ -7,7 +7,9 @@ The runtime remains the upstream Kratos image. The upstream OAuth exchange,
 JWT verification, state/CSRF checks, email codes, identity storage and sessions
 are retained. No Google token is accepted or verified by the frontend.
 
-This patch adds policy that the upstream open-source image does not enforce:
+This patch adds policy that the upstream open-source image does not enforce. What
+it says of Google holds for Apple too (Sign in with Apple, in the iOS app: docs/adr/0026),
+with Apple's name in the messages:
 
 - A first Google login whose verified email matches an existing code-login
   identity keeps the Google credential in Kratos's private login-flow context.

@@ -22,24 +22,31 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-func heynaijaGoogle(provider Provider) bool { return provider.Config().ID == "google" }
+// The sign-in providers this policy covers, by Kratos's provider ID: Google (the
+// web and the Android app) and Apple (the iOS app). Both vouch for an email, which
+// must be the HeyNaija account's.
+var heynaijaProviders = map[string]string{"google": "Google", "apple": "Apple"}
+
+func heynaijaGoogle(provider Provider) bool { return heynaijaProviders[provider.Config().ID] != "" }
+
+func heynaijaName(provider Provider) string { return heynaijaProviders[provider.Config().ID] }
 
 func heynaijaError(message string) error {
 	return schema.NewHookValidationError("#/", message, text.Messages{{ID: 4900101, Text: message, Type: "error"}})
 }
 
-func heynaijaEmail(claims *Claims) (string, error) {
+func heynaijaEmail(claims *Claims, name string) (string, error) {
 	if claims == nil || !bool(claims.EmailVerified) || strings.TrimSpace(claims.Email) == "" {
-		return "", heynaijaError("Google must verify your email address before you can use it to sign in.")
+		return "", heynaijaError(name + " must verify your email address before you can use it to sign in.")
 	}
 	// Case is ignored; Gmail dots, plus-addresses and other aliases stay distinct.
 	return strings.ToLower(strings.TrimSpace(claims.Email)), nil
 }
 
-func heynaijaMatchEmail(i *identity.Identity, email string) error {
+func heynaijaMatchEmail(i *identity.Identity, email, name string) error {
 	accountEmail := strings.ToLower(strings.TrimSpace(gjson.GetBytes(i.Traits, "email").String()))
 	if email == "" || accountEmail == "" || accountEmail != email {
-		return heynaijaError("Choose the Google account with the same email address as your HeyNaija account. Different email addresses cannot be connected.")
+		return heynaijaError("Choose the " + name + " account with the same email address as your HeyNaija account. Different email addresses cannot be connected.")
 	}
 	return nil
 }
@@ -48,18 +55,18 @@ func heynaijaCheckGoogle(i *identity.Identity, claims *Claims, provider Provider
 	if !heynaijaGoogle(provider) {
 		return nil
 	}
-	email, err := heynaijaEmail(claims)
+	email, err := heynaijaEmail(claims, heynaijaName(provider))
 	if err != nil {
 		return err
 	}
-	return heynaijaMatchEmail(i, email)
+	return heynaijaMatchEmail(i, email, heynaijaName(provider))
 }
 
 func (s *Strategy) heynaijaExistingGoogle(ctx context.Context, claims *Claims, provider Provider) (*identity.Identity, error) {
 	if !heynaijaGoogle(provider) {
 		return nil, nil
 	}
-	email, err := heynaijaEmail(claims)
+	email, err := heynaijaEmail(claims, heynaijaName(provider))
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +77,7 @@ func (s *Strategy) heynaijaExistingGoogle(ctx context.Context, claims *Claims, p
 	if err != nil {
 		return nil, err
 	}
-	if err := heynaijaMatchEmail(i, email); err != nil {
+	if err := heynaijaMatchEmail(i, email, heynaijaName(provider)); err != nil {
 		return nil, err
 	}
 	return i, nil
@@ -92,11 +99,12 @@ func heynaijaBindGoogle(lf *login.Flow, credentials *identity.Credentials, email
 }
 
 func (s *Strategy) heynaijaConfirmGoogle(ctx context.Context, w http.ResponseWriter, r *http.Request, lf *login.Flow, i *identity.Identity, token *identity.CredentialsOIDCEncryptedTokens, claims *Claims, provider Provider) error {
-	email, err := heynaijaEmail(claims)
+	name := heynaijaName(provider)
+	email, err := heynaijaEmail(claims, name)
 	if err != nil {
 		return err
 	}
-	if err := heynaijaMatchEmail(i, email); err != nil {
+	if err := heynaijaMatchEmail(i, email, name); err != nil {
 		return err
 	}
 	credentials, err := identity.NewOIDCLikeCredentials(token, s.ID(), provider.Config().ID, claims.Subject, provider.Config().OrganizationID)
@@ -117,7 +125,7 @@ func (s *Strategy) heynaijaConfirmGoogle(ctx context.Context, w http.ResponseWri
 	}
 	lf.UI.Nodes = nodes
 	lf.UI.Messages.Clear()
-	lf.UI.Messages.Add(&text.Message{ID: 4900102, Text: "Google confirmed your email. Confirm your existing HeyNaija account with an email code to finish signing in. Google will be connected automatically.", Type: "info"})
+	lf.UI.Messages.Add(&text.Message{ID: 4900102, Text: name + " confirmed your email. Confirm your existing HeyNaija account with an email code to finish signing in. " + name + " will be connected automatically.", Type: "info"})
 	if err := s.d.LoginFlowPersister().UpdateLoginFlow(ctx, lf); err != nil {
 		return err
 	}
@@ -133,9 +141,9 @@ func heynaijaCheckPendingGoogle(i *identity.Identity, config []byte) error {
 		return err
 	}
 	for _, provider := range credentials.Providers {
-		if provider.Provider == "google" {
+		if name := heynaijaProviders[provider.Provider]; name != "" {
 			email := gjson.GetBytes(config, "heynaija_verified_email").String()
-			return heynaijaMatchEmail(i, email)
+			return heynaijaMatchEmail(i, email, name)
 		}
 	}
 	return nil

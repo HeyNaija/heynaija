@@ -38,6 +38,7 @@ const fcmErrorCode = (body: unknown): string | undefined => {
  * and one with the same tag replaces the last.
  */
 export class FcmSender implements AppPushSender {
+  readonly services = ['fcm'] as const
   private access: { token: string; expiresAt: number } | null = null
   private signingIn: Promise<string> | null = null
 

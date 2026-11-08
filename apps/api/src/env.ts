@@ -57,6 +57,18 @@ const fcmServiceAccount = z
 
 export type FcmServiceAccount = z.infer<typeof fcmServiceAccount>
 
+/** An Apple key (the .p8 file Apple's developer site downloads once) in base64, for ES256. */
+const applePrivateKey = z
+  .string()
+  .transform((value) => Buffer.from(value, 'base64').toString('utf8'))
+  .refine((pem) => pem.includes('PRIVATE KEY') && isPrivateKey(pem), 'an Apple key (the .p8 file) in base64')
+
+/** Apple's IDs for a team and a key: ten capital letters and digits. */
+const appleId = (what: string) => z.string().regex(/^[A-Z0-9]{10}$/, `a 10-character Apple ${what}`)
+
+/** HeyNaija's Apple key and the iOS app it is for: what pushing to it and revoking Sign in with Apple need. */
+export type AppleKey = { teamId: string; keyId: string; privateKey: string; bundleId: string }
+
 export const APP_ENVS = ['development', 'staging', 'production'] as const
 export type AppEnv = (typeof APP_ENVS)[number]
 
@@ -167,6 +179,16 @@ const schema = z.object({
   // account key, the JSON file its console downloads, in base64 so that it is one
   // line. Without it the app is not offered push; browsers are unaffected.
   FCM_SERVICE_ACCOUNT: optional(fcmServiceAccount),
+  // The iOS app (docs/adr/0026): HeyNaija's Apple developer team, and one key made in
+  // its account with Apple Push Notifications service and Sign in with Apple
+  // switched on, the .p8 file in base64. With them the server pushes to the iOS app
+  // and revokes Sign in with Apple when an account is erased; without them the iOS
+  // app is not offered push. Set all three, or none.
+  APPLE_TEAM_ID: optional(appleId('team ID')),
+  APPLE_KEY_ID: optional(appleId('key ID')),
+  APPLE_PRIVATE_KEY: optional(applePrivateKey),
+  // The iOS app's bundle ID: where APNs delivers, and Sign in with Apple's client.
+  APPLE_BUNDLE_ID: z.preprocess((value) => (value === '' ? undefined : value), z.string().regex(/^[\w-]+(\.[\w-]+)+$/, 'a bundle ID').default('ng.heynaija.app')),
   // Safety (docs/safety/abuse-material-scanning.md). Where alerts about matched
   // uploads and reports of illegal content are emailed; without it they are only
   // logged. Needs the SMTP settings above.
@@ -247,6 +269,10 @@ const checked = schema.superRefine((env, ctx) => {
   if (Boolean(env.LIVEKIT_WEBHOOK_KEY) !== Boolean(env.LIVEKIT_WEBHOOK_SECRET)) {
     ctx.addIssue({ code: 'custom', path: ['LIVEKIT_WEBHOOK_SECRET'], message: 'set both LIVEKIT_WEBHOOK_KEY and LIVEKIT_WEBHOOK_SECRET, or neither' })
   }
+  const apple = [env.APPLE_TEAM_ID, env.APPLE_KEY_ID, env.APPLE_PRIVATE_KEY].filter(Boolean).length
+  if (apple !== 0 && apple !== 3) {
+    ctx.addIssue({ code: 'custom', path: ['APPLE_PRIVATE_KEY'], message: 'set APPLE_TEAM_ID, APPLE_KEY_ID and APPLE_PRIVATE_KEY together, or none of them' })
+  }
   if (Boolean(env.LIVEKIT_API_KEY) !== Boolean(env.LIVEKIT_API_SECRET)) {
     ctx.addIssue({ code: 'custom', path: ['LIVEKIT_API_SECRET'], message: 'set both LIVEKIT_API_KEY and LIVEKIT_API_SECRET, or neither' })
   }
@@ -260,6 +286,12 @@ const checked = schema.superRefine((env, ctx) => {
 })
 
 export type Env = z.infer<typeof schema>
+
+/** The Apple key, when all of it is set. */
+export const appleKey = (env: Pick<Env, 'APPLE_TEAM_ID' | 'APPLE_KEY_ID' | 'APPLE_PRIVATE_KEY' | 'APPLE_BUNDLE_ID'>): AppleKey | null =>
+  env.APPLE_TEAM_ID && env.APPLE_KEY_ID && env.APPLE_PRIVATE_KEY
+    ? { teamId: env.APPLE_TEAM_ID, keyId: env.APPLE_KEY_ID, privateKey: env.APPLE_PRIVATE_KEY, bundleId: env.APPLE_BUNDLE_ID }
+    : null
 
 export const loadEnv = (source: Record<string, string | undefined> = process.env): Env => checked.parse(source)
 
