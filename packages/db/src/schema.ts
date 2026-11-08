@@ -796,9 +796,10 @@ export const pushSubscriptions = pgTable(
   (t) => [uniqueIndex('push_subscriptions_endpoint_idx').on(t.endpoint), index('push_subscriptions_member_idx').on(t.memberId)],
 )
 
-// The push services the apps register with (docs/adr/0023): Firebase Cloud
-// Messaging, for the Android app. Apple's (apns) comes with the iOS app's push.
-export const PUSH_DEVICE_SERVICES = ['fcm'] as const
+// The push services the apps register with: Firebase Cloud Messaging for the
+// Android app (docs/adr/0023), and Apple's (APNs) for the iOS app (docs/adr/0026),
+// whose tokens belong to its production or its development (sandbox) service.
+export const PUSH_DEVICE_SERVICES = ['fcm', 'apns', 'apns_sandbox'] as const
 export type PushDeviceService = (typeof PUSH_DEVICE_SERVICES)[number]
 
 // An installation of the Android or iOS app that shows a member's notifications
@@ -827,6 +828,18 @@ export const pushDevices = pgTable(
     check('push_devices_service_check', sql.raw(`service in (${PUSH_DEVICE_SERVICES.map((value) => `'${value}'`).join(', ')})`)),
   ],
 )
+
+// Sign in with Apple's refresh token for a member who signed in with Apple in the
+// iOS app (docs/adr/0026). Kept only to revoke it when the account is erased, as
+// Apple requires; it is useless without HeyNaija's Apple key. One per member: a
+// later sign-in replaces it.
+export const appleTokens = pgTable('apple_tokens', {
+  memberId: uuid('member_id')
+    .primaryKey()
+    .references(() => members.id),
+  refreshToken: text('refresh_token').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+})
 
 // Signup is invite-only. Only the SHA-256 of a code is stored.
 export const invites = pgTable('invites', {

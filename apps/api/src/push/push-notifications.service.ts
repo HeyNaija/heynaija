@@ -61,14 +61,14 @@ export class PushNotificationsService {
     @Optional() @Inject(APP_PUSH_SENDER) private readonly apps: AppPushSender | null = null,
   ) {}
 
-  /** False when neither VAPID keys nor FCM's service account are configured: nothing is pushed. */
+  /** False when neither VAPID keys, FCM's service account nor the Apple key are configured: nothing is pushed. */
   get enabled(): boolean {
     return this.sender !== null || this.apps !== null
   }
 
-  /** False without FCM's service account: the app is not offered push. */
-  get appsEnabled(): boolean {
-    return this.apps !== null
+  /** The push services the apps can register with: "fcm" with FCM's service account, "apns" and "apns_sandbox" with the Apple key. */
+  get appServices(): readonly PushDeviceService[] {
+    return this.apps?.services ?? []
   }
 
   /** The key browsers subscribe with, or null when push is off. */
@@ -182,7 +182,7 @@ export class PushNotificationsService {
     // Subscribing later does not bring these back.
     const places = [
       this.sender && sql`exists(select 1 from push_subscriptions s where s.member_id = n.recipient_id)`,
-      this.apps && sql`exists(select 1 from push_devices d where d.member_id = n.recipient_id)`,
+      this.apps && sql`exists(select 1 from push_devices d where d.member_id = n.recipient_id and d.service = any(${pgTexts(this.apps.services)}))`,
     ].filter((place) => place !== null)
     await this.db.execute(sql`
       update notifications n set push_settled_at = now()
@@ -232,7 +232,8 @@ export class PushNotificationsService {
       const devices = await this.db
         .select()
         .from(pushDevices)
-        .where(eq(pushDevices.memberId, memberId))
+        // An installation whose push service is not configured here (its key was taken away) waits until it is.
+        .where(and(eq(pushDevices.memberId, memberId), inArray(pushDevices.service, [...apps.services])))
         .orderBy(desc(pushDevices.createdAt))
         .limit(DEVICES_PER_MEMBER)
       for (const device of devices) {
@@ -355,3 +356,6 @@ type Place = { kind: 'browser' | 'app'; id: string; send: (message: PushMessage)
 
 /** A list of IDs as one Postgres uuid[] parameter. */
 const pgUuids = (ids: string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`
+
+/** A list of plain words (push services) as one Postgres text[] parameter. */
+const pgTexts = (words: readonly string[]) => sql`${`{${words.join(',')}}`}::text[]`
