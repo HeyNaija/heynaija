@@ -328,13 +328,17 @@ process, on its own BullMQ queue, one job at a time:
   so a deletion asked for again after a cancel can be queued.
 - **Every hour, what is kept only for a while.** Handles held for an erased
   account are deleted once their 30 days are over: a running hold is all that
-  needed them. If `DELETED_CONTENT_RETENTION_DAYS` is set, every post deleted
-  longer ago than that (the ones members delete and the evidence posts of erased
+  needed them. Every post deleted longer ago than
+  `DELETED_CONTENT_RETENTION_DAYS` (90 days by default since 8 November 2026) (the ones members delete and the evidence posts of erased
   accounts) is blanked as an ordinary post is at erase: text, link, quote,
   mentions, hashtags, idea title, problem details and poll (options and votes
   with it). A post with a report about
-  it still open is kept until it is decided. Unset, nothing is blanked (counsel
-  log, C-04).
+  it still open is kept until it is decided (counsel log, C-04). An erased
+  account's governance audit trail goes `ERASED_AGE_RECORD_RETENTION_DAYS` (730)
+  after the erase (C-06), and a closed privacy request
+  `PRIVACY_REQUEST_RETENTION_DAYS` (730) after it closed (C-09). The media worker's
+  hourly sweep deletes taken-down images `TAKEN_DOWN_MEDIA_RETENTION_DAYS` (365)
+  after they went to the quarantine (`media.quarantined_at`, C-07).
 - **Every day, overdue requests.** A warning lists the privacy requests still
   open past `due_by`, by ID, kind and due date.
 
@@ -422,8 +426,9 @@ mail server's can name the address it refused. Messages written in this code
   and the new API needs it: the session guard reads the new columns.
 - **Settings: none to add.** `ACCOUNT_DELETION_GRACE_DAYS` (14) and
   `PRIVACY_REQUEST_DUE_DAYS` (30) default when empty, and the API refuses to
-  start if the first is larger. Leave `DELETED_CONTENT_RETENTION_DAYS` empty
-  until counsel sets the period (C-04): nothing is blanked meanwhile.
+  start if the first is larger. `DELETED_CONTENT_RETENTION_DAYS` was left
+  empty, so nothing was blanked, until 8 November 2026, when it took a default of
+  90 days with the other retention periods on `/privacy#keep`.
   `KRATOS_ADMIN_URL` comes from compose. The emails use the notification SMTP
   settings, and are not sent without them. The nightly backup reads
   `KRATOS_SENT_MAIL_KEEP_DAYS` (7).

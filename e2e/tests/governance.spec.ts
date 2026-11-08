@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 import { newMember, post } from '../lib/members.ts'
 
 const documents = [
+  { path: '/terms', heading: 'Terms of use' },
   { path: '/rules', heading: 'HeyNaija rules' },
   { path: '/privacy', heading: 'Privacy policy' },
   { path: '/charter', heading: 'HeyNaija Community Governance Charter' },
@@ -32,9 +33,22 @@ test('the governance documents are public and say they are drafts @mobile', asyn
   // The governance page lists all of them.
   await page.goto('/governance')
   const list = page.locator('#documents')
-  for (const name of ['Community Governance Charter', 'Rules', 'Privacy policy', 'Draft constitution', 'Licence']) {
+  for (const name of ['Community Governance Charter', 'Terms of use', 'Rules', 'Privacy policy', 'Draft constitution', 'Licence']) {
     await expect(list.getByRole('link', { name, exact: true })).toBeVisible()
   }
+})
+
+test('the terms and the privacy policy have nothing left to fill in, and joining links the terms', async ({ page }) => {
+  for (const path of ['/terms', '/privacy']) {
+    await page.goto(path)
+    // The draft notice shows what a placeholder looks like; the sections have none.
+    await expect(page.locator('.policy-section .policy-placeholder')).toHaveCount(0)
+  }
+  await expect(page.locator('#who')).toContainText('run by its founders')
+  await expect(page.locator('#keep')).toContainText('kept for 90 days')
+  await page.goto('/join')
+  await page.getByRole('link', { name: 'terms', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Terms of use' })).toBeVisible()
 })
 
 test('the governance page says plainly what is and is not live @mobile', async ({ page }) => {

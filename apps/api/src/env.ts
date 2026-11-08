@@ -133,9 +133,19 @@ const schema = z.object({
   // Days HeyNaija gives itself to answer a privacy request (counsel to confirm:
   // docs/governance/counsel-log.md, C-02). Requests past it are flagged.
   PRIVACY_REQUEST_DUE_DAYS: days(30, 1, 90),
-  // Days the text of a deleted post is kept for moderation records before it is
-  // blanked. Unset until counsel sets the period (C-04): nothing is blanked.
-  DELETED_CONTENT_RETENTION_DAYS: optional(z.coerce.number().int().min(1).max(3650)),
+  // How long what is kept for moderation and accountability is kept, as /privacy#keep
+  // says (set by the operator on 8 November 2026; counsel to confirm, C-04, C-06, C-07
+  // and C-09 in docs/governance/counsel-log.md). Change the page with any of them.
+  // Days the text of a deleted post is kept for moderation records before it is blanked.
+  DELETED_CONTENT_RETENTION_DAYS: days(90, 1, 3650),
+  // Days the private copies of images moderators took down (or kept as evidence) are
+  // kept before they are deleted, unless a report about them is still open.
+  TAKEN_DOWN_MEDIA_RETENTION_DAYS: days(365, 1, 3650),
+  // Days an erased account's age and verification audit trail (the record that it
+  // said it was 18 or older, and when) is kept after the erase.
+  ERASED_AGE_RECORD_RETENTION_DAYS: days(730, 1, 3650),
+  // Days the record of a privacy request is kept after it was closed.
+  PRIVACY_REQUEST_RETENTION_DAYS: days(730, 1, 3650),
   // How long a notification waits for company before it is emailed, and the least
   // time between two emails to the same member, in seconds (docs/adr/0009).
   EMAIL_DIGEST_DELAY_S: z.coerce.number().int().min(0).max(3600).default(300),

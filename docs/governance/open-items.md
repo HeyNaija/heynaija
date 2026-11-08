@@ -15,16 +15,16 @@ Everything to take to counsel is gathered in the [counsel log](counsel-log.md).
 
 | Placeholder | Where | Needs |
 |---|---|---|
-| Operator name and address (the data controller) | `/privacy#who` | Operator / counsel |
+| Operator name and address (the data controller) | `/privacy#who`, `/terms` | Filled 8 Nov 2026: the founders, reachable at contact@heynaija.ng, with no postal address until HeyNaija is registered. Counsel to confirm that is enough |
 | Privacy contact email | `/privacy#who`, `/privacy#rights` | Operator |
 | Safety contact email | `/rules#appeals` | Operator |
 | Custodians' names and roles | `/charter#stewards` | Founders |
 | How HeyNaija is funded today | `/charter#stewards` | Founders |
 | Charter notice period (the draft proposes 14 days) | `/charter#changes` | Founders, then adoption |
-| Data-centre location | `/privacy#processors` | Operator |
-| Cross-border transfer safeguards | `/privacy#processors` | Counsel |
-| Retention: deleted posts and moderation evidence (`DELETED_CONTENT_RETENTION_DAYS`), quarantined images, server logs, privacy request records, the record of an 18+ declaration after deletion | `/privacy#keep` | Counsel (C-04, C-06, C-07, C-09) |
-| Retention for verification results | `/privacy#identity` | After the DPIA |
+| Data-centre location | `/privacy#processors` | Filled 8 Nov 2026: netcup, Germany (staging on Contabo holds no members' data) |
+| Cross-border transfer safeguards | `/privacy#processors` | Stated as facts on 8 Nov 2026 (Germany under the GDPR; the others under their own terms); counsel to confirm the NDPA basis |
+| Retention: deleted posts (90 days), taken-down images (1 year), server logs (about 2 weeks), privacy request records and an erased account's 18+ record (2 years) | `/privacy#keep` | Set by the operator on 8 Nov 2026 and enforced by the hourly sweeps; counsel to confirm (C-04, C-06, C-07, C-09) |
+| Retention for verification results | `/privacy#identity` | After the DPIA (worded without a placeholder: verification is off) |
 
 ## 2. Needs legal review before anything is adopted
 

@@ -15,8 +15,10 @@ export default function JoinPage({ searchParams }: PageProps<'/join'>) {
       footer={
         <>
           <p>
-            Who can join, and why? Read the <Link href="/rules#age" className={linkClass}>rules</Link> and the{' '}
-            <Link href="/privacy#age" className={linkClass}>privacy policy</Link>.
+            By joining you agree to the <Link href="/terms" className={linkClass}>terms</Link>, the{' '}
+            <Link href="/rules" className={linkClass}>rules</Link> and the{' '}
+            <Link href="/privacy" className={linkClass}>privacy policy</Link>.{' '}
+            <Link href="/rules#age" className={linkClass}>Who can join, and why?</Link>
           </p>
           <p className="mt-2">
             Already a member?{' '}

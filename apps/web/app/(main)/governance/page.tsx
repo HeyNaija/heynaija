@@ -363,11 +363,12 @@ export default function GovernancePage() {
           <span className="chip">Drafts</span>
         </div>
         <p className="governance-copy">
-          The rules, privacy policy and charter apply today. The constitution is a proposal for how HeyNaija would be
+          The terms, rules, privacy policy and charter apply today. The constitution is a proposal for how HeyNaija would be
           governed, and does not apply until it is lawfully adopted.
         </p>
         <ul className="governance-documents">
           <li><Link href="/charter">Community Governance Charter</Link><span>Current promises and proposed public governance, separate from the CAC legal constitution.</span></li>
+          <li><Link href="/terms">Terms of use</Link><span>The agreement for using HeyNaija: accounts, what you post, and its limits. In force during the pilot.</span></li>
           <li><Link href="/rules">Rules</Link><span>How we treat each other, and what moderators do. In force during the pilot.</span></li>
           <li><Link href="/privacy">Privacy policy</Link><span>What we collect, what is public, and your rights. In force during the pilot.</span></li>
           <li><Link href="/governance/constitution">Draft constitution</Link><span>{CONSTITUTION.label}: the proposed rules for membership, votes, the council and ownership. Not adopted.</span></li>
