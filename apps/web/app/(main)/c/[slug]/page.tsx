@@ -1,13 +1,15 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
+import { setCommunitySensitive } from '@/app/actions'
 import { Composer } from '@/app/ui/composer'
 import { JoinButton } from '@/app/ui/join-button'
 import { CommunityMark } from '@/app/ui/community-mark'
 import { CommunityPhotoEditor } from '@/app/ui/community-photo-editor'
 import { PostItem, PostList, PostsSkeleton } from '@/app/ui/post-item'
+import { SubmitButton } from '@/app/ui/submit-button'
 import { getCommunity, getCommunityPosts, getViewer } from '@/lib/api'
-import { composerOffersMark } from '@/lib/sensitive'
+import { canMarkSensitive, composerOffersMark } from '@/lib/sensitive'
 
 type Props = PageProps<'/c/[slug]'>
 
@@ -44,7 +46,7 @@ async function CommunityView({ params, searchParams }: Props) {
             <CommunityMark slug={community.slug} photo={community.photo} large priority />
             <div className="min-w-0 flex-1">
               <h1 className="page-title break-words">{community.name}</h1>
-              <p className="mt-1 text-xs text-muted">Public community</p>
+              <p className="mt-1 text-xs text-muted">{community.sensitive ? 'Sensitive community' : 'Public community'}</p>
             </div>
           </div>
           {viewerId ? <JoinButton slug={community.slug} joined={community.viewerIsMember} /> : null}
@@ -55,6 +57,21 @@ async function CommunityView({ params, searchParams }: Props) {
             hasPhoto={community.photo !== null}
             siteModerator={community.viewerIsSiteModerator}
           />
+        ) : null}
+        {/* Its moderators mark the whole community sensitive (ADR 0020); taking the mark off always works. */}
+        {community.viewerCanMarkSensitive && (community.sensitive || (viewer.state === 'member' && canMarkSensitive(viewer.me))) ? (
+          <form action={setCommunitySensitive} className="mt-3">
+            <input type="hidden" name="slug" value={community.slug} />
+            <input type="hidden" name="on" value={community.sensitive ? '0' : '1'} />
+            <SubmitButton className="btn btn-secondary btn-sm">
+              {community.sensitive ? 'Remove sensitive mark' : 'Mark community as sensitive'}
+            </SubmitButton>
+            <p className="field-hint mt-2">
+              {community.sensitive
+                ? 'Every post here is marked sensitive: only adults see this community, and pictures and video are covered.'
+                : 'Every post here will be marked sensitive: only adults will see this community, and pictures and video will be covered.'}
+            </p>
+          </form>
         ) : null}
         {viewerId && community.photo && !community.viewerCanManagePhoto ? (
           <Link href={`/report?community=${community.slug}`} prefetch={false} className="mt-3 inline-flex min-h-8 items-center text-sm text-muted hover:underline">
@@ -107,8 +124,10 @@ async function CommunityView({ params, searchParams }: Props) {
           community={community.slug}
           polls={viewer.me.features?.polls ?? false}
           replyControls={viewer.me.features?.replyControls ?? false}
+          replyAudiences={viewer.me.replyAudiences}
           videoLimits={viewer.me.videoLimits ?? null}
-          sensitiveLabels={composerOffersMark(viewer.me)}
+          // Everything posted in a community marked sensitive is marked anyway.
+          sensitiveLabels={!community.sensitive && composerOffersMark(viewer.me)}
           placeholder={`Say something to ${community.name}`}
         />
       ) : viewerId ? (

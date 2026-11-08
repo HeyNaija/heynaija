@@ -2,6 +2,8 @@ import { type Db, members } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
 import { eq, sql } from 'drizzle-orm'
 import { CommunitiesService } from '../communities/communities.service.js'
+import { communityOpenTo } from '../governance/adult-content.js'
+import { strangerToMinor } from '../governance/minors.js'
 import { avatarPath } from '../media/media.service.js'
 import { CannotFollowSelfError, MembersService } from '../members/members.service.js'
 import { DB } from '../tokens.js'
@@ -53,7 +55,8 @@ export class OnboardingService {
    * Up to SUGGESTION_LIMIT people for `viewerId` to follow: who moderates the
    * communities in `slugs`, then who posted in them lately (most recent first),
    * then who posted anywhere lately. Never the viewer, a suspended member,
-   * anyone either of them has blocked, or anyone they already follow or mute.
+   * anyone either of them has blocked, anyone they already follow or mute, or a
+   * minor who does not follow them (ADR 0020).
    */
   async suggestions(viewerId: string, slugs: string[]): Promise<Suggestion[]> {
     const { rows } = await this.db.execute<{
@@ -67,6 +70,7 @@ export class OnboardingService {
     }>(sql`
       with chosen as (
         select id, slug, name from communities where active and slug = any(${sql.param(slugs)}::text[])
+          and ${communityOpenTo(viewerId, sql`communities.adult_only`)}
       ), candidates as (
         select cm.member_id, 0 as tier, c.slug, c.name,
           (select max(p.created_at) from posts p where p.author_id = cm.member_id and ${live}) as at
@@ -94,6 +98,7 @@ export class OnboardingService {
           or (bl.blocker_id = m.id and bl.blocked_id = ${viewerId}))
         and not exists (select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = m.id)
         and not exists (select 1 from follows f where f.follower_id = ${viewerId} and f.followee_id = m.id)
+        and not ${strangerToMinor(viewerId, sql`m.id`)}
       order by b.tier, b.at desc nulls last, m.handle
       limit ${SUGGESTION_LIMIT}`)
 

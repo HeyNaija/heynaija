@@ -209,7 +209,7 @@ async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) 
       {me?.features.gists ? (
         <>
           <LiveNow />
-          <StartGist />
+          {me.gistStage ? <StartGist /> : null}
         </>
       ) : null}
       {me ? (
@@ -219,6 +219,7 @@ async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) 
           choices={joined}
           polls={me.features?.polls ?? false}
           replyControls={me.features?.replyControls ?? false}
+          replyAudiences={me.replyAudiences}
           videoLimits={me.videoLimits ?? null}
           sensitiveLabels={composerOffersMark(me)}
           placeholder={welcomed ? 'Introduce yourself: who are you, and what brings you here?' : undefined}

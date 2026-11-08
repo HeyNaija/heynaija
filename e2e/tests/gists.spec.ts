@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { makeMinor } from '../lib/db.ts'
 import { MARK } from '../lib/env.ts'
 import { codeFor } from '../lib/mailpit.ts'
 import { newMember, replyBox, signUpOverHttp } from '../lib/members.ts'
@@ -124,6 +125,42 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
 
   await hostContext.close()
   await earContext.close()
+})
+
+test('a member under 18 listens: they find and join a Gist, and are offered neither Go live nor Request to speak', async ({ browser }) => {
+  const host = await newMember(browser, 'gist_minor_host')
+  const minor = await newMember(browser, 'gist_minor')
+  await makeMinor(minor.handle)
+
+  await host.page.getByLabel('Gist title').fill('Homework, settled')
+  await host.page.getByRole('button', { name: 'Go live' }).click()
+  await host.page.waitForURL(/\/gists\/[0-9a-f-]{36}$/)
+  const url = host.page.url()
+  await host.page.getByRole('button', { name: 'Join the Gist' }).click()
+
+  // Home lists the Gist, without the form to start one.
+  await minor.page.goto('/')
+  await expect(minor.page.getByRole('link', { name: /Homework, settled/ })).toBeVisible()
+  await expect(minor.page.getByLabel('Gist title')).toHaveCount(0)
+  await minor.page.getByRole('link', { name: /Homework, settled/ }).click()
+  await minor.page.waitForURL(url)
+  await expect(minor.page.getByText('The sound starts when you tap Join.')).toBeVisible()
+  await expect(minor.page.getByText('You only need your microphone', { exact: false })).toHaveCount(0)
+  await minor.page.getByRole('button', { name: 'Join the Gist' }).click()
+  await expect(minor.page.getByRole('heading', { name: 'On stage' })).toBeVisible()
+  await expect(minor.page.getByRole('button', { name: 'Leave' })).toBeVisible()
+  await expect(minor.page.getByRole('button', { name: 'Request to speak' })).toHaveCount(0)
+  await expect(minor.page.getByText('The host is not taking requests to speak.')).toHaveCount(0)
+  await expect(minor.page.getByRole('button', { name: 'Microphone', exact: true })).toHaveCount(0)
+  // The API refuses the request too, and the start page is not there for them.
+  expect((await minor.page.request.put(`/api/v1/gists/${new URL(url).pathname.split('/').pop()}/speak-request`)).status()).toBe(403)
+  await minor.page.goto('/gists/new')
+  await expect(minor.page.getByRole('heading', { name: 'Nothing here' })).toBeVisible()
+
+  await host.page.getByRole('button', { name: 'End the Gist' }).click()
+  await host.page.getByRole('button', { name: /Tap again to end/ }).click()
+  await host.context.close()
+  await minor.context.close()
 })
 
 test('a Gist has a reply thread: reply while live and after it ends, the host hides one, a blocked member is refused, a visitor is asked to sign in @mobile', async ({ browser }) => {

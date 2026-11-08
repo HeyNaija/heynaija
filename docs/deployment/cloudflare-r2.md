@@ -12,7 +12,7 @@ change between them; only the `S3_*` settings do.
 
 | Bucket | Access | Holds |
 |---|---|---|
-| `heynaija-uploads` | **Private** | Files exactly as a browser sent them. Lives for minutes. |
+| `heynaija-uploads` | **Private** | Files exactly as a browser sent them, which live for minutes; what moderators took down (`quarantine/`); and the pictures and video of posts marked sensitive (`sensitive/`), reached only by signed URLs (ADR 0025). |
 | `heynaija-media` | **Public read** | Images the API has checked and re-encoded. Cached for a year. |
 
 Browsers upload straight to the uploads bucket using a signed URL that is valid for
@@ -56,12 +56,21 @@ with the site's real address:
     "AllowedMethods": ["PUT"],
     "AllowedHeaders": ["content-type"],
     "MaxAgeSeconds": 3600
+  },
+  {
+    "AllowedOrigins": ["https://heynaija.ng"],
+    "AllowedMethods": ["GET", "HEAD"],
+    "MaxAgeSeconds": 3600
   }
 ]
 ```
 
 Add the staging origin too if staging uses the same bucket (better: give staging
 its own pair of buckets).
+
+The second rule is for posts marked sensitive (ADR 0025): their video's pieces are
+fetched from R2's S3 endpoint with presigned URLs, and hls.js needs CORS for that.
+Pictures are plain `<img>` loads and need none; Safari's own player needs none.
 
 ### And let the site's video player read the media bucket
 
@@ -109,6 +118,8 @@ is only a backstop for a sweep that failed, not the mechanism.
 **Do not** add a rule for the whole bucket. The `quarantine/` prefix holds images
 moderators took down and uploads the abuse-material scanner blocked. They are
 kept as evidence and must survive (see `docs/safety/abuse-material-scanning.md`).
+The `sensitive/` prefix holds the published pictures and video of posts marked
+sensitive (ADR 0025); a rule there would delete live posts' media.
 
 ## 6. Create an API token for the app
 
@@ -167,7 +178,15 @@ and refuses to run against any other address.
    should load, with `cache-control: public, max-age=31536000, immutable`.
 4. Confirm the raw upload is not public: `https://media.heynaija.ng/avatars/<id>`
    (no size suffix) should **not** return the image.
-5. Confirm R2 enforces the signed size: the API tests cannot check this against R2.
+5. Posts marked sensitive (ADR 0025). Mark a post with a picture as sensitive,
+   then, as another adult, open it. Its picture's address starts
+   `/api/v1/media/private/` and loads; the response to that address is a `302` with
+   `cache-control: private, ...` and `cf-cache-status` `DYNAMIC` or `BYPASS`, never
+   `HIT`. The picture's old address, `https://<site>/media/posts/<id>/640.webp`,
+   now answers 404. Do the same with a video post: it plays, in Firefox too (the
+   `GET` CORS rule above), and its pieces come from `<ACCOUNT_ID>.r2.cloudflarestorage.com`.
+   Signed out, the post is not there at all.
+6. Confirm R2 enforces the signed size: the API tests cannot check this against R2.
    Request an upload URL (`POST /api/v1/me/avatar/upload` with a declared `bytes`),
    then `PUT` a file of a different size to it; R2 should refuse with 403. If it
    accepts it, tell whoever maintains the API: the server-side size check still

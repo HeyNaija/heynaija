@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AuthPage, linkClass } from '@/app/ui/auth-page'
+import { getJoinAge } from '@/lib/api'
 import { JoinForm } from './join-form'
 
 export const metadata: Metadata = { title: 'Join' }
@@ -10,11 +11,11 @@ export default function JoinPage({ searchParams }: PageProps<'/join'>) {
     <AuthPage
       eyebrow="You're invited"
       title="Your conversation starts here"
-      intro="During the beta, HeyNaija is invite-only and open to people aged 18 or older. Enter your invite code and your date of birth to create an account."
+      intro="During the beta, HeyNaija is invite-only. Enter your invite code and your date of birth to create an account."
       footer={
         <>
           <p>
-            Why 18+? Read the <Link href="/rules#age" className={linkClass}>rules</Link> and the{' '}
+            Who can join, and why? Read the <Link href="/rules#age" className={linkClass}>rules</Link> and the{' '}
             <Link href="/privacy#age" className={linkClass}>privacy policy</Link>.
           </p>
           <p className="mt-2">
@@ -31,8 +32,14 @@ export default function JoinPage({ searchParams }: PageProps<'/join'>) {
   )
 }
 
-// Invite links look like /join?code=HN-XXXX-XXXX-XXXX.
+// Invite links look like /join?code=HN-XXXX-XXXX-XXXX. Who may join is the
+// API's to say (18 now, 13 once under-18 accounts open), so it streams in with the form.
 async function Prefilled({ searchParams }: Pick<PageProps<'/join'>, 'searchParams'>) {
-  const { code } = await searchParams
-  return <JoinForm initialCode={typeof code === 'string' ? code.slice(0, 40) : ''} />
+  const [{ code }, joinAge] = await Promise.all([searchParams, getJoinAge()])
+  return (
+    <>
+      <p className="mb-5 text-sm leading-6 text-muted">HeyNaija is open to people aged {joinAge} and over.</p>
+      <JoinForm initialCode={typeof code === 'string' ? code.slice(0, 40) : ''} />
+    </>
+  )
 }

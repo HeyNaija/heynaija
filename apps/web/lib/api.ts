@@ -23,6 +23,11 @@ export type Me = {
   /** Shown as a badge on the Notifications link. */
   unreadNotifications: number
   moderates: boolean
+  /**
+   * Who this member may let reply to a new post, the default first. A minor never
+   * opens a conversation to everyone (ADR 0020). Missing from an older API: all of them.
+   */
+  replyAudiences?: ReplyAudience[]
   /** False until they finish or skip the welcome flow, which the home page sends them to. */
   onboarded: boolean
   /**
@@ -42,11 +47,22 @@ export type Me = {
    * `gists` (docs/adr/0017). A missing key counts as off.
    */
   features: { gists: boolean } & Record<string, boolean>
-  /** The API's limits for a post's video while video is open to this member (`features.videoPosts`); null otherwise. */
+  /**
+   * Whether they may start a Gist and speak in one, or only listen: under 18 and
+   * no date of birth listen (ADR 0020). Never true without `features.gists`.
+   */
+  gistStage: boolean
+  /**
+   * The API's limits for a post's video while video is open to this member
+   * (`features.videoPosts`, which is off under 18 and with no date of birth); null otherwise.
+   */
   videoLimits?: VideoLimits | null
 }
 
-/** `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. */
+/**
+ * `src` is a path without the size suffix: append `/640.webp` or `/1600.webp`. On a post marked
+ * sensitive it is signed for this viewer and runs out within two hours (ADR 0025): never store it.
+ */
 export type PostImage = {
   src: string
   alt: string
@@ -56,7 +72,10 @@ export type PostImage = {
   animated: boolean
 }
 
-/** A post's one video, once it is ready (ADR 0021 section 9). Every URL is absolute on the media domain. */
+/**
+ * A post's one video, once it is ready (ADR 0021 section 9). Every URL is absolute on the media domain,
+ * or, on a post marked sensitive, signed for this viewer on the site (ADR 0025).
+ */
 export type PostVideo = {
   id: string
   durationMs: number
@@ -139,8 +158,12 @@ export type Post = {
   images: PostImage[]
   /** The post's video once it is ready; a held or unfinished one is never sent. */
   video: PostVideo | null
-  /** Marked sensitive (ADR 0020), by its author or a moderator. Only adults and its author are sent such a post. */
-  sensitive: 'author' | 'moderator' | null
+  /**
+   * Marked sensitive (ADR 0020), by its author, a moderator or its community (one
+   * marked sensitive as a whole). Only adults and its author are sent such a post,
+   * and only the author's own mark is theirs to take off.
+   */
+  sensitive: 'author' | 'moderator' | 'community' | null
   /** Its pictures and video wait behind a cover until the reader taps Show (`MediaCover`). The text never does. */
   coverMedia: boolean
   /** Mentions of members the viewer can see, in order. Other @text stays plain. */
@@ -176,6 +199,8 @@ export type Post = {
   community: { slug: string; name: string } | null
   /** A quote post's quoted post; null for other posts. */
   quote: QuotedPost | null
+  /** The story it is part of (docs/adr/0024): its first post with updates, or one of them. Null for other posts. */
+  story: PostStory | null
   /**
    * Why the post is in the Following feed or Discover, or 'repost' on a profile;
    * null elsewhere. 'network', 'active' and 'recent' are Discover's.
@@ -217,9 +242,24 @@ export type GistReplies = ReplyPage & {
   viewerIsHost: boolean
   replyAudience: GistReplyAudience
 }
+/** A story as each of its posts carries it. */
+export type PostStory = {
+  /** The story's first post. */
+  id: string
+  /** 0 on the first post; an update's place among the live updates, from 1. */
+  number: number
+  updates: number
+  followers: number
+  following: boolean
+  /** On an update, the first post (a placeholder when gone or hidden). Null on the first post. */
+  start: QuotedPost | null
+}
+
 export type Thread = {
   ancestors: Post[]
   post: Post
+  /** On a story's first post, its newest updates, oldest first (the rest are folded). Empty otherwise. */
+  updates: Post[]
   replies: ThreadReply[]
   replyCursor: string | null
   ancestorsTruncated: boolean
@@ -239,6 +279,10 @@ export type Community = {
 
 export type CommunityDetail = Community & {
   rules: string
+  /** Marked sensitive (ADR 0020): only adults are sent it, and every post in it is marked. */
+  sensitive: boolean
+  /** Its moderators and site moderators who count as adults may mark it, or take the mark off. */
+  viewerCanMarkSensitive: boolean
   moderators: string[]
   viewerCanManagePhoto: boolean
   viewerIsSiteModerator: boolean
@@ -443,6 +487,18 @@ export const getGistReply = (gistId: string, postId: string) =>
   getOrNull<Post>(`/v1/gists/${encodeURIComponent(gistId)}/replies/${encodeURIComponent(postId)}`)
 
 /**
+ * The youngest age that may join now, from the API, which alone knows whether
+ * under-18 accounts are open (ADR 0020 section 5): 18 during the 18+ beta, 13
+ * after. If the API cannot be asked, 18, the stricter of the two.
+ */
+export async function getJoinAge(): Promise<number> {
+  const res = await api('/v1/signup/age').catch(() => null)
+  if (!res?.ok) return 18
+  const { joinAge } = (await res.json()) as { joinAge: number }
+  return joinAge
+}
+
+/**
  * A member's profile; or, for a handle its owner gave up recently, the handle they
  * use now (the API answers 404 with `movedTo`).
  */
@@ -481,6 +537,12 @@ export type PollVoterPage = {
 export const getPollVoters = (id: string, cursor?: string) => getOrNull<PollVoterPage>(
   `/v1/posts/${encodeURIComponent(id)}/poll/votes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
 )
+
+/** A page of a story's updates, oldest first. */
+export const getStoryUpdates = (id: string, cursor?: string) =>
+  getOrNull<{ posts: Post[]; cursor: string | null }>(
+    `/v1/posts/${encodeURIComponent(id)}/updates?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+  )
 
 /** A branch is always an explicit, bounded page; it never fetches descendants. */
 export async function getReplies(id: string, cursor?: string, order: ReplyOrder = 'newest'): Promise<ReplyPage | null> {
@@ -595,7 +657,8 @@ export type QueueItem = {
   /** Null when the upload scanner filed it. */
   reporterHandle: string | null
   reportCount: number
-  post: { id: string; text: string; images: PostImage[]; hasVideo: boolean; authorHandle: string; communityName: string | null } | null
+  /** `markable`: its author counts as an adult; a minor's post that needs a mark is removed instead. */
+  post: { id: string; text: string; images: PostImage[]; hasVideo: boolean; authorHandle: string; communityName: string | null; markable: boolean } | null
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
   /** A reported community photo; `photo` is null if the community no longer has one. */
   communityPhoto: { slug: string; name: string; photo: string | null } | null
@@ -671,6 +734,7 @@ export type NotificationKind =
   | 'moderator_granted'
   | 'moderator_revoked'
   | 'idea_status'
+  | 'story_update'
 
 export type Notification = {
   id: string

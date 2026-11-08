@@ -3,8 +3,9 @@ import type { FastifyRequest } from 'fastify'
 import type { MaybeAuthedRequest } from '../auth/session.guard.js'
 import type { AppEnv, Env } from '../env.js'
 import { FeatureFlags, type FlagReading } from '../flags/feature-flags.js'
+import type { AgeStatus } from '../governance/age.js'
 import { ENV } from '../tokens.js'
-import { canHostGist } from './eligibility.js'
+import { canHostGist, canJoinGist } from './eligibility.js'
 
 type LiveKitEnv = Pick<Env, 'LIVEKIT_URL' | 'LIVEKIT_API_KEY' | 'LIVEKIT_API_SECRET'>
 
@@ -55,11 +56,15 @@ export class GistsGate {
 }
 
 /**
- * What /v1/me tells the web app: Gists are shown only to a member who could host
+ * What /v1/me tells the web app: Gists are shown only to a member who could join
  * one, decided by the same check as everything else (eligibility.ts).
  */
 export const gistsShownTo = (access: GistsAccess, member: { id: string; handle: string }): boolean =>
-  canHostGist({ ...member, active: true }, { allowed: access.member })
+  canJoinGist({ ...member, active: true }, { status: 'live', communityId: null }, { allowed: access.member, inCommunity: false })
+
+/** And whether they may host and speak too, or only listen: the stage's check (eligibility.ts). */
+export const gistStageFor = (access: GistsAccess, member: { id: string; handle: string }, age: AgeStatus): boolean =>
+  canHostGist({ ...member, active: true, age }, { allowed: access.member })
 
 /** What Fastify answers for a route that does not exist, so a dark feature cannot be told from no feature. */
 export const routeNotFound = (req: Pick<FastifyRequest, 'method' | 'url'>) => new NotFoundException(`Cannot ${req.method} ${req.url}`)

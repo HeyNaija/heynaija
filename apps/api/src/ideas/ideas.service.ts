@@ -2,9 +2,8 @@ import { type Db, IDEA_KINDS, IDEA_STATUSES, ideas, ideaStatusChanges, ideaVotes
 import { Inject, Injectable } from '@nestjs/common'
 import { and, eq, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { adultContentAllowed } from '../governance/adult-content.js'
 import { notify } from '../notifications/notifications.service.js'
-import { POST_MAX_GRAPHEMES, PostsService, postText, visibleAuthor } from '../posts/posts.service.js'
+import { POST_MAX_GRAPHEMES, postAllowed, PostsService, postText, visibleAuthor } from '../posts/posts.service.js'
 import { cleanLine, cleanLines, graphemes } from '../text.js'
 import { DB } from '../tokens.js'
 
@@ -181,7 +180,7 @@ export class IdeasService {
       from ideas i join posts p on p.id = i.post_id join members a on a.id = p.author_id
       where p.deleted_at is null and p.removed_at is null
         and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)}
-        and ${adultContentAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)}
+        and ${postAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)}
         and ${where}
       order by ${order}
       limit ${limit} offset ${offset}`)
@@ -246,7 +245,7 @@ export class IdeasService {
           and exists(select 1 from posts dp join members da on da.id = dp.author_id
             where dp.id = d.post_id and dp.deleted_at is null and dp.removed_at is null
               and ${visibleAuthor(viewerId, sql`dp.author_id`, sql`da.active`)}
-              and ${adultContentAllowed(viewerId, sql`dp.adult_label`, sql`dp.author_id`)})
+              and ${postAllowed(viewerId, sql`dp.adult_label`, sql`dp.author_id`)})
         where i.post_id = ${id}`)
     ).rows
     const timeline = await this.db

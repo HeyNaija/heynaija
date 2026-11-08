@@ -8,13 +8,13 @@ import { LocalTime } from './local-time'
  * The post a quote post quotes, shown inside it as one link to that post. Its
  * images are small previews here; they open full size on the post itself.
  */
-export function QuotedPostCard({ quote, now, saver = false }: { quote: QuotedPost; now: number; saver?: boolean }) {
+export function QuotedPostCard({ quote, now, saver = false, label = 'Quoted post' }: { quote: QuotedPost; now: number; saver?: boolean; label?: string }) {
   if (quote.unavailable) {
     return <p className="quoted-post is-unavailable">This post is no longer available.</p>
   }
   return (
     <Link prefetch={false} href={`/p/${quote.id}`} className="quoted-post">
-      <span className="quoted-post-label">Quoted post</span>
+      <span className="quoted-post-label">{label}</span>
       <span className="quoted-post-meta">
         <Avatar handle={quote.authorHandle} src={quote.authorAvatar} size={28} />
         <span className="quoted-post-identity">

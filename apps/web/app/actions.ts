@@ -40,8 +40,10 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   const replyTo = String(formData.get('replyTo') ?? '') || undefined
   const community = String(formData.get('community') ?? '') || undefined
   const quote = String(formData.get('quote') ?? '') || undefined
-  const replyAudience = String(formData.get('replyAudience') ?? 'everyone')
+  // Left out, it is everyone's, or for an update its story's first post's setting.
+  const replyAudience = formData.get('replyAudience') ? String(formData.get('replyAudience')) : undefined
   const sensitive = formData.get('sensitive') === '1'
+  const storyOf = String(formData.get('storyOf') ?? '') || undefined
   const poll = formData.get('poll') === '1'
     ? {
         multiple: formData.get('pollMultiple') === '1',
@@ -61,7 +63,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   const res = await api('/v1/posts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, replyTo, community, images, video, quote, poll, replyAudience, sensitive }),
+    body: JSON.stringify({ text, replyTo, community, images, video, quote, poll, replyAudience, sensitive, storyOf }),
   }).catch(() => null)
 
   if (!res) return { error: 'Could not post. Check your connection and try again.' }
@@ -81,6 +83,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
     if (body.code === 'parent_gone') return { error: 'The post you are replying to has been deleted.' }
     if (body.code === 'feature_unavailable') return { error: 'That is not available right now.' }
     if (body.code === 'quote_gone') return { error: 'The post you are quoting is no longer available.' }
+    if (body.code === 'story_gone') return { error: 'That story is no longer available.' }
     if (body.code === 'not_a_member') return { error: 'Join that community to post in it.' }
     if (body.code === 'community_gone') return { error: 'That community is no longer available.' }
     if (body.code === 'images_not_ready') {
@@ -175,6 +178,15 @@ export async function setBookmark(formData: FormData): Promise<void> {
   refresh()
 }
 
+/** Follows a story, to be told about each new update, or stops (docs/adr/0024). */
+export async function setStoryFollow(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '')
+  const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/story-follow`, { method })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
 /** Pins one of your own posts to the top of your profile, or unpins it. */
 export async function setProfilePin(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '')
@@ -210,6 +222,14 @@ export async function setReplyAudience(formData: FormData): Promise<void> {
 export async function setSensitive(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '')
   const res = await api(`/v1/posts/${encodeURIComponent(id)}/sensitive`, { method: formData.get('on') === '1' ? 'PUT' : 'DELETE' })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+/** A community's moderators mark the whole community sensitive (on=1) or take the mark off (ADR 0020). */
+export async function setCommunitySensitive(formData: FormData): Promise<void> {
+  const slug = String(formData.get('slug') ?? '')
+  const res = await api(`/v1/communities/${encodeURIComponent(slug)}/sensitive`, { method: formData.get('on') === '1' ? 'PUT' : 'DELETE' })
   if (res.status === 401) redirect('/login')
   refresh()
 }

@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { packCursor, unpackCursor } from '../cursor.js'
 import type { Env } from '../env.js'
 import { LabelNotAllowedError, seesAdultContent } from '../governance/adult-content.js'
+import { reachesViewer, strangerToMinor } from '../governance/minors.js'
 import { avatarPath } from '../media/media.service.js'
 import { notify } from '../notifications/notifications.service.js'
 import { cleanLine, cleanLines, graphemes } from '../text.js'
@@ -88,6 +89,7 @@ export type Profile = {
   /** Path of the profile photo without the size suffix, or null. */
   avatar: string | null
   joinedAt: Date
+  /** Their posts that are not deleted, though none of a minor's for a signed-out visitor, who is shown none of them. */
   postCount: number
   followerCount: number
   followingCount: number
@@ -149,7 +151,9 @@ export class MembersService {
         bio: members.bio,
         avatarMediaId: members.avatarMediaId,
         joinedAt: members.createdAt,
-        postCount: sql<number>`(select count(*)::int from posts p where p.author_id = ${outerId} and p.deleted_at is null and p.gist_id is null)`,
+        // None for a signed-out visitor when they are a minor, whose posts such a visitor never sees (ADR 0020).
+        postCount: sql<number>`(select count(*)::int from posts p where p.author_id = ${outerId} and p.deleted_at is null and p.gist_id is null
+          and ${reachesViewer(viewerId, outerId)})`,
         followerCount: sql<number>`(select count(*)::int from follows f join members m on m.id = f.follower_id and m.active where f.followee_id = ${outerId})`,
         followingCount: sql<number>`(select count(*)::int from follows f join members m on m.id = f.followee_id and m.active where f.follower_id = ${outerId})`,
         viewerFollows: viewerId
@@ -344,9 +348,10 @@ export class MembersService {
 
   /**
    * Active members whose handle starts with `query`, or whose name contains it.
-   * Handle matches come first.
+   * Handle matches come first. A minor is found only by people they follow
+   * (ADR 0020), so never by a visitor (`viewerId` null).
    */
-  async search(query: string, limit: number): Promise<MemberSummary[]> {
+  async search(viewerId: string | null, query: string, limit: number): Promise<MemberSummary[]> {
     // Handles are [a-z0-9_]; anything else cannot match, and "_" must not act as a wildcard.
     const handlePrefix = query.toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_]/g, '')
     const name = cleanLine(query.replace(/^@/, ''))
@@ -362,7 +367,7 @@ export class MembersService {
         founder: isFounder(outerId),
       })
       .from(members)
-      .where(and(or(byHandle, byName), eq(members.active, true)))
+      .where(and(or(byHandle, byName), eq(members.active, true), sql`not ${strangerToMinor(viewerId, outerId)}`))
       .orderBy(...(byHandle ? [sql`${byHandle} desc`] : []), asc(members.handle))
       .limit(limit)
     return rows.map(({ avatarMediaId, ...r }) => ({ ...r, avatar: avatarPath(avatarMediaId) }))
@@ -371,7 +376,8 @@ export class MembersService {
   /**
    * Members for an @mention: the one whose handle is exactly what was typed,
    * then everyone the viewer follows, then others by handle, then by name; each
-   * part pages along its own index.
+   * part pages along its own index. A minor is offered only to people they
+   * follow, whose mention of them is the only kind that leads anywhere (ADR 0020).
    */
   async suggestMentions(viewerId: string, prefix: string, cursor?: string, limit = MENTION_SUGGEST_MAX): Promise<MentionPage> {
     const p = prefix.toLowerCase()
@@ -389,7 +395,8 @@ export class MembersService {
     const order = sql`case when ${handle} like ${starts} then '1' else '2' end`
     const visible = sql`m.active and m.id <> ${viewerId}
       and not exists(select 1 from blocks b where (b.blocker_id = m.id and b.blocked_id = ${viewerId})
-        or (b.blocker_id = ${viewerId} and b.blocked_id = m.id))`
+        or (b.blocker_id = ${viewerId} and b.blocked_id = m.id))
+      and not ${strangerToMinor(viewerId, sql`m.id`)}`
     const unfollowed = sql`not exists(select 1 from follows nf where nf.follower_id = ${viewerId} and nf.followee_id = m.id)`
     const { rows } = await this.db.execute<{
       part: number

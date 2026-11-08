@@ -589,7 +589,7 @@ test('the handle is held for 30 days and leads nowhere; the tombstone cannot be 
   assert.equal(await membersService.movedTo(null, 'xena'), null)
   assert.equal(await membersService.profile(null, 'xena'), null)
   assert.equal(await membersService.profile(null, tombstoneHandle(xena)), null)
-  assert.deepEqual(await membersService.search('deleted', 10), [])
+  assert.deepEqual(await membersService.search(null, 'deleted', 10), [])
   assert.match(tombstoneHandle(xena), /^deleted-[0-9a-f]{8}$/)
 })
 

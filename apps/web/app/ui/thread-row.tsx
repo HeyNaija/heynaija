@@ -1,4 +1,5 @@
 import { hideGistReply } from '@/app/actions'
+import type { ReactNode } from 'react'
 import type { Post, ThreadReply } from '@/lib/api'
 import type { ReplyOrder, ThreadRow } from '@/lib/thread-state'
 import { PostItem } from './post-item'
@@ -13,6 +14,8 @@ export function renderThreadRow(
   parentHandle: string | null,
   root = false,
   gist?: { id: string; viewerIsHost: boolean; order?: ReplyOrder },
+  /** Under the post's card, before its replies: a story's updates (docs/adr/0024). */
+  below?: ReactNode,
 ): ThreadRow {
   const unavailable = post.unavailable === true
   return {
@@ -60,11 +63,13 @@ export function renderThreadRow(
                 handle={post.authorHandle}
                 depth={depth}
                 count={post.replyCount}
+                empty={post.hasReplies !== true && post.replyCount === 0}
               />
             )}
             threadToggle={<ThreadToggle />}
           />
         )}
+        {below}
       </ThreadBranch>
     ),
   }

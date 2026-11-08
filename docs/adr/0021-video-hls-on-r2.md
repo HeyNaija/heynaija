@@ -190,7 +190,10 @@ by relative path, and R2 signs single objects on its S3 endpoint only. When labe
 are built, either the API returns playlists rewritten with a signed URL per piece
 (45 pieces per quality for 3 minutes), or a Cloudflare Worker in front of the
 private bucket checks a short-lived token. Decided with ADR 0020's phase 1; until
-labels exist no video can be labelled.
+labels exist no video can be labelled. **Decided in [ADR 0025](0025-private-sensitive-media.md):**
+a marked video's folder moves to the private bucket, the API serves its master
+playlist under a signed path and each quality's playlist with every piece presigned
+to R2, so the bytes still come from R2.
 
 **Videos made before this.** Production has none. Staging has the team's test
 videos as MP4s. There is no MP4 path after PR 2: those are removed by a one-off

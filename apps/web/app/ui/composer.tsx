@@ -7,7 +7,7 @@ import { Globe } from 'lucide-react'
 import { type ComposeState, createPost } from '@/app/actions'
 import { insertMention, mentionBeforeCaret } from '@/lib/mention-suggest'
 import { POLL_OPTION_INPUT_MAX, POLL_OPTIONS_MAX } from '@/lib/polls'
-import type { ReplyAudience } from '@/lib/reply-audience'
+import { REPLY_AUDIENCES, type ReplyAudience } from '@/lib/reply-audience'
 import { limitSize, type VideoLimits } from '@/lib/video'
 import { Avatar } from './avatar'
 import { FounderBadge } from './founder-badge'
@@ -45,6 +45,11 @@ type Props = {
   choices?: { slug: string; name: string }[]
   /** Makes this a quote post of that post, shown under the box as `preview`. */
   quote?: { id: string; preview: ReactNode }
+  /**
+   * Makes this an update to that story (docs/adr/0024), written at the end of the
+   * story as a reply is under its post: the same small box, opened by `#add-update`.
+   */
+  story?: { id: string }
   submitAction?: (previous: ComposeState, data: FormData) => Promise<ComposeState>
   /** Where "View reply" goes for the reply just posted; a Gist's replies are not served on /p/. */
   postedHref?: (id: string) => string
@@ -56,11 +61,14 @@ type Props = {
   /** From `me.features`: whether polls and reply limits are switched on. Off hides them. */
   polls?: boolean
   replyControls?: boolean
+  /** Who the member may let reply, the default first (`Me.replyAudiences`): a minor's never include everyone. */
+  replyAudiences?: readonly ReplyAudience[]
   /** False for a text-only box: no pictures, GIFs or video to attach. */
   media?: boolean
   /**
    * From `me.videoLimits`: the API's video limits, present only while video is open to this member
-   * (the videoPosts flag and, in production, a bound scanner). Null hides the button.
+   * (the videoPosts flag, in production a bound scanner, and an adult by their date of birth). Null
+   * hides the button.
    */
   videoLimits?: VideoLimits | null
   /**
@@ -71,7 +79,13 @@ type Props = {
   sensitiveLabels?: boolean
 }
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
+const REPLY_AUDIENCE_CHOICE = {
+  everyone: 'Everyone can reply',
+  following: 'People you follow',
+  mentioned: 'Only people mentioned',
+} satisfies Record<ReplyAudience, string>
+
+export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, choices, quote, story, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, replyAudiences = REPLY_AUDIENCES, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -79,7 +93,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const [text, setText] = useState('')
   // The prompt follows the audience picker; the toolbar keeps visibility and posting explicit.
   const [audience, setAudience] = useState('')
-  const [replyAudience, setReplyAudience] = useState<ReplyAudience>('everyone')
+  const [replyAudience, setReplyAudience] = useState<ReplyAudience>(replyAudiences[0] ?? 'everyone')
   const [pollOpen, setPollOpen] = useState(false)
   const [pollOptions, setPollOptions] = useState(['', ''])
   const [pollMultiple, setPollMultiple] = useState(false)
@@ -103,9 +117,12 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const offers = composerOffers({ media, polls, videoAvailable: videoLimits !== null, replyTo, pollOpen, videoDrafted: video.draft !== null })
   const form = useRef<HTMLFormElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
+  // A reply or an update is the small box, in place under what it follows.
+  const inline = !!replyTo || !!story
+  const formId = story ? 'add-update' : 'compose'
   // A quote keeps the box open: the post being quoted is shown under it.
   const active = expanded || text.length > 0 || images.drafts.length > 0 || !!video.draft || !!quote || pollOpen
-  const rows = active ? (replyTo ? 2 : 3) : 1
+  const rows = active ? (inline ? 2 : 3) : 1
   useAutoGrow(input, text, rows)
 
   // The @mention being typed at the caret, and members to offer for it.
@@ -168,10 +185,10 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     }
   }
 
-  // Arriving through a "Reply" or "New post" link (…#compose) puts the cursor in the box.
+  // Arriving through a "Reply", "New post" or "Add update" link (…#compose, …#add-update) puts the cursor in the box.
   useEffect(() => {
-    if (window.location.hash === '#compose' || focusRequest > 0) input.current?.focus({ preventScroll: true })
-  }, [portalTarget, focusRequest])
+    if (window.location.hash === `#${formId}` || focusRequest > 0) input.current?.focus({ preventScroll: true })
+  }, [portalTarget, focusRequest, formId])
 
   useEffect(() => { onPendingChange?.(pending) }, [pending, onPendingChange])
 
@@ -202,7 +219,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       lastPosted.current = state.postedAt
       setText('')
       setAudience('')
-      setReplyAudience('everyone')
+      setReplyAudience(replyAudiences[0] ?? 'everyone')
       setPollOpen(false)
       setPollOptions(['', ''])
       setPollMultiple(false)
@@ -230,12 +247,13 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const pollReady = !pollOpen || (text.trim().length > 0 && pollOptions.length >= 2 && pollOptions.every((option) => option.trim().length > 0))
 
   const content = (
-    <form ref={form} id="compose" action={action} className={`${replyTo ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''}${answeringReply ? ' is-answering' : ''} scroll-mt-32`}>
+    <form ref={form} id={formId} action={action} className={`${inline ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''}${answeringReply ? ' is-answering' : ''} scroll-mt-32`}>
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
       {replyDepth ? <input type="hidden" name="threadDepth" value={replyDepth} /> : null}
       {replyHandle ? <input type="hidden" name="replyHandle" value={replyHandle} /> : null}
       {community ? <input type="hidden" name="community" value={community} /> : null}
       {quote ? <input type="hidden" name="quote" value={quote.id} /> : null}
+      {story ? <input type="hidden" name="storyOf" value={story.id} /> : null}
       {!replyTo && replyControls ? <input type="hidden" name="replyAudience" value={replyAudience} /> : null}
       {pollOpen ? <input type="hidden" name="poll" value="1" /> : null}
       {markable && sensitive ? <input type="hidden" name="sensitive" value="1" /> : null}
@@ -243,18 +261,18 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       {replyTo && replyHandle ? (
         <p id={recipientId} className="composer-recipient">Replying to <strong>{replyLabel ?? `@${replyHandle}`}</strong></p>
       ) : null}
-      <div className={replyTo ? 'composer-reply-writing' : 'flex gap-3'}>
-        {replyTo ? (
-          <div className="composer-reply-avatar" title={`Replying as @${handle}`}>
+      <div className={inline ? 'composer-reply-writing' : 'flex gap-3'}>
+        {inline ? (
+          <div className="composer-reply-avatar" title={`${replyTo ? 'Replying' : 'Posting'} as @${handle}`}>
             <Avatar handle={handle} src={avatar} size={32} />
-            <span className="sr-only">Replying as @{handle}</span>
+            <span className="sr-only">{replyTo ? 'Replying' : 'Posting'} as @{handle}</span>
           </div>
         ) : (
           <Avatar handle={handle} src={avatar} size={42} />
         )}
         <div className="min-w-0 flex-1">
           <label htmlFor={inputId} className="sr-only">
-            {replyTo ? 'Your reply' : 'New post'}
+            {replyTo ? 'Your reply' : story ? 'Your update' : 'New post'}
           </label>
           <div ref={writingRow} className="composer-writing-row">
             <textarea
@@ -538,9 +556,9 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
             <BubbleIcon size={16} />
             <span className="sr-only">Who can reply</span>
             <select key={results} value={replyAudience} onChange={(event) => setReplyAudience(event.target.value as ReplyAudience)}>
-              <option value="everyone">Everyone can reply</option>
-              <option value="following">People you follow</option>
-              <option value="mentioned">Only people mentioned</option>
+              {replyAudiences.map((choice) => (
+                <option key={choice} value={choice}>{REPLY_AUDIENCE_CHOICE[choice]}</option>
+              ))}
             </select>
           </label>
         ) : null}
@@ -563,12 +581,14 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       </div>
 
       <p id={privacyId} className="composer-privacy">
-        {replyTo ? 'Replies' : 'Posts'} are public. Anyone can see and copy them.
+        {replyTo ? 'Replies' : story ? 'Updates' : 'Posts'} are public. Anyone can see and copy them.
         {!replyTo && replyAudience !== 'everyone' ? ' This post limits who may join its replies.' : ''}
       </p>
       <p role="alert" className="mt-1 text-sm text-danger empty:hidden">
         {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : state.error}
       </p>
+      {/* An update shows up in the story right above the box, so this is only said aloud. */}
+      {story && state.postId ? <p key={state.postedAt} role="status" className="sr-only">Update posted.</p> : null}
       {submitAction && state.postId ? (
         <p role="status" className="composer-posted">
           Reply posted. <Link prefetch={false} href={postedHref(state.postId)}>View reply</Link>

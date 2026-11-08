@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto'
-import { type Db, members } from '@heynaija/db'
+import { type Db, members, REPLY_AUDIENCES } from '@heynaija/db'
 import {
   BadRequestException,
   Body,
@@ -22,14 +22,15 @@ import type { Env } from '../env.js'
 import { FeatureFlags } from '../flags/feature-flags.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
-import { GistsGate, gistsShownTo } from '../gists/gists-enabled.guard.js'
+import { GistsGate, gistStageFor, gistsShownTo } from '../gists/gists-enabled.guard.js'
 import { seesAdultContent } from '../governance/adult-content.js'
-import { ADULT_AGE, MINIMUM_AGE, type SignupAgeDecision, signupAgeDecision } from '../governance/age.js'
-import { GovernanceService } from '../governance/governance.service.js'
+import { ADULT_AGE, isAdultFor, MINIMUM_AGE, type SignupAgeDecision, signupAgeDecision } from '../governance/age.js'
+import { ageStatusOf, GovernanceService } from '../governance/governance.service.js'
 import { avatarPath } from '../media/media.service.js'
 import { videoConfig, videoLimitsOf } from '../video/video-config.js'
 import { VideoGate } from '../video/video-gate.js'
 import { MembersService } from '../members/members.service.js'
+import { isMinor, MINOR_REPLY_AUDIENCES } from '../governance/minors.js'
 import { NotificationsService } from '../notifications/notifications.service.js'
 import { RateLimiter, visitor } from '../rate-limit.js'
 import { DB, ENV } from '../tokens.js'
@@ -96,11 +97,12 @@ export class AuthController {
   @Get('v1/me')
   @UseGuards(SessionGuard)
   async me(@Req() req: AuthedRequest) {
-    const [scope, unread, features, birthDateNeeded, [row]] = await Promise.all([
+    const [scope, unread, features, birthDateNeeded, age, [row]] = await Promise.all([
       this.moderation.scope(req.member.id),
       this.notifications.unreadCount(req.member.id),
       this.flags.all(req.member.id),
       this.governance.birthDateNeeded(req.member.id),
+      ageStatusOf(this.db, req.member.id),
       this.db
         .select({
           avatarMediaId: members.avatarMediaId,
@@ -110,14 +112,17 @@ export class AuthController {
           labelPosts: members.labelPosts,
           showSensitiveMedia: members.showSensitiveMedia,
           adult: seesAdultContent(req.member.id),
+          minor: isMinor(req.member.id),
         })
         .from(members)
         .where(eq(members.id, req.member.id)),
     ])
-    // videoPosts is the flag AND the scanner rule (ADR 0019 section 4.7), never the flag alone.
-    const videoPosts = this.videoGate.effective(features.videoPosts)
+    // videoPosts is the flag AND the scanner rule (ADR 0019 section 4.7) AND an adult
+    // (section 4.6), never the flag alone.
+    const videoPosts = this.videoGate.effective(features.videoPosts) && isAdultFor(age, 'video_posting')
     // gists is the flag AND LiveKit AND, in production, the allow-list rule (gists-enabled.guard.ts).
-    const gists = gistsShownTo(await this.gistsGate.access(), req.member)
+    const gistsAccess = await this.gistsGate.access()
+    const gists = gistsShownTo(gistsAccess, req.member)
     // `moderates` only decides whether the web app shows the moderation link; every
     // moderation endpoint checks the role again.
     return {
@@ -137,6 +142,9 @@ export class AuthController {
       // What is switched on for this member: the database-backed flags (docs/feature-flags.md),
       // with videoPosts and gists as they take effect, rules in code included.
       features: { ...features, videoPosts, gists },
+      // Whether this member may host a Gist and speak in one, or only listen to them:
+      // under 18 and unknown ages listen (ADR 0020, section 4). Never true without `gists`.
+      gistStage: gistStageFor(gistsAccess, req.member, age),
       // Posts marked sensitive (ADR 0020): whether this member counts as an adult for
       // them (only then can they see or mark any), whether everything they post is
       // marked (by them, or by a moderator), and whether their pictures and video
@@ -146,6 +154,9 @@ export class AuthController {
         markPosts: row?.labelPosts ?? null,
         showMedia: row?.showSensitiveMedia ?? false,
       },
+      // Who the composer may let reply to a new post, the default first: a minor's
+      // conversations open as far as "following" at most (ADR 0020).
+      replyAudiences: row?.minor ? MINOR_REPLY_AUDIENCES : REPLY_AUDIENCES,
       // The limits the composer checks a chosen video against before sending it: this server's own settings.
       videoLimits: videoPosts ? videoLimitsOf(videoConfig(this.env)) : null,
     }
@@ -169,6 +180,16 @@ export class AuthController {
     await this.limits.hit('inviteCheck', visitor(req))
     const parsed = inviteCheckBody.safeParse(body)
     return { usable: parsed.success && (await this.invites.isUsable(parsed.data.code)) }
+  }
+
+  /**
+   * The youngest age that may join now, for what /join and the apps say before
+   * anyone types a date: 18 during the 18+ beta, 13 once under-18 accounts are
+   * open (UNDER_18_ACCOUNTS_ENABLED, ADR 0020 section 5). The same for everyone.
+   */
+  @Get('v1/signup/age')
+  joinAgeNow() {
+    return { joinAge: this.joinAge() }
   }
 
   /**

@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 17 | 15 | 12 | 89 |
+| 45 | 17 | 16 | 12 | 90 |
 
 ## Priority order
 
@@ -425,6 +425,15 @@ This tracks product development, not formal governance decisions. Priority means
 - **Inspected evidence:** `packages/db/src/schema.ts`, `packages/db/drizzle/0028_polls_reply_controls.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/ui/post-item.tsx`, `apps/api/src/posts/posts.service.test.ts`, `e2e/tests/polls-reply-controls.spec.ts`
 - **Audit notes:** A root post allows everyone, accounts its author follows plus mentioned accounts, or mentioned accounts only. The root setting governs direct and nested replies, can be changed for future replies, and does not restrict quotes, likes, reposts or poll votes. Deleted roots no longer restrict surviving replies.
 
+#### Stories
+
+- **ID:** `stories`
+- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Description:** Add updates to your own post over time, so people can follow one story from start to latest, and reply to the update they are about.
+- **Dependencies:** `threaded-replies`
+- **Inspected evidence:** `docs/adr/0024-stories.md`, `packages/db/drizzle/0040_stories.sql`, `apps/api/src/posts/stories.test.ts`, `apps/web/app/ui/story.tsx`, `e2e/tests/stories.spec.ts`
+- **Audit notes:** Proposed 7 Nov 2026 (ADR 0024); web built on feat/stories, the apps not yet. Only the author adds updates; each update is a post of its own, and replies go under the update they are about. Feeds show a story once, as its newest update with the first post above it. Follow story notifies on each new update (story_update, optional).
+
 ### People and discovery
 
 #### Basic trending conversations
@@ -580,8 +589,8 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `adult-content-labels`
 - **Priority:** P2 · **Status:** Partial · **Availability:** Not live
 - **Description:** Ask for a date of birth at signup, confirmed with a tick, and keep it with the age record; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.
-- **Remaining work / caveat:** Every member gives a date of birth, new members at signup and everyone else before they carry on. Posts can be marked sensitive (the 18+ label, shown the way X does it), on the web and in the apps, behind the adultLabels flag, which is off in production. Whole communities cannot be marked yet, and marked pictures and video are still served from the public media bucket.
-- **Inspected evidence:** `docs/adr/0020-under-18-accounts-and-adult-labels.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`, `apps/api/src/governance/adult-content.ts`, `apps/api/src/posts/sensitive.test.ts`
+- **Remaining work / caveat:** Every member gives a date of birth, new members at signup and everyone else before they carry on. Posts can be marked sensitive (the 18+ label, shown the way X does it), on the web and in the apps, behind the adultLabels flag, which is off in production. Marked pictures and video are served privately, by signed URLs that last at most two hours. Whole communities cannot be marked yet.
+- **Inspected evidence:** `docs/adr/0020-under-18-accounts-and-adult-labels.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`, `apps/api/src/governance/adult-content.ts`, `apps/api/src/posts/sensitive.test.ts`, `docs/adr/0025-private-sensitive-media.md`, `apps/api/src/media/private-media.test.ts`
 - **Audit notes:** Phase 1 of ADR 0020 (accepted 6 Nov 2026): the 18+ beta rule stays while this ships; a member already here whose date gives under 18 is kept as a minor and moderators are told. The date of birth is built: at signup (birth_date on restricted.age_assurances, the /join fields and confirmation, POST /v1/signup/age, Settings and the export), and asked once of everyone already here, who sees only /birth-date until they answer (POST /v1/me/birth-date). The age is worked out from the date on every check. The labels and their enforcement are not yet. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs.
 
 #### Safeguards for under-18 access
@@ -591,8 +600,8 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Prepare approved age assurance, consent, content and contact safeguards before opening younger accounts.
 - **Remaining work / caveat:** Child-safety decisions, approvals and implementation must precede any change to the temporary adult-only beta.
 - **Dependencies:** `adult-content-labels`
-- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`, `docs/adr/0020-under-18-accounts-and-adult-labels.md`
-- **Audit notes:** Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Owner decisions of 5 and 6 Nov 2026: 13 to 17 year olds join the beta the way X lets them in, with protections on by default; 13 is the minimum on the web and in the app stores. First come dates of birth at signup, labels enforced, Arachnid Shield on in production and the minors' protections (ADR 0020 sections 4 and 5); counsel's answers and the rest of the under-18 rollout checklist follow during the beta. Minors listen to Gists but never host or speak.
+- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`, `apps/api/src/governance/minors.ts`, `docs/adr/0020-under-18-accounts-and-adult-labels.md`
+- **Audit notes:** Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Owner decisions of 5 and 6 Nov 2026: 13 to 17 year olds join the beta the way X lets them in, with protections on by default; 13 is the minimum on the web and in the app stores. First come dates of birth at signup, labels enforced, Arachnid Shield on in production and the minors' protections (ADR 0020 sections 4 and 5); counsel's answers and the rest of the under-18 rollout checklist follow during the beta. Minors listen to Gists but never host or speak. Contact and discovery protections built 7 Nov 2026 (branch feat/under-18-contact): replies limited to people a minor follows, strangers' mentions plain text, minors in no stranger's Discover, search or suggestions, none of it loosened before 18 (ADR 0020, questions 12 to 15).
 
 #### Age verification for adults
 
