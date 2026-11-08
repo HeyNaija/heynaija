@@ -232,6 +232,10 @@ services:
       SECRETS_COOKIE: ${KRATOS_SECRETS_COOKIE:?}
       SECRETS_CIPHER: ${KRATOS_SECRETS_CIPHER:?}
       COURIER_SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:?}
+      # The app stores' review account (docs/deployment/store-review.md): with both
+      # set, that one address signs in with that fixed code and is sent no email.
+      HEYNAIJA_REVIEW_EMAIL: ${HEYNAIJA_REVIEW_EMAIL:-}
+      HEYNAIJA_REVIEW_CODE: ${HEYNAIJA_REVIEW_CODE:-}
     volumes: &kratos-volumes
       - ../kratos/identity.schema.json:/etc/config/kratos/identity.schema.json:ro
       - ../kratos/invite-check.jsonnet:/etc/config/kratos/invite-check.jsonnet:ro

@@ -33,6 +33,9 @@ services:
       DSN: postgres://heynaija:${POSTGRES_PASSWORD}@postgres:5432/kratos?sslmode=disable
       SECRETS_COOKIE: ${KRATOS_SECRETS_COOKIE:?run pnpm infra:env}
       SECRETS_CIPHER: ${KRATOS_SECRETS_CIPHER:?run pnpm infra:env}
+      # The app stores' review account, to try it locally (docs/deployment/store-review.md).
+      HEYNAIJA_REVIEW_EMAIL: ${HEYNAIJA_REVIEW_EMAIL:-}
+      HEYNAIJA_REVIEW_CODE: ${HEYNAIJA_REVIEW_CODE:-}
     volumes:
       - ../kratos:/etc/config/kratos:ro
     configs: &kratos-configs

@@ -3,11 +3,11 @@ import { expect, test } from '@playwright/test'
 import { newMember, post } from '../lib/members.ts'
 
 const documents = [
-  { path: '/terms', heading: 'Terms of use' },
-  { path: '/rules', heading: 'HeyNaija rules' },
-  { path: '/privacy', heading: 'Privacy policy' },
-  { path: '/charter', heading: 'HeyNaija Community Governance Charter' },
-  { path: '/licence', heading: 'Licence' },
+  { path: '/terms', heading: 'Terms of use', draft: false },
+  { path: '/rules', heading: 'HeyNaija rules', draft: true },
+  { path: '/privacy', heading: 'Privacy policy', draft: false },
+  { path: '/charter', heading: 'HeyNaija Community Governance Charter', draft: true },
+  { path: '/licence', heading: 'Licence', draft: true },
 ]
 
 test('the rules say the 18+ account rule is temporary, and voting stays 18+', async ({ page }) => {
@@ -22,11 +22,12 @@ test('the rules say the 18+ account rule is temporary, and voting stays 18+', as
   await expect(page.locator('#age')).toContainText('We no longer ask.')
 })
 
-test('the governance documents are public and say they are drafts @mobile', async ({ page }) => {
+test('the governance documents are public, and the drafts say so @mobile', async ({ page }) => {
   for (const doc of documents) {
     await page.goto(doc.path)
     await expect(page.getByRole('heading', { level: 1, name: doc.heading })).toBeVisible()
-    await expect(page.getByRole('note')).toContainText('has not been reviewed by a lawyer')
+    if (doc.draft) await expect(page.getByRole('note')).toContainText('has not been reviewed by a lawyer')
+    else await expect(page.locator('.policy-draft')).toHaveCount(0)
     // Every document links to the draft constitution from its footer.
     await expect(page.locator('.policy-footer').getByRole('link', { name: 'Draft constitution' })).toBeVisible()
   }
@@ -38,14 +39,17 @@ test('the governance documents are public and say they are drafts @mobile', asyn
   }
 })
 
-test('the terms and the privacy policy have nothing left to fill in, and joining links the terms', async ({ page }) => {
+test('the terms and the privacy policy have nothing left to fill in, and joining and every page link the terms', async ({ page }) => {
   for (const path of ['/terms', '/privacy']) {
     await page.goto(path)
-    // The draft notice shows what a placeholder looks like; the sections have none.
-    await expect(page.locator('.policy-section .policy-placeholder')).toHaveCount(0)
+    // Nothing in brackets, and no draft notice saying there is.
+    await expect(page.locator('.policy-placeholder')).toHaveCount(0)
   }
   await expect(page.locator('#who')).toContainText('run by its founders')
   await expect(page.locator('#keep')).toContainText('kept for 90 days')
+  // The side rail's footer, on every page wide enough to show it.
+  await page.locator('.rail-footer').getByRole('link', { name: 'Terms', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Terms of use' })).toBeVisible()
   await page.goto('/join')
   await page.getByRole('link', { name: 'terms', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Terms of use' })).toBeVisible()

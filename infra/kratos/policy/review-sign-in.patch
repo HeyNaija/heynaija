@@ -1,0 +1,39 @@
+--- a/selfservice/strategy/code/code_sender.go
++++ b/selfservice/strategy/code/code_sender.go
+@@ -83,7 +83,7 @@
+ 		// address was used to verify the code.
+ 		//
+ 		// See also [this discussion](https://github.com/ory/kratos/pull/3456#discussion_r1307560988).
+-		rawCode := GenerateCode()
++		rawCode, review := heynaijaReviewCode(address.To)
+ 
+ 		switch f.GetFlowName() {
+ 		case flow.RegistrationFlow:
+@@ -134,8 +134,11 @@
+ 				})
+ 			}
+ 
+-			if err := s.send(ctx, string(address.Via), t); err != nil {
+-				return errors.WithStack(err)
++			// The review account's code is known to the reviewers; it has no inbox.
++			if !review {
++				if err := s.send(ctx, string(address.Via), t); err != nil {
++					return errors.WithStack(err)
++				}
+ 			}
+ 
+ 		case flow.LoginFlow:
+@@ -187,8 +190,11 @@
+ 				})
+ 			}
+ 
+-			if err := s.send(ctx, string(address.Via), t); err != nil {
+-				return errors.WithStack(err)
++			// The review account's code is known to the reviewers; it has no inbox.
++			if !review {
++				if err := s.send(ctx, string(address.Via), t); err != nil {
++					return errors.WithStack(err)
++				}
+ 			}
+ 
+ 		default:

@@ -11,6 +11,7 @@ export default function TermsPage() {
       title="Terms of use"
       summary="The agreement between you and HeyNaija’s founders when you use HeyNaija: who can use it, what you post and what we may do with it, how accounts end, and the limits of what we promise. It goes with the rules and the privacy policy."
       updated="8 November 2026"
+      draft={false}
       sections={[
         {
           id: 'agreement',

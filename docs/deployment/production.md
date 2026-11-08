@@ -112,6 +112,7 @@ check its key (staging step 5), run `./gen-env.sh`, and edit `.env`:
 | `S3_*`, `SMTP_*`, `BACKUP_AGE_RECIPIENT` | as for staging, with production's tokens and keys |
 | `PUSH_VAPID_*` | made by `gen-env.sh`, production's own: never staging's. Keep a copy; a new pair cuts off every browser that turned push on ([ADR 0011](../adr/0011-push-notifications.md)) |
 | `FCM_SERVICE_ACCOUNT` | optional: push to the Android app, production's own key of the Firebase project's service account ([app-push.md](app-push.md)) |
+| `HEYNAIJA_REVIEW_EMAIL`, `HEYNAIJA_REVIEW_CODE` | optional: the account Google Play's and Apple's reviewers sign in to, with a fixed code ([store-review.md](store-review.md)) |
 | `POSTGRES_*`, `DATABASE_POOL_MAX` | delete these lines: `compose.yml`'s defaults are sized for this 16 GB server |
 | `WEB_WORKERS` | `4` |
 | `MIGRATE_LOCK_TIMEOUT_MS` | optional: how long a migration waits for a table lock before the migrate step retries and then fails the deploy (default 5000, `0` waits forever). Raise it if a needed `ALTER` on a busy table keeps timing out |
