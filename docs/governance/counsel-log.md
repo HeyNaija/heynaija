@@ -392,3 +392,8 @@ Questions already written up, to be taken to counsel with this log:
   awaited.
 - [under-18-rollout.md](under-18-rollout.md): everything to settle before
   accounts for under-18s.
+- [ADR 0020](../adr/0020-under-18-accounts-and-adult-labels.md), section 7: six
+  questions on accounts for 13 to 17 year olds and 18+ content (the age of a child
+  for consent, whether a typed date of birth is enough, keeping dates of birth,
+  what 18+ content may be hosted, minors outside Nigeria, and what a guardian may
+  see and do), with the drafts of `/rules#age` and `/privacy#children` to review.

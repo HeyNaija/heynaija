@@ -454,6 +454,28 @@ Phase 1, in the same changes as the code:
 Phase 2: `/rules#age` (the 18+ rule and the mistaken-age process, rewritten for a
 world with minors), `/privacy` for children's data, Terms, and ADR 0019 section 4.6
 ("All accounts are 18 or over today").
+- *Drafted* (branch `feat/minors-rules-and-privacy`), for counsel to review with
+  section 7, like everything on those pages:
+  - `/rules#age` and `/privacy#age` take who may join from the API
+    (`GET /v1/signup/age`), so they say "18 or older" until the switch in section
+    5 and the open age after it, with no copy change on the day.
+  - `/rules#age` lists the protections for members under 18 (section 4, as
+    built), says they lift on the 18th birthday, and puts the mistaken-age process
+    in terms that hold either way: an account younger than HeyNaija allows, or
+    with a wrong date, may be suspended until put right; under 13 is suspended
+    until a moderator looks; appeal as any suspension; never public documents.
+  - `/privacy#children` is new: a short version for a child, then what is
+    collected (nothing extra, nothing about a parent), how age is checked, that no
+    guardian's consent is asked today and what happens if the law requires it
+    (question 2), that pictures in a minor's posts are stored like anyone's
+    (section 4, "Not covered"), and the same rights as anyone's.
+  - `/privacy` also says, under what is public, that marked posts reach only
+    signed-in adults and a minor's posts only signed-in members, and no longer
+    says HeyNaija does not collect dates of birth (a phase 1 leftover).
+  - `/rules#sensitive` says a whole community can be marked (question 8).
+  - **There are no Terms to change:** HeyNaija has no terms of service, only the
+    rules and the privacy policy. The draft constitution refers to "the Terms";
+    writing them is separate work, for counsel.
 
 ## 7. What a lawyer should confirm
 

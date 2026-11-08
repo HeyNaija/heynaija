@@ -447,9 +447,10 @@ comes with these rules:
 
 ### 4.6 Minors
 
-All accounts are 18 or over today, so no age gate on video is needed at launch. But
-before under-18 accounts open (`under-18-rollout.md`): **minors cannot post video
-(default deny), and adult-restricted content stays hidden from them**; this ADR does
+Accounts are for adults during the 18+ beta, but a member who gives a date under 18
+is kept as a minor, and accounts open to 13 to 17 year olds later (ADR 0020). So
+**minors cannot post video (default deny; built: `video_posting`), and
+adult-restricted content stays hidden from them**; this ADR does
 not create video-specific age rules beyond that. Video that depicts children is not
 detected by hash lists unless already known; reports are the net. The scan does not
 change under 18 rules. Video does not need ADR 0018's age verification.

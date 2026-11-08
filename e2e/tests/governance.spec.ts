@@ -9,13 +9,21 @@ const documents = [
   { path: '/licence', heading: 'Licence' },
 ]
 
-test('the rules say the 18+ account rule is temporary, and voting stays 18+', async ({ page }) => {
+test('the rules and privacy policy say who may join, from the API, and how members under 18 are protected', async ({ page }) => {
   await page.goto('/rules#age')
   const age = page.locator('#age')
-  await expect(age).toContainText('The 18+ rule is temporary, for the beta.')
-  await expect(age).toContainText('voting in HeyNaija’s governance would stay 18+')
+  // The join age is the API's: 18 while under-18 accounts are locked off.
+  await expect(age).toContainText('During the beta, HeyNaija is open to people aged 18 or older.')
+  await expect(age).toContainText('Voting in HeyNaija’s governance is for adults only')
+  await expect(age.getByRole('heading', { name: 'If you are under 18' })).toBeVisible()
+  await expect(age).toContainText('Only people you follow can reply to the conversations you start')
   await page.goto('/privacy#age')
+  await expect(page.locator('#age')).toContainText('accounts are for people aged 18 or older')
   await expect(page.locator('#age')).toContainText('not treated as a confirmed adult')
+  const children = page.locator('#children')
+  await expect(children.getByRole('heading', { name: 'The short version, if you are under 18' })).toBeVisible()
+  await expect(children).toContainText('We do not ask for one today.')
+  await expect(page.locator('#identity')).not.toContainText('dates of birth')
 })
 
 test('the governance documents are public and say they are drafts @mobile', async ({ page }) => {

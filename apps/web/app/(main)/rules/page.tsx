@@ -1,16 +1,35 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { ContactEmail, PolicyPage } from '@/app/ui/policy-page'
+import { getJoinAge } from '@/lib/api'
 
 export const metadata: Metadata = { title: 'Rules' }
+
+// Who may join is the API's to say (18 during the 18+ beta, 13 once accounts for
+// under-18s open, ADR 0020 section 5), so this rule streams in with its answer.
+async function JoinAge() {
+  const joinAge = await getJoinAge()
+  return joinAge >= 18 ? (
+    <p>
+      During the beta, HeyNaija is open to people aged <strong>18 or older</strong>. Accounts for people aged 13 to
+      17 are not open yet; when they open, the protections below apply to them from the start. Nobody under 13 can
+      ever join.
+    </p>
+  ) : (
+    <p>
+      HeyNaija is open to people aged <strong>{joinAge} or older</strong>. Nobody under {joinAge} can join.
+    </p>
+  )
+}
 
 export default function RulesPage() {
   return (
     <PolicyPage
       eyebrow="How we treat each other"
       title="HeyNaija rules"
-      summary="HeyNaija is for real conversations between Nigerians, at home and abroad. These rules apply everywhere on the site. Every post is public, so write as you would in a town square."
-      updated="7 November 2026"
+      summary="HeyNaija is for real conversations between Nigerians, at home and abroad. These rules apply everywhere on the site. Posts are read by people you do not know, so write as you would in a town square."
+      updated="8 November 2026"
       sections={[
         {
           id: 'rules',
@@ -73,6 +92,10 @@ export default function RulesPage() {
                 unless they choose otherwise in Settings. Moderators can mark a post themselves, and only a moderator can
                 take that mark off. Leaving sensitive posts unmarked again and again breaks these rules.
               </p>
+              <p>
+                A community’s moderators can mark the whole community as sensitive. Everything posted in it is then
+                marked, and only signed-in adults can find, see or join it. Only its moderators can take that mark off.
+              </p>
             </>
           ),
         },
@@ -81,22 +104,47 @@ export default function RulesPage() {
           title: 'Who can join',
           body: (
             <>
+              <Suspense fallback={null}>
+                <JoinAge />
+              </Suspense>
               <p>
-                During the beta, HeyNaija is open to people aged <strong>18 or older</strong>. Everyone gives their date
-                of birth and confirms it is their real one: when they join, or once, before they carry on, if they joined
-                before we asked. Nobody needs a NIN or any other identity check to have an account.
+                Everyone gives their date of birth and confirms it is their real one: when they join, or once, before
+                they carry on, if they joined before we asked. Nobody needs a NIN or any other identity check to have an
+                account. Voting in HeyNaija’s governance is for adults only, whatever age accounts open at.
               </p>
+              <h3>If you are under 18</h3>
+              <p>Your account works like anyone else’s, with these protections, which stay on until you turn 18:</p>
+              <ul>
+                <li>
+                  Your posts and replies are seen only by people signed in to HeyNaija, never by visitors who are not or
+                  by search engines.
+                </li>
+                <li>
+                  Only people you follow can reply to the conversations you start, and you can narrow that to people you
+                  mention. Someone you do not follow can reply to something you wrote only if you mentioned them.
+                </li>
+                <li>When someone you do not follow mentions you, you are not notified, and the mention does not link to you.</li>
+                <li>
+                  You are not shown in Discover, member search or suggestions, except to people you follow.
+                </li>
+                <li>
+                  You never see sensitive posts or sensitive communities, and you cannot mark a post as sensitive: a
+                  post of yours that would need the mark is removed instead.
+                </li>
+                <li>You cannot post video, and in Gists you can listen but not host or speak.</li>
+                <li>Your profile never shows your age, and nobody else sees your date of birth.</li>
+              </ul>
               <p>
-                <strong>The 18+ rule is temporary, for the beta.</strong> HeyNaija intends to open accounts to younger
-                people later, but only once age checks, parental or guardian consent where the law requires it, and
-                child-safety protections have been approved and built. Even then, anything marked for adults would stay
-                hidden from under-18s, and voting in HeyNaija’s governance would stay 18+.
+                They lift by themselves on your 18th birthday, by the date you gave. How we handle the data of members
+                under 18 is in the <Link href="/privacy#children">privacy policy</Link>.
               </p>
+              <h3>If an age looks wrong</h3>
               <p>
-                While the beta is 18+, if moderators have good reason to believe an account belongs to someone under 18,
-                they may suspend it. An account whose date of birth is under 13 is suspended until a moderator looks.
-                You can appeal that like any other suspension. Nobody will be asked to post identity
-                documents publicly to prove their age.
+                If moderators have good reason to believe an account belongs to someone younger than HeyNaija allows, or
+                that the date of birth it gave is wrong, they may suspend it until that is put right. An account whose
+                date of birth is under 13 is suspended until a moderator looks. Its owner sees that it is suspended when
+                they sign in, and can appeal from the home page like any other suspension; a wrong date is corrected by
+                writing to <ContactEmail />. Nobody will be asked to post identity documents publicly to prove their age.
               </p>
             </>
           ),

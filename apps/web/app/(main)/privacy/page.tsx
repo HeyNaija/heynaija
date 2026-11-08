@@ -1,16 +1,34 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { ContactEmail, Placeholder, PolicyPage } from '@/app/ui/policy-page'
+import { getJoinAge } from '@/lib/api'
 
 export const metadata: Metadata = { title: 'Privacy' }
+
+// Who may join is the API's to say (18 during the 18+ beta, 13 once accounts for
+// under-18s open, ADR 0020 section 5), so this streams in with its answer.
+async function JoinAge() {
+  const joinAge = await getJoinAge()
+  return joinAge >= 18 ? (
+    <p>
+      During the invite-only beta, accounts are for people aged <strong>18 or older</strong>. Accounts for people aged
+      13 to 17 are not open yet, and nobody under 13 can ever join.
+    </p>
+  ) : (
+    <p>
+      Accounts are for people aged <strong>{joinAge} or older</strong>. Nobody under {joinAge} can join.
+    </p>
+  )
+}
 
 export default function PrivacyPage() {
   return (
     <PolicyPage
       eyebrow="Your data"
       title="Privacy policy"
-      summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, and how you get your data or have it deleted. No ads, no selling data, no trackers."
-      updated="7 November 2026"
+      summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, how we look after members under 18, and how you get your data or have it deleted. No ads, no selling data, no trackers."
+      updated="8 November 2026"
       sections={[
         {
           id: 'who',
@@ -33,6 +51,13 @@ export default function PrivacyPage() {
                 them and their descriptions, the communities they are posted in, your handle, display name,
                 bio and profile photo, the date you joined, and how many posts, followers and followings
                 you have. Anyone can see and copy what is public.
+              </p>
+              <p>
+                <strong>Two exceptions.</strong> Posts marked sensitive are shown only to signed-in adults (see the{' '}
+                <Link href="/rules#sensitive">rules</Link>). And if you are under 18, your posts, replies and reposts,
+                and your votes in polls, are shown only to people signed in to HeyNaija, never to visitors or search
+                engines; your profile can still be found, without them. <Link href="#children">More on members under
+                18</Link>.
               </p>
               <p>
                 <strong>Private:</strong> your email address, your date of birth and age, your bookmarks, who you mute
@@ -232,8 +257,8 @@ export default function PrivacyPage() {
           body: (
             <>
               <p>
-                <strong>HeyNaija does not collect NINs, NIN slips, photos of identity documents or dates of birth, and
-                identity verification is switched off.</strong> Nothing on the site asks for them.
+                <strong>HeyNaija does not collect NINs, NIN slips or photos of identity documents, and identity
+                verification is switched off.</strong> Nothing on the site asks for them.
               </p>
               <p>
                 The <Link href="/governance/constitution#article-4">draft constitution</Link> proposes optional NIN
@@ -264,17 +289,13 @@ export default function PrivacyPage() {
           title: 'Age',
           body: (
             <>
+              <Suspense fallback={null}>
+                <JoinAge />
+              </Suspense>
               <p>
-                During the invite-only beta, accounts are for people aged <strong>18 or older</strong>. When you join,
-                you give your date of birth and confirm that it is your real one; accounts for anyone younger are not
-                allowed yet, and nobody under 13 can ever join. See the{' '}
-                <Link href="/rules#age">rules</Link> for what happens if an account seems to belong to someone under 18.
-              </p>
-              <p>
-                This is a temporary restriction for the beta, not a permanent one. If accounts open to younger people
-                later, this policy will first say how ages are checked, what parental or guardian consent the law
-                requires and how it is given, what is collected from a parent or guardian, and how children’s data is
-                protected.
+                When you join, you give your date of birth and confirm that it is your real one. Nobody is asked for an
+                identity document. See the <Link href="/rules#age">rules</Link> for what happens if an account seems to
+                belong to someone younger than HeyNaija allows, or its date of birth looks wrong.
               </p>
               <p>
                 We keep your age apart from your account, from identity verification and from voting membership: an age
@@ -288,6 +309,52 @@ export default function PrivacyPage() {
                 you are not treated as a confirmed adult. If the date you give then is under 18, we keep it so we can
                 protect you as a minor, and tell our moderators, who follow the steps in the rules. If it is under 13,
                 your account is suspended until a moderator looks.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'children',
+          title: 'Members under 18',
+          body: (
+            <>
+              <h3>The short version, if you are under 18</h3>
+              <ul>
+                <li>We ask for your date of birth to keep you safe. Nobody else can see it.</li>
+                <li>Only people signed in to HeyNaija can see your posts. Search engines cannot.</li>
+                <li>Only people you follow can reply to the conversations you start.</li>
+                <li>You will not see posts marked sensitive.</li>
+                <li>We do not ask you for anything extra because you are under 18, and we never sell what we know about you or show you ads.</li>
+                <li>You can download your data, or delete your account, in Settings.</li>
+                <li>If something worries you, report it, or write to <ContactEmail />.</li>
+              </ul>
+              <h3>In full</h3>
+              <p>
+                <strong>What we collect.</strong> The same as from anyone else, and nothing more: nothing extra about
+                you, and nothing about your parents or guardians. We use it in the same ways, and also to apply the
+                protections for members under 18 in the <Link href="/rules#age">rules</Link>: your posts reach only
+                signed-in members, your conversations only people you follow, and sensitive posts never reach you.
+              </p>
+              <p>
+                <strong>How your age is checked.</strong> By the date of birth you give and confirm, with no identity
+                document. Your age is worked out from that date whenever it matters, so the protections lift on your
+                18th birthday without anyone looking at your account. Moderators see only whether an account is under
+                18, never the date.
+              </p>
+              <p>
+                <strong>A parent’s or guardian’s consent.</strong> We do not ask for one today. If Nigerian law requires
+                it for people aged 13 to 17, we will ask for it, say here what we then collect from a parent or guardian
+                and how it is confirmed, and may limit the accounts of members that age until it is given.
+              </p>
+              <p>
+                <strong>Pictures and video.</strong> Those in your posts are kept off HeyNaija for anyone not signed in,
+                like the posts themselves. They are stored like anyone else’s, though, so someone who copies a
+                picture’s link can share it outside HeyNaija.
+              </p>
+              <p>
+                <strong>Your rights.</strong> The same as everyone’s (<Link href="#rights">Your rights</Link>): you can
+                download your data, correct it, or delete your account yourself. A parent or guardian with a concern
+                about a child’s account can write to <ContactEmail />.
               </p>
             </>
           ),

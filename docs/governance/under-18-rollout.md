@@ -219,14 +219,20 @@ including for members who live outside Nigeria.
       production.
 - [ ] Moderators see only "minor" or "adult" where they need it, never more.
 - [ ] The mistaken-age process (rules, "Who can join") updated for a world with
-      minors: notice, appeal, and no public documents.
+      minors: notice, appeal, and no public documents. Drafted (branch
+      `feat/minors-rules-and-privacy`, ADR 0020 section 6); done once counsel has
+      reviewed it.
 - [ ] Aggregated transparency reporting on child-safety cases.
 
 ## 7. Policy, privacy and release
 
 - [ ] Privacy policy rewritten for children's data, with a version a child can
-      understand.
-- [ ] Rules updated for minors' accounts; Terms where needed.
+      understand. Drafted (branch `feat/minors-rules-and-privacy`):
+      `/privacy#children`, with a short version first; done once counsel has
+      reviewed it.
+- [ ] Rules updated for minors' accounts; Terms where needed. Rules drafted on the
+      same branch (`/rules#age`). HeyNaija has no Terms yet, so there are none to
+      update; if counsel wants them, they are written new.
 - [ ] Draft constitution Article 3 and Annex B.5: the youth decision taken and
       published through the governance process.
 - [ ] Security review; end-to-end tests for minor signup, consent, content
