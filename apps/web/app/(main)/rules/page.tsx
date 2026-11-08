@@ -10,7 +10,7 @@ export default function RulesPage() {
       eyebrow="How we treat each other"
       title="HeyNaija rules"
       summary="HeyNaija is for real conversations between Nigerians, at home and abroad. These rules apply everywhere on the site. Every post is public, so write as you would in a town square."
-      updated="7 November 2026"
+      updated="8 November 2026"
       sections={[
         {
           id: 'rules',
@@ -68,10 +68,14 @@ export default function RulesPage() {
                 from the post’s menu afterwards. If you often post such things, Settings can mark everything you post.
               </p>
               <p>
-                A post marked sensitive is never shown to anyone under 18, to anyone who has not given a date of birth, or to
-                visitors who are not signed in. For everyone else its pictures and video are covered until they tap Show,
+                A post marked sensitive is never shown to anyone under 18, to anyone with no age on record, or to visitors
+                who are not signed in. For everyone else its pictures and video are covered until they tap Show,
                 unless they choose otherwise in Settings. Moderators can mark a post themselves, and only a moderator can
                 take that mark off. Leaving sensitive posts unmarked again and again breaks these rules.
+              </p>
+              <p>
+                A community’s moderators can mark the whole community as sensitive. Everything posted in it is then
+                marked, and only signed-in adults can find, see or join it. Only its moderators can take that mark off.
               </p>
             </>
           ),
@@ -82,9 +86,9 @@ export default function RulesPage() {
           body: (
             <>
               <p>
-                During the beta, HeyNaija is open to people aged <strong>18 or older</strong>. Everyone gives their date
-                of birth and confirms it is their real one: when they join, or once, before they carry on, if they joined
-                before we asked. Nobody needs a NIN or any other identity check to have an account.
+                During the beta, HeyNaija is open to people aged <strong>18 or older</strong>. Everyone confirms they are
+                18 or older when they join. Nobody needs a date of birth, a NIN or any other identity check to have an
+                account.
               </p>
               <p>
                 <strong>The 18+ rule is temporary, for the beta.</strong> HeyNaija intends to open accounts to younger
@@ -94,8 +98,7 @@ export default function RulesPage() {
               </p>
               <p>
                 While the beta is 18+, if moderators have good reason to believe an account belongs to someone under 18,
-                they may suspend it. An account whose date of birth is under 13 is suspended until a moderator looks.
-                You can appeal that like any other suspension. Nobody will be asked to post identity
+                they may suspend it. You can appeal that like any other suspension. Nobody will be asked to post identity
                 documents publicly to prove their age.
               </p>
             </>

@@ -12,9 +12,9 @@ import {
   type Refusal,
   refusalPath,
 } from '@/lib/account-deletion'
-import { api, type PostVideo } from '@/lib/api'
+import { api, getSignupAge, type PostVideo } from '@/lib/api'
 import { DATA_COOKIE, DATA_COOKIE_MAX_AGE, dataMode } from '@/lib/low-data'
-import { AGE_COOKIE, AGE_REFUSED_COOKIE, INVITE_COOKIE } from '@/lib/invite'
+import { AGE_COOKIE, AGE_COOKIE_VALUE, AGE_REFUSED_COOKIE, INVITE_COOKIE } from '@/lib/invite'
 import { forgetEndedSession, reauthUrl, startAuthUrl } from '@/lib/auth/server'
 import { siteOrigin } from '@/lib/previews'
 import { preferencesFromForm } from '@/lib/notification-preferences'
@@ -741,10 +741,10 @@ export async function setFollow(formData: FormData): Promise<void> {
 // --- The welcome flow (/welcome). Plain forms, so they work before JavaScript loads. ---
 
 /**
- * A newcomer reaches the welcome flow once their account exists, so the date of
- * birth /join kept in a cookie for Kratos is no longer needed: the API has it
- * with the age record (ADR 0020, section 1). Forgotten when they finish or skip
- * setup; it expires within the hour anyway.
+ * A newcomer reaches the welcome flow once their account exists, so the age /join
+ * kept in a cookie for Kratos (the 18+ box, or a date of birth while those are
+ * asked) is no longer needed: the API has its age record. Forgotten when they
+ * finish or skip setup; it expires within the hour anyway.
  */
 async function forgetBirthDate() {
   const jar = await cookies()
@@ -792,6 +792,8 @@ export type JoinState = {
   code?: string
   birth?: BirthFields
   confirmed?: boolean
+  /** The "I am 18 or older" box, while /join asks for it instead of a date of birth. */
+  adult?: boolean
   next?: string
 }
 
@@ -805,18 +807,20 @@ function birthDateOf({ day, month, year }: BirthFields): string | null {
   return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
 }
 
+/** The cookies /join sets for Kratos's signup: an hour, never readable by scripts. */
+const AUTH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+  path: '/',
+  maxAge: 60 * 60,
+} as const
+
 export async function acceptInvite(_prev: JoinState, formData: FormData): Promise<JoinState> {
   const typed = String(formData.get('code') ?? '').slice(0, 40)
   // Letters and digits only: this value goes into a cookie that Kratos reads raw.
   const code = typed.toUpperCase().replace(/[^0-9A-Z]/g, '')
   const jar = await cookies()
-  const options = {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: 60 * 60,
-  } as const
   // Refused for their age in the last day: refused again, whatever date comes
   // now, so changing the year and sending again does not work straight away.
   // That stops only the laziest retry; it is not a control (ADR 0020, section 1).
@@ -827,6 +831,18 @@ export async function acceptInvite(_prev: JoinState, formData: FormData): Promis
     }
   }
 
+  // Whether to ask for a date of birth or the "I am 18 or older" box is the API's
+  // call (BIRTH_DATE_ENABLED, off since 8 November 2026), as is who may join; its
+  // registration webhook decides again.
+  const { asksBirthDate } = await getSignupAge()
+  if (!asksBirthDate) {
+    const adult = formData.get('adult') === 'yes'
+    if (!adult) {
+      return { code: typed, adult, confirmError: 'During the beta, HeyNaija is open to people aged 18 or older. Confirm your age to continue.' }
+    }
+    return checkInviteAndSignUp(code, typed, AGE_COOKIE_VALUE, { adult })
+  }
+
   const birth = { day: digits(formData, 'day', 2), month: digits(formData, 'month', 2), year: digits(formData, 'year', 4) }
   const confirmed = formData.get('confirm') === 'yes'
   const birthDate = birthDateOf(birth)
@@ -835,9 +851,6 @@ export async function acceptInvite(_prev: JoinState, formData: FormData): Promis
   }
   if (!confirmed) return { code: typed, birth, confirmed, confirmError: 'Confirm that this is your real date of birth.' }
 
-  // Who may join is the API's rule (signupAgeDecision), so the web app does not
-  // need to know whether under-18 accounts are open. Its registration webhook
-  // decides again.
   const ageRes = await api('/v1/signup/age', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -849,24 +862,33 @@ export async function acceptInvite(_prev: JoinState, formData: FormData): Promis
     return { code: typed, birth, confirmed, dateError: 'That date is not possible. Check the day, the month and the year.' }
   }
   if (age.outcome === 'too_young') {
-    jar.set(AGE_REFUSED_COOKIE, 'refused', { ...options, maxAge: 24 * 60 * 60 })
+    jar.set(AGE_REFUSED_COOKIE, 'refused', { ...AUTH_COOKIE_OPTIONS, maxAge: 24 * 60 * 60 })
     // Nothing is kept, and the date is not sent back into the form.
     return { code: typed, ageError: `Sorry, you cannot join HeyNaija yet: it is open to people aged ${age.joinAge} and over.` }
   }
+  return checkInviteAndSignUp(code, typed, birthDate, { birth, confirmed })
+}
 
+/**
+ * Checks the invite code, then sends the browser to Kratos's signup with the
+ * code and the stated age (`age`: the 18+ box's value, or a date of birth) in
+ * cookies. Kratos hands both to the API, which keeps the age record; the welcome
+ * flow forgets the age. `kept` is what the form shows again if the code fails.
+ */
+async function checkInviteAndSignUp(code: string, typed: string, age: string, kept: JoinState): Promise<JoinState> {
   const res = await api('/v1/invites/check', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ code }),
   })
-  if (!res.ok) return { code: typed, birth, confirmed, error: 'Could not check that code. Try again in a moment.' }
+  if (!res.ok) return { code: typed, ...kept, error: 'Could not check that code. Try again in a moment.' }
   if (!((await res.json()) as { usable: boolean }).usable) {
-    return { code: typed, birth, confirmed, error: 'That code is not valid. Check it, or ask whoever invited you for a new one.' }
+    return { code: typed, ...kept, error: 'That code is not valid. Check it, or ask whoever invited you for a new one.' }
   }
 
-  jar.set(INVITE_COOKIE, code, options)
-  // Kratos hands it to the API, which keeps it with the age record; the welcome flow forgets it.
-  jar.set(AGE_COOKIE, birthDate, options)
+  const jar = await cookies()
+  jar.set(INVITE_COOKIE, code, AUTH_COOKIE_OPTIONS)
+  jar.set(AGE_COOKIE, age, AUTH_COOKIE_OPTIONS)
   // Not redirect(): for a server action Next renders the redirect target on the
   // server, so Kratos's anti-CSRF cookie never reaches the browser and /signup is
   // rendered without the invite cookie, which sends the visitor back to /join.

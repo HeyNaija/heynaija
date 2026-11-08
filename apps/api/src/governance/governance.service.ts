@@ -25,7 +25,7 @@ import {
   type VerificationStatus,
 } from './rules.js'
 
-type GovernanceEnv = GovernanceFlags & Pick<Env, 'IDENTITY_KEY_SECRET'>
+type GovernanceEnv = GovernanceFlags & Pick<Env, 'IDENTITY_KEY_SECRET' | 'BIRTH_DATE_ENABLED'>
 
 /** A member's own governance standing, for Settings. No keys, no provider data. */
 export type OwnGovernanceStatus = {
@@ -94,12 +94,13 @@ export class GovernanceService {
   ) {}
 
   /**
-   * Records the date of birth someone typed on /join (ADR 0020, section 1).
-   * Called by the Kratos webhook once the account exists (so `memberId` is the
-   * new identity); a second call changes nothing. A statement, not a check:
-   * never enough for a vote.
+   * Records someone's own statement of their age at signup: the "I am 18 or
+   * older" box (`birthDate` null), or the date of birth typed on /join while
+   * dates of birth are on (ADR 0020, section 1). Called by the Kratos webhook once
+   * the account exists (so `memberId` is the new identity); a second call changes
+   * nothing. A statement, not a check: never enough for a vote.
    */
-  async recordAgeDeclaration(memberId: string, birthDate: string, now = new Date()): Promise<void> {
+  async recordAgeDeclaration(memberId: string, birthDate: string | null, now = new Date()): Promise<void> {
     await this.db.transaction((tx) => declare(tx, memberId, birthDate, now))
   }
 
@@ -112,6 +113,8 @@ export class GovernanceService {
    * date is kept whatever it says; acting on an age under 18 is the caller's.
    */
   async giveBirthDate(memberId: string, birthDate: string, now = new Date()): Promise<'recorded' | 'already_given'> {
+    // Nobody is asked while dates of birth are off, so nothing is taken either.
+    if (!this.env.BIRTH_DATE_ENABLED) return 'already_given'
     return this.db.transaction(async (tx) => {
       const live = await tx
         .select({ birthDate: ageAssurances.birthDate, withdrawnAt: ageAssurances.withdrawnAt })
@@ -152,9 +155,9 @@ export class GovernanceService {
     })
   }
 
-  /** Whether the member still has to give a date of birth (see birthDateNeeded). */
+  /** Whether the member still has to give a date of birth (see birthDateNeeded): never while dates of birth are off. */
   async birthDateNeeded(memberId: string): Promise<boolean> {
-    return birthDateNeeded(await this.ageRecords(memberId))
+    return this.env.BIRTH_DATE_ENABLED && birthDateNeeded(await this.ageRecords(memberId))
   }
 
   /** The age an account is treated as having; unknown when nothing is on record. */
@@ -190,7 +193,9 @@ export class GovernanceService {
       .filter((record) => !record.withdrawnAt && record.birthDate)
       .sort((a, b) => b.assuredAt.getTime() - a.assuredAt.getTime())[0]
     return {
-      age: { ...age, birthDate: dated?.birthDate ?? null },
+      // A date given while they were asked stays on record, and in the data
+      // export, but Settings shows it only while dates of birth are on.
+      age: { ...age, birthDate: this.env.BIRTH_DATE_ENABLED ? (dated?.birthDate ?? null) : null },
       verification: {
         status: effectiveVerificationStatus(facts, now),
         open: this.env.NIN_VERIFICATION_ENABLED,
@@ -372,12 +377,13 @@ export class GovernanceService {
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
 
 /**
- * Adds a member's own statement of their date of birth, with the band it gives
- * today, unless they already have a standing one. The audit trail gets the band,
- * never the date. True when it was added.
+ * Adds a member's own statement of their age, unless they already have a standing
+ * one: a date of birth, with the band it gives today, or with none (`null`) the
+ * "18 or older" box. The audit trail gets the band, never the date. True when it
+ * was added.
  */
-async function declare(tx: Tx, memberId: string, birthDate: string, now: Date): Promise<boolean> {
-  const band = bandOn(birthDate, now)
+async function declare(tx: Tx, memberId: string, birthDate: string | null, now: Date): Promise<boolean> {
+  const band = birthDate ? bandOn(birthDate, now) : '18_plus'
   const added = await tx
     .insert(ageAssurances)
     .values({ memberId, band, method: 'self_declared', birthDate, assuredAt: now })

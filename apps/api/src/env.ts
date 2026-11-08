@@ -107,6 +107,12 @@ const schema = z.object({
   // Accounts for people under 18. The 18+ beta rule is temporary; this stays off
   // until docs/governance/under-18-rollout.md is approved and built.
   UNDER_18_ACCOUNTS_ENABLED: lockedOff('UNDER_18_ACCOUNTS_ENABLED'),
+  // Asking for a date of birth: at signup instead of the "I am 18 or older" box,
+  // and once from every member who has none on record (ADR 0020, section 1). Off
+  // since 8 November 2026 (owner): the beta stays 18+ with the box. The code and
+  // the dates already given are kept, so turning it back on is this line, in
+  // review, with /rules and /privacy saying so again.
+  BIRTH_DATE_ENABLED: lockedOff('BIRTH_DATE_ENABLED'),
   // Key for deriving private person keys from a provider's identifier
   // (governance/rules.ts). Only needed once NIN verification exists.
   IDENTITY_KEY_SECRET: z.string().min(32).optional(),
@@ -233,6 +239,10 @@ const checked = schema.superRefine((env, ctx) => {
   }
   if (Boolean(env.LIVEKIT_API_KEY) !== Boolean(env.LIVEKIT_API_SECRET)) {
     ctx.addIssue({ code: 'custom', path: ['LIVEKIT_API_SECRET'], message: 'set both LIVEKIT_API_KEY and LIVEKIT_API_SECRET, or neither' })
+  }
+  // A 13 to 17 year old is admitted by their date of birth; the box says only "18 or older".
+  if (env.UNDER_18_ACCOUNTS_ENABLED && !env.BIRTH_DATE_ENABLED) {
+    ctx.addIssue({ code: 'custom', path: ['UNDER_18_ACCOUNTS_ENABLED'], message: 'UNDER_18_ACCOUNTS_ENABLED needs BIRTH_DATE_ENABLED' })
   }
   if (env.PUSH_ALLOW_LOOPBACK && new URL(env.WEB_PUBLIC_URL).hostname !== '127.0.0.1') {
     ctx.addIssue({ code: 'custom', path: ['PUSH_ALLOW_LOOPBACK'], message: 'PUSH_ALLOW_LOOPBACK is only for a WEB_PUBLIC_URL on 127.0.0.1' })

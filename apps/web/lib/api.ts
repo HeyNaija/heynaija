@@ -489,13 +489,15 @@ export const getGistReply = (gistId: string, postId: string) =>
 /**
  * The youngest age that may join now, from the API, which alone knows whether
  * under-18 accounts are open (ADR 0020 section 5): 18 during the 18+ beta, 13
- * after. If the API cannot be asked, 18, the stricter of the two.
+ * after. If the API cannot be asked, 18, the stricter of the two. And whether
+ * /join asks for a date of birth instead of the "I am 18 or older" box (off since
+ * 8 November 2026; if the API cannot be asked, the box).
  */
-export async function getJoinAge(): Promise<number> {
+export async function getSignupAge(): Promise<{ joinAge: number; asksBirthDate: boolean }> {
   const res = await api('/v1/signup/age').catch(() => null)
-  if (!res?.ok) return 18
-  const { joinAge } = (await res.json()) as { joinAge: number }
-  return joinAge
+  if (!res?.ok) return { joinAge: 18, asksBirthDate: false }
+  const { joinAge, asksBirthDate } = (await res.json()) as { joinAge: number; asksBirthDate?: boolean }
+  return { joinAge, asksBirthDate: asksBirthDate === true }
 }
 
 /**

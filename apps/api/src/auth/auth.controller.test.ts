@@ -20,42 +20,33 @@ const env = {
   NIN_VERIFICATION_ENABLED: false,
   BINDING_GOVERNANCE_VOTING_ENABLED: false,
   UNDER_18_ACCOUNTS_ENABLED: false,
+  BIRTH_DATE_ENABLED: false,
 } as Env
 
 // Only the registration webhooks are exercised, so the services they do not use are left out.
-const controller = new AuthController(
-  invites,
-  {} as never,
-  {} as never,
-  new MemoryRateLimiter(),
-  env,
-  db,
-  {} as never,
-  new MembersService(db),
-  new GovernanceService(db, env),
-  {} as never,
-  {} as never,
-  {} as never,
-)
+const controllerFor = (settings: Env) =>
+  new AuthController(
+    invites,
+    {} as never,
+    {} as never,
+    new MemoryRateLimiter(),
+    settings,
+    db,
+    {} as never,
+    new MembersService(db),
+    new GovernanceService(db, settings),
+    {} as never,
+    {} as never,
+    {} as never,
+  )
 
-// The same controller once under-18 accounts are open (ADR 0020 section 5). env.ts
-// still refuses to start with UNDER_18_ACCOUNTS_ENABLED set; this is how the API
-// behaves the day that lock is lifted in review, after the owner's sign-off.
-const opened = { ...env, UNDER_18_ACCOUNTS_ENABLED: true } as Env
-const openController = new AuthController(
-  invites,
-  {} as never,
-  {} as never,
-  new MemoryRateLimiter(),
-  opened,
-  db,
-  {} as never,
-  new MembersService(db),
-  new GovernanceService(db, opened),
-  {} as never,
-  {} as never,
-  {} as never,
-)
+// Today: the 18+ beta, with the "I am 18 or older" box.
+const controller = controllerFor(env)
+// The same controller with dates of birth asked again, and then with under-18
+// accounts open too (ADR 0020 sections 1 and 5). env.ts refuses to start with
+// either set; this is how the API behaves the day a lock is lifted in review.
+const datedController = controllerFor({ ...env, BIRTH_DATE_ENABLED: true } as Env)
+const openController = controllerFor({ ...env, BIRTH_DATE_ENABLED: true, UNDER_18_ACCOUNTS_ENABLED: true } as Env)
 
 /** The message Kratos would show on the signup form, or null if the signup may go ahead. */
 const refusal = async (body: object, by = controller): Promise<string | null> => {
@@ -82,29 +73,62 @@ const bornYearsAgo = (years: number, days = 0) => {
   return date.toISOString().slice(0, 10)
 }
 
-test('a signup without a date of birth is refused', async () => {
+test('during the 18+ beta, a signup needs the "18 or older" box', async () => {
   const code = await invites.create()
   const body = { identity_id: unsaved, invite_code: code, handle: 'newcomer' }
-  assert.match((await refusal(body))!, /enter your date of birth/)
-  assert.match((await refusal({ ...body, birth_date: '' }))!, /enter your date of birth/)
-  assert.match((await refusal({ ...body, birth_date: '1990-02-30' }))!, /enter your date of birth/)
-  assert.equal(await refusal({ ...body, birth_date: '1990-03-27' }), null)
+  assert.match((await refusal(body))!, /confirm you are 18 or older/)
+  assert.match((await refusal({ ...body, adult_declared: false }))!, /confirm you are 18 or older/)
+  assert.equal(await refusal({ ...body, adult_declared: true }), null)
+  // The box's cookie value, from a Kratos still on the body that called it a date.
+  assert.equal(await refusal({ ...body, birth_date: '18-plus' }), null)
 })
 
-test('during the 18+ beta, anyone under 18 is refused, and nobody under 13 ever', async () => {
+test('a date of birth from an app is still checked: under 18 is refused, and no date is no answer', async () => {
   const code = await invites.create()
   const body = { identity_id: unsaved, invite_code: code, handle: 'newcomer' }
   assert.equal(await refusal({ ...body, birth_date: bornYearsAgo(18, -2) }), null)
   assert.match((await refusal({ ...body, birth_date: bornYearsAgo(18, 2) }))!, /aged 18 and over/)
   assert.match((await refusal({ ...body, birth_date: bornYearsAgo(12) }))!, /aged 18 and over/)
+  assert.match((await refusal({ ...body, birth_date: '1990-02-30' }))!, /confirm you are 18 or older/)
 })
 
-test('the old "18 or older" box no longer lets anyone join', async () => {
+test('once the account exists, the box is recorded as 18 or older, and a date from an app is not kept', async () => {
+  const code = await invites.create({ maxUses: 2 })
+  const ticked = randomUUID()
+  const dated = randomUUID()
+  assert.deepEqual(await controller.registered(secret, { identity_id: ticked, invite_code: code, handle: 'ticked', adult_declared: true }), { redeemed: true })
+  assert.deepEqual(await controller.registered(secret, { identity_id: dated, invite_code: code, handle: 'dated', birth_date: '1990-03-27' }), { redeemed: true })
+  for (const id of [ticked, dated]) {
+    const [row] = await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, id))
+    assert.equal(row!.method, 'self_declared')
+    assert.equal(row!.band, '18_plus')
+    assert.equal(row!.birthDate, null)
+  }
+})
+
+test('while dates of birth are asked, a signup without one is refused', async () => {
   const code = await invites.create()
   const body = { identity_id: unsaved, invite_code: code, handle: 'newcomer' }
-  assert.match((await refusal({ ...body, adult_declared: true }))!, /enter your date of birth/)
-  // The cookie's old value is not a date.
-  assert.match((await refusal({ ...body, birth_date: '18-plus' }))!, /enter your date of birth/)
+  assert.match((await refusal(body, datedController))!, /enter your date of birth/)
+  assert.match((await refusal({ ...body, birth_date: '' }, datedController))!, /enter your date of birth/)
+  assert.match((await refusal({ ...body, birth_date: '1990-02-30' }, datedController))!, /enter your date of birth/)
+  assert.equal(await refusal({ ...body, birth_date: '1990-03-27' }, datedController), null)
+})
+
+test('while dates of birth are asked, anyone under 18 is refused, and nobody under 13 ever', async () => {
+  const code = await invites.create()
+  const body = { identity_id: unsaved, invite_code: code, handle: 'newcomer' }
+  assert.equal(await refusal({ ...body, birth_date: bornYearsAgo(18, -2) }, datedController), null)
+  assert.match((await refusal({ ...body, birth_date: bornYearsAgo(18, 2) }, datedController))!, /aged 18 and over/)
+  assert.match((await refusal({ ...body, birth_date: bornYearsAgo(12) }, datedController))!, /aged 18 and over/)
+})
+
+test('while dates of birth are asked, the "18 or older" box alone lets nobody join', async () => {
+  const code = await invites.create()
+  const body = { identity_id: unsaved, invite_code: code, handle: 'newcomer' }
+  assert.match((await refusal({ ...body, adult_declared: true }, datedController))!, /enter your date of birth/)
+  // The box's cookie value is not a date.
+  assert.match((await refusal({ ...body, birth_date: '18-plus' }, datedController))!, /enter your date of birth/)
 })
 
 test('the invite is still checked first', async () => {
@@ -122,9 +146,10 @@ test('/join can ask whether a date of birth may join, without anything being kep
   assert.equal((await db.select().from(ageAssurances)).length, 0)
 })
 
-test('what /join says before anyone types a date follows the switch: 18 now, 13 once under-18 accounts open', () => {
-  assert.deepEqual(controller.joinAgeNow(), { joinAge: 18 })
-  assert.deepEqual(openController.joinAgeNow(), { joinAge: 13 })
+test('what /join asks follows the switches: the 18+ box now, a date of birth if they come back, 13 once under-18 accounts open', () => {
+  assert.deepEqual(controller.joinAgeNow(), { joinAge: 18, asksBirthDate: false })
+  assert.deepEqual(datedController.joinAgeNow(), { joinAge: 18, asksBirthDate: true })
+  assert.deepEqual(openController.joinAgeNow(), { joinAge: 13, asksBirthDate: true })
 })
 
 test('once under-18 accounts are open, 13 to 17 year olds join and are recorded as under 18; nobody under 13 ever', async () => {
@@ -151,14 +176,14 @@ test('a wrong webhook secret is turned away before anything else', async () => {
   await assert.rejects(controller.registration('nope', {}), (err: unknown) => err instanceof HttpException && err.getStatus() === 401)
 })
 
-test('once the account exists, the date of birth is recorded with the invite', async () => {
+test('while dates of birth are asked, once the account exists the date is recorded with the invite', async () => {
   const code = await invites.create({ maxUses: 3 })
   const adult = randomUUID()
   const older = randomUUID()
-  assert.deepEqual(await controller.registered(secret, { identity_id: adult, invite_code: code, handle: 'adult', birth_date: '1990-03-27' }), { redeemed: true })
+  assert.deepEqual(await datedController.registered(secret, { identity_id: adult, invite_code: code, handle: 'adult', birth_date: '1990-03-27' }), { redeemed: true })
   // A body with no date (which the first hook refuses) still redeems, but records nothing;
   // the member is asked for their date before they can use the app.
-  assert.deepEqual(await controller.registered(secret, { identity_id: older, invite_code: code, handle: 'older' }), { redeemed: true })
+  assert.deepEqual(await datedController.registered(secret, { identity_id: older, invite_code: code, handle: 'older' }), { redeemed: true })
 
   const [row] = await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, adult))
   assert.equal(row!.method, 'self_declared')

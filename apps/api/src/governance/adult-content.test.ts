@@ -34,7 +34,8 @@ const dated = (years: number, days = 0): Row => ({
 
 const CASES: [string, Row[], boolean][] = [
   ['no record at all', [], false],
-  ['the old "18 or older" box, with no date', [{ band: '18_plus', method: 'self_declared', birthDate: null }], false],
+  ['the "18 or older" box, with no date', [{ band: '18_plus', method: 'self_declared', birthDate: null }], true],
+  ['the box, withdrawn', [{ band: '18_plus', method: 'self_declared', birthDate: null, withdrawnAt: new Date() }], false],
   ['a date of birth 30 years ago', [dated(30)], true],
   ['an 18th birthday today', [dated(18)], true],
   ['an 18th birthday tomorrow', [dated(18, 1)], false],

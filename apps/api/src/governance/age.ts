@@ -47,16 +47,19 @@ const ASSURANCE_OF: Record<AgeMethod, AgeAssurance> = {
 const RANK: Record<AgeAssurance, number> = { none: 0, declared: 1, reviewed: 2, verified: 3 }
 
 /**
- * Whether a record counts. A statement of the member's own counts only with a
- * date of birth: the old "I am 18 or older" box, from before signup asked for
- * one, counts for nothing, and its owner is asked for their date. Withdrawn
- * records count for nothing either.
+ * Whether a record counts: any that has not been withdrawn. The "I am 18 or
+ * older" box counts as the member's own statement of 18 or older, as a date of
+ * birth does; signup asks for the box while dates of birth are off
+ * (BIRTH_DATE_ENABLED, 8 November 2026).
  */
 function counts(record: AgeRecord): boolean {
-  return !record.withdrawnAt && (record.birthDate !== null || record.method !== 'self_declared')
+  return !record.withdrawnAt
 }
 
-/** Whether the member still has to give a date of birth: none of their live records has one. */
+/**
+ * Whether the member would be asked for a date of birth: none of their live
+ * records has one. Asked only while BIRTH_DATE_ENABLED is on (GovernanceService).
+ */
 export function birthDateNeeded(records: Pick<AgeRecord, 'birthDate' | 'withdrawnAt'>[]): boolean {
   return !records.some((record) => !record.withdrawnAt && record.birthDate !== null)
 }
@@ -160,8 +163,9 @@ export function birthDateFrom(text: string, now: Date): string | null {
   return text
 }
 
+/** `birthDate` is the date to keep with the age record; null for the "18 or older" box. */
 export type SignupAgeDecision =
-  | { allowed: true; birthDate: string }
+  | { allowed: true; birthDate: string | null }
   | { allowed: false; reason: 'age_not_confirmed' | 'below_minimum_age' | 'under_18_not_open' }
 
 /**
