@@ -121,8 +121,10 @@ including for members who live outside Nigeria.
       authors, community settings and moderators. Built for posts (branch
       `feat/sensitive-labels`): shown as "sensitive", the way X does it (ADR 0020,
       owner decision of 7 November 2026), set by the author in the composer or the
-      post's menu, by Settings for everything they post, and by moderators. Not
-      yet for whole communities. Only a post whose author counts as an adult can be
+      post's menu, by Settings for everything they post, and by moderators. For
+      whole communities too (branch `feat/sensitive-communities`): its moderators
+      or a site moderator mark it from its page, and every post in it then carries
+      the mark (ADR 0020, section 2). Only a post whose author counts as an adult can be
       marked; a moderator removes a minor's post that needs a mark instead.
 - [ ] Enforced on the server in every read path: feeds, threads, replies, search,
       trending, profiles, notifications, community pages and the data export of
@@ -141,7 +143,13 @@ including for members who live outside Nigeria.
       Done once it is in production with the R2 setup in
       `docs/deployment/cloudflare-r2.md` (a `GET` CORS rule on the uploads bucket, no
       lifecycle rule on `sensitive/`) and checked there.
-- [ ] Minors cannot join communities marked for adults.
+- [ ] Minors cannot join communities marked for adults. Built (branch
+      `feat/sensitive-communities`): to anyone who is not an adult a community
+      marked sensitive does not exist, so it cannot be listed, found, opened,
+      joined or posted in (`communityOpenTo` in
+      `apps/api/src/governance/adult-content.ts`, tested in
+      `apps/api/src/communities/sensitive-communities.test.ts` and
+      `e2e/tests/sensitive.spec.ts`). Done once it is in production.
 - [ ] Minors cannot post video (ADR 0019, section 4.6). Built (branch
       `feat/under-18-gists-video`): `assertVideoEligible` in
       `apps/api/src/video/video-eligibility.ts` needs an adult by stated age

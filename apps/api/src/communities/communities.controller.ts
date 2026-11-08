@@ -1,6 +1,7 @@
 import {
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Inject,
@@ -17,8 +18,10 @@ import {
   OptionalSessionGuard,
   SessionGuard,
 } from '../auth/session.guard.js'
+import { Feature, FeatureGuard } from '../flags/feature.guard.js'
+import { LabelNotAllowedError } from '../governance/adult-content.js'
 import { paged, pageQuery, parse, slugParam } from '../http.js'
-import { PostsService } from '../posts/posts.service.js'
+import { NotACommunityModeratorError, PostsService } from '../posts/posts.service.js'
 import { RateLimiter } from '../rate-limit.js'
 import { CommunitiesService } from './communities.service.js'
 
@@ -76,5 +79,32 @@ export class CommunitiesController {
   @UseGuards(SessionGuard)
   async leave(@Req() req: AuthedRequest, @Param('slug') slug: string) {
     if (!(await this.communities.leave(req.member.id, slugOf(slug)))) throw new NotFoundException()
+  }
+
+  /** Its moderators mark the whole community sensitive (ADR 0020, question 8). Taking the mark off always works. */
+  @Put(':slug/sensitive')
+  @HttpCode(204)
+  @UseGuards(SessionGuard, FeatureGuard)
+  @Feature('adultLabels')
+  markSensitive(@Req() req: AuthedRequest, @Param('slug') slug: string) {
+    return this.setSensitive(req, slug, true)
+  }
+
+  @Delete(':slug/sensitive')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  unmarkSensitive(@Req() req: AuthedRequest, @Param('slug') slug: string) {
+    return this.setSensitive(req, slug, false)
+  }
+
+  private async setSensitive(req: AuthedRequest, slug: string, on: boolean): Promise<void> {
+    await this.limits.hit('action', req.member.id)
+    try {
+      if (!(await this.communities.setSensitive(req.member.id, slugOf(slug), on))) throw new NotFoundException()
+    } catch (err) {
+      if (err instanceof NotACommunityModeratorError) throw new ForbiddenException({ code: 'not_a_moderator', message: err.message })
+      if (err instanceof LabelNotAllowedError) throw new ForbiddenException({ code: 'label_not_allowed', message: err.message })
+      throw err
+    }
   }
 }

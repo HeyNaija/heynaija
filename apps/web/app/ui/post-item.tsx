@@ -75,10 +75,11 @@ async function SaverLinkCard({ preview }: { preview: NonNullable<Post['linkPrevi
 
 /**
  * The author's own sensitive mark (ADR 0020): offered while they may mark posts,
- * and taking their own mark off always works. A moderator's mark is not theirs to change.
+ * and taking their own mark off always works. A moderator's mark, or the one a
+ * community marked sensitive gives all its posts, is not theirs to change.
  */
 async function SensitiveMenuItem({ post }: { post: Post }) {
-  if (post.sensitive === 'moderator') return null
+  if (post.sensitive === 'moderator' || post.sensitive === 'community') return null
   const marked = post.sensitive === 'author'
   if (!marked) {
     const viewer = await getViewer()

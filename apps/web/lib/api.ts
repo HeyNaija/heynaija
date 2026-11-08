@@ -158,8 +158,12 @@ export type Post = {
   images: PostImage[]
   /** The post's video once it is ready; a held or unfinished one is never sent. */
   video: PostVideo | null
-  /** Marked sensitive (ADR 0020), by its author or a moderator. Only adults and its author are sent such a post. */
-  sensitive: 'author' | 'moderator' | null
+  /**
+   * Marked sensitive (ADR 0020), by its author, a moderator or its community (one
+   * marked sensitive as a whole). Only adults and its author are sent such a post,
+   * and only the author's own mark is theirs to take off.
+   */
+  sensitive: 'author' | 'moderator' | 'community' | null
   /** Its pictures and video wait behind a cover until the reader taps Show (`MediaCover`). The text never does. */
   coverMedia: boolean
   /** Mentions of members the viewer can see, in order. Other @text stays plain. */
@@ -275,6 +279,10 @@ export type Community = {
 
 export type CommunityDetail = Community & {
   rules: string
+  /** Marked sensitive (ADR 0020): only adults are sent it, and every post in it is marked. */
+  sensitive: boolean
+  /** Its moderators and site moderators who count as adults may mark it, or take the mark off. */
+  viewerCanMarkSensitive: boolean
   moderators: string[]
   viewerCanManagePhoto: boolean
   viewerIsSiteModerator: boolean

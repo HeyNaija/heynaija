@@ -5,7 +5,8 @@
 for theirs (PR #103). The label on posts and its enforcement (sections 2 and 3,
 as changed on 7 November below) are built (PR #110), with the apps, and
 labelled media is served privately ([ADR 0025](0025-private-sensitive-media.md));
-whole communities marked for adults are not yet. Of phase 2, section 4's contact
+whole communities marked sensitive are built on branch `feat/sensitive-communities`
+(question 8). Of phase 2, section 4's contact
 and discovery protections are built on branch `feat/under-18-contact` (questions
 12 to 15); the rest is not. ·
 **Roadmap:** `adult-content-labels`
@@ -227,9 +228,28 @@ all. What needs the label and what is not allowed anywhere is a rules question
 - Anyone can report a post with a new reason, "Should be marked 18+"
   (`REPORT_REASONS` gains `needs_label`). Repeated mislabelling is a rules breach.
 
-**Data.** `posts.adult_label` (`null`, `author` or `moderator`) and
-`communities.adult_only` (boolean). A member setting for how labelled content is
+**Data.** `posts.adult_label` (`null`, `author` or `moderator`, and `community`
+for a post in a community marked sensitive) and `communities.adult_only`
+(boolean). A member setting for how labelled content is
 shown to them (question 4). No other new column.
+
+**A whole community, as built** (question 8, `CommunitiesService.setSensitive`,
+tested in `apps/api/src/communities/sensitive-communities.test.ts`). Its
+moderators or a site moderator who count as adults mark it from its page ("Mark
+community as sensitive", while the `adultLabels` flag is on; taking the mark off
+always works). Every post in it then carries a third mark, `community`
+(`POST_ADULT_LABELS`): the ones already there unless they have a mark of their
+own, and every post, reply or story update written there afterwards. So the posts
+follow every rule above with no read path of their own: covered for adults, never
+sent to anyone else, never trending or in Discover, their files private. Nobody
+but the community's moderators takes that mark off: the author's menu does not
+offer it, and their own mark or a moderator's coming off leaves it. Unmarked, the
+community's posts keep only their own or a moderator's mark. To anyone who is not
+an adult the community itself does not exist (`communityOpenTo`): not listed,
+found by search, shown, joined, posted in or suggested from in the welcome flow; a
+member under 18 can still leave it. Its page says "Sensitive community" in place
+of "Public community", and its composer offers no switch, since everything there
+is marked.
 
 **Flag.** A database flag `adultLabels` gates making labels: the composer switch,
 the moderator action and the report reason. Enforcement never depends on it.
@@ -528,6 +548,8 @@ from building section 4's contact protections (7 November).
    or join it.
    - Answer: Agreed.
    - Answered by / date: Psami-wondah, 3 November 2026
+   - Built on branch `feat/sensitive-communities` as "sensitive", like posts (7
+     November decision): section 2, "A whole community, as built".
 
 9. **Who signs off phase 2?** Phase 2 is the step that lets children in, and it
    rests on work spread across counsel, scanning, moderation and code. The sign-off

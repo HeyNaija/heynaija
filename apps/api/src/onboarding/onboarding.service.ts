@@ -2,6 +2,7 @@ import { type Db, members } from '@heynaija/db'
 import { Inject, Injectable } from '@nestjs/common'
 import { eq, sql } from 'drizzle-orm'
 import { CommunitiesService } from '../communities/communities.service.js'
+import { communityOpenTo } from '../governance/adult-content.js'
 import { strangerToMinor } from '../governance/minors.js'
 import { avatarPath } from '../media/media.service.js'
 import { CannotFollowSelfError, MembersService } from '../members/members.service.js'
@@ -69,6 +70,7 @@ export class OnboardingService {
     }>(sql`
       with chosen as (
         select id, slug, name from communities where active and slug = any(${sql.param(slugs)}::text[])
+          and ${communityOpenTo(viewerId, sql`communities.adult_only`)}
       ), candidates as (
         select cm.member_id, 0 as tier, c.slug, c.name,
           (select max(p.created_at) from posts p where p.author_id = cm.member_id and ${live}) as at

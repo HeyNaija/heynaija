@@ -27,6 +27,10 @@ export const GIST_REPLY_AUDIENCES = [...REPLY_AUDIENCES, 'off'] as const
 // Who marked something sensitive (ADR 0020, the 18+ label): its author, or a
 // moderator, whose mark the author cannot take off.
 export const ADULT_LABELS = ['author', 'moderator'] as const
+// A post's mark can also come from its community: every post in a community
+// marked sensitive carries 'community', which only unmarking the community
+// takes off, so a post there is never unmarked (ADR 0020, question 8).
+export const POST_ADULT_LABELS = [...ADULT_LABELS, 'community'] as const
 
 // A member of the network. `id` is the Ory Kratos identity ID: Kratos owns the
 // email, password and sessions; this table holds only what the app itself needs.
@@ -246,6 +250,9 @@ export const communities = pgTable('communities', {
   pinnedPostId: uuid('pinned_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
   // The community's square photo (a media row of kind community_photo); null shows the subject icon.
   photoMediaId: uuid('photo_media_id'),
+  // Marked sensitive by its moderators or a site moderator (ADR 0020, question 8):
+  // only adults see or join it, and every post in it carries the 'community' mark.
+  adultOnly: boolean('adult_only').notNull().default(false),
 })
 
 export const communityMemberships = pgTable(
@@ -294,7 +301,7 @@ export const posts = pgTable(
     // Marked sensitive (ADR 0020, the 18+ label), with everything attached to it:
     // never shown to anyone who does not count as an adult, and its images and
     // video covered until an adult chooses to see them. Null when unmarked.
-    adultLabel: text('adult_label', { enum: ADULT_LABELS }),
+    adultLabel: text('adult_label', { enum: POST_ADULT_LABELS }),
     // Soft delete: the row stays for moderation and audit, but leaves every feed.
     deletedAt: ts('deleted_at'),
     // Taken down by a moderator (as opposed to deleted by its author). Reversible.
@@ -329,7 +336,7 @@ export const posts = pgTable(
     index('posts_story_created_idx').on(t.storyId, t.createdAt, t.id).where(sql`story_id is not null`),
     check('posts_gist_reply_check', sql`${t.gistId} is null or ${t.quotePostId} is null`),
     check('posts_reply_audience_check', sql.raw(`reply_audience in (${REPLY_AUDIENCES.map((value) => `'${value}'`).join(', ')})`)),
-    check('posts_adult_label_check', sql.raw(`adult_label in (${ADULT_LABELS.map((value) => `'${value}'`).join(', ')})`)),
+    check('posts_adult_label_check', sql.raw(`adult_label in (${POST_ADULT_LABELS.map((value) => `'${value}'`).join(', ')})`)),
     // Full-text search. 'simple' (no stemming) suits mixed English, Pidgin and names.
     index('posts_text_search_idx').using('gin', sql`to_tsvector('simple', ${t.text})`),
   ],
