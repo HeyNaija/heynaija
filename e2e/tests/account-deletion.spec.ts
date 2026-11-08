@@ -75,8 +75,10 @@ test('a member deletes their account from Settings, is signed out, and keeps it 
   await page.goto('/settings')
   // Settings sends the browser on to Kratos and back with ?flow= for its sign-in form; a click before then is lost.
   await page.waitForURL((url) => url.searchParams.has('flow'))
-  // Then it drops ?flow= from the address, so a reload starts a fresh form rather than the one made then.
-  await expect(page).toHaveURL((url) => url.pathname === '/settings' && !url.searchParams.has('flow'))
+  // A reload starts a fresh form, rather than the one made then with what was true then.
+  const first = new URL(page.url()).searchParams.get('flow')
+  await page.reload()
+  await page.waitForURL((url) => url.searchParams.has('flow') && url.searchParams.get('flow') !== first)
   await page.getByRole('link', { name: 'Delete your account' }).click()
   await page.waitForURL((url) => url.pathname === '/settings/delete')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Delete your account')

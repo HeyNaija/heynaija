@@ -18,11 +18,12 @@ import { isLogoutUrl, reauthUrl, signInUrl } from './urls'
 async function Form({ kind, flowId }: AuthFormProps) {
   const flow = await getFlow(kind, flowId)
   if (kind === 'settings') {
+    const shown = Boolean(flow.ui.messages?.length) || flow.ui.nodes.some((node) => node.messages?.length)
     // An email change waiting for its code lives in this flow, so a reload keeps it.
     const confirmingEmail = flow.ui.nodes.some((node) => node.attributes.name === 'email_change_code')
     return (
       <>
-        {confirmingEmail ? null : <ForgetFlowParam />}
+        {confirmingEmail ? null : <ForgetFlowParam shown={shown} />}
         <FlowForm
           flow={flow}
           sections={{ profile: 'Email and handle', oidc: 'Connected accounts' }}
