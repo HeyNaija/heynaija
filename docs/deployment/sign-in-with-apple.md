@@ -67,11 +67,21 @@ then one of Apple's relay addresses (`…@privaterelay.appleid.com`), and Apple
 passes on only mail from senders registered with it. Without this step they get no
 sign-in codes, so they can sign in only with Apple.
 
-**Certificates, Identifiers & Profiles → Services → Sign in with Apple for Email
-Communication → Configure → +**: add the domain HeyNaija sends from (`heynaija.ng`)
-and the address (`no-reply@heynaija.ng`, the `SMTP_FROM_ADDRESS`). Apple checks the
-domain's SPF; Resend's records for `heynaija.ng` already cover it. It should show a
-green tick when it is done.
+Apple checks that the domain it is told about passes SPF. HeyNaija's mail comes
+from `mail.heynaija.ng` (the `SMTP_FROM_ADDRESS` is `no-reply@mail.heynaija.ng`),
+whose DKIM key Resend set up; Resend's SPF record is on `send.mail.heynaija.ng`,
+the address bounces go to, and `mail.heynaija.ng` itself has none. So first, in the
+DNS for `heynaija.ng`, add a TXT record that points to Resend's:
+
+| Type | Name | Content |
+| --- | --- | --- |
+| TXT | `mail` | `v=spf1 include:send.mail.heynaija.ng ~all` |
+
+Then **Certificates, Identifiers & Profiles → Services → Sign in with Apple for
+Email Communication → Configure → +**: under **Domains and Subdomains**
+`mail.heynaija.ng`, and under **Email Addresses** `no-reply@mail.heynaija.ng`. Each
+shows a green tick once Apple has found the SPF record; a new record can take a few
+minutes to be seen. If the sending address ever changes, register the new one.
 
 ## Checking it
 
