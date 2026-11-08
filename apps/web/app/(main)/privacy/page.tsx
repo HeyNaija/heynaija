@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ContactEmail, Placeholder, PolicyPage } from '@/app/ui/policy-page'
+import { ContactEmail, PolicyPage } from '@/app/ui/policy-page'
 
 export const metadata: Metadata = { title: 'Privacy' }
 
@@ -17,9 +17,9 @@ export default function PrivacyPage() {
           title: 'Who runs HeyNaija',
           body: (
             <p>
-              HeyNaija is run by <Placeholder>operator name and address</Placeholder>, the “data controller”
-              under the Nigeria Data Protection Act 2023. For anything about your data, write to{' '}
-              <ContactEmail />.
+              HeyNaija is not a registered organisation yet (the <Link href="/governance">governance page</Link> says
+              what is planned). It is run by its founders, who are together the “data controller” under the Nigeria
+              Data Protection Act 2023. For anything about your data, write to <ContactEmail />.
             </p>
           ),
         },
@@ -124,10 +124,14 @@ export default function PrivacyPage() {
                   it carries them to your phone, encrypted with a key only the app and HeyNaija have, so it cannot read
                   them either, but it does see when they are sent.
                 </li>
-                <li><strong>netcup</strong> and <strong>Contabo</strong>: the servers HeyNaija runs on, in <Placeholder>data centre location</Placeholder>.</li>
+                <li><strong>netcup</strong>: the servers HeyNaija runs on, in Germany.</li>
                 <li><strong>Google</strong>: only if you choose to sign in with Google.</li>
               </ul>
-              <p>Some of them process data outside Nigeria. <Placeholder>transfer safeguards, to be confirmed by counsel</Placeholder></p>
+              <p>
+                So your data is processed outside Nigeria: by netcup in Germany, under the European Union’s data
+                protection law (the GDPR), and by Cloudflare, Resend, Google and the push services, mainly in the United
+                States and Europe, each under its own data protection terms. It is encrypted on its way to each of them.
+              </p>
             </>
           ),
         },
@@ -155,20 +159,23 @@ export default function PrivacyPage() {
               <ul>
                 <li>Your account, profile and age (with your date of birth, if you gave one): for as long as you have an account.</li>
                 <li>
-                  Posts you delete leave every page at once, but the record is kept for{' '}
-                  <Placeholder>period</Placeholder> so moderation decisions can be checked.
+                  Posts you delete leave every page at once, but the record is kept for 90 days so moderation decisions
+                  can be checked (longer while a report about the post is still open). Then its text is deleted.
                 </li>
                 <li>Images that were never posted: removed within a few hours.</li>
                 <li>
-                  Images moderators take down are moved out of public view and kept privately as evidence for{' '}
-                  <Placeholder>period, to be confirmed by counsel</Placeholder>.
+                  Images moderators take down are moved out of public view and kept privately as evidence for a year
+                  (longer while a report about them is still open). Then they are deleted.
                 </li>
                 <li>
                   Backups of our two databases (HeyNaija’s, and the sign-in service’s): kept for 30 days, encrypted.
                   Something deleted stays in them until they age out.
                 </li>
                 <li>Copies of the emails our sign-in service sends you, such as sign-in codes: 7 days.</li>
-                <li>Server logs: <Placeholder>period</Placeholder>.</li>
+                <li>
+                  Server logs: about two weeks. The web server keeps its logs for 14 days; the service’s own logs are
+                  capped in size, the oldest deleted first.
+                </li>
               </ul>
               <p>
                 <strong>When you delete your account</strong>, it leaves HeyNaija at once and is erased 14 days later.
@@ -187,12 +194,12 @@ export default function PrivacyPage() {
                   decisions, for the period above, and the reports and decisions themselves.
                 </li>
                 <li>
-                  A record that you declared you were 18 or older, and when, linked only to that placeholder, for{' '}
-                  <Placeholder>period, to be confirmed by counsel</Placeholder>.
+                  A record that you declared you were 18 or older, and when, linked only to that placeholder, for two
+                  years.
                 </li>
                 <li>
-                  The record that you asked for your account to be deleted, and when it was done, for{' '}
-                  <Placeholder>period, to be confirmed by counsel</Placeholder>.
+                  The record that you asked for your account to be deleted, and when it was done, for two years after
+                  it was done. So is the record of any other request you make about your data.
                 </li>
               </ul>
             </>
@@ -249,8 +256,8 @@ export default function PrivacyPage() {
                 </li>
                 <li>The provider authorised, with its data-sharing terms and any transfers outside Nigeria confirmed.</li>
                 <li>
-                  The lawful basis, exactly what is collected, and how long it is kept:{' '}
-                  <Placeholder>retention period for verification results, set after the privacy impact review</Placeholder>.
+                  The lawful basis, exactly what is collected, and how long it is kept, which the privacy impact review
+                  will set.
                 </li>
                 <li>A security review of the integration.</li>
               </ul>

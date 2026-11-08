@@ -28,11 +28,14 @@ x-api-env: &api-env
   # is reachable only on this private network, when it sends a notification email,
   # and uses it to sign out and remove an account being deleted.
   KRATOS_ADMIN_URL: http://kratos:4434
-  # Account deletion (docs/adr/0016); empty means the API's defaults (14 and 30
-  # days, and deleted posts' text kept).
+  # Account deletion and retention (docs/adr/0016, /privacy#keep); empty means the
+  # API's defaults (14 and 30 days; then 90, 365, 730 and 730 days).
   ACCOUNT_DELETION_GRACE_DAYS: ${ACCOUNT_DELETION_GRACE_DAYS:-}
   PRIVACY_REQUEST_DUE_DAYS: ${PRIVACY_REQUEST_DUE_DAYS:-}
   DELETED_CONTENT_RETENTION_DAYS: ${DELETED_CONTENT_RETENTION_DAYS:-}
+  TAKEN_DOWN_MEDIA_RETENTION_DAYS: ${TAKEN_DOWN_MEDIA_RETENTION_DAYS:-}
+  ERASED_AGE_RECORD_RETENTION_DAYS: ${ERASED_AGE_RECORD_RETENTION_DAYS:-}
+  PRIVACY_REQUEST_RETENTION_DAYS: ${PRIVACY_REQUEST_RETENTION_DAYS:-}
   KRATOS_WEBHOOK_SECRET: ${KRATOS_WEBHOOK_SECRET:?}
   # Notification emails go out through the same account as Kratos's sign-in codes.
   SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:?}

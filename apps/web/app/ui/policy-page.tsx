@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 export type PolicySection = { id: string; title: string; body: ReactNode }
 
 /**
- * A governance document: the rules, privacy policy, charter or licence. While a
+ * A governance document: the terms, rules, privacy policy, charter or licence. While a
  * document is a draft it says so at the top, with the date, so nobody mistakes it
  * for a reviewed commitment (PLAN.md §10: no claims before legal review).
  */
@@ -103,6 +103,7 @@ export function PolicyLinks({ className = 'policy-links' }: { className?: string
     <ul className={className}>
       <li><Link href="/about">About</Link></li>
       <li><Link href="/progress">Progress</Link></li>
+      <li><Link href="/terms">Terms</Link></li>
       <li><Link href="/rules">Rules</Link></li>
       <li><Link href="/privacy">Privacy</Link></li>
       <li><Link href="/charter">Charter</Link></li>

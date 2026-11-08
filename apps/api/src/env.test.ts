@@ -94,12 +94,18 @@ test('account deletion waits 14 days and requests are due in 30 unless set, also
   assert.equal(loadEnv({ ...base, ACCOUNT_DELETION_GRACE_DAYS: '14', PRIVACY_REQUEST_DUE_DAYS: '14' }).ACCOUNT_DELETION_GRACE_DAYS, 14)
 })
 
-test('deleted posts keep their text until a retention period is set', () => {
-  assert.equal(loadEnv(base).DELETED_CONTENT_RETENTION_DAYS, undefined)
-  assert.equal(loadEnv({ ...base, DELETED_CONTENT_RETENTION_DAYS: '' }).DELETED_CONTENT_RETENTION_DAYS, undefined)
-  assert.equal(loadEnv({ ...base, DELETED_CONTENT_RETENTION_DAYS: '180' }).DELETED_CONTENT_RETENTION_DAYS, 180)
-  for (const bad of ['0', '3651', 'forever']) {
-    assert.throws(() => loadEnv({ ...base, DELETED_CONTENT_RETENTION_DAYS: bad }), /DELETED_CONTENT_RETENTION_DAYS/, bad)
+test('the retention periods default to what /privacy#keep says, and stay within 1 to 3650 days', () => {
+  const defaults = {
+    DELETED_CONTENT_RETENTION_DAYS: 90,
+    TAKEN_DOWN_MEDIA_RETENTION_DAYS: 365,
+    ERASED_AGE_RECORD_RETENTION_DAYS: 730,
+    PRIVACY_REQUEST_RETENTION_DAYS: 730,
+  } as const
+  for (const [name, fallback] of Object.entries(defaults) as [keyof typeof defaults, number][]) {
+    assert.equal(loadEnv(base)[name], fallback, name)
+    assert.equal(loadEnv({ ...base, [name]: '' })[name], fallback, `${name} empty`)
+    assert.equal(loadEnv({ ...base, [name]: '180' })[name], 180, name)
+    for (const bad of ['0', '3651', 'forever']) assert.throws(() => loadEnv({ ...base, [name]: bad }), new RegExp(name), bad)
   }
 })
 

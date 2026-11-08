@@ -1,6 +1,6 @@
 import { communities, type Db, media, members, posts, reports } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
-import { and, eq, inArray, isNotNull, isNull, lt, ne, type SQL, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lt, lte, ne, type SQL, sql } from 'drizzle-orm'
 import sharp from 'sharp'
 import { managesPhoto } from '../communities/photo-managers.js'
 import { SAFETY_ALERTS, type SafetyAlerts } from '../moderation/safety-alerts.js'
@@ -494,7 +494,7 @@ export class MediaService {
       .where(and(eq(media.postId, postId), eq(media.kind, 'post_image'), eq(media.status, 'quarantined'), isNull(posts.deletedAt)))
     for (const { id, marked } of rows) {
       await this.move('post_image', id, ['quarantine'], placeFor(marked))
-      await this.db.update(media).set({ status: 'ready', servedPrivately: marked }).where(eq(media.id, id))
+      await this.db.update(media).set({ status: 'ready', servedPrivately: marked, quarantinedAt: null }).where(eq(media.id, id))
     }
   }
 
@@ -635,8 +635,44 @@ export class MediaService {
       await this.move(kind, id, servedPlaces(kind), 'quarantine')
       // Out of the bucket, but Cloudflare may still hold a cached copy for a year.
       await this.jobs.purgeCdn(publishedKeys(kind, id))
-      await this.db.update(media).set({ status: 'quarantined' }).where(eq(media.id, id))
+      await this.db.update(media).set({ status: 'quarantined', quarantinedAt: new Date() }).where(eq(media.id, id))
     }
+  }
+
+  /**
+   * Deletes the private copies of images that went to the quarantine (taken down
+   * by a moderator, or kept as evidence) more than `days` ago, as /privacy#keep
+   * says (TAKEN_DOWN_MEDIA_RETENTION_DAYS), unless a report about them, or about
+   * their post, is still open. One quarantined before `quarantined_at` existed is
+   * dated now, so it is kept the full period from today. Files go before the row
+   * changes, so a failure part-way is finished by the next sweep. Returns how many
+   * went. Videos are not touched: a quarantined one may only be waiting for a scan.
+   */
+  async purgeTakenDown(days: number, now = new Date()): Promise<number> {
+    const images = inArray(media.kind, Object.keys(folder) as Kind[])
+    await this.db
+      .update(media)
+      .set({ quarantinedAt: now })
+      .where(and(images, eq(media.status, 'quarantined'), isNull(media.quarantinedAt)))
+    const rows = await this.db
+      .select({ id: media.id, kind: media.kind })
+      .from(media)
+      .where(
+        and(
+          images,
+          eq(media.status, 'quarantined'),
+          lte(media.quarantinedAt, new Date(now.getTime() - days * 24 * 60 * 60 * 1000)),
+          sql`not exists(select 1 from reports r where r.status = 'open' and (r.photo_media_id = ${media.id} or r.post_id = ${media.postId}))`,
+        ),
+      )
+    for (const { id, kind } of rows) {
+      for (const key of publishedKeys(kind as Kind, id)) await this.store.remove(...placed('quarantine', key))
+      await this.db
+        .update(media)
+        .set({ status: 'deleted' })
+        .where(and(eq(media.id, id), eq(media.status, 'quarantined')))
+    }
+    return rows.length
   }
 
   /** Moves an image's published files to `to` from any of `from` (places.ts). */

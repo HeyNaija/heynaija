@@ -266,7 +266,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `account-deletion`
 - **Priority:** P0 · **Status:** Partial · **Availability:** Not live
 - **Description:** Provide a usable route to delete an account and handle privacy requests.
-- **Remaining work / caveat:** Members can delete their account in Settings, and requests by email are recorded and answered. The operator's name and address, and how long deletion records and moderation evidence are kept, are still placeholders for the operator and counsel.
+- **Remaining work / caveat:** Members can delete their account in Settings, and requests by email are recorded and answered. The privacy policy names the founders as the data controller, and how long deletion records and moderation evidence are kept (set by the operator on 8 Nov 2026, enforced hourly, counsel to confirm).
 - **Dependencies:** `operator-disclosure`
 - **Inspected evidence:** `apps/web/app/(main)/settings/delete/page.tsx`, `apps/web/app/(main)/privacy/page.tsx`, `apps/api/src/account/account-deletion.service.ts`, `apps/api/src/account/account-deletion.service.test.ts`, `apps/api/src/account/account.controller.ts`, `apps/api/src/account/account-queue.ts`, `apps/api/src/cli/privacy-request.ts`, `e2e/tests/account-deletion.spec.ts`, `docs/adr/0016-account-deletion.md`, `docs/governance/privacy-requests.md`
 - **Audit notes:** Built on 30 October 2026 (ADR 0016): an account leaves the site at once and is erased after 14 days unless its owner keeps it; an hourly job erases due accounts; members are emailed at both steps; `pnpm privacy-request` records and closes requests made by email. Waiting on counsel's retention periods (counsel log C-01 to C-15) and on operator-disclosure.

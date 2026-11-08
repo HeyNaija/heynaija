@@ -160,6 +160,11 @@ export const media = pgTable(
     servedPrivately: boolean('served_privately').notNull().default(false),
     createdAt: ts('created_at').notNull().defaultNow(),
     readyAt: ts('ready_at'),
+    // Images only: when its files went to the quarantine (taken down by a moderator,
+    // or kept as evidence). They are deleted TAKEN_DOWN_MEDIA_RETENTION_DAYS later
+    // (/privacy#keep). Null while not quarantined; one quarantined before this
+    // column existed is dated by the first sweep that finds it.
+    quarantinedAt: ts('quarantined_at'),
   },
   (t) => [
     index('media_owner_status_idx').on(t.ownerId, t.status),
