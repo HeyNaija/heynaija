@@ -80,9 +80,10 @@ export default function ChildSafetyPage() {
             <ul>
               <li>
                 <strong>Checked before it is published.</strong> Every picture, GIF and video uploaded to HeyNaija,
-                profile photos included, is compared with lists of known child sexual abuse material kept by child
-                protection organisations, before anyone else can see it. A match is never published. If the check
-                cannot be done, the upload waits: nothing is published unchecked.
+                profile photos included, is compared with known child sexual abuse material before anyone else can
+                see it, using <a href="https://shield.projectarachnid.com/">Arachnid Shield</a> from the Canadian
+                Centre for Child Protection. A match is never published. If the check cannot be done, the upload
+                waits: nothing is published unchecked.
               </li>
               <li>
                 <strong>Checked again as it is served.</strong> Pictures are also checked by Cloudflare’s CSAM Scanning
