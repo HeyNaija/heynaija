@@ -106,6 +106,7 @@ export function PolicyLinks({ className = 'policy-links' }: { className?: string
       <li><Link href="/terms">Terms</Link></li>
       <li><Link href="/rules">Rules</Link></li>
       <li><Link href="/privacy">Privacy</Link></li>
+      <li><Link href="/child-safety">Child safety</Link></li>
       <li><Link href="/charter">Charter</Link></li>
       <li><Link href="/governance/constitution">Draft constitution</Link></li>
       <li><Link href="/licence">Licence</Link></li>

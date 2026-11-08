@@ -6,6 +6,7 @@ const documents = [
   { path: '/terms', heading: 'Terms of use', draft: false },
   { path: '/rules', heading: 'HeyNaija rules', draft: true },
   { path: '/privacy', heading: 'Privacy policy', draft: false },
+  { path: '/child-safety', heading: 'Child safety standards', draft: false },
   { path: '/charter', heading: 'HeyNaija Community Governance Charter', draft: true },
   { path: '/licence', heading: 'Licence', draft: true },
 ]
@@ -22,6 +23,18 @@ test('the rules say the 18+ account rule is temporary, and voting stays 18+', as
   await expect(page.locator('#age')).toContainText('We no longer ask.')
 })
 
+test('the child safety standards name CSAE and CSAM, say how to report, and give a contact', async ({ page }) => {
+  // Google Play links social apps to this page: it must name CSAE and HeyNaija, and be open to anyone.
+  await page.goto('/rules#rules')
+  await page.locator('#rules').getByRole('link', { name: 'child safety standards' }).click()
+  await expect(page).toHaveURL(/\/child-safety$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Child safety standards' })).toBeVisible()
+  await expect(page.getByText('HeyNaija does not allow child sexual abuse and exploitation (CSAE)')).toBeVisible()
+  await expect(page.locator('#standards')).toContainText('Child sexual abuse material (CSAM)')
+  await expect(page.locator('#report')).toContainText('Illegal content')
+  await expect(page.locator('#contact').getByRole('link', { name: 'contact@heynaija.ng' })).toHaveAttribute('href', 'mailto:contact@heynaija.ng')
+})
+
 test('the governance documents are public, and the drafts say so @mobile', async ({ page }) => {
   for (const doc of documents) {
     await page.goto(doc.path)
@@ -34,7 +47,7 @@ test('the governance documents are public, and the drafts say so @mobile', async
   // The governance page lists all of them.
   await page.goto('/governance')
   const list = page.locator('#documents')
-  for (const name of ['Community Governance Charter', 'Terms of use', 'Rules', 'Privacy policy', 'Draft constitution', 'Licence']) {
+  for (const name of ['Community Governance Charter', 'Terms of use', 'Rules', 'Privacy policy', 'Child safety standards', 'Draft constitution', 'Licence']) {
     await expect(list.getByRole('link', { name, exact: true })).toBeVisible()
   }
 })

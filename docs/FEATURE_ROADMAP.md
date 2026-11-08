@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 17 | 16 | 12 | 90 |
+| 46 | 17 | 16 | 11 | 90 |
 
 ## Priority order
 
@@ -238,11 +238,10 @@ This tracks product development, not formal governance decisions. Priority means
 #### Pre-publication abuse-material screening
 
 - **ID:** `upload-scanning`
-- **Priority:** P0 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Screen image uploads before publication through an approved scanning service.
-- **Remaining work / caveat:** Waiting for PhotoDNA approval; the scanner is written but untried against the real service, and response procedures still need review.
-- **Inspected evidence:** `apps/api/src/app.module.ts`, `apps/api/src/media/media.service.ts`, `apps/api/src/media/media.service.test.ts`, `apps/api/src/media/photodna.ts`, `apps/api/src/media/photodna.test.ts`, `docs/safety/abuse-material-scanning.md`
-- **Audit notes:** NoScanner stays bound until PHOTODNA_SUBSCRIPTION_KEY is set. The PhotoDNA client, GIF frame sampling, fail-closed handling and match reporting have tests against stand-ins; documented Cloudflare edge scanning is a separate second layer.
+- **Priority:** P0 · **Status:** Implemented · **Availability:** Recorded in production
+- **Description:** Screen image and video uploads before publication through an approved scanning service.
+- **Inspected evidence:** `apps/api/src/app.module.ts`, `apps/api/src/media/scanners.ts`, `apps/api/src/media/arachnid-shield.ts`, `apps/api/src/media/arachnid-shield.test.ts`, `apps/api/src/media/media.service.ts`, `apps/api/src/media/media.service.test.ts`, `apps/api/src/media/photodna.ts`, `apps/api/src/media/photodna.test.ts`, `docs/safety/abuse-material-scanning.md`
+- **Audit notes:** Arachnid Shield (Canadian Centre for Child Protection) is set in production on the API and the video worker server (owner confirmed 8 Nov 2026): every image and video is matched before publishing, failing closed. PhotoDNA is written and tested against stand-ins as a second matcher, waiting for Microsoft. Cloudflare edge scanning is a separate second layer. Counsel's answers on reporting are still open (docs/safety/abuse-material-scanning.md).
 
 #### Operational abuse response
 
