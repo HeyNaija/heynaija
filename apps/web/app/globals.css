@@ -2345,5 +2345,14 @@ a.result-row:hover { color: var(--accent-strong); }
 .leaderboard-controls > label { min-width: 0; flex: 1 1 140px; }
 .competition-times { display: grid; gap: 12px; }
 @media (min-width: 560px) { .competition-times { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* The games grid: two tiles to a row on a phone, three from tablet width; each tile is its game's logo and name. */
+.games-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+@media (min-width: 640px) { .games-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.game-tile { flex: 1; align-items: center; gap: 8px; min-width: 0; padding: 20px 12px 16px; text-align: center; }
+.game-tile[aria-disabled] { opacity: 0.7; }
+.game-logo { display: inline-flex; width: 72px; height: 72px; margin-bottom: 4px; flex-shrink: 0; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--r-panel); background: var(--accent-soft); color: var(--accent-strong); }
+.game-logo.has-photo { overflow: hidden; border-color: var(--line); background: var(--surface); }
+.game-logo img { width: 100%; height: 100%; object-fit: cover; }
+.game-tabs { position: static; gap: 20px; background: transparent; overflow-x: auto; scrollbar-width: none; }
 .game-score { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-top: 10px; }
 .game-score strong { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }

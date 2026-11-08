@@ -19,8 +19,9 @@ else or swapped for anything.
 
 - **Games** is the last link in the sidebar (on phones, it is in the account
   menu). It opens `/games`.
-- The Games page shows the games, your Game Score this month, a leaderboard
-  preview, upcoming and live competitions, and the latest game posts.
+- The Games page shows your Game Score this month and a grid of the games, each
+  with its logo. Open a game to play it; each game's page also has tabs for its
+  **Leaderboard**, **Competitions** and **Posts**.
 - If Games is switched off for you, you don't see the link, and Games pages
   show "Nothing here". See [The switch](#the-switch).
 
@@ -142,12 +143,13 @@ beforehand. So the numbers can't be changed after people have played.
 
 ### Leaderboards
 
-From **Full leaderboards** on the Games page (`/games/leaderboard`):
+- **Game Score:** all games together, from **Leaderboard** beside your Game
+  Score on the Games page (`/games/leaderboard`).
+- **Each game's own board:** the **Leaderboard** tab on that game's page
+  (Chess: XP from chess; Keno: Keno points).
 
-- **Three boards:**
-  - **Game Score:** all games together.
-  - **Chess:** XP from chess.
-  - **Keno:** Keno points.
+Every board has:
+
 - **Periods:** this season, a past season, or all time.
 - **Who is on it:** everyone, people you follow, or the members of a community
   you are in.

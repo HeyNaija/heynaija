@@ -40,7 +40,7 @@ apps/api/src/games/
 apps/web/app/(main)/games/   inside the (main) route group, for the normal shell
   page.tsx             games homepage
   AGENTS.md, CLAUDE.md pointers to this document
-  _components/         shared game UI: cards, leaderboard, competition strip
+  _components/         shared game UI: tiles, the per-game tabs, leaderboards
   chess/               routes + _components (board, challenge flow, rating
                        card, live view)
   keno/                routes + _components (number picker, draw board,
@@ -98,12 +98,24 @@ member foreign key cascades.
 
 - The member's Game Score, current season and rank, with an empty state for new
   members.
-- Game cards from the registry: cover, name, tagline, status chip, Play button.
-  coming_soon games render as such.
-- Season leaderboard preview with a tab per game; upcoming and live
-  competitions; recent game posts.
+- A grid of game tiles from the registry: the game's logo (its cover, or its
+  icon until approved art exists), name, tagline and status chip; the tile opens
+  the game. coming_soon games render as such and do not open.
+- Nothing else per game: leaderboards, competitions and game posts live on each
+  game's own page (below), so the homepage stays the same as games are added.
+  The Game Score board, all games together, is `/games/leaderboard`.
 - Only real numbers. No invented player counts, members or results; use
   EmptyState where there is no data.
+
+## A game's page (/games/<slug>)
+
+- Tabs, the same for every game (`_components/game-tabs.tsx`, as `?tab=`):
+  **Play** (the game itself), **Leaderboard** (its season and all-time board, with
+  the season and who-is-on-it choices), **Competitions** (its own, live, coming up
+  and recently finished) and **Posts** (posts in its own community, if it has one,
+  and The Arbiter's results for its competitions).
+- A new game renders `GameTabs` and `GameSection` on its page and gets all three
+  shared tabs.
 
 ## Design rules
 

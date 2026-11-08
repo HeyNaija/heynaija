@@ -70,6 +70,7 @@ test('the draw comes out, the ticket is scored, and the round checks out as fair
   await page.goto('/games/keno/tickets')
   await expect(page.getByText(/Matched \d+ of 10/)).toBeVisible()
   await page.goto('/games/keno/leaderboard')
-  await expect(page.getByRole('link', { name: 'All time' })).toBeVisible()
+  await page.waitForURL((url) => url.pathname === '/games/keno' && url.searchParams.get('tab') === 'leaderboard')
+  await expect(page.getByRole('heading', { name: /^Keno · / })).toBeVisible()
   await context.close()
 })

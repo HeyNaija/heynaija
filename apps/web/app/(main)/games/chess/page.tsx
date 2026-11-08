@@ -6,8 +6,9 @@ import { ChessIcon } from '@/app/ui/icons'
 import { LocalTime } from '@/app/ui/local-time'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
-import { type ChessOverview, getChessOverview, getCompetitions, getLiveChessGames, getViewer } from '@/lib/api'
-import { CompetitionSection } from '../competitions/_bits'
+import { type ChessOverview, getChessOverview, getLiveChessGames, getViewer } from '@/lib/api'
+import { type GameInfo, GameSection } from '../_components/game-section'
+import { gameTab, GameTabs } from '../_components/game-tabs'
 import { connectLichess, disconnectLichess, refreshRatings } from './actions'
 import { ChallengeForm } from './_components/challenge-form'
 import { ChallengeList } from './_components/challenge-list'
@@ -41,6 +42,13 @@ const SPEEDS = [
   ['correspondence', 'Correspondence'],
 ] as const
 
+const CHESS: GameInfo = {
+  slug: 'chess',
+  name: 'Chess',
+  community: { slug: 'chess-arena', name: 'Chess Arena' },
+  noCompetitions: 'Communities that link a Lichess team run Arena and Swiss tournaments, and they show here.',
+}
+
 /** Chess on Lichess (docs/games/GAMES.md): connect your account, see your ratings, challenge members. */
 export default function ChessPage({ searchParams }: PageProps<'/games/chess'>) {
   return (
@@ -63,8 +71,17 @@ export default function ChessPage({ searchParams }: PageProps<'/games/chess'>) {
 async function Chess({ searchParams }: Pick<PageProps<'/games/chess'>, 'searchParams'>) {
   const [params, viewer] = await Promise.all([searchParams, getViewer()])
   if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
-  const [chess, live, competitions] = await Promise.all([getChessOverview(), getLiveChessGames(), getCompetitions()])
-  const tournaments = (competitions?.current ?? []).filter((c) => c.game === 'chess')
+  const tab = gameTab(params.tab)
+  const tabs = <GameTabs slug="chess" name="Chess" tab={tab} />
+  if (tab !== 'play') {
+    return (
+      <>
+        {tabs}
+        <GameSection game={CHESS} tab={tab} params={params} viewerId={viewer.me.id} />
+      </>
+    )
+  }
+  const [chess, live] = await Promise.all([getChessOverview(), getLiveChessGames()])
   if (!chess) notFound()
   const notice = typeof params.notice === 'string' ? NOTICES[params.notice] : undefined
   const opponent = typeof params.opponent === 'string' ? params.opponent.replace(/[^a-z0-9_]/gi, '').slice(0, 20) : undefined
@@ -72,6 +89,7 @@ async function Chess({ searchParams }: Pick<PageProps<'/games/chess'>, 'searchPa
 
   return (
     <>
+      {tabs}
       {notice ? (
         <p role={notice.danger ? 'alert' : 'status'} className={notice.danger ? 'notice notice-danger' : 'notice'}>
           {notice.text}
@@ -83,18 +101,6 @@ async function Chess({ searchParams }: Pick<PageProps<'/games/chess'>, 'searchPa
         <h2 id="chess-live" className="section-title">Live now</h2>
         <LiveGames initial={live} />
       </section>
-
-      {/* Communities' tournaments on Lichess (docs/adr/0018, phase 6). */}
-      {tournaments.length ? (
-        <CompetitionSection title="Community tournaments" items={tournaments} />
-      ) : (
-        <section className="content-panel" aria-labelledby="chess-tournaments">
-          <h2 id="chess-tournaments" className="section-title">Community tournaments</h2>
-          <EmptyState icon={<ChessIcon size={28} />} title="No tournaments coming up">
-            Communities that link a Lichess team run Arena and Swiss tournaments, and they show here.
-          </EmptyState>
-        </section>
-      )}
 
       <section className="content-panel" aria-labelledby="chess-incoming">
         <h2 id="chess-incoming" className="section-title">Challenges to you</h2>

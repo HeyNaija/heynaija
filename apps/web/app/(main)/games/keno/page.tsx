@@ -4,12 +4,20 @@ import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { getKenoPlay, getViewer, type KenoPlay as KenoPlayView } from '@/lib/api'
+import { type GameInfo, GameSection } from '../_components/game-section'
+import { gameTab, GameTabs } from '../_components/game-tabs'
 import { KenoPlay } from './_components/keno-play'
 
 export const metadata: Metadata = { title: 'Keno', robots: { index: false } }
 
+const KENO: GameInfo = {
+  slug: 'keno',
+  name: 'Keno',
+  noCompetitions: 'Site moderators run Keno competitions: score the most points within a set window. They show here.',
+}
+
 /** Keno, free to play (docs/games/GAMES.md, docs/adr/0018 phase 4). */
-export default function KenoPage() {
+export default function KenoPage({ searchParams }: PageProps<'/games/keno'>) {
   return (
     <div className="page-stack">
       <header className="page-intro">
@@ -21,22 +29,32 @@ export default function KenoPage() {
         </p>
       </header>
       <Suspense fallback={<PostsSkeleton />}>
-        <Keno />
+        <Keno searchParams={searchParams} />
       </Suspense>
     </div>
   )
 }
 
-async function Keno() {
-  const viewer = await getViewer()
+async function Keno({ searchParams }: Pick<PageProps<'/games/keno'>, 'searchParams'>) {
+  const [params, viewer] = await Promise.all([searchParams, getViewer()])
   if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  const tab = gameTab(params.tab)
+  const tabs = <GameTabs slug="keno" name="Keno" tab={tab} />
+  if (tab !== 'play') {
+    return (
+      <>
+        {tabs}
+        <GameSection game={KENO} tab={tab} params={params} viewerId={viewer.me.id} />
+      </>
+    )
+  }
   const play = await getKenoPlay()
   if (!play) notFound()
   return (
     <>
+      {tabs}
       <KenoPlay initial={play} />
       <nav className="content-panel keno-links" aria-label="More Keno">
-        <Link href="/games/keno/leaderboard" className="btn btn-secondary">Leaderboard</Link>
         <Link href="/games/keno/tickets" className="btn btn-secondary">Your tickets</Link>
         <Link href="/games/keno/rounds" className="btn btn-secondary">Past draws</Link>
       </nav>
