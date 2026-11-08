@@ -26,7 +26,10 @@ test('a member saving data gets placeholders for pictures and loads one by tappi
   // Choosing Save data is remembered across a reload.
   await dataUse.getByRole('button', { name: 'Save data' }).click()
   await expect(dataUse.getByRole('button', { name: 'Save data' })).toHaveAttribute('aria-pressed', 'true')
+  // A reload of Settings goes on to a fresh sign-in form (forget-flow.tsx): wait for it, so leaving next is not cut short.
+  const before = new URL(page.url()).searchParams.get('flow')
   await page.reload()
+  await page.waitForURL((url) => url.searchParams.has('flow') && url.searchParams.get('flow') !== before)
   await expect(dataUse.getByRole('button', { name: 'Save data' })).toHaveAttribute('aria-pressed', 'true')
 
   // The profile (a feed of this member's posts) holds the picture back: no request for it, a placeholder in its place.
