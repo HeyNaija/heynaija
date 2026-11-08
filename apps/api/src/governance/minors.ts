@@ -16,6 +16,8 @@ import { fromAgeRecord, underAdultAge } from './adult-content.js'
 // - Discovery: a minor is in nobody's Discover, search, @mention suggestions or
 //   welcome-flow suggestions but their own circle's.
 // - Profile: no age band, no location and no lists of followers, for anyone.
+// - Posts: shown to signed-in members only (question 7), never to signed-out
+//   visitors or search engines, to whom they are missing, as a deleted post is.
 //
 // The protections follow the age the rules work out (`ageStatus` in age.ts):
 // someone with no date of birth on record yet is not treated as a minor here,
@@ -37,6 +39,15 @@ export const strangerToMinor = (viewer: SQL | string | null, member: SQL): SQL<b
     : sql<boolean>`(${member} <> ${viewer}
         and not exists(select 1 from follows mf where mf.follower_id = ${member} and mf.followee_id = ${viewer})
         and ${isMinor(member)})`
+
+/**
+ * Whether what `member` posts, reposts or votes may reach `viewer` (ADR 0020,
+ * question 7): anyone's reaches a signed-in member, and a minor's never reaches
+ * a signed-out visitor, search engines and link previews included. Nothing
+ * stands in for it that says why: a post is missing, as a deleted one is.
+ */
+export const reachesViewer = (viewer: string | null, member: SQL): SQL<boolean> =>
+  viewer === null ? sql<boolean>`not ${isMinor(member)}` : sql<boolean>`true`
 
 /** Who may reply to a minor's new conversation, the default first: never everyone. */
 export const MINOR_REPLY_AUDIENCES = ['following', 'mentioned'] as const satisfies readonly (typeof REPLY_AUDIENCES)[number][]

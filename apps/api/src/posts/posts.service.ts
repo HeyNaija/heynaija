@@ -31,7 +31,7 @@ import { type PostVideo, toPostVideo, type VideoRow, videoOf } from '../video/vi
 import { isFounder } from '../members/badges.js'
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
 import { adultContentAllowed, LabelNotAllowedError, seesAdultContent } from '../governance/adult-content.js'
-import { isMinor, ReplyAudienceNotAllowedError, strangerToMinor } from '../governance/minors.js'
+import { isMinor, reachesViewer, ReplyAudienceNotAllowedError, strangerToMinor } from '../governance/minors.js'
 import { excerpt, notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { Refreshing } from '../refreshing.js'
@@ -436,6 +436,18 @@ export const visibleAuthor = (viewerId: string | null, authorId: SQL, active: SQ
   )
 
 /**
+ * Whether the post itself may reach `viewerId`, on top of `visibleAuthor`: one
+ * marked sensitive only an adult or its author (`adultContentAllowed`), and a
+ * minor's only a signed-in member (`reachesViewer`, ADR 0020). The one test for
+ * every query that shows posts. Where a conversation needs a stand-in, a post
+ * that fails it is the placeholder a deleted one is; elsewhere it is left out.
+ */
+export const postAllowed = (viewerId: string | null, label: SQL, authorId: SQL): SQL<boolean> =>
+  viewerId
+    ? adultContentAllowed(viewerId, label, authorId)
+    : sql<boolean>`(${adultContentAllowed(null, label, authorId)} and ${reachesViewer(null, authorId)})`
+
+/**
  * Whether a marked post's media waits behind a cover for `viewerId` (see
  * `PostView.coverMedia`). Signed out never matters: no marked post reaches them.
  */
@@ -497,7 +509,7 @@ const quoteOf = (viewerId: string | null, quotePostId: SQL) => sql<QuoteRow | nu
   from posts q join members qa on qa.id = q.author_id
   where q.id = ${quotePostId} and q.deleted_at is null and q.removed_at is null and q.gist_id is null
     and ${visibleAuthor(viewerId, sql`q.author_id`, sql`qa.active`)}
-    and ${adultContentAllowed(viewerId, sql`q.adult_label`, sql`q.author_id`)}
+    and ${postAllowed(viewerId, sql`q.adult_label`, sql`q.author_id`)}
 ), json_build_object('unavailable', true)) end`
 
 const toQuote = (row: QuoteRow | null, urls: MediaUrls): QuotedPost | null => {
@@ -631,7 +643,7 @@ const pollReadableBy = (viewerId: string | null) =>
   and(
     live,
     visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`),
-    adultContentAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`),
+    postAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`),
   )
 type ReplyContextRow =
   | { id: string; authorHandle: string; authorName: string | null; authorAvatarId: string | null; text: string }
@@ -649,7 +661,7 @@ const replyContextOf = (viewerId: string | null, parentId: SQL) => sql<ReplyCont
   from posts rp join members ra on ra.id = rp.author_id
   where rp.id = ${parentId} and rp.deleted_at is null and rp.removed_at is null
     and ${visibleAuthor(viewerId, sql`rp.author_id`, sql`ra.active`)}
-    and ${adultContentAllowed(viewerId, sql`rp.adult_label`, sql`rp.author_id`)}
+    and ${postAllowed(viewerId, sql`rp.adult_label`, sql`rp.author_id`)}
 ), json_build_object('unavailable', true)) end`
 
 const toReplyContext = (row: ReplyContextRow | null): ReplyContext | null => {
@@ -722,9 +734,10 @@ export class PostsService {
       limit?: number
     } = {},
   ): Promise<PostView[]> {
-    // A post marked sensitive that the viewer may not see is left out, or, where
-    // deleted posts stand in as placeholders (a thread's ancestors), is one.
-    const allowed = adultContentAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)
+    // A post the viewer may not see (marked sensitive, or a minor's to someone
+    // signed out) is left out, or, where deleted posts stand in as placeholders
+    // (a thread's ancestors), is one.
+    const allowed = postAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)
     const shownTo = sql`${shown} and ${allowed}`
     const rows = await this.db
       .select({
@@ -889,9 +902,10 @@ export class PostsService {
     // posts for someone who follows many active accounts, and read each account's
     // own posts and reposts for someone who follows a few. As subqueries they were
     // estimated alike for every viewer, and every repost on the site was read.
+    // A minor's reposts, like their posts, are not listed for a signed-out viewer.
     const sources = await this.db.execute<{ members: string[]; communities: string[] }>(sql`
       select array(select m.id from members m where m.id in ${candidates}
-          and ${visibleAuthor(viewerId, sql`m.id`, sql`m.active`, unmuted)}) as members,
+          and ${visibleAuthor(viewerId, sql`m.id`, sql`m.active`, unmuted)} and ${reachesViewer(viewerId, sql`m.id`)}) as members,
         ${joined ? sql`array(${joined})` : sql`'{}'::uuid[]`} as communities`)
     const { members: memberIds, communities: communityIds } = sources.rows[0]!
     if (!memberIds.length && !communityIds.length) return { posts: [], cursor: null }
@@ -905,7 +919,7 @@ export class PostsService {
     const before = (at: SQL, id: SQL) =>
       after ? sql`and (${at}, ${id}) < (${after[0]}::timestamptz, ${after[1]}::uuid)` : sql``
     const postVisible = sql`p.deleted_at is null and p.removed_at is null and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`, unmuted)}
-      and ${adultContentAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)}`
+      and ${postAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)}`
     // A repost of `post` by one of `members`, made after `since` (if given). A few
     // members are each looked up in the index. For a long list it is cheaper to
     // read the post's reposts and find the members in a hash: `is true` stops the
@@ -1483,7 +1497,7 @@ export class PostsService {
           eq(posts.gistId, gistId),
           visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`),
           or(
-            and(live, adultContentAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)),
+            and(live, postAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)),
             sql`exists(select 1 from posts child where child.reply_parent_id = ${posts.id})`,
           ),
         ),
@@ -1539,9 +1553,9 @@ export class PostsService {
           eq(posts.id, parentId),
           isNull(posts.gistId),
           visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`),
-          // A parent the viewer may not see (gone, or marked sensitive) is a placeholder that keeps the replies under it in reach.
+          // A parent the viewer may not see (gone, marked sensitive, or a minor's to someone signed out) is a placeholder that keeps the replies under it in reach.
           or(
-            and(live, adultContentAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)),
+            and(live, postAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)),
             sql`exists(select 1 from posts child where child.reply_parent_id = ${posts.id})`,
           ),
         ),
@@ -1582,8 +1596,8 @@ export class PostsService {
     const parentAuthor = parentId ? sql`(select author_id from posts where id = ${parentId})` : sql`(select host_id from gists where id = ${gist})`
     const within = parentId ? sql`p.reply_parent_id = ${parentId}` : sql`(p.reply_parent_id is null and p.gist_id = ${gist})`
     const visible = visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)
-    // A reply marked sensitive that the viewer may not see is a placeholder, like a deleted one.
-    const allowed = adultContentAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)
+    // A reply the viewer may not see (marked sensitive, or a minor's to someone signed out) is a placeholder, like a deleted one.
+    const allowed = postAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)
     type ReplyRow = {
       id: string
       reply_parent_id: string | null
@@ -2063,7 +2077,7 @@ export class PostsService {
     })
   }
 
-  /** Public ballots, one member per row, newest first. */
+  /** Public ballots, one member per row, newest first. A minor's is left out for a signed-out viewer (ADR 0020); the counts keep it. */
   async pollVoters(viewerId: string | null, postId: string, limit: number, cursor?: string): Promise<PollVoterPage | null> {
     const [visible] = await this.db
       .select({ postId: postPolls.postId })
@@ -2095,6 +2109,7 @@ export class PostsService {
         from poll_votes pv
         where pv.post_id = ${postId} and ${before}
           and exists(select 1 from members voter where voter.id = pv.member_id and voter.active)
+          and ${reachesViewer(viewerId, sql`pv.member_id`)}
         group by pv.created_at, pv.member_id
         order by pv.created_at desc, pv.member_id desc
         limit ${limit + 1}

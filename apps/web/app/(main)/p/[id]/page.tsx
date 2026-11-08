@@ -43,12 +43,16 @@ async function allUpdates(id: string): Promise<Post[]> {
  * What a link to the post shows when pasted into WhatsApp or X. It asks the API
  * exactly as the page does (the fetch is shared), so a post the visitor cannot
  * see (deleted, removed, by someone blocked) gets a generic title and no text.
- * Preview fetchers are signed out, so they get what any visitor would.
+ * Preview fetchers and search engines are signed out, so they get what any
+ * visitor would: nothing of a post marked sensitive or of a minor's (ADR 0020),
+ * which the API sends them as missing, and the page is kept out of search.
  */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params
   const post = (await getThread(id))?.post
-  if (!post || post.deleted) return { title: 'Post', openGraph: { ...siteOpenGraph, type: 'website', images: [defaultPreviewImage] } }
+  if (!post || post.deleted) {
+    return { title: 'Post', robots: { index: false }, openGraph: { ...siteOpenGraph, type: 'website', images: [defaultPreviewImage] } }
+  }
 
   const title = `@${post.authorHandle} on HeyNaija`
   const { description, image } = postPreview(post)

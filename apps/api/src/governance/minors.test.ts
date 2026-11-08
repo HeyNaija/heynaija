@@ -84,7 +84,8 @@ test("a minor's conversation is open to people they follow only, whatever they a
     await refused(posts_().create(stranger, 'hi', { replyTo: mine.id }), ReplyNotAllowedError)
     assert.equal((await posts_().post(stranger, adults.id))!.viewerCanReply, true, `${who}, to an adult`)
   }
-  assert.equal((await posts_().post(null, mine.id))!.viewerCanReply, false, 'signed out')
+  // Signed out, it is not there at all (question 7, minor-posts.test.ts).
+  assert.equal(await posts_().post(null, mine.id), null, 'signed out')
 })
 
 test('a minor can narrow who replies, but never open it to everyone', async () => {
