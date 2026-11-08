@@ -38,9 +38,8 @@ no Origin.
 
 ## Not yet
 
-- **Google in the apps.** The Android app signs in with Google (Credential
-  Manager's ID token, sent with its nonce). The iOS app signs in with Apple the same
-  way ([ADR 0026](0026-ios-app-push-and-sign-in-with-apple.md)); Google on iOS needs
-  an iOS client ID in Kratos's `additional_id_token_audiences`.
+- **Google and Apple in the apps.** Both apps sign in with Google, and the iOS app
+  with Apple, through the platforms' own sign-in: an ID token sent with its nonce
+  ([ADR 0026](0026-ios-app-push-and-sign-in-with-apple.md)).
 - **Push to the apps.** Android through FCM ([ADR 0023](0023-app-push.md)), iOS
   through APNs ([ADR 0026](0026-ios-app-push-and-sign-in-with-apple.md)).

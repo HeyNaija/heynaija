@@ -271,9 +271,10 @@ export function FlowForm({
   const shared = all.filter((n) => n.group === 'default')
   const groups = sections ? Object.keys(sections).filter((g) => all.some((n) => n.group === g)) : []
   const google = all.filter((n) => n.group === 'oidc')
-  // Kratos offers unlink only for providers already connected to this identity.
-  const unlink = google.find((n) => n.attributes.name === 'unlink' && PROVIDERS[String(n.attributes.value)])
-  const connected = unlink ? PROVIDERS[String(unlink.attributes.value)] : undefined
+  // Kratos offers unlink only for providers already connected to this identity:
+  // the email can change only once every one of them is disconnected.
+  const linked = google.filter((n) => n.attributes.name === 'unlink' && PROVIDERS[String(n.attributes.value)])
+  const connected = linked.length ? linked.map((n) => PROVIDERS[String(n.attributes.value)]).join(' and ') : undefined
   const rest = all.filter((n) => n.group !== 'oidc')
   // Kratos puts missing signup traits in the default group after Google returns.
   // Keep them with the provider button so a new member can finish choosing a handle.

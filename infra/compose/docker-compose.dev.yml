@@ -166,6 +166,11 @@ configs:
                   client_secret: "${GOOGLE_CLIENT_SECRET:-}"
                   mapper_url: file:///etc/config/kratos/google.jsonnet
                   scope: [openid, email]
+                  # The iOS app signs in as its own Google client, so its ID tokens are
+                  # for that client (docs/deployment/google-sign-in.md). Not secret:
+                  # the app carries it. Android's are for the web client above.
+                  additional_id_token_audiences:
+                    - "${GOOGLE_IOS_CLIENT_ID:-567185521629-68a94t7k7jomu81msugkias5ltprp80p.apps.googleusercontent.com}"
                 # Apple, in the iOS app only (docs/deployment/sign-in-with-apple.md):
                 # its own sheet gives an ID token for the app's bundle ID, which
                 # Kratos checks against Apple's published keys. Signing in on the web

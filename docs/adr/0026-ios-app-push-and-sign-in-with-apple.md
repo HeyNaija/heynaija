@@ -79,12 +79,17 @@ notification: without it, Apple would have to carry the words.
 
 App Store Review Guideline 4.8 asks apps that offer a third-party sign-in to also
 offer one that limits data to a name and email and lets the email be hidden. Sign
-in with Apple is that, and it lets the iOS app offer Google later too.
+in with Apple is that, and it lets the iOS app offer Google too.
+
+### Google on iOS
+
+The iOS app also signs in with Google, as its own iOS OAuth client: Google's page
+in iOS's sign-in sheet (`ASWebAuthenticationSession`), with PKCE and a nonce, and
+no Google SDK. Its ID token is for that client, so the Google provider lists it in
+`additional_id_token_audiences`. Everything after the token is as on Android.
 
 ## Not yet
 
-- **Google on iOS.** Needs an iOS OAuth client in the same Google Cloud project and
-  its ID among the Google provider's `additional_id_token_audiences`.
 - **Apple on the web.** Needs a Services ID, its return URL and the key in the Apple
   provider's settings, and the web's Apple button.
 - **Revoking when the code never arrived.** If the app could not send the code
