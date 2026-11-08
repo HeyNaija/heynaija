@@ -71,6 +71,8 @@ async function clean() {
         select id from posts where author_id in (select id from d_m)
         union select p.id from posts p join tree on p.reply_parent_id = tree.id
       ) select id from tree`)
+    // The Gists they host, room and all.
+    await client.query('create temp table d_g on commit drop as select id from gists where host_id in (select id from d_m)')
     media = (await client.query<{ id: string; kind: MediaKind | 'post_video' }>(
       'select id, kind from media where owner_id in (select id from d_m) or post_id in (select id from d_p)',
     )).rows
@@ -78,9 +80,14 @@ async function clean() {
       ['notifications', `delete from notifications where recipient_id in (select id from d_m) or actor_id in (select id from d_m)
         or subject_id in (select id from d_m) or post_id in (select id from d_p)`],
       ['moderation actions', `delete from moderation_actions where actor_id in (select id from d_m) or member_id in (select id from d_m)
-        or post_id in (select id from d_p)`],
+        or post_id in (select id from d_p) or gist_id in (select id from d_g)`],
       ['reports', `delete from reports where reporter_id in (select id from d_m) or member_id in (select id from d_m)
-        or post_id in (select id from d_p) or resolved_by in (select id from d_m)`],
+        or post_id in (select id from d_p) or resolved_by in (select id from d_m) or gist_id in (select id from d_g)`],
+      ['Gist report participants', 'delete from gist_report_participants where member_id in (select id from d_m)'],
+      ['Gist members', 'delete from gist_members where member_id in (select id from d_m) or gist_id in (select id from d_g)'],
+      ['Gist decisions', `update gist_members set removed_by = case when removed_by in (select id from d_m) then null else removed_by end,
+        role_changed_by = case when role_changed_by in (select id from d_m) then null else role_changed_by end
+        where removed_by in (select id from d_m) or role_changed_by in (select id from d_m)`],
       ['notification settings', 'delete from notification_opt_outs where member_id in (select id from d_m)'],
       ['push subscriptions', 'delete from push_subscriptions where member_id in (select id from d_m)'],
       ['app push devices', 'delete from push_devices where member_id in (select id from d_m)'],
@@ -89,6 +96,8 @@ async function clean() {
       ['likes', 'delete from likes where member_id in (select id from d_m) or post_id in (select id from d_p)'],
       ['reposts', 'delete from reposts where member_id in (select id from d_m) or post_id in (select id from d_p)'],
       ['bookmarks', 'delete from bookmarks where member_id in (select id from d_m) or post_id in (select id from d_p)'],
+      ['poll votes', 'delete from poll_votes where member_id in (select id from d_m)'],
+      ['story follows', 'delete from story_follows where member_id in (select id from d_m) or story_id in (select id from d_p)'],
       ['follows', 'delete from follows where follower_id in (select id from d_m) or followee_id in (select id from d_m)'],
       ['blocks', 'delete from blocks where blocker_id in (select id from d_m) or blocked_id in (select id from d_m)'],
       ['mutes', 'delete from mutes where muter_id in (select id from d_m) or muted_id in (select id from d_m)'],
@@ -107,8 +116,12 @@ async function clean() {
       ['problem details', `delete from problem_details where post_id in (select id from d_p)`],
       ['duplicates reopened', `update ideas set status = 'under_review', duplicate_of = null where duplicate_of in (select id from d_p) and post_id not in (select id from d_p)`],
       ['ideas', `delete from ideas where post_id in (select id from d_p)`],
+      ['pinned posts', 'update members set pinned_post_id = null where id in (select id from d_m)'],
+      // Other members' replies in a demo Gist stay, as posts of their own.
+      ['links to Gists', 'update posts set gist_id = null where gist_id in (select id from d_g) and id not in (select id from d_p)'],
       // The counter triggers lower reply counts on the real posts demo members answered.
       ['posts', 'delete from posts where id in (select id from d_p)'],
+      ['Gists', 'delete from gists where id in (select id from d_g)'],
       ['privacy requests', 'delete from privacy_requests where member_id in (select id from d_m) or handled_by in (select id from d_m)'],
       ['members', 'delete from members where id in (select id from d_m)'],
       ['bookkeeping', 'delete from demo_members'],
