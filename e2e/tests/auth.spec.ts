@@ -42,6 +42,8 @@ test('without an invite, the sign-up page sends people to join first', async ({ 
 
 test('joining needs a date of birth, confirmed as real @mobile', async ({ page }) => {
   await page.goto(`/join?code=${createInvite()}`)
+  // Who may join is the API's to say: 18 during the beta, 13 once under-18 accounts open.
+  await expect(page.getByText('HeyNaija is open to people aged 18 and over.')).toBeVisible()
   const confirm = page.getByLabel('This is my real date of birth')
   await expect(confirm).not.toBeChecked()
   await page.getByRole('button', { name: 'Check invite code' }).click()

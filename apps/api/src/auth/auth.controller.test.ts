@@ -38,10 +38,29 @@ const controller = new AuthController(
   {} as never,
 )
 
+// The same controller once under-18 accounts are open (ADR 0020 section 5). env.ts
+// still refuses to start with UNDER_18_ACCOUNTS_ENABLED set; this is how the API
+// behaves the day that lock is lifted in review, after the owner's sign-off.
+const opened = { ...env, UNDER_18_ACCOUNTS_ENABLED: true } as Env
+const openController = new AuthController(
+  invites,
+  {} as never,
+  {} as never,
+  new MemoryRateLimiter(),
+  opened,
+  db,
+  {} as never,
+  new MembersService(db),
+  new GovernanceService(db, opened),
+  {} as never,
+  {} as never,
+  {} as never,
+)
+
 /** The message Kratos would show on the signup form, or null if the signup may go ahead. */
-const refusal = async (body: object): Promise<string | null> => {
+const refusal = async (body: object, by = controller): Promise<string | null> => {
   try {
-    await controller.registration(secret, body)
+    await by.registration(secret, body)
     return null
   } catch (err) {
     assert.ok(err instanceof HttpException)
@@ -101,6 +120,31 @@ test('/join can ask whether a date of birth may join, without anything being kep
   assert.deepEqual(await ask('2999-01-01'), { outcome: 'not_a_date', joinAge: 18 })
   assert.deepEqual(await ask(42), { outcome: 'not_a_date', joinAge: 18 })
   assert.equal((await db.select().from(ageAssurances)).length, 0)
+})
+
+test('what /join says before anyone types a date follows the switch: 18 now, 13 once under-18 accounts open', () => {
+  assert.deepEqual(controller.joinAgeNow(), { joinAge: 18 })
+  assert.deepEqual(openController.joinAgeNow(), { joinAge: 13 })
+})
+
+test('once under-18 accounts are open, 13 to 17 year olds join and are recorded as under 18; nobody under 13 ever', async () => {
+  const ask = (birthDate: unknown) => openController.checkAge({ ip: '203.0.113.9', headers: {} } as never, { birthDate })
+  assert.deepEqual(await ask(bornYearsAgo(15)), { outcome: 'allowed', joinAge: 13 })
+  assert.deepEqual(await ask(bornYearsAgo(13, -2)), { outcome: 'allowed', joinAge: 13 })
+  assert.deepEqual(await ask(bornYearsAgo(13, 2)), { outcome: 'too_young', joinAge: 13 })
+
+  const code = await invites.create({ maxUses: 2 })
+  const body = { identity_id: unsaved, invite_code: code, handle: 'teen' }
+  assert.equal(await refusal({ ...body, birth_date: bornYearsAgo(15) }, openController), null)
+  assert.match((await refusal({ ...body, birth_date: bornYearsAgo(12) }, openController))!, /aged 13 and over/)
+
+  const teen = randomUUID()
+  const born = bornYearsAgo(15)
+  assert.deepEqual(await openController.registered(secret, { identity_id: teen, invite_code: code, handle: 'teen', birth_date: born }), { redeemed: true })
+  const [row] = await db.select().from(ageAssurances).where(eq(ageAssurances.memberId, teen))
+  assert.equal(row!.band, 'under_18')
+  assert.equal(row!.birthDate, born)
+  assert.equal(row!.method, 'self_declared')
 })
 
 test('a wrong webhook secret is turned away before anything else', async () => {

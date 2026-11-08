@@ -241,3 +241,7 @@ including for members who live outside Nigeria.
       reporting, blocking, published contact details).
 - [ ] Only then: change `UNDER_18_ACCOUNTS_ENABLED` in `env.ts`, in review, and
       extend the `/join` age question and `infra/kratos/invite-check.jsonnet`.
+      Ready for it (branch `feat/under-18-switch`): `/join` takes who may join
+      from the API, and the Kratos webhook and date fields need no change, so the
+      switch is the one line in `env.ts` and the production setting (ADR 0020,
+      section 5, item 5).

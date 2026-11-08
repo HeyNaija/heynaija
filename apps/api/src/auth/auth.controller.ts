@@ -183,6 +183,16 @@ export class AuthController {
   }
 
   /**
+   * The youngest age that may join now, for what /join and the apps say before
+   * anyone types a date: 18 during the 18+ beta, 13 once under-18 accounts are
+   * open (UNDER_18_ACCOUNTS_ENABLED, ADR 0020 section 5). The same for everyone.
+   */
+  @Get('v1/signup/age')
+  joinAgeNow() {
+    return { joinAge: this.joinAge() }
+  }
+
+  /**
    * Lets /join refuse someone too young before they fill in a signup form, so the
    * age rules live here and not in the web app. The registration webhook decides
    * again. The date is not kept or logged: this answers and forgets it.

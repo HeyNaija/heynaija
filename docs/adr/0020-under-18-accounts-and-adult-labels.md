@@ -407,6 +407,19 @@ follows during the beta.
 5. A named person signs off in writing (question 9). Only then is
    `UNDER_18_ACCOUNTS_ENABLED` changed in `env.ts`, in review, and the `/join` age
    question and `infra/kratos/invite-check.jsonnet` extended for the minor band.
+   - *Ready for it* (branch `feat/under-18-switch`): everything that depends on
+     the setting reads it, so turning it on is the one change in `env.ts`. The
+     API applies it at `/join`'s check, in both registration webhooks and in the
+     join age it reports (`GET /v1/signup/age`: 18 now, 13 once open), and records a
+     13 to 17 year old's date as `under_18` (tested in `auth.controller.test.ts`
+     with it on). `/join` says who may join from that answer, not from fixed copy.
+     The Kratos webhook already passes the date of birth through unchanged, and the
+     date fields already take any year back to 120, so neither needs extending.
+   - *The switch itself*, after the sign-off and with phase 1 in production: in
+     `apps/api/src/env.ts`, replace `lockedOff('UNDER_18_ACCOUNTS_ENABLED')` with an
+     ordinary setting that defaults to off, then set it to `true` on the
+     production API. Turning it off again closes signup to 13 to 17 year olds at
+     once; members already under 18 keep their accounts and protections.
 
 ## 6. Copy and documents that change
 

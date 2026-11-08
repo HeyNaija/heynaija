@@ -487,6 +487,18 @@ export const getGistReply = (gistId: string, postId: string) =>
   getOrNull<Post>(`/v1/gists/${encodeURIComponent(gistId)}/replies/${encodeURIComponent(postId)}`)
 
 /**
+ * The youngest age that may join now, from the API, which alone knows whether
+ * under-18 accounts are open (ADR 0020 section 5): 18 during the 18+ beta, 13
+ * after. If the API cannot be asked, 18, the stricter of the two.
+ */
+export async function getJoinAge(): Promise<number> {
+  const res = await api('/v1/signup/age').catch(() => null)
+  if (!res?.ok) return 18
+  const { joinAge } = (await res.json()) as { joinAge: number }
+  return joinAge
+}
+
+/**
  * A member's profile; or, for a handle its owner gave up recently, the handle they
  * use now (the API answers 404 with `movedTo`).
  */
