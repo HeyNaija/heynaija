@@ -11,6 +11,7 @@ export default function PrivacyPage() {
       title="Privacy policy"
       summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, and how you get your data or have it deleted. No ads, no selling data, no trackers."
       updated="8 November 2026"
+      draft={false}
       sections={[
         {
           id: 'who',
