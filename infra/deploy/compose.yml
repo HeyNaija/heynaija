@@ -116,6 +116,8 @@ services:
       WEB_WORKERS: ${WEB_WORKERS:-1}
       # Which release is running: a problem report on the ideas board says so.
       RELEASE: ${RELEASE:-latest}
+      # The Android app's signing certificates, for links that open it (apps/web/lib/app-links.ts).
+      ANDROID_CERT_SHA256: ${ANDROID_CERT_SHA256:-}
     depends_on:
       api:
         condition: service_healthy
