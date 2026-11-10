@@ -116,6 +116,8 @@ services:
       WEB_WORKERS: ${WEB_WORKERS:-1}
       # Which release is running: a problem report on the ideas board says so.
       RELEASE: ${RELEASE:-latest}
+      # More Android signing certificates than Play's, for links that open the app (apps/web/lib/app-links.ts). Normally unset.
+      ANDROID_CERT_SHA256: ${ANDROID_CERT_SHA256:-}
     depends_on:
       api:
         condition: service_healthy
