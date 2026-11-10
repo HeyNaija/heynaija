@@ -581,7 +581,7 @@ are untouched.
 Answer under each question (edit this file in a PR, or reply on the PR and the
 answer gets written back here). Each has a recommendation so "agreed" is a
 complete answer. Until questions 1 to 3 and 6 are answered nothing in this ADR is
-accepted, and the age check stays a placeholder (the `gists` flag's allow-list).
+accepted, and the age check stays a placeholder (the `gists` flag, and a stated adult age for the stage).
 
 1. **May a member who has only a NIN slip verify with a NIN or BVN lookup, while our
    own NIN verification is locked?** The rollout doc says the age provider "must not

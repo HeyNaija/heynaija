@@ -72,16 +72,19 @@ for them.
 `gists` (off in production, on in staging and development) replaced the env switches
 `CALLS_ENABLED`, `CALLS_GISTS_ENABLED` and `CALLS_MEMBERS` on 3 November 2026; the
 handle list became the flag's allow-list, set from the admin page. Its code is in
-`main`, but production never had Gists switched on, so `LIVE_IN_MAIN` says `false`.
+`main`, but production's default is off, so `LIVE_IN_MAIN` says `false`: an admin
+turns it on there, for everyone or for a list.
 
-Two rules in code (`gistsAccess` in `apps/api/src/gists/gists-enabled.guard.ts`) sit
-on top of it, and an admin cannot flip either:
+One rule in code (`gistsAccess` in `apps/api/src/gists/gists-enabled.guard.ts`) sits
+on top of it, and an admin cannot flip it:
 
 - **No LiveKit, no Gists.** Without the `LIVEKIT_*` settings Gists are off whatever
   the flag says.
-- **In production, an allow-list or nothing.** On for everyone, by override or
-  default, opens Gists to nobody there. This is ADR 0017's temporary gate: until the
-  age check exists (`apps/api/src/gists/eligibility.ts`), Gists are for named members.
+
+Until 10 November 2026 there was a second: in production only an allow-list opened
+Gists, and "on for everyone" opened them to nobody (ADR 0017's temporary gate). The
+owner dropped it that day: the stage has its age rule (a stated adult age, below) and
+the beta takes adults only, so the flag now means the same in every environment.
 
 For a member Gists are not open to, every `/v1/gists` route answers the 404 of a
 route that does not exist. A signed-out caller is let on to the sign-in 401 while

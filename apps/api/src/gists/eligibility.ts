@@ -7,8 +7,8 @@ import { type AgeStatus, isAdultFor } from '../governance/age.js'
  * to calls, in good standing", and none of age verification (ADR 0006), the
  * opt-in or direct messages exist yet. Until they do, the only gate is: signed in
  * (the caller has a session) AND the `gists` feature flag is on for the member
- * (in production only through its allow-list: see gists-enabled.guard.ts), and
- * the account is active.
+ * (for everyone or through its allow-list, in production too since 10 November
+ * 2026: see gists-enabled.guard.ts), and the account is active.
  *
  * The stage has one rule more: hosting, co-hosting, speaking, asking to speak and
  * the microphone itself are for adults by their stated age (`gist_stage` in
