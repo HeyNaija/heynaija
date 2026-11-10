@@ -18,6 +18,14 @@ export const IOS_APP_ID = 'P6YA592CLG.ng.heynaija.app'
 /** The Android app's package name. */
 export const ANDROID_PACKAGE = 'ng.heynaija.app'
 
+/**
+ * Google Play's app signing key for the Android app (Play Console → Test and
+ * release → App integrity), which signs every copy Play delivers, testing tracks
+ * included. Play made it once and it does not change. Not secret: it is in every
+ * copy of the app, and this file is public.
+ */
+export const PLAY_SIGNING_SHA256 = '1C:55:B3:F9:4A:D6:55:54:A5:9F:F5:47:A3:0F:98:09:52:94:EA:8C:57:EB:C1:31:13:98:DA:1A:6B:35:3C:51'
+
 /** Exactly a post's or a Gist's ID: `?` is any one character in Apple's patterns. */
 const ID = '????????-????-????-????-????????????'
 
@@ -54,9 +62,9 @@ export function appleAppSiteAssociation() {
 const FINGERPRINT = /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/
 
 /**
- * The Android app's signing certificates, from ANDROID_CERT_SHA256: Play's app
- * signing key (Play Console → Test and release → App integrity), and the upload
- * key's for a release build installed without Play. Comma- or space-separated;
+ * More certificates than Play's, from ANDROID_CERT_SHA256, normally unset: only
+ * for a build signed some other way that should open the links too, such as the
+ * upload key's release build installed without Play. Comma- or space-separated;
  * with or without the colons. Anything that is not a SHA-256 comes back in
  * `invalid`, to be reported, instead of quietly matching nothing.
  */
@@ -75,9 +83,9 @@ export function certFingerprints(value: string | undefined): { valid: string[]; 
   return { valid, invalid }
 }
 
-/** Google's Digital Asset Links statement; empty, so nothing is verified, until a fingerprint is set. */
-export function assetLinks(fingerprints: string[]) {
-  if (fingerprints.length === 0) return []
+/** Google's Digital Asset Links statement: Play's certificate, then any [extra] ones. */
+export function assetLinks(extra: string[] = []) {
+  const fingerprints = [PLAY_SIGNING_SHA256, ...extra.filter((print) => print !== PLAY_SIGNING_SHA256)]
   return [
     {
       relation: ['delegate_permission/common.handle_all_urls'],
