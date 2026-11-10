@@ -112,7 +112,7 @@ check its key (staging step 5), run `./gen-env.sh`, and edit `.env`:
 | `S3_*`, `SMTP_*`, `BACKUP_AGE_RECIPIENT` | as for staging, with production's tokens and keys |
 | `PUSH_VAPID_*` | made by `gen-env.sh`, production's own: never staging's. Keep a copy; a new pair cuts off every browser that turned push on ([ADR 0011](../adr/0011-push-notifications.md)) |
 | `FCM_SERVICE_ACCOUNT` | optional: push to the Android app, production's own key of the Firebase project's service account ([app-push.md](app-push.md)) |
-| `ANDROID_CERT_SHA256` | optional: the Android app's signing certificates (Play's app signing key and the upload key), so heynaija.ng links open in the app ([app-links.md](app-links.md)) |
+| `ANDROID_CERT_SHA256` | leave unset: Play's signing certificate is in the code. Only for builds not from Play that should open heynaija.ng links ([app-links.md](app-links.md)) |
 | `HEYNAIJA_REVIEW_EMAIL`, `HEYNAIJA_REVIEW_CODE` | optional: the account Google Play's and Apple's reviewers sign in to, with a fixed code ([store-review.md](store-review.md)) |
 | `POSTGRES_*`, `DATABASE_POOL_MAX` | delete these lines: `compose.yml`'s defaults are sized for this 16 GB server |
 | `WEB_WORKERS` | `4` |

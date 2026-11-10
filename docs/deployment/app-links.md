@@ -13,27 +13,28 @@ The site serves two files for it:
   on every server and needs no setting. Apple's CDN fetches it when the app is
   installed or updated, and keeps it for up to a day.
 - `/.well-known/assetlinks.json` (Android, App Links). Names the Android app and
-  the certificates it is signed with, from `ANDROID_CERT_SHA256` in the server's
-  `.env`. Unset, it is an empty list, and Android opens the links in the browser.
+  Google Play's app signing certificate, which signs every copy Play delivers
+  (testing tracks too). It is in the code (`PLAY_SIGNING_SHA256`), from Play
+  Console → Test and release → **App integrity**, whose "Digital Asset Links
+  JSON" is this same file. Play made the key once and it does not change, so
+  this needs no setting either.
 
-## Setting the Android certificates (production, once)
+## Other builds (rarely)
 
-After the first upload to Google Play:
+A copy of the app that did not come from Play is signed with another key, so
+Android does not open the links in it without asking. That is only builds people
+install themselves: the upload key's release build from the Release workflow,
+or a debug build. To have them verified on a server too, add their SHA-256s to
+its `.env`, comma-separated, then `docker compose up -d web`:
 
-1. Play Console → Test and release → **App integrity** → App signing. Copy the
-   **SHA-256** of the app signing key certificate. It is Play's key, not the
-   upload key: what Play delivers to phones is signed with it.
-2. The upload key's SHA-256, for a release build installed without Play:
-   `keytool -list -v -keystore heynaija-upload.jks` (it asks for the keystore's
-   password).
-3. In `/srv/heynaija/infra/deploy/.env`:
+```bash
+ANDROID_CERT_SHA256=<SHA-256>,<SHA-256>
+```
 
-   ```bash
-   ANDROID_CERT_SHA256=<Play's SHA-256>,<the upload key's SHA-256>
-   ```
-
-   then `docker compose up -d web` there, or deploy again. A value that is not a
-   SHA-256 is left out and logged by the web container.
+The upload key's is on the same App integrity page; a debug key's is in
+`./gradlew :androidApp:signingReport`. A value that is not a SHA-256 is left out
+and logged by the web container. For trying links on one phone, `adb` does
+without any of this (the mobile repository's README).
 
 ## Checking
 

@@ -2,8 +2,8 @@ import { connection } from 'next/server'
 import { assetLinks, certFingerprints } from '@/lib/app-links'
 
 /**
- * That links to this site may open in the Android app (lib/app-links.ts): the
- * app's signing certificates come from the server's ANDROID_CERT_SHA256, so this
+ * That links to this site may open in the Android app (lib/app-links.ts): Play's
+ * signing certificate, and any more in the server's ANDROID_CERT_SHA256, so this
  * is read when asked, not when the site is built.
  */
 export async function GET() {

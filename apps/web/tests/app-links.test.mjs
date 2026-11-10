@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { ANDROID_PACKAGE, IOS_APP_ID, appleAppSiteAssociation, assetLinks, certFingerprints } from '../lib/app-links.ts'
+import { ANDROID_PACKAGE, IOS_APP_ID, PLAY_SIGNING_SHA256, appleAppSiteAssociation, assetLinks, certFingerprints } from '../lib/app-links.ts'
 
 const print = 'AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89'
 
@@ -48,12 +48,17 @@ test('fingerprints are read with or without colons, in any case, and anything el
   assert.deepEqual(certFingerprints(''), { valid: [], invalid: [] })
 })
 
-test('Android is told about the app only once a certificate is known', () => {
-  assert.deepEqual(assetLinks([]), [])
-  assert.deepEqual(assetLinks([print]), [
+test("Android is told about the app signed with Play's key, and any more given", () => {
+  const statement = (prints) => [
     {
       relation: ['delegate_permission/common.handle_all_urls'],
-      target: { namespace: 'android_app', package_name: ANDROID_PACKAGE, sha256_cert_fingerprints: [print] },
+      target: { namespace: 'android_app', package_name: ANDROID_PACKAGE, sha256_cert_fingerprints: prints },
     },
-  ])
+  ]
+  // Play Console's own snippet for the app (Test and release → App integrity).
+  assert.equal(PLAY_SIGNING_SHA256, '1C:55:B3:F9:4A:D6:55:54:A5:9F:F5:47:A3:0F:98:09:52:94:EA:8C:57:EB:C1:31:13:98:DA:1A:6B:35:3C:51')
+  assert.deepEqual(assetLinks(), statement([PLAY_SIGNING_SHA256]))
+  assert.deepEqual(assetLinks([print]), statement([PLAY_SIGNING_SHA256, print]))
+  // Play's again in the setting is not listed twice.
+  assert.deepEqual(assetLinks(certFingerprints(PLAY_SIGNING_SHA256.toLowerCase()).valid), statement([PLAY_SIGNING_SHA256]))
 })
