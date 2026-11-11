@@ -125,7 +125,7 @@ export class AuthController {
     // videoPosts is the flag AND the scanner rule (ADR 0019 section 4.7) AND an adult
     // (section 4.6), never the flag alone.
     const videoPosts = this.videoGate.effective(features.videoPosts) && isAdultFor(age, 'video_posting')
-    // gists is the flag AND LiveKit AND, in production, the allow-list rule (gists-enabled.guard.ts).
+    // gists is the flag AND LiveKit (gists-enabled.guard.ts).
     const gistsAccess = await this.gistsGate.access()
     const gists = gistsShownTo(gistsAccess, req.member)
     // `moderates` only decides whether the web app shows the moderation link; every

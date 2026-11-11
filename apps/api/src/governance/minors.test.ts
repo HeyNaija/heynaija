@@ -235,7 +235,7 @@ test('the apps offer a minor only the reply choices they have', async () => {
     { birthDateNeeded: async () => false } as never,
     flags,
     { effective: (on: boolean) => on },
-    new GistsGate(flags, { APP_ENV: 'development', LIVEKIT_URL: 'ws://127.0.0.1:7880', LIVEKIT_API_KEY: 'key', LIVEKIT_API_SECRET: 's'.repeat(32) }),
+    new GistsGate(flags, { LIVEKIT_URL: 'ws://127.0.0.1:7880', LIVEKIT_API_KEY: 'key', LIVEKIT_API_SECRET: 's'.repeat(32) }),
   )
   const me = (id: string, handle: string) => auth.me({ member: { id, handle } } as AuthedRequest)
   assert.deepEqual((await me(kid, 'kid')).replyAudiences, ['following', 'mentioned'])
