@@ -1,4 +1,4 @@
-// The only file that imports livekit-client. gist-room.tsx loads it with a dynamic
+// The only file that imports livekit-client. gist-provider.tsx loads it with a dynamic
 // import() when someone taps Join, so the SDK is a separate chunk that the feed,
 // the profile and every other page never download (ADR 0017 section 6).
 //
@@ -44,6 +44,9 @@ export function createAudio(container: HTMLElement, on: AudioEvents) {
     },
   })
   let closing = false
+  /** False while the member has paused the Gist: they stay in it, and hear nothing. */
+  let hearing = true
+  const players = new Set<HTMLMediaElement>()
 
   const mics = () => {
     const out: Record<string, boolean> = {}
@@ -62,10 +65,15 @@ export function createAudio(container: HTMLElement, on: AudioEvents) {
     .on(RoomEvent.TrackSubscribed, (track) => {
       if (track.kind !== Track.Kind.Audio) return
       const el = track.attach()
+      el.muted = !hearing
+      players.add(el)
       container.appendChild(el)
     })
     .on(RoomEvent.TrackUnsubscribed, (track) => {
-      track.detach().forEach((el) => el.remove())
+      track.detach().forEach((el) => {
+        players.delete(el)
+        el.remove()
+      })
     })
     .on(RoomEvent.Reconnecting, () => on.onReconnecting())
     .on(RoomEvent.Reconnected, () => on.onReconnected())
@@ -153,6 +161,14 @@ export function createAudio(container: HTMLElement, on: AudioEvents) {
       on.onPlaybackBlocked(!room.canPlaybackAudio)
     },
     startAudio: () => room.startAudio(),
+    /**
+     * Pause and play, from the bar or the system's media controls: the sound stops here
+     * and nowhere else. The connection, the presence and the place in the room stay.
+     */
+    setHearing(on: boolean) {
+      hearing = on
+      for (const el of players) el.muted = !on
+    },
     /**
      * Turns the microphone on or off. `key` names the settings (device and switches) so
      * we know whether a track that already exists was started with them. Turning it on
@@ -269,6 +285,7 @@ export function createAudio(container: HTMLElement, on: AudioEvents) {
     async disconnect() {
       closing = true
       await room.disconnect()
+      players.clear()
       container.replaceChildren()
     },
   }
