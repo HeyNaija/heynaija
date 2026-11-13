@@ -221,3 +221,20 @@ test('a post link previews its author and text where WhatsApp reads it', async (
   // No photo on the post, so the site's own picture, as an absolute URL.
   expect(meta('og:image')).toMatch(/^https?:\/\/[^/]+\/brand\/community-conversation\.jpg$/)
 })
+
+// The addresses invite messages carry. None has a picture of its own, so each shows
+// the site's, added per request: the build does not know the site's address
+// (apps/web/lib/previews-server.ts).
+for (const path of ['/', '/join?code=HN-AAAA-BBBB-CCCC', '/about', '/progress', '/ideas', '/about/discover']) {
+  test(`a link to ${path} previews with the site's picture`, async ({ request }) => {
+    const res = await request.get(path, { headers: { 'user-agent': 'WhatsApp/2.24.1.6 A' } })
+    expect(res.ok()).toBe(true)
+    const [head = ''] = (await res.text()).split('</head>')
+    const meta = (key: string) => head.match(new RegExp(`<meta (?:property|name)="${key}" content="([^"]*)"`))?.[1]
+    expect(meta('og:image')).toMatch(/^https?:\/\/[^/]+\/brand\/community-conversation\.jpg$/)
+    // The large card is the one that shows it on X.
+    expect(meta('twitter:card')).toBe('summary_large_image')
+    // An invite link reads as an invitation, not as the name of a form.
+    if (path.startsWith('/join')) expect(meta('og:title')).toBe('You’re invited to HeyNaija')
+  })
+}

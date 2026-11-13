@@ -23,6 +23,7 @@ export const metadata: Metadata = {
   description: 'Real people. Real conversations. A social network for Nigerians at home and abroad.',
   // Link previews take each page's own title and description. No picture here:
   // this part is prerendered at build time, before the site's address is known.
+  // A page whose link should show one adds it per request (sitePicturePreview).
   openGraph: { ...siteOpenGraph, type: 'website' },
   icons: {
     icon: [{ url: '/brand/heynaija-mark.svg', type: 'image/svg+xml', sizes: 'any' }],

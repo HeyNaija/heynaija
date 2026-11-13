@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
@@ -26,7 +27,13 @@ import {
 import { getLogoutUrl } from '@/lib/auth/server'
 import { discoverPeriod } from '@/lib/discover'
 import { FEED_COOKIE, type HomeFeed, homeFeed } from '@/lib/home-feed'
+import { sitePicturePreview } from '@/lib/previews-server'
 import { composerOffersMark } from '@/lib/sensitive'
+
+// The address people share most. Built per request, so its picture's address is the site's.
+export async function generateMetadata(): Promise<Metadata> {
+  return sitePicturePreview()
+}
 
 export default function HomePage({ searchParams }: PageProps<'/'>) {
   // Everything that depends on the visitor streams in; the shell renders at once.

@@ -4,10 +4,13 @@ import { Suspense } from 'react'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { type DiscoverRules, getDiscoverRules } from '@/lib/api'
 import { discoverPeriod } from '@/lib/discover'
+import { sitePicturePreview } from '@/lib/previews-server'
 
-export const metadata: Metadata = {
-  title: 'How Discover works',
-  description: 'The rules Discover ranks posts by, the same for everyone, and what it never uses.',
+const description = 'The rules Discover ranks posts by, the same for everyone, and what it never uses.'
+
+// Built per request, so its picture's address is the site's.
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: 'How Discover works', description, ...(await sitePicturePreview()) }
 }
 
 const points = (n: number) => (n === 1 ? '1 point' : `${n} points`)
