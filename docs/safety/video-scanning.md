@@ -56,9 +56,10 @@ Both are pinned by tests (`video-gate.test.ts`, `video.http.test.ts`,
 | Fail closed | A scanner that cannot answer throws: the job retries (3 attempts, exponential from 30 s), then the video is `failed`. Never published on "no answer". |
 | An illegal report hides the video at once | Yes: a report with reason `illegal` quarantines the post's video pending review (ADR open question 6, default yes). |
 
-**Not in code, and still required before production** (all are people, not
-software): a scanner's login set in production (Arachnid Shield, or PhotoDNA) and
-shown to work on staging; if PhotoDNA is used, Microsoft's written answer on
+**Done:** Arachnid Shield's login is set in production, on the API and the video
+worker's own server (8 November 2026), so production videos are scanned.
+
+**Not in code, and still to do** (all are people, not software): if PhotoDNA is used, Microsoft's written answer on
 frame-by-frame video use; Cloudflare's written answer on video via
 R2 and the custom domain, and the CSAM tool on that hostname; the checklist in
 `abuse-material-scanning.md` fully ticked; counsel's answers; phase 4 drills; a

@@ -8,6 +8,8 @@ export type DigestItem = {
   /** Handle of whoever did it; null for moderation notices. */
   actor: string | null
   postId: string | null
+  /** Set when the post is a reply in a Gist, which is read there. */
+  gistId?: string | null
   /** A short piece of the post concerned, only for the kinds that show one. */
   excerpt: string | null
   /** moderator_granted / moderator_revoked: the community's name. */
@@ -23,7 +25,7 @@ export type DigestItem = {
 export type Digest = { subject: string; text: string; html: string }
 
 /** The kinds whose email shows a piece of a post. Moderation notices never do. */
-export const KINDS_WITH_EXCERPT: readonly NotificationKind[] = ['reply', 'like', 'repost', 'quote', 'mention', 'idea_status']
+export const KINDS_WITH_EXCERPT: readonly NotificationKind[] = ['reply', 'like', 'repost', 'quote', 'mention', 'idea_status', 'story_update']
 
 /** Longest piece of a post an email shows, in characters. */
 export const EXCERPT_MAX = 80
@@ -62,6 +64,7 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
       case 'mention':
       case 'chess_challenge':
       case 'chess_game_started':
+      case 'story_update':
         return `${item.kind}:${i}`
       case 'moderator_granted':
       case 'moderator_revoked':
@@ -80,7 +83,9 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
     groups.set(key, group)
   })
 
-  const post = (id: string | null) => (id ? `${webUrl}/p/${id}` : `${webUrl}/notifications`)
+  // A Gist reply opens as the conversation in focus (?reply=), the shape of gistReplyHref in apps/web/lib/thread-state.ts.
+  const post = (id: string | null, gistId?: string | null) =>
+    gistId ? `${webUrl}/gists/${gistId}${id ? `?reply=${id}#post-${id}` : ''}` : id ? `${webUrl}/p/${id}` : `${webUrl}/notifications`
   return [...groups.values()].map(({ items, actors }) => ({ ...describe(items[0]!, actors, items.length), items }))
 
   function describe(item: DigestItem, actors: string[], count: number): Omit<Line, 'items'> {
@@ -90,21 +95,25 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
     const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
     switch (item.kind) {
       case 'reply':
-        return { headline: `${who} replied to your post`, quote, href: post(item.postId) }
+        return { headline: item.gistId ? `${who} replied in a Gist` : `${who} replied to your post`, quote, href: post(item.postId, item.gistId) }
       case 'quote':
-        return { headline: `${who} quoted your post`, quote, href: post(item.postId) }
+        return { headline: `${who} quoted your post`, quote, href: post(item.postId, item.gistId) }
       case 'mention':
-        return { headline: `${who} mentioned you`, quote, href: post(item.postId) }
+        return { headline: item.gistId ? `${who} mentioned you in a Gist` : `${who} mentioned you`, quote, href: post(item.postId, item.gistId) }
       case 'like':
-        return { headline: `${who} liked your post`, quote, href: post(item.postId) }
+        return { headline: `${who} liked your post`, quote, href: post(item.postId, item.gistId) }
       case 'repost':
-        return { headline: `${who} reposted your post`, quote, href: post(item.postId) }
+        return { headline: `${who} reposted your post`, quote, href: post(item.postId, item.gistId) }
+      case 'story_update':
+        return { headline: `${who} added to their story`, quote, href: post(item.postId, item.gistId) }
       case 'follow':
         return { headline: `${who} followed you`, quote: null, href: actors.length === 1 ? `${webUrl}/u/${actors[0]}` : inApp }
       case 'post_removed':
         return { headline: `A moderator removed ${plural(count, 'one of your posts', `${count} of your posts`)}`, quote: null, href: inApp }
       case 'post_restored':
         return { headline: `A moderator restored ${plural(count, 'one of your posts', `${count} of your posts`)}`, quote: null, href: inApp }
+      case 'post_labelled':
+        return { headline: `A moderator marked ${plural(count, 'one of your posts', `${count} of your posts`)} as sensitive`, quote: null, href: inApp }
       case 'report_resolved':
         return { headline: `A moderator reviewed ${plural(count, 'a report', `${count} reports`)} you made`, quote: null, href: inApp }
       case 'account_reinstated':
@@ -119,7 +128,7 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
         return { headline: `You are no longer a moderator of ${item.community ?? 'a community'}`, quote: null, href: inApp }
       case 'idea_status':
         // Newest first, so this is the latest status.
-        return { headline: ideaHeadline(item.idea ?? { kind: 'idea', yours: false }, item.idea?.status ?? null), quote, href: post(item.postId) }
+        return { headline: ideaHeadline(item.idea ?? { kind: 'idea', yours: false }, item.idea?.status ?? null), quote, href: post(item.postId, item.gistId) }
       case 'chess_challenge':
         return {
           headline: `${who} challenged you to ${item.challenge?.phrase ?? 'a game of chess'}`,

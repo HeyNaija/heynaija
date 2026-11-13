@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ContactEmail, Placeholder, PolicyPage } from '@/app/ui/policy-page'
+import { ContactEmail, PolicyPage } from '@/app/ui/policy-page'
 
 export const metadata: Metadata = { title: 'Privacy' }
 
@@ -10,16 +10,17 @@ export default function PrivacyPage() {
       eyebrow="Your data"
       title="Privacy policy"
       summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, and how you get your data or have it deleted. No ads, no selling data, no trackers."
-      updated="30 October 2026"
+      updated="13 November 2026"
+      draft={false}
       sections={[
         {
           id: 'who',
           title: 'Who runs HeyNaija',
           body: (
             <p>
-              HeyNaija is run by <Placeholder>operator name and address</Placeholder>, the “data controller”
-              under the Nigeria Data Protection Act 2023. For anything about your data, write to{' '}
-              <ContactEmail />.
+              HeyNaija is not a registered organisation yet (the <Link href="/governance">governance page</Link> says
+              what is planned). It is run by its founders, who are together the “data controller” under the Nigeria
+              Data Protection Act 2023. For anything about your data, write to <ContactEmail />.
             </p>
           ),
         },
@@ -35,7 +36,7 @@ export default function PrivacyPage() {
                 you have. Anyone can see and copy what is public.
               </p>
               <p>
-                <strong>Private:</strong> your email address, your age confirmation, your bookmarks, who you mute
+                <strong>Private:</strong> your email address, your age (and date of birth, if you gave one), your bookmarks, who you mute
                 and block, your notifications, and the reports you make. Moderators see who made a report; the
                 person reported does not.
               </p>
@@ -48,11 +49,17 @@ export default function PrivacyPage() {
           body: (
             <dl>
               <dt>Your account</dt>
-              <dd>Your email address, handle, and the invite you joined with. If you sign in with Google, Google tells us your email address.</dd>
-              <dt>Your age confirmation</dt>
               <dd>
-                That you confirmed you are 18 or older when you joined, and when, kept as an age band apart from your
-                account. We do not ask for your date of birth or any identity document.
+                Your email address, handle, and the invite you joined with. If you sign in with Google, Google tells us
+                your email address. If you sign in with Apple in the iPhone app, Apple tells us your email address, or a
+                relay address that forwards to it if you choose to hide yours, and we keep a token from Apple that lets us
+                end HeyNaija’s access to your Apple Account when your account is erased.
+              </dd>
+              <dt>Your age</dt>
+              <dd>
+                That you confirmed you are 18 or older when you joined, kept apart from your account. If you gave a date
+                of birth while we asked for one, we keep it with your age (see <Link href="#age">Age</Link>). We do not
+                ask for any identity document to join.
               </dd>
               <dt>Your profile</dt>
               <dd>Display name, bio and profile photo, when you add them.</dd>
@@ -72,11 +79,14 @@ export default function PrivacyPage() {
               <dt>Push notifications</dt>
               <dd>
                 If you turn them on in a browser: the address its push service gave it, the keys that encrypt what is
-                sent there, and when it last got one. Turning push off, or signing out there, deletes them.
+                sent there, and when it last got one. In the Android app: the token Google’s Firebase Cloud Messaging
+                gave it, the key the app made to encrypt what is sent there, and when it last got one. In the iPhone
+                app the same, with the token Apple’s push service gave it. Turning push off, or signing out there,
+                deletes them.
               </dd>
               <dt>Technical data</dt>
               <dd>
-                When you were last active, and the short-lived logs our servers and Cloudflare keep to run
+                When you were last active, when weekly highlights were last sent to you, and the short-lived logs our servers and Cloudflare keep to run
                 the service and protect it, which include IP addresses.
               </dd>
             </dl>
@@ -90,8 +100,9 @@ export default function PrivacyPage() {
               <ul>
                 <li>To run HeyNaija: show posts, deliver notifications, sign you in.</li>
                 <li>To keep it safe: rate limits, moderation, and checking images against lists of known child abuse material.</li>
-                <li>To email you sign-in codes and account messages, and, if notification emails are on for you, a short email when there is something new for you (grouped, at most about twice an hour). Every one has a link that turns them off. We send no newsletters or marketing.</li>
-                <li>If you turn on push notifications in a browser, to show your notifications there as they happen. What reaches you that way is not emailed as well.</li>
+                <li>To email you sign-in codes and account messages, and, if notification emails are on for you, a short email when there is something new for you (grouped, at most about twice an hour). Every one has a link that turns them off.</li>
+                <li>If weekly highlights are on for you and you have not opened HeyNaija for a few days: at most one message a week with a few conversations you missed, chosen by <Link href="/about/highlights">published rules</Link>. It comes as a push notification where you turned those on, otherwise as an email if notification emails are on. It has its own switch in Settings and its own link that turns it off. To judge whether these are worth sending we keep when we last sent you one; we do not track whether you open it or what you tap. We send no advertising or marketing.</li>
+                <li>If you turn on push notifications in a browser or the app, to show your notifications there as they happen. What reaches you that way is not emailed as well.</li>
               </ul>
               <p>
                 Latest and Following are in time order. <Link href="/about/discover">Discover</Link> ranks recent
@@ -110,16 +121,28 @@ export default function PrivacyPage() {
               <p>These companies handle data for us, only to provide their service:</p>
               <ul>
                 <li><strong>Cloudflare</strong>: the network in front of the site, security, and storage of images (R2). Its abuse-material scanning tool checks images served through it.</li>
-                <li><strong>Resend</strong>: sends the emails with your sign-in codes and your notification emails.</li>
+                <li><strong>Resend</strong>: sends the emails with your sign-in codes, your notification emails and weekly highlights.</li>
                 <li>
                   <strong>Your browser’s push service</strong>, only if you turn on push notifications: Google for Chrome
                   and most Android browsers, Apple for Safari, Mozilla for Firefox, Microsoft for Edge on Windows. It
                   carries them to your device encrypted, so it cannot read them, but it does see when they are sent.
                 </li>
-                <li><strong>netcup</strong> and <strong>Contabo</strong>: the servers HeyNaija runs on, in <Placeholder>data centre location</Placeholder>.</li>
+                <li>
+                  <strong>Google’s Firebase Cloud Messaging</strong>, only if you allow notifications in the Android app,
+                  and <strong>Apple’s push service</strong>, only if you allow them in the iPhone app: each carries them
+                  to your phone, encrypted with a key only the app and HeyNaija have, so it cannot read them either, but
+                  it does see when they are sent.
+                </li>
+                <li><strong>netcup</strong>: the servers HeyNaija runs on, in Germany.</li>
                 <li><strong>Google</strong>: only if you choose to sign in with Google.</li>
+                <li><strong>Apple</strong>: only if you choose to sign in with Apple in the iPhone app.</li>
               </ul>
-              <p>Some of them process data outside Nigeria. <Placeholder>transfer safeguards, to be confirmed by counsel</Placeholder></p>
+              <p>
+                So your data is processed outside Nigeria: by netcup in Germany, under the European Union’s data
+                protection law (the GDPR), and by Cloudflare, Resend, Google, Apple and the push services, mainly in
+                the United States and Europe, each under its own data protection terms. It is encrypted on its way to
+                each of them.
+              </p>
             </>
           ),
         },
@@ -130,7 +153,7 @@ export default function PrivacyPage() {
             <ul>
               <li><code>hn_session</code>: keeps you signed in, for up to 14 days.</li>
               <li><code>hn_invite</code>: holds your invite code while you sign up, for up to an hour.</li>
-              <li><code>hn_age</code>: records that you confirmed you are 18 or older while you sign up, for up to an hour.</li>
+              <li><code>hn_age</code>: holds that you confirmed you are 18 or older while you sign up, until your account exists, and for up to an hour.</li>
               <li>A security cookie from our sign-in service, which stops other sites submitting forms as you.</li>
               <li><code>hn_feed</code>: which tab you last chose on Home (Discover, Latest or Following), so Home opens on it, for up to a year.</li>
               <li><code>hn_deletion</code>: the date your account will be erased, shown to you once you ask for it to be deleted, for an hour.</li>
@@ -145,26 +168,30 @@ export default function PrivacyPage() {
           body: (
             <>
               <ul>
-                <li>Your account, profile and age confirmation: for as long as you have an account.</li>
+                <li>Your account, profile and age (with your date of birth, if you gave one): for as long as you have an account.</li>
                 <li>
-                  Posts you delete leave every page at once, but the record is kept for{' '}
-                  <Placeholder>period</Placeholder> so moderation decisions can be checked.
+                  Posts you delete leave every page at once, but the record is kept for 90 days so moderation decisions
+                  can be checked (longer while a report about the post is still open). Then its text is deleted.
                 </li>
                 <li>Images that were never posted: removed within a few hours.</li>
                 <li>
-                  Images moderators take down are moved out of public view and kept privately as evidence for{' '}
-                  <Placeholder>period, to be confirmed by counsel</Placeholder>.
+                  Images moderators take down are moved out of public view and kept privately as evidence for a year
+                  (longer while a report about them is still open). Then they are deleted.
                 </li>
                 <li>
                   Backups of our two databases (HeyNaija’s, and the sign-in service’s): kept for 30 days, encrypted.
                   Something deleted stays in them until they age out.
                 </li>
                 <li>Copies of the emails our sign-in service sends you, such as sign-in codes: 7 days.</li>
-                <li>Server logs: <Placeholder>period</Placeholder>.</li>
+                <li>
+                  Server logs: about two weeks. The web server keeps its logs for 14 days; the service’s own logs are
+                  capped in size, the oldest deleted first.
+                </li>
               </ul>
               <p>
                 <strong>When you delete your account</strong>, it leaves HeyNaija at once and is erased 14 days later.
-                Erasing removes your email address and the ways you sign in, your name, bio and photo, the text and
+                Erasing removes your email address and the ways you sign in (and ends HeyNaija’s access to your Apple
+                Account, if you signed in with Apple), your name, bio and photo, the text and
                 images of your posts and replies, your likes, reposts, bookmarks and votes, who you follow, block and
                 mute, your community memberships and notifications, and your age record. What stays:
               </p>
@@ -179,12 +206,12 @@ export default function PrivacyPage() {
                   decisions, for the period above, and the reports and decisions themselves.
                 </li>
                 <li>
-                  A record that you declared you were 18 or older, and when, linked only to that placeholder, for{' '}
-                  <Placeholder>period, to be confirmed by counsel</Placeholder>.
+                  A record that you declared you were 18 or older, and when, linked only to that placeholder, for two
+                  years.
                 </li>
                 <li>
-                  The record that you asked for your account to be deleted, and when it was done, for{' '}
-                  <Placeholder>period, to be confirmed by counsel</Placeholder>.
+                  The record that you asked for your account to be deleted, and when it was done, for two years after
+                  it was done. So is the record of any other request you make about your data.
                 </li>
               </ul>
             </>
@@ -222,8 +249,8 @@ export default function PrivacyPage() {
           body: (
             <>
               <p>
-                <strong>HeyNaija does not collect NINs, NIN slips, photos of identity documents or dates of birth, and
-                identity verification is switched off.</strong> Nothing on the site asks for them.
+                <strong>HeyNaija does not collect NINs, NIN slips or photos of identity documents, and identity
+                verification is switched off.</strong> Nothing on the site asks for them.
               </p>
               <p>
                 The <Link href="/governance/constitution#article-4">draft constitution</Link> proposes optional NIN
@@ -241,8 +268,8 @@ export default function PrivacyPage() {
                 </li>
                 <li>The provider authorised, with its data-sharing terms and any transfers outside Nigeria confirmed.</li>
                 <li>
-                  The lawful basis, exactly what is collected, and how long it is kept:{' '}
-                  <Placeholder>retention period for verification results, set after the privacy impact review</Placeholder>.
+                  The lawful basis, exactly what is collected, and how long it is kept, which the privacy impact review
+                  will set.
                 </li>
                 <li>A security review of the integration.</li>
               </ul>
@@ -268,8 +295,15 @@ export default function PrivacyPage() {
               <p>
                 We keep your age apart from your account, from identity verification and from voting membership: an age
                 band (under 18, or 18 or older), how it was established (you said so, or a check confirmed it), and when.
-                Never your date of birth. Accounts made before 16 October 2026 have no age on record and are not treated
-                as confirmed adults. Your age is never shown on your profile.
+                Moderators see at most whether an account is an adult. Your age is never shown on your profile, and it is
+                deleted with your account.
+              </p>
+              <p>
+                For a short time in November 2026, HeyNaija asked for a date of birth instead, at signup and once from
+                members already here. We no longer ask. If you gave yours then, we keep it with your age, so that if an
+                age in the rules changes your band can be worked out again without asking you, and so a later age check
+                can be compared with what you said. Only you can see it, in your data export; it is never logged, never
+                shown on your profile, and deleted with your account. To correct it, write to <ContactEmail />.
               </p>
             </>
           ),

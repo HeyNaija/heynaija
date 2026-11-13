@@ -48,8 +48,11 @@ services:
       VIDEO_MAX_EDGE: ${VIDEO_MAX_EDGE:-}
       VIDEO_KEEP_ORIGINALS: ${VIDEO_KEEP_ORIGINALS:-}
     read_only: true
-    tmpfs:
-      - /tmp:size=2g,mode=1777
+    # Scratch on a disk volume, not a tmpfs (ADR 0021 section 5): tmpfs pages count against
+    # mem_limit, and a 1 GB original beside a 4K encode would not fit in 1.5 GB. Needs 3 GB
+    # free on the server: the original, its pieces and the sampled frames.
+    volumes:
+      - video-scratch:/tmp
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     # The server's 4 cores (a netcup RS 1000; ADR 0021 section 5). On an RS 2000, 8.
@@ -63,3 +66,6 @@ services:
     stop_grace_period: 8m
     restart: unless-stopped
     logging: *logging
+
+volumes:
+  video-scratch:

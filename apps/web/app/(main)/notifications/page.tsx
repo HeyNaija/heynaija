@@ -5,7 +5,7 @@ import { type ReactNode, Suspense } from 'react'
 import { Avatar } from '@/app/ui/avatar'
 import { EmptyState } from '@/app/ui/empty-state'
 import { FounderBadge } from '@/app/ui/founder-badge'
-import { BellIcon, BubbleIcon, ChessIcon, FlagIcon, FollowIcon, HeartIcon, IdeaIcon, MentionIcon, QuoteIcon, RepostIcon, ShieldIcon } from '@/app/ui/icons'
+import { BellIcon, BubbleIcon, ChessIcon, FlagIcon, FollowIcon, HeartIcon, IdeaIcon, MentionIcon, QuoteIcon, RepostIcon, ShieldIcon, StoryIcon } from '@/app/ui/icons'
 import { LocalTime } from '@/app/ui/local-time'
 import { MarkRead } from '@/app/ui/mark-read'
 import { PostsSkeleton } from '@/app/ui/post-item'
@@ -78,6 +78,7 @@ const REASONS: Record<string, string> = {
   hate: 'hate speech',
   scam: 'being a scam',
   illegal: 'illegal content',
+  needs_label: 'sensitive content that was not marked',
   other: 'breaking the community rules',
 }
 
@@ -90,7 +91,7 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
   )
   switch (n.kind) {
     case 'reply':
-      return { icon: <BubbleIcon size={18} />, text: <>{who} replied to your post</> }
+      return { icon: <BubbleIcon size={18} />, text: <>{who} {n.post?.gistId ? 'replied in a Gist' : 'replied to your post'}</> }
     case 'like':
       return { icon: <HeartIcon size={18} filled />, text: <>{who} liked your post</> }
     case 'repost':
@@ -98,9 +99,11 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
     case 'quote':
       return { icon: <QuoteIcon size={17} />, text: <>{who} quoted your post</> }
     case 'mention':
-      return { icon: <MentionIcon size={18} />, text: <>{who} mentioned you</> }
+      return { icon: <MentionIcon size={18} />, text: <>{who} mentioned you{n.post?.gistId ? ' in a Gist' : ''}</> }
     case 'follow':
       return { icon: <FollowIcon size={18} />, text: <>{who} followed you</> }
+    case 'story_update':
+      return { icon: <StoryIcon size={18} />, text: <>{who} added to their story</> }
     case 'post_removed':
       return {
         icon: <ShieldIcon size={20} />,
@@ -108,6 +111,11 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
       }
     case 'post_restored':
       return { icon: <ShieldIcon size={18} />, text: <>A moderator restored your post.</> }
+    case 'post_labelled':
+      return {
+        icon: <ShieldIcon size={18} />,
+        text: <>A moderator marked your post as sensitive. People under 18 won’t see it, and its pictures and video show behind a warning.</>,
+      }
     case 'report_resolved': {
       const gist = n.detail?.startsWith('gist_') ?? false
       const about = gist ? 'a Gist' : n.subjectHandle ? `@${n.subjectHandle}` : n.community ? `the photo of ${n.community.name}` : 'a post'
@@ -176,7 +184,7 @@ function NotificationRow({ notification: n, now }: { notification: Notification;
         )}
       </div>
       {n.post?.excerpt ? <p className="line-clamp-2 break-words text-[13px] leading-5 text-muted">{n.post.excerpt}</p> : null}
-      {href ? <span className="notification-destination">{n.kind === 'reply' ? 'View reply' : n.kind === 'quote' ? 'View quote' : n.kind === 'mention' ? 'View mention' : n.kind === 'follow' ? 'View profile' : n.kind === 'chess_challenge' ? 'View challenge' : n.kind === 'chess_game_started' ? 'Play' : n.post ? 'View post' : 'View details'} →</span> : null}
+      {href ? <span className="notification-destination">{n.kind === 'reply' ? 'View reply' : n.kind === 'quote' ? 'View quote' : n.kind === 'mention' ? 'View mention' : n.kind === 'story_update' ? 'View update' : n.kind === 'follow' ? 'View profile' : n.kind === 'chess_challenge' ? 'View challenge' : n.kind === 'chess_game_started' ? 'Play' : n.post ? 'View post' : 'View details'} →</span> : null}
     </>
   )
   const className = `notification-row ${n.read ? '' : 'is-unread'}`

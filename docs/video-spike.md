@@ -50,7 +50,8 @@ Found on MinIO (each is an assertion in the spike):
 - **Worker** (`pnpm --filter @heynaija/api video:worker`; the `video-worker` Docker
   target and a `video` compose profile): probe, reject, transcode 240/360/480p MP4 and
   a WebP poster, sample frames, scan, publish.
-- **Web**: attach in the composer, progress, processing state, playback from a poster.
+- **Web**: attach in the composer, with a preview played from the member's own file while it
+  uploads (ADR 0021 section 6), progress, processing state, playback from a poster.
 
 ## Measured: one 60 s 1080p clip on this laptop
 

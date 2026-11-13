@@ -1,3 +1,4 @@
+import type { PushDeviceService } from '@heynaija/db'
 import webpush from 'web-push'
 import type { Env } from '../env.js'
 
@@ -20,7 +21,27 @@ export interface PushSender {
   send(target: PushTarget, message: PushMessage): Promise<void>
 }
 
-/** The push service no longer knows this address (404 or 410): the browser unsubscribed, or the address expired. */
+export const APP_PUSH_SENDER = Symbol('APP_PUSH_SENDER')
+
+/**
+ * An installation of the app: the token its push service gave it, the key it made
+ * (AES-256-GCM, base64url) that what is sent there is encrypted with, and whose
+ * notifications it shows.
+ */
+export type AppTarget = { service: PushDeviceService; token: string; key: string; memberId: string }
+
+/**
+ * Somewhere to send the apps' push notifications: Firebase Cloud Messaging for
+ * Android (fcm-sender.ts), Apple's service for iOS (apns-sender.ts), or both
+ * (appPushSender).
+ */
+export interface AppPushSender {
+  /** The push services it delivers through: an installation registered with another is not offered push. */
+  readonly services: readonly PushDeviceService[]
+  send(target: AppTarget, message: PushMessage): Promise<void>
+}
+
+/** The push service no longer knows this address (404 or 410), or this app's token: the browser unsubscribed, the app was removed, or either expired. */
 export class SubscriptionGoneError extends Error {}
 
 /** The push service refused this message for good; sending it again would fail the same way. */

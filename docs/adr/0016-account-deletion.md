@@ -140,7 +140,8 @@ does nothing for an inactive author. The text search index follows the text.
 | `idea_votes` by them | not counted (votes are counted from active members on read) | deleted | delete |
 | Their votes in polls (`poll_votes.member_id`) | out of the counts (trigger and `active` move them) | deleted; the trigger counts active voters only, so nothing moves | delete |
 | Their place in other members' Gists (`gist_members.member_id`) | disconnected by the reconciler (see Edge cases) | deleted; the Gist and its other members stay. `role_changed_by` and `removed_by` naming them stay, pointing at the tombstone | delete |
-| Gists they hosted (`gists.host_id`, title) with everyone's `gist_members` rows in them | a live one ends (see Edge cases) | deleted, members first. No audio is stored; a Gist without its host and title is nothing | delete |
+| Gists they hosted (`gists.host_id`, title) with everyone's `gist_members` rows in them | a live one ends (see Edge cases) | deleted, members first. No audio is stored; a Gist without its host and title is nothing. One with replies in it (`posts.gist_id`) cannot be deleted while they exist: it stays as a tombstone with the title `Deleted Gist`, unreadable because the Gist page and its reply routes treat a Gist whose host is erased as missing | delete, or tombstone when it has replies |
+| Their replies in Gists (`posts.gist_id`, `hidden_by_host_at`) | out of the Gist's reply count with the rest of their posts | erased like any other post of theirs (text blanked, row kept as a placeholder, evidence kept); other members' replies in a Gist they hosted stay as rows, unreadable | blanked |
 | `follows`, `blocks`, `mutes`, both ways | hidden | deleted | delete |
 | `community_memberships`, including moderator roles | — | deleted | delete |
 | Their games ([ADR 0018](0018-games.md)): `games.game_profiles`, `games.season_scores`, `games.competition_entries`, and `games.game_events` about them | — | deleted. Games is dark and no rows exist yet | delete |
@@ -161,6 +162,8 @@ does nothing for an inactive author. The text search index follows the text.
 | "Your report about @… was actioned", to reporters (`subject_id`) | — | kept: the reporter's record; shows the tombstone handle | keep |
 | `notification_opt_outs` | — | deleted | delete |
 | `push_subscriptions` | nothing pushed | deleted | delete |
+| `push_devices` (the apps' installations, ADR 0023) | nothing pushed | deleted | delete |
+| `apple_tokens` (Sign in with Apple, ADR 0026) | — | revoked with Apple, then deleted | delete |
 
 ### Moderation and governance records
 
@@ -335,13 +338,17 @@ process, on its own BullMQ queue, one job at a time:
   so a deletion asked for again after a cancel can be queued.
 - **Every hour, what is kept only for a while.** Handles held for an erased
   account are deleted once their 30 days are over: a running hold is all that
-  needed them. If `DELETED_CONTENT_RETENTION_DAYS` is set, every post deleted
-  longer ago than that (the ones members delete and the evidence posts of erased
+  needed them. Every post deleted longer ago than
+  `DELETED_CONTENT_RETENTION_DAYS` (90 days by default since 8 November 2026) (the ones members delete and the evidence posts of erased
   accounts) is blanked as an ordinary post is at erase: text, link, quote,
   mentions, hashtags, idea title, problem details and poll (options and votes
   with it). A post with a report about
-  it still open is kept until it is decided. Unset, nothing is blanked (counsel
-  log, C-04).
+  it still open is kept until it is decided (counsel log, C-04). An erased
+  account's governance audit trail goes `ERASED_AGE_RECORD_RETENTION_DAYS` (730)
+  after the erase (C-06), and a closed privacy request
+  `PRIVACY_REQUEST_RETENTION_DAYS` (730) after it closed (C-09). The media worker's
+  hourly sweep deletes taken-down images `TAKEN_DOWN_MEDIA_RETENTION_DAYS` (365)
+  after they went to the quarantine (`media.quarantined_at`, C-07).
 - **Every day, overdue requests.** A warning lists the privacy requests still
   open past `due_by`, by ID, kind and due date.
 
@@ -429,8 +436,9 @@ mail server's can name the address it refused. Messages written in this code
   and the new API needs it: the session guard reads the new columns.
 - **Settings: none to add.** `ACCOUNT_DELETION_GRACE_DAYS` (14) and
   `PRIVACY_REQUEST_DUE_DAYS` (30) default when empty, and the API refuses to
-  start if the first is larger. Leave `DELETED_CONTENT_RETENTION_DAYS` empty
-  until counsel sets the period (C-04): nothing is blanked meanwhile.
+  start if the first is larger. `DELETED_CONTENT_RETENTION_DAYS` was left
+  empty, so nothing was blanked, until 8 November 2026, when it took a default of
+  90 days with the other retention periods on `/privacy#keep`.
   `KRATOS_ADMIN_URL` comes from compose. The emails use the notification SMTP
   settings, and are not sent without them. The nightly backup reads
   `KRATOS_SENT_MAIL_KEEP_DAYS` (7).

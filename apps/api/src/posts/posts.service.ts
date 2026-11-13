@@ -3,6 +3,7 @@ import {
   communities,
   type Db,
   follows,
+  gists,
   likes,
   media,
   members,
@@ -10,28 +11,34 @@ import {
   pollVotes,
   postMentions,
   postPolls,
+  type POST_ADULT_LABELS,
   postHashtags,
   posts,
   REPLY_AUDIENCES,
   reposts,
+  storyFollows,
 } from '@heynaija/db'
-import { Inject, Injectable, Optional } from '@nestjs/common'
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { findLinks, type FoundLink, previewUrlOf } from '../links/link-text.js'
 import { type LinkPreview, type LinkPreviewRow, linkPreviewOf, toLinkPreview } from '../links/links.service.js'
-import { ALT_MAX, avatarPath, POST_IMAGES_MAX, postImagePath } from '../media/media.service.js'
+import { ALT_MAX, avatarPath, MEDIA_JOBS, type PlacementJobs, POST_IMAGES_MAX } from '../media/media.service.js'
+import { localMediaUrls, MEDIA_URLS, type MediaUrls } from '../media/media-urls.js'
 import { type VideoConfig, DEFAULT_VIDEO_CONFIG } from '../video/video-config.js'
 import { assertVideoEligible } from '../video/video-eligibility.js'
 import { VIDEO_CONFIG } from '../video/video.service.js'
 import { type PostVideo, toPostVideo, type VideoRow, videoOf } from '../video/video-view.js'
 import { isAutomated, isFounder } from '../members/badges.js'
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
+import { adultContentAllowed, communityOpenTo, LabelNotAllowedError, seesAdultContent } from '../governance/adult-content.js'
+import { isMinor, reachesViewer, ReplyAudienceNotAllowedError, strangerToMinor } from '../governance/minors.js'
 import { excerpt, notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { Refreshing } from '../refreshing.js'
 import { ARBITER_ID, ARBITER_ONLY } from '../games/chess/arena-ids.js'
 import { hiddenFromPlayer } from '../games/chess/hidden-replies.js'
+import { memberOpensGist } from '../gists/gist-open.js'
 import { DB } from '../tokens.js'
 import {
   DISCOVER_RULES,
@@ -106,7 +113,12 @@ export const newPost = (slug: z.ZodType<string>) =>
       images: postImagesInput,
       video: postVideoInput.optional(),
       poll: pollInput.optional(),
-      replyAudience: z.enum(REPLY_AUDIENCES).default('everyone'),
+      /** Left out: everyone, or for an update the story's first post's setting. */
+      replyAudience: z.enum(REPLY_AUDIENCES).optional(),
+      /** Marked sensitive by its author (ADR 0020). Only acted on while the adultLabels flag is on. */
+      sensitive: z.boolean().default(false),
+      /** An update to a story (docs/adr/0024): its first post. */
+      storyOf: z.uuid().optional(),
     })
     .refine((p) => p.text.length > 0 || p.images.length > 0 || p.video, { message: 'post is empty', path: ['text'] })
     // One video, and nothing else of that kind beside it; and, to start with, not in replies (ADR 0019 section 1).
@@ -115,11 +127,12 @@ export const newPost = (slug: z.ZodType<string>) =>
     .refine((p) => !p.video || !p.poll, { message: 'a video cannot be added to a poll', path: ['video'] })
     .refine((p) => !p.poll || p.text.length > 0, { message: 'a poll needs a question', path: ['text'] })
     .refine((p) => !p.poll || !p.replyTo, { message: 'a poll cannot be added to a reply', path: ['poll'] })
+    .refine((p) => !p.storyOf || !p.replyTo, { message: 'an update to a story is not a reply', path: ['storyOf'] })
 
 export type PostLink = FoundLink
 
 export type PostImage = {
-  /** Path without the size suffix (see `postImagePath`). */
+  /** Path without the size suffix (see `postImagePath`), signed while the post is marked sensitive (ADR 0025). */
   src: string
   alt: string
   width: number
@@ -146,7 +159,7 @@ export type PollVoterPage = {
   cursor: string | null
 }
 
-type ImageRow = { id: string; alt: string; width: number; height: number; animated: boolean }
+export type ImageRow = { id: string; alt: string; width: number; height: number; animated: boolean; servedPrivately: boolean }
 
 /** The post a quote post quotes, as the reader sees it inside the quote. */
 export type QuotedPost =
@@ -160,12 +173,31 @@ export type QuotedPost =
       authorFounder: boolean
       text: string
       images: PostImage[]
+      /** Its images wait behind a cover (see `PostView.coverMedia`). */
+      coverMedia: boolean
       createdAt: Date
       replyParentId: string | null
     }
-  // Deleted, taken down, by an inactive member, or by someone the reader blocked,
-  // was blocked by or muted. One placeholder for all, so it gives nothing away.
+  // Deleted, taken down, by an inactive member, by someone the reader blocked,
+  // was blocked by or muted, or marked sensitive and the reader is not an adult.
+  // One placeholder for all, so it gives nothing away.
   | { unavailable: true }
+
+/** A story (docs/adr/0024) as each of its posts carries it. */
+export type PostStory = {
+  /** The story's first post. */
+  id: string
+  /** 0 on the first post. On an update, its place among the story's live updates, from 1. */
+  number: number
+  /** How many live updates the story has. */
+  updates: number
+  /** How many active members follow it. Who they are is not shown. */
+  followers: number
+  /** Always false for anonymous viewers. */
+  following: boolean
+  /** On an update, the first post as a quoted post is shown: a placeholder when gone or hidden. Null on the first post. */
+  start: QuotedPost | null
+}
 
 /** The post a reply answers: a preview, or one placeholder for every reason the viewer cannot read it. */
 export type ReplyContext =
@@ -196,6 +228,18 @@ export type PostView = {
   images: PostImage[]
   /** The post's one video, once it is ready (a held, blocked or unfinished one is never shown). Null when none, and when `deleted`. */
   video: PostVideo | null
+  /**
+   * Marked sensitive (ADR 0020), by its author, a moderator or its community
+   * (one marked sensitive as a whole); null when not. Only adults and its author
+   * are ever shown a marked post, and only the author's own mark is theirs to take off.
+   */
+  sensitive: (typeof POST_ADULT_LABELS)[number] | null
+  /**
+   * Its images and video wait behind a cover until the viewer taps: it is marked
+   * sensitive, it is not the viewer's own, and the viewer has not chosen in
+   * Settings to see such media straight away. The text is never covered.
+   */
+  coverMedia: boolean
   /**
    * The @handles in `text` that lead to a member the viewer can see, in order,
    * each with the handle that member has now. Empty when `deleted`.
@@ -250,6 +294,8 @@ export type PostView = {
   community: { slug: string; name: string } | null
   /** A quote post's quoted post. Null for other posts, and when `deleted`. */
   quote: QuotedPost | null
+  /** The story it is part of (docs/adr/0024): its first post with updates, or one of them. Null for other posts. */
+  story: PostStory | null
   /**
    * Why it is in the viewer's Following feed or Discover. On a profile, 'repost'
    * marks the member's reposts. Null everywhere else.
@@ -317,12 +363,20 @@ export type UnavailableReply = {
   replyParentId: string | null
   createdAt: Date
   hasReplies: true
+  hiddenByHost?: true
 }
 export type ThreadReply = PostView | UnavailableReply
 export type ReplyPage = { replies: ThreadReply[]; cursor: string | null }
+export type GistReplyPage = ReplyPage & { viewerCanReply: boolean }
 export type Thread = {
   ancestors: PostView[]
   post: PostView
+  /**
+   * On a story's first post, its newest updates, oldest first: all of them up to
+   * STORY_UPDATES_SHOWN + 1, otherwise the newest STORY_UPDATES_SHOWN (the rest
+   * are folded, and paged with `storyUpdates`). Empty for other posts.
+   */
+  updates: PostView[]
   replies: ThreadReply[]
   replyCursor: string | null
   ancestorsTruncated: boolean
@@ -341,6 +395,7 @@ export class NotACommunityMemberError extends Error {}
 export class ImagesNotReadyError extends Error {}
 export class VideoNotReadyError extends Error {}
 export class QuotedPostNotFoundError extends Error {}
+export class StoryNotFoundError extends Error {}
 export class NotACommunityModeratorError extends Error {}
 
 const MAX_THREAD_DEPTH = 50
@@ -364,10 +419,13 @@ const pollExpiresAt = (expiresIn: PollInput['expiresIn']): Date | null => {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000)
 }
 
-const topLevel = isNull(posts.replyParentId)
+const topLevel = sql`${posts.replyParentId} is null and ${posts.gistId} is null`
+// The top-level posts lists show: a story once, as its newest update (docs/adr/0024).
+const inFeeds = sql`${topLevel} and not ${posts.superseded}`
 
-// Neither deleted by the author nor taken down by a moderator.
-const live = and(isNull(posts.deletedAt), isNull(posts.removedAt))
+// Neither deleted by the author, taken down by a moderator, nor hidden by a Gist's host.
+const live = and(isNull(posts.deletedAt), isNull(posts.removedAt), isNull(posts.hiddenByHostAt))
+const shown = sql`${posts.deletedAt} is null and ${posts.removedAt} is null and ${posts.hiddenByHostAt} is null`
 
 /**
  * Shared eligibility for ordinary posts, reply nodes, branch parents, quoted posts
@@ -383,6 +441,35 @@ export const visibleAuthor = (viewerId: string | null, authorId: SQL, active: SQ
       : undefined,
   )
 
+/**
+ * Whether the post itself may reach `viewerId`, on top of `visibleAuthor`: one
+ * marked sensitive only an adult or its author (`adultContentAllowed`), and a
+ * minor's only a signed-in member (`reachesViewer`, ADR 0020). The one test for
+ * every query that shows posts. Where a conversation needs a stand-in, a post
+ * that fails it is the placeholder a deleted one is; elsewhere it is left out.
+ */
+export const postAllowed = (viewerId: string | null, label: SQL, authorId: SQL): SQL<boolean> =>
+  viewerId
+    ? adultContentAllowed(viewerId, label, authorId)
+    : sql<boolean>`(${adultContentAllowed(null, label, authorId)} and ${reachesViewer(null, authorId)})`
+
+/**
+ * Whether a marked post's media waits behind a cover for `viewerId` (see
+ * `PostView.coverMedia`). Signed out never matters: no marked post reaches them.
+ */
+const coverMediaFor = (viewerId: string | null, label: SQL, authorId: SQL) =>
+  viewerId
+    ? sql<boolean>`(${label} is not null and ${authorId} <> ${viewerId}
+        and not coalesce((select vm.show_sensitive_media from members vm where vm.id = ${viewerId}), false))`
+    : sql<boolean>`(${label} is not null)`
+
+/**
+ * The mark a post in `communityId` carries for its community: 'community' if it
+ * is marked sensitive (ADR 0020, question 8), otherwise null.
+ */
+export const communityMark = (communityId: SQL) =>
+  sql<'community' | null>`(select 'community' from communities cmk where cmk.id = ${communityId} and cmk.adult_only)`
+
 /** True when `memberId` moderates the community: as one of its moderators, or site-wide. */
 const moderatesCommunity = (memberId: string, communityId: SQL) =>
   sql<boolean>`(exists(select 1 from members sm where sm.id = ${memberId} and sm.role = 'moderator')
@@ -395,21 +482,25 @@ export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
 // Written out so the outer post is unambiguous inside subqueries.
 const outerId = sql`"posts"."id"`
 
-// Has at least one image a reader can see.
-const withImages = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.kind = 'post_image' and m.status = 'ready')`
+// Has at least one image, or its video, that a reader can see.
+const withMedia = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.kind in ('post_image', 'post_video') and m.status = 'ready')`
 
 const profileFilter: Record<ProfileFilter, SQL> = {
-  posts: topLevel,
+  posts: inFeeds,
   replies: isNotNull(posts.replyParentId),
-  media: withImages,
+  media: withMedia,
 }
 
 /** A post's ready images in order, as JSON, for any query with `posts` in scope. */
 export const imagesOf = (postId: SQL) =>
-  sql<ImageRow[]>`coalesce((select json_agg(json_build_object('id', m.id, 'alt', m.alt, 'width', m.width, 'height', m.height, 'animated', m.animated) order by m.position) from media m where m.post_id = ${postId} and m.kind = 'post_image' and m.status = 'ready'), '[]'::json)`
+  sql<ImageRow[]>`coalesce((select json_agg(json_build_object('id', m.id, 'alt', m.alt, 'width', m.width, 'height', m.height, 'animated', m.animated, 'servedPrivately', m.served_privately) order by m.position) from media m where m.post_id = ${postId} and m.kind = 'post_image' and m.status = 'ready'), '[]'::json)`
 
-export const toPostImages = (rows: ImageRow[]): PostImage[] =>
-  rows.map(({ id, alt, width, height, animated }) => ({ src: postImagePath(id), alt, width, height, animated }))
+/**
+ * Only ever for a viewer who may see the post: a marked one's images are in the
+ * private place (ADR 0025), and their paths are signed for whoever is given them.
+ */
+export const toPostImages = (rows: ImageRow[], urls: MediaUrls): PostImage[] =>
+  rows.map(({ id, alt, width, height, animated, servedPrivately }) => ({ src: urls.postImage(id, servedPrivately), alt, width, height, animated }))
 
 type QuoteRow =
   | (Omit<Extract<QuotedPost, { id: string }>, 'images' | 'createdAt' | 'authorAvatar'> & {
@@ -426,18 +517,20 @@ type QuoteRow =
 const quoteOf = (viewerId: string | null, quotePostId: SQL) => sql<QuoteRow | null>`case when ${quotePostId} is null then null else coalesce((
   select json_build_object('id', q.id, 'authorId', q.author_id, 'authorHandle', qa.handle, 'authorName', qa.display_name,
     'authorAvatarId', qa.avatar_media_id, 'authorFounder', ${isFounder(sql`q.author_id`)}, 'text', q.text, 'images', ${imagesOf(sql`q.id`)},
+    'coverMedia', ${coverMediaFor(viewerId, sql`q.adult_label`, sql`q.author_id`)},
     'createdAt', q.created_at, 'replyParentId', q.reply_parent_id)
   from posts q join members qa on qa.id = q.author_id
-  where q.id = ${quotePostId} and q.deleted_at is null and q.removed_at is null
+  where q.id = ${quotePostId} and q.deleted_at is null and q.removed_at is null and q.gist_id is null
     and ${visibleAuthor(viewerId, sql`q.author_id`, sql`qa.active`)}
     and not ${hiddenFromPlayer(viewerId, sql`q.root_id`, sql`q.author_id`)}
+    and ${postAllowed(viewerId, sql`q.adult_label`, sql`q.author_id`)}
 ), json_build_object('unavailable', true)) end`
 
-const toQuote = (row: QuoteRow | null): QuotedPost | null => {
+const toQuote = (row: QuoteRow | null, urls: MediaUrls): QuotedPost | null => {
   if (!row) return null
   if ('unavailable' in row) return { unavailable: true }
   const { images, createdAt, authorAvatarId, ...quote } = row
-  return { ...quote, images: toPostImages(images), createdAt: new Date(createdAt), authorAvatar: avatarPath(authorAvatarId) }
+  return { ...quote, images: toPostImages(images, urls), createdAt: new Date(createdAt), authorAvatar: avatarPath(authorAvatarId) }
 }
 
 type PollRow = Omit<PollView, 'expiresAt'> & { expiresAt: string | null }
@@ -471,21 +564,42 @@ const toPoll = (row: PollRow | null): PollView | null => row
   ? { ...row, expiresAt: row.expiresAt ? new Date(row.expiresAt) : null }
   : null
 
+/**
+ * Who may reply to the conversation that root `r` starts, as its author chose,
+ * except that a minor's conversation never opens wider than "following"
+ * (ADR 0020), even one written before they were known to be under 18.
+ */
+const audienceOfRoot = sql`case when r.reply_audience = 'everyone' and ${isMinor(sql`r.author_id`)} then 'following' else r.reply_audience end`
+
 /** A reply inherits the root post's setting; a deleted root no longer restricts its surviving conversation. */
 const replyAudienceOf = (postId: SQL, rootId: SQL) => sql<ReplyAudience>`coalesce((
-  select case when r.deleted_at is not null or r.removed_at is not null or not ra.active then 'everyone' else r.reply_audience end
+  select case when r.deleted_at is not null or r.removed_at is not null or not ra.active then 'everyone' else ${audienceOfRoot} end
   from posts r join members ra on ra.id = r.author_id
   where r.id = coalesce(${rootId}, ${postId})
 ), 'everyone')`
 
 /**
- * Whether the conversation's root lets the viewer reply: the one rule, used for
+ * Whether `viewerId` may answer the post `postId` itself, as far as its author's
+ * age goes: replying straight to anything a minor wrote, in anyone's
+ * conversation, needs the minor to follow the viewer or to have mentioned them
+ * in it (ADR 0020). Others can still reply elsewhere in that conversation.
+ */
+const minorTakesReplyFrom = (viewerId: string, postId: SQL) => sql<boolean>`not exists(
+  select 1 from posts mp
+  where mp.id = ${postId}
+    and not exists(select 1 from post_mentions mpm where mpm.post_id = mp.id and mpm.member_id = ${viewerId})
+    and ${strangerToMinor(viewerId, sql`mp.author_id`)}
+)`
+
+/**
+ * Whether the conversation's root lets the viewer reply, and the post's author
+ * does too if they are a minor (`minorTakesReplyFrom`): the one rule, used for
  * the reply buttons and, under a lock, when a reply is written. Like
  * `replyAudienceOf`, a root that is deleted, taken down, by an inactive member or
  * gone altogether restricts no one, though a block with its author still does.
  */
-const canReplyTo = (viewerId: string | null, postId: SQL, rootId: SQL) => viewerId
-  ? sql<boolean>`not exists(
+const canReplyTo = (viewerId: string | null, postId: SQL, rootId: SQL, postGistId: SQL) => viewerId
+  ? sql<boolean>`(not exists(
       select 1 from posts r join members ra on ra.id = r.author_id
       where r.id = coalesce(${rootId}, ${postId})
         and (
@@ -493,15 +607,46 @@ const canReplyTo = (viewerId: string | null, postId: SQL, rootId: SQL) => viewer
           or (
             r.deleted_at is null and r.removed_at is null and ra.active
             and r.author_id <> ${viewerId}
-            and r.reply_audience <> 'everyone'
+            and ${audienceOfRoot} <> 'everyone'
             and not exists(select 1 from post_mentions pm where pm.post_id = r.id and pm.member_id = ${viewerId})
-            and not (r.reply_audience = 'following' and exists(
+            and not (${audienceOfRoot} = 'following' and exists(
               select 1 from follows f where f.follower_id = r.author_id and f.followee_id = ${viewerId}
             ))
           )
         )
-    )`
+    ) and ${minorTakesReplyFrom(viewerId, postId)}
+      and (${postGistId} is null or ${gistAllowsReply(viewerId, postGistId)}))`
   : sql<boolean>`false`
+
+/**
+ * A Gist's reply controls, with the Gist as the root `canReplyTo` would read. The host
+ * always may; "mentioned" means named in one of the host's replies there, and
+ * "following" lets those named in through too, as `canReplyTo` does for a post.
+ */
+export const gistAllowsReply = (viewerId: string, gistId: SQL) => {
+  const namedByHost = sql`exists(
+    select 1 from post_mentions pm join posts hp on hp.id = pm.post_id
+    where hp.gist_id = g.id and hp.author_id = g.host_id and hp.deleted_at is null and hp.removed_at is null
+      and pm.member_id = ${viewerId}
+  )`
+  return sql<boolean>`not exists(
+  select 1 from gists g
+  where g.id = ${gistId}
+    and (
+      ${blockedEitherWay(viewerId, sql`g.host_id`)}
+      or (
+        g.host_id <> ${viewerId}
+        and (
+          g.reply_audience = 'off'
+          or (g.reply_audience = 'following' and not ${namedByHost} and not exists(
+            select 1 from follows f where f.follower_id = g.host_id and f.followee_id = ${viewerId}
+          ))
+          or (g.reply_audience = 'mentioned' and not ${namedByHost})
+        )
+      )
+    )
+)`
+}
 
 /**
  * A poll is open to whoever could read its post (`post`): live, by an active
@@ -509,7 +654,11 @@ const canReplyTo = (viewerId: string | null, postId: SQL, rootId: SQL) => viewer
  * joining post_polls to posts and the author in members.
  */
 const pollReadableBy = (viewerId: string | null) =>
-  and(live, visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`))
+  and(
+    live,
+    visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`),
+    postAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`),
+  )
 type ReplyContextRow =
   | { id: string; authorHandle: string; authorName: string | null; authorAvatarId: string | null; text: string }
   | { unavailable: true }
@@ -527,6 +676,7 @@ const replyContextOf = (viewerId: string | null, parentId: SQL) => sql<ReplyCont
   where rp.id = ${parentId} and rp.deleted_at is null and rp.removed_at is null
     and ${visibleAuthor(viewerId, sql`rp.author_id`, sql`ra.active`)}
     and not ${hiddenFromPlayer(viewerId, sql`rp.root_id`, sql`rp.author_id`)}
+    and ${postAllowed(viewerId, sql`rp.adult_label`, sql`rp.author_id`)}
 ), json_build_object('unavailable', true)) end`
 
 const toReplyContext = (row: ReplyContextRow | null): ReplyContext | null => {
@@ -536,12 +686,46 @@ const toReplyContext = (row: ReplyContextRow | null): ReplyContext | null => {
   return { ...parent, authorAvatar: avatarPath(authorAvatarId), excerpt: excerpt(text, REPLY_CONTEXT_EXCERPT) }
 }
 
+type StoryRow = Omit<PostStory, 'start'> & { start: QuoteRow | null }
+
+/** How many of a story's newest updates its page shows before folding the rest. */
+export const STORY_UPDATES_SHOWN = 3
+
+const liveUpdate = (alias: string) =>
+  sql.raw(`${alias}.deleted_at is null and ${alias}.removed_at is null and ${alias}.hidden_by_host_at is null`)
+
+/**
+ * The story a post is part of, as JSON, for any query with `posts` in scope. An
+ * update counts its place among the live updates up to itself. A first post is
+ * a story while it has a live update.
+ */
+const storyOf = (viewerId: string | null) => {
+  const story = sql`coalesce(${posts.storyId}, ${posts.id})`
+  return sql<StoryRow | null>`case when ${posts.storyId} is not null or ${posts.storyUpdates} > 0 then json_build_object(
+    'id', ${story},
+    'number', case when ${posts.storyId} is null then 0 else (select count(*)::int from posts su
+      where su.story_id = ${posts.storyId} and ${liveUpdate('su')} and (su.created_at, su.id) <= (${posts.createdAt}, ${posts.id})) end,
+    'updates', coalesce((select sp.story_updates from posts sp where sp.id = ${story}), 0),
+    'followers', (select count(*)::int from story_follows sf join members fm on fm.id = sf.member_id and fm.active where sf.story_id = ${story}),
+    'following', ${viewerId ? sql`exists(select 1 from story_follows sf where sf.story_id = ${story} and sf.member_id = ${viewerId})` : sql`false`},
+    'start', case when ${posts.storyId} is null then null else ${quoteOf(viewerId, sql`${posts.storyId}`)} end
+  ) end`
+}
+
+const toStory = (row: StoryRow | null, urls: MediaUrls): PostStory | null => (row ? { ...row, start: toQuote(row.start, urls) } : null)
+
 @Injectable()
 export class PostsService {
+  private readonly log = new Logger(PostsService.name)
+
   constructor(
     @Inject(DB) private readonly db: Db,
     // The trust rules for video are checked again when a video is attached (ADR 0019 section 4.7).
     @Optional() @Inject(VIDEO_CONFIG) private readonly videoCfg: VideoConfig = DEFAULT_VIDEO_CONFIG,
+    // Signs a marked post's media for the viewer it is shown to (ADR 0025).
+    @Optional() @Inject(MEDIA_URLS) private readonly urls: MediaUrls = localMediaUrls(videoCfg.filesBase),
+    // Moves a post's files when its sensitive mark changes. Optional so tests about posts alone need no queue.
+    @Optional() @Inject(MEDIA_JOBS) private readonly placement?: PlacementJobs,
   ) {}
 
   /**
@@ -557,12 +741,19 @@ export class PostsService {
       /** Show this author's posts even if the viewer muted them (on the author's profile). */
       unmuted?: string
       reason?: SQL<FeedReason>
+      /** Read inside this Gist's comment section; everywhere else its posts are never read. */
+      gist?: string
       /** Thread reads show the parent themselves; everything else says what a reply answers. */
       withReplyContext?: boolean
       order?: SQL[]
       limit?: number
     } = {},
   ): Promise<PostView[]> {
+    // A post the viewer may not see (marked sensitive, or a minor's to someone
+    // signed out) is left out, or, where deleted posts stand in as placeholders
+    // (a thread's ancestors), is one.
+    const allowed = postAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)
+    const shownTo = sql`${shown} and ${allowed}`
     const rows = await this.db
       .select({
         id: posts.id,
@@ -572,19 +763,21 @@ export class PostsService {
         authorAvatarId: members.avatarMediaId,
         authorFounder: isFounder(sql`${posts.authorId}`),
         authorAutomated: isAutomated(sql`${posts.authorId}`),
-        text: sql<string>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${posts.text} else '' end`,
+        text: sql<string>`case when ${shownTo} then ${posts.text} else '' end`,
         images: sql<
           ImageRow[]
-        >`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${imagesOf(outerId)} else '[]'::json end`,
-        video: sql<VideoRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${videoOf(outerId)} end`,
-        mentions: sql<PostMention[]>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${mentionsOf(viewerId, outerId)} else '[]'::json end`,
-        hashtags: sql<PostHashtag[]>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${hashtagsOf(outerId)} else '[]'::json end`,
-        linkPreview: sql<LinkPreviewRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${linkPreviewOf(sql`"posts"."link_url"`)} end`,
+        >`case when ${shownTo} then ${imagesOf(outerId)} else '[]'::json end`,
+        video: sql<VideoRow | null>`case when ${shownTo} then ${videoOf(outerId)} end`,
+        sensitive: sql<PostView['sensitive']>`case when ${shownTo} then ${posts.adultLabel} end`,
+        coverMedia: sql<boolean>`(${shownTo} and ${coverMediaFor(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)})`,
+        mentions: sql<PostMention[]>`case when ${shownTo} then ${mentionsOf(viewerId, outerId)} else '[]'::json end`,
+        hashtags: sql<PostHashtag[]>`case when ${shownTo} then ${hashtagsOf(outerId)} else '[]'::json end`,
+        linkPreview: sql<LinkPreviewRow | null>`case when ${shownTo} then ${linkPreviewOf(sql`"posts"."link_url"`)} end`,
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
         replyAudience: replyAudienceOf(outerId, sql`"posts"."root_id"`),
-        viewerCanReply: canReplyTo(viewerId, outerId, sql`"posts"."root_id"`),
-        poll: sql<PollRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${pollOf(viewerId, outerId)} end`,
+        viewerCanReply: canReplyTo(viewerId, outerId, sql`"posts"."root_id"`, sql`"posts"."gist_id"`),
+        poll: sql<PollRow | null>`case when ${shownTo} then ${pollOf(viewerId, outerId)} end`,
         replyContext: opts.withReplyContext === false ? sql<null>`null` : replyContextOf(viewerId, sql`${posts.replyParentId}`),
         // Kept on the row by triggers (see the posts schema): only active
         // members' likes and live replies count, as a reader would see them.
@@ -600,7 +793,7 @@ export class PostsService {
         viewerBookmarked: viewerId
           ? sql<boolean>`exists(select 1 from bookmarks b where b.post_id = ${outerId} and b.member_id = ${viewerId})`
           : sql<boolean>`false`,
-        deleted: sql<boolean>`${posts.deletedAt} is not null or ${posts.removedAt} is not null`,
+        deleted: sql<boolean>`not (${shownTo})`,
         pinnedOnProfile: sql<boolean>`coalesce(${members.pinnedPostId} = ${posts.id}, false)`,
         pinnedInCommunity: sql<boolean>`coalesce(${communities.pinnedPostId} = ${posts.id}, false)`,
         viewerCanPinInCommunity: viewerId
@@ -608,7 +801,8 @@ export class PostsService {
           : sql<boolean>`false`,
         communitySlug: communities.slug,
         communityName: communities.name,
-        quote: sql<QuoteRow | null>`case when ${posts.deletedAt} is null and ${posts.removedAt} is null then ${quoteOf(viewerId, sql`${posts.quotePostId}`)} end`,
+        quote: sql<QuoteRow | null>`case when ${shownTo} then ${quoteOf(viewerId, sql`${posts.quotePostId}`)} end`,
+        story: storyOf(viewerId),
         reason: opts.reason ?? sql<null>`null`,
       })
       .from(posts)
@@ -625,23 +819,25 @@ export class PostsService {
             opts.unmuted,
           ),
           sql`not ${hiddenFromPlayer(viewerId, sql`${posts.rootId}`, sql`${posts.authorId}`)}`,
-          opts.includeDeleted ? undefined : live,
+          opts.includeDeleted ? undefined : and(live, allowed),
+          opts.gist ? eq(posts.gistId, opts.gist) : isNull(posts.gistId),
           where,
         ),
       )
       .orderBy(...(opts.order ?? []))
       .limit(opts.limit ?? 1000)
 
-    return rows.map(({ communitySlug, communityName, authorAvatarId, images, video, quote, linkPreview, poll, replyContext, ...row }) => ({
+    return rows.map(({ communitySlug, communityName, authorAvatarId, images, video, quote, linkPreview, poll, replyContext, story, ...row }) => ({
       ...row,
       replyTo: toReplyContext(replyContext),
-      images: toPostImages(images),
-      video: toPostVideo(video),
+      images: toPostImages(images, this.urls),
+      video: toPostVideo(video, this.urls),
       links: findLinks(row.text),
       linkPreview: toLinkPreview(linkPreview),
       authorAvatar: avatarPath(authorAvatarId),
       community: communitySlug && communityName ? { slug: communitySlug, name: communityName } : null,
-      quote: toQuote(quote),
+      quote: toQuote(quote, this.urls),
+      story: toStory(story, this.urls),
       poll: toPoll(poll),
       repostedBy: null,
     }))
@@ -676,7 +872,7 @@ export class PostsService {
 
   /** Everyone's top-level posts. */
   feed(viewerId: string | null, limit: number, cursor?: string): Promise<PostPage> {
-    return this.page(viewerId, topLevel, limit, cursor)
+    return this.page(viewerId, inFeeds, limit, cursor)
   }
 
   /**
@@ -723,9 +919,10 @@ export class PostsService {
     // posts for someone who follows many active accounts, and read each account's
     // own posts and reposts for someone who follows a few. As subqueries they were
     // estimated alike for every viewer, and every repost on the site was read.
+    // A minor's reposts, like their posts, are not listed for a signed-out viewer.
     const sources = await this.db.execute<{ members: string[]; communities: string[] }>(sql`
       select array(select m.id from members m where m.id in ${candidates}
-          and ${visibleAuthor(viewerId, sql`m.id`, sql`m.active`, unmuted)}) as members,
+          and ${visibleAuthor(viewerId, sql`m.id`, sql`m.active`, unmuted)} and ${reachesViewer(viewerId, sql`m.id`)}) as members,
         ${joined ? sql`array(${joined})` : sql`'{}'::uuid[]`} as communities`)
     const { members: memberIds, communities: communityIds } = sources.rows[0]!
     if (!memberIds.length && !communityIds.length) return { posts: [], cursor: null }
@@ -738,7 +935,8 @@ export class PostsService {
     const after = cursor ? decodeExactCursor(cursor) : null
     const before = (at: SQL, id: SQL) =>
       after ? sql`and (${at}, ${id}) < (${after[0]}::timestamptz, ${after[1]}::uuid)` : sql``
-    const postVisible = sql`p.deleted_at is null and p.removed_at is null and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`, unmuted)}`
+    const postVisible = sql`p.deleted_at is null and p.removed_at is null and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`, unmuted)}
+      and ${postAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)}`
     // A repost of `post` by one of `members`, made after `since` (if given). A few
     // members are each looked up in the index. For a long list it is cheaper to
     // read the post's reposts and find the members in a hash: `is true` stops the
@@ -760,7 +958,7 @@ export class PostsService {
       with entries as (
         (select p.id as post_id, p.created_at as at, null::uuid as reposter_id
         from posts p join members a on a.id = p.author_id
-        where p.reply_parent_id is null
+        where p.reply_parent_id is null and p.gist_id is null and not p.superseded
           and (${byMember(sql`p.author_id`)}${communityIds.length ? sql` or p.community_id = any(${ids(communityIds)})` : sql``})
           and ${postVisible} and not ${memberRepost(sql`p.id`)}
           ${before(sql`p.created_at`, sql`p.id`)}
@@ -769,7 +967,7 @@ export class PostsService {
         union all
         (select r.post_id, r.created_at, r.member_id
         from reposts r join posts p on p.id = r.post_id join members a on a.id = p.author_id
-        where ${byMember(sql`r.member_id`)} and ${postVisible}
+        where ${byMember(sql`r.member_id`)} and ${postVisible} and p.gist_id is null
           and not ${memberRepost(sql`r.post_id`, sql`(r.created_at, r.member_id)`)}
           ${before(sql`r.created_at`, sql`r.post_id`)}
         order by r.created_at desc, r.post_id desc
@@ -856,7 +1054,7 @@ export class PostsService {
         ? this.select(
             viewerId,
             and(
-              topLevel,
+              inFeeds,
               eq(posts.authorId, viewerId),
               sql`${posts.createdAt} > now() - make_interval(mins => ${DISCOVER_RULES.ownPostsMinutes}::int)`,
             ),
@@ -925,11 +1123,15 @@ export class PostsService {
               where cm.member_id = ${viewerId} and cm.community_id = p.community_id)`
             : sql`false`} as in_joined
         from posts p join members a on a.id = p.author_id
-        where p.reply_parent_id is null and p.created_at > ${since} and p.created_at <= ${until}
+        where p.reply_parent_id is null and p.gist_id is null and not p.superseded and p.created_at > ${since} and p.created_at <= ${until}
           and p.deleted_at is null and p.removed_at is null
+          -- Posts marked sensitive are never recommended, to anyone (ADR 0020).
+          and p.adult_label is null
           ${viewerId ? sql`and p.author_id <> ${viewerId}` : sql``}
           and ${visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)}
           and not exists(select 1 from held h where h.post_id = p.id)
+          -- A minor is recommended to nobody but the people they follow (ADR 0020).
+          and not ${strangerToMinor(viewerId, sql`p.author_id`)}
       ),
       -- Who replied (anywhere in the conversation), quoted or reposted, up to the
       -- moment. A reply or quote comes after its post, so all of them are in the
@@ -1007,12 +1209,12 @@ export class PostsService {
 
   /** Top-level posts in one community. */
   inCommunity(viewerId: string | null, communityId: string, limit: number, cursor?: string): Promise<PostPage> {
-    return this.page(viewerId, and(topLevel, eq(posts.communityId, communityId)), limit, cursor)
+    return this.page(viewerId, and(inFeeds, eq(posts.communityId, communityId)), limit, cursor)
   }
 
   /**
    * One list from a member's profile: their top-level posts and reposts, their
-   * replies, or everything they posted with images (replies included).
+   * replies, or everything they posted with images or a video (replies included).
    */
   byAuthor(
     viewerId: string | null,
@@ -1072,7 +1274,7 @@ export class PostsService {
         and(
           eq(members.id, memberId),
           sql`exists(select 1 from posts p where p.id = ${postId} and p.author_id = ${memberId}
-            and p.reply_parent_id is null and p.deleted_at is null and p.removed_at is null)`,
+            and p.reply_parent_id is null and p.gist_id is null and p.deleted_at is null and p.removed_at is null)`,
         ),
       )
       .returning({ id: members.id })
@@ -1161,8 +1363,10 @@ export class PostsService {
     const { rows } = await this.db.execute<{ id: string }>(sql`
       select p.id from posts p
       join members m on m.id = p.author_id and m.active
-      where p.reply_parent_id is null and p.deleted_at is null and p.removed_at is null and p.created_at > ${since}
+      where p.reply_parent_id is null and p.gist_id is null and not p.superseded and p.deleted_at is null and p.removed_at is null and p.created_at > ${since}
         and p.like_count + p.reply_count > 0
+        -- Posts marked sensitive never trend (ADR 0020).
+        and p.adult_label is null
       order by p.reply_count * 2 + p.like_count desc, p.created_at desc, p.id desc
       limit ${TRENDING_CANDIDATES}`)
     return rows.map((r) => r.id)
@@ -1198,17 +1402,19 @@ export class PostsService {
       : { rows: [] }
     const ancestorIds = chain.rows.slice(0, MAX_THREAD_DEPTH).map((r) => r.id).reverse()
 
-    const [ancestors, replies] = await Promise.all([
+    const [ancestors, replies, updates] = await Promise.all([
       ancestorIds.length
         ? this.select(viewerId, inArray(posts.id, ancestorIds), { includeDeleted: true, withReplyContext: false })
         : Promise.resolve([]),
       this.replyPage(viewerId, id, REPLY_PAGE_SIZE, order),
+      post.story?.number === 0 ? this.newestUpdates(viewerId, id, post.story.updates) : Promise.resolve([]),
     ])
     // Root first. An ancestor by a now-inactive member is simply absent.
     ancestors.sort((a, b) => ancestorIds.indexOf(a.id) - ancestorIds.indexOf(b.id))
     return {
       ancestors,
       post,
+      updates,
       replies: replies.replies,
       replyCursor: replies.cursor,
       ancestorsTruncated: chain.rows.length > MAX_THREAD_DEPTH,
@@ -1218,10 +1424,131 @@ export class PostsService {
     }
   }
 
+  /** A story's newest updates, oldest first: all of them when one more would be folded, otherwise the newest few. */
+  private async newestUpdates(viewerId: string | null, storyId: string, updates: number): Promise<PostView[]> {
+    const shown = updates <= STORY_UPDATES_SHOWN + 1 ? STORY_UPDATES_SHOWN + 1 : STORY_UPDATES_SHOWN
+    const rows = await this.select(viewerId, eq(posts.storyId, storyId), {
+      withReplyContext: false,
+      order: [desc(posts.createdAt), desc(posts.id)],
+      limit: shown,
+    })
+    return rows.reverse()
+  }
+
+  /**
+   * A story's updates, oldest first, for unfolding the ones its page leaves out.
+   * Null when `storyId` is not a story the viewer can read.
+   */
+  async storyUpdates(viewerId: string | null, storyId: string, limit: number, cursor?: string): Promise<PostPage | null> {
+    const [story] = await this.select(viewerId, and(eq(posts.id, storyId), isNull(posts.storyId)), { limit: 1, withReplyContext: false })
+    if (!story) return null
+    const after = cursor ? decodeExactCursor(cursor) : null
+    const rows = await this.db.execute<{ id: string; at: string }>(sql`
+      select u.id, to_char(u.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at from posts u
+      where u.story_id = ${storyId} and ${liveUpdate('u')}
+        ${after ? sql`and (u.created_at, u.id) > (${after[0]}::timestamptz, ${after[1]}::uuid)` : sql``}
+      order by u.created_at, u.id
+      limit ${limit + 1}`)
+    const page = rows.rows.slice(0, limit)
+    const found = page.length ? await this.select(viewerId, inArray(posts.id, page.map((r) => r.id)), { withReplyContext: false, limit: page.length }) : []
+    const byId = new Map(found.map((p) => [p.id, p]))
+    const last = page.at(-1)
+    return {
+      posts: page.flatMap((r) => byId.get(r.id) ?? []),
+      cursor: rows.rows.length > limit && last ? encodeExactCursor(last.at, last.id) : null,
+    }
+  }
+
+  /**
+   * Follow a story, to be told about each new update. False when it is not a story
+   * the member can read, or it is their own.
+   */
+  async followStory(memberId: string, storyId: string): Promise<boolean> {
+    const [story] = await this.select(memberId, and(eq(posts.id, storyId), isNull(posts.storyId)), { limit: 1, withReplyContext: false })
+    if (!story || story.story?.number !== 0 || story.authorId === memberId) return false
+    await this.db.insert(storyFollows).values({ storyId, memberId }).onConflictDoNothing()
+    return true
+  }
+
+  async unfollowStory(memberId: string, storyId: string): Promise<void> {
+    await this.db.delete(storyFollows).where(and(eq(storyFollows.storyId, storyId), eq(storyFollows.memberId, memberId)))
+  }
+
   /** A lightweight read for confirmed inline replies; no ancestors or children. */
   async post(viewerId: string | null, id: string): Promise<PostView | null> {
     const [post] = await this.select(viewerId, eq(posts.id, id), { limit: 1, withReplyContext: false })
     return post ?? null
+  }
+
+  async postInGist(viewerId: string | null, gistId: string, id: string): Promise<PostView | null> {
+    const [post] = await this.select(viewerId, eq(posts.id, id), { gist: gistId, limit: 1, withReplyContext: false })
+    return post ?? null
+  }
+
+  async gistReplies(viewerId: string | null, gistId: string, limit: number, order: ReplyOrder, cursor?: string): Promise<GistReplyPage> {
+    const [page, allowed] = await Promise.all([
+      this.replyPage(viewerId, null, Math.min(REPLY_PAGE_SIZE, Math.max(1, limit)), order, cursor, gistId),
+      viewerId
+        ? this.db.execute<{ allowed: boolean }>(sql`select ${gistAllowsReply(viewerId, sql`${gistId}::uuid`)} as allowed`)
+        : Promise.resolve(null),
+    ])
+    return { ...page, viewerCanReply: allowed?.rows[0]?.allowed === true }
+  }
+
+  async repliesInGist(
+    viewerId: string | null,
+    gistId: string,
+    parentId: string,
+    limit: number,
+    cursor: string | undefined,
+    order: ReplyOrder,
+  ): Promise<ReplyPage | null> {
+    if (cursor) decodeReplyCursor(cursor, parentId, order)
+    const [parent] = await this.db
+      .select({ id: posts.id })
+      .from(posts)
+      .innerJoin(members, eq(members.id, posts.authorId))
+      .where(
+        and(
+          eq(posts.id, parentId),
+          eq(posts.gistId, gistId),
+          visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`),
+          or(
+            and(live, postAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)),
+            sql`exists(select 1 from posts child where child.reply_parent_id = ${posts.id})`,
+          ),
+        ),
+      )
+      .limit(1)
+    if (!parent) return null
+    return this.replyPage(viewerId, parentId, Math.min(REPLY_PAGE_SIZE, Math.max(1, limit)), order, cursor, gistId)
+  }
+
+  async gistReplyCount(gistId: string): Promise<number> {
+    const { rows } = await this.db.execute<{ n: number }>(sql`
+      select count(*)::int as n from posts p join members m on m.id = p.author_id and m.active
+      where p.gist_id = ${gistId} and p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null`)
+    return rows[0]?.n ?? 0
+  }
+
+  /** The caller has checked that the host is acting. False if the reply is not in the Gist. */
+  async hideInGist(gistId: string, postId: string, hidden: boolean): Promise<boolean> {
+    const rows = await this.db
+      .update(posts)
+      .set({ hiddenByHostAt: hidden ? new Date() : null })
+      .where(and(eq(posts.id, postId), eq(posts.gistId, gistId), isNull(posts.deletedAt)))
+      .returning({ id: posts.id })
+    return rows.length > 0
+  }
+
+  async likeInGist(memberId: string, gistId: string, postId: string, gistAccess?: (memberId: string) => boolean): Promise<boolean> {
+    const post = await this.postInGist(memberId, gistId, postId)
+    if (!post) return false
+    await this.db.insert(likes).values({ memberId, postId }).onConflictDoNothing()
+    if ((await this.whoOpensGist(this.db, gistId, [post.authorId], gistAccess)).length) {
+      await notify(this.db, [{ recipientId: post.authorId, kind: 'like', actorId: memberId, postId }])
+    }
+    return true
   }
 
   /** A parent is checked afresh, including when its structural stub was loaded earlier. */
@@ -1241,8 +1568,13 @@ export class PostsService {
       .where(
         and(
           eq(posts.id, parentId),
+          isNull(posts.gistId),
           visibleAuthor(viewerId, sql`${posts.authorId}`, sql`${members.active}`),
-          or(live, sql`exists(select 1 from posts child where child.reply_parent_id = ${posts.id})`),
+          // A parent the viewer may not see (gone, marked sensitive, or a minor's to someone signed out) is a placeholder that keeps the replies under it in reach.
+          or(
+            and(live, postAllowed(viewerId, sql`${posts.adultLabel}`, sql`${posts.authorId}`)),
+            sql`exists(select 1 from posts child where child.reply_parent_id = ${posts.id})`,
+          ),
         ),
       )
       .limit(1)
@@ -1260,8 +1592,16 @@ export class PostsService {
    * by the author is a placeholder among everyone else's, so its place does not
    * say whose it was.
    */
-  private async replyPage(viewerId: string | null, parentId: string, limit: number, order: ReplyOrder, cursor?: string): Promise<ReplyPage> {
-    const after = cursor ? decodeReplyCursor(cursor, parentId, order) : null
+  private async replyPage(
+    viewerId: string | null,
+    parentId: string | null,
+    limit: number,
+    order: ReplyOrder,
+    cursor?: string,
+    gist?: string,
+  ): Promise<ReplyPage> {
+    const scopeId = (parentId ?? gist)!
+    const after = cursor ? decodeReplyCursor(cursor, scopeId, order) : null
     const direction = sql.raw(order === 'newest' ? 'desc' : 'asc')
     const beyond = (group: 0 | 1) => {
       if (!after || after.group < group) return sql``
@@ -1270,13 +1610,17 @@ export class PostsService {
         ? sql`and (p.created_at, p.id) < (${after.timestamp}::timestamptz, ${after.id}::uuid)`
         : sql`and (p.created_at, p.id) > (${after.timestamp}::timestamptz, ${after.id}::uuid)`
     }
-    const parentAuthor = sql`(select author_id from posts where id = ${parentId})`
+    const parentAuthor = parentId ? sql`(select author_id from posts where id = ${parentId})` : sql`(select host_id from gists where id = ${gist})`
+    const within = parentId ? sql`p.reply_parent_id = ${parentId}` : sql`(p.reply_parent_id is null and p.gist_id = ${gist})`
     const visible = and(visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`), sql`not ${hiddenFromPlayer(viewerId, sql`p.root_id`, sql`p.author_id`)}`)
+    // A reply the viewer may not see (marked sensitive, or a minor's to someone signed out) is a placeholder, like a deleted one.
+    const allowed = postAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)
     type ReplyRow = {
       id: string
       reply_parent_id: string | null
       created_at: Date
       grp: 0 | 1
+      hidden: boolean
       cursor_timestamp: string
       view: (Omit<PostView, 'images' | 'video' | 'createdAt' | 'authorAvatar' | 'quote' | 'poll' | 'links' | 'linkPreview'> & {
         images: ImageRow[]
@@ -1291,24 +1635,27 @@ export class PostsService {
     const { rows } = await this.db.execute<ReplyRow>(sql`
       with page as materialized (
         select * from (
-          (select p.id, p.reply_parent_id, p.created_at, false as unavailable, 0 as grp
+          (select p.id, p.reply_parent_id, p.created_at, false as unavailable, false as hidden, 0 as grp
           from posts p join members a on a.id = p.author_id
-          where p.reply_parent_id = ${parentId}
-            and p.author_id = ${parentAuthor} and p.deleted_at is null and p.removed_at is null
-            and ${visible}
+          where ${within}
+            and p.author_id = ${parentAuthor} and p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null
+            and ${visible} and ${allowed}
             ${beyond(0)}
           order by p.created_at ${direction}, p.id ${direction}
           limit ${limit + 1})
           union all
           (select p.id, p.reply_parent_id, p.created_at,
-            p.deleted_at is not null or p.removed_at is not null as unavailable, 1 as grp
+            p.deleted_at is not null or p.removed_at is not null or p.hidden_by_host_at is not null or not ${allowed} as unavailable,
+            p.hidden_by_host_at is not null and p.deleted_at is null and p.removed_at is null as hidden, 1 as grp
           from posts p join members a on a.id = p.author_id
-          where p.reply_parent_id = ${parentId}
-            and (p.author_id is distinct from ${parentAuthor} or p.deleted_at is not null or p.removed_at is not null)
+          where ${within}
+            and (p.author_id is distinct from ${parentAuthor} or p.deleted_at is not null or p.removed_at is not null or p.hidden_by_host_at is not null
+              or not ${allowed})
             -- An erased account's replies are all deleted, so they come only as
             -- placeholders keeping other people's replies under them in reach.
             and (${visible} or a.deleted_at is not null)
-            and ((p.deleted_at is null and p.removed_at is null)
+            and ((p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null and ${allowed})
+              or (p.hidden_by_host_at is not null and p.deleted_at is null and p.removed_at is null)
               or exists(select 1 from posts child where child.reply_parent_id = p.id))
             ${beyond(1)}
           order by p.created_at ${direction}, p.id ${direction}
@@ -1317,17 +1664,18 @@ export class PostsService {
         order by grp, created_at ${direction}, id ${direction}
         limit ${limit + 1}
       )
-      select page.id, page.reply_parent_id, page.created_at, page.grp,
+      select page.id, page.reply_parent_id, page.created_at, page.grp, page.hidden,
         to_char(page.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp,
         case when page.unavailable then null else json_build_object(
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
           'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id, 'authorFounder', ${isFounder(sql`p.author_id`)}, 'authorAutomated', ${isAutomated(sql`p.author_id`)},
           'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'video', ${videoOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
+          'sensitive', p.adult_label, 'coverMedia', ${coverMediaFor(viewerId, sql`p.adult_label`, sql`p.author_id`)},
           'hashtags', ${hashtagsOf(sql`p.id`)},
           'linkPreview', ${linkPreviewOf(sql`p.link_url`)},
           'createdAt', p.created_at, 'replyParentId', p.reply_parent_id, 'replyTo', null,
           'replyAudience', ${replyAudienceOf(sql`p.id`, sql`p.root_id`)},
-          'viewerCanReply', ${canReplyTo(viewerId, sql`p.id`, sql`p.root_id`)},
+          'viewerCanReply', ${canReplyTo(viewerId, sql`p.id`, sql`p.root_id`, sql`p.gist_id`)},
           'poll', ${pollOf(viewerId, sql`p.id`)},
           'likeCount', p.like_count, 'replyCount', p.reply_count, 'repostCount', p.repost_count,
           'hasReplies', p.reply_count > 0 or exists(select 1 from posts child where child.reply_parent_id = p.id),
@@ -1335,6 +1683,8 @@ export class PostsService {
           'viewerBookmarked', ${viewerId ? sql`exists(select 1 from bookmarks b where b.post_id = p.id and b.member_id = ${viewerId})` : sql`false`},
           'viewerReposted', ${viewerId ? sql`exists(select 1 from reposts r where r.post_id = p.id and r.member_id = ${viewerId})` : sql`false`},
           'quote', ${quoteOf(viewerId, sql`p.quote_post_id`)},
+          -- A reply is never part of a story: updates and first posts are top-level posts.
+          'story', null,
           'deleted', false, 'reason', null, 'repostedBy', null,
           'pinnedOnProfile', false, 'pinnedInCommunity', false, 'viewerCanPinInCommunity', false,
           'community', case when c.id is null then null else json_build_object('slug', c.slug, 'name', c.name) end
@@ -1354,23 +1704,24 @@ export class PostsService {
             replyParentId: row.reply_parent_id,
             createdAt: row.created_at,
             hasReplies: true,
+            ...(row.hidden ? { hiddenByHost: true as const } : {}),
           }
         }
         const { images, video, createdAt, authorAvatarId, quote, poll, linkPreview, ...post } = row.view
         return {
           ...post,
-          images: toPostImages(images),
-          video: toPostVideo(video),
+          images: toPostImages(images, this.urls),
+          video: toPostVideo(video, this.urls),
           links: findLinks(post.text),
           linkPreview: toLinkPreview(linkPreview),
           createdAt: new Date(createdAt),
           authorAvatar: avatarPath(authorAvatarId),
-          quote: toQuote(quote),
+          quote: toQuote(quote, this.urls),
           poll: toPoll(poll),
         }
       }),
       cursor: rows.length > limit && last
-        ? encodeReplyCursor(parentId, order, { group: last.grp, timestamp: last.cursor_timestamp, id: last.id })
+        ? encodeReplyCursor(scopeId, order, { group: last.grp, timestamp: last.cursor_timestamp, id: last.id })
         : null,
     }
   }
@@ -1381,7 +1732,9 @@ export class PostsService {
    * must be the author's own uploads, processed and not on another post. `quote`
    * makes it a quote post of a post the author can currently see. Members named
    * with @handle in `text` are recorded and told (see `recordMentions`), and
-   * its #hashtags recorded (see `recordHashtags`).
+   * its #hashtags recorded (see `recordHashtags`). `sensitive` marks it as the
+   * author's choice; an author whose Settings mark everything they post (or whose
+   * moderator did) gets the mark whatever they ask.
    */
   async create(
     authorId: string,
@@ -1393,9 +1746,13 @@ export class PostsService {
       video,
       quote,
       poll,
-      replyAudience = 'everyone',
+      replyAudience,
+      sensitive = false,
       anyMember = false,
       alongside,
+      gist,
+      gistAccess,
+      storyOf: storyId,
     }: {
       replyTo?: string
       communitySlug?: string
@@ -1404,15 +1761,34 @@ export class PostsService {
       quote?: string
       poll?: PollInput
       replyAudience?: ReplyAudience
+      sensitive?: boolean
       /** Any member may post in the community, joined or not (the ideas board). */
       anyMember?: boolean
       /** More to write in the same transaction, once the post has its ID. */
       alongside?: (tx: Transaction, id: string) => Promise<void>
+      gist?: string
+      /** With `gist`: whether the `gists` flag is on for a member; left out, it is not checked. */
+      gistAccess?: (memberId: string) => boolean
+      /** An update to this story (docs/adr/0024): the first post's ID. Only its author adds one. */
+      storyOf?: string
     } = {},
   ): Promise<{ id: string; linkUrl: string | null }> {
     let parent: { id: string; authorId: string; rootId: string | null; communityId: string | null } | undefined
     let communityId: string | null = null
     let quoted: { id: string; authorId: string } | undefined
+    let story: { id: string; communityId: string | null; replyAudience: ReplyAudience } | undefined
+
+    if (storyId) {
+      // An update answers no one, and goes on the author's own live top-level post,
+      // which is not itself an update.
+      if (replyTo || gist) throw new StoryNotFoundError('an update to a story is not a reply')
+      ;[story] = await this.db
+        .select({ id: posts.id, communityId: posts.communityId, replyAudience: posts.replyAudience })
+        .from(posts)
+        .where(and(eq(posts.id, storyId), eq(posts.authorId, authorId), topLevel, isNull(posts.storyId), live))
+      if (!story) throw new StoryNotFoundError('you can only add updates to your own posts')
+      communityId = story.communityId
+    }
 
     if (quote) {
       // The same test as for replying: live, by an active member, no block either way.
@@ -1423,9 +1799,11 @@ export class PostsService {
         .where(
           and(
             eq(posts.id, quote),
+            isNull(posts.gistId),
             live,
             eq(members.active, true),
             sql`not ${blockedEitherWay(authorId, sql`"posts"."author_id"`)}`,
+            adultContentAllowed(authorId, sql`"posts"."adult_label"`, sql`"posts"."author_id"`),
           ),
         )
       if (!quoted) throw new QuotedPostNotFoundError('the post you are quoting is no longer available')
@@ -1440,21 +1818,24 @@ export class PostsService {
         .where(
           and(
             eq(posts.id, replyTo),
+            gist ? eq(posts.gistId, gist) : isNull(posts.gistId),
             live,
             eq(members.active, true),
             sql`not ${blockedEitherWay(authorId, sql`"posts"."author_id"`)}`,
+            adultContentAllowed(authorId, sql`"posts"."adult_label"`, sql`"posts"."author_id"`),
           ),
         )
       if (!parent) throw new ParentNotFoundError('the post you are replying to no longer exists')
-      communityId = parent.communityId
-    } else if (communitySlug) {
+      communityId = gist ? null : parent.communityId
+    } else if (communitySlug && !gist && !story) {
       const [community] = await this.db
         .select({
           id: communities.id,
           joined: sql<boolean>`exists(select 1 from community_memberships cm where cm.community_id = "communities"."id" and cm.member_id = ${authorId})`,
         })
         .from(communities)
-        .where(and(eq(communities.slug, communitySlug), eq(communities.active, true)))
+        // One marked sensitive is not there for anyone who is not an adult (ADR 0020).
+        .where(and(eq(communities.slug, communitySlug), eq(communities.active, true), communityOpenTo(authorId)))
       if (!community) throw new CommunityNotFoundError('no such community')
       // Chess Arena and Game Night (docs/adr/0018): The Arbiter starts the posts; members reply.
       const arbiterOnly = ARBITER_ONLY[communitySlug]
@@ -1463,10 +1844,18 @@ export class PostsService {
       communityId = community.id
     }
 
+    if (sensitive) {
+      const [author] = await this.db.execute<{ adult: boolean }>(sql`select ${seesAdultContent(authorId)} as adult`).then((r) => r.rows)
+      if (!author?.adult) throw new LabelNotAllowedError('only adults can mark a post sensitive')
+    }
+
+    // An update to a story takes the story's reply setting unless it asks for its own.
+    const audience = replyAudience ?? story?.replyAudience ?? 'everyone'
     // The first web address gets a preview card; asking for it is up to the caller,
     // once the post exists (see `LinksService.request`).
     const linkUrl = previewUrlOf(text)
-    return this.db.transaction(async (tx) => {
+    let gistHost: string | null = null
+    const created = await this.db.transaction(async (tx) => {
       if (parent) {
         // Locking the root waits out a change to its reply audience, so a reply
         // already in flight cannot slip past a new restriction. Only the root
@@ -1474,12 +1863,32 @@ export class PostsService {
         // every write that refers to them, and deadlock two members replying in
         // each other's conversations. A root that is gone restricts no one.
         const [root] = await tx
-          .select({ allowed: canReplyTo(authorId, sql`${posts.id}`, sql`null`) })
+          .select({ allowed: canReplyTo(authorId, sql`${posts.id}`, sql`null`, sql`${posts.gistId}`) })
           .from(posts)
           .where(eq(posts.id, parent.rootId ?? parent.id))
           .for('no key update')
         if (root && !root.allowed) throw new ReplyNotAllowedError('the conversation author limited who can reply')
+        // A reply further down answers its parent's author too, who may be a minor.
+        if (parent.rootId) {
+          const [direct] = await tx
+            .execute<{ allowed: boolean }>(sql`select ${minorTakesReplyFrom(authorId, sql`${parent.id}::uuid`)} as allowed`)
+            .then((r) => r.rows)
+          if (!direct?.allowed) throw new ReplyNotAllowedError('the author limited who can reply')
+        }
       }
+      if (gist) {
+        const [locked] = await tx
+          .select({ allowed: gistAllowsReply(authorId, sql`${gists.id}`), hostId: gists.hostId })
+          .from(gists)
+          .where(eq(gists.id, gist))
+          .for('share')
+        if (!locked) throw new ParentNotFoundError('that Gist no longer exists')
+        if (!locked.allowed) throw new ReplyNotAllowedError('the host limited who can reply')
+        gistHost = locked.hostId
+      }
+      // Waits out the community's sensitive mark changing, so the post takes the
+      // mark it ends with (CommunitiesService.setSensitive).
+      if (communityId) await tx.select({ id: communities.id }).from(communities).where(eq(communities.id, communityId)).for('share')
       const [row] = await tx
         .insert(posts)
         .values({
@@ -1487,12 +1896,23 @@ export class PostsService {
           text,
           linkUrl,
           communityId,
+          gistId: gist ?? null,
           replyParentId: parent?.id ?? null,
           rootId: parent ? (parent.rootId ?? parent.id) : null,
           quotePostId: quoted?.id ?? null,
-          replyAudience: parent ? 'everyone' : replyAudience,
+          storyId: story?.id ?? null,
+          // A minor's conversation is open as far as "following" at most (ADR 0020).
+          replyAudience: parent
+            ? 'everyone'
+            : audience === 'everyone'
+              ? sql`case when ${isMinor(authorId)} then 'following' else 'everyone' end`
+              : audience,
+          // Settings' "mark everything I post" (or a moderator's) wins over the post's own choice,
+          // and in a community marked sensitive, a post is marked whatever it asks (ADR 0020).
+          adultLabel: sql`coalesce((select m.label_posts from members m where m.id = ${authorId}), ${sensitive ? 'author' : null}::text,
+            ${communityId ? communityMark(sql`${communityId}::uuid`) : sql`null`})`,
         })
-        .returning({ id: posts.id })
+        .returning({ id: posts.id, adultLabel: posts.adultLabel })
       if (poll) {
         await tx.insert(postPolls).values({ postId: row!.id, multiple: poll.multiple, expiresAt: pollExpiresAt(poll.expiresIn) })
         // `pollInput` already refused options that differ only in case, but the
@@ -1545,26 +1965,56 @@ export class PostsService {
         if (attached.length === 0) throw new VideoNotReadyError('the video is missing, still processing, held for review or already used')
       }
       await recordHashtags(tx, { id: row!.id, text })
-      // Someone told about this post as a reply or a quote is not told again that
-      // it mentions them, and only the first few others named are told at all.
-      const mentioned = (await recordMentions(tx, { id: row!.id, authorId, text }))
-        .filter((id) => id !== parent?.authorId && id !== quoted?.authorId)
-        .slice(0, MENTIONS_NOTIFIED_MAX)
+      // A story's followers are told about each update (story_update).
+      const followers = story
+        ? (await tx.select({ id: storyFollows.memberId }).from(storyFollows).where(eq(storyFollows.storyId, story.id))).map((f) => f.id)
+        : []
+      // Someone told about this post as a reply, a quote or a story's update is not
+      // told again that it mentions them, and only the first few others named are told at all.
+      const replyRecipient = parent?.authorId ?? gistHost
+      const named = (await recordMentions(tx, { id: row!.id, authorId, text })).filter(
+        (id) => id !== replyRecipient && id !== quoted?.authorId && !followers.includes(id),
+      )
+      const told = gist ? new Set(await this.whoOpensGist(tx, gist, [...named, ...(replyRecipient ? [replyRecipient] : [])], gistAccess)) : null
+      const mentioned = named.filter((id) => !told || told.has(id)).slice(0, MENTIONS_NOTIFIED_MAX)
       await notify(tx, [
-        ...(parent ? [{ recipientId: parent.authorId, kind: 'reply' as const, actorId: authorId, postId: row!.id }] : []),
+        ...(replyRecipient && (!told || told.has(replyRecipient))
+          ? [{ recipientId: replyRecipient, kind: 'reply' as const, actorId: authorId, postId: row!.id }]
+          : []),
         // A reply that quotes the post it answers notifies once, as a reply.
         ...(quoted && quoted.authorId !== parent?.authorId
           ? [{ recipientId: quoted.authorId, kind: 'quote' as const, actorId: authorId, postId: row!.id }]
           : []),
         ...mentioned.map((recipientId) => ({ recipientId, kind: 'mention' as const, actorId: authorId, postId: row!.id })),
+        ...followers
+          .filter((recipientId) => recipientId !== quoted?.authorId)
+          .map((recipientId) => ({ recipientId, kind: 'story_update' as const, actorId: authorId, postId: row!.id })),
       ])
       await alongside?.(tx, row!.id)
-      return { id: row!.id, linkUrl }
+      return { id: row!.id, linkUrl, marked: row!.adultLabel !== null }
     })
+    // Its pictures or video were published before it was marked: they move to the private place (ADR 0025).
+    if (created.marked && (images.length > 0 || video)) await this.placeMedia(created.id)
+    return { id: created.id, linkUrl: created.linkUrl }
   }
 
-  /** Changes only future replies. Existing replies remain in the conversation. */
+  private async whoOpensGist(q: Pick<Db, 'execute'>, gistId: string, ids: string[], flagAllows: ((memberId: string) => boolean) | undefined): Promise<string[]> {
+    const candidates = [...new Set(ids)].filter((id) => !flagAllows || flagAllows(id))
+    if (!candidates.length) return []
+    const { rows } = await q.execute<{ id: string }>(sql`
+      select m.id from unnest(${sql.param(candidates)}::uuid[]) as m(id) where ${memberOpensGist(sql`m.id`, sql`${gistId}::uuid`)}`)
+    return rows.map((r) => r.id)
+  }
+
+  /**
+   * Changes only future replies. Existing replies remain in the conversation. A
+   * minor cannot open a conversation to everyone (ReplyAudienceNotAllowedError).
+   */
   async setReplyAudience(authorId: string, postId: string, audience: ReplyAudience): Promise<boolean> {
+    if (audience === 'everyone') {
+      const [author] = await this.db.execute<{ minor: boolean }>(sql`select ${isMinor(authorId)} as minor`).then((r) => r.rows)
+      if (author?.minor) throw new ReplyAudienceNotAllowedError('members under 18 cannot open replies to everyone')
+    }
     const changed = await this.db
       .update(posts)
       .set({ replyAudience: audience })
@@ -1572,10 +2022,50 @@ export class PostsService {
         eq(posts.id, postId),
         eq(posts.authorId, authorId),
         isNull(posts.replyParentId),
+        isNull(posts.gistId),
         live,
       ))
       .returning({ id: posts.id })
     return changed.length > 0
+  }
+
+  /**
+   * Marks one of the author's own live posts sensitive, or takes their own mark
+   * off. A moderator's or its community's mark stays: false, as for a post that
+   * is not theirs, and in a community marked sensitive taking their own mark off
+   * leaves the community's. Only an adult may add the mark (LabelNotAllowedError).
+   */
+  async setAdultLabel(authorId: string, postId: string, on: boolean): Promise<boolean> {
+    if (on) {
+      const [author] = await this.db.execute<{ adult: boolean }>(sql`select ${seesAdultContent(authorId)} as adult`).then((r) => r.rows)
+      if (!author?.adult) throw new LabelNotAllowedError('only adults can mark a post sensitive')
+    }
+    const changed = await this.db
+      .update(posts)
+      .set({ adultLabel: on ? 'author' : communityMark(sql`"posts"."community_id"`) })
+      .where(and(
+        eq(posts.id, postId),
+        eq(posts.authorId, authorId),
+        live,
+        sql`(${posts.adultLabel} is null or ${posts.adultLabel} = 'author')`,
+      ))
+      .returning({ id: posts.id })
+    // Its pictures and video follow the mark: private while it is on (ADR 0025).
+    if (changed.length > 0) await this.placeMedia(postId)
+    return changed.length > 0
+  }
+
+  /**
+   * Queues moving a post's files to where its mark says. The post has changed
+   * already, so a queue that cannot take the job does not fail the request: the
+   * hourly sweep moves files whose place and mark disagree.
+   */
+  private async placeMedia(postId: string): Promise<void> {
+    try {
+      await this.placement?.placePostMedia(postId)
+    } catch (err) {
+      this.log.error(`queueing the move of post ${postId}'s media for its sensitive mark failed; the hourly sweep will move it: ${(err as Error).message}`)
+    }
   }
 
   /** Records one immutable ballot. A multiple-choice ballot creates several option rows atomically. */
@@ -1614,7 +2104,7 @@ export class PostsService {
     })
   }
 
-  /** Public ballots, one member per row, newest first. */
+  /** Public ballots, one member per row, newest first. A minor's is left out for a signed-out viewer (ADR 0020); the counts keep it. */
   async pollVoters(viewerId: string | null, postId: string, limit: number, cursor?: string): Promise<PollVoterPage | null> {
     const [visible] = await this.db
       .select({ postId: postPolls.postId })
@@ -1646,6 +2136,7 @@ export class PostsService {
         from poll_votes pv
         where pv.post_id = ${postId} and ${before}
           and exists(select 1 from members voter where voter.id = pv.member_id and voter.active)
+          and ${reachesViewer(viewerId, sql`pv.member_id`)}
         group by pv.created_at, pv.member_id
         order by pv.created_at desc, pv.member_id desc
         limit ${limit + 1}

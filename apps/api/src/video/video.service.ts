@@ -1,14 +1,17 @@
 import { type Db, media, members, moderationActions, posts, reports, videoDetails, videoRenditions } from '@heynaija/db'
-import { Inject, Injectable, Logger } from '@nestjs/common'
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, count, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import type { MediaJobs } from '../media/media.service.js'
+import { localMediaUrls, MEDIA_URLS, type MediaUrls } from '../media/media-urls.js'
 import type { VideoStore } from '../media/object-store.js'
+import { type Place, placed, placeFor } from '../media/places.js'
 import { DB } from '../tokens.js'
 import type { Rejection } from './ffmpeg.js'
 import { type VideoConfig, VIDEO_TYPES, type VideoType } from './video-config.js'
 import { assertVideoEligible } from './video-eligibility.js'
 import { VideoError } from './video-error.js'
-import { originalKey, posterKey, quarantineOriginalKey, quarantinedKey, renditionKey } from './video-keys.js'
+import { inTurn } from './in-turn.js'
+import { originalKey, quarantineOriginalKey, videoFolder } from './video-keys.js'
 import { type PostVideo, toPostVideo } from './video-view.js'
 
 export const VIDEO_STORE = Symbol('VIDEO_STORE')
@@ -39,6 +42,12 @@ export type UploadPlan = {
 /** A video ready for an hour that no post took is cleared, as images are. */
 const UNATTACHED_AFTER_MS = 60 * 60 * 1000
 
+/**
+ * Files moved at once when a mark changes: a 3-minute clip is about 190, in a background job. A takedown
+ * moves one at a time, as it always has, so a failure stops it where it is.
+ */
+const MOVES_AT_ONCE = 8
+
 @Injectable()
 export class VideoService {
   private readonly log = new Logger(VideoService.name)
@@ -48,6 +57,7 @@ export class VideoService {
     @Inject(VIDEO_STORE) private readonly store: VideoStore,
     @Inject(VIDEO_JOBS) private readonly jobs: VideoJobs & Pick<MediaJobs, 'purgeCdn'>,
     @Inject(VIDEO_CONFIG) private readonly cfg: VideoConfig,
+    @Optional() @Inject(MEDIA_URLS) private readonly urls: MediaUrls = localMediaUrls(cfg.filesBase),
   ) {}
 
   // --- Upload ---
@@ -173,7 +183,7 @@ export class VideoService {
   /** A ready video's files and size, whether or not it is on a post yet. */
   private async summary(mediaId: string): Promise<PostVideo | null> {
     const [m] = await this.db
-      .select({ alt: media.alt, durationMs: videoDetails.durationMs, width: videoDetails.width, height: videoDetails.height })
+      .select({ alt: media.alt, servedPrivately: media.servedPrivately, durationMs: videoDetails.durationMs, width: videoDetails.width, height: videoDetails.height })
       .from(media)
       .innerJoin(videoDetails, eq(videoDetails.mediaId, media.id))
       .where(eq(media.id, mediaId))
@@ -183,7 +193,10 @@ export class VideoService {
       .from(videoRenditions)
       .where(eq(videoRenditions.mediaId, mediaId))
       .orderBy(videoRenditions.height)
-    return toPostVideo({ id: mediaId, alt: m.alt, durationMs: m.durationMs, width: m.width, height: m.height, renditions })
+    return toPostVideo(
+      { id: mediaId, alt: m.alt, servedPrivately: m.servedPrivately, durationMs: m.durationMs, width: m.width, height: m.height, renditions },
+      this.urls,
+    )
   }
 
   // --- Removing ---
@@ -249,22 +262,40 @@ export class VideoService {
     await this.releasePostVideos(postId)
   }
 
-  /** Puts a restored post's videos back. Only ones the scanner cleared: a held video has no public files. Idempotent. */
+  /**
+   * Puts a restored post's videos back: to the private place while the post is marked sensitive (ADR 0025).
+   * Only ones the scanner cleared: a held video has no published files. Idempotent.
+   */
   async releasePostVideos(postId: string): Promise<void> {
     const rows = await this.db
-      .select({ id: media.id })
+      .select({ id: media.id, marked: sql<boolean>`${posts.adultLabel} is not null` })
       .from(media)
       .innerJoin(videoDetails, eq(videoDetails.mediaId, media.id))
       .innerJoin(posts, eq(posts.id, media.postId))
       // Never a deleted post's (an erased author's evidence stays private), as for images.
       .where(and(eq(media.postId, postId), eq(media.kind, 'post_video'), eq(media.status, 'quarantined'), eq(videoDetails.scanResult, 'clear'), isNull(posts.deletedAt)))
-    for (const { id } of rows) {
-      for (const key of await this.publishedKeys(id)) {
-        if ((await this.store.size('uploads', quarantinedKey(key))) === null) continue
-        await this.store.copy('uploads', quarantinedKey(key), 'media', key)
-        await this.store.remove('uploads', quarantinedKey(key))
-      }
-      await this.db.update(media).set({ status: 'ready' }).where(eq(media.id, id))
+    for (const { id, marked } of rows) {
+      await this.move(id, ['quarantine'], placeFor(marked))
+      await this.db.update(media).set({ status: 'ready', servedPrivately: marked }).where(eq(media.id, id))
+    }
+  }
+
+  /**
+   * Moves a post's ready video to where its sensitive mark says (ADR 0025), as `placePostImages` does
+   * for images: the private bucket while marked, the public one otherwise, purging the public copies.
+   * Never touches a taken-down video. Idempotent: a move that failed part-way is finished by the retry.
+   */
+  async placePostVideos(postId: string): Promise<void> {
+    const rows = await this.db
+      .select({ id: media.id, marked: sql<boolean>`${posts.adultLabel} is not null` })
+      .from(media)
+      .innerJoin(posts, eq(posts.id, media.postId))
+      .where(and(eq(media.postId, postId), eq(media.kind, 'post_video'), eq(media.status, 'ready')))
+    for (const { id, marked } of rows) {
+      const to = placeFor(marked)
+      const keys = await this.move(id, [to === 'private' ? 'public' : 'private'], to, MOVES_AT_ONCE)
+      await this.db.update(media).set({ servedPrivately: marked }).where(and(eq(media.id, id), eq(media.status, 'ready')))
+      await this.jobs.purgeCdn(keys)
     }
   }
 
@@ -313,24 +344,51 @@ export class VideoService {
     }
   }
 
-  /** Moves a published video's files to the private bucket, purges the CDN, then marks it quarantined. */
+  /**
+   * Moves a published video's files to the quarantine, from the public bucket or (marked sensitive) the
+   * private place, purges the CDN, then marks it quarantined.
+   */
   private async quarantine(mediaId: string): Promise<void> {
-    const keys = await this.publishedKeys(mediaId)
     // Files move before the row changes, so a failure part-way is finished by the hourly sweep.
-    for (const key of keys) {
-      if ((await this.store.size('media', key)) === null) continue
-      await this.store.copy('media', key, 'uploads', quarantinedKey(key))
-      await this.store.remove('media', key)
-    }
+    const keys = await this.move(mediaId, ['public', 'private'], 'quarantine')
     // Out of the bucket, but Cloudflare may still hold a cached copy.
     await this.jobs.purgeCdn(keys)
     await this.db.update(media).set({ status: 'quarantined' }).where(eq(media.id, mediaId))
   }
 
-  /** Every public file a published video has: its renditions and its poster. */
+  /**
+   * Moves every published file of a video to `to` from any of `from` (places.ts), `atOnce` at a time, the
+   * bytes never passing through us. Returns every key it has, moved or not.
+   */
+  private async move(mediaId: string, from: Place[], to: Place, atOnce = 1): Promise<string[]> {
+    const keys = await this.publishedKeys(mediaId)
+    await inTurn(keys, atOnce, async (key) => {
+      const [toBucket, toKey] = placed(to, key)
+      for (const place of from) {
+        const [fromBucket, fromKey] = placed(place, key)
+        // Already moved (a retry), or never there.
+        if ((await this.store.size(fromBucket, fromKey)) === null) continue
+        await this.store.copy(fromBucket, fromKey, toBucket, toKey)
+        await this.store.remove(fromBucket, fromKey)
+      }
+    })
+    return keys
+  }
+
+  /**
+   * Every published file a video has (its playlists, pieces and poster), wherever each is now: in the
+   * media bucket, or in the private one, marked sensitive or taken down. Listed from storage, since an HLS
+   * video is a few hundred files; from every place, so a move that failed part-way is finished, and
+   * purged, in full by the retry.
+   */
   private async publishedKeys(mediaId: string): Promise<string[]> {
-    const rows = await this.db.select({ height: videoRenditions.height }).from(videoRenditions).where(eq(videoRenditions.mediaId, mediaId))
-    return [...rows.map((r) => renditionKey(mediaId, r.height)), posterKey(mediaId)]
+    const folder = videoFolder(mediaId)
+    const keys: string[] = []
+    for (const place of PLACES) {
+      const [bucket, prefix] = placed(place, folder)
+      for (const key of await this.store.list(bucket, prefix)) keys.push(folder + key.slice(prefix.length))
+    }
+    return [...new Set(keys)].sort()
   }
 
   /**
@@ -342,10 +400,17 @@ export class VideoService {
     if (uploadId) await this.store.abortMultipart(originalKey(mediaId), uploadId)
     await this.store.remove('uploads', originalKey(mediaId))
     const keys = await this.publishedKeys(mediaId)
-    for (const key of keys) await this.store.remove('media', key)
-    // Gone from the bucket, but they were served `immutable` for a year, so Cloudflare may still have them.
-    await this.jobs.purgeCdn(keys)
-    for (const key of keys) await this.store.remove('uploads', quarantinedKey(key))
+    try {
+      for (const key of keys) await this.store.remove('media', key)
+    } finally {
+      // Gone from the bucket, but they were served `immutable` for a year, so Cloudflare may still have them.
+      // Purged even when storage failed part-way: the retry lists only the files still there.
+      await this.jobs.purgeCdn(keys)
+    }
+    for (const key of keys) {
+      await this.store.remove(...placed('private', key))
+      await this.store.remove(...placed('quarantine', key))
+    }
     await this.store.remove('uploads', quarantineOriginalKey(mediaId))
     await this.db.delete(videoRenditions).where(eq(videoRenditions.mediaId, mediaId))
     await this.db.delete(videoDetails).where(eq(videoDetails.mediaId, mediaId))
@@ -429,11 +494,20 @@ export class VideoService {
         ),
       )
     for (const { id } of reported) await this.quarantine(id)
+
+    // Videos whose place disagrees with their post's sensitive mark (ADR 0025): the move queued when the
+    // mark changed failed, or a post was marked before private serving existed. Live posts only.
+    const misplaced = await this.db
+      .selectDistinct({ postId: posts.id })
+      .from(media)
+      .innerJoin(posts, eq(posts.id, media.postId))
+      .where(and(eq(media.kind, 'post_video'), eq(media.status, 'ready'), isNull(posts.removedAt), sql`${media.servedPrivately} <> (${posts.adultLabel} is not null)`))
+    for (const { postId } of misplaced) await this.placePostVideos(postId)
     const hidden = exposed.length + reported.length
-    if (stale.length + unused.length + erased + orphaned.length + hidden > 0) {
+    if (stale.length + unused.length + erased + orphaned.length + hidden + misplaced.length > 0) {
       this.log.log(
         `video sweep: ${stale.length} abandoned uploads, ${unused.length} unused videos, ${erased} removals finished, ` +
-          `${orphaned.length} deleted posts' videos taken down, ${hidden} re-quarantined`,
+          `${orphaned.length} deleted posts' videos taken down, ${hidden} re-quarantined, ${misplaced.length} posts' videos moved for their mark`,
       )
     }
   }
@@ -467,6 +541,8 @@ export class VideoService {
 }
 
 const range = (n: number) => Array.from({ length: n }, (_, i) => i + 1)
+
+const PLACES: Place[] = ['public', 'private', 'quarantine']
 
 /** The size of part `n` of `bytes` sent in parts of `partSize`: every part full but the last. */
 const partBytes = (n: number, bytes: number, partSize: number) => {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
+import { generateKeyPairSync } from 'node:crypto'
 import { test } from 'node:test'
-import { loadEnv, loadPrivacyToolEnv } from './env.js'
+import { appleKey, loadEnv, loadPrivacyToolEnv } from './env.js'
 
 const base = {
   DATABASE_URL: 'postgres://localhost/heynaija',
@@ -16,9 +17,9 @@ const base = {
   S3_MEDIA_BUCKET: 'media',
 }
 
-const locked = ['NIN_VERIFICATION_ENABLED', 'BINDING_GOVERNANCE_VOTING_ENABLED', 'UNDER_18_ACCOUNTS_ENABLED'] as const
+const locked = ['NIN_VERIFICATION_ENABLED', 'BINDING_GOVERNANCE_VOTING_ENABLED', 'UNDER_18_ACCOUNTS_ENABLED', 'BIRTH_DATE_ENABLED'] as const
 
-test('identity checks, binding votes and under-18 accounts are off by default', () => {
+test('identity checks, binding votes, under-18 accounts and dates of birth are off by default', () => {
   const env = loadEnv(base)
   for (const name of locked) assert.equal(env[name], false, name)
   assert.equal(env.IDENTITY_KEY_SECRET, undefined)
@@ -93,12 +94,18 @@ test('account deletion waits 14 days and requests are due in 30 unless set, also
   assert.equal(loadEnv({ ...base, ACCOUNT_DELETION_GRACE_DAYS: '14', PRIVACY_REQUEST_DUE_DAYS: '14' }).ACCOUNT_DELETION_GRACE_DAYS, 14)
 })
 
-test('deleted posts keep their text until a retention period is set', () => {
-  assert.equal(loadEnv(base).DELETED_CONTENT_RETENTION_DAYS, undefined)
-  assert.equal(loadEnv({ ...base, DELETED_CONTENT_RETENTION_DAYS: '' }).DELETED_CONTENT_RETENTION_DAYS, undefined)
-  assert.equal(loadEnv({ ...base, DELETED_CONTENT_RETENTION_DAYS: '180' }).DELETED_CONTENT_RETENTION_DAYS, 180)
-  for (const bad of ['0', '3651', 'forever']) {
-    assert.throws(() => loadEnv({ ...base, DELETED_CONTENT_RETENTION_DAYS: bad }), /DELETED_CONTENT_RETENTION_DAYS/, bad)
+test('the retention periods default to what /privacy#keep says, and stay within 1 to 3650 days', () => {
+  const defaults = {
+    DELETED_CONTENT_RETENTION_DAYS: 90,
+    TAKEN_DOWN_MEDIA_RETENTION_DAYS: 365,
+    ERASED_AGE_RECORD_RETENTION_DAYS: 730,
+    PRIVACY_REQUEST_RETENTION_DAYS: 730,
+  } as const
+  for (const [name, fallback] of Object.entries(defaults) as [keyof typeof defaults, number][]) {
+    assert.equal(loadEnv(base)[name], fallback, name)
+    assert.equal(loadEnv({ ...base, [name]: '' })[name], fallback, `${name} empty`)
+    assert.equal(loadEnv({ ...base, [name]: '180' })[name], 180, name)
+    for (const bad of ['0', '3651', 'forever']) assert.throws(() => loadEnv({ ...base, [name]: bad }), new RegExp(name), bad)
   }
 })
 
@@ -183,4 +190,44 @@ test('APP_ENV names the environment and, unset, is production so a forgotten var
   assert.equal(loadEnv({ ...base, APP_ENV: '' }).APP_ENV, 'production')
   for (const name of ['development', 'staging', 'production'] as const) assert.equal(loadEnv({ ...base, APP_ENV: name }).APP_ENV, name)
   assert.throws(() => loadEnv({ ...base, APP_ENV: 'prod' }))
+})
+
+test('FCM’s service account is its JSON key in base64, kept to what sending needs', () => {
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+  const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+  const key = {
+    type: 'service_account',
+    project_id: 'heynaija-ed259',
+    private_key_id: 'abc',
+    private_key: pem,
+    client_email: 'firebase-adminsdk-x@heynaija-ed259.iam.gserviceaccount.com',
+    token_uri: 'https://oauth2.googleapis.com/token',
+  }
+  const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64')
+  assert.deepEqual(loadEnv({ ...base, FCM_SERVICE_ACCOUNT: b64(key) }).FCM_SERVICE_ACCOUNT, {
+    projectId: 'heynaija-ed259',
+    clientEmail: 'firebase-adminsdk-x@heynaija-ed259.iam.gserviceaccount.com',
+    privateKey: pem,
+  })
+  assert.equal(loadEnv(base).FCM_SERVICE_ACCOUNT, undefined)
+  assert.equal(loadEnv({ ...base, FCM_SERVICE_ACCOUNT: '' }).FCM_SERVICE_ACCOUNT, undefined)
+  // The JSON itself, not in base64; google-services.json, which is the app's; a broken key.
+  assert.throws(() => loadEnv({ ...base, FCM_SERVICE_ACCOUNT: JSON.stringify(key) }), /service account key/)
+  assert.throws(() => loadEnv({ ...base, FCM_SERVICE_ACCOUNT: b64({ project_info: { project_id: 'heynaija-ed259' } }) }), /FCM_SERVICE_ACCOUNT/)
+  assert.throws(() => loadEnv({ ...base, FCM_SERVICE_ACCOUNT: b64({ ...key, private_key: 'not a key' }) }), /private key/)
+})
+
+test('the Apple key is its .p8 file in base64, with its team and key IDs, all three or none', () => {
+  const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+  const p8 = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+  const apple = { APPLE_TEAM_ID: 'TEAM123456', APPLE_KEY_ID: 'KEY1234567', APPLE_PRIVATE_KEY: Buffer.from(p8).toString('base64') }
+  const env = loadEnv({ ...base, ...apple })
+  assert.deepEqual(appleKey(env), { teamId: 'TEAM123456', keyId: 'KEY1234567', privateKey: p8, bundleId: 'ng.heynaija.app' })
+  assert.equal(appleKey(loadEnv({ ...base, ...apple, APPLE_BUNDLE_ID: 'ng.heynaija.beta' }))?.bundleId, 'ng.heynaija.beta')
+  assert.equal(appleKey(loadEnv(base)), null)
+  assert.equal(appleKey(loadEnv({ ...base, APPLE_TEAM_ID: '', APPLE_KEY_ID: '', APPLE_PRIVATE_KEY: '' })), null)
+  assert.throws(() => loadEnv({ ...base, APPLE_TEAM_ID: apple.APPLE_TEAM_ID }), /together/)
+  // The file itself rather than base64, an ID in the wrong shape.
+  assert.throws(() => loadEnv({ ...base, ...apple, APPLE_PRIVATE_KEY: p8 }), /\.p8/)
+  assert.throws(() => loadEnv({ ...base, ...apple, APPLE_KEY_ID: 'key' }), /APPLE_KEY_ID/)
 })

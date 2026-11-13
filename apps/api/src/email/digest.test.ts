@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { type DigestItem, LINES_MAX, renderDigest } from './digest.js'
+import { type DigestItem, LINES_MAX, linesFor, renderDigest } from './digest.js'
 
 const webUrl = 'https://heynaija.test'
 const unsubscribeUrl = `${webUrl}/api/v1/email/unsubscribe/TOKEN`
@@ -14,6 +14,24 @@ test('one notification: the subject says what happened and quotes nothing', () =
   assert.equal(mail.subject, '@bayo replied to your post')
   assert.match(mail.text, /@bayo replied to your post\n {2}“Jollof, obviously”\n {2}https:\/\/heynaija\.test\/p\/r1\n/)
   assert.ok(!mail.subject.includes('Jollof'))
+})
+
+test('a reply in a Gist links to the Gist, not to a post page the reader cannot open', () => {
+  const mail = render([item({ kind: 'reply', excerpt: 'Jollof, obviously', postId: 'r1', gistId: 'g1' })])
+  assert.equal(mail.subject, '@bayo replied in a Gist')
+  assert.match(mail.text, /https:\/\/heynaija\.test\/gists\/g1\?reply=r1#post-r1\n/)
+  assert.ok(!mail.text.includes('/p/r1'))
+})
+
+test('a mention in a Gist reply links to the reply in the Gist and says so', () => {
+  const [line] = linesFor([item({ kind: 'mention', postId: 'r1', gistId: 'g1' })], 'https://x')
+  assert.equal(line!.href, 'https://x/gists/g1?reply=r1#post-r1')
+  assert.equal(line!.headline, '@bayo mentioned you in a Gist')
+})
+
+test('a reply nested under another reply links to it as the conversation in focus, the same shape as the web notification target', () => {
+  const [line] = linesFor([item({ kind: 'reply', postId: 'r2', gistId: 'g1' })], '')
+  assert.equal(line!.href, '/gists/g1?reply=r2#post-r2')
 })
 
 test('several notifications: counted in the subject, newest first', () => {

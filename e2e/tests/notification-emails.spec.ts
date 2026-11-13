@@ -3,6 +3,7 @@ import { grantModerator } from '../lib/cli.ts'
 import { ageNotifications, waitForEmailJob, waitForPushJob } from '../lib/db.ts'
 import { countFor, emailWhere } from '../lib/mailpit.ts'
 import { type Member, newMember, post, replyBox } from '../lib/members.ts'
+import { reloadSettings } from '../lib/settings.ts'
 
 // Notification emails wait a few minutes in real life, so that a burst becomes one
 // email. These tests age the notifications (ageNotifications) rather than wait, and
@@ -159,7 +160,7 @@ test('email is a setting: it is kept, and the kinds a member turned off stay out
   await emailBox(author.page).uncheck()
   await section.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(section.getByRole('status')).toHaveText('Saved.')
-  await author.page.reload()
+  await reloadSettings(author.page)
   await expect(emailBox(author.page)).not.toBeChecked()
 
   const text = `A post to answer, from ${author.handle}`
@@ -176,7 +177,7 @@ test('email is a setting: it is kept, and the kinds a member turned off stay out
   await section.getByLabel('Someone likes your post').uncheck()
   await section.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(section.getByRole('status')).toHaveText('Saved.')
-  await author.page.reload()
+  await reloadSettings(author.page)
   await expect(emailBox(author.page)).toBeChecked()
   await expect(section.getByLabel('Someone likes your post')).not.toBeChecked()
 

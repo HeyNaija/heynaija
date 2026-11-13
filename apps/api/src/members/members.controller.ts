@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Inject,
@@ -23,7 +24,9 @@ import {
 import { handleParam, paged, pageQuery, parse } from '../http.js'
 import { PostsService, PROFILE_FILTERS } from '../posts/posts.service.js'
 import { RateLimiter } from '../rate-limit.js'
-import { CannotFollowSelfError, MembersService, profileInput } from './members.service.js'
+import { FeatureFlags } from '../flags/feature-flags.js'
+import { LabelNotAllowedError } from '../governance/adult-content.js'
+import { CannotFollowSelfError, MarkSetByModeratorError, MembersService, profileInput, sensitiveSettingsInput } from './members.service.js'
 
 const memberPostsQuery = pageQuery.extend({ filter: z.enum(PROFILE_FILTERS).default('posts') })
 
@@ -132,5 +135,34 @@ export class OwnProfileController {
     const profile = parse(profileInput, body)
     await this.limits.hit('profile', req.member.id)
     await this.members.updateProfile(req.member.id, profile)
+  }
+}
+
+/** The member's own choices about posts marked sensitive (ADR 0020). */
+@Controller('v1/me/sensitive')
+export class OwnSensitiveSettingsController {
+  constructor(
+    @Inject(MembersService) private readonly members: MembersService,
+    @Inject(RateLimiter) private readonly limits: RateLimiter,
+    @Inject(FeatureFlags) private readonly flags: FeatureFlags,
+  ) {}
+
+  @Put()
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async update(@Req() req: AuthedRequest, @Body() body: unknown) {
+    const settings = parse(sensitiveSettingsInput, body)
+    // Marking everything you post is gated by adultLabels; stopping always works.
+    if (settings.markPosts && !(await this.flags.isEnabled('adultLabels', req.member.id))) {
+      throw new BadRequestException({ code: 'feature_unavailable', message: 'Content warnings are not available yet' })
+    }
+    await this.limits.hit('profile', req.member.id)
+    try {
+      await this.members.setSensitiveSettings(req.member.id, settings)
+    } catch (err) {
+      if (err instanceof LabelNotAllowedError) throw new ForbiddenException({ code: 'label_not_allowed', message: err.message })
+      if (err instanceof MarkSetByModeratorError) throw new ForbiddenException({ code: 'set_by_moderator', message: err.message })
+      throw err
+    }
   }
 }

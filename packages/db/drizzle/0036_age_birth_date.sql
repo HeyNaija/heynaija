@@ -1,0 +1,1 @@
+ALTER TABLE "restricted"."age_assurances" ADD COLUMN "birth_date" date;

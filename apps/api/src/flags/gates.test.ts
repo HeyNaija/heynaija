@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { members } from '@heynaija/db'
+import { ageAssurances, members } from '@heynaija/db'
 import { type ExecutionContext, HttpException } from '@nestjs/common'
+import { eq } from 'drizzle-orm'
 import { AuthController } from '../auth/auth.controller.js'
 import { type AuthedRequest, SessionGuard } from '../auth/session.guard.js'
 import { GistsGate } from '../gists/gists-enabled.guard.js'
@@ -11,7 +12,7 @@ import { OnboardingController } from '../onboarding/onboarding.controller.js'
 import { PostsController } from '../posts/posts.controller.js'
 import { PostsService } from '../posts/posts.service.js'
 import { MemoryRateLimiter } from '../rate-limit.js'
-import { db, migrate, pool, reset } from '../test-db.js'
+import { db, giveBirthDates, migrate, pool, reset } from '../test-db.js'
 import { TopicsController } from '../topics/topics.controller.js'
 import { FeatureFlags } from './feature-flags.js'
 import { FeatureGuard, featureOf } from './feature.guard.js'
@@ -35,10 +36,10 @@ const auth = (flags: FeatureFlags) =>
     db,
     {} as never,
     {} as never,
-    {} as never,
+    { birthDateNeeded: async () => false } as never,
     flags,
     { effective: (on: boolean) => on },
-    new GistsGate(flags, { APP_ENV: flags === production ? 'production' : 'development', ...livekit }),
+    new GistsGate(flags, livekit),
   )
 const as = (id: string, handle: string) => ({ member: { id, handle } }) as AuthedRequest
 
@@ -70,6 +71,7 @@ beforeEach(async () => {
     { id: ada, handle: 'ada', onboardedAt: new Date() },
     { id: bayo, handle: 'bayo' },
   ])
+  await giveBirthDates([ada, bayo])
 })
 after(() => pool.end())
 
@@ -93,13 +95,29 @@ test('/v1/me: features follow the environment and the viewer', async () => {
   assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.reposts, false)
 })
 
-test('/v1/me: in production Gists show only for members on the allow-list, never for everyone', async () => {
+test('/v1/me: in production Gists are off by default, and show for everyone or for the listed as the flag says', async () => {
   assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.gists, false, 'off by default')
   await production.set(ada, 'gists', { enabled: true })
-  assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.gists, false, 'on for everyone opens it to nobody')
+  assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.gists, true, 'on for everyone')
   await production.set(ada, 'gists', { enabled: null, handles: ['bayo'] })
   assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.gists, true)
   assert.equal((await auth(production).me(as(ada, 'ada'))).features.gists, false)
+})
+
+test('/v1/me: members under 18 or with no date of birth are shown Gists to listen to, and only adults get the stage', async () => {
+  await production.set(ada, 'gists', { enabled: null, handles: ['ada', 'bayo'] })
+  const adult = await auth(production).me(as(ada, 'ada'))
+  assert.deepEqual([adult.features.gists, adult.gistStage], [true, true])
+  await db.update(ageAssurances).set({ withdrawnAt: new Date() }).where(eq(ageAssurances.memberId, bayo))
+  const unknown = await auth(production).me(as(bayo, 'bayo'))
+  assert.deepEqual([unknown.features.gists, unknown.gistStage], [true, false], 'no date of birth')
+  await giveBirthDates([bayo], 15)
+  const minor = await auth(production).me(as(bayo, 'bayo'))
+  assert.deepEqual([minor.features.gists, minor.gistStage], [true, false], 'under 18')
+  // Off the list, an adult gets neither.
+  await production.set(ada, 'gists', { enabled: null, handles: ['bayo'] })
+  const off = await auth(production).me(as(ada, 'ada'))
+  assert.deepEqual([off.features.gists, off.gistStage], [false, false])
 })
 
 test('/v1/me: with the welcome flow off nobody is sent to it', async () => {

@@ -1,6 +1,9 @@
+import { hideGistReply } from '@/app/actions'
+import type { ReactNode } from 'react'
 import type { Post, ThreadReply } from '@/lib/api'
-import type { ThreadRow } from '@/lib/thread-state'
+import type { ReplyOrder, ThreadRow } from '@/lib/thread-state'
 import { PostItem } from './post-item'
+import { SubmitButton } from './submit-button'
 import { ThreadBranch, ThreadReplyAction, ThreadToggle } from './thread-conversation'
 
 export function renderThreadRow(
@@ -10,6 +13,9 @@ export function renderThreadRow(
   depth: number,
   parentHandle: string | null,
   root = false,
+  gist?: { id: string; viewerIsHost: boolean; order?: ReplyOrder },
+  /** Under the post's card, before its replies: a story's updates (docs/adr/0024). */
+  below?: ReactNode,
 ): ThreadRow {
   const unavailable = post.unavailable === true
   return {
@@ -29,7 +35,17 @@ export function renderThreadRow(
       >
         {unavailable ? (
           <article id={`post-${post.id}`} className="post-card is-reply thread-unavailable">
-            <p className="text-sm italic text-muted">This post is no longer available.</p>
+            <p className="text-sm italic text-muted">
+              {post.hiddenByHost ? 'The host hid this reply.' : 'This post is no longer available.'}
+            </p>
+            {post.hiddenByHost && gist?.viewerIsHost ? (
+              <form action={hideGistReply}>
+                <input type="hidden" name="gist" value={gist.id} />
+                <input type="hidden" name="id" value={post.id} />
+                <input type="hidden" name="on" value="0" />
+                <SubmitButton className="btn btn-secondary btn-lg">Show reply</SubmitButton>
+              </form>
+            ) : null}
             <div className="post-actions"><ThreadToggle /></div>
           </article>
         ) : (
@@ -39,6 +55,7 @@ export function renderThreadRow(
             now={now}
             focused={root}
             inThread
+            gist={gist}
             replyAction={(
               <ThreadReplyAction
                 id={post.id}
@@ -46,11 +63,13 @@ export function renderThreadRow(
                 handle={post.authorHandle}
                 depth={depth}
                 count={post.replyCount}
+                empty={post.hasReplies !== true && post.replyCount === 0}
               />
             )}
             threadToggle={<ThreadToggle />}
           />
         )}
+        {below}
       </ThreadBranch>
     ),
   }

@@ -17,7 +17,7 @@ export default function SignupPage({ searchParams }: PageProps<'/signup'>) {
       footer={
         <>
           <p>
-            Before you join, read the{' '}
+            By creating an account you agree to the <Link href="/terms" className={linkClass}>terms</Link>, the{' '}
             <Link href="/rules" className={linkClass}>rules</Link> and the{' '}
             <Link href="/privacy" className={linkClass}>privacy policy</Link>.
           </p>

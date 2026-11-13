@@ -7,17 +7,22 @@ import { Globe } from 'lucide-react'
 import { type ComposeState, createPost } from '@/app/actions'
 import { insertMention, mentionBeforeCaret } from '@/lib/mention-suggest'
 import { POLL_OPTION_INPUT_MAX, POLL_OPTIONS_MAX } from '@/lib/polls'
-import type { ReplyAudience } from '@/lib/reply-audience'
+import { REPLY_AUDIENCES, type ReplyAudience } from '@/lib/reply-audience'
 import { limitSize, type VideoLimits } from '@/lib/video'
 import { Avatar } from './avatar'
 import { FounderBadge } from './founder-badge'
-import { BubbleIcon, CloseIcon, GifIcon, ImageIcon, PeopleIcon, PlusIcon, VideoIcon, VoteIcon } from './icons'
+import { BubbleIcon, CloseIcon, GifIcon, ImageIcon, PeopleIcon, PlusIcon, SensitiveIcon, VideoIcon, VoteIcon } from './icons'
 import { IMAGE_TYPES } from './shrink-image'
 import { useAutoGrow } from './use-auto-grow'
 import { type VideoDraft, useVideoDraft } from './use-video-draft'
 import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
 import { useFixedPlacement } from './use-fixed-placement'
 import { useMentionSuggestions } from './use-mention-suggestions'
+import { PostVideo } from './post-video'
+import { composerOffers } from '@/lib/composer-offers'
+import { postedReplyHref } from '@/lib/posted-href'
+import { useOneVideo } from './use-one-video'
+import { VideoPlayer } from './video-player'
 import { graphemes, POST_MAX } from '@/lib/post-length'
 
 const LIMIT = POST_MAX
@@ -28,6 +33,8 @@ type Props = {
   avatar?: string | null
   replyTo?: string
   replyHandle?: string
+  /** Names the recipient in place of `@replyHandle` (the host answering their own Gist). */
+  replyLabel?: string
   replyDepth?: number
   /** The reply is to another reply rather than the post in focus: the recipient stays in view. */
   answeringReply?: boolean
@@ -38,7 +45,14 @@ type Props = {
   choices?: { slug: string; name: string }[]
   /** Makes this a quote post of that post, shown under the box as `preview`. */
   quote?: { id: string; preview: ReactNode }
+  /**
+   * Makes this an update to that story (docs/adr/0024), written at the end of the
+   * story as a reply is under its post: the same small box, opened by `#add-update`.
+   */
+  story?: { id: string }
   submitAction?: (previous: ComposeState, data: FormData) => Promise<ComposeState>
+  /** Where "View reply" goes for the reply just posted; a Gist's replies are not served on /p/. */
+  postedHref?: (id: string) => string
   onPosted?: (state: ComposeState) => void
   onPendingChange?: (pending: boolean) => void
   /** The Composer stays mounted when its form moves to another reply row. */
@@ -47,14 +61,31 @@ type Props = {
   /** From `me.features`: whether polls and reply limits are switched on. Off hides them. */
   polls?: boolean
   replyControls?: boolean
+  /** Who the member may let reply, the default first (`Me.replyAudiences`): a minor's never include everyone. */
+  replyAudiences?: readonly ReplyAudience[]
+  /** False for a text-only box: no pictures, GIFs or video to attach. */
+  media?: boolean
   /**
    * From `me.videoLimits`: the API's video limits, present only while video is open to this member
-   * (the videoPosts flag and, in production, a bound scanner). Null hides the button.
+   * (the videoPosts flag, in production a bound scanner, and an adult by their date of birth). Null
+   * hides the button.
    */
   videoLimits?: VideoLimits | null
+  /**
+   * From `me` (`canMarkSensitive`): the member may mark a post sensitive (ADR 0020).
+   * Offered only once pictures or a video are attached, as X does, and never to a
+   * member whose Settings already mark everything they post.
+   */
+  sensitiveLabels?: boolean
 }
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, answeringReply, placeholder, community, choices, quote, submitAction, onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, videoLimits = null }: Props) {
+const REPLY_AUDIENCE_CHOICE = {
+  everyone: 'Everyone can reply',
+  following: 'People you follow',
+  mentioned: 'Only people mentioned',
+} satisfies Record<ReplyAudience, string>
+
+export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, choices, quote, story, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, replyAudiences = REPLY_AUDIENCES, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -62,11 +93,12 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
   const [text, setText] = useState('')
   // The prompt follows the audience picker; the toolbar keeps visibility and posting explicit.
   const [audience, setAudience] = useState('')
-  const [replyAudience, setReplyAudience] = useState<ReplyAudience>('everyone')
+  const [replyAudience, setReplyAudience] = useState<ReplyAudience>(replyAudiences[0] ?? 'everyone')
   const [pollOpen, setPollOpen] = useState(false)
   const [pollOptions, setPollOptions] = useState(['', ''])
   const [pollMultiple, setPollMultiple] = useState(false)
   const [pollExpiry, setPollExpiry] = useState('7_days')
+  const [sensitive, setSensitive] = useState(false)
   const prompt = placeholder ?? (audience ? `Start a conversation in ${choices?.find((c) => c.slug === audience)?.name ?? 'your community'}…` : 'Start a conversation…')
   const [expanded, setExpanded] = useState(false)
   // Disabled for an empty box only once the page is alive; before that (or without JavaScript) the button works.
@@ -82,11 +114,15 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
   }, [clearImages, clearVideo])
   const videoPicker = useRef<HTMLInputElement>(null)
   const picker = useRef<HTMLInputElement>(null)
+  const offers = composerOffers({ media, polls, videoAvailable: videoLimits !== null, replyTo, pollOpen, videoDrafted: video.draft !== null })
   const form = useRef<HTMLFormElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
+  // A reply or an update is the small box, in place under what it follows.
+  const inline = !!replyTo || !!story
+  const formId = story ? 'add-update' : 'compose'
   // A quote keeps the box open: the post being quoted is shown under it.
   const active = expanded || text.length > 0 || images.drafts.length > 0 || !!video.draft || !!quote || pollOpen
-  const rows = active ? (replyTo ? 2 : 3) : 1
+  const rows = active ? (inline ? 2 : 3) : 1
   useAutoGrow(input, text, rows)
 
   // The @mention being typed at the caret, and members to offer for it.
@@ -149,10 +185,10 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
     }
   }
 
-  // Arriving through a "Reply" or "New post" link (…#compose) puts the cursor in the box.
+  // Arriving through a "Reply", "New post" or "Add update" link (…#compose, …#add-update) puts the cursor in the box.
   useEffect(() => {
-    if (window.location.hash === '#compose' || focusRequest > 0) input.current?.focus({ preventScroll: true })
-  }, [portalTarget, focusRequest])
+    if (window.location.hash === `#${formId}` || focusRequest > 0) input.current?.focus({ preventScroll: true })
+  }, [portalTarget, focusRequest, formId])
 
   useEffect(() => { onPendingChange?.(pending) }, [pending, onPendingChange])
 
@@ -183,11 +219,12 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
       lastPosted.current = state.postedAt
       setText('')
       setAudience('')
-      setReplyAudience('everyone')
+      setReplyAudience(replyAudiences[0] ?? 'everyone')
       setPollOpen(false)
       setPollOptions(['', ''])
       setPollMultiple(false)
       setPollExpiry('7_days')
+      setSensitive(false)
       clear()
       setExpanded(false)
       onPosted?.(state)
@@ -202,36 +239,40 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
   }
 
   const left = LIMIT - graphemes(text.trim())
+  // The mark goes with pictures and video; with none attached there is nothing to offer.
+  const markable = sensitiveLabels && (images.drafts.length > 0 || video.draft !== null)
   // A video that is held, rejected or failed blocks the post until it is removed: only a ready one can go.
   const waiting = images.drafts.some((d) => d.status !== 'ready') || (video.draft !== null && video.draft.status !== 'ready')
   const empty = left === LIMIT && images.drafts.length === 0 && !video.draft
   const pollReady = !pollOpen || (text.trim().length > 0 && pollOptions.length >= 2 && pollOptions.every((option) => option.trim().length > 0))
 
   const content = (
-    <form ref={form} id="compose" action={action} className={`${replyTo ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''}${answeringReply ? ' is-answering' : ''} scroll-mt-32`}>
+    <form ref={form} id={formId} action={action} className={`${inline ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''}${answeringReply ? ' is-answering' : ''} scroll-mt-32`}>
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
       {replyDepth ? <input type="hidden" name="threadDepth" value={replyDepth} /> : null}
       {replyHandle ? <input type="hidden" name="replyHandle" value={replyHandle} /> : null}
       {community ? <input type="hidden" name="community" value={community} /> : null}
       {quote ? <input type="hidden" name="quote" value={quote.id} /> : null}
+      {story ? <input type="hidden" name="storyOf" value={story.id} /> : null}
       {!replyTo && replyControls ? <input type="hidden" name="replyAudience" value={replyAudience} /> : null}
       {pollOpen ? <input type="hidden" name="poll" value="1" /> : null}
+      {markable && sensitive ? <input type="hidden" name="sensitive" value="1" /> : null}
 
       {replyTo && replyHandle ? (
-        <p id={recipientId} className="composer-recipient">Replying to <strong>@{replyHandle}</strong></p>
+        <p id={recipientId} className="composer-recipient">Replying to <strong>{replyLabel ?? `@${replyHandle}`}</strong></p>
       ) : null}
-      <div className={replyTo ? 'composer-reply-writing' : 'flex gap-3'}>
-        {replyTo ? (
-          <div className="composer-reply-avatar" title={`Replying as @${handle}`}>
+      <div className={inline ? 'composer-reply-writing' : 'flex gap-3'}>
+        {inline ? (
+          <div className="composer-reply-avatar" title={`${replyTo ? 'Replying' : 'Posting'} as @${handle}`}>
             <Avatar handle={handle} src={avatar} size={32} />
-            <span className="sr-only">Replying as @{handle}</span>
+            <span className="sr-only">{replyTo ? 'Replying' : 'Posting'} as @{handle}</span>
           </div>
         ) : (
           <Avatar handle={handle} src={avatar} size={42} />
         )}
         <div className="min-w-0 flex-1">
           <label htmlFor={inputId} className="sr-only">
-            {replyTo ? 'Your reply' : 'New post'}
+            {replyTo ? 'Your reply' : story ? 'Your update' : 'New post'}
           </label>
           <div ref={writingRow} className="composer-writing-row">
             <textarea
@@ -328,8 +369,20 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
           ) : null}
           {video.draft ? (
             <ul className="composer-images" aria-label="Video">
-              <VideoRow draft={video.draft} onRemove={video.remove} onRetry={video.retry} onDescribe={video.describe} />
+              <VideoRow draft={video.draft} onRemove={video.remove} onRetry={video.retry} onSend={video.send} onDescribe={video.describe} />
             </ul>
+          ) : null}
+          {markable ? (
+            <button
+              type="button"
+              className="composer-sensitive"
+              aria-pressed={sensitive}
+              title="Hides it from anyone under 18, and covers it until people tap Show"
+              onClick={() => setSensitive((on) => !on)}
+            >
+              <SensitiveIcon size={15} />
+              {sensitive ? 'Marked sensitive' : 'Mark as sensitive'}
+            </button>
           ) : null}
           {quote ? <div className="composer-quote">{quote.preview}</div> : null}
         </div>
@@ -391,44 +444,48 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
         </fieldset>
       ) : null}
       <div className="composer-toolbar">
-        <button
-          type="button"
-          className="icon-btn composer-photo"
-          aria-label={`Add images (up to ${MAX_IMAGES})`}
-          title="Add images"
-          disabled={images.drafts.length >= MAX_IMAGES || !!video.draft}
-          onClick={() => choose(IMAGE_TYPES)}
-        >
-          <ImageIcon size={20} />
-          <span className="composer-photo-label">Photo</span>
-        </button>
-        <button
-          type="button"
-          className="icon-btn composer-photo"
-          aria-label={`Add a GIF (the post can have up to ${MAX_IMAGES} pictures in all)`}
-          title="Add a GIF"
-          disabled={images.drafts.length >= MAX_IMAGES || !!video.draft}
-          onClick={() => choose(['image/gif'])}
-        >
-          <GifIcon size={20} />
-          <span className="composer-photo-label">GIF</span>
-        </button>
-        {/* One hidden picker for both buttons; each says what it will offer before it opens. */}
-        <input
-          ref={picker}
-          type="file"
-          multiple
-          className="sr-only"
-          tabIndex={-1}
-          aria-hidden="true"
-          onChange={(e) => {
-            const files = [...(e.target.files ?? [])]
-            e.target.value = '' // so choosing the same file again still fires
-            setExpanded(true)
-            setTooMany(images.add(files) > 0)
-          }}
-        />
-        {videoLimits && !replyTo && !pollOpen ? (
+        {offers.pictures ? (
+          <>
+            <button
+              type="button"
+              className="icon-btn composer-photo"
+              aria-label={`Add images (up to ${MAX_IMAGES})`}
+              title="Add images"
+              disabled={images.drafts.length >= MAX_IMAGES || !!video.draft}
+              onClick={() => choose(IMAGE_TYPES)}
+            >
+              <ImageIcon size={20} />
+              <span className="composer-photo-label">Photo</span>
+            </button>
+            <button
+              type="button"
+              className="icon-btn composer-photo"
+              aria-label={`Add a GIF (the post can have up to ${MAX_IMAGES} pictures in all)`}
+              title="Add a GIF"
+              disabled={images.drafts.length >= MAX_IMAGES || !!video.draft}
+              onClick={() => choose(['image/gif'])}
+            >
+              <GifIcon size={20} />
+              <span className="composer-photo-label">GIF</span>
+            </button>
+            {/* One hidden picker for both buttons; each says what it will offer before it opens. */}
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={(e) => {
+                const files = [...(e.target.files ?? [])]
+                e.target.value = '' // so choosing the same file again still fires
+                setExpanded(true)
+                setTooMany(images.add(files) > 0)
+              }}
+            />
+          </>
+        ) : null}
+        {videoLimits && offers.video ? (
           <>
             <button
               type="button"
@@ -458,7 +515,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
             />
           </>
         ) : null}
-        {!replyTo && polls && !video.draft ? (
+        {offers.poll ? (
           <button
             type="button"
             className="icon-btn composer-photo"
@@ -499,9 +556,9 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
             <BubbleIcon size={16} />
             <span className="sr-only">Who can reply</span>
             <select key={results} value={replyAudience} onChange={(event) => setReplyAudience(event.target.value as ReplyAudience)}>
-              <option value="everyone">Everyone can reply</option>
-              <option value="following">People you follow</option>
-              <option value="mentioned">Only people mentioned</option>
+              {replyAudiences.map((choice) => (
+                <option key={choice} value={choice}>{REPLY_AUDIENCE_CHOICE[choice]}</option>
+              ))}
             </select>
           </label>
         ) : null}
@@ -524,15 +581,17 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
       </div>
 
       <p id={privacyId} className="composer-privacy">
-        {replyTo ? 'Replies' : 'Posts'} are public. Anyone can see and copy them.
+        {replyTo ? 'Replies' : story ? 'Updates' : 'Posts'} are public. Anyone can see and copy them.
         {!replyTo && replyAudience !== 'everyone' ? ' This post limits who may join its replies.' : ''}
       </p>
       <p role="alert" className="mt-1 text-sm text-danger empty:hidden">
         {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : state.error}
       </p>
+      {/* An update shows up in the story right above the box, so this is only said aloud. */}
+      {story && state.postId ? <p key={state.postedAt} role="status" className="sr-only">Update posted.</p> : null}
       {submitAction && state.postId ? (
         <p role="status" className="composer-posted">
-          Reply posted. <Link prefetch={false} href={`/p/${state.postId}#post-${state.postId}`}>View reply</Link>
+          Reply posted. <Link prefetch={false} href={postedHref(state.postId)}>View reply</Link>
         </p>
       ) : null}
     </form>
@@ -541,24 +600,71 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyDepth, ans
 }
 
 const VIDEO_STATUS: Record<VideoDraft['status'], string> = {
+  asking: '',
   uploading: 'Uploading…',
-  processing: 'Processing. This can take a minute or two; you can post when it is ready.',
+  processing: 'Processing. This can take a few minutes for a long or 4K video; you can post when it is ready.',
   ready: 'Ready',
   held: '',
   rejected: '',
   failed: '',
 }
 
-/** The video being attached: its name, upload progress, description, and what went wrong if it did. */
+/**
+ * The member's own clip, played from their device while it uploads (ADR 0021 section 6), so they
+ * can check it is the right one before posting. Where this browser cannot play it (HEVC on some
+ * desktop browsers) it says so, and shows the worker's poster once the video is ready. A preview
+ * that fails changes nothing else: the upload goes on, and the video can still be posted.
+ */
+function VideoPreview({ draft }: { draft: VideoDraft }) {
+  const [unplayable, setUnplayable] = useState(false)
+  const [ratio, setRatio] = useState<number | null>(null)
+  const player = useRef<HTMLVideoElement>(null)
+  const playing = useOneVideo(player, !unplayable)
+  if (unplayable) {
+    if (draft.video) return <PostVideo video={draft.video} />
+    const coming = draft.status === 'uploading' || draft.status === 'processing'
+    return (
+      <p className="composer-video-note">
+        This browser cannot play this video, so there is no preview.{coming ? ' A still from it will show here once it is ready.' : ''}
+      </p>
+    )
+  }
+  return (
+    // At most 320px tall: a tall clip is narrowed to fit rather than shown as a black band.
+    <div className="composer-video-preview" style={ratio ? { aspectRatio: ratio, maxWidth: `${Math.round(320 * ratio)}px` } : undefined}>
+      <VideoPlayer player={player}>
+        <video
+          ref={player}
+          src={draft.preview ?? undefined}
+          playsInline
+          preload="metadata"
+          aria-label={`Preview of ${draft.name}`}
+          onPlay={playing}
+          onLoadedMetadata={(e) => {
+            const { videoWidth: width, videoHeight: height } = e.currentTarget
+            // No picture (a codec this browser lacks, with sound it can play) counts as no preview.
+            if (width && height) setRatio(Math.min(Math.max(width / height, 9 / 16), 2))
+            else setUnplayable(true)
+          }}
+          onError={() => setUnplayable(true)}
+        />
+      </VideoPlayer>
+    </div>
+  )
+}
+
+/** The video being attached: its preview, name, upload progress, description, and what went wrong if it did. */
 function VideoRow({
   draft,
   onRemove,
   onRetry,
+  onSend,
   onDescribe,
 }: {
   draft: VideoDraft
   onRemove: () => void
   onRetry: () => void
+  onSend: () => void
   onDescribe: (description: string) => void
 }) {
   const id = useId()
@@ -566,6 +672,7 @@ function VideoRow({
   return (
     <li className="composer-video">
       <div className="min-w-0 flex-1">
+        {draft.preview ? <VideoPreview key={draft.preview} draft={draft} /> : null}
         <p className="truncate text-sm font-medium">{draft.name}</p>
         {sending ? <progress value={Math.round(draft.progress * 100)} max={100} aria-label={`Uploading ${draft.name}`} /> : null}
         <label htmlFor={id} className="sr-only">Describe this video</label>
@@ -579,7 +686,12 @@ function VideoRow({
           className="field field-sm mt-2"
         />
         {draft.status === 'ready' && draft.mediaId ? <input type="hidden" name="video" value={draft.mediaId} /> : null}
-        {draft.error ? (
+        {draft.status === 'asking' ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <p role="status">{draft.question}</p>
+            <button type="button" className="btn btn-primary btn-sm" onClick={onSend}>Send video</button>
+          </div>
+        ) : draft.error ? (
           <p role="alert" className="mt-1 text-xs text-danger">
             {draft.error}{' '}
             {draft.canRetry ? <button type="button" className="underline" onClick={onRetry}>Continue upload</button> : null}

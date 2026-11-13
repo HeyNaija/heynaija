@@ -58,7 +58,9 @@ the same way. Nothing is ranked by likes or reach."
 - In the browser a just-posted reply goes where the server will put it: first in
   its group when newest first, last when oldest first, or in the separate
   "Your reply" spot while the rows before it are not loaded yet. Rows carry
-  `lead` (by the parent's author) to tell which group.
+  `lead` (by the parent's author) to tell which group. A reply that had no
+  replies when the page drew it has nothing to load, so a new answer to it
+  joins its list at once (since 7 November 2026).
 
 ## Amendment, 26 October 2026
 

@@ -13,6 +13,12 @@ here, and the whole of it keeps every core busy for many minutes. So:
 - A new test that needs members uses `newMember` (or `signUpOverHttp`) from
   `e2e/lib/members.ts`, which skips the sign-up pages; only a test of signing up
   itself goes through them (`signUp`).
+- A test that reloads Settings uses `reloadSettings` from `e2e/lib/settings.ts`,
+  not `page.reload()`. A reload there goes on to a fresh sign-in form, one more
+  navigation after the reload itself, and a test that leaves the page or fills in
+  a form before it lands fails now and then (`net::ERR_ABORTED`, or it finds
+  itself back on Settings). The one exception is while an email change waits for
+  its code, when a reload keeps its form.
 - Leave the whole suite to CI, which runs it on every pull request. For a branch
   with no pull request: `gh workflow run CI --ref <branch>`, then `gh run watch`.
   Run it here (`E2E_ALL=1 pnpm e2e`) only when asked to.

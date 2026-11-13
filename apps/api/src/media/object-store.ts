@@ -13,6 +13,7 @@ import {
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   ListPartsCommand,
   PutBucketPolicyCommand,
   PutObjectCommand,
@@ -22,6 +23,18 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 export type Bucket = 'uploads' | 'media'
+
+/**
+ * What browsers and caches are told about a file, by its bucket. `media` is
+ * public and every key in it is written once, so Cloudflare and browsers may keep
+ * it for a year. Nothing in `uploads` may sit in a shared cache: the only files
+ * there anyone reads are a marked post's (ADR 0025), through a signed URL that
+ * lasts an hour or two, which a browser may keep for as long.
+ */
+export const CACHE_CONTROL: Record<Bucket, string> = {
+  media: 'public, max-age=31536000, immutable',
+  uploads: 'private, max-age=7200',
+}
 
 /**
  * The little we need from object storage. Two buckets: `uploads` is private and
@@ -59,8 +72,18 @@ export interface VideoStore extends ObjectStore {
   download(bucket: Bucket, key: string, path: string): Promise<string>
   /** Streams a file to an object. */
   upload(bucket: Bucket, key: string, path: string, contentType: string): Promise<void>
-  /** Server-side copy, between buckets or within one; the bytes do not pass through us. */
+  /**
+   * Server-side copy, between buckets or within one; the bytes do not pass through us. The copy
+   * keeps the file's type and takes its bucket's `CACHE_CONTROL`.
+   */
   copy(from: Bucket, fromKey: string, to: Bucket, toKey: string): Promise<void>
+  /** Every key that starts with `prefix`, such as a video's folder (ADR 0021 section 4). */
+  list(bucket: Bucket, prefix: string): Promise<string[]>
+  /**
+   * A URL anyone may GET this one file from within `window` (ADR 0025): the same URL for the
+   * whole window, so browsers can keep what they fetched with it.
+   */
+  presignRead(bucket: Bucket, key: string, window: { signedAt: Date; expiresAt: Date }): Promise<string>
 }
 
 export type S3Config = {
@@ -129,8 +152,8 @@ export class S3ObjectStore implements VideoStore {
         Key: key,
         Body: body,
         ContentType: contentType,
-        // Every processed file gets a new key, so it can be cached forever.
-        CacheControl: 'public, max-age=31536000, immutable',
+        // Every processed file gets a new key, so a public one can be cached forever.
+        CacheControl: CACHE_CONTROL[bucket],
       }),
     )
   }
@@ -206,20 +229,43 @@ export class S3ObjectStore implements VideoStore {
         Body: createReadStream(path),
         ContentLength: size,
         ContentType: contentType,
-        CacheControl: 'public, max-age=31536000, immutable',
+        CacheControl: CACHE_CONTROL[bucket],
       }),
     )
   }
 
   async copy(from: Bucket, fromKey: string, to: Bucket, toKey: string): Promise<void> {
+    // Copying the metadata as it is would carry a public file's year-long Cache-Control into the
+    // private bucket, so it is replaced: the type as it was, the destination's caching.
+    const head = await this.client.send(new HeadObjectCommand({ Bucket: this.buckets[from], Key: fromKey }))
     await this.client.send(
       new CopyObjectCommand({
         Bucket: this.buckets[to],
         Key: toKey,
         CopySource: `${this.buckets[from]}/${fromKey.split('/').map(encodeURIComponent).join('/')}`,
-        MetadataDirective: 'COPY',
+        MetadataDirective: 'REPLACE',
+        ContentType: head.ContentType ?? 'application/octet-stream',
+        CacheControl: CACHE_CONTROL[to],
       }),
     )
+  }
+
+  presignRead(bucket: Bucket, key: string, window: { signedAt: Date; expiresAt: Date }): Promise<string> {
+    return getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.buckets[bucket], Key: key }), {
+      signingDate: window.signedAt,
+      expiresIn: Math.round((window.expiresAt.getTime() - window.signedAt.getTime()) / 1000),
+    })
+  }
+
+  async list(bucket: Bucket, prefix: string): Promise<string[]> {
+    const keys: string[] = []
+    let token: string | undefined
+    do {
+      const res = await this.client.send(new ListObjectsV2Command({ Bucket: this.buckets[bucket], Prefix: prefix, ContinuationToken: token }))
+      for (const o of res.Contents ?? []) if (o.Key) keys.push(o.Key)
+      token = res.IsTruncated ? res.NextContinuationToken : undefined
+    } while (token)
+    return keys
   }
 
   /**

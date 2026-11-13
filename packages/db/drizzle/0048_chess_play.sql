@@ -41,4 +41,4 @@ ALTER TABLE "notifications" ADD CONSTRAINT "notifications_game_id_chess_games_id
 -- allow-breaking: partial (kind = chess_game_started), so it holds no rows yet; the build is one scan of notifications, which at pilot size is short
 CREATE UNIQUE INDEX "notifications_game_started_once_idx" ON "notifications" USING btree ("game_id") WHERE kind = 'chess_game_started';--> statement-breakpoint
 -- allow-breaking: the same check with one more kind; every existing row passes it, and the table is one row per opt-out
-ALTER TABLE "notification_opt_outs" ADD CONSTRAINT "notification_opt_outs_kind_check" CHECK (kind in ('reply', 'like', 'repost', 'quote', 'mention', 'follow', 'chess_challenge', 'chess_game_started'));
+ALTER TABLE "notification_opt_outs" ADD CONSTRAINT "notification_opt_outs_kind_check" CHECK (kind in ('reply', 'like', 'repost', 'quote', 'mention', 'follow', 'story_update', 'chess_challenge', 'chess_game_started'));

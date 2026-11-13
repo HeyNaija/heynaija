@@ -6,6 +6,7 @@ import { OptionalSessionGuard, SessionGuard } from '../auth/session.guard.js'
 import type { AppEnv } from '../env.js'
 import { FeatureFlags, type Snapshot } from '../flags/feature-flags.js'
 import { MemoryRateLimiter } from '../rate-limit.js'
+import { GistRepliesController } from './gist-replies.controller.js'
 import { GistsController, LiveKitWebhookController } from './gists.controller.js'
 import { type GistsAccess, GistsEnabledGuard, GistsGate, LiveKitConfiguredGuard, livekitConfigured } from './gists-enabled.guard.js'
 
@@ -15,7 +16,7 @@ type LiveKit = { [K in keyof typeof configured]: string | undefined }
 /** The gists flag as an admin left it: on or off for everyone, or on for the members listed. */
 const gate = (appEnv: AppEnv, override?: { enabled?: boolean; allow?: string[] }, livekit: LiveKit = configured) => {
   const snapshot: Snapshot = new Map(override ? [['gists', { enabled: override.enabled ?? null, allow: new Set(override.allow) }]] : [])
-  return new GistsGate(new FeatureFlags({} as never, appEnv, { load: async () => snapshot }), { APP_ENV: appEnv, ...livekit })
+  return new GistsGate(new FeatureFlags({} as never, appEnv, { load: async () => snapshot }), livekit)
 }
 
 const who = async (g: GistsGate) => {
@@ -51,9 +52,9 @@ test('in staging and development the flag decides: on by default, off when switc
   assert.deepEqual(await who(gate('staging', { allow: ['a'] })), { a: true, b: false, anyone: true })
 })
 
-test('in production Gists open only through an allow-list, never to everyone', async () => {
+test('in production Gists are off by default, and the flag opens them to everyone or to the listed', async () => {
   assert.deepEqual(await who(gate('production')), { a: false, b: false, anyone: false }, 'off by default')
-  assert.deepEqual(await who(gate('production', { enabled: true })), { a: false, b: false, anyone: false }, 'on for everyone')
+  assert.deepEqual(await who(gate('production', { enabled: true })), { a: true, b: true, anyone: true }, 'on for everyone')
   assert.deepEqual(await who(gate('production', { allow: ['a'] })), { a: true, b: false, anyone: true })
 })
 
@@ -72,6 +73,7 @@ test('every Gists route reads the session, then checks the flag, then requires s
   // Nest runs a controller's guards before any a route adds, so these come first on every route.
   const guardsOf = (controller: object) => Reflect.getMetadata(GUARDS_METADATA, controller) as unknown[]
   assert.deepEqual(guardsOf(GistsController), [OptionalSessionGuard, GistsEnabledGuard, SessionGuard])
+  assert.deepEqual(guardsOf(GistRepliesController), [OptionalSessionGuard, GistsEnabledGuard, SessionGuard])
   assert.deepEqual(guardsOf(LiveKitWebhookController), [LiveKitConfiguredGuard])
 
   const webhook = (livekit: LiveKit) => new LiveKitConfiguredGuard(livekit).canActivate(context(undefined, 'POST', '/internal/livekit/webhook'))

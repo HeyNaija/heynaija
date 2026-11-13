@@ -1,4 +1,5 @@
 import type { Notification } from './api'
+import { postedReplyHref } from './posted-href.ts'
 
 /** Open the actual item, including its position in a conversation. */
 export function notificationTarget(n: Pick<Notification, 'kind' | 'post' | 'actor' | 'community' | 'challenge' | 'game'>): string | null {
@@ -9,8 +10,11 @@ export function notificationTarget(n: Pick<Notification, 'kind' | 'post' | 'acto
     case 'quote':
     case 'mention':
     case 'post_restored':
+    case 'post_labelled':
     case 'idea_status':
-      return n.post ? `/p/${n.post.id}#post-${n.post.id}` : null
+    case 'story_update':
+      if (!n.post) return null
+      return postedReplyHref(n.post.gistId, n.post.id)
     case 'follow':
       return n.actor ? `/u/${n.actor.handle}` : null
     case 'avatar_removed':

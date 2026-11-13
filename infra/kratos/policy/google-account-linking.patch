@@ -5,7 +5,7 @@
  	defer otelx.End(span, &err)
  
 +	if heynaijaGoogle(provider) {
-+		if _, err := heynaijaEmail(claims); err != nil { return nil, err }
++		if _, err := heynaijaEmail(claims, heynaijaName(provider)); err != nil { return nil, err }
 +	}
 +
  	i, c, err := s.d.PrivilegedIdentityPool().FindByCredentialsIdentifier(ctx, s.ID(), identity.OIDCUniqueID(provider.Config().ID, claims.Subject))
@@ -125,8 +125,8 @@
  		// Reset all nodes to not confuse users.
  		// This is kinda hacky and will probably need to be updated at some point.
  
-+		if dup := new(identity.ErrDuplicateCredentials); usedProviderID == "google" && errors.As(err, &dup) {
-+			// Matching Google emails take the bound login path before registration.
++		if dup := new(identity.ErrDuplicateCredentials); heynaijaProviders[usedProviderID] != "" && errors.As(err, &dup) {
++			// Matching Google or Apple emails take the bound login path before registration.
 +			// A colliding public handle must never offer to link a different account.
 +			cleared, clearErr := sjson.DeleteBytes(rf.InternalContext, "registration_duplicate_credentials")
 +			if clearErr != nil { return clearErr }

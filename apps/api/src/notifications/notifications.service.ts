@@ -1,7 +1,11 @@
 import { type Db, members, NOTIFICATION_KINDS, notificationOptOuts, OPTIONAL_NOTIFICATION_KINDS } from '@heynaija/db'
-import { Inject, Injectable } from '@nestjs/common'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { Inject, Injectable, Optional } from '@nestjs/common'
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm'
 import { decodeCursor, encodeCursor } from '../cursor.js'
+import { adultContentAllowed } from '../governance/adult-content.js'
+import { FeatureFlags } from '../flags/feature-flags.js'
+import { memberOpensGist } from '../gists/gist-open.js'
+import { GistsGate } from '../gists/gists-enabled.guard.js'
 import { avatarPath } from '../media/media.service.js'
 import { isFounder } from '../members/badges.js'
 import { hiddenFromPlayer } from '../games/chess/hidden-replies.js'
@@ -18,7 +22,15 @@ export type OptionalNotificationKind = (typeof OPTIONAL_NOTIFICATION_KINDS)[numb
  * notifications are also sent by email. The kinds decide what notifies the
  * member at all, so they decide what is emailed too.
  */
-export type NotificationPreferences = Record<OptionalNotificationKind, boolean> & { email: boolean }
+export type NotificationPreferences = Record<OptionalNotificationKind, boolean> & {
+  email: boolean
+  /**
+   * Weekly highlights (ADR 0027), which are not a notification but are chosen
+   * in the same place. Left out while they are not offered to the member (the
+   * weeklyHighlights flag), so Settings and the apps show no switch for them.
+   */
+  highlights?: boolean
+}
 
 const isOptional = (kind: string): kind is OptionalNotificationKind =>
   (OPTIONAL_NOTIFICATION_KINDS as readonly string[]).includes(kind)
@@ -81,7 +93,7 @@ export type NotificationView = {
   /** Null for moderation decisions. `founder`: one of the people who founded HeyNaija. */
   actor: { handle: string; displayName: string | null; avatar: string | null; founder: boolean } | null
   /** The post concerned, with its text shortened. */
-  post: { id: string; excerpt: string } | null
+  post: { id: string; excerpt: string; gistId: string | null } | null
   /** report_resolved about an account: whose. */
   subjectHandle: string | null
   /** moderator_granted / moderator_revoked: which community. */
@@ -102,24 +114,45 @@ const EXCERPT = 140
 
 /**
  * Which of `viewer`'s notifications are still worth showing: the actor is active
- * and neither blocked nor muted, the post is still up, and a like, repost or
- * follow has not been taken back. A moderation decision about your own post
- * shows even though the post is down.
+ * and neither blocked nor muted, the post is still up, a like, repost or
+ * follow has not been taken back, and a story's update is shown only while the
+ * viewer still follows the story. A moderation decision about your own post
+ * shows even though the post is down. A reply in a Gist shows only to someone who
+ * can open it now, and `gistsOn` (the `gists` flag for the viewer) is part of that.
+ * Nothing about a post marked sensitive reaches anyone it would not be shown to
+ * (ADR 0020), so push and email leave it out too.
  */
-export const visible = (viewerId: string) => sql`
+export const visible = (viewerId: string, gistsOn: boolean) => sql`
   n.recipient_id = ${viewerId}
   and (n.actor_id is null or (
     a.active
     and not exists(select 1 from blocks b where (b.blocker_id = ${viewerId} and b.blocked_id = n.actor_id) or (b.blocker_id = n.actor_id and b.blocked_id = ${viewerId}))
     and not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = n.actor_id)))
-  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'idea_status') or (p.deleted_at is null and p.removed_at is null))
+  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'post_labelled', 'idea_status', 'story_update') or (p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null))
+  and (p.id is null or ${adultContentAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)})
+  and (p.gist_id is null or n.kind in ('post_removed', 'report_resolved') or (${gistsOn}::boolean and ${memberOpensGist(viewerId, sql`p.gist_id`)}))
   and (n.kind <> 'like' or exists(select 1 from likes l where l.post_id = n.post_id and l.member_id = n.actor_id))
   and (n.kind <> 'repost' or exists(select 1 from reposts r where r.post_id = n.post_id and r.member_id = n.actor_id))
   and (n.kind <> 'follow' or exists(select 1 from follows f where f.follower_id = n.actor_id and f.followee_id = ${viewerId}))
+  and (n.kind <> 'story_update' or exists(select 1 from story_follows sf where sf.story_id = p.story_id and sf.member_id = ${viewerId}))
   and (n.kind <> 'chess_challenge' or (ch.status = 'pending' and ch.expires_at > now()))
   and (n.kind <> 'chess_game_started' or (cg.id is not null and cg.finished_at is null))
   -- A spectator's reply or mention in a game's thread waits until the game ends (docs/adr/0018).
   and (n.kind not in ('reply', 'mention') or not ${hiddenFromPlayer(viewerId, sql`p.root_id`, sql`p.author_id`)})`
+
+/**
+ * Whether the post a notification names may be shown to its recipient: not in a Gist, or in one they can
+ * open, or their own. A moderation outcome stays listed after they lose the Gist, but without the reply.
+ */
+export const postShown = (
+  viewerId: string,
+  gistsOn: boolean,
+  cols: { gist: SQL; author: SQL; recipient: SQL } = { gist: sql`p.gist_id`, author: sql`p.author_id`, recipient: sql`n.recipient_id` },
+) => sql`(${cols.gist} is null or ${cols.author} = ${cols.recipient} or (${gistsOn}::boolean and ${memberOpensGist(viewerId, cols.gist)}))`
+
+/** Whether Gists are open to this member, which a notification about a Gist reply needs. Closed without a gate. */
+export const gistsOpenTo = async (gate: Pick<GistsGate, 'access'> | null, memberId: string): Promise<boolean> =>
+  gate ? (await gate.access()).member(memberId) : false
 
 export const joins = sql`
   from notifications n
@@ -161,7 +194,11 @@ export const challengeOf = (r: ChallengeColumns): { id: string; phrase: string }
 
 @Injectable()
 export class NotificationsService {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    @Optional() @Inject(GistsGate) private readonly gate: Pick<GistsGate, 'access'> | null = null,
+    @Optional() @Inject(FeatureFlags) private readonly flags: Pick<FeatureFlags, 'isEnabled'> | null = null,
+  ) {}
 
   /** Newest first, cursor-paginated. */
   async list(viewerId: string, limit: number, cursor?: string): Promise<NotificationPage> {
@@ -170,6 +207,8 @@ export class NotificationsService {
       const [createdAt, id] = decodeCursor(cursor)
       before = sql`(n.created_at, n.id) < (${createdAt.toISOString()}::timestamptz, ${id}::uuid)`
     }
+    const gistsOn = await gistsOpenTo(this.gate, viewerId)
+    const shown = postShown(viewerId, gistsOn)
     const { rows } = await this.db.execute<{
       id: string
       kind: NotificationKind
@@ -182,6 +221,7 @@ export class NotificationsService {
       actor_founder: boolean
       post_id: string | null
       post_text: string | null
+      gist_id: string | null
       subject_handle: string | null
       community_slug: string | null
       community_name: string | null
@@ -191,11 +231,11 @@ export class NotificationsService {
       select n.id, n.kind, n.created_at, n.read_at, n.detail,
         a.handle as actor_handle, a.display_name as actor_name, a.avatar_media_id as actor_avatar,
         ${isFounder(sql`a.id`)} as actor_founder,
-        p.id as post_id, p.text as post_text, s.handle as subject_handle,
+        case when ${shown} then p.id end as post_id, case when ${shown} then p.text end as post_text, case when ${shown} then p.gist_id end as gist_id, s.handle as subject_handle,
         c.slug as community_slug, c.name as community_name,
         i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, ${challengeColumns}
       ${joins}
-      where ${visible(viewerId)} and ${before}
+      where ${visible(viewerId, gistsOn)} and ${before}
       order by n.created_at desc, n.id desc
       limit ${limit + 1}`)
 
@@ -208,7 +248,7 @@ export class NotificationsService {
         actor: r.actor_handle
           ? { handle: r.actor_handle, displayName: r.actor_name, avatar: avatarPath(r.actor_avatar), founder: r.actor_founder }
           : null,
-        post: r.post_id ? { id: r.post_id, excerpt: excerpt(r.post_text ?? '') } : null,
+        post: r.post_id ? { id: r.post_id, excerpt: excerpt(r.post_text ?? ''), gistId: r.gist_id } : null,
         subjectHandle: r.subject_handle,
         community: r.community_slug ? { slug: r.community_slug, name: r.community_name! } : null,
         detail: r.detail,
@@ -224,7 +264,7 @@ export class NotificationsService {
   /** How many unread notifications would show. */
   async unreadCount(viewerId: string): Promise<number> {
     const { rows } = await this.db.execute<{ count: number }>(sql`
-      select count(*)::int as count ${joins} where ${visible(viewerId)} and n.read_at is null`)
+      select count(*)::int as count ${joins} where ${visible(viewerId, await gistsOpenTo(this.gate, viewerId))} and n.read_at is null`)
     return rows[0]?.count ?? 0
   }
 
@@ -241,25 +281,31 @@ export class NotificationsService {
   }
 
   /** Everything is on until the member turns it off, except email for members who joined before it existed. */
+  // `highlights` is there only while the weeklyHighlights flag is on for them.
   async preferences(memberId: string): Promise<NotificationPreferences> {
-    const [off, [member]] = await Promise.all([
+    const [off, [member], highlightsOffered] = await Promise.all([
       this.db.select({ kind: notificationOptOuts.kind }).from(notificationOptOuts).where(eq(notificationOptOuts.memberId, memberId)),
-      this.db.select({ email: members.emailNotifications }).from(members).where(eq(members.id, memberId)),
+      this.db.select({ email: members.emailNotifications, highlights: members.weeklyHighlights }).from(members).where(eq(members.id, memberId)),
+      this.flags?.isEnabled('weeklyHighlights', memberId) ?? false,
     ])
-    return { email: member?.email ?? true, ...preferencesWithout(off.map((r) => r.kind)) }
+    return {
+      email: member?.email ?? true,
+      ...(highlightsOffered ? { highlights: member?.highlights ?? true } : {}),
+      ...preferencesWithout(off.map((r) => r.kind)),
+    }
   }
 
   /**
-   * Turns kinds on (true) or off (false), and email on or off; anything left out
-   * stays as it is. Only other members' activity can be turned off: asking to
+   * Turns kinds on (true) or off (false), and email and weekly highlights on or
+   * off; anything left out stays as it is. Only other members' activity can be turned off: asking to
    * turn off a moderation or account notice changes nothing and throws
    * NotOptionalError. Turning email off does not touch the kinds.
    */
   async setPreferences(
     memberId: string,
-    changes: Partial<Record<NotificationKind | 'email', boolean>>,
+    changes: Partial<Record<NotificationKind | 'email' | 'highlights', boolean>>,
   ): Promise<NotificationPreferences> {
-    const { email, ...kinds } = changes
+    const { email, highlights, ...kinds } = changes
     const entries = Object.entries(kinds).filter(([, on]) => on !== undefined)
     const always = entries.map(([kind]) => kind).filter((kind) => !isOptional(kind))
     if (always.length) throw new NotOptionalError(`always sent: ${always.join(', ')}`)
@@ -278,6 +324,7 @@ export class NotificationsService {
           .where(and(eq(notificationOptOuts.memberId, memberId), inArray(notificationOptOuts.kind, turnedOn)))
       }
       if (email !== undefined) await tx.update(members).set({ emailNotifications: email }).where(eq(members.id, memberId))
+      if (highlights !== undefined) await tx.update(members).set({ weeklyHighlights: highlights }).where(eq(members.id, memberId))
     })
     return this.preferences(memberId)
   }

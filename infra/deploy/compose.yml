@@ -28,11 +28,14 @@ x-api-env: &api-env
   # is reachable only on this private network, when it sends a notification email,
   # and uses it to sign out and remove an account being deleted.
   KRATOS_ADMIN_URL: http://kratos:4434
-  # Account deletion (docs/adr/0016); empty means the API's defaults (14 and 30
-  # days, and deleted posts' text kept).
+  # Account deletion and retention (docs/adr/0016, /privacy#keep); empty means the
+  # API's defaults (14 and 30 days; then 90, 365, 730 and 730 days).
   ACCOUNT_DELETION_GRACE_DAYS: ${ACCOUNT_DELETION_GRACE_DAYS:-}
   PRIVACY_REQUEST_DUE_DAYS: ${PRIVACY_REQUEST_DUE_DAYS:-}
   DELETED_CONTENT_RETENTION_DAYS: ${DELETED_CONTENT_RETENTION_DAYS:-}
+  TAKEN_DOWN_MEDIA_RETENTION_DAYS: ${TAKEN_DOWN_MEDIA_RETENTION_DAYS:-}
+  ERASED_AGE_RECORD_RETENTION_DAYS: ${ERASED_AGE_RECORD_RETENTION_DAYS:-}
+  PRIVACY_REQUEST_RETENTION_DAYS: ${PRIVACY_REQUEST_RETENTION_DAYS:-}
   KRATOS_WEBHOOK_SECRET: ${KRATOS_WEBHOOK_SECRET:?}
   # Notification emails go out through the same account as Kratos's sign-in codes.
   SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:?}
@@ -42,6 +45,14 @@ x-api-env: &api-env
   # at WEB_PUBLIC_URL (docs/adr/0011).
   PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
   PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
+  # And to the Android app through FCM (docs/adr/0023); without it the app gets none.
+  FCM_SERVICE_ACCOUNT: ${FCM_SERVICE_ACCOUNT:-}
+  # And to the iOS app through APNs, with Sign in with Apple's tokens revoked when an
+  # account is erased (docs/adr/0026); without the key the iOS app gets no push.
+  APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
+  APPLE_KEY_ID: ${APPLE_KEY_ID:-}
+  APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
+  APPLE_BUNDLE_ID: ${APPLE_BUNDLE_ID:-}
   WEB_PUBLIC_URL: ${SITE_URL:?}
   # Gists (docs/adr/0017). All optional: empty means off, and every Gists route
   # answers 404. With these set, the `gists` feature flag decides who has Gists
@@ -108,6 +119,8 @@ services:
       WEB_WORKERS: ${WEB_WORKERS:-1}
       # Which release is running: a problem report on the ideas board says so.
       RELEASE: ${RELEASE:-latest}
+      # More Android signing certificates than Play's, for links that open the app (apps/web/lib/app-links.ts). Normally unset.
+      ANDROID_CERT_SHA256: ${ANDROID_CERT_SHA256:-}
     depends_on:
       api:
         condition: service_healthy
@@ -145,8 +158,8 @@ services:
   #
   # ffmpeg parses files strangers send us, so this container is confined (ADR 0019
   # section 3.4): its own environment (only what apps/api/src/video/worker-env.ts reads:
-  # no Kratos, session, push, LiveKit or Cloudflare secrets), a read-only root with a
-  # 2 GB scratch tmpfs, no capabilities, no privilege escalation, and its own network
+  # no Kratos, session, push, LiveKit or Cloudflare secrets), a read-only root with
+  # scratch on a disk volume, no capabilities, no privilege escalation, and its own network
   # that holds only Postgres and Redis besides this service. It is NOT on the default
   # network, so it cannot reach Kratos (public or admin), the API or the web app by
   # name or address. It can still reach the internet (object storage, the scanners, SMTP):
@@ -189,8 +202,11 @@ services:
       redis:
         condition: service_healthy
     read_only: true
-    tmpfs:
-      - /tmp:size=2g,mode=1777
+    # Scratch on a disk volume, not a tmpfs (ADR 0021 section 5): tmpfs pages count against
+    # mem_limit, and a 1 GB original beside a 4K encode would not fit in 1.5 GB. Needs 3 GB
+    # free on the server: the original, its pieces and the sampled frames.
+    volumes:
+      - video-scratch:/tmp
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     # Staging shares its server and sets 1 and 1g in .env. (Production's worker has
@@ -200,7 +216,8 @@ services:
     pids_limit: 256
     # A deploy replaces it: the worker stops taking jobs on SIGTERM and finishes the one
     # it has (a minute's clip encodes in a minute or two), rather than being killed
-    # mid-encode and leaving the job to be found stalled and run again.
+    # mid-encode and leaving the job to be found stalled and run again. A long 4K clip on
+    # staging's one core can outlast this, and is run again after the deploy.
     stop_grace_period: 3m
     restart: unless-stopped
     logging: *logging
@@ -226,11 +243,16 @@ services:
       SECRETS_COOKIE: ${KRATOS_SECRETS_COOKIE:?}
       SECRETS_CIPHER: ${KRATOS_SECRETS_CIPHER:?}
       COURIER_SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:?}
+      # The app stores' review account (docs/deployment/store-review.md): with both
+      # set, that one address signs in with that fixed code and is sent no email.
+      HEYNAIJA_REVIEW_EMAIL: ${HEYNAIJA_REVIEW_EMAIL:-}
+      HEYNAIJA_REVIEW_CODE: ${HEYNAIJA_REVIEW_CODE:-}
     volumes: &kratos-volumes
       - ../kratos/identity.schema.json:/etc/config/kratos/identity.schema.json:ro
       - ../kratos/invite-check.jsonnet:/etc/config/kratos/invite-check.jsonnet:ro
       - ../kratos/handle-change.jsonnet:/etc/config/kratos/handle-change.jsonnet:ro
       - ../kratos/google.jsonnet:/etc/config/kratos/google.jsonnet:ro
+      - ../kratos/apple.jsonnet:/etc/config/kratos/apple.jsonnet:ro
       - ../kratos/courier-templates:/etc/config/kratos/courier-templates:ro
     configs: &kratos-configs
       - source: kratos
@@ -324,6 +346,7 @@ networks:
 volumes:
   postgres-data:
   redis-data:
+  video-scratch:
 
 configs:
   # Kratos for a real domain over https. Rendered here so the site address and
@@ -363,6 +386,24 @@ configs:
                   client_secret: "${GOOGLE_CLIENT_SECRET:-}"
                   mapper_url: file:///etc/config/kratos/google.jsonnet
                   scope: [openid, email]
+                  # The iOS app signs in as its own Google client, so its ID tokens are
+                  # for that client (docs/deployment/google-sign-in.md). Not secret:
+                  # the app carries it. Android's are for the web client above.
+                  additional_id_token_audiences:
+                    - "${GOOGLE_IOS_CLIENT_ID:-567185521629-68a94t7k7jomu81msugkias5ltprp80p.apps.googleusercontent.com}"
+                # Apple, in the iOS app only (docs/deployment/sign-in-with-apple.md):
+                # its own sheet gives an ID token for the app's bundle ID, which
+                # Kratos checks against Apple's published keys. Signing in on the web
+                # would need a Services ID and Apple's key here; the web does not
+                # offer it, so they are left empty.
+                - id: apple
+                  provider: apple
+                  client_id: "${APPLE_BUNDLE_ID:-ng.heynaija.app}"
+                  apple_team_id: ""
+                  apple_private_key_id: ""
+                  apple_private_key: ""
+                  mapper_url: file:///etc/config/kratos/apple.jsonnet
+                  scope: [email]
         flows:
           error:
             ui_url: ${SITE_URL}/auth-error

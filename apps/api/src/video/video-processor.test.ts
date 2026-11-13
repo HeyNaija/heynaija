@@ -4,8 +4,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { after, before, beforeEach, test } from 'node:test'
+import { after, before, beforeEach, mock, test } from 'node:test'
 import { media, members, reports, videoDetails, videoRenditions } from '@heynaija/db'
+import { Logger } from '@nestjs/common'
 import { UnrecoverableError } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { type ContentScanner, type FrameScan, NoScanner, type VideoScan } from '../media/media.service.js'
@@ -13,7 +14,7 @@ import type { SafetyAlerts } from '../moderation/safety-alerts.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { MemoryVideoStore } from './memory-video-store.js'
 import { DEFAULT_VIDEO_CONFIG as defaults } from './video-config.js'
-import { originalKey, posterKey, quarantineOriginalKey, renditionKey } from './video-keys.js'
+import { hlsKey, master480Key, masterKey, originalKey, playlistKey, posterKey, quarantineOriginalKey } from './video-keys.js'
 import { VideoProcessor } from './video-processor.js'
 
 const hasFfmpeg = (() => {
@@ -76,14 +77,17 @@ const queued = async (body: Buffer = clipBytes) => {
   store.putOriginal(originalKey(row!.id), body)
   return row!.id
 }
-const processor = (scanner: ContentScanner, cfg = defaults, jobTimeoutMs?: number) => new VideoProcessor(db, store, scanner, cfg, safety, dir, jobTimeoutMs)
+const processor = (scanner: ContentScanner, cfg = defaults, jobTimeout?: (durationMs: number) => number) => new VideoProcessor(db, store, scanner, cfg, safety, dir, jobTimeout)
 const rowOf = async (id: string) => (await db.select().from(media).where(eq(media.id, id)))[0]!
 const detailsOf = async (id: string) => (await db.select().from(videoDetails).where(eq(videoDetails.mediaId, id)))[0]!
 
 test('a clear video is probed, scanned, encoded, published and only then made ready; the original goes', { skip, timeout: 120_000 }, async () => {
   const id = await queued()
   const scanner = clear()
+  const logged: string[] = []
+  mock.method(Logger.prototype, 'log', (message: string) => void logged.push(message))
   await processor(scanner).process(id, { lastAttempt: false })
+  mock.restoreAll()
 
   assert.deepEqual(scanner.seen.map((s) => s.publicFiles), [0], 'scanned before anything was written publicly')
   assert.ok(scanner.seen[0]!.frames >= 4)
@@ -91,11 +95,28 @@ test('a clear video is probed, scanned, encoded, published and only then made re
   assert.equal(row.status, 'ready')
   assert.deepEqual([row.width, row.height], [854, 480])
   assert.ok(row.readyAt)
-  assert.deepEqual(store.keys('media'), [renditionKey(id, 240), renditionKey(id, 360), renditionKey(id, 480), posterKey(id)].sort())
+  // HLS (ADR 0021 sections 3 and 4): master playlists, and per quality a playlist, an init file and its pieces.
+  const keys = store.keys('media')
+  assert.ok(keys.every((k) => k.startsWith(`videos/${id}/`)), 'everything public is in the video’s folder')
+  for (const key of [masterKey(id), master480Key(id), posterKey(id)]) assert.ok(keys.includes(key), key)
+  for (const label of [240, 360, 480]) {
+    assert.ok(keys.includes(playlistKey(id, label)), `${label}/index.m3u8`)
+    assert.ok(keys.some((k) => new RegExp(`^${hlsKey(id, `${label}/init_\\d+\\.mp4`)}$`).test(k)), `${label}'s init file`)
+    assert.ok(keys.includes(hlsKey(id, `${label}/piece-000.m4s`)), `${label}'s first piece`)
+  }
+  assert.ok(!keys.some((k) => k.endsWith('.mp4') && !k.includes('/init_')), 'no MP4 renditions any more')
+  const master = store.objects.get(`media/${masterKey(id)}`)!.toString()
+  assert.deepEqual([...master.matchAll(/^(\d+)\/index\.m3u8$/gm)].map((m) => m[1]), ['240', '360', '480'])
+  assert.equal(store.objects.get(`media/${master480Key(id)}`)!.toString(), master, 'nothing above 480 to leave out')
   assert.deepEqual(store.keys('uploads'), [], 'the original is deleted on success')
   const renditions = await db.select().from(videoRenditions).where(eq(videoRenditions.mediaId, id)).orderBy(videoRenditions.height)
   assert.deepEqual(renditions.map((r) => [r.height, r.width]), [[240, 428], [360, 640], [480, 854]]) // 854 wide at 240 high is 426.97, rounded to the even 428
   assert.ok(renditions.every((r) => r.bytes > 1000 && r.bitrateKbps > 0))
+  // A quality's bytes are its files': playlist, init file and pieces.
+  for (const r of renditions) {
+    const stored = keys.filter((k) => k.startsWith(hlsKey(id, `${r.height}/`))).reduce((sum, k) => sum + store.objects.get(`media/${k}`)!.length, 0)
+    assert.equal(r.bytes, stored, `${r.height}p`)
+  }
   const d = await detailsOf(id)
   assert.equal(d.scanResult, 'clear')
   assert.equal(d.originalSha256, createHash('sha256').update(clipBytes).digest('hex'))
@@ -103,6 +124,11 @@ test('a clear video is probed, scanned, encoded, published and only then made re
   assert.deepEqual([d.width, d.height, d.posterKey], [854, 480, posterKey(id)])
   assert.ok(d.framesScanned! >= 4)
   assert.deepEqual((await readdir(dir)).filter((f) => f.startsWith('video-')), [], 'scratch space is cleaned up')
+  // A video that went through says so, so a quiet log means no work came.
+  assert.ok(
+    logged.some((line) => new RegExp(`^video ${id} ready in \\d+\\.\\d s \\(854x480, \\d+\\.\\d s long, 3 qualities, \\d+ files\\)$`).test(line)),
+    logged.join('\n'),
+  )
 })
 
 test('with no scanner bound a video is NEVER made ready: it is held quarantined, nothing is published, the original is kept privately', { skip, timeout: 120_000 }, async () => {
@@ -291,10 +317,10 @@ test('a rerun after success changes nothing (idempotent)', { skip, timeout: 120_
   assert.equal((await rowOf(id)).status, 'ready')
 })
 
-test('a timeout is permanent: the video is failed at once, the job is unrecoverable (no three retries of a five minute encode)', { skip, timeout: 60_000 }, async () => {
+test('a timeout is permanent: the video is failed at once, the job is unrecoverable (no three retries of a long encode)', { skip, timeout: 60_000 }, async () => {
   const id = await queued()
   const scanner = clear()
-  await assert.rejects(() => processor(scanner, defaults, 1).process(id, { lastAttempt: false }), (err: Error) => err instanceof UnrecoverableError && /timed out/.test(err.message))
+  await assert.rejects(() => processor(scanner, defaults, () => 1).process(id, { lastAttempt: false }), (err: Error) => err instanceof UnrecoverableError && /timed out/.test(err.message))
   assert.equal((await rowOf(id)).status, 'failed')
   assert.match((await detailsOf(id)).failureReason!, /timed out/)
   assert.deepEqual(store.keys('uploads'), [])
@@ -321,4 +347,29 @@ test('a file whose container lies about its length is rejected, never scanned sh
   assert.equal((await rowOf(id)).status, 'rejected')
   assert.equal(scanner.seen.length, 0)
   assert.deepEqual(store.keys('media'), [])
+})
+
+test('the job’s time limit follows the clip’s length: the longest clip’s until the probe, then this one’s', { skip, timeout: 120_000 }, async () => {
+  const id = await queued()
+  const asked: number[] = []
+  await processor(clear(), defaults, (ms) => (asked.push(ms), 10 * 60_000)).process(id, { lastAttempt: false })
+  assert.equal((await rowOf(id)).status, 'ready')
+  assert.equal(asked.length, 2)
+  assert.equal(asked[0], defaults.maxSeconds * 1000)
+  assert.ok(Math.abs(asked[1]! - 4000) < 200, `then the clip's own length: ${asked[1]}`)
+})
+
+test('a 720p clip gets four qualities, and master-480 leaves the 720p one out', { skip, timeout: 120_000 }, async () => {
+  const path = join(dir, 'hd.mp4')
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=3', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-an', path], { stdio: 'ignore' })
+  const id = await queued(await readFile(path))
+  await processor(clear()).process(id, { lastAttempt: false })
+  assert.equal((await rowOf(id)).status, 'ready')
+  const text = (key: string) => store.objects.get(`media/${key}`)!.toString()
+  const labels = (playlist: string) => [...playlist.matchAll(/^(\d+)\/index\.m3u8$/gm)].map((m) => m[1])
+  assert.deepEqual(labels(text(masterKey(id))), ['240', '360', '480', '720'])
+  assert.deepEqual(labels(text(master480Key(id))), ['240', '360', '480'])
+  assert.equal(text(master480Key(id)).match(/#EXT-X-STREAM-INF/g)?.length, 3, 'its line goes with it')
+  const renditions = await db.select().from(videoRenditions).where(eq(videoRenditions.mediaId, id)).orderBy(videoRenditions.height)
+  assert.deepEqual(renditions.map((r) => r.height), [240, 360, 480, 720])
 })

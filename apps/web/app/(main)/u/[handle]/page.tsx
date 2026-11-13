@@ -17,13 +17,19 @@ import { defaultPreviewImage, excerpt, siteOpenGraph } from '@/lib/previews'
 
 type Props = PageProps<'/u/[handle]'>
 
-/** The bio describes the member in link previews; their photo, if they have one, is the picture. */
+/**
+ * The bio describes the member in link previews; their photo, if they have one,
+ * is the picture. A profile with no posts to show is kept out of search: for a
+ * signed-out visitor, a search engine included, that is every minor's (ADR
+ * 0020), so it looks like anyone's who has not posted yet.
+ */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { handle } = await params
   const profile = await findProfile(handle)
   if (!profile || 'movedTo' in profile) return { title: `@${handle}` }
   return {
     title: `@${profile.handle}`,
+    ...(profile.postCount === 0 ? { robots: { index: false } } : {}),
     description: profile.bio.trim() ? excerpt(profile.bio) : `@${profile.handle} is a member of HeyNaija.`,
     openGraph: {
       ...siteOpenGraph,
@@ -54,7 +60,7 @@ const count = (n: number, one: string, many: string) => (
 const TABS: Record<ProfileFilter, { label: string; listLabel: string; none: string; older: string }> = {
   posts: { label: 'Posts', listLabel: 'Posts and reposts', none: 'has not posted yet', older: 'No older posts' },
   replies: { label: 'Replies', listLabel: 'Replies', none: 'has not replied to anyone yet', older: 'No older replies' },
-  media: { label: 'Media', listLabel: 'Posts with images', none: 'has not posted any images yet', older: 'No older posts' },
+  media: { label: 'Media', listLabel: 'Posts with images or videos', none: 'has not posted any images or videos yet', older: 'No older posts' },
 }
 
 const tabHref = (handle: string, tab: ProfileFilter) =>

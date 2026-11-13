@@ -2,15 +2,17 @@ import { expect, test } from '@playwright/test'
 import { createInvite } from '../lib/cli.ts'
 import { env, MARK } from '../lib/env.ts'
 import { codeFor } from '../lib/mailpit.ts'
-import { handleFor, signIn, signUp } from '../lib/members.ts'
+import { confirmAge, handleFor, signIn, signUp } from '../lib/members.ts'
 
-test('joins with an invite, signs up with an emailed code and lands signed in @mobile', async ({ page }) => {
+test('joins with an invite, signs up with an emailed code and lands signed in @mobile', async ({ page, context }) => {
   const handle = handleFor('joiner')
   await signUp(page, handle, { welcome: 'stay' })
   // Signed in as the new member, who starts on the welcome flow; skipping it leads home.
   await expect(page.getByRole('heading', { level: 1, name: /Find your places/ })).toBeVisible()
   await page.getByRole('button', { name: 'Skip setup' }).click()
   await page.waitForURL((url) => url.pathname === '/')
+  // The age was in a cookie only for signing up.
+  expect((await context.cookies()).map((c) => c.name)).not.toContain('hn_age')
   // The composer is there and the account menu names them.
   await expect(page.getByRole('textbox', { name: 'New post' })).toBeVisible()
   await page.getByLabel('Account menu').click()
@@ -22,11 +24,13 @@ test('joins with an invite, signs up with an emailed code and lands signed in @m
 test('refuses a wrong invite code', async ({ page }) => {
   await page.goto('/join')
   await page.getByLabel('Invite code').fill('HN-0000-0000-0000')
-  await page.getByLabel('I am 18 or older').check()
+  await confirmAge(page)
   await page.getByRole('button', { name: 'Check invite code' }).click()
   // Next's route announcer is also an alert, so look for the message itself.
   await expect(page.getByText('That code is not valid')).toBeVisible()
   await expect(page).toHaveURL(/\/join/)
+  // The box stays ticked, so only the code needs putting right.
+  await expect(page.getByLabel('I am 18 or older')).toBeChecked()
 })
 
 test('without an invite, the sign-up page sends people to join first', async ({ page }) => {
@@ -34,21 +38,25 @@ test('without an invite, the sign-up page sends people to join first', async ({ 
   await expect(page).toHaveURL(/\/join/)
 })
 
-test('joining needs the 18+ confirmation @mobile', async ({ page }) => {
+test('joining needs the "18 or older" box, and no date of birth @mobile', async ({ page }) => {
   await page.goto(`/join?code=${createInvite()}`)
-  const adult = page.getByLabel('I am 18 or older')
-  await expect(adult).not.toBeChecked()
+  // Who may join is the API's to say: 18 during the beta.
+  await expect(page.getByText('HeyNaija is open to people aged 18 and over.')).toBeVisible()
+  await expect(page.getByText('We don’t ask for your date of birth or any ID.')).toBeVisible()
+  await expect(page.getByLabel('Year')).toHaveCount(0)
+  const box = page.getByLabel('I am 18 or older')
+  await expect(box).not.toBeChecked()
   await page.getByRole('button', { name: 'Check invite code' }).click()
   // The box is required, so the browser keeps the form here.
   await expect(page).toHaveURL(/\/join/)
-  expect(await adult.evaluate((el: HTMLInputElement) => el.validity.valueMissing)).toBe(true)
+  expect(await box.evaluate((el: HTMLInputElement) => el.validity.valueMissing)).toBe(true)
 })
 
-test('the API refuses a signup that skipped the 18+ confirmation', async ({ page, context }) => {
+test('the API refuses a signup that lost its age', async ({ page, context }) => {
   const handle = handleFor('underage')
   const email = `${handle}@${MARK.emailDomain}`
   await page.goto(`/join?code=${createInvite()}`)
-  await page.getByLabel('I am 18 or older').check()
+  await confirmAge(page)
   await page.getByRole('button', { name: 'Check invite code' }).click()
   await page.waitForURL(/\/signup/)
   await page.getByLabel('Email address').fill(email)
@@ -57,7 +65,7 @@ test('the API refuses a signup that skipped the 18+ confirmation', async ({ page
   await page.getByRole('button', { name: 'Email me a code' }).click()
   await page.getByLabel('Code from the email').fill(await codeFor(email, asked))
 
-  // The confirmation disappears just before the account would be saved: the
+  // The box's cookie disappears just before the account would be saved: the
   // registration webhook refuses it, and no account is created.
   await context.clearCookies({ name: 'hn_age' })
   await page.getByRole('button', { name: 'Continue' }).click()

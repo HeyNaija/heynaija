@@ -114,9 +114,11 @@ export class AccountWorker implements OnApplicationBootstrap, OnModuleDestroy {
         // An erase logs what it did; one cancelled first did nothing to log.
         await this.deletion.erase(job.data.memberId, now)
       } else if (job.name === 'retention') {
-        const { posts, handles } = await this.retention.sweep(now)
+        const { posts, handles, ageRecords, requests } = await this.retention.sweep(now)
         if (posts) this.log.log(`blanked ${posts} deleted posts kept longer than DELETED_CONTENT_RETENTION_DAYS`)
         if (handles) this.log.log(`let go of ${handles} handles held for erased accounts`)
+        if (ageRecords) this.log.log(`deleted ${ageRecords} age audit entries of accounts erased longer than ERASED_AGE_RECORD_RETENTION_DAYS ago`)
+        if (requests) this.log.log(`deleted ${requests} privacy requests closed longer than PRIVACY_REQUEST_RETENTION_DAYS ago`)
       } else if (job.name === 'overdue') {
         const overdue = await this.requests.overdue(now)
         if (overdue.length) {

@@ -412,7 +412,7 @@ test('the link in an email turns email off for that member and changes nothing e
   // Email is off for ada, and only for ada.
   assert.deepEqual(await notificationsService.preferences(ada), {
     email: false,
-    reply: true, like: true, repost: true, quote: true, mention: true, follow: false, chess_challenge: true, chess_game_started: true,
+    reply: true, like: true, repost: true, quote: true, mention: true, follow: false, story_update: true, chess_challenge: true, chess_game_started: true,
   })
   assert.equal((await notificationsService.preferences(bayo)).email, true)
   assert.equal((await notificationsService.preferences(bayo)).like, false)

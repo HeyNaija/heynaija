@@ -318,6 +318,18 @@ Settings has a "Data use" section (below Appearance): the existing segmented con
 
 When data is being saved, post pictures and GIFs render as a **held-media placeholder** in the picture's own frame (same grid, aspect ratio and radius): Inset Sage fill, no border of its own, the label "Tap to load image" (or "GIF") in 13.5px 600 Forest Green text, and the picture's description beneath in 12px Slate Muted, clamped to two lines. The whole tile is the target (at least 96px tall, so at least 44px); its accessible name starts with the visible words, "Tap to load image 1 of 1: description". Tapping it loads that one picture at the small size; without JavaScript it is a link to that small file. Link-card pictures are left out (the card keeps its host, title and text); a quoted post's pictures become one line, "N images not loaded. Open the post to load." A GIF never plays by itself while saving data: tapping its placeholder loads it and it plays (its first frame and a play button if the device asks for less motion), and in the full-screen viewer GIFs start paused. Avatars still load; they are small and identify people.
 
+### Video player
+
+A video post shows its poster first, with a dark pill bottom left ("0:47" beside a play icon); nothing plays until it is tapped, and while data is being saved nothing loads either ("Tap to load video, 0:47, about 1.2 MB"). Tapped, it plays in the post's own frame under HeyNaija's controls (`app/ui/video-player.tsx`), which the composer's preview uses too. They are dark over the picture in both themes, as the image viewer is: the scrim tokens, with a gradient behind the bar that belongs to the picture (a click there is a click on the video).
+
+- **Bar:** Play or Pause, the time ("0:12 / 0:47", 12px tabular figures), the seek bar, Mute and Full screen, every button 44px. The seek bar is a 4px track in a 24px target, played in Forest Green, loaded lighter, the rest faint, with a light 14px thumb. Below 420px wide the seek bar takes a row of its own above the buttons.
+- **Middle button:** a 56px rounded square (48px in a player under 300px wide) that plays and pauses, the target for a thumb; screen readers and the keyboard use the bar's. With a mouse it shows only while paused, and a click on the picture plays or pauses.
+- **Fading:** while it plays the controls fade after 2.5 seconds and come back on a tap, a pointer move or a key; they stay while it is paused, while the mouse is on them and while the keyboard is in them. A tap on the picture shows them, or hides them while it plays.
+- **Keys** (from any of its controls): Space or K plays and pauses, the arrows seek 5 seconds, M mutes, F goes full screen. What a key did is said in a polite live region ("Paused", "Muted", "0:15 of 0:47"), except the seek bar's own arrows, which the slider says itself; nothing else is announced.
+- **Focus:** a light ring between two dark ones, so it shows on any picture.
+- **States:** a waiting ring while more of it arrives (still under reduced motion), and "This video could not be played." when it cannot be. When a post's video ends, its poster comes back, with focus on it if the player had it.
+- **Full screen** is the player itself, controls and all; iPhone Safari allows only Apple's own player, which it gets.
+
 ### Direct messages (spec, not built)
 
 Proposed in [ADR 0016](../../docs/adr/0016-direct-messages.md); nothing here exists yet. Only tokens above are used: no new colours, radii or shadows. Depth is the 1px Hairline border. DMs are opt-in and only for age-verified adults who turned them on; everyone else sees none of this surface except the Settings entry and the verification prompt below.

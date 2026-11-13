@@ -9,6 +9,7 @@ import { db, pool } from '../test-db.js'
 import { AccountDeletionError } from './account-deletion.service.js'
 import { AccountWorker, BullAccountJobs } from './account-queue.js'
 import { failureReason } from './failure-reason.js'
+import type { Swept } from './retention.service.js'
 
 const now = new Date('2026-10-30T09:00:00Z')
 
@@ -18,7 +19,7 @@ let calls: { due: Date[]; erased: [string, Date][]; swept: Date[]; checked: Date
 let queued: string[]
 let logged: string[]
 let eraseFails: Error | null
-let swept: { posts: number; handles: number }
+let swept: Swept
 let overdue: { id: string; kind: string; dueBy: Date }[]
 
 const worker = () =>
@@ -55,7 +56,7 @@ beforeEach(() => {
   queued = []
   logged = []
   eraseFails = null
-  swept = { posts: 0, handles: 0 }
+  swept = { posts: 0, handles: 0, ageRecords: 0, requests: 0 }
   overdue = []
   for (const level of ['log', 'warn', 'error'] as const) {
     mock.method(Logger.prototype, level, (message: string) => void logged.push(`${level}: ${message}`))
@@ -119,13 +120,15 @@ test('the sweep and the overdue check log counts and request IDs, and stay quiet
   await w.run({ name: 'overdue', data: {} }, now)
   assert.deepEqual([calls.swept, calls.checked, logged], [[now], [now], []])
 
-  swept = { posts: 2, handles: 1 }
+  swept = { posts: 2, handles: 1, ageRecords: 3, requests: 4 }
   overdue = [{ id: 'r1', kind: 'deletion', dueBy: new Date('2026-10-29T09:00:00Z') }]
   await w.run({ name: 'retention', data: {} }, now)
   await w.run({ name: 'overdue', data: {} }, now)
   assert.deepEqual(logged, [
     'log: blanked 2 deleted posts kept longer than DELETED_CONTENT_RETENTION_DAYS',
     'log: let go of 1 handles held for erased accounts',
+    'log: deleted 3 age audit entries of accounts erased longer than ERASED_AGE_RECORD_RETENTION_DAYS ago',
+    'log: deleted 4 privacy requests closed longer than PRIVACY_REQUEST_RETENTION_DAYS ago',
     'warn: 1 privacy requests are past their due date: r1 (deletion, due 2026-10-29)',
   ])
 })

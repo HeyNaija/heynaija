@@ -439,21 +439,23 @@
     {
       "id": "upload-scanning",
       "name": "Pre-publication abuse-material screening",
-      "description": "Screen image uploads before publication through an approved scanning service.",
+      "description": "Screen image and video uploads before publication through an approved scanning service.",
       "category": "safety",
       "priority": "P0",
-      "status": "blocked",
-      "availability": "not_live",
+      "status": "implemented",
+      "availability": "production",
       "evidence": [
         "apps/api/src/app.module.ts",
+        "apps/api/src/media/scanners.ts",
+        "apps/api/src/media/arachnid-shield.ts",
+        "apps/api/src/media/arachnid-shield.test.ts",
         "apps/api/src/media/media.service.ts",
         "apps/api/src/media/media.service.test.ts",
         "apps/api/src/media/photodna.ts",
         "apps/api/src/media/photodna.test.ts",
         "docs/safety/abuse-material-scanning.md"
       ],
-      "caveat": "Waiting for PhotoDNA approval; the scanner is written but untried against the real service, and response procedures still need review.",
-      "notes": "NoScanner stays bound until PHOTODNA_SUBSCRIPTION_KEY is set. The PhotoDNA client, GIF frame sampling, fail-closed handling and match reporting have tests against stand-ins; documented Cloudflare edge scanning is a separate second layer."
+      "notes": "Arachnid Shield (Canadian Centre for Child Protection) is set in production on the API and the video worker server (owner confirmed 8 Nov 2026): every image and video is matched before publishing, failing closed. PhotoDNA is written and tested against stand-ins as a second matcher, waiting for Microsoft. Cloudflare edge scanning is a separate second layer. Counsel's answers on reporting are still open (docs/safety/abuse-material-scanning.md)."
     },
     {
       "id": "abuse-response",
@@ -663,7 +665,7 @@
         "apps/api/src/export/export.service.test.ts",
         "e2e/tests/governance.spec.ts"
       ],
-      "notes": "Format 14: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, since format 11 reply boundaries, polls you created and your public poll ballots, since format 12 a games section (stats, season scores, competition entries), since format 13 the linked Lichess account (never its token) and chess challenges, and since format 14 the chess games played; restricted person keys and reports about someone stay excluded."
+      "notes": "Format 19: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, since format 11 reply boundaries, polls you created and your public poll ballots, and since format 19 a games section (stats, season scores, competition entries, the linked Lichess account but never its token, chess challenges and the chess games played, Keno tickets and the Game Score); restricted person keys and reports about someone stay excluded."
     },
     {
       "id": "member-onboarding",
@@ -943,6 +945,36 @@
       "notes": "Web Push with VAPID keys of our own (no Firebase account): Settings has a per-browser button that asks the browser's permission and subscribes it; the service worker (public/sw.js) only shows notifications and opens what they are about. A BullMQ job looks every 10 seconds and pushes what is waiting to each of the member's browsers, in the same words as the email digest: replies, mentions and quotes quote the post briefly, likes, reposts and follows are counted in with ones already pushed and replace them on the device (one tag per post), more than three things at once are one push that says how many, and moderation notices are in general words. What is pushed is decided when it is sent, with the same rules as email: nothing read, opted out of, blocked, muted, taken down, for suspended members, or over ten minutes old. Email waits until the push side has dealt with a notification and leaves out what a browser took (notifications.pushed_at). A browser has one subscription; it moves to whoever turns push on in it, a page load stops one that belongs to another member, and signing out removes it. Subscriptions may only point at Google's, Mozilla's, Apple's or Microsoft's push services. iPhones and iPads get it only from the Home Screen (iOS 16.4+), and Settings says so. The data export (format 8) lists the browsers, without their addresses. The end-to-end tests use a stand-in push service; delivery through the real push services, and how the notifications look on Android, iOS and desktop, have not been checked on staging."
     },
     {
+      "id": "weekly-highlights",
+      "name": "Weekly highlights",
+      "description": "If you have been away a few days, get a few conversations you missed once a week, each saying why it was chosen, with a one-click way to stop.",
+      "category": "discovery",
+      "priority": "P1",
+      "status": "implemented",
+      "availability": "not_live",
+      "evidence": [
+        "docs/adr/0027-weekly-highlights.md",
+        "packages/db/drizzle/0045_weekly_highlights.sql",
+        "apps/api/src/highlights/rules.ts",
+        "apps/api/src/highlights/highlights.service.ts",
+        "apps/api/src/highlights/highlights-email.ts",
+        "apps/api/src/highlights/highlights-queue.ts",
+        "apps/api/src/highlights/highlights.controller.ts",
+        "apps/web/app/(main)/about/highlights/page.tsx",
+        "apps/web/app/ui/notification-preferences-form.tsx",
+        "apps/api/src/highlights/highlights.service.test.ts",
+        "apps/api/src/highlights/highlights-email.test.ts",
+        "apps/api/src/highlights/rules.test.ts",
+        "e2e/tests/weekly-highlights.spec.ts"
+      ],
+      "dependency": [
+        "email-notifications",
+        "push-notifications",
+        "recommendations"
+      ],
+      "notes": "Built 13 Nov 2026 (ADR 0027), behind the weeklyHighlights flag: on in development and staging, off in production until the owner turns it on. The week's run opens on Sunday at 17:00 UTC (6pm in Nigeria) and stays open a day. It reaches an active member with the switch on (members.weekly_highlights, on by default) who was last seen between 3 days and 8 weeks ago, with up to 5 top-level posts from the last 7 days written after they were last here, each author once; fewer than 2 worth sending and nothing goes out. A post is worth sending if someone else replied, quoted, liked or reposted it, or the member follows its author; the order is by Discover's points without its ageing, and Discover's exclusions apply (blocked, muted, suspended, taken down, sensitive, held by reports, a minor's posts to strangers). Each says why in Discover's words. Sent as one push notification where a browser or app takes it, otherwise as an email where notification emails are on, never both; with neither, nothing. Settings has its own switch, shown only while the flag is on for the member, and the email's one-click link turns highlights off and nothing else. Not a notification: nothing is written to notifications. No opens or clicks are tracked; members.highlights_sent_at with last_seen_at says whether people come back. The rules are published at /about/highlights from GET /v1/highlights/rules. The data export (format 15) includes the switch and when highlights were last sent. Not done: the switch in the mobile apps' Settings, which must ship before the flag is on for everyone; delivery through Resend and the real push services has not been checked on staging."
+    },
+    {
       "id": "accessible-interface",
       "name": "Accessibility improvements",
       "description": "Improve keyboard, screen-reader and small-screen access across the product.",
@@ -1071,19 +1103,44 @@
       "notes": "Decided 28 Oct 2026 (ADR 0014). A third choice beside Newest (still the default) and Oldest, for the replies to the post in focus; branches stay oldest first. The post author’s replies still come first, then everyone else’s by (2 × members who answered the reply + its likes) / (hours old + 2)^1.5, worked out as of the first page. Nothing depends on who the reader follows or on payment. Offered on posts with up to 2,000 direct replies until wide threads are measured."
     },
     {
-      "id": "adult-content-labels",
-      "name": "Date of birth at signup and 18+ labels",
-      "description": "Ask for a date of birth at signup and keep only the age band; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.",
-      "category": "safety",
-      "priority": "P2",
+      "id": "stories",
+      "name": "Stories",
+      "description": "Add updates to your own post over time, so people can follow one story from start to latest, and reply to the update they are about.",
+      "category": "conversations",
+      "priority": "P1",
       "status": "planned",
       "availability": "not_live",
       "evidence": [
+        "docs/adr/0024-stories.md",
+        "packages/db/drizzle/0040_stories.sql",
+        "apps/api/src/posts/stories.test.ts",
+        "apps/web/app/ui/story.tsx",
+        "e2e/tests/stories.spec.ts"
+      ],
+      "dependency": [
+        "threaded-replies"
+      ],
+      "notes": "Proposed 7 Nov 2026 (ADR 0024); web built on feat/stories, the apps not yet. Only the author adds updates; each update is a post of its own, and replies go under the update they are about. Feeds show a story once, as its newest update with the first post above it. Follow story notifies on each new update (story_update, optional)."
+    },
+    {
+      "id": "adult-content-labels",
+      "name": "18+ labels for posts and communities",
+      "description": "Let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.",
+      "category": "safety",
+      "priority": "P2",
+      "status": "partial",
+      "availability": "not_live",
+      "caveat": "Members confirm they are 18 or older at signup; asking for a date of birth instead was built and is switched off (8 Nov 2026). Posts can be marked sensitive (the 18+ label, shown the way X does it), on the web and in the apps, behind the adultLabels flag, which is off in production. Marked pictures and video are served privately, by signed URLs that last at most two hours. A community's moderators can mark the whole community, which then only adults find.",
+      "evidence": [
         "docs/adr/0020-under-18-accounts-and-adult-labels.md",
         "apps/api/src/governance/age.ts",
-        "docs/governance/under-18-rollout.md"
+        "docs/governance/under-18-rollout.md",
+        "apps/api/src/governance/adult-content.ts",
+        "apps/api/src/posts/sensitive.test.ts",
+        "docs/adr/0025-private-sensitive-media.md",
+        "apps/api/src/media/private-media.test.ts"
       ],
-      "notes": "Phase 1 of ADR 0020 (proposed, 3 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs."
+      "notes": "Phase 1 of ADR 0020 (accepted 6 Nov 2026): the 18+ beta rule stays while this ships; a member already here whose date gives under 18 is kept as a minor and moderators are told. The date of birth is built: at signup (birth_date on restricted.age_assurances, the /join fields and confirmation, POST /v1/signup/age, Settings and the export), and asked once of everyone already here, who sees only /birth-date until they answer (POST /v1/me/birth-date). The age is worked out from the date on every check. The labels and their enforcement are not yet. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs. Owner decision 8 Nov 2026: the beta stays 18+ with the \"I am 18 or older\" box; asking for a date of birth is switched off (BIRTH_DATE_ENABLED, locked off in env.ts), with its code and the dates already given kept, and /birth-date asks nobody."
     },
     {
       "id": "minor-safeguards",
@@ -1097,13 +1154,14 @@
         "docs/governance/under-18-rollout.md",
         "apps/api/src/governance/age.ts",
         "apps/api/src/env.ts",
+        "apps/api/src/governance/minors.ts",
         "docs/adr/0020-under-18-accounts-and-adult-labels.md"
       ],
       "caveat": "Child-safety decisions, approvals and implementation must precede any change to the temporary adult-only beta.",
       "dependency": [
         "adult-content-labels"
       ],
-      "notes": "Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Waits for counsel (minimum age, guardian consent), phase 1 in production, upload hash-matching and the rest of the under-18 rollout checklist, then a written sign-off."
+      "notes": "Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Owner decisions of 5 and 6 Nov 2026: 13 to 17 year olds join the beta the way X lets them in, with protections on by default; 13 is the minimum on the web and in the app stores. First come dates of birth at signup, labels enforced, Arachnid Shield on in production and the minors' protections (ADR 0020 sections 4 and 5); counsel's answers and the rest of the under-18 rollout checklist follow during the beta. Minors listen to Gists but never host or speak. Contact and discovery protections built 7 Nov 2026 (branch feat/under-18-contact): replies limited to people a minor follows, strangers' mentions plain text, minors in no stranger's Discover, search or suggestions, none of it loosened before 18 (ADR 0020, questions 12 to 15). Owner decision 8 Nov 2026: the beta stays 18+ and opening to minors is set aside; the protections stay in the code for any member already recorded as under 18."
     },
     {
       "id": "age-verification",
@@ -1119,7 +1177,7 @@
         "apps/api/src/governance/age.ts",
         "docs/governance/under-18-rollout.md"
       ],
-      "notes": "The model exists (restricted.age_assurances, ageStatus) but nothing can yet produce a verified assurance: NIN verification is locked off and no age-assurance provider is chosen. Direct messages need this. The provider must not require a NIN (under-18 rollout section 2)."
+      "notes": "The model exists (restricted.age_assurances, ageStatus) but nothing can yet produce a verified assurance: NIN verification is locked off and no age-assurance provider is chosen. Direct messages and calls are not built until it exists (owner, 6 Nov 2026, ADR 0020); meanwhile hosting and speaking in Gists read the stated age. Governance voting always needs an ID-verified age. The provider must not require a NIN (under-18 rollout section 2)."
     },
     {
       "id": "direct-messages",
@@ -1135,7 +1193,7 @@
         "packages/db/src/schema.ts",
         "docs/governance/under-18-rollout.md"
       ],
-      "caveat": "Design only. Messages will be limited to members who are 18 or over, have completed age verification and have turned messages on. Age verification, message-request and abuse handling, retention and safeguarding approval are needed first.",
+      "caveat": "Design only. Messages will be limited to members who are 18 or over, have completed age verification and have turned messages on; not built until age verification exists (owner, 6 Nov 2026). Age verification, message-request and abuse handling, retention and safeguarding approval are needed first.",
       "dependency": [
         "minor-safeguards",
         "age-verification"
@@ -1390,7 +1448,7 @@
         "docs/adr/0016-account-deletion.md",
         "docs/governance/privacy-requests.md"
       ],
-      "caveat": "Members can delete their account in Settings, and requests by email are recorded and answered. The operator's name and address, and how long deletion records and moderation evidence are kept, are still placeholders for the operator and counsel.",
+      "caveat": "Members can delete their account in Settings, and requests by email are recorded and answered. The privacy policy names the founders as the data controller, and how long deletion records and moderation evidence are kept (set by the operator on 8 Nov 2026, enforced hourly, counsel to confirm).",
       "dependency": [
         "operator-disclosure"
       ],
@@ -1500,7 +1558,7 @@
         "direct-messages",
         "age-verification"
       ],
-      "notes": "Gists are built and in main: off unless LIVEKIT_* is set, then open to the members the gists feature flag is on for, and in production only through its allow-list, a temporary gate with no age check (apps/api/src/gists/eligibility.ts; the flag replaced the CALLS_* env switches on 3 Nov 2026). On in staging since 31 Oct 2026 (the owner tested them there). 1:1 calls and meetings were dropped by the owner on 1 Nov 2026 (PRs #54 and #62 closed, work parked); they, not Gists, need direct-messages and age-verification (docs/adr/0016-direct-messages.md). Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers)."
+      "notes": "Gists are built and in main: off unless LIVEKIT_* is set, then open to the members the gists feature flag is on for, a temporary gate (apps/api/src/gists/eligibility.ts; the flag replaced the CALLS_* env switches on 3 Nov 2026). Until 10 Nov 2026 production opened only through the flag's allow-list; the owner dropped that, so the flag can open Gists to everyone there, with hosting and speaking for stated adults. On in staging since 31 Oct 2026 (the owner tested them there). 1:1 calls and meetings were dropped by the owner on 1 Nov 2026 (PRs #54 and #62 closed, work parked); they, not Gists, need direct-messages and age-verification (docs/adr/0016-direct-messages.md). Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers)."
     },
     {
       "id": "native-apps",
@@ -1614,7 +1672,7 @@
         "apps/api/src/games/games.module.ts",
         "apps/api/src/games/core/registry.ts",
         "apps/api/src/games/core/games.controller.ts",
-        "packages/db/drizzle/0036_games_core.sql",
+        "packages/db/drizzle/0046_games_core.sql",
         "apps/web/app/(main)/games/page.tsx",
         "apps/api/src/games/core/games.controller.test.ts",
         "apps/api/src/games/core/registry.test.ts",
@@ -1646,7 +1704,7 @@
         "apps/api/src/games/chess/chess.service.ts",
         "apps/api/src/games/chess/chess.controller.ts",
         "apps/api/src/games/chess/lichess.ts",
-        "packages/db/drizzle/0037_chess_linking.sql",
+        "packages/db/drizzle/0047_chess_linking.sql",
         "apps/web/app/(main)/games/chess/page.tsx",
         "apps/api/src/games/chess/chess.service.test.ts",
         "apps/api/src/games/chess/lichess.test.ts",
@@ -1654,12 +1712,12 @@
         "docs/adr/0018-games.md",
         "apps/api/src/games/chess/chess-games.service.ts",
         "apps/api/src/games/chess/game-watcher.ts",
-        "packages/db/drizzle/0038_chess_play.sql",
+        "packages/db/drizzle/0048_chess_play.sql",
         "apps/web/app/(main)/games/chess/games/[id]/page.tsx",
         "apps/api/src/games/chess/chess-games.service.test.ts",
         "apps/api/src/games/chess/teams.ts",
         "apps/api/src/games/chess/teams.test.ts",
-        "packages/db/drizzle/0041_games_teams.sql",
+        "packages/db/drizzle/0051_games_teams.sql",
         "apps/web/app/(main)/games/chess/teams/[slug]/page.tsx",
         "e2e/tests/chess-teams.spec.ts"
       ],

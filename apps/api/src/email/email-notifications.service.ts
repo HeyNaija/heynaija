@@ -1,7 +1,8 @@
 import { type Db, members, notifications, OPTIONAL_NOTIFICATION_KINDS } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { eq, inArray, sql } from 'drizzle-orm'
-import { type ChallengeColumns, challengeColumns, challengeOf, excerpt, joins, type NotificationKind, visible } from '../notifications/notifications.service.js'
+import { GistsGate } from '../gists/gists-enabled.guard.js'
+import { type ChallengeColumns, challengeColumns, challengeOf, excerpt, gistsOpenTo, joins, type NotificationKind, postShown, visible } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 import { EMAIL_ADDRESSES, type EmailAddresses } from './addresses.js'
 import { type DigestItem, EXCERPT_MAX, KINDS_WITH_EXCERPT, renderDigest } from './digest.js'
@@ -64,6 +65,7 @@ export class EmailNotificationsService {
     @Inject(EMAIL_SETTINGS) private readonly settings: EmailSettings,
     @Optional() @Inject(MAILER) private readonly mailer: Mailer | null = null,
     @Optional() @Inject(EMAIL_ADDRESSES) private readonly addresses: EmailAddresses | null = null,
+    @Optional() @Inject(GistsGate) private readonly gate: Pick<GistsGate, 'access'> | null = null,
   ) {}
 
   /** False when no mail server is configured: notifications then stay in the app. */
@@ -188,6 +190,8 @@ export class EmailNotificationsService {
    * they have not read, have not since opted out of and were not pushed.
    */
   private async eligible(memberId: string, ids: string[]): Promise<{ items: DigestItem[]; total: number }> {
+    const gistsOn = await gistsOpenTo(this.gate, memberId)
+    const shown = postShown(memberId, gistsOn)
     const optional = sql.join(OPTIONAL_NOTIFICATION_KINDS.map((k) => sql`${k}`), sql`, `)
     const excerptKinds = sql.join(KINDS_WITH_EXCERPT.map((k) => sql`${k}`), sql`, `)
     const waiting = sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)
@@ -195,6 +199,7 @@ export class EmailNotificationsService {
       kind: NotificationKind
       actor_handle: string | null
       post_id: string | null
+      gist_id: string | null
       post_text: string | null
       community_name: string | null
       detail: string | null
@@ -202,12 +207,12 @@ export class EmailNotificationsService {
       idea_yours: boolean
       total: number
     } & ChallengeColumns>(sql`
-      select n.kind, a.handle as actor_handle, n.post_id,
+      select n.kind, a.handle as actor_handle, case when ${shown} then n.post_id end as post_id, case when ${shown} then p.gist_id end as gist_id,
         -- The text of a post is read only for the kinds that quote it.
         case when n.kind in (${excerptKinds}) then p.text end as post_text,
         c.name as community_name, n.detail, i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, ${challengeColumns}, count(*) over ()::int as total
       ${joins}
-      where ${visible(memberId)} and n.id in (${waiting}) and n.read_at is null and n.pushed_at is null
+      where ${visible(memberId, gistsOn)} and n.id in (${waiting}) and n.read_at is null and n.pushed_at is null
         and (n.kind not in (${optional})
           or not exists(select 1 from notification_opt_outs o where o.member_id = n.recipient_id and o.kind = n.kind))
       order by n.created_at desc, n.id desc
@@ -218,6 +223,7 @@ export class EmailNotificationsService {
         kind: r.kind,
         actor: r.actor_handle,
         postId: r.post_id,
+        gistId: r.gist_id,
         excerpt: r.post_text ? excerpt(r.post_text, EXCERPT_MAX) : null,
         community: r.community_name,
         idea: r.idea_kind ? { status: r.detail, kind: r.idea_kind, yours: r.idea_yours } : null,

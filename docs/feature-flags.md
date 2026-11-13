@@ -63,34 +63,75 @@ upload scanner other than `NoScanner` is bound **or** `APP_ENV` is not `producti
 Every video route (`/v1/me/videos/...`) answers the same 404 as a route that does not
 exist when it is not effective, signed in or not, and `/v1/me` reports
 `features.videoPosts` as the effective value. See `docs/safety/video-scanning.md`.
+On top of that, only an adult by stated age may post one (ADR 0019 section 4.6):
+the upload and the post refuse anyone else, and `/v1/me` reports `videoPosts` off
+for them.
 
 ## Flags with a code rule on top: `gists`
 
 `gists` (off in production, on in staging and development) replaced the env switches
 `CALLS_ENABLED`, `CALLS_GISTS_ENABLED` and `CALLS_MEMBERS` on 3 November 2026; the
 handle list became the flag's allow-list, set from the admin page. Its code is in
-`main`, but production never had Gists switched on, so `LIVE_IN_MAIN` says `false`.
+`main`, but production's default is off, so `LIVE_IN_MAIN` says `false`: an admin
+turns it on there, for everyone or for a list.
 
-Two rules in code (`gistsAccess` in `apps/api/src/gists/gists-enabled.guard.ts`) sit
-on top of it, and an admin cannot flip either:
+One rule in code (`gistsAccess` in `apps/api/src/gists/gists-enabled.guard.ts`) sits
+on top of it, and an admin cannot flip it:
 
 - **No LiveKit, no Gists.** Without the `LIVEKIT_*` settings Gists are off whatever
   the flag says.
-- **In production, an allow-list or nothing.** On for everyone, by override or
-  default, opens Gists to nobody there. This is ADR 0017's temporary gate: until the
-  age check exists (`apps/api/src/gists/eligibility.ts`), Gists are for named members.
+
+Until 10 November 2026 there was a second: in production only an allow-list opened
+Gists, and "on for everyone" opened them to nobody (ADR 0017's temporary gate). The
+owner dropped it that day: the stage has its age rule (a stated adult age, below) and
+the beta takes adults only, so the flag now means the same in every environment.
 
 For a member Gists are not open to, every `/v1/gists` route answers the 404 of a
 route that does not exist. A signed-out caller is let on to the sign-in 401 while
 Gists are open to anyone, so a shared Gist link asks them to sign in. `/v1/me` reports
 `features.gists` as the effective value, and every eligibility check in the Gists
 service reads the flag again (once per request, so the checks stay synchronous).
+The flag opens Gists to listen to; hosting and speaking also need an adult by
+stated age (ADR 0020), which `/v1/me` reports as `gistStage`.
 LiveKit's webhook and the once-a-minute reconcile run while LiveKit is configured,
 whatever the flag says: turning `gists` off, or taking a member off its list, takes
 people out of Gists already live within a minute, and the empty rooms then end.
 
 The `GISTS_*` numbers (co-host, speaker and listener caps) are limits, not switches,
 and stay in the env.
+
+## `gistReplies`
+
+`gistReplies` (off in production, on in staging and development) gates writing a reply in
+a Gist's comment section (ADR 0017). It only has an effect where `gists` is on: every
+`/v1/gists` route is behind the `gists` rules above first. Off stops new replies and
+leaves the existing ones readable; deleting your own reply, liking and unliking one, and
+the host's hiding, keep working. `/v1/me` reports it in `features.gistReplies`.
+
+Rollback. Turning the flag off does not hide replies that exist. Rolling the API back to a
+release before migration 0037 does worse: its queries only know `reply_parent_id is null`, so
+a Gist's replies would show in feeds, search, profiles and `/p/:id`. Production is shielded
+while the flag is off. Before rolling back past 0037 on an environment that has Gist replies,
+soft-hide them (`update posts set removed_at = now() where gist_id is not null`) or accept
+that they appear. Do not give them a sentinel `reply_parent_id`.
+
+## `adultLabels`
+
+`adultLabels` (off in production, on in staging and development) gates marking posts
+sensitive (ADR 0020, the 18+ label): the "Mark as sensitive" switch under attached media
+in the composer, the item in a post's menu, the Settings switch that marks everything a
+member posts, the moderators' "Mark sensitive" decision and the report reason "Sensitive,
+but not marked sensitive". `/v1/me` reports it in `features.adultLabels`.
+
+It gates making marks only. Enforcement never reads it: a post already marked is kept from
+signed-out visitors, members with no date of birth and anyone under 18 whatever the flag
+says, and adults keep its media covered unless they chose otherwise. Taking your own mark
+off, and a moderator taking theirs off, always work.
+
+Rollback. A release before migration 0039 does not know `posts.adult_label` and would show
+marked posts to everyone. Before rolling back past 0039 on an environment with marked posts,
+take them down (`update posts set removed_at = now() where adult_label is not null`) and
+restore them afterwards, or accept that they show.
 
 ## Flipping a flag
 

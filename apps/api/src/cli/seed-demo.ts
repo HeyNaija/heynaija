@@ -17,7 +17,7 @@ import { loadEnv } from '../env.js'
 import { AVATAR_SIZES, type MediaKind, POST_IMAGE_SIZES, publishedKeys } from '../media/media.service.js'
 import { S3ObjectStore } from '../media/object-store.js'
 import { s3Config } from '../media/s3-config.js'
-import { posterKey, renditionKey } from '../video/video-keys.js'
+import { videoFolder } from '../video/video-keys.js'
 import type { Art } from './demo/art.js'
 import { ANSWERS, type DemoImage, type DemoReply, FOLLOWED_REAL_MEMBERS, MEMBERS, THREADS } from './demo/content.js'
 
@@ -58,8 +58,8 @@ async function clean() {
   if (ids.length === 0) return 0
 
   const client = await pool.connect()
-  // A video's files are named by its renditions (video_renditions goes with the row), an image's by its kind.
-  let media: { id: string; kind: MediaKind | 'post_video'; heights: number[] | null }[] = []
+  // A video's files are its folder's, listed from storage; an image's are named by its kind.
+  let media: { id: string; kind: MediaKind | 'post_video' }[] = []
   try {
     await client.query('begin')
     await client.query('create temp table d_m on commit drop as select unnest($1::uuid[]) as id', [ids])
@@ -71,24 +71,33 @@ async function clean() {
         select id from posts where author_id in (select id from d_m)
         union select p.id from posts p join tree on p.reply_parent_id = tree.id
       ) select id from tree`)
-    media = (await client.query<{ id: string; kind: MediaKind | 'post_video'; heights: number[] | null }>(
-      `select id, kind, (select array_agg(r.height) from video_renditions r where r.media_id = media.id) as heights
-        from media where owner_id in (select id from d_m) or post_id in (select id from d_p)`,
+    // The Gists they host, room and all.
+    await client.query('create temp table d_g on commit drop as select id from gists where host_id in (select id from d_m)')
+    media = (await client.query<{ id: string; kind: MediaKind | 'post_video' }>(
+      'select id, kind from media where owner_id in (select id from d_m) or post_id in (select id from d_p)',
     )).rows
     const steps: [string, string][] = [
       ['notifications', `delete from notifications where recipient_id in (select id from d_m) or actor_id in (select id from d_m)
         or subject_id in (select id from d_m) or post_id in (select id from d_p)`],
       ['moderation actions', `delete from moderation_actions where actor_id in (select id from d_m) or member_id in (select id from d_m)
-        or post_id in (select id from d_p)`],
+        or post_id in (select id from d_p) or gist_id in (select id from d_g)`],
       ['reports', `delete from reports where reporter_id in (select id from d_m) or member_id in (select id from d_m)
-        or post_id in (select id from d_p) or resolved_by in (select id from d_m)`],
+        or post_id in (select id from d_p) or resolved_by in (select id from d_m) or gist_id in (select id from d_g)`],
+      ['Gist report participants', 'delete from gist_report_participants where member_id in (select id from d_m)'],
+      ['Gist members', 'delete from gist_members where member_id in (select id from d_m) or gist_id in (select id from d_g)'],
+      ['Gist decisions', `update gist_members set removed_by = case when removed_by in (select id from d_m) then null else removed_by end,
+        role_changed_by = case when role_changed_by in (select id from d_m) then null else role_changed_by end
+        where removed_by in (select id from d_m) or role_changed_by in (select id from d_m)`],
       ['notification settings', 'delete from notification_opt_outs where member_id in (select id from d_m)'],
       ['push subscriptions', 'delete from push_subscriptions where member_id in (select id from d_m)'],
+      ['app push devices', 'delete from push_devices where member_id in (select id from d_m)'],
       ['mentions', 'delete from post_mentions where member_id in (select id from d_m) or post_id in (select id from d_p)'],
       ['hashtags', 'delete from post_hashtags where post_id in (select id from d_p)'],
       ['likes', 'delete from likes where member_id in (select id from d_m) or post_id in (select id from d_p)'],
       ['reposts', 'delete from reposts where member_id in (select id from d_m) or post_id in (select id from d_p)'],
       ['bookmarks', 'delete from bookmarks where member_id in (select id from d_m) or post_id in (select id from d_p)'],
+      ['poll votes', 'delete from poll_votes where member_id in (select id from d_m)'],
+      ['story follows', 'delete from story_follows where member_id in (select id from d_m) or story_id in (select id from d_p)'],
       ['follows', 'delete from follows where follower_id in (select id from d_m) or followee_id in (select id from d_m)'],
       ['blocks', 'delete from blocks where blocker_id in (select id from d_m) or blocked_id in (select id from d_m)'],
       ['mutes', 'delete from mutes where muter_id in (select id from d_m) or muted_id in (select id from d_m)'],
@@ -107,8 +116,12 @@ async function clean() {
       ['problem details', `delete from problem_details where post_id in (select id from d_p)`],
       ['duplicates reopened', `update ideas set status = 'under_review', duplicate_of = null where duplicate_of in (select id from d_p) and post_id not in (select id from d_p)`],
       ['ideas', `delete from ideas where post_id in (select id from d_p)`],
+      ['pinned posts', 'update members set pinned_post_id = null where id in (select id from d_m)'],
+      // Other members' replies in a demo Gist stay, as posts of their own.
+      ['links to Gists', 'update posts set gist_id = null where gist_id in (select id from d_g) and id not in (select id from d_p)'],
       // The counter triggers lower reply counts on the real posts demo members answered.
       ['posts', 'delete from posts where id in (select id from d_p)'],
+      ['Gists', 'delete from gists where id in (select id from d_g)'],
       ['privacy requests', 'delete from privacy_requests where member_id in (select id from d_m) or handled_by in (select id from d_m)'],
       ['members', 'delete from members where id in (select id from d_m)'],
       ['bookkeeping', 'delete from demo_members'],
@@ -126,7 +139,7 @@ async function clean() {
   }
 
   for (const m of media) {
-    const keys = m.kind === 'post_video' ? [...(m.heights ?? []).map((h) => renditionKey(m.id, h)), posterKey(m.id)] : publishedKeys(m.kind, m.id)
+    const keys = m.kind === 'post_video' ? await store.list('media', videoFolder(m.id)) : publishedKeys(m.kind, m.id)
     for (const key of keys) await store.remove('media', key)
   }
   for (const id of kratos) {

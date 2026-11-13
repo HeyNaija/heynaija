@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
@@ -14,17 +14,19 @@ import {
   frameArgs,
   stillArgs,
   extractPoster,
-  FFMPEG_SAFETY,
+  jobTimeoutMs,
+  MAX_SAMPLE_FRAMES,
+  newDeadline,
   parseProbe,
   parseShowinfo,
   type Probe,
   probe,
-  renditionPlan,
+  runTimeoutMs,
+  sampleStep,
   sceneBudget,
-  transcode,
-  transcodeArgs,
 } from './ffmpeg.js'
-import { DEFAULT_VIDEO_CONFIG as cfg } from './video-config.js'
+import { encodeHls, hlsLadder } from './hls.js'
+import { DEFAULT_VIDEO_CONFIG as cfg, FRAME_SCAN_MAX_SECONDS } from './video-config.js'
 
 const ffprobeJson = (over: { width?: number; height?: number; rotation?: number; duration?: string; audio?: boolean; format?: string; noVideo?: boolean; videoStreams?: number } = {}) => ({
   format: { format_name: over.format ?? 'mov,mp4,m4a,3gp,3g2,mj2', duration: over.duration ?? '12.5' },
@@ -93,46 +95,35 @@ test('parseProbe: no video stream, an unknown container or a missing length is n
 test('checkLimits: the ADR limits, decided server-side', () => {
   assert.equal(checkLimits(probed(), 50_000_000, cfg), null)
   assert.equal(checkLimits(null, 1000, cfg), 'not_a_video')
-  assert.equal(checkLimits(probed({ durationMs: 60_000 }), 1000, cfg), null, 'exactly the limit is allowed')
-  assert.equal(checkLimits(probed({ durationMs: 60_001 }), 1000, cfg), 'too_long')
+  assert.equal(checkLimits(probed({ durationMs: 180_000 }), 1000, cfg), null, 'exactly the limit, 3 minutes, is allowed')
+  assert.equal(checkLimits(probed({ durationMs: 180_001 }), 1000, cfg), 'too_long')
   assert.equal(checkLimits(probed({ durationMs: 2_900 }), 1000, cfg), 'too_short')
+  assert.equal(checkLimits(probed(), 1024 * 1024 * 1024, cfg), null, '1 GB is allowed')
   assert.equal(checkLimits(probed(), cfg.maxBytes + 1, cfg), 'too_large')
-  assert.equal(checkLimits(probed({ width: 2160, height: 3840 }), 1000, cfg), 'too_big_picture')
-  assert.equal(checkLimits(probed({ width: 1080, height: 1920 }), 1000, cfg), null, 'a portrait 1080p clip is fine')
+  assert.equal(checkLimits(probed({ width: 2160, height: 3840 }), 1000, cfg), null, 'a portrait 4K clip is fine')
+  assert.equal(checkLimits(probed({ width: 4096, height: 2160 }), 1000, cfg), 'too_big_picture', 'over 3840 on the long side')
 })
 
-test('renditionPlan: the short edge is 240, 360 and 480, never enlarged, always even', () => {
-  assert.deepEqual(
-    renditionPlan(probed()).map((r) => [r.label, r.width, r.height]),
-    [[240, 426, 240], [360, 640, 360], [480, 854, 480]],
-  )
-  assert.deepEqual(
-    renditionPlan(probed({ width: 1080, height: 1920 })).map((r) => [r.label, r.width, r.height]),
-    [[240, 240, 426], [360, 360, 640], [480, 480, 854]],
-    'a portrait clip does not become a 1920 pixel wide file',
-  )
-  assert.deepEqual(renditionPlan(probed({ width: 640, height: 360 })).map((r) => r.label), [240, 360])
-  // Smaller than the whole ladder: one rendition at its own size.
-  assert.deepEqual(renditionPlan(probed({ width: 200, height: 150 })).map((r) => [r.label, r.width, r.height]), [[150, 200, 150]])
+test('time limits follow the clip’s length: 5 minutes and 4 times it per run, and Shield’s 5 minutes on top for the job', () => {
+  assert.equal(runTimeoutMs(180_000), 17 * 60_000, 'a 3-minute clip gets 17 minutes (ADR 0021 section 5)')
+  assert.equal(runTimeoutMs(3_000), 5 * 60_000 + 12_000)
+  assert.equal(jobTimeoutMs(180_000), 22 * 60_000)
+  assert.equal(jobTimeoutMs(60_000), runTimeoutMs(60_000) + 5 * 60_000)
+  const deadline = newDeadline()
+  assert.ok(Math.abs(deadline.at - Date.now() - jobTimeoutMs(cfg.maxSeconds * 1000)) < 1000, 'by default, the longest clip’s')
 })
 
-test('transcodeArgs: the invocation, with the safety flags and the ADR ladder settings', () => {
-  const args = transcodeArgs('/in/o.mp4', ['/out/240.mp4', '/out/360.mp4', '/out/480.mp4'], probed({ fps: 60 }), cfg)
-  const line = args.join(' ')
-  // Untrusted input: no network protocols, no stdin, no metadata carried over.
-  assert.ok(line.includes(`-protocol_whitelist ${FFMPEG_SAFETY.protocolWhitelist}`))
-  assert.ok(args.indexOf('-protocol_whitelist') < args.indexOf('-i'), 'the whitelist applies to the input')
-  assert.ok(args.includes('-nostdin'))
-  assert.equal(args.filter((a) => a === '-map_metadata').length, 3)
-  assert.equal(args.filter((a) => a === '+faststart').length, 3)
-  for (const out of ['/out/240.mp4', '/out/360.mp4', '/out/480.mp4']) assert.equal(args.filter((a) => a === out).length, 1)
-  assert.ok(line.includes('libx264') && line.includes('yuv420p') && line.includes('-profile:v main'))
-  assert.ok(line.includes('-b:v 300k') && line.includes('-b:v 550k') && line.includes('-b:v 900k'))
-  assert.ok(line.includes('-b:a 48k') && line.includes('-b:a 64k'))
-  assert.ok(line.includes('fps=30'), 'a 60 fps source is capped to 30')
-  // Never trust the probe's duration alone: stop encoding past the limit.
-  // ... and stop at the same window the scan looked at: the probed length plus a second, never the file's own say.
-  assert.equal(args[args.indexOf('-t') + 1], String(12.5 + 1))
+test('the sampled frames spread over the whole clip: one a second up to 78 seconds, then one every 2 or 3', () => {
+  assert.equal(FRAME_SCAN_MAX_SECONDS, MAX_SAMPLE_FRAMES - 2, 'one a second and the last, in 80')
+  assert.deepEqual([4_000, 78_000, 78_001, 156_000, 156_001, 180_000].map(sampleStep), [1, 1, 2, 2, 3, 3])
+  for (const ms of [12_000, 78_000, 100_000, 156_000, 180_000, 181_000]) {
+    // One frame every step over the clip, and the last, fit in the 80.
+    assert.ok(Math.ceil(ms / 1000 / sampleStep(ms)) + 1 + 1 <= MAX_SAMPLE_FRAMES, String(ms))
+  }
+  const at = (args: string[]) => args[args.indexOf('-vf') + 1]!
+  assert.match(at(frameArgs('/in', '/f', 12_500, 180).seconds), /^fps=1\/1,/)
+  assert.match(at(frameArgs('/in', '/f', 100_000, 180).seconds), /^fps=1\/2,/)
+  assert.match(at(frameArgs('/in', '/f', 180_000, 180).seconds), /^fps=1\/3,/)
 })
 
 test('parseProbe: more than one video stream is refused, so the stream scanned is the stream published', () => {
@@ -149,7 +140,7 @@ test('every read of the input maps the first video stream: the scan, the poster 
   }
   const still = stillArgs('/in/o.mp4', 1000, '/work/p.jpg', 'scale=640:640')
   assert.equal(still[still.indexOf('-map') + 1], '0:v:0')
-  assert.ok(transcodeArgs('/in', ['/a', '/b', '/c'], probed(), cfg).join(' ').includes('[0:v:0]'))
+  // The encode's: hls.test.ts.
 })
 
 test('the scan reads at most the limit plus a second, whatever the container claims', () => {
@@ -163,17 +154,6 @@ test('checkLimits: a frame rate over 60, or more frames than the limit allows at
   assert.equal(checkLimits(probed({ fps: 120 }), 1000, cfg), 'too_long')
   assert.equal(checkLimits(probed({ fps: 30, frameCount: cfg.maxSeconds * 60 + 1 }), 1000, cfg), 'too_long')
   assert.equal(checkLimits(probed({ fps: 30, frameCount: cfg.maxSeconds * 60 }), 1000, cfg), null)
-})
-
-test('transcodeArgs: no audio track in, none out; a 24 fps source is not resampled', () => {
-  const args = transcodeArgs('/in', ['/a.mp4', '/b.mp4', '/c.mp4'], probed({ hasAudio: false, fps: 24 }), cfg)
-  assert.ok(args.includes('-an'))
-  assert.ok(!args.includes('-c:a'))
-  assert.ok(!args.join(' ').includes('fps=30'))
-})
-
-test('transcodeArgs: needs one output per rendition', () => {
-  assert.throws(() => transcodeArgs('/in', ['/only.mp4'], probed(), cfg), /one output per rendition/)
 })
 
 test('sceneBudget keeps the whole sample within 80 frames', () => {
@@ -206,14 +186,14 @@ const hasFfmpeg = (() => {
 const skip = !hasFfmpeg && 'ffmpeg and ffprobe are not installed here; the invocation is still covered by the argument tests above'
 
 let dir: string
-const clip = (name: string, size: string, seconds: number, opts: { audio?: boolean; rate?: number } = {}) => {
+const clip = (name: string, size: string, seconds: number, opts: { audio?: boolean; rate?: number; soundSeconds?: number } = {}) => {
   const path = join(dir, name)
   execFileSync(
     'ffmpeg',
     [
       '-v', 'error', '-y',
       '-f', 'lavfi', '-i', `testsrc2=size=${size}:rate=${opts.rate ?? 30}:duration=${seconds}`,
-      ...(opts.audio === false ? [] : ['-f', 'lavfi', '-i', `sine=frequency=440:duration=${seconds}`, '-c:a', 'aac']),
+      ...(opts.audio === false ? [] : ['-f', 'lavfi', '-i', `sine=frequency=440:duration=${opts.soundSeconds ?? seconds}`, '-c:a', 'aac']),
       '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-metadata', 'location=+06.5244+003.3792/', path,
     ],
     { stdio: 'ignore' },
@@ -226,27 +206,36 @@ before(async () => {
 })
 after(() => rm(dir, { recursive: true, force: true }))
 
-test('probe, transcode, poster and frame sampling on a generated clip', { skip, timeout: 120_000 }, async () => {
+/** Encodes into a fresh folder per quality, as the worker does, and gives each quality's folder. */
+const encoded = async (input: string, p: Probe, name: string) => {
+  const out = join(dir, name)
+  for (const r of hlsLadder(p)) await mkdir(join(out, String(r.label)), { recursive: true })
+  await encodeHls(input, out, p, cfg.maxSeconds, newDeadline())
+  return out
+}
+
+test('probe, HLS encode, poster and frame sampling on a generated clip', { skip, timeout: 120_000 }, async () => {
   const input = clip('landscape.mp4', '854x480', 4, { rate: 50 })
   const p = (await probe(input))!
   assert.deepEqual([p.width, p.height, p.hasAudio], [854, 480, true])
   assert.ok(Math.abs(p.durationMs - 4000) < 200, String(p.durationMs))
   assert.equal(checkLimits(p, (await stat(input)).size, cfg), null)
 
-  const plan = renditionPlan(p)
-  const outs = plan.map((r) => join(dir, `${r.label}.mp4`))
-  await transcode(input, outs, p, cfg)
-  for (const [i, r] of plan.entries()) {
-    const o = (await probe(outs[i]!))!
-    assert.deepEqual([o.width, o.height], [r.width, r.height], `rendition ${r.label}`)
+  const out = await encoded(input, p, 'landscape-hls')
+  for (const r of hlsLadder(p)) {
+    const folder = join(out, String(r.label))
+    const files = await readdir(folder)
+    // The init file and a piece together are an MP4 ffprobe can read.
+    const init = files.find((f) => /^init_\d+\.mp4$/.test(f))!
+    const joined = join(dir, `joined-${r.label}.mp4`)
+    await writeFile(joined, Buffer.concat([await readFile(join(folder, init)), await readFile(join(folder, 'piece-000.m4s'))]))
+    const o = (await probe(joined))!
+    assert.deepEqual([o.width, o.height], [r.width, r.height], `quality ${r.label}`)
     assert.equal(o.videoCodec, 'h264')
     assert.ok(o.fps <= 30.01, `fps capped: ${o.fps}`)
     assert.ok(o.hasAudio)
-    assert.ok(Math.abs(o.durationMs - 4000) < 300)
-    // `location` metadata is dropped, and +faststart puts the moov atom first.
-    const raw = await readFile(outs[i]!)
-    assert.ok(!raw.includes('+06.5244'), 'location metadata was copied')
-    assert.ok(raw.indexOf('moov') < raw.indexOf('mdat'), 'not faststart')
+    // `location` metadata is dropped.
+    for (const f of files) assert.ok(!(await readFile(join(folder, f))).includes('+06.5244'), `location metadata was copied into ${f}`)
   }
 
   const poster = await extractPoster(input, join(dir, 'poster.jpg'), p.durationMs)
@@ -263,12 +252,33 @@ test('a clip without audio, and a portrait clip', { skip, timeout: 120_000 }, as
   const input = clip('portrait.mp4', '480x854', 3, { audio: false })
   const p = (await probe(input))!
   assert.equal(p.hasAudio, false)
-  const plan = renditionPlan(p)
-  assert.deepEqual(plan.map((r) => r.label), [240, 360, 480])
-  const outs = plan.map((r) => join(dir, `p${r.label}.mp4`))
-  await transcode(input, outs, p, cfg)
-  const o = (await probe(outs[0]!))!
-  assert.deepEqual([o.width, o.height, o.hasAudio], [240, 428, false]) // 480x854 at 240 wide is 427 high, rounded to the even 428
+  assert.deepEqual(hlsLadder(p).map((r) => r.label), [240, 360, 480])
+  const out = await encoded(input, p, 'portrait-hls')
+  const playlist = await readFile(join(out, '240', 'index.m3u8'), 'utf8')
+  assert.match(playlist, /#EXT-X-MAP:URI="init_\d+\.mp4"/)
+  assert.match(playlist, /^piece-000\.m4s$/m)
+  assert.match(await readFile(join(out, 'master.m3u8'), 'utf8'), /RESOLUTION=240x428/) // 480x854 at 240 wide is 427 high, rounded to the even 428
+})
+
+test('a clip over 78 seconds is sampled across its whole length, still within the 80 frames', { skip, timeout: 120_000 }, async () => {
+  const input = clip('long.mp4', '160x90', 100, { audio: false, rate: 5 })
+  const p = (await probe(input))!
+  const frames = await extractFrames(input, join(dir, 'long-frames'), p.durationMs, cfg.maxSeconds)
+  assert.ok(frames.length <= MAX_SAMPLE_FRAMES, `frames: ${frames.length}`)
+  const evenly = frames.filter((f) => f.ms % 2000 === 0)
+  assert.ok(evenly.length >= 50, `one every 2 seconds: ${evenly.length}`)
+  assert.ok(frames.at(-1)!.ms >= 98_000, `the end is covered: ${frames.at(-1)!.ms}`)
+})
+
+test('a picture that stops before its sound is sampled to its own last frame', { skip, timeout: 120_000 }, async () => {
+  // As screen recordings often are: nothing to see in the last 0.2 seconds, so no frame there.
+  const input = clip('silent-end.mp4', '320x180', 3, { soundSeconds: 4.5 })
+  const p = (await probe(input))!
+  assert.ok(p.durationMs > 4000, `the length is the sound's: ${p.durationMs}`)
+  const frames = await extractFrames(input, join(dir, 'silent-end-frames'), p.durationMs)
+  const last = frames.at(-1)!
+  assert.ok(last.ms >= 2800 && last.ms < 3000, `the picture's last frame, at its time: ${last.ms}`)
+  assert.ok(last.jpeg.length > 100)
 })
 
 test('probe says null for a file that is not a video, rather than throwing', { skip }, async () => {

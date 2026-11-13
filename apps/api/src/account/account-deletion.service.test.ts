@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import {
   ageAssurances,
+  appleTokens,
   bookmarks,
   communities,
   chessChallenges,
@@ -47,6 +48,7 @@ import {
   privacyRequests,
   problemDetails,
   profileBadges,
+  pushDevices,
   pushSubscriptions,
   releasedHandles,
   reports,
@@ -67,7 +69,7 @@ import { notify } from '../notifications/notifications.service.js'
 import { PostsService } from '../posts/posts.service.js'
 import { MemoryVideoStore } from '../video/memory-video-store.js'
 import { DEFAULT_VIDEO_CONFIG } from '../video/video-config.js'
-import { originalKey, posterKey, quarantineOriginalKey, renditionKey } from '../video/video-keys.js'
+import { originalKey, posterKey, quarantineOriginalKey, playlistKey } from '../video/video-keys.js'
 import { VideoService } from '../video/video.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { AccountDeletionError, AccountDeletionService, type DeletionNotices, tombstoneHandle } from './account-deletion.service.js'
@@ -256,6 +258,36 @@ test('if Kratos cannot be reached the account still leaves the site; the erase s
   kratos.failing.clear()
   await deletion.erase(xena, days(14))
   assert.deepEqual(kratos.revoked, [xena])
+})
+
+test('the erase revokes Sign in with Apple while its token is kept, and is tried again if Apple cannot be reached', async () => {
+  await db.insert(appleTokens).values({ memberId: xena, refreshToken: 'r.apple' })
+  const revoked: string[] = []
+  let appleDown = true
+  const withApple = new AccountDeletionService(
+    db,
+    env,
+    kratos,
+    kratos,
+    { eraseFilesOf: async () => {} },
+    membersService,
+    { endHostedBy: async () => {} },
+    notices,
+    undefined,
+    {
+      revokeFor: async (id) => {
+        if (appleDown) throw new Error('Apple answered 503')
+        revoked.push(`${id} with ${await count(appleTokens, eq(appleTokens.memberId, id))} token`)
+      },
+    },
+  )
+  await withApple.request(xena, { channel: 'self_service' }, now)
+  await assert.rejects(withApple.erase(xena, days(14)), /503/)
+  assert.equal((await member(xena)).deletedAt, null)
+  appleDown = false
+  assert.equal(await withApple.erase(xena, days(14)), 'erased')
+  assert.deepEqual(revoked, [`${xena} with 1 token`])
+  assert.equal(await count(appleTokens, eq(appleTokens.memberId, xena)), 0)
 })
 
 test('a site moderator is demoted before deleting their own account; an operator can delete one', async () => {
@@ -450,6 +482,7 @@ test('the erase removes what is personal and keeps what is evidence', async () =
   await postsService.pinInCommunity(sam, ordinary)
   await db.insert(notificationOptOuts).values({ memberId: xena, kind: 'like' })
   await db.insert(pushSubscriptions).values({ memberId: xena, endpoint: 'https://push.example/x', p256dh: 'k', auth: 'a' })
+  await db.insert(pushDevices).values({ memberId: xena, service: 'fcm', token: 'xena-android:APA91b', key: 'k' })
   await membersService.setFounder('xena', true)
   await db.insert(releasedHandles).values([
     { handle: 'xena_old', memberId: xena, releasedAt: days(-5) },
@@ -508,6 +541,7 @@ test('the erase removes what is personal and keeps what is evidence', async () =
   assert.equal(await count(notifications, or(eq(notifications.recipientId, xena), eq(notifications.actorId, xena))), 0)
   assert.equal(await count(notificationOptOuts, eq(notificationOptOuts.memberId, xena)), 0)
   assert.equal(await count(pushSubscriptions, eq(pushSubscriptions.memberId, xena)), 0)
+  assert.equal(await count(pushDevices, eq(pushDevices.memberId, xena)), 0)
   assert.equal(await count(profileBadges, eq(profileBadges.memberId, xena)), 0)
   assert.equal(await count(inviteRedemptions, eq(inviteRedemptions.identityId, xena)), 0)
   assert.equal(await count(invites, eq(invites.codeHash, 'hash')), 1, 'the invite itself is the operator’s record')
@@ -598,7 +632,7 @@ test('the handle is held for 30 days and leads nowhere; the tombstone cannot be 
   assert.equal(await membersService.movedTo(null, 'xena'), null)
   assert.equal(await membersService.profile(null, 'xena'), null)
   assert.equal(await membersService.profile(null, tombstoneHandle(xena)), null)
-  assert.deepEqual(await membersService.search('deleted', 10), [])
+  assert.deepEqual(await membersService.search(null, 'deleted', 10), [])
   assert.match(tombstoneHandle(xena), /^deleted-[0-9a-f]{8}$/)
 })
 
@@ -797,6 +831,51 @@ test('Gists: one they hosted that was reported stays as evidence, with the repor
   assert.equal(await count(reports, eq(reports.id, report!.id)), 1)
 })
 
+test('Gists: one they hosted with replies stays as a tombstone with a blank title; their own replies are erased, other people’s stay unreachable', async () => {
+  const [room, empty] = await db
+    .insert(gists)
+    .values([{ hostId: xena, title: 'Xena’s secret title', status: 'ended' }, { hostId: xena, title: 'No replies here', status: 'ended' }])
+    .returning({ id: gists.id })
+  await db.insert(gistMembers).values([{ gistId: room!.id, memberId: xena, role: 'host' }, { gistId: empty!.id, memberId: xena, role: 'host' }])
+  const hers = await db.insert(posts).values({ authorId: xena, text: 'I said this in my room', gistId: room!.id }).returning({ id: posts.id })
+  const theirs = await db.insert(posts).values({ authorId: yemi, text: 'Yemi’s reply', gistId: room!.id }).returning({ id: posts.id })
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  const [tomb] = await db.select().from(gists).where(eq(gists.id, room!.id))
+  assert.equal(tomb!.title, 'Deleted Gist')
+  assert.equal(tomb!.hostId, xena)
+  assert.equal(await count(gists, eq(gists.id, empty!.id)), 0)
+  const [own] = await db.select().from(posts).where(eq(posts.id, hers[0]!.id))
+  assert.equal(own!.text, '')
+  assert.notEqual(own!.deletedAt, null)
+  const [other] = await db.select().from(posts).where(eq(posts.id, theirs[0]!.id))
+  assert.equal(other!.text, 'Yemi’s reply')
+  assert.equal(other!.deletedAt, null)
+})
+
+test('Gists: one they hosted whose only replies are their own goes entirely; one with another member’s reply stays', async () => {
+  const [alone, shared] = await db
+    .insert(gists)
+    .values([{ hostId: xena, title: 'Only me', status: 'ended' }, { hostId: xena, title: 'Not only me', status: 'ended' }])
+    .returning({ id: gists.id })
+  await db.insert(gistMembers).values([{ gistId: alone!.id, memberId: xena, role: 'host' }, { gistId: shared!.id, memberId: xena, role: 'host' }])
+  await db.insert(posts).values([
+    { authorId: xena, text: 'talking to myself', gistId: alone!.id },
+    { authorId: xena, text: 'my room', gistId: shared!.id },
+    { authorId: yemi, text: 'Yemi was here', gistId: shared!.id },
+  ])
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  assert.equal(await count(gists, eq(gists.id, alone!.id)), 0, 'no tombstone for a Gist nobody else replied in')
+  assert.equal(await count(posts, eq(posts.gistId, alone!.id)), 0)
+  const [kept] = await db.select().from(gists).where(eq(gists.id, shared!.id))
+  assert.equal(kept!.title, 'Deleted Gist')
+})
+
 test('feature flags: they leave every allow-list; one that held only them goes off for everyone, and the log shows the tombstone', async () => {
   const flags = new FeatureFlags(db, 'production')
   await flags.set(sam, 'polls', { enabled: null, handles: ['xena'] })
@@ -934,7 +1013,7 @@ async function video(owner: string, status: typeof media.$inferInsert['status'],
   await db.insert(videoDetails).values({ mediaId: id, durationMs: 9000, width: 640, height: 360, scanResult: status === 'ready' ? 'clear' : 'unscanned', originalSha256: 'ab'.repeat(32), uploadId: status === 'uploading' ? `up-${id}` : null, partSize: 5 * 1024 * 1024 })
   if (status === 'ready') {
     await db.insert(videoRenditions).values({ mediaId: id, height: 360, width: 640, bytes: 3000, bitrateKbps: 600 })
-    for (const key of [renditionKey(id, 360), posterKey(id)]) videoStore.objects.set(`media/${key}`, Buffer.from(key))
+    for (const key of [playlistKey(id, 360), posterKey(id)]) videoStore.objects.set(`media/${key}`, Buffer.from(key))
   }
   if (status === 'quarantined' || status === 'blocked') videoStore.objects.set(`uploads/${quarantineOriginalKey(id)}`, Buffer.from('original'))
   if (status === 'processing') videoStore.objects.set(`uploads/${originalKey(id)}`, Buffer.from('original'))
@@ -969,11 +1048,11 @@ test('erasing an account takes its videos with it: files, open uploads, scan res
   )
   assert.deepEqual(
     videoStore.keys('uploads').sort(),
-    [`quarantine/${renditionKey(evidence, 360)}`, `quarantine/${posterKey(evidence)}`, quarantineOriginalKey(blocked)].sort(),
+    [`quarantine/${playlistKey(evidence, 360)}`, `quarantine/${posterKey(evidence)}`, quarantineOriginalKey(blocked)].sort(),
   )
   assert.ok(videoStore.keys('media').some((k) => k.includes(others)), 'another member’s video is untouched')
   assert.ok(videoStore.aborted.includes(`up-${uploading}`), 'the open multipart upload was aborted')
-  assert.ok(videoPurged.includes(renditionKey(ordinary, 360)), 'the CDN was purged')
+  assert.ok(videoPurged.includes(playlistKey(ordinary, 360)), 'the CDN was purged')
   // Scan results and renditions: gone for what was deleted, kept with the evidence and the blocked one.
   const detailIds = (await db.select().from(videoDetails)).map((d) => d.mediaId).sort()
   assert.deepEqual(detailIds, [evidence, blocked, others].sort())
@@ -996,7 +1075,7 @@ test('a failed video erase leaves its rows, so the retry finds the same files; t
   const { id: postId } = await postsService.create(xena, 'my clip')
   const ready = await video(xena, 'ready', postId)
   await deletion.request(xena, { channel: 'self_service' }, now)
-  videoStore.failOnce('remove', renditionKey(ready, 360))
+  videoStore.failOnce('remove', playlistKey(ready, 360))
   await assert.rejects(() => deletion.erase(xena, days(14)), /storage failed on remove/)
   assert.equal(await count(videoDetails, eq(videoDetails.mediaId, ready)), 1, 'the scan row survives the failure')
   assert.equal(await count(videoRenditions, eq(videoRenditions.mediaId, ready)), 1, 'and so do the renditions that name the files')
@@ -1035,5 +1114,5 @@ test('restoring a removed post whose author was erased does not republish the vi
 
   assert.equal((await db.select().from(media).where(eq(media.id, id)))[0]!.status, 'quarantined')
   assert.deepEqual(videoStore.keys('media'), [])
-  assert.ok(videoStore.keys('uploads').includes(`quarantine/${renditionKey(id, 360)}`))
+  assert.ok(videoStore.keys('uploads').includes(`quarantine/${playlistKey(id, 360)}`))
 })

@@ -12,9 +12,9 @@ import {
   type Refusal,
   refusalPath,
 } from '@/lib/account-deletion'
-import { api } from '@/lib/api'
+import { api, getSignupAge, type PostVideo } from '@/lib/api'
 import { DATA_COOKIE, DATA_COOKIE_MAX_AGE, dataMode } from '@/lib/low-data'
-import { AGE_COOKIE, AGE_COOKIE_VALUE, INVITE_COOKIE } from '@/lib/invite'
+import { AGE_COOKIE, AGE_COOKIE_VALUE, AGE_REFUSED_COOKIE, INVITE_COOKIE } from '@/lib/invite'
 import { forgetEndedSession, reauthUrl, startAuthUrl } from '@/lib/auth/server'
 import { siteOrigin } from '@/lib/previews'
 import { preferencesFromForm } from '@/lib/notification-preferences'
@@ -23,8 +23,7 @@ import { choicesFromForm, welcomePath } from '@/lib/onboarding'
 import type { ThreadRow } from '@/lib/thread-state'
 import { POLL_OPTIONS_MAX } from '@/lib/polls'
 import { POST_MAX } from '@/lib/post-length'
-import { isReplyAudience } from '@/lib/reply-audience'
-import type { VideoRendition } from '@/lib/video'
+import { isGistReplyAudience, isReplyAudience } from '@/lib/reply-audience'
 
 // The API is the authority on who is signed in and what they may do; these
 // functions only relay the visitor's own session cookie to it.
@@ -41,7 +40,10 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   const replyTo = String(formData.get('replyTo') ?? '') || undefined
   const community = String(formData.get('community') ?? '') || undefined
   const quote = String(formData.get('quote') ?? '') || undefined
-  const replyAudience = String(formData.get('replyAudience') ?? 'everyone')
+  // Left out, it is everyone's, or for an update its story's first post's setting.
+  const replyAudience = formData.get('replyAudience') ? String(formData.get('replyAudience')) : undefined
+  const sensitive = formData.get('sensitive') === '1'
+  const storyOf = String(formData.get('storyOf') ?? '') || undefined
   const poll = formData.get('poll') === '1'
     ? {
         multiple: formData.get('pollMultiple') === '1',
@@ -61,7 +63,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   const res = await api('/v1/posts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, replyTo, community, images, video, quote, poll, replyAudience }),
+    body: JSON.stringify({ text, replyTo, community, images, video, quote, poll, replyAudience, sensitive, storyOf }),
   }).catch(() => null)
 
   if (!res) return { error: 'Could not post. Check your connection and try again.' }
@@ -72,6 +74,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
     // The session itself can be refused with a 403 too (a suspension, say).
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     if (body.code === 'reply_not_allowed') return { error: 'The author has limited who can reply to this conversation.' }
+    if (body.code === 'label_not_allowed') return { error: 'Only people 18 or older can mark a post as sensitive.' }
     // The video rules, checked again when the video goes on the post.
     if (video && body.code === 'not_eligible') return { error: VIDEO_REFUSALS.not_eligible! }
   }
@@ -80,6 +83,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
     if (body.code === 'parent_gone') return { error: 'The post you are replying to has been deleted.' }
     if (body.code === 'feature_unavailable') return { error: 'That is not available right now.' }
     if (body.code === 'quote_gone') return { error: 'The post you are quoting is no longer available.' }
+    if (body.code === 'story_gone') return { error: 'That story is no longer available.' }
     if (body.code === 'not_a_member') return { error: 'Join that community to post in it.' }
     if (body.code === 'community_gone') return { error: 'That community is no longer available.' }
     if (body.code === 'images_not_ready') {
@@ -122,11 +126,17 @@ export async function deletePost(formData: FormData): Promise<void> {
   refresh()
 }
 
+/** A reply in a Gist is liked through the Gist, which decides who may see it. */
+const likePath = (id: string, gistId?: string) =>
+  gistId
+    ? `/v1/gists/${encodeURIComponent(gistId)}/replies/${encodeURIComponent(id)}/like`
+    : `/v1/posts/${encodeURIComponent(id)}/like`
+
 /** `on` is the state the member wants, so a double submit cannot flip it back. */
 export async function setLike(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '')
   const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
-  const res = await api(`/v1/posts/${encodeURIComponent(id)}/like`, { method })
+  const res = await api(likePath(id, String(formData.get('gist') ?? '') || undefined), { method })
   if (res.status === 401) redirect('/login')
   refresh()
 }
@@ -136,9 +146,9 @@ export async function setLike(formData: FormData): Promise<void> {
  * the change, so the page is not re-rendered. On a long feed that re-render would
  * resend every post the reader has loaded.
  */
-export async function toggleLike(id: string, on: boolean): Promise<{ ok: boolean }> {
-  if (typeof id !== 'string' || id.length > 64) return { ok: false }
-  const res = await api(`/v1/posts/${encodeURIComponent(id)}/like`, { method: on ? 'PUT' : 'DELETE' })
+export async function toggleLike(id: string, on: boolean, gistId?: string): Promise<{ ok: boolean }> {
+  if (typeof id !== 'string' || id.length > 64 || (gistId !== undefined && (typeof gistId !== 'string' || gistId.length > 64))) return { ok: false }
+  const res = await api(likePath(id, gistId), { method: on ? 'PUT' : 'DELETE' })
   if (res.status === 401) redirect('/login')
   return { ok: res.ok }
 }
@@ -168,6 +178,15 @@ export async function setBookmark(formData: FormData): Promise<void> {
   refresh()
 }
 
+/** Follows a story, to be told about each new update, or stops (docs/adr/0024). */
+export async function setStoryFollow(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '')
+  const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/story-follow`, { method })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
 /** Pins one of your own posts to the top of your profile, or unpins it. */
 export async function setProfilePin(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '')
@@ -191,6 +210,46 @@ export async function setReplyAudience(formData: FormData): Promise<void> {
   const audience = String(formData.get('audience') ?? '')
   if (!isReplyAudience(audience)) return
   const res = await api(`/v1/posts/${encodeURIComponent(id)}/reply-audience`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ audience }),
+  })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+/** The author marks their own post sensitive (on=1, ADR 0020), or takes their own mark off. */
+export async function setSensitive(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '')
+  const res = await api(`/v1/posts/${encodeURIComponent(id)}/sensitive`, { method: formData.get('on') === '1' ? 'PUT' : 'DELETE' })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+/** A community's moderators mark the whole community sensitive (on=1) or take the mark off (ADR 0020). */
+export async function setCommunitySensitive(formData: FormData): Promise<void> {
+  const slug = String(formData.get('slug') ?? '')
+  const res = await api(`/v1/communities/${encodeURIComponent(slug)}/sensitive`, { method: formData.get('on') === '1' ? 'PUT' : 'DELETE' })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+/** The host hides a reply in their Gist (on=1) or shows it again. */
+export async function hideGistReply(formData: FormData): Promise<void> {
+  const gist = String(formData.get('gist') ?? '')
+  const id = String(formData.get('id') ?? '')
+  const res = await api(`/v1/gists/${encodeURIComponent(gist)}/replies/${encodeURIComponent(id)}/hide`, {
+    method: formData.get('on') === '1' ? 'PUT' : 'DELETE',
+  })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+export async function setGistReplyAudience(formData: FormData): Promise<void> {
+  const gist = String(formData.get('gist') ?? '')
+  const audience = String(formData.get('audience') ?? '')
+  if (!isGistReplyAudience(audience)) return
+  const res = await api(`/v1/gists/${encodeURIComponent(gist)}/replies/audience`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ audience }),
@@ -274,6 +333,27 @@ export async function updateNotificationPreferences(_prev: FormState, formData: 
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(preferencesFromForm(formData)),
+  }).catch(() => null)
+  if (!res) return { error: 'Could not save. Check your connection and try again.' }
+  if (res.status === 401) redirect('/login')
+  if (res.status === 429) return { error: 'You are changing settings very fast. Wait a minute and try again.' }
+  if (!res.ok) return { error: 'Could not save. Try again in a moment.' }
+  refresh()
+  return { done: true }
+}
+
+/**
+ * The member's choices about posts marked sensitive (ADR 0020). `markPosts` is sent
+ * only when the form offered it, so a form without it leaves it as it is.
+ */
+export async function updateSensitiveSettings(_prev: FormState, formData: FormData): Promise<FormState> {
+  const res = await api('/v1/me/sensitive', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      showMedia: formData.get('showMedia') === 'on',
+      ...(formData.get('markPostsOffered') === '1' ? { markPosts: formData.get('markPosts') === 'on' } : {}),
+    }),
   }).catch(() => null)
   if (!res) return { error: 'Could not save. Check your connection and try again.' }
   if (res.status === 401) redirect('/login')
@@ -441,7 +521,7 @@ export type VideoState = 'uploading' | 'processing' | 'quarantined' | 'ready' | 
 export type VideoStatus = {
   status: VideoState
   reason: 'too_long' | 'too_short' | 'too_large' | 'too_big_picture' | 'not_a_video' | null
-  video: { id: string; src: string; durationMs: number; width: number; height: number; description: string; renditions: VideoRendition[] } | null
+  video: PostVideo | null
 }
 
 // The limits themselves are told before sending, from the API's own (lib/video.ts); these are the server's backstop.
@@ -639,6 +719,17 @@ export async function restorePost(formData: FormData): Promise<void> {
   refresh()
 }
 
+/** Takes a moderator's sensitive mark off a post, on appeal (ADR 0020). */
+export async function unlabelPost(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '')
+  await api(`/v1/moderation/posts/${encodeURIComponent(id)}/unlabel`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  })
+  refresh()
+}
+
 export async function setFollow(formData: FormData): Promise<void> {
   const handle = String(formData.get('handle') ?? '')
   const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
@@ -648,6 +739,17 @@ export async function setFollow(formData: FormData): Promise<void> {
 }
 
 // --- The welcome flow (/welcome). Plain forms, so they work before JavaScript loads. ---
+
+/**
+ * A newcomer reaches the welcome flow once their account exists, so the age /join
+ * kept in a cookie for Kratos (the 18+ box, or a date of birth while those are
+ * asked) is no longer needed: the API has its age record. Forgotten when they
+ * finish or skip setup; it expires within the hour anyway.
+ */
+async function forgetBirthDate() {
+  const jar = await cookies()
+  if (jar.has(AGE_COOKIE)) jar.delete(AGE_COOKIE)
+}
 
 /**
  * Step 2's form: joins the communities chosen in step 1 and follows the people
@@ -664,6 +766,7 @@ export async function finishOnboarding(formData: FormData): Promise<void> {
   }).catch(() => null)
   if (res?.status === 401) redirect('/login')
   if (!res?.ok) redirect(welcomePath('people', choices.communities, res?.status === 429 ? 'busy' : 'failed'))
+  await forgetBirthDate()
   // The side rail, in the shared layout, lists communities with Join buttons.
   refresh()
   redirect(welcomePath('notifications', []))
@@ -674,47 +777,160 @@ export async function skipOnboarding(): Promise<void> {
   const res = await api('/v1/me/onboarding/skip', { method: 'POST' }).catch(() => null)
   if (res?.status === 401) redirect('/login')
   if (!res?.ok) redirect(welcomePath('communities', [], res?.status === 429 ? 'busy' : 'failed'))
+  await forgetBirthDate()
   redirect('/')
 }
 
-export type JoinState = { error?: string; ageError?: string; code?: string; adult?: boolean; next?: string }
+/** The date of birth on /join as chosen, so a mistake is put right without choosing it all again. */
+export type BirthFields = { day: string; month: string; year: string }
+
+export type JoinState = {
+  error?: string
+  dateError?: string
+  confirmError?: string
+  ageError?: string
+  code?: string
+  birth?: BirthFields
+  confirmed?: boolean
+  /** The "I am 18 or older" box, while /join asks for it instead of a date of birth. */
+  adult?: boolean
+  next?: string
+}
+
+/** Digits only, at most `max` of them. */
+const digits = (formData: FormData, name: string, max: number) =>
+  String(formData.get(name) ?? '').replace(/\D/g, '').slice(0, max)
+
+/** YYYY-MM-DD from the three fields, or null if one is missing. Whether it is a real day is the API's call. */
+function birthDateOf({ day, month, year }: BirthFields): string | null {
+  if (!day || !month || year.length !== 4) return null
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+}
+
+/** The cookies /join sets for Kratos's signup: an hour, never readable by scripts. */
+const AUTH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+  path: '/',
+  maxAge: 60 * 60,
+} as const
 
 export async function acceptInvite(_prev: JoinState, formData: FormData): Promise<JoinState> {
   const typed = String(formData.get('code') ?? '').slice(0, 40)
   // Letters and digits only: this value goes into a cookie that Kratos reads raw.
   const code = typed.toUpperCase().replace(/[^0-9A-Z]/g, '')
-  // Accounts are 18+ during the beta (a temporary rule). The API's registration
-  // webhook checks this again.
-  const adult = formData.get('adult') === 'yes'
-  if (!adult) {
-    return { code: typed, adult, ageError: 'During the beta, HeyNaija is open to people aged 18 or older. Confirm your age to continue.' }
+  const jar = await cookies()
+  // Refused for their age in the last day: refused again, whatever date comes
+  // now, so changing the year and sending again does not work straight away.
+  // That stops only the laziest retry; it is not a control (ADR 0020, section 1).
+  if (jar.has(AGE_REFUSED_COOKIE)) {
+    return {
+      code: typed,
+      ageError: 'Sorry, you cannot join HeyNaija yet. If you made a mistake with your date of birth, write to contact@heynaija.ng.',
+    }
   }
 
+  // Whether to ask for a date of birth or the "I am 18 or older" box is the API's
+  // call (BIRTH_DATE_ENABLED, off since 8 November 2026), as is who may join; its
+  // registration webhook decides again.
+  const { asksBirthDate } = await getSignupAge()
+  if (!asksBirthDate) {
+    const adult = formData.get('adult') === 'yes'
+    if (!adult) {
+      return { code: typed, adult, confirmError: 'During the beta, HeyNaija is open to people aged 18 or older. Confirm your age to continue.' }
+    }
+    return checkInviteAndSignUp(code, typed, AGE_COOKIE_VALUE, { adult })
+  }
+
+  const birth = { day: digits(formData, 'day', 2), month: digits(formData, 'month', 2), year: digits(formData, 'year', 4) }
+  const confirmed = formData.get('confirm') === 'yes'
+  const birthDate = birthDateOf(birth)
+  if (!birthDate) {
+    return { code: typed, birth, confirmed, dateError: 'Choose the day, the month and the year you were born.' }
+  }
+  if (!confirmed) return { code: typed, birth, confirmed, confirmError: 'Confirm that this is your real date of birth.' }
+
+  const ageRes = await api('/v1/signup/age', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ birthDate }),
+  }).catch(() => null)
+  if (!ageRes?.ok) return { code: typed, birth, confirmed, dateError: 'Could not check your date of birth just now. Try again in a moment.' }
+  const age = (await ageRes.json()) as { outcome: 'allowed' | 'not_a_date' | 'too_young'; joinAge: number }
+  if (age.outcome === 'not_a_date') {
+    return { code: typed, birth, confirmed, dateError: 'That date is not possible. Check the day, the month and the year.' }
+  }
+  if (age.outcome === 'too_young') {
+    jar.set(AGE_REFUSED_COOKIE, 'refused', { ...AUTH_COOKIE_OPTIONS, maxAge: 24 * 60 * 60 })
+    // Nothing is kept, and the date is not sent back into the form.
+    return { code: typed, ageError: `Sorry, you cannot join HeyNaija yet: it is open to people aged ${age.joinAge} and over.` }
+  }
+  return checkInviteAndSignUp(code, typed, birthDate, { birth, confirmed })
+}
+
+/**
+ * Checks the invite code, then sends the browser to Kratos's signup with the
+ * code and the stated age (`age`: the 18+ box's value, or a date of birth) in
+ * cookies. Kratos hands both to the API, which keeps the age record; the welcome
+ * flow forgets the age. `kept` is what the form shows again if the code fails.
+ */
+async function checkInviteAndSignUp(code: string, typed: string, age: string, kept: JoinState): Promise<JoinState> {
   const res = await api('/v1/invites/check', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ code }),
   })
-  if (!res.ok) return { code: typed, adult, error: 'Could not check that code. Try again in a moment.' }
+  if (!res.ok) return { code: typed, ...kept, error: 'Could not check that code. Try again in a moment.' }
   if (!((await res.json()) as { usable: boolean }).usable) {
-    return { code: typed, adult, error: 'That code is not valid. Check it, or ask whoever invited you for a new one.' }
+    return { code: typed, ...kept, error: 'That code is not valid. Check it, or ask whoever invited you for a new one.' }
   }
 
   const jar = await cookies()
-  const options = {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: 60 * 60,
-  } as const
-  jar.set(INVITE_COOKIE, code, options)
-  jar.set(AGE_COOKIE, AGE_COOKIE_VALUE, options)
+  jar.set(INVITE_COOKIE, code, AUTH_COOKIE_OPTIONS)
+  jar.set(AGE_COOKIE, age, AUTH_COOKIE_OPTIONS)
   // Not redirect(): for a server action Next renders the redirect target on the
   // server, so Kratos's anti-CSRF cookie never reaches the browser and /signup is
   // rendered without the invite cookie, which sends the visitor back to /join.
   // The form navigates the browser itself instead.
   return { next: startAuthUrl('registration') }
+}
+
+export type BirthDateState = {
+  error?: string
+  dateError?: string
+  confirmError?: string
+  birth?: BirthFields
+  confirmed?: boolean
+}
+
+/**
+ * A member who joined before signup asked for a date of birth gives theirs, on
+ * /birth-date, the only page they see until they do (ADR 0020, section 1). The
+ * API keeps it and decides what an age under 18 means; whatever it decided, the
+ * home page then shows them where they stand.
+ */
+export async function giveBirthDate(_prev: BirthDateState, formData: FormData): Promise<BirthDateState> {
+  const birth = { day: digits(formData, 'day', 2), month: digits(formData, 'month', 2), year: digits(formData, 'year', 4) }
+  const confirmed = formData.get('confirm') === 'yes'
+  const birthDate = birthDateOf(birth)
+  if (!birthDate) {
+    return { birth, confirmed, dateError: 'Choose the day, the month and the year you were born.' }
+  }
+  if (!confirmed) return { birth, confirmed, confirmError: 'Confirm that this is your real date of birth.' }
+
+  const res = await api('/v1/me/birth-date', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ birthDate }),
+    cache: 'no-store',
+  }).catch(() => null)
+  if (res?.status === 401) redirect('/login')
+  if (res?.status === 429) return { birth, confirmed, error: 'You have tried several times in a minute. Wait a minute and try again.' }
+  if (!res?.ok) return { birth, confirmed, error: 'Your date of birth could not be saved just now. Try again in a moment.' }
+  const { outcome } = (await res.json()) as { outcome: 'recorded' | 'already_given' | 'not_a_date' | 'suspended' }
+  if (outcome === 'not_a_date') return { birth, confirmed, dateError: 'That date is not possible. Check the day, the month and the year.' }
+  redirect('/')
 }
 
 /**

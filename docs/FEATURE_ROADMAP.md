@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 19 | 16 | 12 | 92 |
+| 47 | 20 | 16 | 11 | 94 |
 
 ## Priority order
 
@@ -238,11 +238,10 @@ This tracks product development, not formal governance decisions. Priority means
 #### Pre-publication abuse-material screening
 
 - **ID:** `upload-scanning`
-- **Priority:** P0 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Screen image uploads before publication through an approved scanning service.
-- **Remaining work / caveat:** Waiting for PhotoDNA approval; the scanner is written but untried against the real service, and response procedures still need review.
-- **Inspected evidence:** `apps/api/src/app.module.ts`, `apps/api/src/media/media.service.ts`, `apps/api/src/media/media.service.test.ts`, `apps/api/src/media/photodna.ts`, `apps/api/src/media/photodna.test.ts`, `docs/safety/abuse-material-scanning.md`
-- **Audit notes:** NoScanner stays bound until PHOTODNA_SUBSCRIPTION_KEY is set. The PhotoDNA client, GIF frame sampling, fail-closed handling and match reporting have tests against stand-ins; documented Cloudflare edge scanning is a separate second layer.
+- **Priority:** P0 · **Status:** Implemented · **Availability:** Recorded in production
+- **Description:** Screen image and video uploads before publication through an approved scanning service.
+- **Inspected evidence:** `apps/api/src/app.module.ts`, `apps/api/src/media/scanners.ts`, `apps/api/src/media/arachnid-shield.ts`, `apps/api/src/media/arachnid-shield.test.ts`, `apps/api/src/media/media.service.ts`, `apps/api/src/media/media.service.test.ts`, `apps/api/src/media/photodna.ts`, `apps/api/src/media/photodna.test.ts`, `docs/safety/abuse-material-scanning.md`
+- **Audit notes:** Arachnid Shield (Canadian Centre for Child Protection) is set in production on the API and the video worker server (owner confirmed 8 Nov 2026): every image and video is matched before publishing, failing closed. PhotoDNA is written and tested against stand-ins as a second matcher, waiting for Microsoft. Cloudflare edge scanning is a separate second layer. Counsel's answers on reporting are still open (docs/safety/abuse-material-scanning.md).
 
 #### Operational abuse response
 
@@ -259,14 +258,14 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Download your own profile, posts, social choices and account-status records as JSON.
 - **Inspected evidence:** `apps/api/src/export/export.service.ts`, `apps/api/src/export/export.controller.ts`, `apps/web/app/(main)/settings/export/route.ts`, `apps/api/src/export/export.service.test.ts`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** Format 14: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, since format 11 reply boundaries, polls you created and your public poll ballots, since format 12 a games section (stats, season scores, competition entries), since format 13 the linked Lichess account (never its token) and chess challenges, and since format 14 the chess games played; restricted person keys and reports about someone stay excluded.
+- **Audit notes:** Format 19: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, since format 11 reply boundaries, polls you created and your public poll ballots, and since format 19 a games section (stats, season scores, competition entries, the linked Lichess account but never its token, chess challenges and the chess games played, Keno tickets and the Game Score); restricted person keys and reports about someone stay excluded.
 
 #### Account deletion and privacy requests
 
 - **ID:** `account-deletion`
 - **Priority:** P0 · **Status:** Partial · **Availability:** Not live
 - **Description:** Provide a usable route to delete an account and handle privacy requests.
-- **Remaining work / caveat:** Members can delete their account in Settings, and requests by email are recorded and answered. The operator's name and address, and how long deletion records and moderation evidence are kept, are still placeholders for the operator and counsel.
+- **Remaining work / caveat:** Members can delete their account in Settings, and requests by email are recorded and answered. The privacy policy names the founders as the data controller, and how long deletion records and moderation evidence are kept (set by the operator on 8 Nov 2026, enforced hourly, counsel to confirm).
 - **Dependencies:** `operator-disclosure`
 - **Inspected evidence:** `apps/web/app/(main)/settings/delete/page.tsx`, `apps/web/app/(main)/privacy/page.tsx`, `apps/api/src/account/account-deletion.service.ts`, `apps/api/src/account/account-deletion.service.test.ts`, `apps/api/src/account/account.controller.ts`, `apps/api/src/account/account-queue.ts`, `apps/api/src/cli/privacy-request.ts`, `e2e/tests/account-deletion.spec.ts`, `docs/adr/0016-account-deletion.md`, `docs/governance/privacy-requests.md`
 - **Audit notes:** Built on 30 October 2026 (ADR 0016): an account leaves the site at once and is erased after 14 days unless its owner keeps it; an hourly job erases due accounts; members are emailed at both steps; `pnpm privacy-request` records and closes requests made by email. Waiting on counsel's retention periods (counsel log C-01 to C-15) and on operator-disclosure.
@@ -425,6 +424,15 @@ This tracks product development, not formal governance decisions. Priority means
 - **Inspected evidence:** `packages/db/src/schema.ts`, `packages/db/drizzle/0028_polls_reply_controls.sql`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/posts/posts.controller.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/ui/post-item.tsx`, `apps/api/src/posts/posts.service.test.ts`, `e2e/tests/polls-reply-controls.spec.ts`
 - **Audit notes:** A root post allows everyone, accounts its author follows plus mentioned accounts, or mentioned accounts only. The root setting governs direct and nested replies, can be changed for future replies, and does not restrict quotes, likes, reposts or poll votes. Deleted roots no longer restrict surviving replies.
 
+#### Stories
+
+- **ID:** `stories`
+- **Priority:** P1 · **Status:** Planned · **Availability:** Not live
+- **Description:** Add updates to your own post over time, so people can follow one story from start to latest, and reply to the update they are about.
+- **Dependencies:** `threaded-replies`
+- **Inspected evidence:** `docs/adr/0024-stories.md`, `packages/db/drizzle/0040_stories.sql`, `apps/api/src/posts/stories.test.ts`, `apps/web/app/ui/story.tsx`, `e2e/tests/stories.spec.ts`
+- **Audit notes:** Proposed 7 Nov 2026 (ADR 0024); web built on feat/stories, the apps not yet. Only the author adds updates; each update is a post of its own, and replies go under the update they are about. Feeds show a story once, as its newest update with the first post above it. Follow story notifies on each new update (story_update, optional).
+
 ### People and discovery
 
 #### Basic trending conversations
@@ -494,6 +502,15 @@ This tracks product development, not formal governance decisions. Priority means
 - **Dependencies:** `in-app-notifications`, `notification-preferences`, `email-notifications`
 - **Inspected evidence:** `packages/db/drizzle/0022_push_notifications.sql`, `apps/api/src/push/push-notifications.service.ts`, `apps/api/src/push/push-queue.ts`, `apps/api/src/push/push.controller.ts`, `apps/api/src/push/push-sender.ts`, `apps/api/src/push/push-message.ts`, `apps/web/public/sw.js`, `apps/web/app/ui/push-switch.tsx`, `apps/web/app/ui/push-check.tsx`, `apps/web/app/logout/route.ts`, `apps/api/src/push/push-notifications.service.test.ts`, `apps/api/src/push/push-sender.test.ts`, `apps/web/tests/push.test.mjs`, `apps/web/tests/service-worker.test.mjs`, `e2e/tests/push-notifications.spec.ts`, `docs/adr/0011-push-notifications.md`
 - **Audit notes:** Web Push with VAPID keys of our own (no Firebase account): Settings has a per-browser button that asks the browser's permission and subscribes it; the service worker (public/sw.js) only shows notifications and opens what they are about. A BullMQ job looks every 10 seconds and pushes what is waiting to each of the member's browsers, in the same words as the email digest: replies, mentions and quotes quote the post briefly, likes, reposts and follows are counted in with ones already pushed and replace them on the device (one tag per post), more than three things at once are one push that says how many, and moderation notices are in general words. What is pushed is decided when it is sent, with the same rules as email: nothing read, opted out of, blocked, muted, taken down, for suspended members, or over ten minutes old. Email waits until the push side has dealt with a notification and leaves out what a browser took (notifications.pushed_at). A browser has one subscription; it moves to whoever turns push on in it, a page load stops one that belongs to another member, and signing out removes it. Subscriptions may only point at Google's, Mozilla's, Apple's or Microsoft's push services. iPhones and iPads get it only from the Home Screen (iOS 16.4+), and Settings says so. The data export (format 8) lists the browsers, without their addresses. The end-to-end tests use a stand-in push service; delivery through the real push services, and how the notifications look on Android, iOS and desktop, have not been checked on staging.
+
+#### Weekly highlights
+
+- **ID:** `weekly-highlights`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
+- **Description:** If you have been away a few days, get a few conversations you missed once a week, each saying why it was chosen, with a one-click way to stop.
+- **Dependencies:** `email-notifications`, `push-notifications`, `recommendations`
+- **Inspected evidence:** `docs/adr/0027-weekly-highlights.md`, `packages/db/drizzle/0045_weekly_highlights.sql`, `apps/api/src/highlights/rules.ts`, `apps/api/src/highlights/highlights.service.ts`, `apps/api/src/highlights/highlights-email.ts`, `apps/api/src/highlights/highlights-queue.ts`, `apps/api/src/highlights/highlights.controller.ts`, `apps/web/app/(main)/about/highlights/page.tsx`, `apps/web/app/ui/notification-preferences-form.tsx`, `apps/api/src/highlights/highlights.service.test.ts`, `apps/api/src/highlights/highlights-email.test.ts`, `apps/api/src/highlights/rules.test.ts`, `e2e/tests/weekly-highlights.spec.ts`
+- **Audit notes:** Built 13 Nov 2026 (ADR 0027), behind the weeklyHighlights flag: on in development and staging, off in production until the owner turns it on. The week's run opens on Sunday at 17:00 UTC (6pm in Nigeria) and stays open a day. It reaches an active member with the switch on (members.weekly_highlights, on by default) who was last seen between 3 days and 8 weeks ago, with up to 5 top-level posts from the last 7 days written after they were last here, each author once; fewer than 2 worth sending and nothing goes out. A post is worth sending if someone else replied, quoted, liked or reposted it, or the member follows its author; the order is by Discover's points without its ageing, and Discover's exclusions apply (blocked, muted, suspended, taken down, sensitive, held by reports, a minor's posts to strangers). Each says why in Discover's words. Sent as one push notification where a browser or app takes it, otherwise as an email where notification emails are on, never both; with neither, nothing. Settings has its own switch, shown only while the flag is on for the member, and the email's one-click link turns highlights off and nothing else. Not a notification: nothing is written to notifications. No opens or clicks are tracked; members.highlights_sent_at with last_seen_at says whether people come back. The rules are published at /about/highlights from GET /v1/highlights/rules. The data export (format 15) includes the switch and when highlights were last sent. Not done: the switch in the mobile apps' Settings, which must ship before the flag is on for everyone; delivery through Resend and the real push services has not been checked on staging.
 
 #### Discover: a feed ranked by published rules
 
@@ -575,13 +592,14 @@ This tracks product development, not formal governance decisions. Priority means
 
 ### Safety and privacy
 
-#### Date of birth at signup and 18+ labels
+#### 18+ labels for posts and communities
 
 - **ID:** `adult-content-labels`
-- **Priority:** P2 · **Status:** Planned · **Availability:** Not live
-- **Description:** Ask for a date of birth at signup and keep only the age band; let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.
-- **Inspected evidence:** `docs/adr/0020-under-18-accounts-and-adult-labels.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`
-- **Audit notes:** Phase 1 of ADR 0020 (proposed, 3 Nov 2026): the 18+ beta rule stays while this ships, so no child data is processed. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs.
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
+- **Description:** Let posters, community moderators and site moderators mark posts and communities 18+, hidden on the server from anyone not known to be an adult.
+- **Remaining work / caveat:** Members confirm they are 18 or older at signup; asking for a date of birth instead was built and is switched off (8 Nov 2026). Posts can be marked sensitive (the 18+ label, shown the way X does it), on the web and in the apps, behind the adultLabels flag, which is off in production. Marked pictures and video are served privately, by signed URLs that last at most two hours. A community's moderators can mark the whole community, which then only adults find.
+- **Inspected evidence:** `docs/adr/0020-under-18-accounts-and-adult-labels.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`, `apps/api/src/governance/adult-content.ts`, `apps/api/src/posts/sensitive.test.ts`, `docs/adr/0025-private-sensitive-media.md`, `apps/api/src/media/private-media.test.ts`
+- **Audit notes:** Phase 1 of ADR 0020 (accepted 6 Nov 2026): the 18+ beta rule stays while this ships; a member already here whose date gives under 18 is kept as a minor and moderators are told. The date of birth is built: at signup (birth_date on restricted.age_assurances, the /join fields and confirmation, POST /v1/signup/age, Settings and the export), and asked once of everyone already here, who sees only /birth-date until they answer (POST /v1/me/birth-date). The age is worked out from the date on every check. The labels and their enforcement are not yet. The date of birth is kept with the age record, seen only by the member (ADR 0020, question 5); labelled media is served privately by short-lived signed URLs. Owner decision 8 Nov 2026: the beta stays 18+ with the "I am 18 or older" box; asking for a date of birth is switched off (BIRTH_DATE_ENABLED, locked off in env.ts), with its code and the dates already given kept, and /birth-date asks nobody.
 
 #### Safeguards for under-18 access
 
@@ -590,8 +608,8 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Prepare approved age assurance, consent, content and contact safeguards before opening younger accounts.
 - **Remaining work / caveat:** Child-safety decisions, approvals and implementation must precede any change to the temporary adult-only beta.
 - **Dependencies:** `adult-content-labels`
-- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`, `docs/adr/0020-under-18-accounts-and-adult-labels.md`
-- **Audit notes:** Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Waits for counsel (minimum age, guardian consent), phase 1 in production, upload hash-matching and the rest of the under-18 rollout checklist, then a written sign-off.
+- **Inspected evidence:** `docs/governance/under-18-rollout.md`, `apps/api/src/governance/age.ts`, `apps/api/src/env.ts`, `apps/api/src/governance/minors.ts`, `docs/adr/0020-under-18-accounts-and-adult-labels.md`
+- **Audit notes:** Phase 2 of ADR 0020 (proposed, 3 Nov 2026): owner decision to take out the 18+ rule. Owner decisions of 5 and 6 Nov 2026: 13 to 17 year olds join the beta the way X lets them in, with protections on by default; 13 is the minimum on the web and in the app stores. First come dates of birth at signup, labels enforced, Arachnid Shield on in production and the minors' protections (ADR 0020 sections 4 and 5); counsel's answers and the rest of the under-18 rollout checklist follow during the beta. Minors listen to Gists but never host or speak. Contact and discovery protections built 7 Nov 2026 (branch feat/under-18-contact): replies limited to people a minor follows, strangers' mentions plain text, minors in no stranger's Discover, search or suggestions, none of it loosened before 18 (ADR 0020, questions 12 to 15). Owner decision 8 Nov 2026: the beta stays 18+ and opening to minors is set aside; the protections stay in the code for any member already recorded as under 18.
 
 #### Age verification for adults
 
@@ -599,7 +617,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P2 · **Status:** Planned · **Availability:** Not live
 - **Description:** Check that a member is 18 or over, separately from identity verification, for features that need a verified adult.
 - **Inspected evidence:** `docs/adr/0006-age-status-model.md`, `docs/adr/0016-direct-messages.md`, `apps/api/src/governance/age.ts`, `docs/governance/under-18-rollout.md`
-- **Audit notes:** The model exists (restricted.age_assurances, ageStatus) but nothing can yet produce a verified assurance: NIN verification is locked off and no age-assurance provider is chosen. Direct messages need this. The provider must not require a NIN (under-18 rollout section 2).
+- **Audit notes:** The model exists (restricted.age_assurances, ageStatus) but nothing can yet produce a verified assurance: NIN verification is locked off and no age-assurance provider is chosen. Direct messages and calls are not built until it exists (owner, 6 Nov 2026, ADR 0020); meanwhile hosting and speaking in Gists read the stated age. Governance voting always needs an ID-verified age. The provider must not require a NIN (under-18 rollout section 2).
 
 ### Transparency and governance
 
@@ -693,7 +711,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **ID:** `direct-messages`
 - **Priority:** P2 · **Status:** Blocked · **Availability:** Not live
 - **Description:** Support opt-in private conversations between age-verified adults, with message requests, blocking and reporting.
-- **Remaining work / caveat:** Design only. Messages will be limited to members who are 18 or over, have completed age verification and have turned messages on. Age verification, message-request and abuse handling, retention and safeguarding approval are needed first.
+- **Remaining work / caveat:** Design only. Messages will be limited to members who are 18 or over, have completed age verification and have turned messages on; not built until age verification exists (owner, 6 Nov 2026). Age verification, message-request and abuse handling, retention and safeguarding approval are needed first.
 - **Dependencies:** `minor-safeguards`, `age-verification`
 - **Inspected evidence:** `docs/adr/0016-direct-messages.md`, `PRODUCT.md`, `packages/db/src/schema.ts`, `docs/governance/under-18-rollout.md`
 - **Audit notes:** No message model or delivery endpoint exists. Design in ADR 0016 (proposed 30 Oct 2026). Staged plan: 1 design (this ADR); 2 backend behind a default-off flag; 3 UI behind the flag; 4 safeguards sign-off (age verification, counsel on privacy copy and retention, moderator runbook, governance answer on emergency access); 5 enable for a named adult allow-list, then all eligible members. Minors, unverified and unknown-age members are never eligible.
@@ -760,7 +778,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** A Games page with your Game Score, the games you can play, season leaderboards, competitions and posts from games, all in one place.
 - **Remaining work / caveat:** Behind the games feature flag (on in staging, off in production). Competitions are Keno only until chess tournaments (phase 6), and entrants are not notified when one starts or ends.
 - **Dependencies:** `communities`, `in-app-notifications`, `data-export`
-- **Inspected evidence:** `apps/api/src/games/games.module.ts`, `apps/api/src/games/core/registry.ts`, `apps/api/src/games/core/games.controller.ts`, `packages/db/drizzle/0036_games_core.sql`, `apps/web/app/(main)/games/page.tsx`, `apps/api/src/games/core/games.controller.test.ts`, `apps/api/src/games/core/registry.test.ts`, `apps/api/src/games/core/scoring.ts`, `apps/api/src/games/core/leaderboards.ts`, `apps/api/src/games/core/competitions.ts`, `apps/web/app/(main)/games/scoring/page.tsx`, `e2e/tests/competitions.spec.ts`, `docs/adr/0018-games.md`, `docs/games/GAMES.md`
+- **Inspected evidence:** `apps/api/src/games/games.module.ts`, `apps/api/src/games/core/registry.ts`, `apps/api/src/games/core/games.controller.ts`, `packages/db/drizzle/0046_games_core.sql`, `apps/web/app/(main)/games/page.tsx`, `apps/api/src/games/core/games.controller.test.ts`, `apps/api/src/games/core/registry.test.ts`, `apps/api/src/games/core/scoring.ts`, `apps/api/src/games/core/leaderboards.ts`, `apps/api/src/games/core/competitions.ts`, `apps/web/app/(main)/games/scoring/page.tsx`, `e2e/tests/competitions.spec.ts`, `docs/adr/0018-games.md`, `docs/games/GAMES.md`
 - **Audit notes:** Phase 1 built 3 Nov 2026 (ADR 0018): the module, the game registry, the games database schema, the games feature flag and a games homepage. Phase 5 built 4 Nov 2026: monthly seasons (Lagos time), the Game Score (XP from chess games, Keno rounds and competition places, stored on each game event and kept in precomputed totals), leaderboards for the Game Score, Chess and Keno by season or all time, narrowed to people you follow or a community, with blocks, mutes and suspensions left out; a How games scoring works page; and competitions run by site moderators (Keno for now) with results posted by The Arbiter in Game Night.
 
 #### Chess on Lichess
@@ -770,7 +788,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Description:** Link your Lichess account, challenge other members, play and watch games inside HeyNaija, and share results as posts.
 - **Remaining work / caveat:** Linking, ratings, challenges, playing and watching inside HeyNaija, Chess Arena, result posts and community tournaments are built (phases 2, 3 and 6). Tournament games are played on lichess.org, not inside HeyNaija. Behind the games flag; connecting needs GAMES_TOKEN_KEY.
 - **Dependencies:** `games-core`
-- **Inspected evidence:** `apps/api/src/games/chess/chess.service.ts`, `apps/api/src/games/chess/chess.controller.ts`, `apps/api/src/games/chess/lichess.ts`, `packages/db/drizzle/0037_chess_linking.sql`, `apps/web/app/(main)/games/chess/page.tsx`, `apps/api/src/games/chess/chess.service.test.ts`, `apps/api/src/games/chess/lichess.test.ts`, `e2e/tests/chess.spec.ts`, `docs/adr/0018-games.md`, `apps/api/src/games/chess/chess-games.service.ts`, `apps/api/src/games/chess/game-watcher.ts`, `packages/db/drizzle/0038_chess_play.sql`, `apps/web/app/(main)/games/chess/games/[id]/page.tsx`, `apps/api/src/games/chess/chess-games.service.test.ts`, `apps/api/src/games/chess/teams.ts`, `apps/api/src/games/chess/teams.test.ts`, `packages/db/drizzle/0041_games_teams.sql`, `apps/web/app/(main)/games/chess/teams/[slug]/page.tsx`, `e2e/tests/chess-teams.spec.ts`
+- **Inspected evidence:** `apps/api/src/games/chess/chess.service.ts`, `apps/api/src/games/chess/chess.controller.ts`, `apps/api/src/games/chess/lichess.ts`, `packages/db/drizzle/0047_chess_linking.sql`, `apps/web/app/(main)/games/chess/page.tsx`, `apps/api/src/games/chess/chess.service.test.ts`, `apps/api/src/games/chess/lichess.test.ts`, `e2e/tests/chess.spec.ts`, `docs/adr/0018-games.md`, `apps/api/src/games/chess/chess-games.service.ts`, `apps/api/src/games/chess/game-watcher.ts`, `packages/db/drizzle/0048_chess_play.sql`, `apps/web/app/(main)/games/chess/games/[id]/page.tsx`, `apps/api/src/games/chess/chess-games.service.test.ts`, `apps/api/src/games/chess/teams.ts`, `apps/api/src/games/chess/teams.test.ts`, `packages/db/drizzle/0051_games_teams.sql`, `apps/web/app/(main)/games/chess/teams/[slug]/page.tsx`, `e2e/tests/chess-teams.spec.ts`
 - **Audit notes:** Phase 2 built 3 Nov 2026: connect Lichess, ratings, challenges. Phase 3 built 3 Nov 2026: play and watch inside HeyNaija through the Lichess Board API (the browser long-polls; one watcher per game), Chess Arena threads by The Arbiter (an automated account) with spectators’ replies hidden from the players until the end, and the result posted there. Phase 6 built 5 Nov 2026: a community moderator who leads a Lichess team links it to the community and makes Arena and Swiss tournaments for it; members play on lichess.org, HeyNaija reads the standings and finishes them as community competitions (placement XP, The Arbiter's result post). Lichess runs the games, ratings and fair play.
 
 #### Keno (free to play)
@@ -803,7 +821,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Remaining work / caveat:** Gists (live audio rooms) are built and being tested with a small list of members; they are not available to everyone yet. 1:1 calls, meetings and screen sharing are paused and remain a design: they need direct messages and age verification first, and recording, moderator access and retention need counsel and governance.
 - **Dependencies:** `minor-safeguards`, `direct-messages`, `age-verification`
 - **Inspected evidence:** `docs/adr/0017-calls-and-meetings.md`, `docs/governance/under-18-rollout.md`, `apps/api/src/gists/gists.service.ts`, `apps/api/src/gists/eligibility.ts`, `apps/web/app/ui/gists/gist-room.tsx`
-- **Audit notes:** Gists are built and in main: off unless LIVEKIT_* is set, then open to the members the gists feature flag is on for, and in production only through its allow-list, a temporary gate with no age check (apps/api/src/gists/eligibility.ts; the flag replaced the CALLS_* env switches on 3 Nov 2026). On in staging since 31 Oct 2026 (the owner tested them there). 1:1 calls and meetings were dropped by the owner on 1 Nov 2026 (PRs #54 and #62 closed, work parked); they, not Gists, need direct-messages and age-verification (docs/adr/0016-direct-messages.md). Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers).
+- **Audit notes:** Gists are built and in main: off unless LIVEKIT_* is set, then open to the members the gists feature flag is on for, a temporary gate (apps/api/src/gists/eligibility.ts; the flag replaced the CALLS_* env switches on 3 Nov 2026). Until 10 Nov 2026 production opened only through the flag's allow-list; the owner dropped that, so the flag can open Gists to everyone there, with hosting and speaking for stated adults. On in staging since 31 Oct 2026 (the owner tested them there). 1:1 calls and meetings were dropped by the owner on 1 Nov 2026 (PRs #54 and #62 closed, work parked); they, not Gists, need direct-messages and age-verification (docs/adr/0016-direct-messages.md). Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers).
 
 #### Native mobile apps
 

@@ -2,18 +2,28 @@ import { execFile } from 'node:child_process'
 import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import sharp from 'sharp'
-import { DEFAULT_VIDEO_CONFIG, RENDITION_LABELS, type VideoConfig } from './video-config.js'
+import { SHIELD_VIDEO_TIMEOUT_MS } from '../media/arachnid-shield.js'
+import { DEFAULT_VIDEO_CONFIG, FRAME_SCAN_MAX_SECONDS, type VideoConfig } from './video-config.js'
 
 /**
  * ffmpeg parses files strangers send us, so every call carries these (ADR 0019
- * section 3.4): no network protocols, no stdin, a wall-clock limit per run and one
- * for the whole job (`jobTimeoutMs`, shared by every run of a job). This file does
- * only that. Confining the process (non-root, read-only root, dropped capabilities,
- * a network that cannot reach Kratos) is the deployment's job: see the
- * `video-worker` service in `infra/deploy/compose.yml` and docs/video-spike.md for
- * what it does and does not do.
+ * section 3.4): no network protocols, no stdin, a wall-clock limit per run
+ * (`runTimeoutMs`) and one for the whole job (`jobTimeoutMs`, shared by every run of
+ * a job). This file does only that. Confining the process (non-root, read-only root,
+ * dropped capabilities, a network that cannot reach Kratos) is the deployment's job:
+ * see the `video-worker` service in `infra/deploy/compose.yml` and docs/video-spike.md
+ * for what it does and does not do.
  */
-export const FFMPEG_SAFETY = { protocolWhitelist: 'file,pipe', timeoutMs: 5 * 60_000, probeTimeoutMs: 30_000, jobTimeoutMs: 8 * 60_000 }
+export const FFMPEG_SAFETY = { protocolWhitelist: 'file,pipe', probeTimeoutMs: 30_000 }
+
+/**
+ * The time limits follow the clip's length (ADR 0021 section 5): 5 minutes and 4 times the
+ * length for each run, so a 3-minute clip gets 17 minutes, enough for 4K 60 fps HDR on a
+ * 2-core worker (about 6 CPU-seconds a second of video in the trial). The job adds the
+ * time Arachnid Shield is given to take the original.
+ */
+export const runTimeoutMs = (durationMs: number): number => 5 * 60_000 + 4 * durationMs
+export const jobTimeoutMs = (durationMs: number): number => runTimeoutMs(durationMs) + SHIELD_VIDEO_TIMEOUT_MS
 
 /** Running out of time is a property of the file, not a glitch: it will run out again, so it is never retried. */
 export class FfmpegTimeout extends Error {
@@ -33,7 +43,7 @@ export class DurationMismatch extends Error {
 
 /** One wall-clock limit shared by all the runs of a job. */
 export type Deadline = { at: number }
-export const newDeadline = (ms: number = FFMPEG_SAFETY.jobTimeoutMs): Deadline => ({ at: Date.now() + ms })
+export const newDeadline = (ms: number = jobTimeoutMs(DEFAULT_VIDEO_CONFIG.maxSeconds * 1000)): Deadline => ({ at: Date.now() + ms })
 export const expiredDeadline = (): Deadline => ({ at: Date.now() - 1 })
 
 export const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg'
@@ -115,63 +125,6 @@ export function checkLimits(p: Probe | null, bytes: number, cfg: VideoConfig): R
   return null
 }
 
-export type Rendition = { label: number; width: number; height: number; videoKbps: number; audioKbps: number }
-
-const even = (n: number) => Math.max(2, Math.round(n / 2) * 2)
-
-const bitrates = (label: number) => (label <= 240 ? [300, 48] : label <= 360 ? [550, 64] : [900, 64]) as [number, number]
-
-/**
- * Short edge 240, 360 and 480 (so a 1080x1920 phone clip does not become a
- * 1920 pixel wide file), never enlarged. A clip smaller than the whole ladder
- * gets one rendition at its own size.
- */
-export function renditionPlan(p: Pick<Probe, 'width' | 'height'>): Rendition[] {
-  const short = Math.min(p.width, p.height)
-  const labels: number[] = RENDITION_LABELS.filter((l) => l <= short)
-  if (labels.length === 0) labels.push(short)
-  return labels.map((label) => {
-    const scale = label / short
-    const [width, height] = p.width <= p.height ? [label, even(p.height * scale)] : [even(p.width * scale), label]
-    const [videoKbps, audioKbps] = bitrates(label)
-    return { label, width: even(width), height: even(height), videoKbps, audioKbps }
-  })
-}
-
-/** One ffmpeg run: decode once, one encode per rendition (ADR sections 3.1 and 3.4). */
-export function transcodeArgs(input: string, outputs: string[], p: Probe, cfg: VideoConfig): string[] {
-  const plan = renditionPlan(p)
-  if (outputs.length !== plan.length) throw new Error(`one output per rendition: ${plan.length} needed, ${outputs.length} given`)
-  const cap = p.fps > 30.5 ? 'fps=30,' : ''
-  const gop = String(Math.round(Math.min(30, p.fps || 30) * 2))
-  const split = plan.length > 1 ? `[0:v:0]split=${plan.length}${plan.map((_, i) => `[s${i}]`).join('')};` : ''
-  const graph =
-    split +
-    plan.map((r, i) => `${plan.length > 1 ? `[s${i}]` : '[0:v:0]'}${cap}scale=${r.width}:${r.height}:flags=bicubic,setsar=1[o${i}]`).join(';')
-  return [
-    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-    '-protocol_whitelist', FFMPEG_SAFETY.protocolWhitelist,
-    // The same window the scan looked at: the probed length (already within the limit) plus a second.
-    // The container's duration is only a claim, so nothing past that is ever encoded or published.
-    '-t', String(Math.min(p.durationMs, cfg.maxSeconds * 1000) / 1000 + 1),
-    '-i', input,
-    '-filter_complex', graph,
-    ...plan.flatMap((r, i) => [
-      '-map', `[o${i}]`,
-      ...(p.hasAudio ? ['-map', '0:a:0'] : ['-an']),
-      '-c:v', 'libx264', '-profile:v', 'main', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
-      '-b:v', `${r.videoKbps}k`, '-maxrate', `${r.videoKbps}k`, '-bufsize', `${r.videoKbps * 2}k`,
-      '-g', gop, '-keyint_min', gop, '-sc_threshold', '0',
-      ...(p.hasAudio ? ['-c:a', 'aac', '-b:a', `${r.audioKbps}k`, '-ac', '2'] : []),
-      // Location and device metadata are dropped, as sharp drops EXIF for images.
-      '-map_metadata', '-1',
-      '-movflags', '+faststart',
-      '-threads', '2',
-      outputs[i]!,
-    ]),
-  ]
-}
-
 /** How many scene-change frames fit beside `secondFrames` one-a-second frames and the last, within 80 and 20. */
 export const MAX_SAMPLE_FRAMES = 80
 export const MAX_SCENE_FRAMES = 20
@@ -183,7 +136,8 @@ export const parseShowinfo = (log: string): number[] =>
 
 type Run = { stdout: Buffer; stderr: string; code: number }
 
-function run(file: string, args: string[], timeoutMs: number, deadline: Deadline): Promise<Run> {
+/** Runs ffmpeg or ffprobe within `timeoutMs` and what is left of the job's deadline. */
+export function run(file: string, args: string[], timeoutMs: number, deadline: Deadline): Promise<Run> {
   return new Promise((resolve, reject) => {
     const left = deadline.at - Date.now()
     if (left <= 0) return reject(new FfmpegTimeout(file))
@@ -213,12 +167,6 @@ export async function probe(path: string, deadline: Deadline = newDeadline()): P
   }
 }
 
-/** Writes one MP4 per rendition to `outputs`. Throws on any ffmpeg failure; the caller decides if that is retryable. */
-export async function transcode(input: string, outputs: string[], p: Probe, cfg: VideoConfig, deadline: Deadline = newDeadline()): Promise<void> {
-  const res = await run(FFMPEG, transcodeArgs(input, outputs, p, cfg), FFMPEG_SAFETY.timeoutMs, deadline)
-  if (res.code !== 0) throw new Error(`ffmpeg could not encode the video: ${res.stderr.slice(-500)}`)
-}
-
 export const stillArgs = (input: string, atMs: number, out: string, filter: string) => [
   '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
   '-protocol_whitelist', FFMPEG_SAFETY.protocolWhitelist,
@@ -228,7 +176,7 @@ export const stillArgs = (input: string, atMs: number, out: string, filter: stri
 /** The poster frame as a WebP no larger than 640 px: a frame 1 s in, or the middle of a clip under 2 s. */
 export async function extractPoster(input: string, workPath: string, durationMs: number, deadline: Deadline = newDeadline()): Promise<Buffer> {
   const at = durationMs < 2000 ? Math.floor(durationMs / 2) : 1000
-  const res = await run(FFMPEG, stillArgs(input, at, workPath, 'scale=640:640:force_original_aspect_ratio=decrease'), FFMPEG_SAFETY.timeoutMs, deadline)
+  const res = await run(FFMPEG, stillArgs(input, at, workPath, 'scale=640:640:force_original_aspect_ratio=decrease'), runTimeoutMs(durationMs), deadline)
   if (res.code !== 0) throw new Error(`ffmpeg could not take a poster frame: ${res.stderr.slice(-300)}`)
   // sharp, not ffmpeg's WebP encoder, which not every ffmpeg build has; it also drops metadata.
   return sharp(await readFile(workPath)).rotate().resize(640, 640, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 80 }).toBuffer()
@@ -236,27 +184,43 @@ export async function extractPoster(input: string, workPath: string, durationMs:
 
 export type SampledFrame = { ms: number; jpeg: Buffer }
 
+const readIfWritten = (path: string): Promise<Buffer | null> =>
+  readFile(path).catch((err: NodeJS.ErrnoException) => (err.code === 'ENOENT' ? null : Promise.reject(err)))
+
 const SCALE = 'scale=1280:1280:force_original_aspect_ratio=decrease'
 
 /**
- * The three sampling runs' arguments. Each reads at most `maxSeconds + 1` of the
- * input whatever its container claims, and maps the first video stream, the one
- * the encode and the poster use.
+ * Seconds between the evenly spaced frames: one, or more for a clip longer than one a second
+ * can cover within the 80 (ADR 0021 section 2: spread over the whole clip). 2 from 79 seconds,
+ * 3 from 157.
+ */
+export const sampleStep = (durationMs: number): number => Math.max(1, Math.ceil(durationMs / 1000 / FRAME_SCAN_MAX_SECONDS))
+
+/**
+ * The sampling runs' arguments. Each reads at most `maxSeconds + 1` of the input
+ * whatever its container claims, and maps the first video stream, the one the
+ * encode and the poster use.
  */
 export function frameArgs(input: string, dir: string, durationMs: number, maxSeconds: number, budget = MAX_SCENE_FRAMES) {
   const safe = ['-nostdin', '-hide_banner', '-protocol_whitelist', FFMPEG_SAFETY.protocolWhitelist]
   const common = [...safe, '-t', String(maxSeconds + 1), '-i', input, '-map', '0:v:0']
+  const step = sampleStep(durationMs)
   return {
-    seconds: [...common, '-loglevel', 'error', '-vf', `fps=1,${SCALE}`, '-q:v', '3', join(dir, 's-%04d.jpg')],
+    seconds: [...common, '-loglevel', 'error', '-vf', `fps=1/${step},${SCALE}`, '-q:v', '3', join(dir, 's-%04d.jpg')],
     last: [...safe, '-loglevel', 'error', '-sseof', '-0.2', '-i', input, '-map', '0:v:0', '-update', '1', '-frames:v', '1', '-vf', SCALE, '-q:v', '3', '-y', join(dir, 'last.jpg')],
+    // When the picture stops before the sound, as in screen recordings, the last 0.2 seconds have no
+    // frame: then the last frame within the final `step` + 1 seconds (each is written over the one
+    // before), with its time in the clip (-copyts) for showinfo to report.
+    tail: [...safe, '-loglevel', 'info', '-sseof', `-${step + 1}`, '-copyts', '-i', input, '-map', '0:v:0', '-update', '1', '-vf', `showinfo,${SCALE}`, '-q:v', '3', '-y', join(dir, 'last.jpg')],
     scenes: [...common, '-loglevel', 'info', '-vf', `select='gt(scene,0.4)',showinfo,${SCALE}`, '-vsync', 'vfr', '-frames:v', String(budget), '-q:v', '3', join(dir, 'c-%04d.jpg')],
   }
 }
 
 /**
  * The frames that are scanned (ADR 0019 section 4.1), taken from the ORIGINAL, not
- * from our re-encode, which could blur a match away: one a second, the last, and
- * up to 20 where the scene changes, at most 80 in all, in time order.
+ * from our re-encode, which could blur a match away: one a second (every
+ * `sampleStep` seconds for a clip over 78), the last, and up to 20 where the scene
+ * changes, at most 80 in all, in time order.
  *
  * The container's length is a claim, so the sampler reads up to the limit and a
  * second, and a file holding more seconds of video than it claims throws
@@ -272,21 +236,31 @@ export async function extractFrames(
   await rm(dir, { recursive: true, force: true })
   await mkdir(dir, { recursive: true })
   const args = frameArgs(input, dir, durationMs, maxSeconds)
+  const step = sampleStep(durationMs)
+  const timeoutMs = runTimeoutMs(durationMs)
   const frames: SampledFrame[] = []
 
-  const seconds = await run(FFMPEG, args.seconds, FFMPEG_SAFETY.timeoutMs, deadline)
+  const seconds = await run(FFMPEG, args.seconds, timeoutMs, deadline)
   if (seconds.code !== 0) throw new Error(`ffmpeg could not sample frames: ${seconds.stderr.slice(-300)}`)
   const secondFiles = (await readdir(dir)).filter((f) => f.startsWith('s-')).sort()
-  // One frame a second of a clip of the length it claims is ceil(length) frames at most, plus one for rounding.
-  if (secondFiles.length > Math.ceil(durationMs / 1000) + 1) throw new DurationMismatch(durationMs, secondFiles.length)
-  for (const [i, f] of secondFiles.entries()) frames.push({ ms: i * 1000, jpeg: await readFile(join(dir, f)) })
+  // One frame every `step` seconds of a clip of the length it claims is ceil(length / step) frames at most, plus one for rounding.
+  if (secondFiles.length > Math.ceil(durationMs / 1000 / step) + 1) throw new DurationMismatch(durationMs, secondFiles.length * step)
+  for (const [i, f] of secondFiles.entries()) frames.push({ ms: i * step * 1000, jpeg: await readFile(join(dir, f)) })
 
-  const last = await run(FFMPEG, args.last, FFMPEG_SAFETY.timeoutMs, deadline)
-  if (last.code === 0) frames.push({ ms: Math.max(0, durationMs - 200), jpeg: await readFile(join(dir, 'last.jpg')) })
+  // ffmpeg can finish without error and write nothing, when there was no frame to write.
+  const last = await run(FFMPEG, args.last, timeoutMs, deadline)
+  const lastJpeg = last.code === 0 ? await readIfWritten(join(dir, 'last.jpg')) : null
+  if (lastJpeg) frames.push({ ms: Math.max(0, durationMs - 200), jpeg: lastJpeg })
+  else {
+    const tail = await run(FFMPEG, args.tail, timeoutMs, deadline)
+    const at = parseShowinfo(tail.stderr).at(-1)
+    const tailJpeg = tail.code === 0 && at !== undefined ? await readIfWritten(join(dir, 'last.jpg')) : null
+    if (tailJpeg) frames.push({ ms: at!, jpeg: tailJpeg })
+  }
 
   const budget = sceneBudget(secondFiles.length)
   if (budget > 0) {
-    const scenes = await run(FFMPEG, frameArgs(input, dir, durationMs, maxSeconds, budget).scenes, FFMPEG_SAFETY.timeoutMs, deadline)
+    const scenes = await run(FFMPEG, frameArgs(input, dir, durationMs, maxSeconds, budget).scenes, timeoutMs, deadline)
     if (scenes.code === 0) {
       const times = parseShowinfo(scenes.stderr)
       const files = (await readdir(dir)).filter((f) => f.startsWith('c-')).sort()

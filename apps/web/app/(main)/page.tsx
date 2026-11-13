@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { ARBITER_ONLY } from '@/lib/chess-arena'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
@@ -27,6 +28,13 @@ import {
 import { getLogoutUrl } from '@/lib/auth/server'
 import { discoverPeriod } from '@/lib/discover'
 import { FEED_COOKIE, type HomeFeed, homeFeed } from '@/lib/home-feed'
+import { sitePicturePreview } from '@/lib/previews-server'
+import { composerOffersMark } from '@/lib/sensitive'
+
+// The address people share most. Built per request, so its picture's address is the site's.
+export async function generateMetadata(): Promise<Metadata> {
+  return sitePicturePreview()
+}
 
 export default function HomePage({ searchParams }: PageProps<'/'>) {
   // Everything that depends on the visitor streams in; the shell renders at once.
@@ -146,8 +154,8 @@ async function HomeHeader({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
       <div className={`${card} p-5`}>
         <h1 className="page-title">Your account is suspended</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          A moderator suspended this account, so you cannot post or interact for now. If you
-          think that was a mistake, tell us why and a moderator will look again.
+          You cannot post or interact for now. If you think that was a mistake, tell us why and
+          a moderator will look again.
         </p>
         <AppealStatus />
         <p className="mt-4 text-sm leading-relaxed text-muted">
@@ -209,7 +217,7 @@ async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) 
       {me?.features.gists ? (
         <>
           <LiveNow />
-          <StartGist />
+          {me.gistStage ? <StartGist /> : null}
         </>
       ) : null}
       {me ? (
@@ -219,7 +227,9 @@ async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) 
           choices={joined}
           polls={me.features?.polls ?? false}
           replyControls={me.features?.replyControls ?? false}
+          replyAudiences={me.replyAudiences}
           videoLimits={me.videoLimits ?? null}
+          sensitiveLabels={composerOffersMark(me)}
           placeholder={welcomed ? 'Introduce yourself: who are you, and what brings you here?' : undefined}
         />
       ) : null}

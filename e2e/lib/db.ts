@@ -45,7 +45,10 @@ export async function cleanTestData(log = (_: string) => {}) {
     try {
       await client.query('begin')
       await client.query(`create temp table e2e_m on commit drop as select unnest($1::uuid[]) as id`, [ids])
-      await client.query(`create temp table e2e_p on commit drop as select id from posts where author_id in (select id from e2e_m)`)
+      await client.query(`create temp table e2e_g on commit drop as select id from gists where host_id in (select id from e2e_m)`)
+      // A test Gist's comment section goes with it, whoever wrote the replies.
+      await client.query(`create temp table e2e_p on commit drop as select id from posts where author_id in (select id from e2e_m)
+         or gist_id in (select id from e2e_g)`)
       // The Arbiter's threads and results for test members' games (docs/adr/0018), and every reply under them.
       await client.query(`insert into e2e_p select p.id from posts p where (p.id in (select thread_post_id from games.chess_games
            where white_id in (select id from e2e_m) or black_id in (select id from e2e_m))
@@ -57,7 +60,6 @@ export async function cleanTestData(log = (_: string) => {}) {
            where created_by in (select id from e2e_m)) or p.root_id in (select result_post_id from games.competitions
            where created_by in (select id from e2e_m)))
          and p.id not in (select id from e2e_p)`)
-      await client.query(`create temp table e2e_g on commit drop as select id from gists where host_id in (select id from e2e_m)`)
       const steps: [string, string][] = [
         ['notifications', `delete from notifications where recipient_id in (select id from e2e_m) or actor_id in (select id from e2e_m)
            or subject_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
@@ -89,7 +91,6 @@ export async function cleanTestData(log = (_: string) => {}) {
            or gist_id in (select id from gists where host_id in (select id from e2e_m))`],
         ['gist role changes', `update gist_members set role_changed_by = null where role_changed_by in (select id from e2e_m)`],
         ['gist removals', `update gist_members set removed_by = null where removed_by in (select id from e2e_m)`],
-        ['gists', `delete from gists where id in (select id from e2e_g)`],
         // Chess (docs/adr/0018): challenges (their notifications cascade) and Lichess accounts.
         ['chess games', `delete from games.chess_games where white_id in (select id from e2e_m) or black_id in (select id from e2e_m)`],
         ['chess challenges', `delete from games.chess_challenges where challenger_id in (select id from e2e_m) or challenged_id in (select id from e2e_m)`],
@@ -120,6 +121,8 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['duplicates reopened', `update ideas set status = 'under_review', duplicate_of = null where duplicate_of in (select id from e2e_p) and post_id not in (select id from e2e_p)`],
         ['ideas', `delete from ideas where post_id in (select id from e2e_p)`],
         ['posts', `delete from posts where id in (select id from e2e_p)`],
+        // After the posts: a Gist's replies point at it.
+        ['gists', `delete from gists where id in (select id from e2e_g)`],
         ['invite redemptions', `delete from invite_redemptions where identity_id in (select id from e2e_m)
            or code_hash in (select code_hash from invites where note = $1)`],
         ['released handles', `delete from released_handles where member_id in (select id from e2e_m)`],
@@ -179,6 +182,90 @@ export async function seedPosts(handle: string, count: number): Promise<string[]
     if (rows.length !== count) throw new Error(`no member @${handle} to seed posts for`)
     return rows.map((r) => r.id).reverse()
   } finally {
+    await db.end()
+  }
+}
+
+/**
+ * Takes a member's age away: with `ticked`, any date of birth goes and their "I
+ * am 18 or older" statement stays; otherwise no age record is left at all.
+ */
+export async function forgetBirthDate(handle: string, { ticked = false } = {}) {
+  const db = pool()
+  try {
+    const member = `(select id from members where handle = $1)`
+    const { rowCount } = ticked
+      ? await db.query(`update restricted.age_assurances set birth_date = null where member_id = ${member}`, [handle])
+      : await db.query(`delete from restricted.age_assurances where member_id = ${member}`, [handle])
+    if (!rowCount) throw new Error(`no age record for @${handle}`)
+  } finally {
+    await db.end()
+  }
+}
+
+/**
+ * Makes a member 15 by the date of birth on record, as a member already here who
+ * gave such a date is kept (ADR 0020): listening to Gists, never hosting or speaking.
+ */
+export async function makeMinor(handle: string) {
+  const db = pool()
+  try {
+    const { rowCount } = await db.query(
+      `update restricted.age_assurances set band = 'under_18', birth_date = ((now() at time zone 'Africa/Lagos')::date - interval '15 years')::date
+        where member_id = (select id from members where handle = $1) and withdrawn_at is null`,
+      [handle],
+    )
+    if (!rowCount) throw new Error(`no age record for @${handle}`)
+  } finally {
+    await db.end()
+  }
+}
+
+/** Dates a member's account `days` back, for rules that wait on its age (video waits VIDEO_MIN_ACCOUNT_AGE_DAYS, 7 by default). */
+export async function ageAccount(handle: string, days: number) {
+  const db = pool()
+  try {
+    const { rowCount } = await db.query('update members set created_at = now() - make_interval(days => $2) where handle = $1', [handle, days])
+    if (!rowCount) throw new Error(`no member @${handle} to age`)
+  } finally {
+    await db.end()
+  }
+}
+
+/**
+ * Gives `handle` a post with a ready video, as the worker leaves one: the rows only.
+ * The dev stack runs no worker, and without a scanner it would hold the video anyway,
+ * so nothing is stored: a test serves `/media/videos/<mediaId>/…` itself (`page.route`).
+ * The rows describe e2e/fixtures/minute-hls, made from minute.webm: one quality, 180p.
+ */
+export async function seedVideoPost(handle: string, text: string): Promise<{ postId: string; mediaId: string }> {
+  const db = pool()
+  const client = await db.connect()
+  try {
+    await client.query('begin')
+    const { rows: [post] } = await client.query<{ id: string; author_id: string }>(
+      `insert into posts (author_id, text) select id, $2 from members where handle = $1 returning id, author_id`,
+      [handle, text],
+    )
+    if (!post) throw new Error(`no member @${handle} to seed a video for`)
+    const { rows: [video] } = await client.query<{ id: string }>(
+      `insert into media (owner_id, kind, status, content_type, bytes, width, height, post_id, position, ready_at)
+       values ($1, 'post_video', 'ready', 'video/webm', 46306, 320, 180, $2, 0, now()) returning id`,
+      [post.author_id, post.id],
+    )
+    await client.query(
+      `insert into video_details (media_id, duration_ms, width, height, scan_result, poster_key)
+       values ($1, 60008, 320, 180, 'clear', $2)`,
+      [video!.id, `videos/${video!.id}/poster.webp`],
+    )
+    await client.query(`insert into video_renditions (media_id, height, width, bytes, bitrate_kbps) values ($1, 180, 320, 111714, 16)`, [video!.id])
+    await client.query('commit')
+    return { postId: post.id, mediaId: video!.id }
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
     await db.end()
   }
 }
@@ -346,6 +433,20 @@ export async function pushSubscriptionCount(handle: string): Promise<number> {
   try {
     const { rows } = await db.query<{ count: number }>(
       `select count(*)::int as count from push_subscriptions s join members m on m.id = s.member_id where m.handle = $1`,
+      [handle],
+    )
+    return rows[0]!.count
+  } finally {
+    await db.end()
+  }
+}
+
+/** How many videos `handle` has started to upload: none until the composer sends one. */
+export async function videoUploadCount(handle: string): Promise<number> {
+  const db = pool()
+  try {
+    const { rows } = await db.query<{ count: number }>(
+      `select count(*)::int as count from media v join members m on m.id = v.owner_id where m.handle = $1 and v.kind = 'post_video'`,
       [handle],
     )
     return rows[0]!.count

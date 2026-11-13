@@ -4,14 +4,18 @@
 LiveKit server (section 2) and Gists (section 4a; migrations
 `packages/db/drizzle/0029_gists.sql` and `0032_gist_reports.sql`). Gists are off
 unless the `LIVEKIT_*` settings are set, and then open to the members the `gists`
-feature flag is on for ([docs/feature-flags.md](../feature-flags.md)); in production
-only through its allow-list, never to everyone: a **temporary gate with no age
-check**, not the verified-adult gate this ADR designs (section 4a). Until 3 November
+feature flag is on for ([docs/feature-flags.md](../feature-flags.md)): a **temporary
+gate**, not the verified-adult gate this ADR designs (section 4a). Until 10 November
+2026 production opened only through the flag's allow-list, never to everyone; the
+owner dropped that rule that day, so the flag can open Gists to everyone there too,
+on the stated-age rule for the stage (ADR 0020, section 4) and an 18+ only beta. The
+sections below that say Gists widen "past the allow-list" describe the rollout as
+first planned. Until 3 November
 2026 the env switches `CALLS_ENABLED`, `CALLS_GISTS_ENABLED` and the `CALLS_MEMBERS`
 handle list did this job, and the sections below still name them; read them as the
 flag and its allow-list. The owner tested Gists on staging on 31 October 2026. The
 code is in `main`, so production has it too, off unless LiveKit is configured there
-and the flag lists members. On 1 November 2026 the owner dropped 1:1 calls and
+and an admin turns the flag on. On 1 November 2026 the owner dropped 1:1 calls and
 meetings (PRs #54 and #62 closed, work parked); 1:1 calls, meetings and screen
 sharing are design only and parked, not live work. · **Roadmap:**
 `calls-and-meetings` (its dependencies include `direct-messages` and
@@ -440,7 +444,8 @@ what the room is for. X's product is named in this ADR only to compare with it.
 | Listener taps Request, host or co-host approves | Same. The host can turn requests off. Approval changes the member's role, not a new join. |
 | Host can invite a listener to speak directly | Same. Speakers are always chosen by a host or co-host; nobody takes the mic on their own. |
 | Host and co-hosts mute, remove, report and block; blocking also blocks the account | Same, enforced by revoking publish rights and removing the participant through LiveKit, not by a client-side mute. A removed member is on the Gist's removed list and cannot rejoin it. Block rules are the Gist rules below, not section 3's. |
-| Listeners react with preset emojis | Preset reactions only, no listener text and no chat (section 4), sent to the API and rate-limited (see Signalling). |
+| Listeners react with preset emojis | Preset reactions only, sent to the API and rate-limited (see Signalling). No listener text in the room itself: nothing is typed into LiveKit, and there is no data channel or chat panel. |
+| Replies under a Space | A **reply thread on the Gist's page**, under the room, not in LiveKit (migration `0037_gist_replies.sql`). Each reply is a post with `posts.gist_id`; replies under it inherit the id. It reuses the post reply stack (`createThreadReply`, `replyPage`, the reply bar, "Replying to @handle"), is loaded with the page and refreshed by "load new" (no realtime push), and is open before, during and after the Gist, with no end date; replies stay when it ends. Who may write: anyone who can see the Gist (the `gists` flag, the eligibility check, community membership, and no block with the host or the reply's author), narrowed by the host's reply controls (`gists.reply_audience`: everyone, following, mentioned, off; "mentioned" means named in one of the host's replies there), behind the `gistReplies` flag. The host can hide a reply (`posts.hidden_by_host_at`, its own placeholder, apart from a moderator's takedown). A reply is never read outside the Gist's routes: no feed, profile, search, hashtag page, trending, Discover or export for someone who cannot see it. A reply to the host or to a reply notifies as `reply`, linking to the Gist. Rollback: a release before migration 0037 reads only `reply_parent_id is null`, so rolling back with Gist replies in the database would show them in feeds, search, profiles and `/p/:id`; turning the flag off does not hide them. Before rolling back past 0037, soft-hide them (`removed_at = now()` where `gist_id is not null`) or accept that they appear; no sentinel `reply_parent_id`. |
 | Schedule a Space and set a reminder | Host schedules; members tap "Remind me", sent through the existing push and email paths (ADR 0011, ADR 0009). |
 | Recording and replay, indefinite on newer apps | **None in stage 5.** Recording stays stage 4, blocked on counsel (open questions 5 and 6). |
 | Co-host takes over if the host leaves | Same: co-hosts are tried in the order they were added, and the first who passes the standing check (below) becomes host. If none does, the Gist ends after 2 minutes. |

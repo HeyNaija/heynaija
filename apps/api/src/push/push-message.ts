@@ -25,6 +25,7 @@ const tagOf = (item: DigestItem): string => {
     case 'like':
     case 'repost':
     case 'idea_status':
+    case 'story_update':
       return `${item.kind}:${item.postId}`
     case 'moderator_granted':
     case 'moderator_revoked':

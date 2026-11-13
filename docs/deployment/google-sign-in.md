@@ -5,7 +5,9 @@ They sign up and sign in with a one-time code that Kratos emails them, or with
 Google. Signing up still needs an invite, whichever way they choose.
 
 Emailed codes work as soon as email does. Google is **off** until you create an
-OAuth client and switch it on, as below.
+OAuth client and switch it on, as below. The same switch lets the iOS app sign in
+with Apple ([sign-in-with-apple.md](sign-in-with-apple.md)); the web does not offer
+Apple.
 
 ## How it fits together
 
@@ -74,6 +76,24 @@ the account that should own HeyNaija's Google setup:
    address; if it does, try Google on staging instead.
 5. Copy the client ID and secret. The secret is shown once; keep it in the
    password manager.
+
+## The apps
+
+The apps sign in with Google through their platforms' own sign-in and send the ID
+token to Kratos's native flow (ADR 0022). Google issues it only to an app it knows,
+so each app has a client of its own in the same Google Cloud project, under
+**Clients → Create client**:
+
+- **Android:** one client per signing certificate, with package `ng.heynaija.app`
+  and the certificate's SHA-1 (the mobile repository's `docs/plan.md`). Its tokens
+  are for the web client above, so Kratos needs nothing more.
+- **iOS:** one client, type iOS, bundle ID `ng.heynaija.app`. The app signs in as
+  this client (Google's page in iOS's sign-in sheet, with PKCE), so its tokens are
+  for it: Kratos lists its ID in the Google provider's
+  `additional_id_token_audiences`. HeyNaija's is
+  `567185521629-68a94t7k7jomu81msugkias5ltprp80p.apps.googleusercontent.com`, the
+  default in both compose files; `GOOGLE_IOS_CLIENT_ID` in `.env` replaces it. The
+  ID is not secret: the app carries it.
 
 ## Switch it on
 

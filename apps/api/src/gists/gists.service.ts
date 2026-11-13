@@ -1,9 +1,10 @@
-import { type Db, GIST_ROLES, blocks, communities, communityMemberships, gistMembers, gists, members } from '@heynaija/db'
+import { type Db, GIST_REPLY_AUDIENCES, GIST_ROLES, blocks, communities, communityMemberships, gistMembers, gists, members } from '@heynaija/db'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lt, ne, notInArray, or, sql } from 'drizzle-orm'
+import { ageStatusOf } from '../governance/governance.service.js'
 import { RateLimiter } from '../rate-limit.js'
 import { DB } from '../tokens.js'
-import { type EligibilityConfig, type GistViewer, canHostGist, canJoinGist } from './eligibility.js'
+import { type EligibilityConfig, type GistViewer, type StageCandidate, canHostGist, canJoinGist } from './eligibility.js'
 import { GistsGate } from './gists-enabled.guard.js'
 import { ParticipantNotFoundError, ROOM_SERVICE, type RoomPermissions, type RoomService } from './room-service.js'
 
@@ -17,6 +18,7 @@ export type GistsConfig = {
 }
 
 export type GistRole = (typeof GIST_ROLES)[number]
+export type GistReplyAudience = (typeof GIST_REPLY_AUDIENCES)[number]
 
 export const GISTS_CONFIG = Symbol('GISTS_CONFIG')
 
@@ -34,8 +36,10 @@ export type GistErrorCode =
   | 'requests_closed'
   | 'not_in_gist'
   | 'not_eligible'
+  | 'listen_only'
   | 'already_speaker'
   | 'livekit_unavailable'
+  | 'reply_not_allowed'
 
 const STATUS: Record<GistErrorCode, number> = {
   not_found: 404,
@@ -50,8 +54,10 @@ const STATUS: Record<GistErrorCode, number> = {
   requests_closed: 409,
   not_in_gist: 409,
   not_eligible: 409,
+  listen_only: 403,
   already_speaker: 409,
   livekit_unavailable: 502,
+  reply_not_allowed: 403,
 }
 
 export class GistError extends Error {
@@ -146,8 +152,28 @@ export class GistsService {
   // ---- reading -------------------------------------------------------------
 
   async get(viewer: { id: string; handle: string }, gistId: string): Promise<GistView> {
-    const { gist, me } = await this.open(this.db, viewer, gistId)
+    const { gist, me, hostErased } = await this.open(this.db, viewer, gistId)
+    if (hostErased) throw new GistError('not_found')
     return this.view(this.db, gist, me)
+  }
+
+  /** The Gist, for someone who may see it. A Gist whose host erased their account is gone with its replies. */
+  async viewable(viewer: { id: string; handle: string }, gistId: string): Promise<GistRow> {
+    const { gist, hostErased } = await this.open(this.db, viewer, gistId)
+    if (hostErased) throw new GistError('not_found')
+    return gist
+  }
+
+  /** Whether the `gists` flag is on for a member, read once. */
+  async flagAllows(): Promise<(memberId: string) => boolean> {
+    return (await this.eligibility()).allowed
+  }
+
+  /** Host only, in any status: replies go on after the Gist ends. */
+  async setReplyAudience(actor: { id: string; handle: string }, gistId: string, audience: GistReplyAudience): Promise<void> {
+    const gist = await this.viewable(actor, gistId)
+    if (gist.hostId !== actor.id) throw new GistError('forbidden')
+    await this.db.update(gists).set({ replyAudience: audience }).where(eq(gists.id, gist.id))
   }
 
   /** Requests to speak, oldest first. Host and co-hosts only. */
@@ -267,8 +293,11 @@ export class GistsService {
   // ---- starting, joining, leaving -----------------------------------------
 
   async create(host: { id: string; handle: string }, input: { title: string; communityId?: string | null }): Promise<GistView> {
-    const me = await this.viewer(this.db, host.id)
-    if (!me || !canHostGist(me, await this.eligibility())) throw new GistError('not_found')
+    const me = await this.candidate(this.db, host.id)
+    const eligibility = await this.eligibility()
+    // Someone Gists are dark for gets not-found; someone who may only listen is told so.
+    if (!me || !canJoinGist(me, { status: 'live', communityId: null }, { ...eligibility, inCommunity: false })) throw new GistError('not_found')
+    if (!canHostGist(me, eligibility)) throw new GistError('listen_only')
     const title = input.title.trim()
     if (title.length < 1 || title.length > 120) throw new GistError('invalid', 'The title must be 1 to 120 characters.')
 
@@ -390,6 +419,8 @@ export class GistsService {
     if (gist.status !== 'live') throw new GistError('gist_ended')
     if (!me || !me.joinedAt || me.leftAt) throw new GistError('not_in_gist')
     if (me.role !== 'listener') throw new GistError('already_speaker')
+    const candidate = await this.candidate(this.db, viewer.id)
+    if (!candidate || !canHostGist(candidate, await this.eligibility())) throw new GistError('listen_only')
     if (!gist.requestsOpen) throw new GistError('requests_closed')
     // One open request per member: asking again keeps the place in the queue.
     await this.db
@@ -569,7 +600,8 @@ export class GistsService {
    * Webhooks can be lost (LiveKit does not promise delivery), so this is what
    * finally holds: a Gist whose room is gone ends; anyone connected
    * who may not stay (removed, suspended, blocked with the stage) is disconnected,
-   * and everyone else gets the permissions of their role; a member the database
+   * and everyone else gets the permissions of their role, the microphone only if
+   * they may take the stage (`grantedRole`); a member the database
    * thinks is in the room but LiveKit does not have is gone. A speaker gone for
    * two minutes goes back to the audience, freeing the slot, and a Gist whose host
    * has been gone that long ends: there is no co-host takeover yet.
@@ -605,7 +637,7 @@ export class GistsService {
         await this.disconnect(gist.id, p.identity)
         continue
       }
-      const want = permissionsFor(row.role)
+      const want = permissionsFor(await this.grantedRole(this.db, p.identity, row.role))
       if (want.canPublish !== p.canPublish || want.hidden !== p.hidden) await this.applyRole(gist.id, p.identity, false)
     }
 
@@ -718,6 +750,24 @@ export class GistsService {
     return row
   }
 
+  /** The member with their age, for the stage's check (`canHostGist`). Listening never needs it. */
+  private async candidate(q: Q, memberId: string): Promise<StageCandidate | undefined> {
+    const viewer = await this.viewer(q, memberId)
+    return viewer && { ...viewer, age: await ageStatusOf(q, memberId) }
+  }
+
+  /**
+   * The role whose permissions a member gets in the room: their role in the
+   * database, but never the microphone for someone who may not take the stage.
+   * So a role given before this rule, or before a date of birth was corrected,
+   * still cannot publish.
+   */
+  private async grantedRole(q: Q, memberId: string, role: GistRole): Promise<GistRole> {
+    if (role === 'listener') return role
+    const candidate = await this.candidate(q, memberId)
+    return candidate && canHostGist(candidate, await this.eligibility()) ? role : 'listener'
+  }
+
   private async inCommunity(q: Q, memberId: string, communityId: string): Promise<boolean> {
     const [row] = await q
       .select({ id: communities.id })
@@ -753,9 +803,14 @@ export class GistsService {
    */
   private async open(q: Q, who: { id: string; handle: string }, gistId: string) {
     if (!isUuid(gistId)) throw new GistError('not_found')
-    const [gist] = await q.select().from(gists).where(eq(gists.id, gistId))
+    const [found] = await q
+      .select({ gist: gists, hostErased: sql<boolean>`${members.deletedAt} is not null` })
+      .from(gists)
+      .leftJoin(members, eq(members.id, gists.hostId))
+      .where(eq(gists.id, gistId))
     const viewer = await this.viewer(q, who.id)
-    if (!gist || !viewer) throw new GistError('not_found')
+    if (!found || !viewer) throw new GistError('not_found')
+    const { gist, hostErased } = found
     const inCommunity = gist.communityId ? await this.inCommunity(q, who.id, gist.communityId) : false
     if (!canJoinGist(viewer, gist, { ...(await this.eligibility()), inCommunity })) throw new GistError('not_found')
     const [me] = await q
@@ -766,7 +821,7 @@ export class GistsService {
     if (!me || !STAGE.includes(me.role)) {
       if (await this.blockedOnStage(q, gist.id, who.id)) throw new GistError('not_found')
     }
-    return { gist, me, who: { ...viewer, displayName: await this.displayName(q, who.id) } }
+    return { gist, hostErased: hostErased !== false, me, who: { ...viewer, displayName: await this.displayName(q, who.id) } }
   }
 
   private async displayName(q: Q, memberId: string): Promise<string | null> {
@@ -809,8 +864,9 @@ export class GistsService {
       if (target.removedAt) throw new GistError('not_found')
       if (!target.joinedAt || target.leftAt) throw new GistError('not_in_gist')
 
-      // Nobody is promoted past the eligibility and block checks, which are re-run here on live data.
-      const candidate = await this.viewer(tx, targetId)
+      // Nobody is promoted past the eligibility, age and block checks, which are re-run here on live data.
+      // The refusal is the same whichever failed, so a host never learns a listener's age.
+      const candidate = await this.candidate(tx, targetId)
       if (!candidate || !canHostGist(candidate, await this.eligibility()) || (await this.blockedOnStage(tx, gist.id, targetId))) {
         throw new GistError('not_eligible')
       }
@@ -864,11 +920,11 @@ export class GistsService {
 
   /**
    * Sets a participant's LiveKit permissions to what the role in the database
-   * allows, as it is at this moment. Every write of a role (join, promote, demote,
-   * mute, remove) and every reset (sync, webhook) goes through here, one at a time
-   * per member: the role is read under a lock held across the LiveKit call, so a
-   * slow call that read "speaker" can never land after a later one that read
-   * "listener". Throws ParticipantNotFoundError if they are not connected.
+   * allows (`grantedRole`), as it is at this moment. Every write of a role (join,
+   * promote, demote, mute, remove) and every reset (sync, webhook) goes through
+   * here, one at a time per member: the role is read under a lock held across the
+   * LiveKit call, so a slow call that read "speaker" can never land after a later
+   * one that read "listener". Throws ParticipantNotFoundError if they are not connected.
    */
   private async pushRole(gistId: string, memberId: string): Promise<GistRole> {
     return this.db.transaction(async (tx) => {
@@ -877,7 +933,7 @@ export class GistsService {
         .select({ role: gistMembers.role, removedAt: gistMembers.removedAt })
         .from(gistMembers)
         .where(and(eq(gistMembers.gistId, gistId), eq(gistMembers.memberId, memberId)))
-      const role: GistRole = !row || row.removedAt ? 'listener' : row.role
+      const role = await this.grantedRole(tx, memberId, !row || row.removedAt ? 'listener' : row.role)
       await this.rooms.setPermissions(gistId, memberId, permissionsFor(role))
       return role
     })

@@ -1,6 +1,6 @@
-import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { extname, join } from 'node:path'
 import { type Db, media, reports, videoDetails, videoRenditions } from '@heynaija/db'
 import { Logger } from '@nestjs/common'
 import { UnrecoverableError } from 'bullmq'
@@ -8,16 +8,18 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import type { ContentScanner, VideoScan } from '../media/media.service.js'
 import type { VideoStore } from '../media/object-store.js'
 import type { SafetyAlerts } from '../moderation/safety-alerts.js'
-import { checkLimits, type Deadline, DurationMismatch, extractFrames, extractPoster, FFMPEG_SAFETY, FfmpegTimeout, newDeadline, type Probe, probe, type Rejection, renditionPlan, type SampledFrame, transcode } from './ffmpeg.js'
+import { checkLimits, type Deadline, DurationMismatch, extractFrames, extractPoster, FfmpegTimeout, jobTimeoutMs, newDeadline, type Probe, probe, type Rejection, type SampledFrame } from './ffmpeg.js'
+import { encodeHls, HLS_CONTENT_TYPES, hlsLadder, upTo480 } from './hls.js'
+import { inTurn } from './in-turn.js'
 import type { VideoConfig } from './video-config.js'
-import { originalKey, posterKey, quarantineOriginalKey, renditionKey } from './video-keys.js'
+import { hlsKey, originalKey, posterKey, quarantineOriginalKey } from './video-keys.js'
 
 /**
  * The video worker's job (ADR 0019 section 3.5): probe, refuse what is over a
  * limit, take sample frames from the original, scan the original and its frames
- * (`scanVideo` below), and only then encode and publish. Nothing is public until
- * the scan is clear and the encode is done, and `ready` is set last, in a
- * conditional update.
+ * (`scanVideo` below), and only then encode it into HLS (ADR 0021 section 3) and
+ * publish. Nothing is public until the scan is clear and the encode is done, and
+ * `ready` is set last, in a conditional update.
  *
  * Fail closed. A video is made `ready` on one verdict only: the scanner said
  * `clear`. No scanner (or none that looks at video) keeps the video `quarantined`
@@ -33,9 +35,10 @@ export class VideoProcessor {
     private readonly scanner: ContentScanner,
     private readonly cfg: VideoConfig,
     private readonly alerts?: SafetyAlerts,
+    /** Scratch space: a disk volume in the container, since a 1 GB original would not fit in its memory. */
     private readonly workDir: string = tmpdir(),
-    /** One limit for every ffmpeg run of a job: the whole job, not each run, is bounded. */
-    private readonly jobTimeoutMs: number = FFMPEG_SAFETY.jobTimeoutMs,
+    /** One limit for every ffmpeg run of a job, from the clip's length: the whole job, not each run, is bounded. */
+    private readonly jobTimeout: (durationMs: number) => number = jobTimeoutMs,
   ) {}
 
   /**
@@ -53,7 +56,8 @@ export class VideoProcessor {
     await this.db.update(videoDetails).set({ attempts: sql`${videoDetails.attempts} + 1` }).where(eq(videoDetails.mediaId, mediaId))
     const work = await mkdtemp(join(this.workDir, `video-${mediaId}-`))
     try {
-      await this.run(mediaId, row.ownerId, row.contentType, work, newDeadline(this.jobTimeoutMs))
+      // The longest clip's limit until the probe says how long this one is.
+      await this.run(mediaId, row.ownerId, row.contentType, work, newDeadline(this.jobTimeout(this.cfg.maxSeconds * 1000)))
     } catch (err) {
       const message = (err as Error).message
       // A timeout will happen again with the same file: fail it now and tell the queue not to retry.
@@ -71,6 +75,7 @@ export class VideoProcessor {
   }
 
   private async run(mediaId: string, ownerId: string, contentType: string, work: string, deadline: Deadline): Promise<void> {
+    const started = Date.now()
     const original = join(work, 'original')
     const sha256 = await this.store.download('uploads', originalKey(mediaId), original)
     const bytes = (await stat(original)).size
@@ -78,6 +83,7 @@ export class VideoProcessor {
     const p = await probe(original, deadline)
     const refusal = checkLimits(p, bytes, this.cfg)
     if (refusal || !p) return this.reject(mediaId, refusal ?? 'not_a_video')
+    deadline.at = Math.min(deadline.at, started + this.jobTimeout(p.durationMs))
 
     let frames
     try {
@@ -98,7 +104,7 @@ export class VideoProcessor {
 
     if (scan.verdict === 'match') return this.block(mediaId, ownerId, original, scan.matchMs)
     if (scan.verdict !== 'clear') return this.hold(mediaId)
-    return this.publish(mediaId, original, p, work, deadline)
+    return this.publish(mediaId, original, p, work, deadline, started)
   }
 
   /** A permanent refusal: a reason class the uploader can be told, the original deleted, no retry. */
@@ -165,19 +171,29 @@ export class VideoProcessor {
     ])
   }
 
-  private async publish(mediaId: string, original: string, p: Probe, work: string, deadline: Deadline): Promise<void> {
-    const plan = renditionPlan(p)
-    const outputs = plan.map((r) => join(work, `${r.label}.mp4`))
-    await transcode(original, outputs, p, this.cfg, deadline)
+  private async publish(mediaId: string, original: string, p: Probe, work: string, deadline: Deadline, started: number): Promise<void> {
+    const rungs = hlsLadder(p)
+    const out = join(work, 'hls')
+    for (const r of rungs) await mkdir(join(out, String(r.label)), { recursive: true })
+    await encodeHls(original, out, p, this.cfg.maxSeconds, deadline)
+    await writeFile(join(out, 'master-480.m3u8'), upTo480(await readFile(join(out, 'master.m3u8'), 'utf8')))
     const poster = await extractPoster(original, join(work, 'poster-source.jpg'), p.durationMs, deadline)
-    await writeFile(join(work, 'poster.webp'), poster)
 
-    const sizes: number[] = []
-    for (const [i, r] of plan.entries()) {
-      await this.store.upload('media', renditionKey(mediaId, r.label), outputs[i]!, 'video/mp4')
-      sizes.push((await stat(outputs[i]!)).size)
+    // Every file the encode wrote, as `<label>/<file>` or a master playlist; a quality's bytes are its files'.
+    const files = ['master.m3u8', 'master-480.m3u8']
+    const sizes = new Map<number, number>()
+    for (const r of rungs) {
+      let bytes = 0
+      for (const f of await readdir(join(out, String(r.label)))) {
+        files.push(`${r.label}/${f}`)
+        bytes += (await stat(join(out, String(r.label), f))).size
+      }
+      sizes.set(r.label, bytes)
     }
+    const written = files.map((f) => hlsKey(mediaId, f))
+    await inTurn(files, UPLOADS_AT_ONCE, (f) => this.store.upload('media', hlsKey(mediaId, f), join(out, f), HLS_CONTENT_TYPES[extname(f)] ?? 'application/octet-stream'))
     await this.store.write('media', posterKey(mediaId), poster, 'image/webp')
+    written.push(posterKey(mediaId))
 
     const ready = await this.db.transaction(async (tx) => {
       // Last, and conditional: a video abandoned while we worked is not published.
@@ -189,20 +205,25 @@ export class VideoProcessor {
       if (done.length === 0) return false
       await tx.delete(videoRenditions).where(eq(videoRenditions.mediaId, mediaId))
       await tx.insert(videoRenditions).values(
-        plan.map((r, i) => ({ mediaId, height: r.label, width: r.width, bytes: sizes[i]!, bitrateKbps: r.videoKbps + (p.hasAudio ? r.audioKbps : 0) })),
+        rungs.map((r) => ({ mediaId, height: r.label, width: r.width, bytes: sizes.get(r.label)!, bitrateKbps: r.videoKbps + (p.hasAudio ? r.audioKbps : 0) })),
       )
       await tx.update(videoDetails).set({ posterKey: posterKey(mediaId) }).where(eq(videoDetails.mediaId, mediaId))
       return true
     })
     if (!ready) {
-      for (const r of plan) await this.store.remove('media', renditionKey(mediaId, r.label))
-      await this.store.remove('media', posterKey(mediaId))
+      for (const key of written) await this.store.remove('media', key)
       await this.store.remove('uploads', originalKey(mediaId))
       return
     }
     if (!this.cfg.keepOriginals) await this.store.remove('uploads', originalKey(mediaId))
+    // Said for every video, so a quiet log means no work came, not work that vanished.
+    const seconds = ((Date.now() - started) / 1000).toFixed(1)
+    this.log.log(`video ${mediaId} ready in ${seconds} s (${p.width}x${p.height}, ${(p.durationMs / 1000).toFixed(1)} s long, ${rungs.length} qualities, ${files.length} files)`)
   }
 }
+
+/** A 3-minute clip is about 190 files; sent a few at a time, not one by one. */
+const UPLOADS_AT_ONCE = 8
 
 /**
  * One verdict on a video from whatever the scanner can look at: the whole file (Arachnid Shield)

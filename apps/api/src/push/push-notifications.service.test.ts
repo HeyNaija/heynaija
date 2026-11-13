@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { members, notifications, pushSubscriptions, reports } from '@heynaija/db'
+import { members, notifications, type PushDeviceService, pushDevices, pushSubscriptions, reports } from '@heynaija/db'
 import { eq, sql } from 'drizzle-orm'
 import { MembersService } from '../members/members.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
@@ -9,7 +9,15 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { PostsService } from '../posts/posts.service.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { type PushJobs, PushNotificationsService } from './push-notifications.service.js'
-import { PermanentPushError, type PushMessage, type PushSender, type PushTarget, SubscriptionGoneError } from './push-sender.js'
+import {
+  type AppPushSender,
+  type AppTarget,
+  PermanentPushError,
+  type PushMessage,
+  type PushSender,
+  type PushTarget,
+  SubscriptionGoneError,
+} from './push-sender.js'
 
 class Jobs implements PushJobs {
   queued: string[] = []
@@ -34,8 +42,25 @@ class PushServices implements PushSender {
   }
 }
 
+/** FCM (and, when given, APNs), standing in: keeps what each app's token is sent, and whose it was said to be. */
+class AppServices implements AppPushSender {
+  sent: { service: PushDeviceService; token: string; key: string; memberId: string; message: PushMessage }[] = []
+  failing = new Map<string, Error>()
+  constructor(readonly services: readonly PushDeviceService[] = ['fcm']) {}
+  async send(target: AppTarget, message: PushMessage) {
+    const error = this.failing.get(target.token)
+    if (error) throw error
+    this.sent.push({ service: target.service, token: target.token, key: target.key, memberId: target.memberId, message })
+  }
+  /** What one app was sent. */
+  to(token: string) {
+    return this.sent.filter((s) => s.token === token).map((s) => s.message)
+  }
+}
+
 let jobs: Jobs
 let services: PushServices
+let apps: AppServices
 let push: PushNotificationsService
 const notificationsService = new NotificationsService(db)
 const postsService = new PostsService(db)
@@ -52,7 +77,8 @@ beforeEach(async () => {
   await moderation.setSiteModerator('sam', true)
   jobs = new Jobs()
   services = new PushServices()
-  push = new PushNotificationsService(db, jobs, services)
+  apps = new AppServices()
+  push = new PushNotificationsService(db, jobs, services, null, apps)
 })
 after(() => pool.end())
 
@@ -61,6 +87,15 @@ async function browser(memberId: string, name = 'phone') {
   const endpoint = `https://fcm.googleapis.com/fcm/send/${handles.get(memberId) ?? memberId}-${name}`
   await push.subscribe(memberId, { endpoint, p256dh: `p256dh-${name}`, auth: `auth-${name}` })
   return endpoint
+}
+
+const appKey = Buffer.alloc(32, 7).toString('base64url')
+
+/** An installation of the app, signed in as `memberId`. Returns its token. */
+async function app(memberId: string, name = 'android', service: PushDeviceService = 'fcm') {
+  const token = `${handles.get(memberId) ?? memberId}-${name}:APA91b`
+  await push.register(memberId, service, token, appKey)
+  return token
 }
 
 /** What a sweep a few seconds later, and the jobs it queues, do. */
@@ -303,4 +338,173 @@ test('a browser given a new address keeps its subscription, and its ID, under th
   assert.equal(after, before)
   const rows = await db.select({ endpoint: pushSubscriptions.endpoint, p256dh: pushSubscriptions.p256dh }).from(pushSubscriptions)
   assert.deepEqual(rows, [{ endpoint: fresh, p256dh: 'b' }])
+})
+
+test('the app gets the same pushes as the member’s browsers, told whose they are', async () => {
+  const laptop = await browser(ada, 'laptop')
+  const phone = await app(ada)
+  const { id: post } = await postsService.create(ada, 'Jollof or fried rice?')
+  const { id: reply } = await postsService.create(bayo, 'Jollof, obviously', { replyTo: post })
+  await deliver()
+  const expected = { title: '@bayo replied to your post', body: '“Jollof, obviously”', url: `/p/${reply}`, tag: `reply:${reply}` }
+  assert.deepEqual(apps.to(phone), [expected])
+  assert.deepEqual(services.to(laptop), [expected])
+  assert.deepEqual(apps.sent.map((s) => [s.memberId, s.key]), [[ada, appKey]])
+  assert.deepEqual(await state(ada), ['pushed'])
+  const [row] = await db.select({ at: pushDevices.lastPushedAt }).from(pushDevices)
+  assert.ok(row?.at)
+})
+
+test('a member with only the app is pushed to when browsers are off, and one with only a browser is then passed over', async () => {
+  const appsOnly = new PushNotificationsService(db, jobs, null, null, apps)
+  assert.equal(appsOnly.enabled, true)
+  assert.deepEqual(appsOnly.appServices, ['fcm'])
+  assert.equal(appsOnly.publicKey, null)
+  const phone = await app(ada)
+  await browser(bayo)
+  const { id: post } = await postsService.create(ada, 'my post')
+  const { id: theirs } = await postsService.create(bayo, 'their post')
+  await postsService.like(chi, post)
+  await postsService.like(chi, theirs)
+
+  jobs.queued = []
+  await appsOnly.sweep()
+  assert.deepEqual(jobs.queued, [ada])
+  assert.deepEqual(await state(bayo), ['passed over'])
+  await appsOnly.send(ada)
+  assert.deepEqual(apps.to(phone).map((m) => m.tag), [`like:${post}`])
+  assert.deepEqual(push.appServices, ['fcm'])
+  assert.deepEqual(new PushNotificationsService(db, jobs, services).appServices, [])
+})
+
+test('an iPhone is pushed to through APNs where the Apple key is set, and waits where it is not', async () => {
+  const iphone = await app(ada, 'iphone', 'apns')
+  const { id: post } = await postsService.create(ada, 'my post')
+  await postsService.like(bayo, post)
+  // Only FCM here: the iPhone is not somewhere to push, so the like is left to email.
+  await deliver()
+  assert.deepEqual(apps.sent, [])
+  assert.deepEqual(await state(ada), ['passed over'])
+  assert.equal((await db.select().from(pushDevices)).length, 1)
+
+  const both = new AppServices(['fcm', 'apns', 'apns_sandbox'])
+  push = new PushNotificationsService(db, jobs, services, null, both)
+  const xcode = await app(ada, 'xcode', 'apns_sandbox')
+  await postsService.like(chi, post)
+  await deliver()
+  assert.deepEqual(both.sent.map((s) => [s.service, s.token]).sort(), [['apns', iphone], ['apns_sandbox', xcode]])
+})
+
+test('an app its push service no longer knows is forgotten; one refused for good is kept and email takes over', async () => {
+  const removed = await app(ada, 'old-phone')
+  const phone = await app(ada)
+  apps.failing.set(removed, new SubscriptionGoneError('FCM answered 404 UNREGISTERED'))
+  const { id: post } = await postsService.create(ada, 'my post')
+  await postsService.like(bayo, post)
+  await deliver()
+  assert.equal(apps.to(phone).length, 1)
+  assert.deepEqual((await db.select({ token: pushDevices.token }).from(pushDevices)).map((r) => r.token), [phone])
+
+  apps.failing.set(phone, new PermanentPushError('FCM answered 400 INVALID_ARGUMENT'))
+  await postsService.like(chi, post)
+  await deliver()
+  assert.deepEqual((await state(ada)).sort(), ['passed over', 'pushed'])
+  assert.equal((await db.select().from(pushDevices)).length, 1)
+})
+
+test('an app that is briefly unreachable does not hold up a browser that took the push', async () => {
+  const laptop = await browser(ada, 'laptop')
+  const phone = await app(ada)
+  apps.failing.set(phone, new Error('FCM answered 503 UNAVAILABLE'))
+  const { id: post } = await postsService.create(ada, 'my post')
+  await postsService.like(bayo, post)
+  await deliver()
+  assert.equal(services.to(laptop).length, 1)
+  assert.deepEqual(await state(ada), ['pushed'])
+})
+
+test('an installation of the app moves to whoever signs in on it, and signing out removes it only for its member', async () => {
+  const shared = await app(ada, 'shared')
+  await db.update(pushDevices).set({ createdAt: new Date('2026-01-01'), lastPushedAt: new Date('2026-01-02') })
+  // Started again signed in as the same member: nothing changes.
+  await push.register(ada, 'fcm', shared, appKey)
+  const [same] = await db.select().from(pushDevices)
+  assert.deepEqual([same!.memberId, same!.createdAt, same!.lastPushedAt], [ada, new Date('2026-01-01'), new Date('2026-01-02')])
+
+  // Signed in as bayo, the app makes a new key.
+  const fresh = Buffer.alloc(32, 9).toString('base64url')
+  await push.register(bayo, 'fcm', shared, fresh)
+  const [moved] = await db.select().from(pushDevices)
+  assert.equal(moved!.memberId, bayo)
+  assert.equal(moved!.key, fresh)
+  assert.ok(moved!.createdAt > new Date('2026-01-01'))
+  assert.equal(moved!.lastPushedAt, null)
+
+  const { id: post } = await postsService.create(ada, 'my post')
+  await postsService.like(chi, post)
+  const { id: theirs } = await postsService.create(bayo, 'their post')
+  await postsService.like(chi, theirs)
+  await deliver()
+  assert.deepEqual(apps.to(shared).map((m) => m.tag), [`like:${theirs}`])
+
+  await push.unregister(ada, 'fcm', shared)
+  assert.equal((await db.select().from(pushDevices)).length, 1)
+  await push.unregister(bayo, 'fcm', shared)
+  assert.equal((await db.select().from(pushDevices)).length, 0)
+})
+
+test('a member keeps at most ten installations of the app; registering one more drops the oldest', async () => {
+  const tokens: string[] = []
+  for (let i = 0; i < 12; i++) {
+    tokens.push(await app(ada, `phone-${i}`))
+    await db.update(pushDevices).set({ createdAt: new Date(Date.UTC(2026, 0, 1 + i)) }).where(eq(pushDevices.token, tokens.at(-1)!))
+  }
+  const kept = async () => (await db.select({ token: pushDevices.token }).from(pushDevices)).map((r) => r.token).sort()
+  assert.deepEqual(await kept(), tokens.slice(2).sort())
+  // One that was dropped and starts again comes back, and the oldest other goes.
+  await push.register(ada, 'fcm', tokens[0]!, appKey)
+  assert.deepEqual(await kept(), [tokens[0]!, ...tokens.slice(3)].sort())
+})
+
+const news: PushMessage = { title: 'While you were away on HeyNaija', body: '@bayo: “hello” and 2 more conversations', url: '/p/1', tag: 'highlights' }
+
+test('a message that is not a notification goes to each of the member’s browsers and apps, and to nobody else', async () => {
+  const phone = await browser(ada)
+  const android = await app(ada)
+  const other = await browser(bayo)
+
+  assert.equal(await push.sendTo(ada, [news]), true)
+  assert.deepEqual(services.to(phone), [news])
+  assert.deepEqual(apps.to(android), [news])
+  assert.deepEqual(services.to(other), [])
+  // Nothing is written for the app to show, and each place records that it was pushed to.
+  assert.equal((await db.select().from(notifications)).length, 0)
+  assert.ok((await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.memberId, ada)))[0]!.lastPushedAt)
+  assert.ok((await db.select().from(pushDevices).where(eq(pushDevices.memberId, ada)))[0]!.lastPushedAt)
+})
+
+test('it says when nothing took the message: no device, a suspended member, or every device gone', async () => {
+  assert.equal(await push.sendTo(ada, [news]), false, 'nowhere to push to')
+  assert.equal(await push.sendTo(ada, []), false, 'nothing to say')
+
+  const phone = await browser(ada)
+  await db.update(members).set({ active: false }).where(eq(members.id, ada))
+  assert.equal(await push.sendTo(ada, [news]), false, 'suspended')
+  await db.update(members).set({ active: true }).where(eq(members.id, ada))
+
+  services.failing.set(phone, new SubscriptionGoneError('push service answered 410'))
+  assert.equal(await push.sendTo(ada, [news]), false, 'the browser is gone')
+  assert.equal((await db.select().from(pushSubscriptions)).length, 0, 'and forgotten')
+  assert.deepEqual(services.sent, [])
+})
+
+test('it throws when no device could be reached and trying again may work, and not when one took it', async () => {
+  const phone = await browser(ada)
+  const laptop = await browser(ada, 'laptop')
+  services.failing.set(phone, new Error('push service answered 503'))
+  assert.equal(await push.sendTo(ada, [news]), true)
+  assert.deepEqual(services.to(laptop), [news])
+
+  services.failing.set(laptop, new Error('push service answered 503'))
+  await assert.rejects(push.sendTo(ada, [news]), /503/)
 })

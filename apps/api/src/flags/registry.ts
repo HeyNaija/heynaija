@@ -81,9 +81,27 @@ export const FLAGS = {
   },
   gists: {
     description:
-      'Live audio rooms (ADR 0017): starting, finding and joining a Gist. Also needs LiveKit configured, and in production it opens only to the members on an allow-list, never to everyone, until the age check exists. Turning it off (or taking a member off the list) closes the routes at once and takes people out of Gists already live within a minute.',
+      'Live audio rooms (ADR 0017): starting, finding and joining a Gist. Also needs LiveKit configured. Hosting and speaking also need a stated adult age. Turning it off (or taking a member off the list) closes the routes at once and takes people out of Gists already live within a minute.',
     owner: 'gists',
     defaults: { development: true, staging: true, production: false }, // code in main, but never switched on in production; LIVE_IN_MAIN is false
+  },
+  gistReplies: {
+    description:
+      "Writing replies in a Gist's comment section (ADR 0017). Only has an effect where gists is on. Replies already posted stay readable, and a member can still delete their own.",
+    owner: 'gists',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
+  adultLabels: {
+    description:
+      'Marking posts sensitive (ADR 0020): the flag on media in the composer, the post menu item, the Settings switch that marks everything a member posts, the moderators\' mark and the report reason. Gating creation only: a post already marked stays hidden from anyone who is not an adult, whatever this says.',
+    owner: 'posts',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
+  weeklyHighlights: {
+    description:
+      'Weekly highlights (ADR 0027): once a week, a member who has been away is sent a few conversations they missed, by push or email. Also the switch for them in Settings. Turning it off stops the next send; nothing already sent is affected.',
+    owner: 'highlights',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
   },
 } as const satisfies Record<string, FlagDefinition>
 

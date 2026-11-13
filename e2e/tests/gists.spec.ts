@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test'
+import { makeMinor } from '../lib/db.ts'
 import { MARK } from '../lib/env.ts'
 import { codeFor } from '../lib/mailpit.ts'
-import { signUpOverHttp } from '../lib/members.ts'
+import { newMember, replyBox, signUpOverHttp } from '../lib/members.ts'
 
 // Gists need a LiveKit server and an API that knows it, so CI (which has neither)
 // skips this file. To run it locally, on your own stack:
@@ -10,10 +11,8 @@ import { signUpOverHttp } from '../lib/members.ts'
 //   pnpm dev:api, with the LIVEKIT_* settings `pnpm infra:env` put in .env
 //   E2E_GISTS=1 pnpm e2e gists
 //
-// The gists flag is on for everyone in development; if it has been limited to a
-// list, add the two fixed handles below to it (or set it back to the default).
 // Chromium's fake-media flags stand in for a microphone.
-test.skip(!process.env.E2E_GISTS, 'needs LiveKit and the API configured for it; see the comment at the top of this file')
+test.skip(!process.env.E2E_GISTS, 'needs LiveKit and the API configured for it; see docs/e2e.md')
 
 test.use({
   launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },
@@ -126,4 +125,107 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
 
   await hostContext.close()
   await earContext.close()
+})
+
+test('a member under 18 listens: they find and join a Gist, and are offered neither Go live nor Request to speak', async ({ browser }) => {
+  const host = await newMember(browser, 'gist_minor_host')
+  const minor = await newMember(browser, 'gist_minor')
+  await makeMinor(minor.handle)
+
+  await host.page.getByLabel('Gist title').fill('Homework, settled')
+  await host.page.getByRole('button', { name: 'Go live' }).click()
+  await host.page.waitForURL(/\/gists\/[0-9a-f-]{36}$/)
+  const url = host.page.url()
+  await host.page.getByRole('button', { name: 'Join the Gist' }).click()
+
+  // Home lists the Gist, without the form to start one.
+  await minor.page.goto('/')
+  await expect(minor.page.getByRole('link', { name: /Homework, settled/ })).toBeVisible()
+  await expect(minor.page.getByLabel('Gist title')).toHaveCount(0)
+  await minor.page.getByRole('link', { name: /Homework, settled/ }).click()
+  await minor.page.waitForURL(url)
+  await expect(minor.page.getByText('The sound starts when you tap Join.')).toBeVisible()
+  await expect(minor.page.getByText('You only need your microphone', { exact: false })).toHaveCount(0)
+  await minor.page.getByRole('button', { name: 'Join the Gist' }).click()
+  await expect(minor.page.getByRole('heading', { name: 'On stage' })).toBeVisible()
+  await expect(minor.page.getByRole('button', { name: 'Leave' })).toBeVisible()
+  await expect(minor.page.getByRole('button', { name: 'Request to speak' })).toHaveCount(0)
+  await expect(minor.page.getByText('The host is not taking requests to speak.')).toHaveCount(0)
+  await expect(minor.page.getByRole('button', { name: 'Microphone', exact: true })).toHaveCount(0)
+  // The API refuses the request too, and the start page is not there for them.
+  expect((await minor.page.request.put(`/api/v1/gists/${new URL(url).pathname.split('/').pop()}/speak-request`)).status()).toBe(403)
+  await minor.page.goto('/gists/new')
+  await expect(minor.page.getByRole('heading', { name: 'Nothing here' })).toBeVisible()
+
+  await host.page.getByRole('button', { name: 'End the Gist' }).click()
+  await host.page.getByRole('button', { name: /Tap again to end/ }).click()
+  await host.context.close()
+  await minor.context.close()
+})
+
+test('a Gist has a reply thread: reply while live and after it ends, the host hides one, a blocked member is refused, a visitor is asked to sign in @mobile', async ({ browser }) => {
+  const host = await newMember(browser, 'gist_reply_host')
+  const ada = await newMember(browser, 'gist_reply_ada')
+  const bayo = await newMember(browser, 'gist_reply_bayo')
+  const blocked = await newMember(browser, 'gist_reply_blocked')
+  expect((await host.page.request.put(`/api/v1/members/${blocked.handle}/block`)).status()).toBe(204)
+
+  await host.page.getByLabel('Gist title').fill('Replies, settled')
+  await host.page.getByRole('button', { name: 'Go live' }).click()
+  await host.page.waitForURL(/\/gists\/[0-9a-f-]{36}$/)
+  const url = host.page.url()
+
+  const reply = async (page: typeof ada.page, text: string) => {
+    await page.goto(url)
+    const box = await replyBox(page)
+    await box.fill(text)
+    await page.getByRole('button', { name: 'Reply', exact: true }).click()
+    await expect(page.locator('article', { hasText: text })).toBeVisible()
+  }
+  await reply(ada.page, 'Team party jollof, always')
+  await reply(bayo.page, 'Never, it is smoky')
+
+  await host.page.reload()
+  await expect(host.page.locator('article', { hasText: 'Team party jollof, always' })).toBeVisible()
+  await expect(host.page.locator('form#compose .composer-recipient')).toHaveText('Replying to this Gist')
+
+  await host.page.getByRole('button', { name: 'Join the Gist' }).click()
+  await host.page.getByRole('button', { name: 'End the Gist' }).click()
+  await host.page.getByRole('button', { name: /Tap again to end/ }).click()
+  await expect(host.page.getByRole('heading', { name: 'This Gist has ended' })).toBeVisible({ timeout: 15_000 })
+
+  await reply(ada.page, 'Still talking after the end')
+
+  await ada.page.setViewportSize({ width: 390, height: 844 })
+  await ada.page.goto(url)
+  const lastActions = ada.page.locator('#gist-replies article').last().locator('.post-actions')
+  const bar = ada.page.locator('#gist-replies .thread-branch.is-root > .thread-editor-host:not(:empty)')
+  await expect(async () => {
+    await ada.page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+    const actions = await lastActions.boundingBox()
+    const top = (await bar.boundingBox())?.y
+    expect(actions && top !== undefined && actions.y + actions.height <= top).toBe(true)
+  }).toPass()
+
+  const rude = host.page.locator('article', { hasText: 'Never, it is smoky' })
+  await host.page.reload()
+  await rude.getByLabel('Post options', { exact: true }).click()
+  await host.page.getByRole('button', { name: 'Hide reply' }).click()
+  await expect(host.page.getByText('The host hid this reply.')).toBeVisible()
+  await ada.page.reload()
+  await expect(ada.page.getByText('Never, it is smoky')).toHaveCount(0)
+  await expect(ada.page.getByText('The host hid this reply.')).toBeVisible()
+
+  await blocked.page.goto(url)
+  await expect(blocked.page.getByRole('textbox', { name: 'Your reply' })).toHaveCount(0)
+  await expect(blocked.page.getByText('Replies, settled')).toHaveCount(0)
+
+  const visitor = await browser.newContext({ baseURL: test.info().project.use.baseURL })
+  const visitorPage = await visitor.newPage()
+  await visitorPage.goto(url)
+  await expect(visitorPage.getByRole('heading', { name: 'Sign in to join this Gist' })).toBeVisible()
+  await expect(visitorPage.getByText('Still talking after the end')).toHaveCount(0)
+
+  await visitor.close()
+  for (const member of [host, ada, bayo, blocked]) await member.context.close()
 })

@@ -1,13 +1,14 @@
 # Scanning uploads for child sexual abuse material
 
-**Status (4 November 2026):** layer 2 is on: Cloudflare's CSAM Scanning Tool is
-enabled for heynaija.ng. Layer 1 is built and waits only for logins: Arachnid
-Shield (account created 4 November) switches on when `ARACHNID_SHIELD_USERNAME`
-and `ARACHNID_SHIELD_PASSWORD` are set, and PhotoDNA (applied for 26 October)
-when `PHOTODNA_SUBSCRIPTION_KEY` is; with neither, every image passes and every
-video is held. The questions at the end went to counsel on 26 October. **Uploads must
-not open beyond the invited pilot until layers 1 and 2 below are live and the
-legal questions at the end are answered.**
+**Status (8 November 2026):** layers 1 and 2 are on in production. Arachnid
+Shield's login (`ARACHNID_SHIELD_USERNAME` and `ARACHNID_SHIELD_PASSWORD`) is set
+on the production API and on the video worker's own server, so every image and
+video is hash-matched before it is published, failing closed. Cloudflare's CSAM
+Scanning Tool has been on for heynaija.ng since 15 October. PhotoDNA (applied for
+26 October) adds a second matcher when `PHOTODNA_SUBSCRIPTION_KEY` is set. The
+questions at the end went to counsel on 26 October. **Uploads must not open
+beyond the invited pilot until the checklist at the end is complete, counsel's
+answers included.**
 
 This is a plan for the people running HeyNaija. It is not legal advice; the
 questions in the last section need a Nigerian lawyer.
@@ -86,12 +87,11 @@ before the public copies are written.
   a key to try it on. Then set `PHOTODNA_SUBSCRIPTION_KEY` on staging, upload an
   ordinary image and confirm it publishes (a wrong address or status code shows
   up at once, as every upload waiting), and then on production.
-- **To do for Arachnid Shield:** set the login on staging; upload an ordinary
-  image and a short video and confirm both publish (a wrong login shows up at once:
-  uploads wait and the logs say "Arachnid Shield gave no answer (HTTP 401…)"); try
-  one of Shield's test files to see the block, the report and the alert; then
-  production. Shield publishes no size or rate limit: an upload it refuses fails
-  closed, so watch the logs on the first days.
+- **Arachnid Shield is live in production,** on the API and the video worker
+  server. A wrong login shows up at once: uploads wait and the logs say "Arachnid
+  Shield gave no answer (HTTP 401…)". To see the block, the report and the alert
+  without real material, use one of Shield's test files. Shield publishes no size
+  or rate limit: an upload it refuses fails closed, so watch the logs.
 - **Alternatives** if both are refused: Thorn's Safer (paid), Google's CSAI Match
   (video, free for qualifying partners), or the hash lists available through
   industry and hotline membership (for example IWF). Revisit if needed.
@@ -196,7 +196,7 @@ Questions (sent to counsel on 26 October 2026):
 
 ## Checklist before uploads open beyond the pilot
 
-- [ ] An upload scanner's login set on both servers and shown to work on staging: Arachnid Shield (account created 4 November 2026; scanner implemented and failing closed) or PhotoDNA (applied 26 October 2026)
+- [x] An upload scanner's login set in production: Arachnid Shield, on the API and the video worker server (confirmed 8 November 2026; failing closed). PhotoDNA (applied 26 October 2026) would be a second matcher
 - [x] Cloudflare CSAM Scanning Tool on, for the hostname that serves `/media` (enabled 15 October 2026 for heynaija.ng; `/media` must stay on that proxied hostname)
 - [ ] Safety email address monitored daily: contact@heynaija.ng, set as `SAFETY_ALERT_EMAIL` on both servers
 - [ ] CDN purge on removal: automated; `CLOUDFLARE_ZONE_ID` and `CLOUDFLARE_PURGE_TOKEN` set on both servers

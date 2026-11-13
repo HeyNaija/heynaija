@@ -19,8 +19,9 @@ export const ARACHNID_SHIELD_URL = 'https://shield.projectarachnid.com'
 const NO_MATCH = 'no-known-match'
 
 const IMAGE_TIMEOUT_MS = 30_000
-// A whole video goes up and is matched frame by frame: minutes, not seconds.
-const VIDEO_TIMEOUT_MS = 5 * 60_000
+// A whole video goes up and is matched frame by frame: minutes, not seconds. The video
+// worker's job limit includes it (`jobTimeoutMs` in video/ffmpeg.ts).
+export const SHIELD_VIDEO_TIMEOUT_MS = 5 * 60_000
 
 type ScannedMedia = {
   classification?: unknown
@@ -52,7 +53,7 @@ export class ArachnidShieldScanner implements ContentScanner {
 
   /** The original file, streamed from disk. On a near match, the time Shield gives for the first matching frame. */
   async scanVideo(video: { path: string; contentType: string }): Promise<VideoScan> {
-    const found = await this.post(await openAsBlob(video.path), video.contentType, VIDEO_TIMEOUT_MS)
+    const found = await this.post(await openAsBlob(video.path), video.contentType, SHIELD_VIDEO_TIMEOUT_MS)
     if (found.classification === NO_MATCH) return { verdict: 'clear', matchMs: null }
     const near = found.near_match_details?.find((d) => typeof d.timestamp === 'number')
     return { verdict: 'match', matchMs: near ? Math.round(near.timestamp! * 1000) : null }

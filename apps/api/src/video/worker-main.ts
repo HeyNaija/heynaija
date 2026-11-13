@@ -1,3 +1,6 @@
+import { readdir, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createDb } from '@heynaija/db'
 import { Worker } from 'bullmq'
 import { smtpMailer } from '../email/mailer.js'
@@ -40,6 +43,10 @@ if (scanner instanceof NoScanner) {
   )
 }
 
+// Scratch is a disk volume (ADR 0021 section 5), which outlives the container: a job cut off by a
+// restart leaves its folder behind, so whatever is there from before goes now. One worker per volume.
+for (const name of await readdir(tmpdir())) if (name.startsWith('video-')) await rm(join(tmpdir(), name), { recursive: true, force: true })
+
 const processor = new VideoProcessor(db, store, scanner, cfg, new EmailSafetyAlerts(smtpMailer(env), env.SAFETY_ALERT_EMAIL, env.WEB_PUBLIC_URL))
 
 const worker = new Worker(
@@ -48,7 +55,8 @@ const worker = new Worker(
     const { mediaId } = job.data as { mediaId: string }
     await processor.process(mediaId, { lastAttempt: job.attemptsMade + 1 >= (job.opts.attempts ?? 1) })
   },
-  // An encode may take up to the 5 minute ffmpeg limit; the lock must outlive it.
+  // BullMQ renews the lock every half of this while a job runs, so an encode of up to the job's limit
+  // (22 minutes for a 3-minute clip) keeps it; a worker that dies loses it within 10 minutes.
   { connection: videoConnection(env), concurrency: 1, lockDuration: 10 * 60_000 },
 )
 worker.on('failed', (job, err) => console.error(`video job ${job?.id} failed (attempt ${job?.attemptsMade}): ${err.message}`))

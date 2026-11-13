@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto'
-import { type Db, members } from '@heynaija/db'
+import { type Db, members, REPLY_AUDIENCES } from '@heynaija/db'
 import {
   BadRequestException,
   Body,
@@ -22,13 +22,15 @@ import type { Env } from '../env.js'
 import { FeatureFlags } from '../flags/feature-flags.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { ModerationService } from '../moderation/moderation.service.js'
-import { GistsGate, gistsShownTo } from '../gists/gists-enabled.guard.js'
-import { signupAgeDecision } from '../governance/age.js'
-import { GovernanceService } from '../governance/governance.service.js'
+import { GistsGate, gistStageFor, gistsShownTo } from '../gists/gists-enabled.guard.js'
+import { seesAdultContent } from '../governance/adult-content.js'
+import { ADULT_AGE, isAdultFor, MINIMUM_AGE, type SignupAgeDecision, signupAgeDecision } from '../governance/age.js'
+import { ageStatusOf, GovernanceService } from '../governance/governance.service.js'
 import { avatarPath } from '../media/media.service.js'
 import { videoConfig, videoLimitsOf } from '../video/video-config.js'
 import { VideoGate } from '../video/video-gate.js'
 import { MembersService } from '../members/members.service.js'
+import { isMinor, MINOR_REPLY_AUDIENCES } from '../governance/minors.js'
 import { NotificationsService } from '../notifications/notifications.service.js'
 import { RateLimiter, visitor } from '../rate-limit.js'
 import { DB, ENV } from '../tokens.js'
@@ -36,14 +38,18 @@ import { AuthService, authRequest } from './auth.service.js'
 import { type AuthedRequest, SessionGuard } from './session.guard.js'
 
 // identity_id is all zeros in the first hook (the account is not saved yet).
-// adult_declared: the person ticked "I am 18 or older" on /join (the hn_age
-// cookie, read by infra/kratos/invite-check.jsonnet).
+// adult_declared: the person ticked "I am 18 or older" on /join. birth_date: a
+// date of birth, as YYYY-MM-DD, while signup asks for one (BIRTH_DATE_ENABLED),
+// or from an app that still sends one. Both come from the hn_age cookie or the
+// signup's transient_payload (infra/kratos/invite-check.jsonnet).
 const registrationHook = z.object({
   identity_id: z.guid(),
   invite_code: z.string().max(100),
   handle: z.string().max(100),
+  birth_date: z.string().max(20).default(''),
   adult_declared: z.boolean().default(false),
 })
+type RegistrationHook = z.infer<typeof registrationHook>
 // previous_handle is the member's handle until this save; the same as `handle`
 // when they changed something else.
 const settingsHook = z.object({
@@ -52,6 +58,9 @@ const settingsHook = z.object({
   previous_handle: z.string().max(100),
 })
 const inviteCheckBody = z.object({ code: z.string().max(100) })
+// The hn_age cookie's value when someone ticks "I am 18 or older" on /join (apps/web/lib/invite.ts).
+const ADULT_BOX = '18-plus'
+const ageCheckBody = z.object({ birthDate: z.string().max(20) })
 
 // The shape Kratos expects from a webhook that aborts a flow; `text` is shown to
 // the person on the signup form.
@@ -93,24 +102,32 @@ export class AuthController {
   @Get('v1/me')
   @UseGuards(SessionGuard)
   async me(@Req() req: AuthedRequest) {
-    const [scope, unread, features, [row]] = await Promise.all([
+    const [scope, unread, features, birthDateNeeded, age, [row]] = await Promise.all([
       this.moderation.scope(req.member.id),
       this.notifications.unreadCount(req.member.id),
       this.flags.all(req.member.id),
+      this.governance.birthDateNeeded(req.member.id),
+      ageStatusOf(this.db, req.member.id),
       this.db
         .select({
           avatarMediaId: members.avatarMediaId,
           displayName: members.displayName,
           bio: members.bio,
           onboardedAt: members.onboardedAt,
+          labelPosts: members.labelPosts,
+          showSensitiveMedia: members.showSensitiveMedia,
+          adult: seesAdultContent(req.member.id),
+          minor: isMinor(req.member.id),
         })
         .from(members)
         .where(eq(members.id, req.member.id)),
     ])
-    // videoPosts is the flag AND the scanner rule (ADR 0019 section 4.7), never the flag alone.
-    const videoPosts = this.videoGate.effective(features.videoPosts)
-    // gists is the flag AND LiveKit AND, in production, the allow-list rule (gists-enabled.guard.ts).
-    const gists = gistsShownTo(await this.gistsGate.access(), req.member)
+    // videoPosts is the flag AND the scanner rule (ADR 0019 section 4.7) AND an adult
+    // (section 4.6), never the flag alone.
+    const videoPosts = this.videoGate.effective(features.videoPosts) && isAdultFor(age, 'video_posting')
+    // gists is the flag AND LiveKit (gists-enabled.guard.ts).
+    const gistsAccess = await this.gistsGate.access()
+    const gists = gistsShownTo(gistsAccess, req.member)
     // `moderates` only decides whether the web app shows the moderation link; every
     // moderation endpoint checks the role again.
     return {
@@ -124,9 +141,27 @@ export class AuthController {
       // home page sends them to /welcome until then.
       // With the welcome flow switched off nobody is sent to it.
       onboarded: !features.onboarding || Boolean(row?.onboardedAt),
+      // True until a member who joined before signup asked for a date of birth
+      // gives theirs; the web app shows nothing else until then (ADR 0020).
+      birthDateNeeded,
       // What is switched on for this member: the database-backed flags (docs/feature-flags.md),
       // games among them (docs/adr/0018), with videoPosts and gists as they take effect, rules in code included.
       features: { ...features, videoPosts, gists },
+      // Whether this member may host a Gist and speak in one, or only listen to them:
+      // under 18 and unknown ages listen (ADR 0020, section 4). Never true without `gists`.
+      gistStage: gistStageFor(gistsAccess, req.member, age),
+      // Posts marked sensitive (ADR 0020): whether this member counts as an adult for
+      // them (only then can they see or mark any), whether everything they post is
+      // marked (by them, or by a moderator), and whether their pictures and video
+      // are shown to them without a cover.
+      sensitive: {
+        adult: row?.adult ?? false,
+        markPosts: row?.labelPosts ?? null,
+        showMedia: row?.showSensitiveMedia ?? false,
+      },
+      // Who the composer may let reply to a new post, the default first: a minor's
+      // conversations open as far as "following" at most (ADR 0020).
+      replyAudiences: row?.minor ? MINOR_REPLY_AUDIENCES : REPLY_AUDIENCES,
       // The limits the composer checks a chosen video against before sending it: this server's own settings.
       videoLimits: videoPosts ? videoLimitsOf(videoConfig(this.env)) : null,
     }
@@ -150,6 +185,33 @@ export class AuthController {
     await this.limits.hit('inviteCheck', visitor(req))
     const parsed = inviteCheckBody.safeParse(body)
     return { usable: parsed.success && (await this.invites.isUsable(parsed.data.code)) }
+  }
+
+  /**
+   * The youngest age that may join now, for what /join and the apps say before
+   * anyone types a date: 18 during the 18+ beta, 13 once under-18 accounts are
+   * open (UNDER_18_ACCOUNTS_ENABLED, ADR 0020 section 5). The same for everyone.
+   * With it, whether /join asks for a date of birth or the "I am 18 or older" box
+   * (BIRTH_DATE_ENABLED, off since 8 November 2026).
+   */
+  @Get('v1/signup/age')
+  joinAgeNow() {
+    return { joinAge: this.joinAge(), asksBirthDate: this.env.BIRTH_DATE_ENABLED }
+  }
+
+  /**
+   * Lets /join refuse someone too young before they fill in a signup form, so the
+   * age rules live here and not in the web app. The registration webhook decides
+   * again. The date is not kept or logged: this answers and forgets it.
+   */
+  @Post('v1/signup/age')
+  @HttpCode(200)
+  async checkAge(@Req() req: FastifyRequest, @Body() body: unknown) {
+    await this.limits.hit('signupAge', visitor(req))
+    const parsed = ageCheckBody.safeParse(body)
+    const age = signupAgeDecision(parsed.success ? parsed.data.birthDate : null, new Date(), this.env.UNDER_18_ACCOUNTS_ENABLED)
+    const outcome = age.allowed ? 'allowed' : age.reason === 'age_not_confirmed' ? 'not_a_date' : 'too_young'
+    return { outcome, joinAge: this.joinAge() }
   }
 
   private assertFromKratos(secret: string | undefined) {
@@ -177,10 +239,16 @@ export class AuthController {
     if (await this.members.handleHeld(parsed.data.handle, null)) {
       throw rejectSignup('That handle is not available. Go back and choose another.')
     }
-    // During the beta, accounts are 18+ (a temporary rule; see signupAgeDecision).
     // Checked here, not only on /join, so a signup that skips that page is refused too.
-    if (!signupAgeDecision(parsed.data.adult_declared ? 'adult' : null).allowed) {
-      throw rejectSignup('During the beta, HeyNaija is open to people aged 18 or older. Go back to your invite link and confirm your age to join.')
+    const age = this.signupAge(parsed.data)
+    if (!age.allowed) {
+      throw rejectSignup(
+        age.reason !== 'age_not_confirmed'
+          ? `Sorry, you cannot join HeyNaija yet: it is open to people aged ${this.joinAge()} and over.`
+          : this.env.BIRTH_DATE_ENABLED
+            ? 'Go back to your invite link and enter your date of birth to join.'
+            : 'Go back to your invite link and confirm you are 18 or older to join.',
+      )
     }
     return {}
   }
@@ -221,7 +289,32 @@ export class AuthController {
     // Losing a race for the last use leaves an account without membership; the
     // session guard refuses it. Kratos cannot undo the signup at this point.
     if (!redeemed) this.logger.warn(`signup without a redeemable invite: ${parsed.data?.identity_id}`)
-    if (redeemed && parsed.data.adult_declared) await this.governance.recordAgeDeclaration(parsed.data.identity_id)
+    if (redeemed) {
+      // The same decision as the first hook, which refused anything else.
+      const age = this.signupAge(parsed.data)
+      if (age.allowed) await this.governance.recordAgeDeclaration(parsed.data.identity_id, age.birthDate)
+    }
     return { redeemed }
+  }
+
+  /**
+   * What a signup's age allows. While signup asks for a date of birth, only a
+   * date counts (signupAgeDecision). Otherwise the "I am 18 or older" box is
+   * enough, and a date sent instead (the apps still send one) is checked the same
+   * way but not kept: the record says only 18 or older. The box's cookie value
+   * may also arrive as birth_date, from a Kratos still on the webhook body before
+   * adult_declared came back.
+   */
+  private signupAge(body: RegistrationHook): SignupAgeDecision {
+    const now = new Date()
+    if (this.env.BIRTH_DATE_ENABLED) return signupAgeDecision(body.birth_date || null, now, this.env.UNDER_18_ACCOUNTS_ENABLED)
+    if (body.adult_declared || body.birth_date === ADULT_BOX) return { allowed: true, birthDate: null }
+    const age = signupAgeDecision(body.birth_date || null, now, false)
+    return age.allowed ? { allowed: true, birthDate: null } : age
+  }
+
+  /** The youngest age that may join now: 18 during the 18+ beta, 13 once under-18 accounts are open. */
+  private joinAge(): number {
+    return this.env.UNDER_18_ACCOUNTS_ENABLED ? MINIMUM_AGE : ADULT_AGE
   }
 }

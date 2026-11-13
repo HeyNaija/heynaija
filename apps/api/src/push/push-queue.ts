@@ -51,7 +51,7 @@ export class BullPushJobs implements PushJobs, OnModuleDestroy {
 /**
  * The consumer side, in the API process like the email, media and link workers:
  * finds the pushes that are due every few seconds and sends them. Does nothing
- * when no VAPID keys are configured.
+ * when neither VAPID keys, FCM's service account nor the Apple key are configured.
  */
 @Injectable()
 export class PushWorker implements OnApplicationBootstrap, OnModuleDestroy {
@@ -66,7 +66,7 @@ export class PushWorker implements OnApplicationBootstrap, OnModuleDestroy {
 
   async onApplicationBootstrap(): Promise<void> {
     if (!this.push.enabled) {
-      this.log.log('Push notifications are off: PUSH_VAPID_PUBLIC_KEY is not set')
+      this.log.log('Push notifications are off: none of PUSH_VAPID_PUBLIC_KEY, FCM_SERVICE_ACCOUNT and APPLE_PRIVATE_KEY is set')
       // A sweep left from when push was on would only fill the queue.
       await this.jobs.queue.removeJobScheduler('sweep-push')
       return

@@ -28,7 +28,7 @@ export class SearchController {
     const viewerId = req.member?.id ?? null
     await this.limits.hit('search', viewerId ?? visitor(req))
     const [members, communities, posts] = await Promise.all([
-      this.members.search(q, 5),
+      this.members.search(viewerId, q, 5),
       this.communities.search(viewerId, q, 5),
       this.posts.search(viewerId, q, 30),
     ])

@@ -5,10 +5,10 @@ import { media, members, posts, reports, videoDetails, videoRenditions } from '@
 import { eq } from 'drizzle-orm'
 import { ModerationService } from '../moderation/moderation.service.js'
 import { PostsService } from '../posts/posts.service.js'
-import { db, migrate, pool, reset } from '../test-db.js'
+import { db, giveBirthDates, migrate, pool, reset } from '../test-db.js'
 import { MemoryVideoStore } from './memory-video-store.js'
 import { DEFAULT_VIDEO_CONFIG } from './video-config.js'
-import { posterKey, renditionKey } from './video-keys.js'
+import { posterKey, playlistKey } from './video-keys.js'
 import { VideoService } from './video.service.js'
 
 const ada = randomUUID() // posts the video
@@ -41,6 +41,7 @@ beforeEach(async () => {
     { id: bayo, handle: 'bayo', createdAt: old },
     { id: sam, handle: 'sam', createdAt: old },
   ])
+  await giveBirthDates([ada, bayo, sam])
   store = new FlakyStore()
   videos = new VideoService(db, store, jobs, DEFAULT_VIDEO_CONFIG)
   moderation = new ModerationService(db, undefined, undefined, undefined, videos)
@@ -57,7 +58,7 @@ const livePost = async () => {
   const id = m!.id
   await db.insert(videoDetails).values({ mediaId: id, durationMs: 12_000, width: 640, height: 360, posterKey: posterKey(id), scanResult: 'clear' })
   await db.insert(videoRenditions).values({ mediaId: id, height: 360, width: 640, bytes: 3000, bitrateKbps: 600 })
-  for (const key of [renditionKey(id, 360), posterKey(id)]) store.objects.set(`media/${key}`, Buffer.from(key))
+  for (const key of [playlistKey(id, 360), posterKey(id)]) store.objects.set(`media/${key}`, Buffer.from(key))
   return { postId: p!.id, mediaId: id }
 }
 const statusOf = async (id: string) => (await db.select().from(media).where(eq(media.id, id)))[0]!.status
@@ -97,7 +98,7 @@ test('a dismissed illegal report puts the video back: ready, files public, visib
   await moderation.resolve(sam, report!.id, 'dismiss')
 
   assert.equal(await statusOf(mediaId), 'ready')
-  assert.deepEqual(store.keys('media'), [renditionKey(mediaId, 360), posterKey(mediaId)].sort())
+  assert.deepEqual(store.keys('media'), [playlistKey(mediaId, 360), posterKey(mediaId)].sort())
   assert.equal((await postsService.thread(null, postId))!.post.video?.id, mediaId)
 })
 

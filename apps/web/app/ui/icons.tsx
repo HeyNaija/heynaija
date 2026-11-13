@@ -5,6 +5,7 @@ import {
   BadgeCheck,
   Bell,
   Bookmark,
+  BookOpen,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -15,6 +16,7 @@ import {
   CircleDashed,
   CircleDot,
   Ellipsis,
+  EyeOff,
   FileText,
   Gamepad2,
   Grid3x3,
@@ -36,6 +38,8 @@ import {
   Link,
   Lock,
   LogOut,
+  Maximize,
+  Minimize,
   type LucideIcon,
   Mic,
   MicOff,
@@ -58,6 +62,8 @@ import {
   Users,
   Vote,
   Video,
+  Volume2,
+  VolumeX,
   Wallet,
   X,
 } from 'lucide-react'
@@ -87,6 +93,8 @@ export const GearIcon = icon(Settings)
 export const SearchIcon = icon(Search)
 export const HeartIcon = icon(Heart)
 export const BubbleIcon = icon(MessageCircle)
+/** A story (docs/adr/0024): one author's updates to a post, in order. */
+export const StoryIcon = icon(BookOpen)
 export const ShareIcon = icon(Share2)
 /** Safari's Share button on iPhone and iPad, a box with an arrow, as the install steps describe it. */
 export const AppleShareIcon = icon(Share)
@@ -110,6 +118,10 @@ export const VideoIcon = icon(Video)
 export const CloseIcon = icon(X)
 export const PlayIcon = icon(Play)
 export const PauseIcon = icon(Pause)
+export const SoundIcon = icon(Volume2)
+export const MutedIcon = icon(VolumeX)
+export const FullScreenIcon = icon(Maximize)
+export const ExitFullScreenIcon = icon(Minimize)
 export const PreviousIcon = icon(ChevronLeft)
 export const NextIcon = icon(ChevronRight)
 export const ArrowUpRightIcon = icon(ArrowUpRight)
@@ -129,6 +141,7 @@ export const MicIcon = icon(Mic)
 export const MicOffIcon = icon(MicOff)
 export const LiveIcon = icon(Radio)
 export const LockIcon = icon(Lock)
+export const SensitiveIcon = icon(EyeOff)
 export const LeaveIcon = icon(LogOut)
 export const SignalIcon = icon(Signal)
 export const HeadphonesIcon = icon(Headphones)
