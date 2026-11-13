@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { newMember, post, replyBox } from '../lib/members.ts'
+import { reloadSettings } from '../lib/settings.ts'
 
 test('a member who turns off like notifications is not told of likes, and still hears of replies', async ({ browser }) => {
   const author = await newMember(browser, 'quiet')
@@ -39,7 +40,7 @@ test('a member who turns off like notifications is not told of likes, and still 
   await expect(section.getByLabel('Someone replies to your post')).toBeChecked()
 
   // The choice is kept.
-  await author.page.reload()
+  await reloadSettings(author.page)
   await expect(section.getByLabel('Someone likes your post')).not.toBeChecked()
   await expect(section.getByLabel('Someone replies to your post')).toBeChecked()
 

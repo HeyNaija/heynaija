@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { newMember } from '../lib/members.ts'
+import { reloadSettings } from '../lib/settings.ts'
 
 const notifications = (page: Page) => page.locator('section', { has: page.getByRole('heading', { name: 'Notifications', exact: true }) })
 const highlightsBox = (page: Page) => notifications(page).getByLabel('Send me weekly highlights')
@@ -26,12 +27,12 @@ test('weekly highlights are on for a new member, and turn off and on in Settings
   await expect(section.getByLabel('Someone replies to your post')).toBeChecked()
 
   // The choice is kept, and can be made again.
-  await member.page.reload()
+  await reloadSettings(member.page)
   await expect(highlightsBox(member.page)).not.toBeChecked()
   await highlightsBox(member.page).check()
   await section.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(section.getByRole('status')).toHaveText('Saved.')
-  await member.page.reload()
+  await reloadSettings(member.page)
   await expect(highlightsBox(member.page)).toBeChecked()
 
   await member.context.close()
