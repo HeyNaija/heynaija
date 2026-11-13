@@ -465,3 +465,46 @@ test('a member keeps at most ten installations of the app; registering one more 
   await push.register(ada, 'fcm', tokens[0]!, appKey)
   assert.deepEqual(await kept(), [tokens[0]!, ...tokens.slice(3)].sort())
 })
+
+const news: PushMessage = { title: 'While you were away on HeyNaija', body: '@bayo: “hello” and 2 more conversations', url: '/p/1', tag: 'highlights' }
+
+test('a message that is not a notification goes to each of the member’s browsers and apps, and to nobody else', async () => {
+  const phone = await browser(ada)
+  const android = await app(ada)
+  const other = await browser(bayo)
+
+  assert.equal(await push.sendTo(ada, [news]), true)
+  assert.deepEqual(services.to(phone), [news])
+  assert.deepEqual(apps.to(android), [news])
+  assert.deepEqual(services.to(other), [])
+  // Nothing is written for the app to show, and each place records that it was pushed to.
+  assert.equal((await db.select().from(notifications)).length, 0)
+  assert.ok((await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.memberId, ada)))[0]!.lastPushedAt)
+  assert.ok((await db.select().from(pushDevices).where(eq(pushDevices.memberId, ada)))[0]!.lastPushedAt)
+})
+
+test('it says when nothing took the message: no device, a suspended member, or every device gone', async () => {
+  assert.equal(await push.sendTo(ada, [news]), false, 'nowhere to push to')
+  assert.equal(await push.sendTo(ada, []), false, 'nothing to say')
+
+  const phone = await browser(ada)
+  await db.update(members).set({ active: false }).where(eq(members.id, ada))
+  assert.equal(await push.sendTo(ada, [news]), false, 'suspended')
+  await db.update(members).set({ active: true }).where(eq(members.id, ada))
+
+  services.failing.set(phone, new SubscriptionGoneError('push service answered 410'))
+  assert.equal(await push.sendTo(ada, [news]), false, 'the browser is gone')
+  assert.equal((await db.select().from(pushSubscriptions)).length, 0, 'and forgotten')
+  assert.deepEqual(services.sent, [])
+})
+
+test('it throws when no device could be reached and trying again may work, and not when one took it', async () => {
+  const phone = await browser(ada)
+  const laptop = await browser(ada, 'laptop')
+  services.failing.set(phone, new Error('push service answered 503'))
+  assert.equal(await push.sendTo(ada, [news]), true)
+  assert.deepEqual(services.to(laptop), [news])
+
+  services.failing.set(laptop, new Error('push service answered 503'))
+  await assert.rejects(push.sendTo(ada, [news]), /503/)
+})

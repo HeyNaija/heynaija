@@ -133,6 +133,8 @@ async function Rules() {
         <p className="mt-4 text-sm">
           <Link href="/?feed=discover" className="font-semibold text-accent-strong hover:underline">Open Discover</Link>
           <span className="text-muted"> · </span>
+          <Link href="/about/highlights" className="font-semibold text-accent-strong hover:underline">How weekly highlights work</Link>
+          <span className="text-muted"> · </span>
           <Link href="/about" className="font-semibold text-accent-strong hover:underline">About HeyNaija</Link>
         </p>
       </section>

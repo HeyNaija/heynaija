@@ -139,6 +139,20 @@ test('an export says which kinds of activity the member is notified about', asyn
   assert.deepEqual((await service.export(bayo, null))!.notificationPreferences, allOn)
 })
 
+test('an export says whether weekly highlights are on, and when any were last sent', async () => {
+  const first = (await service.export(ada, null))!
+  assert.equal(first.weeklyHighlights, true)
+  assert.equal(first.weeklyHighlightsLastSent, null)
+  const sentAt = new Date('2026-11-08T17:02:00Z')
+  await db.update(members).set({ highlightsSentAt: sentAt }).where(eq(members.id, ada))
+  await notificationsService.setPreferences(ada, { highlights: false })
+  const later = (await service.export(ada, null))!
+  assert.equal(later.weeklyHighlights, false)
+  assert.equal(later.weeklyHighlightsLastSent?.toISOString(), sentAt.toISOString())
+  // Turning highlights off is not turning email off.
+  assert.equal(later.emailNotifications, true)
+})
+
 test('an export says whether notifications are also emailed', async () => {
   assert.equal((await service.export(ada, null))!.emailNotifications, true)
   await notificationsService.setPreferences(ada, { email: false })
@@ -191,7 +205,7 @@ test('an export lists a post’s ready video (path and poster); held, unattached
   await row(bayo, 'ready', other.id)
 
   const data = (await service.export(ada, null))!
-  assert.equal(data.format, 'heynaija-export/14')
+  assert.equal(data.format, 'heynaija-export/15')
   const byText = (text: string) => data.posts.find((p) => p.text === text)!
   assert.deepEqual(byText('my clip').videos, [{ url: `/media/videos/${ready}/hls/master.m3u8`, poster: `/media/videos/${ready}/poster.webp` }])
   assert.deepEqual(byText('no clip').videos, [])

@@ -164,6 +164,13 @@ const schema = z.object({
   EMAIL_DIGEST_GAP_S: z.coerce.number().int().min(0).max(86_400).default(1800),
   // How often the job that finds due emails runs, in seconds.
   EMAIL_SWEEP_EVERY_S: z.coerce.number().int().min(1).max(3600).default(60),
+  // Weekly highlights (docs/adr/0027). When the week's run starts: the day of the
+  // week (0 is Sunday) and the hour, both in UTC. The default is Sunday at 17:00
+  // UTC, 6pm in Nigeria. And how often the job that finds who is due runs, in
+  // seconds. Sent only while the weeklyHighlights flag is on (docs/feature-flags.md).
+  HIGHLIGHTS_WEEKDAY: z.coerce.number().int().min(0).max(6).default(0),
+  HIGHLIGHTS_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(17),
+  HIGHLIGHTS_SWEEP_EVERY_S: z.coerce.number().int().min(10).max(3600).default(300),
   // Push notifications (docs/adr/0011): the VAPID key pair browsers subscribe
   // with, both base64url (infra/scripts/gen-dev-env.sh and infra/deploy/gen-env.sh
   // make one). Without them nothing is pushed and Settings does not offer push.

@@ -418,6 +418,36 @@ export async function getDiscoverRules(): Promise<DiscoverRules> {
   return res.json()
 }
 
+/**
+ * The rules weekly highlights are chosen by, as the API applies them (ADR 0027),
+ * when the week's run starts (a day of the week, 0 for Sunday, and an hour, in UTC),
+ * and whether they are being sent to everyone yet.
+ */
+export type HighlightsRules = {
+  awayDays: number
+  stopAfterDays: number
+  windowDays: number
+  maxPosts: number
+  minPosts: number
+  conversationPoints: number
+  likePoints: number
+  repostPoints: number
+  followedPoints: number
+  followsAuthorPoints: number
+  joinedCommunityPoints: number
+  reportsToHold: number
+  openHours: number
+  weekday: number
+  hourUtc: number
+  live: boolean
+}
+
+export async function getHighlightsRules(): Promise<HighlightsRules> {
+  const res = await api('/v1/highlights/rules')
+  if (!res.ok) throw new Error(`API /v1/highlights/rules responded ${res.status}`)
+  return res.json()
+}
+
 export type IdeaKind = 'idea' | 'problem'
 export type IdeaStatus = 'under_review' | 'planned' | 'in_progress' | 'shipped' | 'not_now' | 'duplicate'
 export type IdeaGroup = 'open' | 'shipped' | 'closed'

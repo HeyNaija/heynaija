@@ -33,6 +33,25 @@ test('the email box is saved on its own: ticking it does not turn any kind on', 
   assert.equal(preferencesFromForm(form('like')).email, false)
 })
 
+test('weekly highlights are saved only by a form that offered the box', () => {
+  // No box on the form: the choice is left as it is, not turned off.
+  assert.ok(!('highlights' in preferencesFromForm(form('like'))))
+  const stray = form('like')
+  stray.append('highlights', 'on')
+  assert.ok(!('highlights' in preferencesFromForm(stray)))
+
+  const unticked = form('like')
+  unticked.append('highlights-offered', '1')
+  assert.equal(preferencesFromForm(unticked).highlights, false)
+  const ticked = form('like')
+  ticked.append('highlights-offered', '1')
+  ticked.append('highlights', 'on')
+  assert.equal(preferencesFromForm(ticked).highlights, true)
+  // On its own: it does not touch email or any kind.
+  assert.equal(preferencesFromForm(ticked).email, false)
+  assert.equal(preferencesFromForm(ticked).reply, false)
+})
+
 test('a kind that cannot be turned off is never sent, even if a form names it', () => {
   const sent = preferencesFromForm(form('like', 'post_removed', 'report_resolved'))
   assert.deepEqual(Object.keys(sent).sort(), ['email', ...NOTIFICATION_SETTINGS.map(({ kind }) => kind)].sort())

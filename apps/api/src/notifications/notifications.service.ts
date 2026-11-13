@@ -3,6 +3,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common'
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm'
 import { decodeCursor, encodeCursor } from '../cursor.js'
 import { adultContentAllowed } from '../governance/adult-content.js'
+import { FeatureFlags } from '../flags/feature-flags.js'
 import { memberOpensGist } from '../gists/gist-open.js'
 import { GistsGate } from '../gists/gists-enabled.guard.js'
 import { avatarPath } from '../media/media.service.js'
@@ -19,7 +20,15 @@ export type OptionalNotificationKind = (typeof OPTIONAL_NOTIFICATION_KINDS)[numb
  * notifications are also sent by email. The kinds decide what notifies the
  * member at all, so they decide what is emailed too.
  */
-export type NotificationPreferences = Record<OptionalNotificationKind, boolean> & { email: boolean }
+export type NotificationPreferences = Record<OptionalNotificationKind, boolean> & {
+  email: boolean
+  /**
+   * Weekly highlights (ADR 0027), which are not a notification but are chosen
+   * in the same place. Left out while they are not offered to the member (the
+   * weeklyHighlights flag), so Settings and the apps show no switch for them.
+   */
+  highlights?: boolean
+}
 
 const isOptional = (kind: string): kind is OptionalNotificationKind =>
   (OPTIONAL_NOTIFICATION_KINDS as readonly string[]).includes(kind)
@@ -142,6 +151,7 @@ export class NotificationsService {
   constructor(
     @Inject(DB) private readonly db: Db,
     @Optional() @Inject(GistsGate) private readonly gate: Pick<GistsGate, 'access'> | null = null,
+    @Optional() @Inject(FeatureFlags) private readonly flags: Pick<FeatureFlags, 'isEnabled'> | null = null,
   ) {}
 
   /** Newest first, cursor-paginated. */
@@ -223,25 +233,31 @@ export class NotificationsService {
   }
 
   /** Everything is on until the member turns it off, except email for members who joined before it existed. */
+  // `highlights` is there only while the weeklyHighlights flag is on for them.
   async preferences(memberId: string): Promise<NotificationPreferences> {
-    const [off, [member]] = await Promise.all([
+    const [off, [member], highlightsOffered] = await Promise.all([
       this.db.select({ kind: notificationOptOuts.kind }).from(notificationOptOuts).where(eq(notificationOptOuts.memberId, memberId)),
-      this.db.select({ email: members.emailNotifications }).from(members).where(eq(members.id, memberId)),
+      this.db.select({ email: members.emailNotifications, highlights: members.weeklyHighlights }).from(members).where(eq(members.id, memberId)),
+      this.flags?.isEnabled('weeklyHighlights', memberId) ?? false,
     ])
-    return { email: member?.email ?? true, ...preferencesWithout(off.map((r) => r.kind)) }
+    return {
+      email: member?.email ?? true,
+      ...(highlightsOffered ? { highlights: member?.highlights ?? true } : {}),
+      ...preferencesWithout(off.map((r) => r.kind)),
+    }
   }
 
   /**
-   * Turns kinds on (true) or off (false), and email on or off; anything left out
-   * stays as it is. Only other members' activity can be turned off: asking to
+   * Turns kinds on (true) or off (false), and email and weekly highlights on or
+   * off; anything left out stays as it is. Only other members' activity can be turned off: asking to
    * turn off a moderation or account notice changes nothing and throws
    * NotOptionalError. Turning email off does not touch the kinds.
    */
   async setPreferences(
     memberId: string,
-    changes: Partial<Record<NotificationKind | 'email', boolean>>,
+    changes: Partial<Record<NotificationKind | 'email' | 'highlights', boolean>>,
   ): Promise<NotificationPreferences> {
-    const { email, ...kinds } = changes
+    const { email, highlights, ...kinds } = changes
     const entries = Object.entries(kinds).filter(([, on]) => on !== undefined)
     const always = entries.map(([kind]) => kind).filter((kind) => !isOptional(kind))
     if (always.length) throw new NotOptionalError(`always sent: ${always.join(', ')}`)
@@ -260,6 +276,7 @@ export class NotificationsService {
           .where(and(eq(notificationOptOuts.memberId, memberId), inArray(notificationOptOuts.kind, turnedOn)))
       }
       if (email !== undefined) await tx.update(members).set({ emailNotifications: email }).where(eq(members.id, memberId))
+      if (highlights !== undefined) await tx.update(members).set({ weeklyHighlights: highlights }).where(eq(members.id, memberId))
     })
     return this.preferences(memberId)
   }

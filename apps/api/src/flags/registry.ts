@@ -92,6 +92,12 @@ export const FLAGS = {
     owner: 'posts',
     defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
   },
+  weeklyHighlights: {
+    description:
+      'Weekly highlights (ADR 0027): once a week, a member who has been away is sent a few conversations they missed, by push or email. Also the switch for them in Settings. Turning it off stops the next send; nothing already sent is affected.',
+    owner: 'highlights',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
 } as const satisfies Record<string, FlagDefinition>
 
 export type FlagKey = keyof typeof FLAGS
