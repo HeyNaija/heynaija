@@ -13,6 +13,7 @@ import {
   refusalPath,
 } from '@/lib/account-deletion'
 import { api, getSignupAge, type PostVideo } from '@/lib/api'
+import { announcementWait } from '@/lib/announcements'
 import { DATA_COOKIE, DATA_COOKIE_MAX_AGE, dataMode } from '@/lib/low-data'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, AGE_REFUSED_COOKIE, INVITE_COOKIE } from '@/lib/invite'
 import { forgetEndedSession, reauthUrl, startAuthUrl } from '@/lib/auth/server'
@@ -44,6 +45,8 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   const replyAudience = formData.get('replyAudience') ? String(formData.get('replyAudience')) : undefined
   const sensitive = formData.get('sensitive') === '1'
   const storyOf = String(formData.get('storyOf') ?? '') || undefined
+  // Notify every member of the community (docs/adr/0029); only its moderators are offered it.
+  const announce = formData.get('announce') === '1'
   const poll = formData.get('poll') === '1'
     ? {
         multiple: formData.get('pollMultiple') === '1',
@@ -63,7 +66,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   const res = await api('/v1/posts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, replyTo, community, images, video, quote, poll, replyAudience, sensitive, storyOf }),
+    body: JSON.stringify({ text, replyTo, community, images, video, quote, poll, replyAudience, sensitive, storyOf, announce }),
   }).catch(() => null)
 
   if (!res) return { error: 'Could not post. Check your connection and try again.' }
@@ -75,11 +78,16 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
     const body = (await res.json().catch(() => ({}))) as { code?: string }
     if (body.code === 'reply_not_allowed') return { error: 'The author has limited who can reply to this conversation.' }
     if (body.code === 'label_not_allowed') return { error: 'Only people 18 or older can mark a post as sensitive.' }
+    if (body.code === 'not_a_moderator') return { error: 'Only this community’s moderators can notify its members. Turn that off to post.' }
     // The video rules, checked again when the video goes on the post.
     if (video && body.code === 'not_eligible') return { error: VIDEO_REFUSALS.not_eligible! }
   }
   if (res.status === 400) {
-    const body = (await res.json().catch(() => ({}))) as { code?: string }
+    const body = (await res.json().catch(() => ({}))) as { code?: string; nextAt?: string }
+    if (body.code === 'announcement_too_soon') {
+      const wait = announcementWait(body.nextAt, Date.now())
+      return { error: `This community has already notified its members today. Turn that off to post now${wait ? `, or try again ${wait}` : ''}.` }
+    }
     if (body.code === 'parent_gone') return { error: 'The post you are replying to has been deleted.' }
     if (body.code === 'feature_unavailable') return { error: 'That is not available right now.' }
     if (body.code === 'quote_gone') return { error: 'The post you are quoting is no longer available.' }
@@ -230,6 +238,14 @@ export async function setSensitive(formData: FormData): Promise<void> {
 export async function setCommunitySensitive(formData: FormData): Promise<void> {
   const slug = String(formData.get('slug') ?? '')
   const res = await api(`/v1/communities/${encodeURIComponent(slug)}/sensitive`, { method: formData.get('on') === '1' ? 'PUT' : 'DELETE' })
+  if (res.status === 401) redirect('/login')
+  refresh()
+}
+
+/** A member turns a community's announcements on (on=1) or off for themselves (docs/adr/0029). */
+export async function setCommunityAnnouncements(formData: FormData): Promise<void> {
+  const slug = String(formData.get('slug') ?? '')
+  const res = await api(`/v1/communities/${encodeURIComponent(slug)}/announcements`, { method: formData.get('on') === '1' ? 'PUT' : 'DELETE' })
   if (res.status === 401) redirect('/login')
   refresh()
 }

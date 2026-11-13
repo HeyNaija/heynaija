@@ -51,7 +51,7 @@ import { describeTime } from '../games/chess/time-controls.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/19'
+export const EXPORT_FORMAT = 'heynaija-export/20'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -210,7 +210,14 @@ export class ExportService {
         .innerJoin(other, eq(other.id, blocks.blockedId))
         .where(eq(blocks.blockerId, memberId)),
       db
-        .select({ community: communities.slug, name: communities.name, role: communityMemberships.role, since: communityMemberships.joinedAt })
+        .select({
+          community: communities.slug,
+          name: communities.name,
+          role: communityMemberships.role,
+          since: communityMemberships.joinedAt,
+          // Whether you are told of its announcements (docs/adr/0029).
+          announcements: communityMemberships.announcements,
+        })
         .from(communityMemberships)
         .innerJoin(communities, eq(communities.id, communityMemberships.communityId))
         .where(eq(communityMemberships.memberId, memberId)),

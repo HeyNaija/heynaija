@@ -841,6 +841,33 @@
       "notes": "One square photo per community (communities.photo_media_id), added, replaced or removed by that community's moderators and site moderators from the community page; the control needs JavaScript, while the photo and the subject-icon fallback show to everyone without it. It goes through the profile-photo pipeline (JPEG, PNG or WebP up to 5 MB, 96px and 256px WebP, location data dropped) and the same fail-closed upload scanner, so it depends on upload-scanning being completed before launch. Site moderators take a photo down from the community page: it is quarantined privately and logged as remove_community_photo, but the community's moderators can then upload another. Members who cannot manage the photo report it from a Report photo link on the community page (/report?community=slug), as they would a post or account: same reasons, rate limit and one open report per member per photo (reports.community_id and photo_media_id, migration 0034). The report reaches site moderators only, who can remove the photo from the queue (the photo is quarantined, logged and reporters told) or dismiss; a report about a photo since replaced can only be dismissed, and once its reports are dismissed its private copy is deleted. An upload can only become the photo of the community it was started for (media.community_id). The photo is the community's: erasing the account of the moderator who uploaded it leaves it in place."
     },
     {
+      "id": "community-announcements",
+      "name": "Community announcements",
+      "description": "A community's moderator can notify every member of a new post in it, at most once a day; any member can turn that off for one community or for all.",
+      "category": "discovery",
+      "priority": "P1",
+      "status": "implemented",
+      "availability": "not_live",
+      "evidence": [
+        "docs/adr/0029-community-announcements.md",
+        "packages/db/drizzle/0052_community_announcements.sql",
+        "apps/api/src/communities/announcements.ts",
+        "apps/api/src/notifications/notifications.service.ts",
+        "apps/api/src/posts/posts.service.ts",
+        "apps/api/src/communities/communities.service.ts",
+        "apps/web/app/ui/composer.tsx",
+        "apps/web/app/(main)/c/[slug]/page.tsx",
+        "apps/api/src/communities/announcements.test.ts",
+        "e2e/tests/announcements.spec.ts"
+      ],
+      "dependency": [
+        "communities",
+        "push-notifications",
+        "email-notifications"
+      ],
+      "notes": "Built 13 Nov 2026 (ADR 0029), behind the communityAnnouncements flag: on in development and staging, off in production until the owner turns it on. The composer shows Notify all members to a community's moderators (and site moderators who have joined it) for a new post there; there is no @everyone to type. One a day per community, whichever moderator sends it, taken inside the post's transaction so two at once get one through. Every member but the author is told in the app, by push and by email, unless they turned announcements off with the bell on the community's page or the box in Settings; someone the post mentions is told that instead. An announcement stops showing when the member leaves or turns them off. The apps have the same switch, bell and notification on branch feat/community-announcements of heynaija-mobile. Not yet tried with a real community on staging."
+    },
+    {
       "id": "notification-preferences",
       "name": "Notification preferences",
       "description": "Choose which activity should create notifications.",

@@ -20,6 +20,7 @@ test('the Settings form saves every kind: ticked boxes on, the rest off', () => 
     story_update: false,
     chess_challenge: false,
     chess_game_started: false,
+    community_announcement: false,
   })
   // No boxes ticked turns everything off, rather than changing nothing.
   assert.ok(Object.values(preferencesFromForm(form())).every((on) => on === false))
@@ -61,16 +62,24 @@ test('a kind that cannot be turned off is never sent, even if a form names it', 
 })
 
 test('only other members’ activity is offered, each with a plain label', () => {
-  assert.deepEqual(NOTIFICATION_SETTINGS.map(({ kind }) => kind).sort(), ['chess_challenge', 'follow', 'like', 'mention', 'quote', 'reply', 'repost', 'story_update'])
-  for (const { label } of NOTIFICATION_SETTINGS) assert.match(label, /^Someone .+ (you|your post|a story you follow|your game starts)$/)
+  assert.deepEqual(NOTIFICATION_SETTINGS.map(({ kind }) => kind).sort(), ['chess_challenge', 'community_announcement', 'follow', 'like', 'mention', 'quote', 'reply', 'repost', 'story_update'])
+  for (const { label } of NOTIFICATION_SETTINGS) assert.match(label, /^Someone .+ (you|your post|a story you follow|a community you joined|your game starts)$/)
 })
 
 test('the chess box shows only to members with Games; for others it keeps its setting through a hidden field', () => {
-  assert.ok(settingsFor({ games: true }).shown.some(({ kind }) => kind === 'chess_challenge'))
-  assert.deepEqual(settingsFor({ games: true }).hidden, [])
-  const without = settingsFor({})
+  const all = { games: true, communityAnnouncements: true }
+  assert.ok(settingsFor(all).shown.some(({ kind }) => kind === 'chess_challenge'))
+  assert.deepEqual(settingsFor(all).hidden, [])
+  const without = settingsFor({ communityAnnouncements: true })
   assert.ok(!without.shown.some(({ kind }) => kind === 'chess_challenge'))
   assert.deepEqual(without.hidden, ['chess_challenge', 'chess_game_started'])
+})
+
+test('the announcements box shows only while community announcements are switched on, and keeps its setting otherwise', () => {
+  assert.ok(settingsFor({ communityAnnouncements: true }).shown.some(({ kind }) => kind === 'community_announcement'))
+  const without = settingsFor({ games: true })
+  assert.ok(!without.shown.some(({ kind }) => kind === 'community_announcement'))
+  assert.deepEqual(without.hidden, ['community_announcement'])
 })
 
 test('the chess box turns both chess kinds on or off together', () => {

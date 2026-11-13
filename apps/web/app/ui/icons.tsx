@@ -4,6 +4,7 @@ import {
   Award,
   BadgeCheck,
   Bell,
+  BellOff,
   Bookmark,
   BookOpen,
   Check,
@@ -39,6 +40,7 @@ import {
   Lock,
   LogOut,
   Maximize,
+  Megaphone,
   Minimize,
   type LucideIcon,
   Mic,
@@ -134,6 +136,8 @@ export const ChessIcon = icon(ChessKnight)
 export const KenoIcon = icon(Grid3x3)
 export const TrophyIcon = icon(Trophy)
 export const BellIcon = icon(Bell)
+export const BellOffIcon = icon(BellOff)
+export const MegaphoneIcon = icon(Megaphone)
 export const FollowIcon = icon(UserPlus)
 export const FlagIcon = icon(Flag)
 export const VerifiedIcon = icon(BadgeCheck)

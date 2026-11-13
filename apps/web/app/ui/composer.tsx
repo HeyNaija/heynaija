@@ -5,13 +5,14 @@ import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { Globe } from 'lucide-react'
 import { type ComposeState, createPost } from '@/app/actions'
+import { announcementWait } from '@/lib/announcements'
 import { insertMention, mentionBeforeCaret } from '@/lib/mention-suggest'
 import { POLL_OPTION_INPUT_MAX, POLL_OPTIONS_MAX } from '@/lib/polls'
 import { REPLY_AUDIENCES, type ReplyAudience } from '@/lib/reply-audience'
 import { limitSize, type VideoLimits } from '@/lib/video'
 import { Avatar } from './avatar'
 import { FounderBadge } from './founder-badge'
-import { BubbleIcon, CloseIcon, GifIcon, ImageIcon, PeopleIcon, PlusIcon, SensitiveIcon, VideoIcon, VoteIcon } from './icons'
+import { BubbleIcon, CloseIcon, GifIcon, ImageIcon, MegaphoneIcon, PeopleIcon, PlusIcon, SensitiveIcon, VideoIcon, VoteIcon } from './icons'
 import { IMAGE_TYPES } from './shrink-image'
 import { useAutoGrow } from './use-auto-grow'
 import { type VideoDraft, useVideoDraft } from './use-video-draft'
@@ -41,8 +42,13 @@ type Props = {
   placeholder?: string
   /** Post straight into this community (used on a community's own page). */
   community?: string
-  /** Or let the member choose among the communities they have joined. */
-  choices?: { slug: string; name: string }[]
+  /**
+   * With `community`: the member may notify its members of this post (docs/adr/0029),
+   * as one of its moderators. `nextAt` is when it can next be done, if today's has gone.
+   */
+  announcements?: { nextAt: string | null } | null
+  /** Or let the member choose among the communities they have joined, which say the same of themselves. */
+  choices?: { slug: string; name: string; viewerCanAnnounce?: boolean; nextAnnouncementAt?: string | null }[]
   /** Makes this a quote post of that post, shown under the box as `preview`. */
   quote?: { id: string; preview: ReactNode }
   /**
@@ -85,7 +91,7 @@ const REPLY_AUDIENCE_CHOICE = {
   mentioned: 'Only people mentioned',
 } satisfies Record<ReplyAudience, string>
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, choices, quote, story, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, replyAudiences = REPLY_AUDIENCES, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, announcements = null, choices, quote, story, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, replyAudiences = REPLY_AUDIENCES, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -99,6 +105,9 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const [pollMultiple, setPollMultiple] = useState(false)
   const [pollExpiry, setPollExpiry] = useState('7_days')
   const [sensitive, setSensitive] = useState(false)
+  const [announce, setAnnounce] = useState(false)
+  // Read once: the wait is said in hours, and the API has the last word anyway.
+  const [openedAt] = useState(() => Date.now())
   const prompt = placeholder ?? (audience ? `Start a conversation in ${choices?.find((c) => c.slug === audience)?.name ?? 'your community'}…` : 'Start a conversation…')
   const [expanded, setExpanded] = useState(false)
   // Disabled for an empty box only once the page is alive; before that (or without JavaScript) the button works.
@@ -225,6 +234,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       setPollMultiple(false)
       setPollExpiry('7_days')
       setSensitive(false)
+      setAnnounce(false)
       clear()
       setExpanded(false)
       onPosted?.(state)
@@ -238,6 +248,17 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     picker.current.click()
   }
 
+  // Notifying a community's members: offered to its moderators, for a new post there.
+  const chosen = choices?.find((c) => c.slug === audience)
+  const announceOffer = replyTo || story
+    ? null
+    : community
+      ? announcements
+      : chosen?.viewerCanAnnounce
+        ? { nextAt: chosen.nextAnnouncementAt ?? null }
+        : null
+  const announceWait = announceOffer ? announcementWait(announceOffer.nextAt, openedAt) : null
+  const announcing = announce && announceOffer !== null && announceWait === null
   const left = LIMIT - graphemes(text.trim())
   // The mark goes with pictures and video; with none attached there is nothing to offer.
   const markable = sensitiveLabels && (images.drafts.length > 0 || video.draft !== null)
@@ -257,6 +278,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       {!replyTo && replyControls ? <input type="hidden" name="replyAudience" value={replyAudience} /> : null}
       {pollOpen ? <input type="hidden" name="poll" value="1" /> : null}
       {markable && sensitive ? <input type="hidden" name="sensitive" value="1" /> : null}
+      {announcing ? <input type="hidden" name="announce" value="1" /> : null}
 
       {replyTo && replyHandle ? (
         <p id={recipientId} className="composer-recipient">Replying to <strong>{replyLabel ?? `@${replyHandle}`}</strong></p>
@@ -382,6 +404,19 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
             >
               <SensitiveIcon size={15} />
               {sensitive ? 'Marked sensitive' : 'Mark as sensitive'}
+            </button>
+          ) : null}
+          {announceOffer && active ? (
+            <button
+              type="button"
+              className="composer-sensitive"
+              aria-pressed={announcing}
+              disabled={announceWait !== null}
+              title={announceWait ? `This community has notified its members today. It can again ${announceWait}.` : 'Sends every member of this community a notification about this post. Once a day.'}
+              onClick={() => setAnnounce((on) => !on)}
+            >
+              <MegaphoneIcon size={15} />
+              {announceWait ? `Members notified today · again ${announceWait}` : announcing ? 'Notifying all members' : 'Notify all members'}
             </button>
           ) : null}
           {quote ? <div className="composer-quote">{quote.preview}</div> : null}
@@ -534,7 +569,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               key={results}
               name="community"
               value={audience}
-              onChange={(e) => setAudience(e.target.value)}
+              onChange={(e) => { setAudience(e.target.value); setAnnounce(false) }}
               className="min-w-0 max-w-36 rounded-lg bg-transparent py-1 text-xs font-medium text-muted"
             >
               <option value="">Public · Everyone</option>
@@ -576,13 +611,14 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
           disabled={pending || left < 0 || (live && empty) || waiting || !pollReady}
           className="btn btn-primary btn-sm composer-submit"
         >
-          {pending ? 'Posting…' : replyTo ? 'Reply' : 'Post'}
+          {pending ? 'Posting…' : replyTo ? 'Reply' : announcing ? 'Post and notify' : 'Post'}
         </button>
       </div>
 
       <p id={privacyId} className="composer-privacy">
         {replyTo ? 'Replies' : story ? 'Updates' : 'Posts'} are public. Anyone can see and copy them.
         {!replyTo && replyAudience !== 'everyone' ? ' This post limits who may join its replies.' : ''}
+        {announcing ? ' Every member of this community will be notified. A community can do this once a day.' : ''}
       </p>
       <p role="alert" className="mt-1 text-sm text-danger empty:hidden">
         {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : state.error}

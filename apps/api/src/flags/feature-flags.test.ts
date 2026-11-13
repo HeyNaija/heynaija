@@ -56,6 +56,7 @@ const LIVE_IN_MAIN: Record<FlagKey, boolean> = {
   gistReplies: false,
   adultLabels: false,
   weeklyHighlights: false,
+  communityAnnouncements: false,
 }
 
 /** The real registry, except that `polls` is not launched in production: for tests of that case. */

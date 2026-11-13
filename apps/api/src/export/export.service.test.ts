@@ -131,7 +131,7 @@ test('an export includes reply boundaries, polls the member created and their pu
 })
 
 test('an export says which kinds of activity the member is notified about', async () => {
-  const allOn = { reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true, chess_challenge: true, chess_game_started: true }
+  const allOn = { reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true, chess_challenge: true, chess_game_started: true, community_announcement: true }
   assert.deepEqual((await service.export(ada, null))!.notificationPreferences, allOn)
   await notificationsService.setPreferences(ada, { like: false, follow: false })
   assert.deepEqual((await service.export(ada, null))!.notificationPreferences, { ...allOn, like: false, follow: false })
