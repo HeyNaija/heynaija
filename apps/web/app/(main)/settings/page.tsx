@@ -143,7 +143,7 @@ async function NotificationSettings() {
       {pushKey ? <PushSwitch publicKey={pushKey} /> : null}
       {/* Only where the browser offers it (Chrome, Edge, Samsung Internet); on an iPhone, PushSwitch explains. */}
       <InstallApp />
-      <NotificationPreferencesForm preferences={preferences} />
+      <NotificationPreferencesForm preferences={preferences} features={viewer.me.features} />
     </>
   )
 }

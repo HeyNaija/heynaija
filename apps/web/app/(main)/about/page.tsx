@@ -3,14 +3,13 @@ import Link from 'next/link'
 import { FoundingStageNotice } from '@/app/ui/governance'
 import { ArrowUpRightIcon, DocumentIcon, HistoryIcon, OwnershipIcon, PeopleIcon, ShieldIcon } from '@/app/ui/icons'
 import { PolicyLinks } from '@/app/ui/policy-page'
-import { defaultPreviewImage, siteOpenGraph } from '@/lib/previews'
+import { sitePicturePreview } from '@/lib/previews-server'
 
 const description = 'Why HeyNaija exists: a Nigeria-first discussion network, built around our conversations and a proposed path for members to shape its future.'
 
-export const metadata: Metadata = {
-  title: 'About',
-  description,
-  openGraph: { ...siteOpenGraph, type: 'website', title: 'About HeyNaija', description, images: [defaultPreviewImage] },
+// Built per request, so its picture's address is the site's.
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: 'About', description, ...(await sitePicturePreview('About HeyNaija')) }
 }
 
 const principles = [

@@ -34,6 +34,11 @@ test('informational moderation outcomes remain readable without a misleading des
   }
 })
 
+test('a chess challenge opens it on the chess page', () => {
+  assert.equal(notificationTarget(notification('chess_challenge', { challenge: { id: 'c1', phrase: 'x' } })), '/games/chess#challenge-c1')
+  assert.equal(notificationTarget(notification('chess_challenge')), '/games/chess')
+})
+
 test('a reply in a Gist opens the Gist page at the reply, not a post page the reader cannot open', () => {
   assert.equal(
     notificationTarget(notification('reply', { post: { id: 'reply-id', excerpt: 'hello', gistId: 'gist-id' } })),

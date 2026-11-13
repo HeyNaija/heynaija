@@ -72,16 +72,19 @@ for them.
 `gists` (off in production, on in staging and development) replaced the env switches
 `CALLS_ENABLED`, `CALLS_GISTS_ENABLED` and `CALLS_MEMBERS` on 3 November 2026; the
 handle list became the flag's allow-list, set from the admin page. Its code is in
-`main`, but production never had Gists switched on, so `LIVE_IN_MAIN` says `false`.
+`main`, but production's default is off, so `LIVE_IN_MAIN` says `false`: an admin
+turns it on there, for everyone or for a list.
 
-Two rules in code (`gistsAccess` in `apps/api/src/gists/gists-enabled.guard.ts`) sit
-on top of it, and an admin cannot flip either:
+One rule in code (`gistsAccess` in `apps/api/src/gists/gists-enabled.guard.ts`) sits
+on top of it, and an admin cannot flip it:
 
 - **No LiveKit, no Gists.** Without the `LIVEKIT_*` settings Gists are off whatever
   the flag says.
-- **In production, an allow-list or nothing.** On for everyone, by override or
-  default, opens Gists to nobody there. This is ADR 0017's temporary gate: until the
-  age check exists (`apps/api/src/gists/eligibility.ts`), Gists are for named members.
+
+Until 10 November 2026 there was a second: in production only an allow-list opened
+Gists, and "on for everyone" opened them to nobody (ADR 0017's temporary gate). The
+owner dropped it that day: the stage has its age rule (a stated adult age, below) and
+the beta takes adults only, so the flag now means the same in every environment.
 
 For a member Gists are not open to, every `/v1/gists` route answers the 404 of a
 route that does not exist. A signed-out caller is let on to the sign-in 401 while
@@ -171,6 +174,20 @@ in mind: after flipping a flag from another process, wait a few seconds.
 **Fail closed.** If the database cannot be read, the last good values keep answering.
 If there never was a good read, the **production** defaults answer (never staging's)
 until a read works. Failures are logged and retried once per TTL.
+
+## `communityAnnouncements`
+
+`communityAnnouncements` (off in production, on in staging and development) gates a
+community's moderator notifying every member of a new post in it (ADR 0029): `announce`
+on `POST /v1/posts` answers `feature_unavailable` while it is off. Communities report
+`viewerCanAnnounce`, `nextAnnouncementAt` and `viewerGetsAnnouncements` as "no" for a
+viewer the flag is off for, so the composer's switch and the bell on a community's page
+are not shown; the web and the apps read those, not the flag. The box for them in
+Settings does read `features.communityAnnouncements`, and is left out while it is off,
+keeping its setting (`settingsFor`). Turning a community's
+announcements back on (`PUT /v1/communities/:slug/announcements`) is a 404 while it is
+off; turning them off always works. Off stops new announcements and leaves the ones
+already sent in members' notifications.
 
 ## Known limits
 

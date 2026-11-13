@@ -144,6 +144,14 @@ does nothing for an inactive author. The text search index follows the text.
 | Their replies in Gists (`posts.gist_id`, `hidden_by_host_at`) | out of the Gist's reply count with the rest of their posts | erased like any other post of theirs (text blanked, row kept as a placeholder, evidence kept); other members' replies in a Gist they hosted stay as rows, unreadable | blanked |
 | `follows`, `blocks`, `mutes`, both ways | hidden | deleted | delete |
 | `community_memberships`, including moderator roles | — | deleted | delete |
+| Their games ([ADR 0028](0028-games.md)): `games.game_profiles`, `games.season_scores`, `games.competition_entries`, and `games.game_events` about them | — | deleted. Games is dark and no rows exist yet | delete |
+| Competitions they created as a site moderator (`games.competitions.created_by`) | — | kept, pointing at the tombstone, like other moderators' records; result posts are posts | keep |
+| Their linked Lichess account (`games.lichess_accounts`, the token sealed) and any linking under way (`games.lichess_link_attempts`) | — | the token is revoked at Lichess first where it can be, then both deleted | delete |
+| Chess challenges they sent or got (`games.chess_challenges`), with their notifications | — | deleted, both sides: a challenge is between the two of them | delete |
+| Chess games they played (`games.chess_games`), with their notifications | — | deleted, both sides; The Arbiter's thread and result posts about the game stay, naming the tombstone | delete |
+| Keno tickets they played (`games.keno_tickets`) ([ADR 0028](0028-games.md), phase 4) | — | deleted; the shared rounds stay | delete |
+| Their Game Score totals (`games.xp_totals`) and competition invitations (`games.competition_invites`) ([ADR 0028](0028-games.md), phase 5) | — | deleted | delete |
+| A community's Lichess team they linked (`games.community_teams.linked_by`) ([ADR 0028](0028-games.md), phase 6) | — | the link stays; who linked it is forgotten | set to null |
 
 ### Notifications and devices
 
@@ -154,6 +162,8 @@ does nothing for an inactive author. The text search index follows the text.
 | "Your report about @… was actioned", to reporters (`subject_id`) | — | kept: the reporter's record; shows the tombstone handle | keep |
 | `notification_opt_outs` | — | deleted | delete |
 | `push_subscriptions` | nothing pushed | deleted | delete |
+| `push_devices` (the apps' installations, ADR 0023) | nothing pushed | deleted | delete |
+| `apple_tokens` (Sign in with Apple, ADR 0026) | — | revoked with Apple, then deleted | delete |
 
 ### Moderation and governance records
 

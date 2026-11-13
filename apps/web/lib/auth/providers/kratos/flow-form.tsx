@@ -24,6 +24,14 @@ const TEXT: Record<number, string> = {
   4000007: 'An account with that email or handle already exists.',
 }
 
+// The sign-in providers' names, by Kratos's provider ID. Apple is only in the iOS
+// app, whose own sheet gives Kratos an ID token: the web cannot sign in with it,
+// so it only offers to disconnect it (docs/deployment/sign-in-with-apple.md).
+const PROVIDERS: Record<string, string> = { google: 'Google', apple: 'Apple' }
+
+/** Every node but the ones that would sign in with Apple, or connect it, here. */
+const onTheWeb = (node: UiNode) => node.group !== 'oidc' || node.attributes.value !== 'apple' || node.attributes.name === 'unlink'
+
 const HINTS: Record<string, string> = {
   'traits.handle': '3–20 characters: lowercase letters, numbers and underscores.',
 }
@@ -71,26 +79,32 @@ function Messages({ messages, field, fallback }: { messages?: UiMessage[]; field
 /** How the Google finish step uses its button beyond what Kratos says: the browser checks the form first, its words, and its weight. */
 type FieldUse = { validate?: boolean; label?: string; primary?: boolean }
 
-function Field({ node, flowId, identifier, googleConnected, use = {} }: { node: UiNode; flowId: string; identifier?: string; googleConnected?: boolean; use?: FieldUse }) {
+function Field({ node, flowId, identifier, connected, use = {} }: { node: UiNode; flowId: string; identifier?: string; connected?: string; use?: FieldUse }) {
   const a = node.attributes
   const name = a.name ?? ''
   // Confirming it is you: only the signed-in address will do, so it is shown, not asked for.
   const locked = name === 'identifier' && a.type !== 'hidden' && identifier !== undefined
-  const googleEmail = googleConnected && name === 'traits.email' && a.type !== 'hidden'
+  const googleEmail = connected !== undefined && name === 'traits.email' && a.type !== 'hidden'
   const value = locked ? identifier : a.value === undefined || a.value === null ? undefined : String(a.value)
   const hint = googleEmail
-    ? 'Disconnect Google in Connected accounts below to change your email address.'
+    ? `Disconnect ${connected} in Connected accounts below to change your email address.`
     : locked ? 'The address you are signed in with.' : HINTS[name]
 
   if (a.type === 'hidden') return <input type="hidden" name={name} value={value ?? ''} />
 
   if (a.type === 'submit' || a.type === 'button') {
-    const label = use.label ?? (node.meta.label && TEXT[node.meta.label.id]) ?? node.meta.label?.text ?? 'Continue'
-    // Google: sign in, sign up, or connect and disconnect in settings.
+    const provider = node.group === 'oidc' ? PROVIDERS[value ?? ''] : undefined
+    const label =
+      use.label ??
+      (provider && name === 'link' ? `Connect ${provider}` : provider && name === 'unlink' ? `Disconnect ${provider}` : undefined) ??
+      (node.meta.label && TEXT[node.meta.label.id]) ??
+      node.meta.label?.text ??
+      'Continue'
+    // Google: sign in, sign up, or connect and disconnect in settings. Apple: disconnect.
     if (node.group === 'oidc' && !use.primary) {
       return (
         <button type="submit" name={name} value={value} disabled={a.disabled} formNoValidate={!use.validate} className="btn btn-secondary btn-lg btn-block">
-          <GoogleMark />
+          {value === 'google' ? <GoogleMark /> : null}
           {label}
         </button>
       )
@@ -171,12 +185,12 @@ const rank = (node: UiNode) => {
   return type === 'submit' || type === 'button' ? 2 : 1
 }
 
-function Form({ flow, nodes: unordered, identifier, googleConnected }: { flow: Flow; nodes: UiNode[]; identifier?: string; googleConnected?: boolean }) {
+function Form({ flow, nodes: unordered, identifier, connected }: { flow: Flow; nodes: UiNode[]; identifier?: string; connected?: string }) {
   const nodes = [...unordered].sort((a, b) => rank(a) - rank(b))
   return (
     <form action={flow.ui.action} method={flow.ui.method} className="flex flex-col gap-5">
       {nodes.map((node, i) => {
-        if (node.type === 'input') return <Field key={`${node.attributes.name}-${i}`} node={node} flowId={flow.id} identifier={identifier} googleConnected={googleConnected} />
+        if (node.type === 'input') return <Field key={`${node.attributes.name}-${i}`} node={node} flowId={flow.id} identifier={identifier} connected={connected} />
         if (node.type === 'text') {
           return (
             <p key={i} className="text-sm text-muted">
@@ -204,7 +218,7 @@ function Form({ flow, nodes: unordered, identifier, googleConnected }: { flow: F
  * (infra/kratos/policy: heynaijaPendingGoogle), without another trip to Google.
  */
 function FinishGoogleSignup({ flow }: { flow: Flow }) {
-  const nodes = [...flow.ui.nodes].sort((a, b) => rank(a) - rank(b))
+  const nodes = flow.ui.nodes.filter(onTheWeb).sort((a, b) => rank(a) - rank(b))
   const email = nodes.find((n) => n.attributes.name === 'traits.email')?.attributes.value
   const visible = (n: UiNode) => n.type === 'input' && n.attributes.type !== 'hidden'
   return (
@@ -253,12 +267,15 @@ export function FlowForm({
   /** A registration flow: email first, then Google, and a page of its own to finish Google with a handle. */
   signup?: boolean
 }) {
-  const shared = flow.ui.nodes.filter((n) => n.group === 'default')
-  const groups = sections ? Object.keys(sections).filter((g) => flow.ui.nodes.some((n) => n.group === g)) : []
-  const google = flow.ui.nodes.filter((n) => n.group === 'oidc')
-  // Kratos offers unlink only for providers already connected to this identity.
-  const googleConnected = google.some((n) => n.attributes.name === 'unlink' && n.attributes.value === 'google')
-  const rest = flow.ui.nodes.filter((n) => n.group !== 'oidc')
+  const all = flow.ui.nodes.filter(onTheWeb)
+  const shared = all.filter((n) => n.group === 'default')
+  const groups = sections ? Object.keys(sections).filter((g) => all.some((n) => n.group === g)) : []
+  const google = all.filter((n) => n.group === 'oidc')
+  // Kratos offers unlink only for providers already connected to this identity:
+  // the email can change only once every one of them is disconnected.
+  const linked = google.filter((n) => n.attributes.name === 'unlink' && PROVIDERS[String(n.attributes.value)])
+  const connected = linked.length ? linked.map((n) => PROVIDERS[String(n.attributes.value)]).join(' and ') : undefined
+  const rest = all.filter((n) => n.group !== 'oidc')
   // Kratos puts missing signup traits in the default group after Google returns.
   // Keep them with the provider button so a new member can finish choosing a handle.
   const completingGoogleSignup = flow.active === 'oidc' && rest.some((n) => n.attributes.name?.startsWith('traits.'))
@@ -284,13 +301,13 @@ export function FlowForm({
         groups.map((group) => (
           <section key={group} className="flex flex-col gap-3">
             <h2 className="section-title">{sections[group]}</h2>
-            <Form flow={flow} nodes={[...shared, ...flow.ui.nodes.filter((n) => n.group === group)]} googleConnected={googleConnected} />
+            <Form flow={flow} nodes={[...shared, ...all.filter((n) => n.group === group)]} connected={connected} />
           </section>
         ))
       ) : completingGoogleSignup && signup ? (
         <FinishGoogleSignup flow={flow} />
       ) : completingGoogleSignup ? (
-        <Form flow={flow} nodes={flow.ui.nodes} />
+        <Form flow={flow} nodes={all} />
       ) : signup ? (
         // Signing up, email and handle come first; Google asks for a handle after it.
         <>

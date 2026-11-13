@@ -12,16 +12,20 @@ export type DigestItem = {
   gistId?: string | null
   /** A short piece of the post concerned, only for the kinds that show one. */
   excerpt: string | null
-  /** moderator_granted / moderator_revoked: the community's name. */
+  /** moderator_granted / moderator_revoked, community_announcement: the community's name. */
   community: string | null
   /** idea_status: the new status, whether it was an idea or a problem, and whether the recipient sent it. */
   idea?: { status: string | null; kind: string; yours: boolean } | null
+  /** chess_challenge: the challenge and how it reads ("a rated Rapid game (10+5)"). */
+  challenge?: { id: string; phrase: string } | null
+  /** chess_game_started: the game. */
+  game?: { id: string } | null
 }
 
 export type Digest = { subject: string; text: string; html: string }
 
 /** The kinds whose email shows a piece of a post. Moderation notices never do. */
-export const KINDS_WITH_EXCERPT: readonly NotificationKind[] = ['reply', 'like', 'repost', 'quote', 'mention', 'idea_status', 'story_update']
+export const KINDS_WITH_EXCERPT: readonly NotificationKind[] = ['reply', 'like', 'repost', 'quote', 'mention', 'idea_status', 'story_update', 'community_announcement']
 
 /** Longest piece of a post an email shows, in characters. */
 export const EXCERPT_MAX = 80
@@ -58,7 +62,10 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
       case 'reply':
       case 'quote':
       case 'mention':
+      case 'chess_challenge':
+      case 'chess_game_started':
       case 'story_update':
+      case 'community_announcement':
         return `${item.kind}:${i}`
       case 'moderator_granted':
       case 'moderator_revoked':
@@ -100,6 +107,8 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
         return { headline: `${who} reposted your post`, quote, href: post(item.postId, item.gistId) }
       case 'story_update':
         return { headline: `${who} added to their story`, quote, href: post(item.postId, item.gistId) }
+      case 'community_announcement':
+        return { headline: `${who} posted an announcement in ${item.community ?? 'a community'}`, quote, href: post(item.postId, item.gistId) }
       case 'follow':
         return { headline: `${who} followed you`, quote: null, href: actors.length === 1 ? `${webUrl}/u/${actors[0]}` : inApp }
       case 'post_removed':
@@ -123,6 +132,18 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
       case 'idea_status':
         // Newest first, so this is the latest status.
         return { headline: ideaHeadline(item.idea ?? { kind: 'idea', yours: false }, item.idea?.status ?? null), quote, href: post(item.postId, item.gistId) }
+      case 'chess_challenge':
+        return {
+          headline: `${who} challenged you to ${item.challenge?.phrase ?? 'a game of chess'}`,
+          quote: null,
+          href: item.challenge ? `${webUrl}/games/chess#challenge-${item.challenge.id}` : `${webUrl}/games/chess`,
+        }
+      case 'chess_game_started':
+        return {
+          headline: `${who} accepted your challenge. Your game has started`,
+          quote: null,
+          href: item.game ? `${webUrl}/games/chess/games/${item.game.id}` : `${webUrl}/games/chess`,
+        }
     }
   }
 }

@@ -1,6 +1,7 @@
 import { ageAssurances, type Db, governanceAuditLog, identityVerifications, members, privacyRequests } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, asc, eq, inArray, isNull, lte, or, type SQL, sql } from 'drizzle-orm'
+import { AppleTokensService } from '../apple/apple-tokens.service.js'
 import { AuthService } from '../auth/auth.service.js'
 import { EMAIL_ADDRESSES, type EmailAddresses } from '../email/addresses.js'
 import type { Env } from '../env.js'
@@ -30,6 +31,12 @@ export class AccountDeletionError extends Error {
 }
 
 export const DELETION_NOTICES = Symbol('DELETION_NOTICES')
+
+/** What Games does before an account's rows go (docs/adr/0028): gives its Lichess token back to Lichess. */
+export const GAMES_ERASER = Symbol('GAMES_ERASER')
+export interface GamesEraser {
+  revokeFor(memberId: string): Promise<void>
+}
 
 /** Emails about a deletion. Optional: without them nothing is emailed. */
 export interface DeletionNotices {
@@ -62,6 +69,9 @@ export class AccountDeletionService {
     @Optional() @Inject(DELETION_NOTICES) private readonly notices?: DeletionNotices,
     // Their videos out of storage (ADR 0019). Optional like the notices: tests and the CLI that never erase need none.
     @Optional() @Inject(VideoService) private readonly videos?: Pick<VideoService, 'eraseFilesOf'>,
+    // Sign in with Apple revoked (ADR 0026). Optional likewise.
+    @Optional() @Inject(AppleTokensService) private readonly apple?: Pick<AppleTokensService, 'revokeFor'>,
+    @Optional() @Inject(GAMES_ERASER) private readonly games?: GamesEraser,
   ) {}
 
   async state(memberId: string): Promise<DeletionState> {
@@ -247,6 +257,10 @@ export class AccountDeletionService {
     await this.auth.revokeAllSessions(memberId)
     // 3. A live Gist they host ends, room and all: once its rows go, nothing would close the room.
     await this.gists.endHostedBy(memberId)
+    //    And a linked Lichess account's token goes back to Lichess, while it can still be read.
+    await this.games?.revokeFor(memberId)
+    // 3b. Sign in with Apple revoked, as Apple requires, while its token is still kept.
+    await this.apple?.revokeFor(memberId)
     // 4. Everything in the app's database.
     const erased = await this.eraseRows(memberId, now)
     if (!erased) return 'cancelled'
@@ -389,10 +403,34 @@ export class AccountDeletionService {
         and id not in (select gist_id from posts where gist_id is not null)`)
       await run(sql`delete from gist_members where member_id = ${memberId}`)
 
+      // Games (docs/adr/0028): their stats, scores, entries and game history go.
+      // Competitions they created as a moderator stay, pointing at the tombstone,
+      // like other moderators' records; so do the result posts, as posts.
+      await run(sql`delete from games.game_events where member_id = ${memberId}`)
+      await run(sql`delete from games.competition_entries where member_id = ${memberId}`)
+      await run(sql`delete from games.season_scores where member_id = ${memberId}`)
+      await run(sql`delete from games.game_profiles where member_id = ${memberId}`)
+      // Chess (docs/adr/0028): the linked Lichess account and any linking under way, and
+      // every challenge they sent or got (their notifications go with them).
+      // Their games go too (notifications with them); The Arbiter's threads and results stay, as
+      // posts naming the tombstone.
+      await run(sql`delete from games.chess_games where white_id = ${memberId} or black_id = ${memberId}`)
+      await run(sql`delete from games.chess_challenges where challenger_id = ${memberId} or challenged_id = ${memberId}`)
+      await run(sql`delete from games.lichess_link_attempts where member_id = ${memberId}`)
+      await run(sql`delete from games.lichess_accounts where member_id = ${memberId}`)
+      // Keno (docs/adr/0028, phase 4): their tickets. The rounds are shared and stay.
+      await run(sql`delete from games.keno_tickets where member_id = ${memberId}`)
+      // Their Game Score (phase 5) and any competition invitations.
+      await run(sql`delete from games.xp_totals where member_id = ${memberId}`)
+      await run(sql`delete from games.competition_invites where member_id = ${memberId}`)
+      // A community's Lichess team they linked (phase 6) stays linked; who linked it is forgotten.
+      await run(sql`update games.community_teams set linked_by = null where linked_by = ${memberId}`)
+
       await run(sql`delete from notifications where recipient_id = ${memberId} or actor_id = ${memberId}`)
       await run(sql`delete from notification_opt_outs where member_id = ${memberId}`)
       await run(sql`delete from push_subscriptions where member_id = ${memberId}`)
       await run(sql`delete from push_devices where member_id = ${memberId}`)
+      await run(sql`delete from apple_tokens where member_id = ${memberId}`)
       await run(sql`delete from profile_badges where member_id = ${memberId}`)
       await run(sql`delete from invite_redemptions where identity_id = ${memberId}`)
       // Their place on feature flags' allow-lists goes. Flag changes they made as a
@@ -437,6 +475,9 @@ export class AccountDeletionService {
           onboardedAt: null,
           emailNotifications: false,
           lastNotificationEmailAt: null,
+          weeklyHighlights: false,
+          highlightsSettledAt: null,
+          highlightsSentAt: null,
           pinnedPostId: null,
         })
         .where(eq(members.id, memberId))

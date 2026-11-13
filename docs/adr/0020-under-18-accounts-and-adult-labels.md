@@ -704,7 +704,7 @@ from building section 4's contact protections (7 November).
 
 - **Gists.** Minors and unknown ages listen only (6 November): `canHostGist` needs
   a stated adult age, and `canJoinGist` does not. Gist titles cannot be labelled;
-  a live room for adults only is out of scope until Gists leave the allow-list beta (the `gists` flag's list).
+  a live room for adults only was left out of scope while Gists were an allow-list beta; production's allow-list rule went on 10 November 2026 (docs/feature-flags.md), and it is still not built.
 - **Retention of `needs_label` reports** follows the other report reasons.
 - **A stated date that a check contradicts.** How it is handled belongs in ADR 0018
   (PR #61). It is a reason for review, never an automatic change.

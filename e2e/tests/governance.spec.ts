@@ -3,11 +3,12 @@ import { expect, test } from '@playwright/test'
 import { newMember, post } from '../lib/members.ts'
 
 const documents = [
-  { path: '/terms', heading: 'Terms of use' },
-  { path: '/rules', heading: 'HeyNaija rules' },
-  { path: '/privacy', heading: 'Privacy policy' },
-  { path: '/charter', heading: 'HeyNaija Community Governance Charter' },
-  { path: '/licence', heading: 'Licence' },
+  { path: '/terms', heading: 'Terms of use', draft: false },
+  { path: '/rules', heading: 'HeyNaija rules', draft: true },
+  { path: '/privacy', heading: 'Privacy policy', draft: false },
+  { path: '/child-safety', heading: 'Child safety standards', draft: false },
+  { path: '/charter', heading: 'HeyNaija Community Governance Charter', draft: true },
+  { path: '/licence', heading: 'Licence', draft: true },
 ]
 
 test('the rules say the 18+ account rule is temporary, and voting stays 18+', async ({ page }) => {
@@ -22,30 +23,46 @@ test('the rules say the 18+ account rule is temporary, and voting stays 18+', as
   await expect(page.locator('#age')).toContainText('We no longer ask.')
 })
 
-test('the governance documents are public and say they are drafts @mobile', async ({ page }) => {
+test('the child safety standards name CSAE and CSAM, say how to report, and give a contact', async ({ page }) => {
+  // Google Play links social apps to this page: it must name CSAE and HeyNaija, and be open to anyone.
+  await page.goto('/rules#rules')
+  await page.locator('#rules').getByRole('link', { name: 'child safety standards' }).click()
+  await expect(page).toHaveURL(/\/child-safety$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Child safety standards' })).toBeVisible()
+  await expect(page.getByText('HeyNaija does not allow child sexual abuse and exploitation (CSAE)')).toBeVisible()
+  await expect(page.locator('#standards')).toContainText('Child sexual abuse material (CSAM)')
+  await expect(page.locator('#report')).toContainText('Illegal content')
+  await expect(page.locator('#contact').getByRole('link', { name: 'contact@heynaija.ng' })).toHaveAttribute('href', 'mailto:contact@heynaija.ng')
+})
+
+test('the governance documents are public, and the drafts say so @mobile', async ({ page }) => {
   for (const doc of documents) {
     await page.goto(doc.path)
     await expect(page.getByRole('heading', { level: 1, name: doc.heading })).toBeVisible()
-    await expect(page.getByRole('note')).toContainText('has not been reviewed by a lawyer')
+    if (doc.draft) await expect(page.getByRole('note')).toContainText('has not been reviewed by a lawyer')
+    else await expect(page.locator('.policy-draft')).toHaveCount(0)
     // Every document links to the draft constitution from its footer.
     await expect(page.locator('.policy-footer').getByRole('link', { name: 'Draft constitution' })).toBeVisible()
   }
   // The governance page lists all of them.
   await page.goto('/governance')
   const list = page.locator('#documents')
-  for (const name of ['Community Governance Charter', 'Terms of use', 'Rules', 'Privacy policy', 'Draft constitution', 'Licence']) {
+  for (const name of ['Community Governance Charter', 'Terms of use', 'Rules', 'Privacy policy', 'Child safety standards', 'Draft constitution', 'Licence']) {
     await expect(list.getByRole('link', { name, exact: true })).toBeVisible()
   }
 })
 
-test('the terms and the privacy policy have nothing left to fill in, and joining links the terms', async ({ page }) => {
+test('the terms and the privacy policy have nothing left to fill in, and joining and every page link the terms', async ({ page }) => {
   for (const path of ['/terms', '/privacy']) {
     await page.goto(path)
-    // The draft notice shows what a placeholder looks like; the sections have none.
-    await expect(page.locator('.policy-section .policy-placeholder')).toHaveCount(0)
+    // Nothing in brackets, and no draft notice saying there is.
+    await expect(page.locator('.policy-placeholder')).toHaveCount(0)
   }
   await expect(page.locator('#who')).toContainText('run by its founders')
   await expect(page.locator('#keep')).toContainText('kept for 90 days')
+  // The side rail's footer, on every page wide enough to show it.
+  await page.locator('.rail-footer').getByRole('link', { name: 'Terms', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Terms of use' })).toBeVisible()
   await page.goto('/join')
   await page.getByRole('link', { name: 'terms', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Terms of use' })).toBeVisible()
@@ -182,7 +199,7 @@ test('a member downloads their data as JSON', async ({ browser }) => {
   ])
   expect(download.suggestedFilename()).toMatch(new RegExp(`^heynaija-${handle}-\\d{4}-\\d{2}-\\d{2}\\.json$`))
   const data = JSON.parse(await readFile((await download.path())!, 'utf8'))
-  expect(data.format).toBe('heynaija-export/14')
+  expect(data.format).toBe('heynaija-export/20')
   expect(data.account).toMatchObject({ handle, email })
   // They skipped the welcome flow on joining (newMember does), and the export says when.
   expect(Date.parse(data.account.onboardedAt)).not.toBeNaN()
@@ -195,8 +212,10 @@ test('a member downloads their data as JSON', async ({ browser }) => {
   expect(data.votingMembership).toBeNull()
   expect(data.posts).toContainEqual(expect.objectContaining({ text, quoteOf: null, mentions: [] }))
   expect(data.reposts).toEqual([])
-  // Every kind of notification is on until they turn one off.
-  expect(data.notificationPreferences).toEqual({ reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true })
+  // Every kind of notification is on until they turn one off, the chess ones included.
+  expect(data.notificationPreferences).toEqual({
+    reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true, chess_challenge: true, chess_game_started: true, community_announcement: true,
+  })
   // New members are emailed their notifications until they turn it off.
   expect(data.emailNotifications).toBe(true)
   // Push is per browser, and they have not turned it on anywhere.

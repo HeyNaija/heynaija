@@ -69,9 +69,9 @@ build without it simply has no push.
 
 ## Not yet
 
-- **iOS.** The Apple developer account is pending. The plan is APNs directly, with
-  an `.p8` key, as a second `service` (`apns`) in `push_devices`, so that iOS needs
-  no Firebase SDK.
+- **iOS.** Done in [ADR 0026](0026-ios-app-push-and-sign-in-with-apple.md): APNs
+  directly, with a `.p8` key, as the services `apns` and `apns_sandbox` in
+  `push_devices`, so that iOS needs no Firebase SDK.
 - **Notification channels per kind.** One channel for now; Android's settings can
   then only turn all of HeyNaija's notifications on or off. The per-kind choices in
   the app's Settings still apply, as on the web.

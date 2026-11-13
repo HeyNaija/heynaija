@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 45 | 17 | 16 | 12 | 90 |
+| 48 | 20 | 16 | 11 | 95 |
 
 ## Priority order
 
@@ -238,11 +238,10 @@ This tracks product development, not formal governance decisions. Priority means
 #### Pre-publication abuse-material screening
 
 - **ID:** `upload-scanning`
-- **Priority:** P0 · **Status:** Blocked · **Availability:** Not live
-- **Description:** Screen image uploads before publication through an approved scanning service.
-- **Remaining work / caveat:** Waiting for PhotoDNA approval; the scanner is written but untried against the real service, and response procedures still need review.
-- **Inspected evidence:** `apps/api/src/app.module.ts`, `apps/api/src/media/media.service.ts`, `apps/api/src/media/media.service.test.ts`, `apps/api/src/media/photodna.ts`, `apps/api/src/media/photodna.test.ts`, `docs/safety/abuse-material-scanning.md`
-- **Audit notes:** NoScanner stays bound until PHOTODNA_SUBSCRIPTION_KEY is set. The PhotoDNA client, GIF frame sampling, fail-closed handling and match reporting have tests against stand-ins; documented Cloudflare edge scanning is a separate second layer.
+- **Priority:** P0 · **Status:** Implemented · **Availability:** Recorded in production
+- **Description:** Screen image and video uploads before publication through an approved scanning service.
+- **Inspected evidence:** `apps/api/src/app.module.ts`, `apps/api/src/media/scanners.ts`, `apps/api/src/media/arachnid-shield.ts`, `apps/api/src/media/arachnid-shield.test.ts`, `apps/api/src/media/media.service.ts`, `apps/api/src/media/media.service.test.ts`, `apps/api/src/media/photodna.ts`, `apps/api/src/media/photodna.test.ts`, `docs/safety/abuse-material-scanning.md`
+- **Audit notes:** Arachnid Shield (Canadian Centre for Child Protection) is set in production on the API and the video worker server (owner confirmed 8 Nov 2026): every image and video is matched before publishing, failing closed. PhotoDNA is written and tested against stand-ins as a second matcher, waiting for Microsoft. Cloudflare edge scanning is a separate second layer. Counsel's answers on reporting are still open (docs/safety/abuse-material-scanning.md).
 
 #### Operational abuse response
 
@@ -259,7 +258,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Download your own profile, posts, social choices and account-status records as JSON.
 - **Inspected evidence:** `apps/api/src/export/export.service.ts`, `apps/api/src/export/export.controller.ts`, `apps/web/app/(main)/settings/export/route.ts`, `apps/api/src/export/export.service.test.ts`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** Format 11: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, and since format 11 reply boundaries, polls you created and your public poll ballots; restricted person keys and reports about someone stay excluded.
+- **Audit notes:** Format 19: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, since format 11 reply boundaries, polls you created and your public poll ballots, and since format 19 a games section (stats, season scores, competition entries, the linked Lichess account but never its token, chess challenges and the chess games played, Keno tickets and the Game Score); restricted person keys and reports about someone stay excluded.
 
 #### Account deletion and privacy requests
 
@@ -486,6 +485,15 @@ This tracks product development, not formal governance decisions. Priority means
 - **Inspected evidence:** `packages/db/drizzle/0034_community_photos.sql`, `packages/db/src/schema.ts`, `apps/api/src/media/media.service.ts`, `apps/api/src/media/media.controller.ts`, `apps/api/src/communities/communities.service.ts`, `apps/api/src/communities/photo-managers.ts`, `apps/api/src/moderation/moderation.service.ts`, `apps/web/app/ui/community-mark.tsx`, `apps/web/app/ui/community-photo-editor.tsx`, `apps/web/app/ui/use-square-photo-upload.ts`, `apps/web/app/(main)/c/[slug]/page.tsx`, `apps/web/app/(main)/report/page.tsx`, `apps/web/app/(main)/mod/page.tsx`, `apps/api/src/moderation/moderation.service.test.ts`, `apps/api/src/media/community-photo.test.ts`, `e2e/tests/community-photos.spec.ts`
 - **Audit notes:** One square photo per community (communities.photo_media_id), added, replaced or removed by that community's moderators and site moderators from the community page; the control needs JavaScript, while the photo and the subject-icon fallback show to everyone without it. It goes through the profile-photo pipeline (JPEG, PNG or WebP up to 5 MB, 96px and 256px WebP, location data dropped) and the same fail-closed upload scanner, so it depends on upload-scanning being completed before launch. Site moderators take a photo down from the community page: it is quarantined privately and logged as remove_community_photo, but the community's moderators can then upload another. Members who cannot manage the photo report it from a Report photo link on the community page (/report?community=slug), as they would a post or account: same reasons, rate limit and one open report per member per photo (reports.community_id and photo_media_id, migration 0034). The report reaches site moderators only, who can remove the photo from the queue (the photo is quarantined, logged and reporters told) or dismiss; a report about a photo since replaced can only be dismissed, and once its reports are dismissed its private copy is deleted. An upload can only become the photo of the community it was started for (media.community_id). The photo is the community's: erasing the account of the moderator who uploaded it leaves it in place.
 
+#### Community announcements
+
+- **ID:** `community-announcements`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
+- **Description:** A community's moderator can notify every member of a new post in it, at most once a day; any member can turn that off for one community or for all.
+- **Dependencies:** `communities`, `push-notifications`, `email-notifications`
+- **Inspected evidence:** `docs/adr/0029-community-announcements.md`, `packages/db/drizzle/0052_community_announcements.sql`, `apps/api/src/communities/announcements.ts`, `apps/api/src/notifications/notifications.service.ts`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/communities/communities.service.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/(main)/c/[slug]/page.tsx`, `apps/api/src/communities/announcements.test.ts`, `e2e/tests/announcements.spec.ts`
+- **Audit notes:** Built 13 Nov 2026 (ADR 0029), behind the communityAnnouncements flag: on in development and staging, off in production until the owner turns it on. The composer shows Notify all members to a community's moderators (and site moderators who have joined it) for a new post there; there is no @everyone to type. One a day per community, whichever moderator sends it, taken inside the post's transaction so two at once get one through. Every member but the author is told in the app, by push and by email, unless they turned announcements off with the bell on the community's page or the box in Settings; someone the post mentions is told that instead. An announcement stops showing when the member leaves or turns them off. The apps have the same switch, bell and notification on branch feat/community-announcements of heynaija-mobile. Not yet tried with a real community on staging.
+
 #### Email notifications
 
 - **ID:** `email-notifications`
@@ -503,6 +511,15 @@ This tracks product development, not formal governance decisions. Priority means
 - **Dependencies:** `in-app-notifications`, `notification-preferences`, `email-notifications`
 - **Inspected evidence:** `packages/db/drizzle/0022_push_notifications.sql`, `apps/api/src/push/push-notifications.service.ts`, `apps/api/src/push/push-queue.ts`, `apps/api/src/push/push.controller.ts`, `apps/api/src/push/push-sender.ts`, `apps/api/src/push/push-message.ts`, `apps/web/public/sw.js`, `apps/web/app/ui/push-switch.tsx`, `apps/web/app/ui/push-check.tsx`, `apps/web/app/logout/route.ts`, `apps/api/src/push/push-notifications.service.test.ts`, `apps/api/src/push/push-sender.test.ts`, `apps/web/tests/push.test.mjs`, `apps/web/tests/service-worker.test.mjs`, `e2e/tests/push-notifications.spec.ts`, `docs/adr/0011-push-notifications.md`
 - **Audit notes:** Web Push with VAPID keys of our own (no Firebase account): Settings has a per-browser button that asks the browser's permission and subscribes it; the service worker (public/sw.js) only shows notifications and opens what they are about. A BullMQ job looks every 10 seconds and pushes what is waiting to each of the member's browsers, in the same words as the email digest: replies, mentions and quotes quote the post briefly, likes, reposts and follows are counted in with ones already pushed and replace them on the device (one tag per post), more than three things at once are one push that says how many, and moderation notices are in general words. What is pushed is decided when it is sent, with the same rules as email: nothing read, opted out of, blocked, muted, taken down, for suspended members, or over ten minutes old. Email waits until the push side has dealt with a notification and leaves out what a browser took (notifications.pushed_at). A browser has one subscription; it moves to whoever turns push on in it, a page load stops one that belongs to another member, and signing out removes it. Subscriptions may only point at Google's, Mozilla's, Apple's or Microsoft's push services. iPhones and iPads get it only from the Home Screen (iOS 16.4+), and Settings says so. The data export (format 8) lists the browsers, without their addresses. The end-to-end tests use a stand-in push service; delivery through the real push services, and how the notifications look on Android, iOS and desktop, have not been checked on staging.
+
+#### Weekly highlights
+
+- **ID:** `weekly-highlights`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
+- **Description:** If you have been away a few days, get a few conversations you missed once a week, each saying why it was chosen, with a one-click way to stop.
+- **Dependencies:** `email-notifications`, `push-notifications`, `recommendations`
+- **Inspected evidence:** `docs/adr/0027-weekly-highlights.md`, `packages/db/drizzle/0045_weekly_highlights.sql`, `apps/api/src/highlights/rules.ts`, `apps/api/src/highlights/highlights.service.ts`, `apps/api/src/highlights/highlights-email.ts`, `apps/api/src/highlights/highlights-queue.ts`, `apps/api/src/highlights/highlights.controller.ts`, `apps/web/app/(main)/about/highlights/page.tsx`, `apps/web/app/ui/notification-preferences-form.tsx`, `apps/api/src/highlights/highlights.service.test.ts`, `apps/api/src/highlights/highlights-email.test.ts`, `apps/api/src/highlights/rules.test.ts`, `e2e/tests/weekly-highlights.spec.ts`
+- **Audit notes:** Built 13 Nov 2026 (ADR 0027), behind the weeklyHighlights flag: on in development and staging, off in production until the owner turns it on. The week's run opens on Sunday at 17:00 UTC (6pm in Nigeria) and stays open a day. It reaches an active member with the switch on (members.weekly_highlights, on by default) who was last seen between 3 days and 8 weeks ago, with up to 5 top-level posts from the last 7 days written after they were last here, each author once; fewer than 2 worth sending and nothing goes out. A post is worth sending if someone else replied, quoted, liked or reposted it, or the member follows its author; the order is by Discover's points without its ageing, and Discover's exclusions apply (blocked, muted, suspended, taken down, sensitive, held by reports, a minor's posts to strangers). Each says why in Discover's words. Sent as one push notification where a browser or app takes it, otherwise as an email where notification emails are on, never both; with neither, nothing. Settings has its own switch, shown only while the flag is on for the member, and the email's one-click link turns highlights off and nothing else. Not a notification: nothing is written to notifications. No opens or clicks are tracked; members.highlights_sent_at with last_seen_at says whether people come back. The rules are published at /about/highlights from GET /v1/highlights/rules. The data export (format 15) includes the switch and when highlights were last sent. Not done: the switch in the mobile apps' Settings, which must ship before the flag is on for everyone; delivery through Resend and the real push services has not been checked on staging.
 
 #### Discover: a feed ranked by published rules
 
@@ -763,6 +780,36 @@ This tracks product development, not formal governance decisions. Priority means
 - **Inspected evidence:** `apps/api/src/media/media.service.ts`, `apps/web/app/ui/post-images.tsx`, `docs/adr/0019-video-posts.md`, `docs/adr/0021-video-hls-on-r2.md`
 - **Audit notes:** Not before a real upload scanner is bound (upload-scanning): a decision of 18 October 2026, after GIFs and link cards were built. Designed in ADR 0019 (proposed): one 60-second clip a post, uploaded in parts, scanned by sampled frames and transcoded by a self-hosted ffmpeg worker, behind a videoPosts flag that stays off in production until the scanner is real and a named person signs off.
 
+#### Games section
+
+- **ID:** `games-core`
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
+- **Description:** A Games page with your Game Score, the games you can play, season leaderboards, competitions and posts from games, all in one place.
+- **Remaining work / caveat:** Behind the games feature flag (on in staging, off in production). Competitions are Keno only until chess tournaments (phase 6), and entrants are not notified when one starts or ends.
+- **Dependencies:** `communities`, `in-app-notifications`, `data-export`
+- **Inspected evidence:** `apps/api/src/games/games.module.ts`, `apps/api/src/games/core/registry.ts`, `apps/api/src/games/core/games.controller.ts`, `packages/db/drizzle/0046_games_core.sql`, `apps/web/app/(main)/games/page.tsx`, `apps/api/src/games/core/games.controller.test.ts`, `apps/api/src/games/core/registry.test.ts`, `apps/api/src/games/core/scoring.ts`, `apps/api/src/games/core/leaderboards.ts`, `apps/api/src/games/core/competitions.ts`, `apps/web/app/(main)/games/scoring/page.tsx`, `e2e/tests/competitions.spec.ts`, `docs/adr/0028-games.md`, `docs/games/GAMES.md`
+- **Audit notes:** Phase 1 built 3 Nov 2026 (ADR 0028): the module, the game registry, the games database schema, the games feature flag and a games homepage. Phase 5 built 4 Nov 2026: monthly seasons (Lagos time), the Game Score (XP from chess games, Keno rounds and competition places, stored on each game event and kept in precomputed totals), leaderboards for the Game Score, Chess and Keno by season or all time, narrowed to people you follow or a community, with blocks, mutes and suspensions left out; a How games scoring works page; and competitions run by site moderators (Keno for now) with results posted by The Arbiter in Game Night.
+
+#### Chess on Lichess
+
+- **ID:** `games-chess`
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
+- **Description:** Link your Lichess account, challenge other members, play and watch games inside HeyNaija, and share results as posts.
+- **Remaining work / caveat:** Linking, ratings, challenges, playing and watching inside HeyNaija, Chess Arena, result posts and community tournaments are built (phases 2, 3 and 6). Tournament games are played on lichess.org, not inside HeyNaija. Behind the games flag; connecting needs GAMES_TOKEN_KEY.
+- **Dependencies:** `games-core`
+- **Inspected evidence:** `apps/api/src/games/chess/chess.service.ts`, `apps/api/src/games/chess/chess.controller.ts`, `apps/api/src/games/chess/lichess.ts`, `packages/db/drizzle/0047_chess_linking.sql`, `apps/web/app/(main)/games/chess/page.tsx`, `apps/api/src/games/chess/chess.service.test.ts`, `apps/api/src/games/chess/lichess.test.ts`, `e2e/tests/chess.spec.ts`, `docs/adr/0028-games.md`, `apps/api/src/games/chess/chess-games.service.ts`, `apps/api/src/games/chess/game-watcher.ts`, `packages/db/drizzle/0048_chess_play.sql`, `apps/web/app/(main)/games/chess/games/[id]/page.tsx`, `apps/api/src/games/chess/chess-games.service.test.ts`, `apps/api/src/games/chess/teams.ts`, `apps/api/src/games/chess/teams.test.ts`, `packages/db/drizzle/0051_games_teams.sql`, `apps/web/app/(main)/games/chess/teams/[slug]/page.tsx`, `e2e/tests/chess-teams.spec.ts`
+- **Audit notes:** Phase 2 built 3 Nov 2026: connect Lichess, ratings, challenges. Phase 3 built 3 Nov 2026: play and watch inside HeyNaija through the Lichess Board API (the browser long-polls; one watcher per game), Chess Arena threads by The Arbiter (an automated account) with spectators’ replies hidden from the players until the end, and the result posted there. Phase 6 built 5 Nov 2026: a community moderator who leads a Lichess team links it to the community and makes Arena and Swiss tournaments for it; members play on lichess.org, HeyNaija reads the standings and finishes them as community competitions (placement XP, The Arbiter's result post). Lichess runs the games, ratings and fair play.
+
+#### Keno (free to play)
+
+- **ID:** `games-keno`
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
+- **Description:** Pick numbers for a shared draw every few minutes with free daily tokens, and check that any draw was fair.
+- **Remaining work / caveat:** Playable behind the games flag. Keno competitions and Game Score XP arrived in phase 5; no posts for single Keno draws or wins.
+- **Dependencies:** `games-core`
+- **Inspected evidence:** `docs/games/GAMES.md`, `docs/adr/0028-games.md`, `apps/api/src/games/keno/keno.service.ts`, `apps/api/src/games/keno/draw.ts`, `apps/web/app/(main)/games/keno/page.tsx`, `e2e/tests/keno.spec.ts`
+- **Audit notes:** Phase 4 built 3 Nov 2026 (ADR 0028): shared draws every five minutes, 20 free tokens a member a day (midnight Lagos), points from a fixed table, this month and all-time leaderboards, ticket history, and a page for every round that checks it was fair in the browser (a published SHA-256 commitment, then the seed revealed). No money anywhere: tokens and points can never be bought, transferred or redeemed. Still to come: competitions and the Game Score (phase 5).
+
 ## P3 — Later experiments
 
 ### Community expansion
@@ -783,7 +830,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Remaining work / caveat:** Gists (live audio rooms) are built and being tested with a small list of members; they are not available to everyone yet. 1:1 calls, meetings and screen sharing are paused and remain a design: they need direct messages and age verification first, and recording, moderator access and retention need counsel and governance.
 - **Dependencies:** `minor-safeguards`, `direct-messages`, `age-verification`
 - **Inspected evidence:** `docs/adr/0017-calls-and-meetings.md`, `docs/governance/under-18-rollout.md`, `apps/api/src/gists/gists.service.ts`, `apps/api/src/gists/eligibility.ts`, `apps/web/app/ui/gists/gist-room.tsx`
-- **Audit notes:** Gists are built and in main: off unless LIVEKIT_* is set, then open to the members the gists feature flag is on for, and in production only through its allow-list, a temporary gate with no age check (apps/api/src/gists/eligibility.ts; the flag replaced the CALLS_* env switches on 3 Nov 2026). On in staging since 31 Oct 2026 (the owner tested them there). 1:1 calls and meetings were dropped by the owner on 1 Nov 2026 (PRs #54 and #62 closed, work parked); they, not Gists, need direct-messages and age-verification (docs/adr/0016-direct-messages.md). Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers).
+- **Audit notes:** Gists are built and in main: off unless LIVEKIT_* is set, then open to the members the gists feature flag is on for, a temporary gate (apps/api/src/gists/eligibility.ts; the flag replaced the CALLS_* env switches on 3 Nov 2026). Until 10 Nov 2026 production opened only through the flag's allow-list; the owner dropped that, so the flag can open Gists to everyone there, with hosting and speaking for stated adults. On in staging since 31 Oct 2026 (the owner tested them there). 1:1 calls and meetings were dropped by the owner on 1 Nov 2026 (PRs #54 and #62 closed, work parked); they, not Gists, need direct-messages and age-verification (docs/adr/0016-direct-messages.md). Proposed in ADR 0017 (30 Oct 2026): self-hosted LiveKit on its own server, API-minted short-lived tokens, calls gated like direct messages (18+, age-verified and opted in on both sides, no calls from strangers, minors never). Stages: 1:1 calls, small meetings, screen share, recording (last not planned until counsel answers).
 
 #### Native mobile apps
 

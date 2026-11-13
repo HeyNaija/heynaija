@@ -3,7 +3,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { EXCERPT_MAX, KINDS_WITH_EXCERPT } from '../email/digest.js'
 import { GistsGate } from '../gists/gists-enabled.guard.js'
-import { excerpt, gistsOpenTo, joins, type NotificationKind, postShown, visible } from '../notifications/notifications.service.js'
+import { type ChallengeColumns, challengeColumns, challengeOf, excerpt, gistsOpenTo, joins, type NotificationKind, postShown, visible } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 import { type PushItem, pushMessages } from './push-message.js'
 import {
@@ -63,14 +63,14 @@ export class PushNotificationsService {
     @Optional() @Inject(APP_PUSH_SENDER) private readonly apps: AppPushSender | null = null,
   ) {}
 
-  /** False when neither VAPID keys nor FCM's service account are configured: nothing is pushed. */
+  /** False when neither VAPID keys, FCM's service account nor the Apple key are configured: nothing is pushed. */
   get enabled(): boolean {
     return this.sender !== null || this.apps !== null
   }
 
-  /** False without FCM's service account: the app is not offered push. */
-  get appsEnabled(): boolean {
-    return this.apps !== null
+  /** The push services the apps can register with: "fcm" with FCM's service account, "apns" and "apns_sandbox" with the Apple key. */
+  get appServices(): readonly PushDeviceService[] {
+    return this.apps?.services ?? []
   }
 
   /** The key browsers subscribe with, or null when push is off. */
@@ -191,7 +191,7 @@ export class PushNotificationsService {
     // Subscribing later does not bring these back.
     const places = [
       this.sender && sql`exists(select 1 from push_subscriptions s where s.member_id = n.recipient_id)`,
-      this.apps && sql`exists(select 1 from push_devices d where d.member_id = n.recipient_id)`,
+      this.apps && sql`exists(select 1 from push_devices d where d.member_id = n.recipient_id and d.service = any(${pgTexts(this.apps.services)}))`,
     ].filter((place) => place !== null)
     await this.db.execute(sql`
       update notifications n set push_settled_at = now()
@@ -216,8 +216,7 @@ export class PushNotificationsService {
    * notifications waiting, so that the job is retried.
    */
   async send(memberId: string): Promise<number> {
-    const { sender: web, apps } = this
-    if (!web && !apps) return 0
+    if (!this.enabled) return 0
     const { rows: waiting } = await this.db.execute<{ id: string }>(sql`
       select id from notifications where recipient_id = ${memberId} and push_settled_at is null
       order by created_at desc limit ${PENDING_MAX}`)
@@ -230,6 +229,42 @@ export class PushNotificationsService {
           pushed_at = case when id = any(${pgUuids(pushed)}) then now() end
         where id = any(${pgUuids(ids)})`)
 
+    const places = await this.placesOf(memberId)
+    if (!places.length) {
+      await settle()
+      return 0
+    }
+
+    const { messages, pushed } = pushMessages(await this.eligible(memberId, ids))
+    if (!messages.length) {
+      await settle()
+      return 0
+    }
+
+    // Nothing took it (each one gone or refusing): settled unpushed, so it is emailed.
+    if (!(await this.reach(places, messages))) {
+      await settle()
+      return 0
+    }
+    await settle(pushed)
+    return messages.length
+  }
+
+  /**
+   * Pushes messages that are not notifications (the weekly highlights, ADR 0027)
+   * to each of the member's browsers and apps. True when at least one took them;
+   * false when the member has nowhere to push to, is suspended, or every place is
+   * gone or refusing. Throws when none could be reached and trying again may work.
+   */
+  async sendTo(memberId: string, messages: PushMessage[]): Promise<boolean> {
+    if (!messages.length) return false
+    const places = await this.placesOf(memberId)
+    return places.length > 0 && (await this.reach(places, messages))
+  }
+
+  /** The member's browsers and installations of the app that can be pushed to now: none for a suspended member, or with push off. */
+  private async placesOf(memberId: string): Promise<Place[]> {
+    const { sender: web, apps } = this
     const [member] = await this.db.select({ active: members.active }).from(members).where(eq(members.id, memberId))
     const places: Place[] = []
     if (member?.active && web) {
@@ -247,24 +282,23 @@ export class PushNotificationsService {
       const devices = await this.db
         .select()
         .from(pushDevices)
-        .where(eq(pushDevices.memberId, memberId))
+        // An installation whose push service is not configured here (its key was taken away) waits until it is.
+        .where(and(eq(pushDevices.memberId, memberId), inArray(pushDevices.service, [...apps.services])))
         .orderBy(desc(pushDevices.createdAt))
         .limit(DEVICES_PER_MEMBER)
       for (const device of devices) {
         places.push({ kind: 'app', id: device.id, send: (message) => apps.send({ service: device.service, token: device.token, key: device.key, memberId }, message) })
       }
     }
-    if (!places.length) {
-      await settle()
-      return 0
-    }
+    return places
+  }
 
-    const { messages, pushed } = pushMessages(await this.eligible(memberId, ids))
-    if (!messages.length) {
-      await settle()
-      return 0
-    }
-
+  /**
+   * Sends the messages to each place and records which took them. A place its push
+   * service no longer knows is forgotten. True when at least one took them. Throws
+   * when none did and one of them failed in a way worth trying again.
+   */
+  private async reach(places: Place[], messages: PushMessage[]): Promise<boolean> {
     const reached: Place[] = []
     let retry: unknown = null
     for (const place of places) {
@@ -283,19 +317,14 @@ export class PushNotificationsService {
       }
     }
     if (!reached.length && retry) throw retry
+    if (!reached.length) return false
 
-    // Nothing took it (each one gone or refusing): settled unpushed, so it is emailed.
-    if (!reached.length) {
-      await settle()
-      return 0
-    }
-    await settle(pushed)
     const now = new Date()
     const browsers = reached.filter((place) => place.kind === 'browser').map((place) => place.id)
     const devices = reached.filter((place) => place.kind === 'app').map((place) => place.id)
     if (browsers.length) await this.db.update(pushSubscriptions).set({ lastPushedAt: now }).where(inArray(pushSubscriptions.id, browsers))
     if (devices.length) await this.db.update(pushDevices).set({ lastPushedAt: now }).where(inArray(pushDevices.id, devices))
-    return messages.length
+    return true
   }
 
   /**
@@ -337,11 +366,11 @@ export class PushNotificationsService {
       idea_kind: string | null
       idea_yours: boolean
       pending: boolean
-    }>(sql`
+    } & ChallengeColumns>(sql`
       select n.id, n.kind, a.handle as actor_handle, case when ${shown} then n.post_id end as post_id, case when ${shown} then p.gist_id end as gist_id,
         -- The text of a post is read only for the kinds that quote it.
         case when n.kind in (${excerptKinds}) then p.text end as post_text,
-        c.name as community_name, n.detail, i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, n.push_settled_at is null as pending
+        c.name as community_name, n.detail, i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, ${challengeColumns}, n.push_settled_at is null as pending
       ${joins}
       where ${visible(memberId, gistsOn)} and n.read_at is null
         and (n.kind not in (${optional})
@@ -361,6 +390,8 @@ export class PushNotificationsService {
       excerpt: r.post_text ? excerpt(r.post_text, EXCERPT_MAX) : null,
       community: r.community_name,
       idea: r.idea_kind ? { status: r.detail, kind: r.idea_kind, yours: r.idea_yours } : null,
+      challenge: challengeOf(r),
+      game: r.game_id ? { id: r.game_id } : null,
     }))
   }
 }
@@ -370,3 +401,6 @@ type Place = { kind: 'browser' | 'app'; id: string; send: (message: PushMessage)
 
 /** A list of IDs as one Postgres uuid[] parameter. */
 const pgUuids = (ids: string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`
+
+/** A list of plain words (push services) as one Postgres text[] parameter. */
+const pgTexts = (words: readonly string[]) => sql`${`{${words.join(',')}}`}::text[]`

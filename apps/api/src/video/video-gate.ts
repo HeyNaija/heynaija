@@ -2,7 +2,7 @@ import { type CanActivate, type ExecutionContext, Inject, Injectable, Logger } f
 import type { MaybeAuthedRequest } from '../auth/session.guard.js'
 import type { AppEnv, Env } from '../env.js'
 import { FeatureFlags } from '../flags/feature-flags.js'
-import { routeNotFound } from '../gists/gists-enabled.guard.js'
+import { routeNotFound } from '../http.js'
 import { CONTENT_SCANNER, type ContentScanner, NoScanner } from '../media/media.service.js'
 import { ENV } from '../tokens.js'
 

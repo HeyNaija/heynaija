@@ -4,14 +4,18 @@
 LiveKit server (section 2) and Gists (section 4a; migrations
 `packages/db/drizzle/0029_gists.sql` and `0032_gist_reports.sql`). Gists are off
 unless the `LIVEKIT_*` settings are set, and then open to the members the `gists`
-feature flag is on for ([docs/feature-flags.md](../feature-flags.md)); in production
-only through its allow-list, never to everyone: a **temporary gate with no age
-check**, not the verified-adult gate this ADR designs (section 4a). Until 3 November
+feature flag is on for ([docs/feature-flags.md](../feature-flags.md)): a **temporary
+gate**, not the verified-adult gate this ADR designs (section 4a). Until 10 November
+2026 production opened only through the flag's allow-list, never to everyone; the
+owner dropped that rule that day, so the flag can open Gists to everyone there too,
+on the stated-age rule for the stage (ADR 0020, section 4) and an 18+ only beta. The
+sections below that say Gists widen "past the allow-list" describe the rollout as
+first planned. Until 3 November
 2026 the env switches `CALLS_ENABLED`, `CALLS_GISTS_ENABLED` and the `CALLS_MEMBERS`
 handle list did this job, and the sections below still name them; read them as the
 flag and its allow-list. The owner tested Gists on staging on 31 October 2026. The
 code is in `main`, so production has it too, off unless LiveKit is configured there
-and the flag lists members. On 1 November 2026 the owner dropped 1:1 calls and
+and an admin turns the flag on. On 1 November 2026 the owner dropped 1:1 calls and
 meetings (PRs #54 and #62 closed, work parked); 1:1 calls, meetings and screen
 sharing are design only and parked, not live work. · **Roadmap:**
 `calls-and-meetings` (its dependencies include `direct-messages` and

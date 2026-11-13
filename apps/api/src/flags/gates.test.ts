@@ -39,7 +39,7 @@ const auth = (flags: FeatureFlags) =>
     { birthDateNeeded: async () => false } as never,
     flags,
     { effective: (on: boolean) => on },
-    new GistsGate(flags, { APP_ENV: flags === production ? 'production' : 'development', ...livekit }),
+    new GistsGate(flags, livekit),
   )
 const as = (id: string, handle: string) => ({ member: { id, handle } }) as AuthedRequest
 
@@ -95,10 +95,10 @@ test('/v1/me: features follow the environment and the viewer', async () => {
   assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.reposts, false)
 })
 
-test('/v1/me: in production Gists show only for members on the allow-list, never for everyone', async () => {
+test('/v1/me: in production Gists are off by default, and show for everyone or for the listed as the flag says', async () => {
   assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.gists, false, 'off by default')
   await production.set(ada, 'gists', { enabled: true })
-  assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.gists, false, 'on for everyone opens it to nobody')
+  assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.gists, true, 'on for everyone')
   await production.set(ada, 'gists', { enabled: null, handles: ['bayo'] })
   assert.equal((await auth(production).me(as(bayo, 'bayo'))).features.gists, true)
   assert.equal((await auth(production).me(as(ada, 'ada'))).features.gists, false)

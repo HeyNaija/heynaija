@@ -1,8 +1,9 @@
-import { type CanActivate, type ExecutionContext, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { type CanActivate, type ExecutionContext, Inject, Injectable, Logger } from '@nestjs/common'
 import type { FastifyRequest } from 'fastify'
 import type { MaybeAuthedRequest } from '../auth/session.guard.js'
-import type { AppEnv, Env } from '../env.js'
+import type { Env } from '../env.js'
 import { FeatureFlags, type FlagReading } from '../flags/feature-flags.js'
+import { routeNotFound } from '../http.js'
 import type { AgeStatus } from '../governance/age.js'
 import { ENV } from '../tokens.js'
 import { canHostGist, canJoinGist } from './eligibility.js'
@@ -23,13 +24,13 @@ const CLOSED: GistsAccess = { member: () => false, anyone: false }
 
 /**
  * The `gists` flag (docs/feature-flags.md) as it takes effect: nobody without
- * LiveKit, and in production only the members on the flag's allow-list, never
- * everyone. That last part is ADR 0017's temporary gate, held in code because an
- * admin can flip a flag: until the age check exists (eligibility.ts), production
- * has Gists for a named list of members or not at all.
+ * LiveKit, and otherwise whoever the flag is on for, in every environment. Until
+ * 10 November 2026 production opened only through the flag's allow-list, never to
+ * everyone; the owner dropped that once the stage had its age rule (`gist_stage`
+ * in governance/age.ts) and the beta was 18+ only.
  */
-export function gistsAccess(flag: FlagReading, livekit: boolean, appEnv: AppEnv): GistsAccess {
-  if (!livekit || (appEnv === 'production' && !flag.listed)) return CLOSED
+export function gistsAccess(flag: FlagReading, livekit: boolean): GistsAccess {
+  if (!livekit) return CLOSED
   return { member: (memberId) => flag.isEnabled(memberId), anyone: flag.listed || flag.isEnabled(null) }
 }
 
@@ -40,14 +41,14 @@ export class GistsGate {
 
   constructor(
     @Inject(FeatureFlags) private readonly flags: FeatureFlags,
-    @Inject(ENV) private readonly env: LiveKitEnv & Pick<Env, 'APP_ENV'>,
+    @Inject(ENV) private readonly env: LiveKitEnv,
   ) {}
 
   /** Closed to everyone whenever it cannot be sure. */
   async access(): Promise<GistsAccess> {
     if (!livekitConfigured(this.env)) return CLOSED
     try {
-      return gistsAccess(await this.flags.reading('gists'), true, this.env.APP_ENV)
+      return gistsAccess(await this.flags.reading('gists'), true)
     } catch (err) {
       this.log.error(`could not decide gists; treating it as off: ${(err as Error).message}`)
       return CLOSED
@@ -65,9 +66,6 @@ export const gistsShownTo = (access: GistsAccess, member: { id: string; handle: 
 /** And whether they may host and speak too, or only listen: the stage's check (eligibility.ts). */
 export const gistStageFor = (access: GistsAccess, member: { id: string; handle: string }, age: AgeStatus): boolean =>
   canHostGist({ ...member, active: true, age }, { allowed: access.member })
-
-/** What Fastify answers for a route that does not exist, so a dark feature cannot be told from no feature. */
-export const routeNotFound = (req: Pick<FastifyRequest, 'method' | 'url'>) => new NotFoundException(`Cannot ${req.method} ${req.url}`)
 
 /**
  * On every Gists route, after OptionalSessionGuard (so the allow-list can see the

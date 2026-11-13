@@ -33,6 +33,9 @@ services:
       DSN: postgres://heynaija:${POSTGRES_PASSWORD}@postgres:5432/kratos?sslmode=disable
       SECRETS_COOKIE: ${KRATOS_SECRETS_COOKIE:?run pnpm infra:env}
       SECRETS_CIPHER: ${KRATOS_SECRETS_CIPHER:?run pnpm infra:env}
+      # The app stores' review account, to try it locally (docs/deployment/store-review.md).
+      HEYNAIJA_REVIEW_EMAIL: ${HEYNAIJA_REVIEW_EMAIL:-}
+      HEYNAIJA_REVIEW_CODE: ${HEYNAIJA_REVIEW_CODE:-}
     volumes:
       - ../kratos:/etc/config/kratos:ro
     configs: &kratos-configs
@@ -163,6 +166,24 @@ configs:
                   client_secret: "${GOOGLE_CLIENT_SECRET:-}"
                   mapper_url: file:///etc/config/kratos/google.jsonnet
                   scope: [openid, email]
+                  # The iOS app signs in as its own Google client, so its ID tokens are
+                  # for that client (docs/deployment/google-sign-in.md). Not secret:
+                  # the app carries it. Android's are for the web client above.
+                  additional_id_token_audiences:
+                    - "${GOOGLE_IOS_CLIENT_ID:-567185521629-68a94t7k7jomu81msugkias5ltprp80p.apps.googleusercontent.com}"
+                # Apple, in the iOS app only (docs/deployment/sign-in-with-apple.md):
+                # its own sheet gives an ID token for the app's bundle ID, which
+                # Kratos checks against Apple's published keys. Signing in on the web
+                # would need a Services ID and Apple's key here; the web does not
+                # offer it, so they are left empty.
+                - id: apple
+                  provider: apple
+                  client_id: "${APPLE_BUNDLE_ID:-ng.heynaija.app}"
+                  apple_team_id: ""
+                  apple_private_key_id: ""
+                  apple_private_key: ""
+                  mapper_url: file:///etc/config/kratos/apple.jsonnet
+                  scope: [email]
         flows:
           registration:
             after:

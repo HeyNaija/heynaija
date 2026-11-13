@@ -1,4 +1,6 @@
 // How HeyNaija links look when they are pasted into WhatsApp, X and the like.
+// Nothing here needs a request, so tests/previews.test.mjs can load it in plain
+// Node; the part that waits for one is in previews-server.ts.
 
 /**
  * The origin members reach the site on: previews need absolute links. The same

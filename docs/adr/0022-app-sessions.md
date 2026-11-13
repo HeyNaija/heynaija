@@ -38,10 +38,8 @@ no Origin.
 
 ## Not yet
 
-- **Google in the apps.** Kratos's native OIDC needs the Google ID token from the
-  platforms' own sign-in kits, with client IDs for each app. Offering Google on iOS
-  also means offering Sign in with Apple (App Review Guideline 4.8). Until both are
-  set up the apps offer the emailed code only.
-- **Push to the iOS app.** Android has push through FCM since
-  [ADR 0023](0023-app-push.md); iOS waits for the Apple developer account and its
-  APNs key.
+- **Google and Apple in the apps.** Both apps sign in with Google, and the iOS app
+  with Apple, through the platforms' own sign-in: an ID token sent with its nonce
+  ([ADR 0026](0026-ios-app-push-and-sign-in-with-apple.md)).
+- **Push to the apps.** Android through FCM ([ADR 0023](0023-app-push.md)), iOS
+  through APNs ([ADR 0026](0026-ios-app-push-and-sign-in-with-apple.md)).

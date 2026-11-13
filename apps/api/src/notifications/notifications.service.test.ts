@@ -293,7 +293,7 @@ test(`only the first ${MENTIONS_NOTIFIED_MAX} members a post names are notified;
   assert.equal((await postsService.post(null, id))!.mentions.length, many.length + 1)
 })
 
-const allOn = { email: true, reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true }
+const allOn = { email: true, reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true, chess_challenge: true, chess_game_started: true, community_announcement: true }
 
 test('every kind of activity notifies until the member turns it off', async () => {
   assert.deepEqual(await service.preferences(ada), allOn)
@@ -330,6 +330,20 @@ test('email is on for a new member, turns off and on alone, and is theirs only',
   assert.equal((await service.preferences(randomUUID())).email, true)
 })
 
+test('weekly highlights are chosen with the notifications, and only offered while the flag is on for the member', async () => {
+  // Without the flag there is no such key, so Settings and the apps show no switch for it.
+  assert.ok(!('highlights' in (await service.preferences(ada))))
+  const offered = new NotificationsService(db, null, { isEnabled: async (_key: string, memberId?: string | null) => memberId === ada })
+  assert.deepEqual(await offered.preferences(ada), { ...allOn, highlights: true })
+  assert.ok(!('highlights' in (await offered.preferences(bayo))))
+  // Off alone: email and the kinds are untouched, and leaving it out changes nothing.
+  assert.deepEqual(await offered.setPreferences(ada, { highlights: false }), { ...allOn, highlights: false })
+  assert.deepEqual(await offered.setPreferences(ada, { like: false }), { ...allOn, highlights: false, like: false })
+  assert.deepEqual(await offered.setPreferences(ada, { highlights: true, like: true }), { ...allOn, highlights: true })
+  // Turning email off does not turn highlights off; highlights then go out by push only (ADR 0027).
+  assert.deepEqual(await offered.setPreferences(ada, { email: false }), { ...allOn, email: false, highlights: true })
+})
+
 test('moderation and account notices cannot be turned off, by the service or in the database', async () => {
   for (const kind of ['post_removed', 'post_restored', 'report_resolved', 'account_reinstated', 'avatar_removed', 'profile_cleared', 'moderator_granted', 'moderator_revoked'] as const) {
     await assert.rejects(service.setPreferences(ada, { [kind]: false }), NotOptionalError)
@@ -344,7 +358,7 @@ test('moderation and account notices cannot be turned off, by the service or in 
   )
 
   // With every kind of activity off, a decision about their post still reaches them.
-  await service.setPreferences(ada, { reply: false, like: false, repost: false, quote: false, mention: false, follow: false })
+  await service.setPreferences(ada, { reply: false, like: false, repost: false, quote: false, mention: false, follow: false, chess_challenge: false, chess_game_started: false })
   const { id: post } = await postsService.create(ada, 'buy my coin')
   await moderation.report(bayo, { postId: post }, 'scam')
   const [report] = await db.select().from(reports)

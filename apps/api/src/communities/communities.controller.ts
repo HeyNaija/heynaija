@@ -18,6 +18,7 @@ import {
   OptionalSessionGuard,
   SessionGuard,
 } from '../auth/session.guard.js'
+import { FeatureFlags } from '../flags/feature-flags.js'
 import { Feature, FeatureGuard } from '../flags/feature.guard.js'
 import { LabelNotAllowedError } from '../governance/adult-content.js'
 import { paged, pageQuery, parse, slugParam } from '../http.js'
@@ -37,18 +38,26 @@ export class CommunitiesController {
     @Inject(CommunitiesService) private readonly communities: CommunitiesService,
     @Inject(PostsService) private readonly posts: PostsService,
     @Inject(RateLimiter) private readonly limits: RateLimiter,
+    @Inject(FeatureFlags) private readonly flags: FeatureFlags,
   ) {}
+
+  /** Whether announcements (docs/adr/0029) are offered to the viewer; never to someone signed out. */
+  private async announcements(viewerId: string | null): Promise<boolean> {
+    return viewerId !== null && (await this.flags.isEnabled('communityAnnouncements', viewerId))
+  }
 
   @Get()
   @UseGuards(OptionalSessionGuard)
-  list(@Req() req: MaybeAuthedRequest) {
-    return this.communities.list(req.member?.id ?? null)
+  async list(@Req() req: MaybeAuthedRequest) {
+    const viewerId = req.member?.id ?? null
+    return this.communities.list(viewerId, await this.announcements(viewerId))
   }
 
   @Get(':slug')
   @UseGuards(OptionalSessionGuard)
   async detail(@Req() req: MaybeAuthedRequest, @Param('slug') slug: string) {
-    const community = await this.communities.detail(req.member?.id ?? null, slugOf(slug))
+    const viewerId = req.member?.id ?? null
+    const community = await this.communities.detail(viewerId, slugOf(slug), await this.announcements(viewerId))
     if (!community) throw new NotFoundException()
     return community
   }
@@ -79,6 +88,27 @@ export class CommunitiesController {
   @UseGuards(SessionGuard)
   async leave(@Req() req: AuthedRequest, @Param('slug') slug: string) {
     if (!(await this.communities.leave(req.member.id, slugOf(slug)))) throw new NotFoundException()
+  }
+
+  /** A member asks to be told of the community's announcements again (docs/adr/0029). Turning them off always works. */
+  @Put(':slug/announcements')
+  @HttpCode(204)
+  @UseGuards(SessionGuard, FeatureGuard)
+  @Feature('communityAnnouncements')
+  announcementsOn(@Req() req: AuthedRequest, @Param('slug') slug: string) {
+    return this.setAnnouncements(req, slug, true)
+  }
+
+  @Delete(':slug/announcements')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  announcementsOff(@Req() req: AuthedRequest, @Param('slug') slug: string) {
+    return this.setAnnouncements(req, slug, false)
+  }
+
+  private async setAnnouncements(req: AuthedRequest, slug: string, on: boolean): Promise<void> {
+    await this.limits.hit('action', req.member.id)
+    if (!(await this.communities.setAnnouncements(req.member.id, slugOf(slug), on))) throw new NotFoundException()
   }
 
   /** Its moderators mark the whole community sensitive (ADR 0020, question 8). Taking the mark off always works. */

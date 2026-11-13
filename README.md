@@ -105,6 +105,18 @@ feature flag decides who has them, which in development is everyone
 the config in `docker-compose.dev.yml` advertises `127.0.0.1` for media. Servers for
 staging and production are a separate piece of work.
 
+Games ([docs/games/GAMES.md](docs/games/GAMES.md), [ADR 0028](docs/adr/0028-games.md))
+is behind the `games` feature flag ([docs/feature-flags.md](docs/feature-flags.md)):
+on in development and staging, off in production until launch. A site moderator can
+turn it on, off, or on for named members only, from Moderation, Feature flags.
+Connecting a Lichess account for chess needs `GAMES_TOKEN_KEY` (64 hex characters,
+which `pnpm infra:env` adds), the key that encrypts members' Lichess tokens; without
+it the chess page says connecting is not available. Locally, connecting goes to the
+real lichess.org (set `LICHESS_URL` to point the API somewhere else). Keno draws
+every five minutes (`KENO_DRAW_EVERY_MS`, in milliseconds) and gives each member 20
+free tokens a day (`KENO_DAILY_TOKENS`). Community chess tournaments' standings are read
+from Lichess every two minutes (`CHESS_STANDINGS_EVERY_MS`).
+
 The demo members can sign in as `<handle>@demo.heynaija.test` with the code
 Mailpit catches; `pnpm demo:clean` removes them and everything they did.
 

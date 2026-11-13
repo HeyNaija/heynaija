@@ -2,7 +2,7 @@ import { type Db, members, notifications, OPTIONAL_NOTIFICATION_KINDS } from '@h
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { eq, inArray, sql } from 'drizzle-orm'
 import { GistsGate } from '../gists/gists-enabled.guard.js'
-import { excerpt, gistsOpenTo, joins, type NotificationKind, postShown, visible } from '../notifications/notifications.service.js'
+import { type ChallengeColumns, challengeColumns, challengeOf, excerpt, gistsOpenTo, joins, type NotificationKind, postShown, visible } from '../notifications/notifications.service.js'
 import { DB } from '../tokens.js'
 import { EMAIL_ADDRESSES, type EmailAddresses } from './addresses.js'
 import { type DigestItem, EXCERPT_MAX, KINDS_WITH_EXCERPT, renderDigest } from './digest.js'
@@ -206,11 +206,11 @@ export class EmailNotificationsService {
       idea_kind: string | null
       idea_yours: boolean
       total: number
-    }>(sql`
+    } & ChallengeColumns>(sql`
       select n.kind, a.handle as actor_handle, case when ${shown} then n.post_id end as post_id, case when ${shown} then p.gist_id end as gist_id,
         -- The text of a post is read only for the kinds that quote it.
         case when n.kind in (${excerptKinds}) then p.text end as post_text,
-        c.name as community_name, n.detail, i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, count(*) over ()::int as total
+        c.name as community_name, n.detail, i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, ${challengeColumns}, count(*) over ()::int as total
       ${joins}
       where ${visible(memberId, gistsOn)} and n.id in (${waiting}) and n.read_at is null and n.pushed_at is null
         and (n.kind not in (${optional})
@@ -227,6 +227,8 @@ export class EmailNotificationsService {
         excerpt: r.post_text ? excerpt(r.post_text, EXCERPT_MAX) : null,
         community: r.community_name,
         idea: r.idea_kind ? { status: r.detail, kind: r.idea_kind, yours: r.idea_yours } : null,
+        challenge: challengeOf(r),
+        game: r.game_id ? { id: r.game_id } : null,
       })),
     }
   }

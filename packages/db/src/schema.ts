@@ -12,6 +12,7 @@ import {
   pgTable,
   primaryKey,
   real,
+  smallint,
   text,
   uniqueIndex,
   timestamp,
@@ -67,6 +68,18 @@ export const members = pgTable(
     // When a notification email was last sent to them. The next one waits a while
     // after it, so a steady trickle of activity is not a steady trickle of mail.
     lastNotificationEmailAt: ts('last_notification_email_at'),
+    // Weekly highlights (docs/adr/0027): a few conversations from the week, sent
+    // once a week to a member who has been away. On until they turn it off, in
+    // Settings or by the link in the email. It is not a notification: nothing is
+    // written to `notifications` for it.
+    weeklyHighlights: boolean('weekly_highlights').notNull().default(true),
+    // When the weekly run last dealt with them: sent them highlights, or passed
+    // them over (not away, nothing worth sending, nowhere to send it). Null until
+    // the first run. One run deals with a member once.
+    highlightsSettledAt: ts('highlights_settled_at'),
+    // When highlights were last actually sent to them. With `last_seen_at` it says
+    // whether they came back afterwards, which is how the feature is judged.
+    highlightsSentAt: ts('highlights_sent_at'),
     // The one of their own top-level posts they keep at the top of their profile.
     // Shown only while it is live; a post removed for good takes the pin with it.
     pinnedPostId: uuid('pinned_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),
@@ -258,6 +271,9 @@ export const communities = pgTable('communities', {
   // Marked sensitive by its moderators or a site moderator (ADR 0020, question 8):
   // only adults see or join it, and every post in it carries the 'community' mark.
   adultOnly: boolean('adult_only').notNull().default(false),
+  // When a moderator last notified every member of a new post (docs/adr/0029);
+  // the next may go once a day has passed. Null until the first.
+  announcedAt: ts('announced_at'),
 })
 
 export const communityMemberships = pgTable(
@@ -271,6 +287,9 @@ export const communityMemberships = pgTable(
       .references(() => members.id),
     role: text('role', { enum: ['member', 'moderator'] }).notNull().default('member'),
     joinedAt: ts('joined_at').notNull().defaultNow(),
+    // Whether the member is told when a moderator notifies the whole community
+    // (docs/adr/0029). On until they turn it off for this community.
+    announcements: boolean('announcements').notNull().default(true),
   },
   (t) => [
     primaryKey({ columns: [t.communityId, t.memberId] }),
@@ -665,6 +684,13 @@ export const NOTIFICATION_KINDS = [
   'post_labelled',
   // A story you follow has a new update; post is the update.
   'story_update',
+  // Another member challenged you to a chess game (docs/adr/0028); challenge_id is the challenge.
+  'chess_challenge',
+  // Your chess challenge was accepted and the game has begun; game_id is the game.
+  'chess_game_started',
+  // A moderator notified every member of a community you joined about a new
+  // post in it (docs/adr/0029); post is that post.
+  'community_announcement',
 ] as const
 
 // Something that happened to a member: a reply, like, repost, quote, mention or follow by
@@ -687,10 +713,14 @@ export const notifications = pgTable(
     postId: uuid('post_id').references(() => posts.id),
     // report_resolved about an account: that account.
     subjectId: uuid('subject_id').references(() => members.id),
-    // moderator_granted / moderator_revoked: the community.
+    // moderator_granted / moderator_revoked, community_announcement: the community.
     communityId: uuid('community_id').references(() => communities.id),
     // report_resolved: 'actioned' or 'dismissed'. post_removed: the report reason.
     detail: text('detail'),
+    // chess_challenge: the challenge. Goes with it when it is deleted.
+    challengeId: uuid('challenge_id').references((): AnyPgColumn => chessChallenges.id, { onDelete: 'cascade' }),
+    // chess_game_started: the game. Goes with it when it is deleted.
+    gameId: text('game_id').references((): AnyPgColumn => chessGames.id, { onDelete: 'cascade' }),
     createdAt: ts('created_at').notNull().defaultNow(),
     readAt: ts('read_at'),
     // Null until the email side has dealt with it: sent in a digest, or passed
@@ -736,6 +766,13 @@ export const notifications = pgTable(
     uniqueIndex('notifications_follow_once_idx')
       .on(t.recipientId, t.actorId)
       .where(sql`kind = 'follow'`),
+    // One notification per chess challenge, and deleting a challenge finds its notification.
+    uniqueIndex('notifications_challenge_once_idx')
+      .on(t.challengeId)
+      .where(sql`kind = 'chess_challenge'`),
+    uniqueIndex('notifications_game_started_once_idx')
+      .on(t.gameId)
+      .where(sql`kind = 'chess_game_started'`),
   ],
 )
 
@@ -750,6 +787,9 @@ export const OPTIONAL_NOTIFICATION_KINDS = [
   'mention',
   'follow',
   'story_update',
+  'chess_challenge',
+  'chess_game_started',
+  'community_announcement',
 ] as const satisfies readonly (typeof NOTIFICATION_KINDS)[number][]
 
 // A kind of notification a member has turned off. Everything is on until they
@@ -796,9 +836,10 @@ export const pushSubscriptions = pgTable(
   (t) => [uniqueIndex('push_subscriptions_endpoint_idx').on(t.endpoint), index('push_subscriptions_member_idx').on(t.memberId)],
 )
 
-// The push services the apps register with (docs/adr/0023): Firebase Cloud
-// Messaging, for the Android app. Apple's (apns) comes with the iOS app's push.
-export const PUSH_DEVICE_SERVICES = ['fcm'] as const
+// The push services the apps register with: Firebase Cloud Messaging for the
+// Android app (docs/adr/0023), and Apple's (APNs) for the iOS app (docs/adr/0026),
+// whose tokens belong to its production or its development (sandbox) service.
+export const PUSH_DEVICE_SERVICES = ['fcm', 'apns', 'apns_sandbox'] as const
 export type PushDeviceService = (typeof PUSH_DEVICE_SERVICES)[number]
 
 // An installation of the Android or iOS app that shows a member's notifications
@@ -827,6 +868,18 @@ export const pushDevices = pgTable(
     check('push_devices_service_check', sql.raw(`service in (${PUSH_DEVICE_SERVICES.map((value) => `'${value}'`).join(', ')})`)),
   ],
 )
+
+// Sign in with Apple's refresh token for a member who signed in with Apple in the
+// iOS app (docs/adr/0026). Kept only to revoke it when the account is erased, as
+// Apple requires; it is useless without HeyNaija's Apple key. One per member: a
+// later sign-in replaces it.
+export const appleTokens = pgTable('apple_tokens', {
+  memberId: uuid('member_id')
+    .primaryKey()
+    .references(() => members.id),
+  refreshToken: text('refresh_token').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+})
 
 // Signup is invite-only. Only the SHA-256 of a code is stored.
 export const invites = pgTable('invites', {
@@ -1028,7 +1081,8 @@ export const governanceAuditLog = restricted.table(
 
 // The green identity tick, and Founder: one of the people who founded HeyNaija,
 // given by hand with `pnpm founder:grant` and kept for good (it says nothing about identity).
-export const PROFILE_BADGES = ['nin_identity_verified', 'founder'] as const
+// Automated: an account run by HeyNaija itself, not a person (The Arbiter, docs/adr/0028).
+export const PROFILE_BADGES = ['nin_identity_verified', 'founder', 'automated'] as const
 
 // Badges shown on public profiles and next to authors' names. A tick row exists
 // only while the tick may be shown and its owner chose to show it; the API also
@@ -1308,4 +1362,405 @@ export const featureFlagChanges = pgTable(
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [index('feature_flag_changes_key_created_idx').on(t.flagKey, t.createdAt)],
+)
+
+// ---------------------------------------------------------------------------
+// Games (docs/games/GAMES.md, docs/adr/0028). Their own Postgres schema, kept
+// apart from the social tables the way `restricted` is, though unlike it this
+// is not a privacy boundary. Which games exist is decided by the registry in
+// apps/api/src/games/core/registry.ts, so `game` columns are plain slugs with no
+// constraint: a new game needs a folder and a registry entry, not a migration.
+// No member foreign key cascades (docs/adr/0016-account-deletion.md); erasing an
+// account deletes its rows here by hand.
+// ---------------------------------------------------------------------------
+export const gamesSchema = pgSchema('games')
+
+// One row per member per game they have played: the game's own stats
+// (for chess, later, the cached Lichess ratings).
+export const gameProfiles = gamesSchema.table(
+  'game_profiles',
+  {
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    game: text('game').notNull(),
+    stats: jsonb('stats').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.memberId, t.game] }),
+    // The all-time Keno leaderboard reads points from here (docs/adr/0028, phase 4).
+    index('game_profiles_keno_points_idx')
+      .on(sql`((stats->>'points')::int) desc`)
+      .where(sql`game = 'keno'`),
+  ],
+)
+
+// Monthly seasons for the Game Score. All-time stats are kept apart, in game_profiles.
+export const gameSeasons = gamesSchema.table(
+  'seasons',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // The month it covers, e.g. "2026-11".
+    slug: text('slug').notNull().unique(),
+    startsAt: ts('starts_at').notNull(),
+    endsAt: ts('ends_at').notNull(),
+  },
+  (t) => [check('seasons_range_check', sql.raw('ends_at > starts_at'))],
+)
+
+// A member's points and Game Score XP in one game for one season. Leaderboards
+// read these precomputed rows; they are never worked out on page load.
+export const seasonScores = gamesSchema.table(
+  'season_scores',
+  {
+    seasonId: uuid('season_id')
+      .notNull()
+      .references(() => gameSeasons.id),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    game: text('game').notNull(),
+    points: integer('points').notNull().default(0),
+    xp: integer('xp').notNull().default(0),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.seasonId, t.memberId, t.game] }),
+    index('season_scores_rank_idx').on(t.seasonId, t.game, t.points.desc()),
+    index('season_scores_xp_idx').on(t.seasonId, t.game, t.xp.desc()),
+  ],
+)
+
+export const COMPETITION_ELIGIBILITY = ['open', 'community', 'invite'] as const
+export const COMPETITION_STATUSES = ['draft', 'open', 'live', 'finished', 'cancelled'] as const
+
+// A competition in one game, created by a site moderator. Its results are
+// published as an ordinary post.
+export const competitions = gamesSchema.table(
+  'competitions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    game: text('game').notNull(),
+    name: text('name').notNull(),
+    format: text('format').notNull(),
+    eligibility: text('eligibility', { enum: COMPETITION_ELIGIBILITY }).notNull(),
+    // Set exactly when eligibility is "community".
+    communityId: uuid('community_id').references(() => communities.id),
+    entryOpensAt: ts('entry_opens_at').notNull(),
+    entryClosesAt: ts('entry_closes_at').notNull(),
+    startsAt: ts('starts_at').notNull(),
+    endsAt: ts('ends_at').notNull(),
+    status: text('status', { enum: COMPETITION_STATUSES }).notNull().default('draft'),
+    // Where standings come from, e.g. a Lichess tournament or keno points in a draw window.
+    standingsSource: text('standings_source').notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => members.id),
+    resultPostId: uuid('result_post_id').references(() => posts.id, { onDelete: 'set null' }),
+    // A chess competition is a Lichess tournament (phase 6): its id there, how it
+    // was set up ({ kind, teamId, clock, minutes or rounds, rated, players }), and
+    // when its standings were last read from Lichess.
+    lichessTournamentId: text('lichess_tournament_id'),
+    settings: jsonb('settings').$type<Record<string, unknown>>().notNull().default({}),
+    standingsAt: ts('standings_at'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('competitions_status_starts_idx').on(t.status, t.startsAt),
+    uniqueIndex('competitions_lichess_tournament_idx').on(t.lichessTournamentId).where(sql`lichess_tournament_id is not null`),
+    check('competitions_chess_check', sql.raw(`game <> 'chess' or (lichess_tournament_id is not null and eligibility = 'community')`)),
+    check('competitions_eligibility_check', sql.raw(`eligibility in (${inList(COMPETITION_ELIGIBILITY)})`)),
+    check('competitions_status_check', sql.raw(`status in (${inList(COMPETITION_STATUSES)})`)),
+    check('competitions_community_check', sql.raw(`(eligibility = 'community') = (community_id is not null)`)),
+    check('competitions_schedule_check', sql.raw('entry_closes_at >= entry_opens_at and ends_at > starts_at')),
+  ],
+)
+
+export const competitionEntries = gamesSchema.table(
+  'competition_entries',
+  {
+    competitionId: uuid('competition_id')
+      .notNull()
+      .references(() => competitions.id, { onDelete: 'cascade' }),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    enteredAt: ts('entered_at').notNull().defaultNow(),
+    placement: integer('placement'),
+    score: integer('score'),
+    // For a Lichess tournament: the member's rank among everyone who played there.
+    sourceRank: integer('source_rank'),
+  },
+  (t) => [primaryKey({ columns: [t.competitionId, t.memberId] }), index('competition_entries_member_idx').on(t.memberId)],
+)
+
+// Append-only: what happened in a game (a result, a win, a placement), for the
+// audit trail and as the source of game posts. Nothing updates a row; only
+// erasing an account deletes its own.
+export const gameEvents = gamesSchema.table(
+  'game_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    game: text('game').notNull(),
+    kind: text('kind').notNull(),
+    memberId: uuid('member_id').references(() => members.id),
+    competitionId: uuid('competition_id').references(() => competitions.id),
+    postId: uuid('post_id').references(() => posts.id, { onDelete: 'set null' }),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+    // The Game Score XP it gave (games/core/scoring.ts), set when it is written and
+    // added to the totals in the same transaction. Null only for events written
+    // before XP existed, until the API scores them once (docs/adr/0028, phase 5).
+    xp: integer('xp'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('game_events_member_created_idx').on(t.memberId, t.createdAt),
+    index('game_events_game_created_idx').on(t.game, t.createdAt),
+    index('game_events_unscored_idx').on(t.createdAt).where(sql`xp is null`),
+  ],
+)
+
+// A member's Game Score: XP from every game, for one season ("2026-11") or for
+// all time ("all"). Kept up to date as events are scored, so the leaderboards only
+// read it (docs/adr/0028, phase 5).
+export const xpTotals = gamesSchema.table(
+  'xp_totals',
+  {
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    period: text('period').notNull(),
+    xp: integer('xp').notNull().default(0),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.memberId, t.period] }), index('xp_totals_rank_idx').on(t.period, t.xp.desc())],
+)
+
+// Who may enter an invite-only competition, listed by the moderator who made it.
+export const competitionInvites = gamesSchema.table(
+  'competition_invites',
+  {
+    competitionId: uuid('competition_id')
+      .notNull()
+      .references(() => competitions.id, { onDelete: 'cascade' }),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+  },
+  (t) => [primaryKey({ columns: [t.competitionId, t.memberId] }), index('competition_invites_member_idx').on(t.memberId)],
+)
+
+// ---------------------------------------------------------------------------
+// Chess on Lichess (docs/adr/0028, phase 2).
+// ---------------------------------------------------------------------------
+
+// A member's linked Lichess account: one Lichess account per member and one member
+// per Lichess account. The token is sealed with GAMES_TOKEN_KEY (TokenBox in
+// apps/api/src/games/core/token-box.ts), never stored or returned in the clear.
+export const lichessAccounts = gamesSchema.table('lichess_accounts', {
+  memberId: uuid('member_id')
+    .primaryKey()
+    .references(() => members.id),
+  // Lichess's id for the account: the username in lower case.
+  lichessId: text('lichess_id').notNull().unique(),
+  username: text('username').notNull(),
+  tokenBox: text('token_box').notNull(),
+  tokenExpiresAt: ts('token_expires_at'),
+  scopes: text('scopes').notNull(),
+  // Blitz, rapid, classical and correspondence: { rating, games, provisional } each, as Lichess last said.
+  ratings: jsonb('ratings').$type<Record<string, { rating: number; games: number; provisional: boolean }>>().notNull().default({}),
+  ratingsRefreshedAt: ts('ratings_refreshed_at'),
+  linkedAt: ts('linked_at').notNull().defaultNow(),
+})
+
+// One step of linking a Lichess account (OAuth with PKCE): the state's hash, who
+// started it and the sealed code verifier. Used once, within ten minutes, and
+// deleted as it is used.
+export const lichessLinkAttempts = gamesSchema.table(
+  'lichess_link_attempts',
+  {
+    stateHash: text('state_hash').primaryKey(),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    verifierBox: text('verifier_box').notNull(),
+    // What was asked for, space separated: the base scopes, plus tournament:write
+    // when a community moderator asks to run tournaments (phase 6).
+    scopes: text('scopes').notNull().default('challenge:read challenge:write board:play'),
+    expiresAt: ts('expires_at').notNull(),
+  },
+  (t) => [index('lichess_link_attempts_member_idx').on(t.memberId)],
+)
+
+// A HeyNaija community's Lichess team (phase 6): one each way. Linked by a
+// moderator of the community who leads the team on Lichess; its chess
+// tournaments are made for that team. The name and size are as Lichess last said.
+export const communityTeams = gamesSchema.table('community_teams', {
+  communityId: uuid('community_id')
+    .primaryKey()
+    .references(() => communities.id),
+  lichessTeamId: text('lichess_team_id').notNull().unique(),
+  teamName: text('team_name').notNull(),
+  nbMembers: integer('nb_members').notNull().default(0),
+  // Set to null when that member's account is erased; the link stays.
+  linkedBy: uuid('linked_by').references(() => members.id),
+  linkedAt: ts('linked_at').notNull().defaultNow(),
+  refreshedAt: ts('refreshed_at').notNull().defaultNow(),
+})
+
+export const CHESS_CHALLENGE_STATUSES = ['pending', 'accepted', 'declined', 'cancelled', 'failed'] as const
+export const CHESS_COLORS = ['random', 'white', 'black'] as const
+
+// A challenge from one member to another. It exists only here until it is
+// accepted; then the game is made on Lichess and its id kept. A pending challenge
+// past expires_at counts as expired; nothing sweeps it.
+export const chessChallenges = gamesSchema.table(
+  'chess_challenges',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    challengerId: uuid('challenger_id')
+      .notNull()
+      .references(() => members.id),
+    challengedId: uuid('challenged_id')
+      .notNull()
+      .references(() => members.id),
+    rated: boolean('rated').notNull(),
+    // A clock game: seconds, plus seconds added per move. A correspondence game: days per move.
+    clockLimit: integer('clock_limit'),
+    clockIncrement: integer('clock_increment'),
+    days: integer('days'),
+    color: text('color', { enum: CHESS_COLORS }).notNull().default('random'),
+    // Whether The Arbiter opens a public thread in Chess Arena when the game starts.
+    openThread: boolean('open_thread').notNull().default(true),
+    status: text('status', { enum: CHESS_CHALLENGE_STATUSES }).notNull().default('pending'),
+    lichessGameId: text('lichess_game_id'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    expiresAt: ts('expires_at').notNull(),
+    respondedAt: ts('responded_at'),
+  },
+  (t) => [
+    // One open challenge at a time between the same two members, in that direction.
+    uniqueIndex('chess_challenges_pending_pair_idx')
+      .on(t.challengerId, t.challengedId)
+      .where(sql`status = 'pending'`),
+    index('chess_challenges_challenged_idx').on(t.challengedId, t.status),
+    index('chess_challenges_challenger_idx').on(t.challengerId, t.status),
+    check('chess_challenges_status_check', sql.raw(`status in (${inList(CHESS_CHALLENGE_STATUSES)})`)),
+    check('chess_challenges_color_check', sql.raw(`color in (${inList(CHESS_COLORS)})`)),
+    check(
+      'chess_challenges_time_check',
+      sql.raw('(clock_limit is not null and clock_increment is not null and days is null) or (clock_limit is null and clock_increment is null and days is not null)'),
+    ),
+    check('chess_challenges_self_check', sql.raw('challenger_id <> challenged_id')),
+  ],
+)
+
+// A game made from an accepted challenge, as Lichess last told us (phase 3). Lichess
+// is the source of truth; GameWatcher keeps this row up to date from the Board API
+// stream, and `version` goes up by one on every change, which is what the page
+// asks after. Unfinished while `finished_at` is null.
+export const chessGames = gamesSchema.table(
+  'chess_games',
+  {
+    // Lichess's game id.
+    id: text('id').primaryKey(),
+    challengeId: uuid('challenge_id').references(() => chessChallenges.id, { onDelete: 'set null' }),
+    whiteId: uuid('white_id')
+      .notNull()
+      .references(() => members.id),
+    blackId: uuid('black_id')
+      .notNull()
+      .references(() => members.id),
+    rated: boolean('rated').notNull(),
+    clockLimit: integer('clock_limit'),
+    clockIncrement: integer('clock_increment'),
+    days: integer('days'),
+    // 'created' or 'started' while it runs; then Lichess's word for how it ended (mate, resign, draw, ...).
+    status: text('status').notNull().default('created'),
+    winner: text('winner', { enum: ['white', 'black'] }),
+    // Every move so far, in UCI, separated by spaces.
+    moves: text('moves').notNull().default(''),
+    // Milliseconds left on each clock when `clock_at` was read.
+    whiteMs: integer('white_ms'),
+    blackMs: integer('black_ms'),
+    clockAt: ts('clock_at'),
+    // Who has offered a draw that is still open.
+    drawOffer: text('draw_offer', { enum: ['white', 'black'] }),
+    version: integer('version').notNull().default(0),
+    startedAt: ts('started_at').notNull().defaultNow(),
+    finishedAt: ts('finished_at'),
+    // The Arbiter's thread in Chess Arena, and its reply with the result.
+    threadPostId: uuid('thread_post_id').references(() => posts.id, { onDelete: 'set null' }),
+    resultPostId: uuid('result_post_id').references(() => posts.id, { onDelete: 'set null' }),
+    // Both players' ratings for this speed once it ended: { white: { before, after }, black: ... }.
+    ratingsAfter: jsonb('ratings_after').$type<Record<string, { before: number | null; after: number | null }>>(),
+  },
+  (t) => [
+    index('chess_games_white_idx').on(t.whiteId, t.finishedAt),
+    index('chess_games_black_idx').on(t.blackId, t.finishedAt),
+    index('chess_games_live_idx').on(t.startedAt).where(sql`finished_at is null`),
+    uniqueIndex('chess_games_thread_idx').on(t.threadPostId),
+    check('chess_games_players_check', sql.raw('white_id <> black_id')),
+  ],
+)
+
+// ---------------------------------------------------------------------------
+// Keno, free to play (docs/adr/0028, phase 4). No money anywhere: tokens are free
+// each day and points can never be bought, sent or swapped for anything.
+// ---------------------------------------------------------------------------
+
+// One shared draw. The row is made with its commitment (the SHA-256 of a secret
+// seed) before any ticket can be bought for it; at `draws_at` the seed is revealed
+// and the 20 numbers it gives are kept. Drawn exactly when `drawn_at` is set.
+export const kenoRounds = gamesSchema.table(
+  'keno_rounds',
+  {
+    // "Round #1234".
+    number: integer('number').primaryKey().generatedAlwaysAsIdentity(),
+    drawsAt: ts('draws_at').notNull().unique(),
+    // SHA-256 of the seed, in hex: public from the start.
+    seedHash: text('seed_hash').notNull(),
+    // The seed until the draw: sealed with GAMES_TOKEN_KEY when there is one
+    // (TokenBox), else as it is. Never sent to a browser before the draw.
+    seedSealed: text('seed_sealed').notNull(),
+    // Revealed at the draw, with the numbers in the order they came out.
+    seed: text('seed'),
+    numbers: smallint('numbers').array(),
+    drawnAt: ts('drawn_at'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('keno_rounds_undrawn_idx').on(t.drawsAt).where(sql`drawn_at is null`),
+    check('keno_rounds_drawn_check', sql.raw('(drawn_at is null) = (seed is null) and (drawn_at is null) = (numbers is null)')),
+    check('keno_rounds_numbers_check', sql.raw('numbers is null or cardinality(numbers) = 20')),
+  ],
+)
+
+// A member's ticket: 1 to 10 numbers for one round, for one of the day's free
+// tokens. `hits` and `points` are set when the round is drawn, from the payout
+// table the ticket was played under (keno/payouts.ts), so a new table never
+// changes an old ticket.
+export const kenoTickets = gamesSchema.table(
+  'keno_tickets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    roundNumber: integer('round_number')
+      .notNull()
+      .references(() => kenoRounds.number),
+    numbers: smallint('numbers').array().notNull(),
+    tableVersion: text('table_version').notNull(),
+    hits: integer('hits'),
+    points: integer('points'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('keno_tickets_member_idx').on(t.memberId, t.createdAt),
+    index('keno_tickets_round_idx').on(t.roundNumber),
+    check('keno_tickets_numbers_check', sql.raw('cardinality(numbers) between 1 and 10')),
+  ],
 )

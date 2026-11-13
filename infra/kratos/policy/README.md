@@ -1,13 +1,15 @@
 # HeyNaija account policies
 
 The `infra/kratos/Dockerfile` builds upstream Kratos **v26.2.0** from its
-checksum-pinned source archive and applies `google-account-linking.patch` and
-`email-confirmation.patch`.
+checksum-pinned source archive and applies `google-account-linking.patch`,
+`email-confirmation.patch` and `review-sign-in.patch`.
 The runtime remains the upstream Kratos image. The upstream OAuth exchange,
 JWT verification, state/CSRF checks, email codes, identity storage and sessions
 are retained. No Google token is accepted or verified by the frontend.
 
-This patch adds policy that the upstream open-source image does not enforce:
+This patch adds policy that the upstream open-source image does not enforce. What
+it says of Google holds for Apple too (Sign in with Apple, in the iOS app: docs/adr/0026),
+with Apple's name in the messages:
 
 - A first Google login whose verified email matches an existing code-login
   identity keeps the Google credential in Kratos's private login-flow context.
@@ -51,12 +53,24 @@ This patch adds policy that the upstream open-source image does not enforce:
   that form: the email is always the one Google verified.
 - New Google accounts still use the ordinary invite, age and registration hooks.
   The identity schema and database migrations are unchanged.
+- The app stores' reviewers sign in to one account and cannot read its inbox
+  (docs/deployment/store-review.md). For the address in `HEYNAIJA_REVIEW_EMAIL`
+  (matched ignoring case and surrounding whitespace) the sign-in and signup code
+  is `HEYNAIJA_REVIEW_CODE` instead of a random one, and no email is queued.
+  Everything else about the code is upstream's: it is stored hashed, works once,
+  expires with the method's lifespan, and a flow allows five tries. Both unset,
+  or a code that is not six digits or is one digit repeated or a straight run,
+  every address gets a random code as upstream. The address is the other half of
+  the secret, so the pair is as hard to guess as a password.
 
 `heynaija*.go` is copied into the upstream `oidc` package. `profile_email*.go`
 is copied into the upstream `profile` package, `persistence_email.go` into
 `persistence/sql`, and `courier_email_change*.go` (the two emails) into
 `courier/template/email`. `email-confirmation.patch` also lets the courier
-render those emails and registers the notice hook for profile settings. This policy targets the PostgreSQL deployment used here.
+render those emails and registers the notice hook for profile settings.
+`code_review*.go` is copied into the upstream `code` package as
+`heynaija_review*.go`, and `review-sign-in.patch` makes its code sender use it.
+This policy targets the PostgreSQL deployment used here.
 The image build runs their Go
 policy tests and fails if the pinned patch no longer applies exactly.
 

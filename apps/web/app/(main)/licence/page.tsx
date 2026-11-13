@@ -10,7 +10,7 @@ export default function LicencePage() {
       eyebrow="Open source"
       title="Licence"
       summary="HeyNaija’s code is free software under the GNU Affero General Public License, version 3 or later (AGPL-3.0-or-later). This page explains what that means, and what it does not cover."
-      updated="29 October 2026"
+      updated="3 November 2026"
       sections={[
         {
           id: 'code',
@@ -42,6 +42,24 @@ export default function LicencePage() {
               <a href="https://github.com/HeyNaija/heynaija">github.com/HeyNaija/heynaija</a>. HeyNaija runs
               the code on its <code>main</code> branch, and changes are proposed there as pull requests.
             </p>
+          ),
+        },
+        {
+          id: 'third-party',
+          title: 'Code by others',
+          body: (
+            <>
+              <p>HeyNaija is built with free software written by others. Two parts it includes carry licences of their own:</p>
+              <ul>
+                <li>
+                  <strong>chessground</strong>, the chess board on game pages, and <strong>chessops</strong>, which works
+                  out legal moves. Both are by the Lichess developers and licensed under the GNU General Public License,
+                  version 3 or later (GPL-3.0-or-later), which can be combined with the AGPL. Their source is at{' '}
+                  <a href="https://github.com/lichess-org/chessground">github.com/lichess-org/chessground</a> and{' '}
+                  <a href="https://github.com/niklasf/chessops">github.com/niklasf/chessops</a>.
+                </li>
+              </ul>
+            </>
           ),
         },
         {

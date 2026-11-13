@@ -68,6 +68,11 @@ export const FLAGS = {
     owner: 'links',
     defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
+  games: {
+    description: 'The Games section (docs/adr/0028): /games, its link in the sidebar and every /v1/games route. While Games is being built, an allow-list keeps it to named members.',
+    owner: 'games',
+    defaults: { development: true, staging: true, production: false }, // not in main yet
+  },
   videoPosts: {
     description:
       'Attaching one short video to a post (ADR 0019). Gating creation only: videos already published keep playing. Also needs an upload scanner in production: with none bound, video stays closed even if this is on.',
@@ -76,7 +81,7 @@ export const FLAGS = {
   },
   gists: {
     description:
-      'Live audio rooms (ADR 0017): starting, finding and joining a Gist. Also needs LiveKit configured, and in production it opens only to the members on an allow-list, never to everyone, until the age check exists. Turning it off (or taking a member off the list) closes the routes at once and takes people out of Gists already live within a minute.',
+      'Live audio rooms (ADR 0017): starting, finding and joining a Gist. Also needs LiveKit configured. Hosting and speaking also need a stated adult age. Turning it off (or taking a member off the list) closes the routes at once and takes people out of Gists already live within a minute.',
     owner: 'gists',
     defaults: { development: true, staging: true, production: false }, // code in main, but never switched on in production; LIVE_IN_MAIN is false
   },
@@ -90,6 +95,18 @@ export const FLAGS = {
     description:
       'Marking posts sensitive (ADR 0020): the flag on media in the composer, the post menu item, the Settings switch that marks everything a member posts, the moderators\' mark and the report reason. Gating creation only: a post already marked stays hidden from anyone who is not an adult, whatever this says.',
     owner: 'posts',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
+  weeklyHighlights: {
+    description:
+      'Weekly highlights (ADR 0027): once a week, a member who has been away is sent a few conversations they missed, by push or email. Also the switch for them in Settings. Turning it off stops the next send; nothing already sent is affected.',
+    owner: 'highlights',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
+  communityAnnouncements: {
+    description:
+      "Community announcements (ADR 0029): a community's moderator may notify every member of a new post in it, once a day per community. Also each member's switch for them on the community's page. Turning it off stops new ones; those already sent stay in members' notifications.",
+    owner: 'communities',
     defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
   },
 } as const satisfies Record<string, FlagDefinition>

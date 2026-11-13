@@ -35,10 +35,12 @@ import { VideoError, videoHttpError } from '../video/video-error.js'
 import { VideoGate } from '../video/video-gate.js'
 import { VideoService } from '../video/video.service.js'
 import {
+  AnnouncementTooSoonError,
   CommunityNotFoundError,
   ImagesNotReadyError,
   NotACommunityMemberError,
   NotACommunityModeratorError,
+  NotAnAnnouncementError,
   ParentNotFoundError,
   PollAlreadyVotedError,
   PollClosedError,
@@ -186,7 +188,7 @@ export class PostsController {
   @Post('posts')
   @UseGuards(SessionGuard)
   async create(@Req() req: AuthedRequest, @Body() body: unknown) {
-    const { text, replyTo, community, images, video, quote, poll, replyAudience, sensitive, storyOf } = parse(createPostBody, body)
+    const { text, replyTo, community, images, video, quote, poll, replyAudience, sensitive, storyOf, announce } = parse(createPostBody, body)
     if (video && !(await this.videoGate?.isOpen(req.member.id))) {
       throw new BadRequestException({ code: 'feature_unavailable', message: 'Videos are not available yet' })
     }
@@ -194,6 +196,7 @@ export class PostsController {
     if (replyAudience && replyAudience !== 'everyone') await this.requireFeature(req, 'replyControls', 'Reply controls')
     if (quote) await this.requireFeature(req, 'quotePosts', 'Quote posts')
     if (sensitive) await this.requireFeature(req, 'adultLabels', 'Content warnings')
+    if (announce) await this.requireFeature(req, 'communityAnnouncements', 'Community announcements')
     await this.limits.hit('post', req.member.id)
     try {
       const { id, linkUrl } = await this.posts.create(req.member.id, text, {
@@ -206,6 +209,7 @@ export class PostsController {
         replyAudience,
         sensitive,
         storyOf,
+        announce,
       })
       // The card appears once the page has been read, a few seconds on; the post does not wait for it.
       if (linkUrl && (await this.flags.isEnabled('linkPreviews', req.member.id))) await this.links.request(linkUrl)
@@ -217,6 +221,11 @@ export class PostsController {
         throw new ForbiddenException({ code: 'reply_not_allowed', message: err.message })
       }
       if (err instanceof LabelNotAllowedError) throw new ForbiddenException({ code: 'label_not_allowed', message: err.message })
+      if (err instanceof NotACommunityModeratorError) throw new ForbiddenException({ code: 'not_a_moderator', message: err.message })
+      // `nextAt` is when the community may notify its members again.
+      if (err instanceof AnnouncementTooSoonError) {
+        throw new BadRequestException({ code: 'announcement_too_soon', message: err.message, nextAt: err.nextAt.toISOString() })
+      }
       const code =
         err instanceof ParentNotFoundError
           ? 'parent_gone'
@@ -228,6 +237,8 @@ export class PostsController {
             ? 'community_gone'
             : err instanceof NotACommunityMemberError
               ? 'not_a_member'
+            : err instanceof NotAnAnnouncementError
+              ? 'not_an_announcement'
               : err instanceof ImagesNotReadyError
                 ? 'images_not_ready'
                 : err instanceof VideoNotReadyError

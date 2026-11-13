@@ -29,13 +29,16 @@ import { type VideoConfig, DEFAULT_VIDEO_CONFIG } from '../video/video-config.js
 import { assertVideoEligible } from '../video/video-eligibility.js'
 import { VIDEO_CONFIG } from '../video/video.service.js'
 import { type PostVideo, toPostVideo, type VideoRow, videoOf } from '../video/video-view.js'
-import { isFounder } from '../members/badges.js'
+import { isAutomated, isFounder } from '../members/badges.js'
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
 import { adultContentAllowed, communityOpenTo, LabelNotAllowedError, seesAdultContent } from '../governance/adult-content.js'
 import { isMinor, reachesViewer, ReplyAudienceNotAllowedError, strangerToMinor } from '../governance/minors.js'
-import { excerpt, notify } from '../notifications/notifications.service.js'
+import { mayAnnounce, nextAnnouncementAt } from '../communities/announcements.js'
+import { excerpt, notify, notifyCommunity } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { Refreshing } from '../refreshing.js'
+import { ARBITER_ID, ARBITER_ONLY } from '../games/chess/arena-ids.js'
+import { hiddenFromPlayer } from '../games/chess/hidden-replies.js'
 import { memberOpensGist } from '../gists/gist-open.js'
 import { DB } from '../tokens.js'
 import {
@@ -117,6 +120,8 @@ export const newPost = (slug: z.ZodType<string>) =>
       sensitive: z.boolean().default(false),
       /** An update to a story (docs/adr/0024): its first post. */
       storyOf: z.uuid().optional(),
+      /** Notify every member of `community` (docs/adr/0029). Only its moderators, once a day, while the communityAnnouncements flag is on. */
+      announce: z.boolean().default(false),
     })
     .refine((p) => p.text.length > 0 || p.images.length > 0 || p.video, { message: 'post is empty', path: ['text'] })
     // One video, and nothing else of that kind beside it; and, to start with, not in replies (ADR 0019 section 1).
@@ -126,6 +131,7 @@ export const newPost = (slug: z.ZodType<string>) =>
     .refine((p) => !p.poll || p.text.length > 0, { message: 'a poll needs a question', path: ['text'] })
     .refine((p) => !p.poll || !p.replyTo, { message: 'a poll cannot be added to a reply', path: ['poll'] })
     .refine((p) => !p.storyOf || !p.replyTo, { message: 'an update to a story is not a reply', path: ['storyOf'] })
+    .refine((p) => !p.announce || (!!p.community && !p.replyTo && !p.storyOf), { message: 'only a new post in a community can notify its members', path: ['announce'] })
 
 export type PostLink = FoundLink
 
@@ -218,6 +224,8 @@ export type PostView = {
   authorAvatar: string | null
   /** The author has the Founder badge: one of the people who founded HeyNaija. */
   authorFounder: boolean
+  /** The author is one of HeyNaija's automated accounts (The Arbiter); nobody signs in to it. */
+  authorAutomated: boolean
   /** Empty when `deleted`. */
   text: string
   /** Up to four, in order. Empty when `deleted`. */
@@ -393,6 +401,14 @@ export class VideoNotReadyError extends Error {}
 export class QuotedPostNotFoundError extends Error {}
 export class StoryNotFoundError extends Error {}
 export class NotACommunityModeratorError extends Error {}
+/** `announce` on something other than a new top-level post in a community. */
+export class NotAnAnnouncementError extends Error {}
+/** The community's members were notified less than a day ago; `nextAt` is when they may be again. */
+export class AnnouncementTooSoonError extends Error {
+  constructor(readonly nextAt: Date) {
+    super('this community has already notified its members today')
+  }
+}
 
 const MAX_THREAD_DEPTH = 50
 const REPLY_PAGE_SIZE = 20
@@ -518,6 +534,7 @@ const quoteOf = (viewerId: string | null, quotePostId: SQL) => sql<QuoteRow | nu
   from posts q join members qa on qa.id = q.author_id
   where q.id = ${quotePostId} and q.deleted_at is null and q.removed_at is null and q.gist_id is null
     and ${visibleAuthor(viewerId, sql`q.author_id`, sql`qa.active`)}
+    and not ${hiddenFromPlayer(viewerId, sql`q.root_id`, sql`q.author_id`)}
     and ${postAllowed(viewerId, sql`q.adult_label`, sql`q.author_id`)}
 ), json_build_object('unavailable', true)) end`
 
@@ -670,6 +687,7 @@ const replyContextOf = (viewerId: string | null, parentId: SQL) => sql<ReplyCont
   from posts rp join members ra on ra.id = rp.author_id
   where rp.id = ${parentId} and rp.deleted_at is null and rp.removed_at is null
     and ${visibleAuthor(viewerId, sql`rp.author_id`, sql`ra.active`)}
+    and not ${hiddenFromPlayer(viewerId, sql`rp.root_id`, sql`rp.author_id`)}
     and ${postAllowed(viewerId, sql`rp.adult_label`, sql`rp.author_id`)}
 ), json_build_object('unavailable', true)) end`
 
@@ -756,6 +774,7 @@ export class PostsService {
         authorName: members.displayName,
         authorAvatarId: members.avatarMediaId,
         authorFounder: isFounder(sql`${posts.authorId}`),
+        authorAutomated: isAutomated(sql`${posts.authorId}`),
         text: sql<string>`case when ${shownTo} then ${posts.text} else '' end`,
         images: sql<
           ImageRow[]
@@ -811,6 +830,7 @@ export class PostsService {
             opts.includeDeleted ? sql`(${members.active} or ${members.deletedAt} is not null)` : sql`${members.active}`,
             opts.unmuted,
           ),
+          sql`not ${hiddenFromPlayer(viewerId, sql`${posts.rootId}`, sql`${posts.authorId}`)}`,
           opts.includeDeleted ? undefined : and(live, allowed),
           opts.gist ? eq(posts.gistId, opts.gist) : isNull(posts.gistId),
           where,
@@ -1604,7 +1624,7 @@ export class PostsService {
     }
     const parentAuthor = parentId ? sql`(select author_id from posts where id = ${parentId})` : sql`(select host_id from gists where id = ${gist})`
     const within = parentId ? sql`p.reply_parent_id = ${parentId}` : sql`(p.reply_parent_id is null and p.gist_id = ${gist})`
-    const visible = visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)
+    const visible = and(visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`), sql`not ${hiddenFromPlayer(viewerId, sql`p.root_id`, sql`p.author_id`)}`)
     // A reply the viewer may not see (marked sensitive, or a minor's to someone signed out) is a placeholder, like a deleted one.
     const allowed = postAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)
     type ReplyRow = {
@@ -1660,7 +1680,7 @@ export class PostsService {
         to_char(page.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp,
         case when page.unavailable then null else json_build_object(
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
-          'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id, 'authorFounder', ${isFounder(sql`p.author_id`)},
+          'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id, 'authorFounder', ${isFounder(sql`p.author_id`)}, 'authorAutomated', ${isAutomated(sql`p.author_id`)},
           'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'video', ${videoOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
           'sensitive', p.adult_label, 'coverMedia', ${coverMediaFor(viewerId, sql`p.adult_label`, sql`p.author_id`)},
           'hashtags', ${hashtagsOf(sql`p.id`)},
@@ -1726,7 +1746,11 @@ export class PostsService {
    * with @handle in `text` are recorded and told (see `recordMentions`), and
    * its #hashtags recorded (see `recordHashtags`). `sensitive` marks it as the
    * author's choice; an author whose Settings mark everything they post (or whose
-   * moderator did) gets the mark whatever they ask.
+   * moderator did) gets the mark whatever they ask. `announce` also notifies every
+   * member of the community (docs/adr/0029): only on a new top-level post there
+   * (NotAnAnnouncementError), only from one of its moderators
+   * (NotACommunityModeratorError), and once a day per community
+   * (AnnouncementTooSoonError).
    */
   async create(
     authorId: string,
@@ -1740,6 +1764,7 @@ export class PostsService {
       poll,
       replyAudience,
       sensitive = false,
+      announce = false,
       anyMember = false,
       alongside,
       gist,
@@ -1754,6 +1779,8 @@ export class PostsService {
       poll?: PollInput
       replyAudience?: ReplyAudience
       sensitive?: boolean
+      /** Notify every member of the community it is posted in (docs/adr/0029). */
+      announce?: boolean
       /** Any member may post in the community, joined or not (the ideas board). */
       anyMember?: boolean
       /** More to write in the same transaction, once the post has its ID. */
@@ -1769,6 +1796,10 @@ export class PostsService {
     let communityId: string | null = null
     let quoted: { id: string; authorId: string } | undefined
     let story: { id: string; communityId: string | null; replyAudience: ReplyAudience } | undefined
+
+    if (announce && (replyTo || gist || storyId || !communitySlug)) {
+      throw new NotAnAnnouncementError('only a new post in a community can notify its members')
+    }
 
     if (storyId) {
       // An update answers no one, and goes on the author's own live top-level post,
@@ -1824,12 +1855,17 @@ export class PostsService {
         .select({
           id: communities.id,
           joined: sql<boolean>`exists(select 1 from community_memberships cm where cm.community_id = "communities"."id" and cm.member_id = ${authorId})`,
+          mayAnnounce: mayAnnounce(authorId, sql`"communities"."id"`),
         })
         .from(communities)
         // One marked sensitive is not there for anyone who is not an adult (ADR 0020).
         .where(and(eq(communities.slug, communitySlug), eq(communities.active, true), communityOpenTo(authorId)))
       if (!community) throw new CommunityNotFoundError('no such community')
+      // Chess Arena and Game Night (docs/adr/0028): The Arbiter starts the posts; members reply.
+      const arbiterOnly = ARBITER_ONLY[communitySlug]
+      if (arbiterOnly && authorId !== ARBITER_ID) throw new NotACommunityMemberError(arbiterOnly)
       if (!community.joined && !anyMember) throw new NotACommunityMemberError('join the community to post in it')
+      if (announce && !community.mayAnnounce) throw new NotACommunityModeratorError("only its moderators can notify a community's members")
       communityId = community.id
     }
 
@@ -1874,6 +1910,24 @@ export class PostsService {
         if (!locked) throw new ParentNotFoundError('that Gist no longer exists')
         if (!locked.allowed) throw new ReplyNotAllowedError('the host limited who can reply')
         gistHost = locked.hostId
+      }
+      // An announcement takes the community's one for the day, or is refused: the
+      // update lets a single post through when two moderators send at once, and
+      // is undone with everything else if the post fails further down.
+      if (announce && communityId) {
+        const free = sql`${nextAnnouncementAt(sql`${communities.announcedAt}`)} is null`
+        const taken = await tx
+          .update(communities)
+          .set({ announcedAt: sql`now()` })
+          .where(and(eq(communities.id, communityId), free))
+          .returning({ id: communities.id })
+        if (!taken.length) {
+          const [wait] = await tx
+            .select({ nextAt: nextAnnouncementAt(sql`${communities.announcedAt}`) })
+            .from(communities)
+            .where(eq(communities.id, communityId))
+          throw new AnnouncementTooSoonError(new Date(wait?.nextAt ?? Date.now()))
+        }
       }
       // Waits out the community's sensitive mark changing, so the post takes the
       // mark it ends with (CommunitiesService.setSensitive).
@@ -1979,6 +2033,8 @@ export class PostsService {
           .filter((recipientId) => recipientId !== quoted?.authorId)
           .map((recipientId) => ({ recipientId, kind: 'story_update' as const, actorId: authorId, postId: row!.id })),
       ])
+      // After the mentions, so a member the post names is told that and not both.
+      if (announce && communityId) await notifyCommunity(tx, { communityId, actorId: authorId, postId: row!.id })
       await alongside?.(tx, row!.id)
       return { id: row!.id, linkUrl, marked: row!.adultLabel !== null }
     })

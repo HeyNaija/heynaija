@@ -10,7 +10,8 @@ import { avatarPath } from '../media/media.service.js'
 import { notify } from '../notifications/notifications.service.js'
 import { cleanLine, cleanLines, graphemes } from '../text.js'
 import { DB, ENV } from '../tokens.js'
-import { isFounder } from './badges.js'
+import { RESERVED_HANDLES } from '../games/chess/arena-ids.js'
+import { isAutomated, isFounder } from './badges.js'
 
 export const DISPLAY_NAME_MAX = 50
 export const BIO_MAX = 160
@@ -102,6 +103,8 @@ export type Profile = {
   identityBadge: boolean
   /** One of the people who founded HeyNaija (`pnpm founder:grant`), for good. */
   founderBadge: boolean
+  /** One of HeyNaija's automated accounts (The Arbiter, docs/adr/0028); nobody signs in to it. */
+  automatedBadge: boolean
 }
 
 export class CannotFollowSelfError extends Error {}
@@ -175,6 +178,7 @@ export class MembersService {
           ? sql<boolean>`exists(select 1 from profile_badges pb where pb.member_id = ${outerId} and pb.kind = 'nin_identity_verified' and (pb.expires_at is null or pb.expires_at > now()))`
           : sql<boolean>`false`,
         founderBadge: isFounder(outerId),
+        automatedBadge: isAutomated(outerId),
       })
       .from(members)
       .where(eq(members.id, id))
@@ -189,6 +193,8 @@ export class MembersService {
    * than `memberId` (null for someone signing up), so it is not theirs to take.
    */
   async handleHeld(handle: string, memberId: string | null): Promise<boolean> {
+    // Kept for HeyNaija's own accounts, which have no sign-in and so nothing Kratos would refuse.
+    if (RESERVED_HANDLES.includes(handle.toLowerCase())) return true
     const [hold] = await this.db
       .select({ memberId: releasedHandles.memberId })
       .from(releasedHandles)

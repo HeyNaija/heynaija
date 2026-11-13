@@ -209,8 +209,9 @@ test("a minor's profile says no more than anyone's: no age, no location, no list
   const kids = (await members_().profile(ada, 'kid'))!
   const adults = (await members_().profile(ada, 'bayo'))!
   // A new field here is a decision for ADR 0020 first: a minor's profile stays minimal.
+  // `automatedBadge` (ADR 0028) says only that an account is HeyNaija's own, which no person's is.
   const FIELDS = [
-    'avatar', 'bio', 'displayName', 'followerCount', 'followingCount', 'founderBadge', 'handle', 'id', 'identityBadge',
+    'automatedBadge', 'avatar', 'bio', 'displayName', 'followerCount', 'followingCount', 'founderBadge', 'handle', 'id', 'identityBadge',
     'isSelf', 'joinedAt', 'postCount', 'viewerBlocks', 'viewerFollows', 'viewerMutes',
   ]
   assert.deepEqual(Object.keys(kids).sort(), FIELDS)
@@ -235,7 +236,7 @@ test('the apps offer a minor only the reply choices they have', async () => {
     { birthDateNeeded: async () => false } as never,
     flags,
     { effective: (on: boolean) => on },
-    new GistsGate(flags, { APP_ENV: 'development', LIVEKIT_URL: 'ws://127.0.0.1:7880', LIVEKIT_API_KEY: 'key', LIVEKIT_API_SECRET: 's'.repeat(32) }),
+    new GistsGate(flags, { LIVEKIT_URL: 'ws://127.0.0.1:7880', LIVEKIT_API_KEY: 'key', LIVEKIT_API_SECRET: 's'.repeat(32) }),
   )
   const me = (id: string, handle: string) => auth.me({ member: { id, handle } } as AuthedRequest)
   assert.deepEqual((await me(kid, 'kid')).replyAudiences, ['following', 'mentioned'])

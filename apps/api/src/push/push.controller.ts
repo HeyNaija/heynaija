@@ -36,7 +36,7 @@ const endpointBody = (loopback: boolean) => z.object({ endpoint: endpoint(loopba
 /** An installation of the app: its push service and the token that service gave it. */
 const deviceBody = z.object({
   service: z.enum(PUSH_DEVICE_SERVICES),
-  // FCM's tokens are some 160 characters of base64url with a colon.
+  // FCM's tokens are some 160 characters of base64url with a colon; APNs's are hex.
   token: z.string().regex(/^[\w:.-]{32,4096}$/, 'a push token'),
 })
 
@@ -57,10 +57,15 @@ export class PushController {
     @Inject(ENV) private readonly env: Env,
   ) {}
 
-  /** The key browsers subscribe with, or null when this server does not push to browsers; and whether it pushes to the app. */
+  /**
+   * The key browsers subscribe with, or null when this server does not push to
+   * browsers; and the push services the apps can register with. `app` is whether
+   * it pushes to the Android app, for builds from before iOS had push.
+   */
   @Get('key')
   key() {
-    return { publicKey: this.push.publicKey, app: this.push.appsEnabled }
+    const appServices = this.push.appServices
+    return { publicKey: this.push.publicKey, app: appServices.includes('fcm'), appServices }
   }
 
   /** Pushes the member's notifications to this browser from now on. Answers with the subscription's ID. */
@@ -103,14 +108,15 @@ export class PushController {
   /**
    * Pushes the member's notifications to this installation of the app from now on.
    * The app sends it whenever it starts signed in, and when its token changes.
-   * 404 when this server cannot push to the app (no FCM service account).
+   * 404 when this server cannot push through that service (no FCM service account,
+   * or no Apple key).
    */
   @Post('devices')
   @HttpCode(204)
   @UseGuards(SessionGuard)
   async register(@Req() req: AuthedRequest, @Body() body: unknown) {
-    if (!this.push.appsEnabled) throw new NotFoundException('This server does not push to the app')
     const { service, token, key } = parse(registerBody, body)
+    if (!this.push.appServices.includes(service)) throw new NotFoundException('This server does not push to the app')
     await this.limits.hit('action', req.member.id)
     await this.push.register(req.member.id, service, token, key)
   }

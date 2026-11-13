@@ -316,7 +316,7 @@ test('moderator decisions are emailed, always, in general words; email off still
   await moderation.resolve(sam, report!.id, 'remove_post')
 
   // No kind can be turned off for these, so nothing stands in the way of the email.
-  await notificationsService.setPreferences(bayo, { reply: false, like: false, repost: false, quote: false, mention: false, follow: false })
+  await notificationsService.setPreferences(bayo, { reply: false, like: false, repost: false, quote: false, mention: false, follow: false, chess_challenge: false, chess_game_started: false })
   await age(bayo)
   await age(ada)
   await deliver()
@@ -412,7 +412,7 @@ test('the link in an email turns email off for that member and changes nothing e
   // Email is off for ada, and only for ada.
   assert.deepEqual(await notificationsService.preferences(ada), {
     email: false,
-    reply: true, like: true, repost: true, quote: true, mention: true, follow: false, story_update: true,
+    reply: true, like: true, repost: true, quote: true, mention: true, follow: false, story_update: true, chess_challenge: true, chess_game_started: true, community_announcement: true,
   })
   assert.equal((await notificationsService.preferences(bayo)).email, true)
   assert.equal((await notificationsService.preferences(bayo)).like, false)

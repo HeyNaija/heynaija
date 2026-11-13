@@ -1633,7 +1633,9 @@ a.notification-row:hover {
 .notification-icon.is-repost,
 .notification-icon.is-quote,
 .notification-icon.is-mention,
-.notification-icon.is-follow {
+.notification-icon.is-follow,
+.notification-icon.is-chess_challenge,
+.notification-icon.is-chess_game_started {
   color: var(--accent-strong);
 }
 .notification-dot {
@@ -1951,7 +1953,10 @@ html:has(.image-viewer[open]) {
   font-weight: 600;
   transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
-.composer-sensitive:hover { color: var(--ink); border-color: var(--line-strong); }
+.composer-sensitive:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); }
+.composer-sensitive:disabled { cursor: default; opacity: 0.7; }
+/* Beside "Mark as sensitive" when a post offers both. */
+.composer-sensitive + .composer-sensitive { margin-left: 8px; }
 .composer-sensitive[aria-pressed="true"] {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
   background: color-mix(in srgb, var(--accent) 10%, transparent);
@@ -2585,3 +2590,108 @@ a.result-row:hover { color: var(--accent-strong); }
 @keyframes gist-ring { 0%, 100% { box-shadow: 0 0 0 3px var(--accent); } 50% { box-shadow: 0 0 0 7px var(--accent-soft); } }
 @keyframes gist-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .gist-mic-state { padding: 0 6px; border-radius: var(--r-chip); background: color-mix(in srgb, currentColor 14%, transparent); font-size: 12px; font-weight: 700; }
+
+/* Chess on Lichess (docs/adr/0028): ratings as quiet inset tiles, and challenges as rows divided by hairlines inside their card. */
+.chess-ratings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 14px 0 8px; }
+@media (min-width: 640px) { .chess-ratings { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.chess-ratings > div { min-width: 0; border-radius: var(--r-control); background: var(--panel); padding: 10px 12px; }
+.chess-ratings dt { color: var(--muted); font-size: 12px; font-weight: 600; }
+.chess-ratings dd { margin: 2px 0 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.chess-challenges { display: flex; flex-direction: column; margin-top: 8px; }
+.chess-challenge { border-top: 1px solid var(--line); padding: 12px 0; scroll-margin-top: 96px; }
+.chess-challenge:first-child { border-top: 0; }
+.chess-challenge-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-left: 48px; }
+@media (max-width: 419px) { .chess-challenge-actions { padding-left: 0; } }
+
+/* The chess board (docs/adr/0028, phase 3). Squares from the existing tokens, no new colours: light squares are the
+   inset fill, dark ones the accent mixed into it. The checker is drawn with hard stops, so it reads as squares, not a
+   gradient. As wide as the column, at most 560px, square. */
+.chess-game { display: flex; flex-direction: column; gap: 12px; }
+.chess-board-wrap { width: 100%; max-width: 560px; margin: 0 auto; }
+.chess-board { width: 100%; aspect-ratio: 1; --chess-dark: color-mix(in srgb, var(--accent) 38%, var(--panel)); }
+.chess-board cg-board {
+  background-color: var(--panel);
+  background-image: conic-gradient(var(--chess-dark) 25%, transparent 0 50%, var(--chess-dark) 0 75%, transparent 0);
+  background-size: 25% 25%;
+  border-radius: var(--r-control);
+}
+.chess-board cg-board square.last-move { background-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.chess-board cg-board square.selected { background-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.chess-board cg-board square.move-dest { background: radial-gradient(color-mix(in srgb, var(--accent) 55%, transparent) 22%, transparent 23%); }
+.chess-board cg-board square.oc.move-dest { background: none; box-shadow: inset 0 0 0 4px color-mix(in srgb, var(--accent) 55%, transparent); }
+.chess-board cg-board square.check { background: color-mix(in srgb, var(--danger) 45%, transparent); }
+.chess-board coords { color: var(--muted); font-size: 10px; }
+.chess-player { display: flex; align-items: center; gap: 10px; border-radius: var(--r-control); padding: 6px 8px; }
+.chess-player.is-turn { background: var(--panel); }
+.chess-clock { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 16px; }
+.chess-player.is-turn .chess-clock { color: var(--accent-strong); }
+.chess-status { font-weight: 600; }
+.chess-moves { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* Keno (docs/adr/0028, phase 4). The picker is a grid of number keys from the existing tokens: picked keys take the
+   accent, drawn numbers are outlined chips, and a ticket's drawn numbers are filled the soft accent. Eight to a row on a
+   phone so the keys stay big enough to press, ten from tablet width. No new colours. */
+.keno-picker { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-top: 14px; }
+@media (min-width: 560px) { .keno-picker { grid-template-columns: repeat(10, minmax(0, 1fr)); } }
+.keno-num {
+  min-height: 36px; aspect-ratio: 1; border: 1px solid var(--line-strong); border-radius: var(--r-control);
+  background: var(--panel); color: var(--ink); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+@media (min-width: 560px) { .keno-num { min-height: var(--touch-target); aspect-ratio: auto; } }
+.keno-num:hover:not(:disabled) { border-color: var(--accent); }
+.keno-num[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.keno-num:disabled { opacity: 0.45; }
+.keno-clock { color: var(--ink); font-variant-numeric: tabular-nums; }
+.keno-hash code { font-size: 12px; }
+.keno-drawn { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
+.keno-ball {
+  display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border: 1px solid var(--line-strong);
+  border-radius: 999px; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.keno-ball[data-shown="false"] { visibility: hidden; }
+.keno-ball[data-hit] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.keno-tickets { display: flex; flex-direction: column; margin: 8px 0 0; padding: 0; list-style: none; }
+.keno-tickets > li { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding: 10px 0; }
+.keno-tickets > li:first-child { border-top: 0; }
+.keno-ticket-numbers { display: flex; flex-wrap: wrap; gap: 4px; }
+.keno-chip {
+  display: inline-flex; min-width: 28px; height: 26px; align-items: center; justify-content: center; padding: 0 6px;
+  border: 1px solid var(--line-strong); border-radius: var(--r-chip); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.keno-chip[data-hit] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.keno-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.keno-table-wrap { margin-top: 10px; overflow-x: auto; }
+.keno-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.keno-table th, .keno-table td { border-top: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: top; }
+.keno-table thead th { border-top: 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+.keno-table tbody th { width: 5.5rem; font-weight: 700; }
+.keno-tabs { position: static; background: transparent; }
+.keno-board { display: flex; flex-direction: column; margin: 8px 0 0; padding: 0; list-style: none; }
+.keno-board-row { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line); padding: 10px 0; min-width: 0; }
+.keno-board-row:first-child { border-top: 0; }
+.keno-board-row[data-you] { font-weight: 600; }
+.keno-board-gap { padding: 4px 0 4px 6px; color: var(--muted); }
+.keno-rank { width: 2rem; flex-shrink: 0; color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.keno-points { flex-shrink: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.keno-proof { display: grid; gap: 4px; margin: 10px 0 0; font-size: 13px; }
+.keno-proof dt { color: var(--muted); font-weight: 600; }
+.keno-proof dd { margin: 0 0 8px; overflow-wrap: anywhere; }
+.keno-command { margin-top: 6px; max-width: 100%; overflow-x: auto; border-radius: var(--r-control); background: var(--panel); padding: 10px; font-size: 11px; }
+
+/* Games leaderboards and competitions (docs/adr/0028, phase 5): the board's choices sit in a row that wraps on a
+   phone; competition times are two to a row from tablet width. */
+.leaderboard-controls { display: flex; flex-wrap: wrap; gap: 10px 12px; margin-top: 12px; }
+.leaderboard-controls > label { min-width: 0; flex: 1 1 140px; }
+.competition-times { display: grid; gap: 12px; }
+@media (min-width: 560px) { .competition-times { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* The games grid: two tiles to a row on a phone, three from tablet width; each tile is its game's logo and name. */
+.games-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+@media (min-width: 640px) { .games-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.game-tile { flex: 1; align-items: center; gap: 8px; min-width: 0; padding: 20px 12px 16px; text-align: center; }
+.game-tile[aria-disabled] { opacity: 0.7; }
+.game-logo { display: inline-flex; width: 72px; height: 72px; margin-bottom: 4px; flex-shrink: 0; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--r-panel); background: var(--accent-soft); color: var(--accent-strong); }
+.game-logo.has-photo { overflow: hidden; border-color: var(--line); background: var(--surface); }
+.game-logo img { width: 100%; height: 100%; object-fit: cover; }
+.game-tabs { position: static; gap: 20px; background: transparent; overflow-x: auto; scrollbar-width: none; }
+.game-score { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-top: 10px; }
+.game-score strong { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }

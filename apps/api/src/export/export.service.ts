@@ -4,11 +4,18 @@ import {
   bookmarks,
   communities,
   communityMemberships,
+  communityTeams,
+  competitionEntries,
+  competitionInvites,
+  competitions,
   type Db,
   follows,
+  gameProfiles,
+  gameSeasons,
   governanceMemberships,
   ideas,
   ideaVotes,
+  lichessAccounts,
   identityVerifications,
   likes,
   media,
@@ -26,8 +33,11 @@ import {
   pushDevices,
   pushSubscriptions,
   reports,
+  kenoTickets,
   reposts,
+  seasonScores,
   storyFollows,
+  xpTotals,
 } from '@heynaija/db'
 import { Inject, Injectable, Optional } from '@nestjs/common'
 import { aliasedTable, and, asc, eq, isNotNull, or, sql } from 'drizzle-orm'
@@ -37,10 +47,11 @@ import { masterKey, posterKey } from '../video/video-keys.js'
 import { adultContentAllowed } from '../governance/adult-content.js'
 import { gistsOpenTo, postShown, preferencesWithout } from '../notifications/notifications.service.js'
 import { GistsGate } from '../gists/gists-enabled.guard.js'
+import { describeTime } from '../games/chess/time-controls.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/14'
+export const EXPORT_FORMAT = 'heynaija-export/20'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -199,7 +210,14 @@ export class ExportService {
         .innerJoin(other, eq(other.id, blocks.blockedId))
         .where(eq(blocks.blockerId, memberId)),
       db
-        .select({ community: communities.slug, name: communities.name, role: communityMemberships.role, since: communityMemberships.joinedAt })
+        .select({
+          community: communities.slug,
+          name: communities.name,
+          role: communityMemberships.role,
+          since: communityMemberships.joinedAt,
+          // Whether you are told of its announcements (docs/adr/0029).
+          announcements: communityMemberships.announcements,
+        })
         .from(communityMemberships)
         .innerJoin(communities, eq(communities.id, communityMemberships.communityId))
         .where(eq(communityMemberships.memberId, memberId)),
@@ -241,7 +259,7 @@ export class ExportService {
         .where(eq(pushSubscriptions.memberId, memberId))
         .orderBy(asc(pushSubscriptions.createdAt)),
       db
-        .select({ since: pushDevices.createdAt, lastPushedAt: pushDevices.lastPushedAt })
+        .select({ service: pushDevices.service, since: pushDevices.createdAt, lastPushedAt: pushDevices.lastPushedAt })
         .from(pushDevices)
         .where(eq(pushDevices.memberId, memberId))
         .orderBy(asc(pushDevices.createdAt)),
@@ -381,6 +399,10 @@ export class ExportService {
       notificationPreferences: preferencesWithout(turnedOff.map((r) => r.kind)),
       // Whether those notifications are also sent to your email address.
       emailNotifications: me.emailNotifications,
+      // Whether you are sent weekly highlights when you have been away
+      // (docs/adr/0027), and when we last sent you any.
+      weeklyHighlights: me.weeklyHighlights,
+      weeklyHighlightsLastSent: me.highlightsSentAt,
       // Whether everything you post is marked sensitive: your choice ('author'),
       // a moderator's ('moderator'), or not (null). And whether pictures and video
       // in posts marked sensitive are shown to you without a cover.
@@ -389,9 +411,142 @@ export class ExportService {
       // The browsers they are pushed to: when each was turned on and last sent one.
       // A browser's push address is left out; it is only good for sending to it.
       pushNotifications: pushedTo,
-      // The same for the HeyNaija app on your phones; its token is left out likewise.
+      // The same for the HeyNaija app on your phones, with the push service each uses
+      // (fcm on Android; apns, or apns_sandbox for a test build, on iOS); its token is left out likewise.
       appPushNotifications: pushedToApps,
       notifications: received,
+      // Games (docs/adr/0028): your stats in each game, your points per season and
+      // the competitions you entered.
+      games: await this.games(memberId),
+    }
+  }
+
+  private async games(memberId: string) {
+    const [profiles, scores, entries, [lichess], challenges, played, tickets, xp, invites, teams] = await Promise.all([
+      this.db
+        .select({ game: gameProfiles.game, stats: gameProfiles.stats, since: gameProfiles.createdAt, updatedAt: gameProfiles.updatedAt })
+        .from(gameProfiles)
+        .where(eq(gameProfiles.memberId, memberId))
+        .orderBy(asc(gameProfiles.game)),
+      this.db
+        .select({ season: gameSeasons.slug, game: seasonScores.game, points: seasonScores.points, xp: seasonScores.xp })
+        .from(seasonScores)
+        .innerJoin(gameSeasons, eq(gameSeasons.id, seasonScores.seasonId))
+        .where(eq(seasonScores.memberId, memberId))
+        .orderBy(asc(gameSeasons.startsAt), asc(seasonScores.game)),
+      this.db
+        .select({
+          competition: competitions.name,
+          game: competitions.game,
+          enteredAt: competitionEntries.enteredAt,
+          placement: competitionEntries.placement,
+          score: competitionEntries.score,
+        })
+        .from(competitionEntries)
+        .innerJoin(competitions, eq(competitions.id, competitionEntries.competitionId))
+        .where(eq(competitionEntries.memberId, memberId))
+        .orderBy(asc(competitionEntries.enteredAt)),
+      // The linked Lichess account, never its token.
+      this.db
+        .select({ username: lichessAccounts.username, linkedAt: lichessAccounts.linkedAt, ratings: lichessAccounts.ratings, ratingsRefreshedAt: lichessAccounts.ratingsRefreshedAt })
+        .from(lichessAccounts)
+        .where(eq(lichessAccounts.memberId, memberId)),
+      this.db.execute<{
+        sent: boolean
+        opponent: string
+        rated: boolean
+        clock_limit: number | null
+        clock_increment: number | null
+        days: number | null
+        color: string
+        status: string
+        lichess_game_id: string | null
+        created_at: Date
+        responded_at: Date | null
+      }>(sql`
+        select c.challenger_id = ${memberId} as sent, o.handle as opponent, c.rated, c.clock_limit, c.clock_increment, c.days,
+          c.color, c.status, c.lichess_game_id, c.created_at, c.responded_at
+        from games.chess_challenges c
+        join members o on o.id = case when c.challenger_id = ${memberId} then c.challenged_id else c.challenger_id end
+        where c.challenger_id = ${memberId} or c.challenged_id = ${memberId}
+        order by c.created_at`),
+      this.db.execute<{
+        id: string
+        white: boolean
+        opponent: string
+        rated: boolean
+        clock_limit: number | null
+        clock_increment: number | null
+        days: number | null
+        status: string
+        winner: string | null
+        moves: string
+        started_at: Date
+        finished_at: Date | null
+      }>(sql`
+        select g.id, g.white_id = ${memberId} as white, o.handle as opponent, g.rated, g.clock_limit, g.clock_increment, g.days,
+          g.status, g.winner, g.moves, g.started_at, g.finished_at
+        from games.chess_games g
+        join members o on o.id = case when g.white_id = ${memberId} then g.black_id else g.white_id end
+        where g.white_id = ${memberId} or g.black_id = ${memberId}
+        order by g.started_at`),
+      this.db
+        .select({ round: kenoTickets.roundNumber, numbers: kenoTickets.numbers, hits: kenoTickets.hits, points: kenoTickets.points, at: kenoTickets.createdAt })
+        .from(kenoTickets)
+        .where(eq(kenoTickets.memberId, memberId))
+        .orderBy(asc(kenoTickets.createdAt)),
+      this.db.select({ period: xpTotals.period, xp: xpTotals.xp }).from(xpTotals).where(eq(xpTotals.memberId, memberId)).orderBy(asc(xpTotals.period)),
+      this.db
+        .select({ competition: competitions.name, game: competitions.game, startsAt: competitions.startsAt })
+        .from(competitionInvites)
+        .innerJoin(competitions, eq(competitions.id, competitionInvites.competitionId))
+        .where(eq(competitionInvites.memberId, memberId))
+        .orderBy(asc(competitions.startsAt)),
+      this.db
+        .select({ community: communities.slug, lichessTeam: communityTeams.lichessTeamId, teamName: communityTeams.teamName, linkedAt: communityTeams.linkedAt })
+        .from(communityTeams)
+        .innerJoin(communities, eq(communities.id, communityTeams.communityId))
+        .where(eq(communityTeams.linkedBy, memberId))
+        .orderBy(asc(communityTeams.linkedAt)),
+    ])
+    return {
+      profiles,
+      seasonScores: scores,
+      competitionEntries: entries,
+      lichess: lichess ?? null,
+      // Chess challenges you sent or got; `color` is what the challenger asked to play.
+      chessChallenges: challenges.rows.map((c) => ({
+        sent: c.sent,
+        opponent: c.opponent,
+        rated: c.rated,
+        time: describeTime({ clockLimit: c.clock_limit, clockIncrement: c.clock_increment, days: c.days }).label,
+        color: c.color,
+        status: c.status,
+        lichessGameId: c.lichess_game_id,
+        at: new Date(c.created_at),
+        answeredAt: c.responded_at ? new Date(c.responded_at) : null,
+      })),
+      // Chess games you played here, with every move (UCI) and how each ended.
+      chessGames: played.rows.map((g) => ({
+        lichessGameId: g.id,
+        colour: g.white ? 'white' : 'black',
+        opponent: g.opponent,
+        rated: g.rated,
+        time: describeTime({ clockLimit: g.clock_limit, clockIncrement: g.clock_increment, days: g.days }).label,
+        status: g.status,
+        result: g.finished_at ? (g.winner ? (g.winner === (g.white ? 'white' : 'black') ? 'won' : 'lost') : 'no winner') : 'in progress',
+        moves: g.moves ? g.moves.split(' ') : [],
+        startedAt: new Date(g.started_at),
+        finishedAt: g.finished_at ? new Date(g.finished_at) : null,
+      })),
+      // Keno tickets you played (free, for points only): hits and points are empty until the round is drawn.
+      kenoTickets: tickets,
+      // Your Game Score: XP from every game, per season ("2026-11") and for all time ("all").
+      gameScore: xp,
+      // Invite-only competitions you were invited to.
+      competitionInvites: invites,
+      // Lichess teams you linked to a community you moderate.
+      lichessTeamsLinked: teams,
     }
   }
 }

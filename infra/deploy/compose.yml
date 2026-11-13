@@ -47,6 +47,12 @@ x-api-env: &api-env
   PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
   # And to the Android app through FCM (docs/adr/0023); without it the app gets none.
   FCM_SERVICE_ACCOUNT: ${FCM_SERVICE_ACCOUNT:-}
+  # And to the iOS app through APNs, with Sign in with Apple's tokens revoked when an
+  # account is erased (docs/adr/0026); without the key the iOS app gets no push.
+  APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
+  APPLE_KEY_ID: ${APPLE_KEY_ID:-}
+  APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
+  APPLE_BUNDLE_ID: ${APPLE_BUNDLE_ID:-}
   WEB_PUBLIC_URL: ${SITE_URL:?}
   # Gists (docs/adr/0017). All optional: empty means off, and every Gists route
   # answers 404. With these set, the `gists` feature flag decides who has Gists
@@ -57,6 +63,9 @@ x-api-env: &api-env
   LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
   LIVEKIT_WEBHOOK_KEY: ${LIVEKIT_WEBHOOK_KEY:-}
   LIVEKIT_WEBHOOK_SECRET: ${LIVEKIT_WEBHOOK_SECRET:-}
+  # Chess on Lichess (docs/adr/0028): the key for members' Lichess tokens. Empty means
+  # connecting Lichess is not offered.
+  GAMES_TOKEN_KEY: ${GAMES_TOKEN_KEY:-}
   # Safety (docs/safety/abuse-material-scanning.md): where alerts are emailed, the
   # upload scanners' logins (Arachnid Shield, PhotoDNA once approved), and what
   # purging Cloudflare's cache needs. Each is optional; without them alerts are
@@ -110,6 +119,8 @@ services:
       WEB_WORKERS: ${WEB_WORKERS:-1}
       # Which release is running: a problem report on the ideas board says so.
       RELEASE: ${RELEASE:-latest}
+      # More Android signing certificates than Play's, for links that open the app (apps/web/lib/app-links.ts). Normally unset.
+      ANDROID_CERT_SHA256: ${ANDROID_CERT_SHA256:-}
     depends_on:
       api:
         condition: service_healthy
@@ -232,11 +243,16 @@ services:
       SECRETS_COOKIE: ${KRATOS_SECRETS_COOKIE:?}
       SECRETS_CIPHER: ${KRATOS_SECRETS_CIPHER:?}
       COURIER_SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:?}
+      # The app stores' review account (docs/deployment/store-review.md): with both
+      # set, that one address signs in with that fixed code and is sent no email.
+      HEYNAIJA_REVIEW_EMAIL: ${HEYNAIJA_REVIEW_EMAIL:-}
+      HEYNAIJA_REVIEW_CODE: ${HEYNAIJA_REVIEW_CODE:-}
     volumes: &kratos-volumes
       - ../kratos/identity.schema.json:/etc/config/kratos/identity.schema.json:ro
       - ../kratos/invite-check.jsonnet:/etc/config/kratos/invite-check.jsonnet:ro
       - ../kratos/handle-change.jsonnet:/etc/config/kratos/handle-change.jsonnet:ro
       - ../kratos/google.jsonnet:/etc/config/kratos/google.jsonnet:ro
+      - ../kratos/apple.jsonnet:/etc/config/kratos/apple.jsonnet:ro
       - ../kratos/courier-templates:/etc/config/kratos/courier-templates:ro
     configs: &kratos-configs
       - source: kratos
@@ -370,6 +386,24 @@ configs:
                   client_secret: "${GOOGLE_CLIENT_SECRET:-}"
                   mapper_url: file:///etc/config/kratos/google.jsonnet
                   scope: [openid, email]
+                  # The iOS app signs in as its own Google client, so its ID tokens are
+                  # for that client (docs/deployment/google-sign-in.md). Not secret:
+                  # the app carries it. Android's are for the web client above.
+                  additional_id_token_audiences:
+                    - "${GOOGLE_IOS_CLIENT_ID:-567185521629-68a94t7k7jomu81msugkias5ltprp80p.apps.googleusercontent.com}"
+                # Apple, in the iOS app only (docs/deployment/sign-in-with-apple.md):
+                # its own sheet gives an ID token for the app's bundle ID, which
+                # Kratos checks against Apple's published keys. Signing in on the web
+                # would need a Services ID and Apple's key here; the web does not
+                # offer it, so they are left empty.
+                - id: apple
+                  provider: apple
+                  client_id: "${APPLE_BUNDLE_ID:-ng.heynaija.app}"
+                  apple_team_id: ""
+                  apple_private_key_id: ""
+                  apple_private_key: ""
+                  mapper_url: file:///etc/config/kratos/apple.jsonnet
+                  scope: [email]
         flows:
           error:
             ui_url: ${SITE_URL}/auth-error

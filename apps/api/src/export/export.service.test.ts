@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { gistMembers, gists, media, members, notifications } from '@heynaija/db'
+import { chessChallenges, chessGames, competitionEntries, kenoRounds, kenoTickets, competitions, gameProfiles, gameSeasons, gistMembers, gists, lichessAccounts, media, members, notifications, seasonScores } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { GovernanceService } from '../governance/governance.service.js'
 import { MembersService } from '../members/members.service.js'
@@ -131,12 +131,26 @@ test('an export includes reply boundaries, polls the member created and their pu
 })
 
 test('an export says which kinds of activity the member is notified about', async () => {
-  const allOn = { reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true }
+  const allOn = { reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true, chess_challenge: true, chess_game_started: true, community_announcement: true }
   assert.deepEqual((await service.export(ada, null))!.notificationPreferences, allOn)
   await notificationsService.setPreferences(ada, { like: false, follow: false })
   assert.deepEqual((await service.export(ada, null))!.notificationPreferences, { ...allOn, like: false, follow: false })
   // Only their own choices.
   assert.deepEqual((await service.export(bayo, null))!.notificationPreferences, allOn)
+})
+
+test('an export says whether weekly highlights are on, and when any were last sent', async () => {
+  const first = (await service.export(ada, null))!
+  assert.equal(first.weeklyHighlights, true)
+  assert.equal(first.weeklyHighlightsLastSent, null)
+  const sentAt = new Date('2026-11-08T17:02:00Z')
+  await db.update(members).set({ highlightsSentAt: sentAt }).where(eq(members.id, ada))
+  await notificationsService.setPreferences(ada, { highlights: false })
+  const later = (await service.export(ada, null))!
+  assert.equal(later.weeklyHighlights, false)
+  assert.equal(later.weeklyHighlightsLastSent?.toISOString(), sentAt.toISOString())
+  // Turning highlights off is not turning email off.
+  assert.equal(later.emailNotifications, true)
 })
 
 test('an export says whether notifications are also emailed', async () => {
@@ -179,6 +193,80 @@ test('an export includes the age confirmation and verification history, but neve
   assert.equal(text.includes('person-ada'), false)
 })
 
+test('an export includes the member’s games: stats, season scores and competition entries', async () => {
+  assert.deepEqual((await service.export(ada, null))!.games, { profiles: [], seasonScores: [], competitionEntries: [], lichess: null, chessChallenges: [], chessGames: [], kenoTickets: [], gameScore: [], competitionInvites: [], lichessTeamsLinked: [] })
+
+  const [season] = await db
+    .insert(gameSeasons)
+    .values({ slug: '2026-11', startsAt: new Date('2026-11-01T00:00:00Z'), endsAt: new Date('2026-12-01T00:00:00Z') })
+    .returning({ id: gameSeasons.id })
+  const [competition] = await db
+    .insert(competitions)
+    .values({
+      game: 'keno',
+      name: 'November draw',
+      format: 'points',
+      eligibility: 'open',
+      entryOpensAt: new Date('2026-11-01T00:00:00Z'),
+      entryClosesAt: new Date('2026-11-10T00:00:00Z'),
+      startsAt: new Date('2026-11-10T00:00:00Z'),
+      endsAt: new Date('2026-11-20T00:00:00Z'),
+      standingsSource: 'keno_points',
+      createdBy: bayo,
+    })
+    .returning({ id: competitions.id })
+  await db.insert(gameProfiles).values([
+    { memberId: ada, game: 'keno', stats: { rounds: 4 } },
+    { memberId: bayo, game: 'keno', stats: { rounds: 9 } },
+  ])
+  await db.insert(seasonScores).values({ seasonId: season!.id, memberId: ada, game: 'keno', points: 12, xp: 6 })
+  await db.insert(competitionEntries).values({ competitionId: competition!.id, memberId: ada, placement: 2, score: 12 })
+
+  const { games } = (await service.export(ada, null))!
+  assert.deepEqual(
+    games.profiles.map((p) => [p.game, p.stats]),
+    [['keno', { rounds: 4 }]],
+  )
+  assert.deepEqual(games.seasonScores, [{ season: '2026-11', game: 'keno', points: 12, xp: 6 }])
+  assert.deepEqual(
+    games.competitionEntries.map((e) => [e.competition, e.game, e.placement, e.score]),
+    [['November draw', 'keno', 2, 12]],
+  )
+})
+
+test('an export includes the linked Lichess account, never its token, and the chess challenges', async () => {
+  await db.insert(lichessAccounts).values({
+    memberId: ada,
+    lichessId: 'ada',
+    username: 'Ada',
+    tokenBox: 'v1.SEALED-TOKEN',
+    scopes: 'challenge:write',
+    ratings: { rapid: { rating: 1500, games: 20, provisional: false } },
+  })
+  await db.insert(chessChallenges).values({ challengerId: bayo, challengedId: ada, rated: true, clockLimit: 600, clockIncrement: 5, expiresAt: new Date() })
+  const { games } = (await service.export(ada, null))!
+  assert.equal(games.lichess!.username, 'Ada')
+  assert.deepEqual(games.lichess!.ratings, { rapid: { rating: 1500, games: 20, provisional: false } })
+  assert.ok(!JSON.stringify(games).includes('SEALED-TOKEN'))
+  assert.deepEqual(
+    games.chessChallenges.map((c) => [c.sent, c.opponent, c.rated, c.time, c.status]),
+    [[false, 'bayo', true, '10+5', 'pending']],
+  )
+  await db.insert(chessGames).values({ id: 'gm000001', whiteId: ada, blackId: bayo, rated: true, clockLimit: 600, clockIncrement: 5, status: 'mate', winner: 'white', moves: 'e2e4 e7e5', finishedAt: new Date() })
+  const [game] = (await service.export(ada, null))!.games.chessGames
+  assert.deepEqual([game!.colour, game!.opponent, game!.result, game!.moves, game!.time], ['white', 'bayo', 'won', ['e2e4', 'e7e5'], '10+5'])
+})
+
+test('the export has your Keno tickets, and only yours', async () => {
+  const [round] = await db.insert(kenoRounds).values({ drawsAt: new Date(), seedHash: 'h', seedSealed: 's' }).returning()
+  await db.insert(kenoTickets).values([
+    { memberId: ada, roundNumber: round!.number, numbers: [3, 7, 11], tableVersion: 'v1', hits: 2, points: 1 },
+    { memberId: bayo, roundNumber: round!.number, numbers: [80], tableVersion: 'v1' },
+  ])
+  const { kenoTickets: tickets } = (await service.export(ada, null))!.games
+  assert.deepEqual(tickets.map((t) => [t.round, t.numbers, t.hits, t.points]), [[round!.number, [3, 7, 11], 2, 1]])
+})
+
 test('an export lists a post’s ready video (path and poster); held, unattached and others’ videos stay out', async () => {
   const withVideo = await postsService.create(ada, 'my clip')
   const plain = await postsService.create(ada, 'no clip')
@@ -191,7 +279,7 @@ test('an export lists a post’s ready video (path and poster); held, unattached
   await row(bayo, 'ready', other.id)
 
   const data = (await service.export(ada, null))!
-  assert.equal(data.format, 'heynaija-export/14')
+  assert.equal(data.format, EXPORT_FORMAT)
   const byText = (text: string) => data.posts.find((p) => p.text === text)!
   assert.deepEqual(byText('my clip').videos, [{ url: `/media/videos/${ready}/hls/master.m3u8`, poster: `/media/videos/${ready}/poster.webp` }])
   assert.deepEqual(byText('no clip').videos, [])

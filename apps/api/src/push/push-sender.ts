@@ -30,8 +30,14 @@ export const APP_PUSH_SENDER = Symbol('APP_PUSH_SENDER')
  */
 export type AppTarget = { service: PushDeviceService; token: string; key: string; memberId: string }
 
-/** Somewhere to send the apps' push notifications: Firebase Cloud Messaging for Android (fcm-sender.ts). */
+/**
+ * Somewhere to send the apps' push notifications: Firebase Cloud Messaging for
+ * Android (fcm-sender.ts), Apple's service for iOS (apns-sender.ts), or both
+ * (appPushSender).
+ */
 export interface AppPushSender {
+  /** The push services it delivers through: an installation registered with another is not offered push. */
+  readonly services: readonly PushDeviceService[]
   send(target: AppTarget, message: PushMessage): Promise<void>
 }
 

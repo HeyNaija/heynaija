@@ -3,19 +3,31 @@ import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
 import {
   ageAssurances,
+  appleTokens,
   bookmarks,
   communities,
+  chessChallenges,
+  chessGames,
+  kenoRounds,
+  kenoTickets,
   communityMemberships,
+  competitionEntries,
+  competitions,
   featureFlagChanges,
   featureFlagMembers,
   featureFlags,
   follows,
+  gameEvents,
+  gameProfiles,
+  gameSeasons,
   gistMembers,
   gistReportParticipants,
   gists,
   governanceAuditLog,
   ideas,
   ideaVotes,
+  lichessAccounts,
+  lichessLinkAttempts,
   inviteRedemptions,
   invites,
   likes,
@@ -31,6 +43,7 @@ import {
   postPolls,
   postHashtags,
   postMentions,
+  seasonScores,
   posts,
   privacyRequests,
   problemDetails,
@@ -245,6 +258,36 @@ test('if Kratos cannot be reached the account still leaves the site; the erase s
   kratos.failing.clear()
   await deletion.erase(xena, days(14))
   assert.deepEqual(kratos.revoked, [xena])
+})
+
+test('the erase revokes Sign in with Apple while its token is kept, and is tried again if Apple cannot be reached', async () => {
+  await db.insert(appleTokens).values({ memberId: xena, refreshToken: 'r.apple' })
+  const revoked: string[] = []
+  let appleDown = true
+  const withApple = new AccountDeletionService(
+    db,
+    env,
+    kratos,
+    kratos,
+    { eraseFilesOf: async () => {} },
+    membersService,
+    { endHostedBy: async () => {} },
+    notices,
+    undefined,
+    {
+      revokeFor: async (id) => {
+        if (appleDown) throw new Error('Apple answered 503')
+        revoked.push(`${id} with ${await count(appleTokens, eq(appleTokens.memberId, id))} token`)
+      },
+    },
+  )
+  await withApple.request(xena, { channel: 'self_service' }, now)
+  await assert.rejects(withApple.erase(xena, days(14)), /503/)
+  assert.equal((await member(xena)).deletedAt, null)
+  appleDown = false
+  assert.equal(await withApple.erase(xena, days(14)), 'erased')
+  assert.deepEqual(revoked, [`${xena} with 1 token`])
+  assert.equal(await count(appleTokens, eq(appleTokens.memberId, xena)), 0)
 })
 
 test('a site moderator is demoted before deleting their own account; an operator can delete one', async () => {
@@ -874,6 +917,88 @@ test('feature flags: they leave every allow-list; one that held only them goes o
   // Safe to repeat.
   await removeFromAllowLists(db, xena)
   assert.equal(await count(featureFlagChanges, isNull(featureFlagChanges.actorId)), 2)
+})
+
+test('Games: their stats, scores, entries and history go; a competition they created stays', async () => {
+  const [season] = await db
+    .insert(gameSeasons)
+    .values({ slug: '2026-10', startsAt: new Date('2026-10-01T00:00:00Z'), endsAt: new Date('2026-11-01T00:00:00Z') })
+    .returning({ id: gameSeasons.id })
+  const [competition] = await db
+    .insert(competitions)
+    .values({
+      game: 'keno',
+      name: 'October draw',
+      format: 'points',
+      eligibility: 'open',
+      entryOpensAt: days(-10),
+      entryClosesAt: days(-5),
+      startsAt: days(-5),
+      endsAt: days(-1),
+      standingsSource: 'keno_points',
+      createdBy: xena,
+    })
+    .returning({ id: competitions.id })
+  for (const id of [xena, yemi]) {
+    await db.insert(gameProfiles).values({ memberId: id, game: 'keno', stats: { rounds: 3 } })
+    await db.insert(seasonScores).values({ seasonId: season!.id, memberId: id, game: 'keno', points: 10, xp: 5 })
+    await db.insert(competitionEntries).values({ competitionId: competition!.id, memberId: id })
+    await db.insert(gameEvents).values({ game: 'keno', kind: 'round_played', memberId: id, competitionId: competition!.id })
+  }
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  for (const [table, column] of [
+    [gameProfiles, gameProfiles.memberId],
+    [seasonScores, seasonScores.memberId],
+    [competitionEntries, competitionEntries.memberId],
+    [gameEvents, gameEvents.memberId],
+  ] as const) {
+    assert.equal(await count(table, eq(column, xena)), 0)
+    assert.equal(await count(table, eq(column, yemi)), 1, 'another member’s rows stay')
+  }
+  assert.equal(await count(competitions, eq(competitions.createdBy, xena)), 1, 'the competition stays, pointing at the tombstone')
+})
+
+test('Chess: their Lichess account, any linking under way and every challenge they were in go, notifications with them', async () => {
+  await db.insert(lichessAccounts).values([
+    { memberId: xena, lichessId: 'xena', username: 'Xena', tokenBox: 'v1.sealed', scopes: 'challenge:write' },
+    { memberId: yemi, lichessId: 'yemi', username: 'Yemi', tokenBox: 'v1.sealed', scopes: 'challenge:write' },
+  ])
+  await db.insert(lichessLinkAttempts).values({ stateHash: 'h', memberId: xena, verifierBox: 'v1.sealed', expiresAt: days(1) })
+  const [theirs] = await db
+    .insert(chessChallenges)
+    .values({ challengerId: xena, challengedId: yemi, rated: true, clockLimit: 600, clockIncrement: 5, expiresAt: days(1) })
+    .returning({ id: chessChallenges.id })
+  await db.insert(chessChallenges).values({ challengerId: yemi, challengedId: zara, rated: false, days: 3, expiresAt: days(7) })
+  await db.insert(notifications).values({ recipientId: yemi, kind: 'chess_challenge', actorId: xena, challengeId: theirs!.id })
+  await db.insert(chessGames).values({ id: 'gm000001', whiteId: xena, blackId: yemi, rated: true, clockLimit: 600, clockIncrement: 5, challengeId: theirs!.id })
+  await db.insert(notifications).values({ recipientId: xena, kind: 'chess_game_started', actorId: yemi, gameId: 'gm000001' })
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  assert.equal(await count(lichessAccounts, eq(lichessAccounts.memberId, xena)), 0)
+  assert.equal(await count(lichessAccounts, eq(lichessAccounts.memberId, yemi)), 1)
+  assert.equal(await count(lichessLinkAttempts, eq(lichessLinkAttempts.memberId, xena)), 0)
+  assert.equal(await count(chessChallenges, eq(chessChallenges.challengerId, xena)), 0)
+  assert.equal(await count(chessChallenges, eq(chessChallenges.challengerId, yemi)), 1, 'other members’ challenges stay')
+  assert.equal(await count(notifications, eq(notifications.kind, 'chess_challenge')), 0)
+  assert.equal(await count(chessGames, eq(chessGames.whiteId, xena)), 0, 'their games go too')
+})
+
+test('Keno: their tickets go; the shared rounds and other members’ tickets stay', async () => {
+  const [round] = await db.insert(kenoRounds).values({ drawsAt: days(1), seedHash: 'h', seedSealed: 's' }).returning()
+  await db.insert(kenoTickets).values([
+    { memberId: xena, roundNumber: round!.number, numbers: [1, 2, 3], tableVersion: 'v1' },
+    { memberId: yemi, roundNumber: round!.number, numbers: [4], tableVersion: 'v1' },
+  ])
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+  assert.equal(await count(kenoTickets, eq(kenoTickets.memberId, xena)), 0)
+  assert.equal(await count(kenoTickets, eq(kenoTickets.memberId, yemi)), 1)
+  assert.equal(await count(kenoRounds, eq(kenoRounds.number, round!.number)), 1)
 })
 
 // --- Video (ADR 0019): the new tables are covered by the erase inventory ---
