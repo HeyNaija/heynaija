@@ -175,6 +175,20 @@ in mind: after flipping a flag from another process, wait a few seconds.
 If there never was a good read, the **production** defaults answer (never staging's)
 until a read works. Failures are logged and retried once per TTL.
 
+## `communityAnnouncements`
+
+`communityAnnouncements` (off in production, on in staging and development) gates a
+community's moderator notifying every member of a new post in it (ADR 0029): `announce`
+on `POST /v1/posts` answers `feature_unavailable` while it is off. Communities report
+`viewerCanAnnounce`, `nextAnnouncementAt` and `viewerGetsAnnouncements` as "no" for a
+viewer the flag is off for, so the composer's switch and the bell on a community's page
+are not shown; the web and the apps read those, not the flag. The box for them in
+Settings does read `features.communityAnnouncements`, and is left out while it is off,
+keeping its setting (`settingsFor`). Turning a community's
+announcements back on (`PUT /v1/communities/:slug/announcements`) is a 404 while it is
+off; turning them off always works. Off stops new announcements and leaves the ones
+already sent in members' notifications.
+
 ## Known limits
 
 - The kill switches (`reposts`, `quotePosts`, `linkPreviews`) are on in production, so a

@@ -12,7 +12,7 @@ export type DigestItem = {
   gistId?: string | null
   /** A short piece of the post concerned, only for the kinds that show one. */
   excerpt: string | null
-  /** moderator_granted / moderator_revoked: the community's name. */
+  /** moderator_granted / moderator_revoked, community_announcement: the community's name. */
   community: string | null
   /** idea_status: the new status, whether it was an idea or a problem, and whether the recipient sent it. */
   idea?: { status: string | null; kind: string; yours: boolean } | null
@@ -25,7 +25,7 @@ export type DigestItem = {
 export type Digest = { subject: string; text: string; html: string }
 
 /** The kinds whose email shows a piece of a post. Moderation notices never do. */
-export const KINDS_WITH_EXCERPT: readonly NotificationKind[] = ['reply', 'like', 'repost', 'quote', 'mention', 'idea_status', 'story_update']
+export const KINDS_WITH_EXCERPT: readonly NotificationKind[] = ['reply', 'like', 'repost', 'quote', 'mention', 'idea_status', 'story_update', 'community_announcement']
 
 /** Longest piece of a post an email shows, in characters. */
 export const EXCERPT_MAX = 80
@@ -65,6 +65,7 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
       case 'chess_challenge':
       case 'chess_game_started':
       case 'story_update':
+      case 'community_announcement':
         return `${item.kind}:${i}`
       case 'moderator_granted':
       case 'moderator_revoked':
@@ -106,6 +107,8 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
         return { headline: `${who} reposted your post`, quote, href: post(item.postId, item.gistId) }
       case 'story_update':
         return { headline: `${who} added to their story`, quote, href: post(item.postId, item.gistId) }
+      case 'community_announcement':
+        return { headline: `${who} posted an announcement in ${item.community ?? 'a community'}`, quote, href: post(item.postId, item.gistId) }
       case 'follow':
         return { headline: `${who} followed you`, quote: null, href: actors.length === 1 ? `${webUrl}/u/${actors[0]}` : inApp }
       case 'post_removed':

@@ -2,11 +2,12 @@ import Link from 'next/link'
 import { ARBITER_ONLY } from '@/lib/chess-arena'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
-import { setCommunitySensitive } from '@/app/actions'
+import { setCommunityAnnouncements, setCommunitySensitive } from '@/app/actions'
 import { Composer } from '@/app/ui/composer'
 import { JoinButton } from '@/app/ui/join-button'
 import { CommunityMark } from '@/app/ui/community-mark'
 import { CommunityPhotoEditor } from '@/app/ui/community-photo-editor'
+import { BellIcon, BellOffIcon } from '@/app/ui/icons'
 import { PostItem, PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
 import { type ChessTeam, getChessTeam, getCommunity, getCommunityPosts, getViewer } from '@/lib/api'
@@ -55,7 +56,25 @@ async function CommunityView({ params, searchParams }: Props) {
               <p className="mt-1 text-xs text-muted">{community.sensitive ? 'Sensitive community' : 'Public community'}</p>
             </div>
           </div>
-          {viewerId ? <JoinButton slug={community.slug} joined={community.viewerIsMember} /> : null}
+          {viewerId ? (
+            <div className="flex shrink-0 items-center gap-2">
+              {/* A member's own choice to be told when a moderator notifies everyone here (docs/adr/0029). */}
+              {community.viewerIsMember && typeof community.viewerGetsAnnouncements === 'boolean' ? (
+                <form action={setCommunityAnnouncements}>
+                  <input type="hidden" name="slug" value={community.slug} />
+                  <input type="hidden" name="on" value={community.viewerGetsAnnouncements ? '0' : '1'} />
+                  <SubmitButton
+                    pressed={community.viewerGetsAnnouncements}
+                    label={community.viewerGetsAnnouncements ? 'Announcements from this community are on. Turn them off' : 'Announcements from this community are off. Turn them on'}
+                    className="btn btn-ghost border-line community-announcements"
+                  >
+                    {community.viewerGetsAnnouncements ? <BellIcon size={18} /> : <BellOffIcon size={18} />}
+                  </SubmitButton>
+                </form>
+              ) : null}
+              <JoinButton slug={community.slug} joined={community.viewerIsMember} />
+            </div>
+          ) : null}
         </div>
         {community.viewerCanManagePhoto ? (
           <CommunityPhotoEditor
@@ -133,6 +152,7 @@ async function CommunityView({ params, searchParams }: Props) {
           handle={viewer.me.handle}
           avatar={viewer.me.avatar}
           community={community.slug}
+          announcements={community.viewerCanAnnounce ? { nextAt: community.nextAnnouncementAt ?? null } : null}
           polls={viewer.me.features?.polls ?? false}
           replyControls={viewer.me.features?.replyControls ?? false}
           replyAudiences={viewer.me.replyAudiences}

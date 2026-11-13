@@ -6,6 +6,7 @@ import { communityPhotoPath, MEDIA_JOBS, type PlacementJobs } from '../media/med
 import type { Queries } from '../members/members.service.js'
 import { NotACommunityModeratorError } from '../posts/posts.service.js'
 import { DB } from '../tokens.js'
+import { mayAnnounce, nextAnnouncementAt } from './announcements.js'
 import { isSiteModerator, managesPhoto } from './photo-managers.js'
 
 export type CommunitySummary = {
@@ -18,6 +19,16 @@ export type CommunitySummary = {
   photo: string | null
   /** Always false for anonymous viewers. */
   viewerIsMember: boolean
+  /**
+   * Announcements (docs/adr/0029), all three "no" while they are not offered to
+   * the viewer (the communityAnnouncements flag). Whether the viewer may notify
+   * its members of a new post: one of its moderators, or a site moderator who has joined.
+   */
+  viewerCanAnnounce: boolean
+  /** For someone who may: when its next announcement can go, null if one can go now. */
+  nextAnnouncementAt: Date | null
+  /** Whether the viewer is told of its announcements; null if they are not a member. */
+  viewerGetsAnnouncements: boolean | null
 }
 
 export type CommunityDetail = CommunitySummary & {
@@ -34,10 +45,15 @@ export type CommunityDetail = CommunitySummary & {
   viewerIsSiteModerator: boolean
 }
 
-/** Swaps the stored media id for the path the web app serves it from. */
-const withPhoto = <T extends { photoMediaId: string | null }>({ photoMediaId, ...rest }: T): Omit<T, 'photoMediaId'> & { photo: string | null } => ({
+/** Swaps the stored media id for the path the web app serves it from, and makes the next announcement's time a date. */
+const withPhoto = <T extends { photoMediaId: string | null; nextAnnouncementAt: Date | string | null }>({
+  photoMediaId,
+  nextAnnouncementAt: next,
+  ...rest
+}: T): Omit<T, 'photoMediaId' | 'nextAnnouncementAt'> & { photo: string | null; nextAnnouncementAt: Date | null } => ({
   ...rest,
   photo: communityPhotoPath(photoMediaId),
+  nextAnnouncementAt: next ? new Date(next) : null,
 })
 
 // Written out so the outer community is unambiguous inside the subqueries.
@@ -56,7 +72,9 @@ export class CommunitiesService {
     @Optional() @Inject(MEDIA_JOBS) private readonly placement?: PlacementJobs,
   ) {}
 
-  private summary(viewerId: string | null) {
+  /** `announcements`: whether the communityAnnouncements flag is on for the viewer. */
+  private summary(viewerId: string | null, announcements: boolean) {
+    const announcer = announcements && viewerId ? viewerId : null
     return {
       photoMediaId: communities.photoMediaId,
       id: communities.id,
@@ -68,12 +86,20 @@ export class CommunitiesService {
       viewerIsMember: viewerId
         ? sql<boolean>`exists(select 1 from community_memberships cm where cm.community_id = ${outerId} and cm.member_id = ${viewerId})`
         : sql<boolean>`false`,
+      viewerCanAnnounce: announcer ? mayAnnounce(announcer, outerId) : sql<boolean>`false`,
+      // As text in ISO form: a raw timestamp comes back in Postgres's own format.
+      nextAnnouncementAt: announcer
+        ? sql<string | null>`(select to_char(${nextAnnouncementAt(sql`"communities"."announced_at"`)} at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') where ${mayAnnounce(announcer, outerId)})`
+        : sql<null>`null`,
+      viewerGetsAnnouncements: announcer
+        ? sql<boolean | null>`(select cm.announcements from community_memberships cm where cm.community_id = ${outerId} and cm.member_id = ${announcer})`
+        : sql<null>`null`,
     }
   }
 
-  async list(viewerId: string | null): Promise<CommunitySummary[]> {
+  async list(viewerId: string | null, announcements = false): Promise<CommunitySummary[]> {
     const rows = await this.db
-      .select(this.summary(viewerId))
+      .select(this.summary(viewerId, announcements))
       .from(communities)
       .where(and(eq(communities.active, true), communityOpenTo(viewerId)))
       .orderBy(asc(communities.name))
@@ -84,7 +110,7 @@ export class CommunitiesService {
   async search(viewerId: string | null, query: string, limit: number): Promise<CommunitySummary[]> {
     const pattern = `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
     const rows = await this.db
-      .select(this.summary(viewerId))
+      .select(this.summary(viewerId, false))
       .from(communities)
       .where(
         and(
@@ -98,10 +124,10 @@ export class CommunitiesService {
     return rows.map(withPhoto)
   }
 
-  async detail(viewerId: string | null, slug: string): Promise<CommunityDetail | null> {
+  async detail(viewerId: string | null, slug: string, announcements = false): Promise<CommunityDetail | null> {
     const [row] = await this.db
       .select({
-        ...this.summary(viewerId),
+        ...this.summary(viewerId, announcements),
         rules: communities.rules,
         sensitive: communities.adultOnly,
         viewerCanManagePhoto: viewerId ? managesPhoto(viewerId) : sql<boolean>`false`,
@@ -161,6 +187,20 @@ export class CommunitiesService {
       .delete(communityMemberships)
       .where(and(eq(communityMemberships.communityId, community.id), eq(communityMemberships.memberId, memberId)))
     return true
+  }
+
+  /**
+   * Whether the member is told when a moderator notifies the whole community
+   * (docs/adr/0029). Idempotent. False if there is no such community or they
+   * have not joined it. Works, like leaving, even where they may no longer see it.
+   */
+  async setAnnouncements(memberId: string, slug: string, on: boolean): Promise<boolean> {
+    const changed = await this.db.execute(sql`
+      update community_memberships cm set announcements = ${on}
+      from communities c
+      where c.id = cm.community_id and c.slug = ${slug} and c.active and cm.member_id = ${memberId}
+      returning cm.member_id`)
+    return changed.rows.length > 0
   }
 
   /**

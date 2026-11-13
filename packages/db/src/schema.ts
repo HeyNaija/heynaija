@@ -271,6 +271,9 @@ export const communities = pgTable('communities', {
   // Marked sensitive by its moderators or a site moderator (ADR 0020, question 8):
   // only adults see or join it, and every post in it carries the 'community' mark.
   adultOnly: boolean('adult_only').notNull().default(false),
+  // When a moderator last notified every member of a new post (docs/adr/0029);
+  // the next may go once a day has passed. Null until the first.
+  announcedAt: ts('announced_at'),
 })
 
 export const communityMemberships = pgTable(
@@ -284,6 +287,9 @@ export const communityMemberships = pgTable(
       .references(() => members.id),
     role: text('role', { enum: ['member', 'moderator'] }).notNull().default('member'),
     joinedAt: ts('joined_at').notNull().defaultNow(),
+    // Whether the member is told when a moderator notifies the whole community
+    // (docs/adr/0029). On until they turn it off for this community.
+    announcements: boolean('announcements').notNull().default(true),
   },
   (t) => [
     primaryKey({ columns: [t.communityId, t.memberId] }),
@@ -682,6 +688,9 @@ export const NOTIFICATION_KINDS = [
   'chess_challenge',
   // Your chess challenge was accepted and the game has begun; game_id is the game.
   'chess_game_started',
+  // A moderator notified every member of a community you joined about a new
+  // post in it (docs/adr/0029); post is that post.
+  'community_announcement',
 ] as const
 
 // Something that happened to a member: a reply, like, repost, quote, mention or follow by
@@ -704,7 +713,7 @@ export const notifications = pgTable(
     postId: uuid('post_id').references(() => posts.id),
     // report_resolved about an account: that account.
     subjectId: uuid('subject_id').references(() => members.id),
-    // moderator_granted / moderator_revoked: the community.
+    // moderator_granted / moderator_revoked, community_announcement: the community.
     communityId: uuid('community_id').references(() => communities.id),
     // report_resolved: 'actioned' or 'dismissed'. post_removed: the report reason.
     detail: text('detail'),
@@ -780,6 +789,7 @@ export const OPTIONAL_NOTIFICATION_KINDS = [
   'story_update',
   'chess_challenge',
   'chess_game_started',
+  'community_announcement',
 ] as const satisfies readonly (typeof NOTIFICATION_KINDS)[number][]
 
 // A kind of notification a member has turned off. Everything is on until they

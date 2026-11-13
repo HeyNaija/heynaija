@@ -9,7 +9,7 @@ import { type NotificationPreferences, settingsFor } from '@/lib/notification-pr
  * One box for email, one for weekly highlights where those are offered, and one
  * per kind of activity. A plain form, so it also works before JavaScript has loaded.
  */
-export function NotificationPreferencesForm({ preferences, features }: { preferences: NotificationPreferences; features: { games?: boolean } }) {
+export function NotificationPreferencesForm({ preferences, features }: { preferences: NotificationPreferences; features: { games?: boolean; communityAnnouncements?: boolean } }) {
   const [state, action, pending] = useActionState<FormState, FormData>(updateNotificationPreferences, {})
   const { shown, hidden } = settingsFor(features)
 

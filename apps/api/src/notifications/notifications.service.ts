@@ -85,6 +85,28 @@ export async function notify(db: Pick<Db, 'execute'>, rows: NewNotification[]): 
     on conflict do nothing`)
 }
 
+/**
+ * Tells every member of a community about a new post in it (docs/adr/0029), in
+ * one statement inside the caller's transaction: each member but the author who
+ * has not turned announcements off, for this community or altogether. Someone
+ * already told about the post (it mentions or quotes them) is not told twice.
+ * Returns how many were told.
+ */
+export async function notifyCommunity(
+  db: Pick<Db, 'execute'>,
+  { communityId, actorId, postId }: { communityId: string; actorId: string; postId: string },
+): Promise<number> {
+  const { rowCount } = await db.execute(sql`
+    insert into notifications (recipient_id, kind, actor_id, post_id, community_id)
+    select cm.member_id, 'community_announcement', ${actorId}::uuid, ${postId}::uuid, cm.community_id
+    from community_memberships cm
+    join members m on m.id = cm.member_id and m.active and m.deleted_at is null
+    where cm.community_id = ${communityId} and cm.announcements and cm.member_id <> ${actorId}
+      and not exists(select 1 from notification_opt_outs o where o.member_id = cm.member_id and o.kind = 'community_announcement')
+      and not exists(select 1 from notifications told where told.post_id = ${postId} and told.recipient_id = cm.member_id)`)
+  return rowCount ?? 0
+}
+
 export type NotificationView = {
   id: string
   kind: NotificationKind
@@ -96,7 +118,7 @@ export type NotificationView = {
   post: { id: string; excerpt: string; gistId: string | null } | null
   /** report_resolved about an account: whose. */
   subjectHandle: string | null
-  /** moderator_granted / moderator_revoked: which community. */
+  /** moderator_granted / moderator_revoked, community_announcement: which community. */
   community: { slug: string; name: string } | null
   /** idea_status: the new status. */
   detail: string | null
@@ -115,8 +137,9 @@ const EXCERPT = 140
 /**
  * Which of `viewer`'s notifications are still worth showing: the actor is active
  * and neither blocked nor muted, the post is still up, a like, repost or
- * follow has not been taken back, and a story's update is shown only while the
- * viewer still follows the story. A moderation decision about your own post
+ * follow has not been taken back, a story's update is shown only while the
+ * viewer still follows the story, and a community's announcement only while they
+ * are still a member who has not turned its announcements off. A moderation decision about your own post
  * shows even though the post is down. A reply in a Gist shows only to someone who
  * can open it now, and `gistsOn` (the `gists` flag for the viewer) is part of that.
  * Nothing about a post marked sensitive reaches anyone it would not be shown to
@@ -128,7 +151,7 @@ export const visible = (viewerId: string, gistsOn: boolean) => sql`
     a.active
     and not exists(select 1 from blocks b where (b.blocker_id = ${viewerId} and b.blocked_id = n.actor_id) or (b.blocker_id = n.actor_id and b.blocked_id = ${viewerId}))
     and not exists(select 1 from mutes mu where mu.muter_id = ${viewerId} and mu.muted_id = n.actor_id)))
-  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'post_labelled', 'idea_status', 'story_update') or (p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null))
+  and (n.kind not in ('reply', 'like', 'repost', 'quote', 'mention', 'post_restored', 'post_labelled', 'idea_status', 'story_update', 'community_announcement') or (p.deleted_at is null and p.removed_at is null and p.hidden_by_host_at is null))
   and (p.id is null or ${adultContentAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)})
   and (p.gist_id is null or n.kind in ('post_removed', 'report_resolved') or (${gistsOn}::boolean and ${memberOpensGist(viewerId, sql`p.gist_id`)}))
   and (n.kind <> 'like' or exists(select 1 from likes l where l.post_id = n.post_id and l.member_id = n.actor_id))
@@ -138,7 +161,9 @@ export const visible = (viewerId: string, gistsOn: boolean) => sql`
   and (n.kind <> 'chess_challenge' or (ch.status = 'pending' and ch.expires_at > now()))
   and (n.kind <> 'chess_game_started' or (cg.id is not null and cg.finished_at is null))
   -- A spectator's reply or mention in a game's thread waits until the game ends (docs/adr/0028).
-  and (n.kind not in ('reply', 'mention') or not ${hiddenFromPlayer(viewerId, sql`p.root_id`, sql`p.author_id`)})`
+  and (n.kind not in ('reply', 'mention') or not ${hiddenFromPlayer(viewerId, sql`p.root_id`, sql`p.author_id`)})
+  and (n.kind <> 'community_announcement' or exists(select 1 from community_memberships cm join communities cc on cc.id = cm.community_id and cc.active
+    where cm.community_id = n.community_id and cm.member_id = ${viewerId} and cm.announcements))`
 
 /**
  * Whether the post a notification names may be shown to its recipient: not in a Gist, or in one they can

@@ -11,6 +11,8 @@ export const NOTIFICATION_SETTINGS = [
   { kind: 'quote', label: 'Someone quotes your post' },
   { kind: 'follow', label: 'Someone follows you' },
   { kind: 'story_update', label: 'Someone adds to a story you follow' },
+  // Shown only while community announcements are switched on (docs/adr/0029); see `settingsFor`.
+  { kind: 'community_announcement', label: 'Someone sends an announcement to a community you joined' },
   // Shown only to members with Games (docs/adr/0028); see `settingsFor`. One box for both chess kinds (BOX_ALSO).
   { kind: 'chess_challenge', label: 'Someone challenges you to chess, or your game starts' },
 ] as const
@@ -21,15 +23,22 @@ const BOX_ALSO = { chess_challenge: ['chess_game_started'] } as const
 /** Every kind a member can turn off: one per box, and those that follow a box. */
 export const OPTIONAL_KINDS = [...NOTIFICATION_SETTINGS.map(({ kind }) => kind), ...Object.values(BOX_ALSO).flat()] as const
 
-/** Kinds that belong to a feature behind a flag: the box shows only where the flag is on. */
-const BEHIND_GAMES: readonly OptionalNotificationKind[] = ['chess_challenge', 'chess_game_started']
+/** Kinds that belong to a feature behind a flag, and the flag: the box shows only where it is on. */
+const BEHIND: Partial<Record<OptionalNotificationKind, 'games' | 'communityAnnouncements'>> = {
+  chess_challenge: 'games',
+  chess_game_started: 'games',
+  community_announcement: 'communityAnnouncements',
+}
 
 /**
  * The boxes to show a member, and the kinds left out. A kind left out keeps what
  * it was, through a hidden field, so saving the form never changes it unseen.
  */
-export function settingsFor(features: { games?: boolean }) {
-  const shown = NOTIFICATION_SETTINGS.filter(({ kind }) => features.games || !BEHIND_GAMES.includes(kind))
+export function settingsFor(features: { games?: boolean; communityAnnouncements?: boolean }) {
+  const shown = NOTIFICATION_SETTINGS.filter(({ kind }) => {
+    const flag = BEHIND[kind]
+    return !flag || features[flag] === true
+  })
   const hidden = OPTIONAL_KINDS.filter((kind) => !shown.some((s) => s.kind === kind || (BOX_ALSO as Record<string, readonly string[]>)[s.kind]?.includes(kind)))
   return { shown, hidden }
 }
