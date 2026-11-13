@@ -1953,7 +1953,10 @@ html:has(.image-viewer[open]) {
   font-weight: 600;
   transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
-.composer-sensitive:hover { color: var(--ink); border-color: var(--line-strong); }
+.composer-sensitive:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); }
+.composer-sensitive:disabled { cursor: default; opacity: 0.7; }
+/* Beside "Mark as sensitive" when a post offers both. */
+.composer-sensitive + .composer-sensitive { margin-left: 8px; }
 .composer-sensitive[aria-pressed="true"] {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
   background: color-mix(in srgb, var(--accent) 10%, transparent);

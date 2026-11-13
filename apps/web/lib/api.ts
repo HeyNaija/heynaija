@@ -277,6 +277,15 @@ export type Community = {
   /** Photo path without the size suffix; null for the subject icon. */
   photo: string | null
   viewerIsMember: boolean
+  /**
+   * Announcements (docs/adr/0029). Whether the viewer may notify its members of
+   * a new post: one of its moderators, while announcements are switched on.
+   */
+  viewerCanAnnounce?: boolean
+  /** For someone who may: when its next announcement can go; null if one can go now. */
+  nextAnnouncementAt?: string | null
+  /** Whether the viewer is told of its announcements; null if they are not a member, or there are none to be told of. */
+  viewerGetsAnnouncements?: boolean | null
 }
 
 export type CommunityDetail = Community & {
@@ -1025,6 +1034,7 @@ export type NotificationKind =
   | 'story_update'
   | 'chess_challenge'
   | 'chess_game_started'
+  | 'community_announcement'
 
 export type Notification = {
   id: string
@@ -1035,6 +1045,7 @@ export type Notification = {
   actor: { handle: string; displayName: string | null; avatar: string | null; founder: boolean } | null
   post: { id: string; excerpt: string; gistId: string | null } | null
   subjectHandle: string | null
+  /** moderator_granted, moderator_revoked, community_announcement: which community. */
   community: { slug: string; name: string } | null
   /** report_resolved: 'actioned' or 'dismissed' ('gist_actioned', 'gist_dismissed' for a Gist). post_removed: the report reason. idea_status: the new status. */
   detail: string | null

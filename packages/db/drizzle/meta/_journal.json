@@ -365,6 +365,13 @@
       "when": 1794560976000,
       "tag": "0051_games_teams",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1794564169774,
+      "tag": "0052_community_announcements",
+      "breakpoints": true
     }
   ]
 }

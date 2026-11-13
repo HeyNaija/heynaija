@@ -293,7 +293,7 @@ test(`only the first ${MENTIONS_NOTIFIED_MAX} members a post names are notified;
   assert.equal((await postsService.post(null, id))!.mentions.length, many.length + 1)
 })
 
-const allOn = { email: true, reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true, chess_challenge: true, chess_game_started: true }
+const allOn = { email: true, reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true, chess_challenge: true, chess_game_started: true, community_announcement: true }
 
 test('every kind of activity notifies until the member turns it off', async () => {
   assert.deepEqual(await service.preferences(ada), allOn)

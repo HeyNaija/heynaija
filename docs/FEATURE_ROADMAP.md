@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 47 | 20 | 16 | 11 | 94 |
+| 48 | 20 | 16 | 11 | 95 |
 
 ## Priority order
 
@@ -484,6 +484,15 @@ This tracks product development, not formal governance decisions. Priority means
 - **Remaining work / caveat:** Moderators can add, replace, remove and take down a community photo in the API, covered by API tests; members can report a photo and site moderators remove it from the moderation queue, also covered by API tests. The web editor, the report page, the queue entry and the end-to-end test have not been run yet, and uploads are only as safe as upload scanning, which is still blocked.
 - **Inspected evidence:** `packages/db/drizzle/0034_community_photos.sql`, `packages/db/src/schema.ts`, `apps/api/src/media/media.service.ts`, `apps/api/src/media/media.controller.ts`, `apps/api/src/communities/communities.service.ts`, `apps/api/src/communities/photo-managers.ts`, `apps/api/src/moderation/moderation.service.ts`, `apps/web/app/ui/community-mark.tsx`, `apps/web/app/ui/community-photo-editor.tsx`, `apps/web/app/ui/use-square-photo-upload.ts`, `apps/web/app/(main)/c/[slug]/page.tsx`, `apps/web/app/(main)/report/page.tsx`, `apps/web/app/(main)/mod/page.tsx`, `apps/api/src/moderation/moderation.service.test.ts`, `apps/api/src/media/community-photo.test.ts`, `e2e/tests/community-photos.spec.ts`
 - **Audit notes:** One square photo per community (communities.photo_media_id), added, replaced or removed by that community's moderators and site moderators from the community page; the control needs JavaScript, while the photo and the subject-icon fallback show to everyone without it. It goes through the profile-photo pipeline (JPEG, PNG or WebP up to 5 MB, 96px and 256px WebP, location data dropped) and the same fail-closed upload scanner, so it depends on upload-scanning being completed before launch. Site moderators take a photo down from the community page: it is quarantined privately and logged as remove_community_photo, but the community's moderators can then upload another. Members who cannot manage the photo report it from a Report photo link on the community page (/report?community=slug), as they would a post or account: same reasons, rate limit and one open report per member per photo (reports.community_id and photo_media_id, migration 0034). The report reaches site moderators only, who can remove the photo from the queue (the photo is quarantined, logged and reporters told) or dismiss; a report about a photo since replaced can only be dismissed, and once its reports are dismissed its private copy is deleted. An upload can only become the photo of the community it was started for (media.community_id). The photo is the community's: erasing the account of the moderator who uploaded it leaves it in place.
+
+#### Community announcements
+
+- **ID:** `community-announcements`
+- **Priority:** P1 · **Status:** Implemented · **Availability:** Not live
+- **Description:** A community's moderator can notify every member of a new post in it, at most once a day; any member can turn that off for one community or for all.
+- **Dependencies:** `communities`, `push-notifications`, `email-notifications`
+- **Inspected evidence:** `docs/adr/0029-community-announcements.md`, `packages/db/drizzle/0052_community_announcements.sql`, `apps/api/src/communities/announcements.ts`, `apps/api/src/notifications/notifications.service.ts`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/communities/communities.service.ts`, `apps/web/app/ui/composer.tsx`, `apps/web/app/(main)/c/[slug]/page.tsx`, `apps/api/src/communities/announcements.test.ts`, `e2e/tests/announcements.spec.ts`
+- **Audit notes:** Built 13 Nov 2026 (ADR 0029), behind the communityAnnouncements flag: on in development and staging, off in production until the owner turns it on. The composer shows Notify all members to a community's moderators (and site moderators who have joined it) for a new post there; there is no @everyone to type. One a day per community, whichever moderator sends it, taken inside the post's transaction so two at once get one through. Every member but the author is told in the app, by push and by email, unless they turned announcements off with the bell on the community's page or the box in Settings; someone the post mentions is told that instead. An announcement stops showing when the member leaves or turns them off. The apps have the same switch, bell and notification on branch feat/community-announcements of heynaija-mobile. Not yet tried with a real community on staging.
 
 #### Email notifications
 

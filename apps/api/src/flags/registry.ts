@@ -103,6 +103,12 @@ export const FLAGS = {
     owner: 'highlights',
     defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
   },
+  communityAnnouncements: {
+    description:
+      "Community announcements (ADR 0029): a community's moderator may notify every member of a new post in it, once a day per community. Also each member's switch for them on the community's page. Turning it off stops new ones; those already sent stay in members' notifications.",
+    owner: 'communities',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
 } as const satisfies Record<string, FlagDefinition>
 
 export type FlagKey = keyof typeof FLAGS
