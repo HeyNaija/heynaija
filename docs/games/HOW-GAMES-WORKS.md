@@ -3,7 +3,7 @@
 A plain guide to the Games section of HeyNaija: what members can do, what
 moderators do, and what the people running the site need to know. For the
 technical detail, see [GAMES.md](GAMES.md) and
-[ADR 0018](../adr/0018-games.md).
+[ADR 0028](../adr/0028-games.md).
 
 ## In one paragraph
 

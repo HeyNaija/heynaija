@@ -1,7 +1,7 @@
 import { type Db, gameSeasons } from '@heynaija/db'
 import { eq, sql } from 'drizzle-orm'
 
-// Seasons are Lagos calendar months (docs/games/GAMES.md, docs/adr/0018 phase 5).
+// Seasons are Lagos calendar months (docs/games/GAMES.md, docs/adr/0028 phase 5).
 // Lagos is UTC+1 all year (no summer time), so its days and months are UTC's moved
 // by an hour.
 

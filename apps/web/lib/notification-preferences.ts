@@ -11,7 +11,7 @@ export const NOTIFICATION_SETTINGS = [
   { kind: 'quote', label: 'Someone quotes your post' },
   { kind: 'follow', label: 'Someone follows you' },
   { kind: 'story_update', label: 'Someone adds to a story you follow' },
-  // Shown only to members with Games (docs/adr/0018); see `settingsFor`. One box for both chess kinds (BOX_ALSO).
+  // Shown only to members with Games (docs/adr/0028); see `settingsFor`. One box for both chess kinds (BOX_ALSO).
   { kind: 'chess_challenge', label: 'Someone challenges you to chess, or your game starts' },
 ] as const
 

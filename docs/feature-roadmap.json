@@ -1681,7 +1681,7 @@
         "apps/api/src/games/core/competitions.ts",
         "apps/web/app/(main)/games/scoring/page.tsx",
         "e2e/tests/competitions.spec.ts",
-        "docs/adr/0018-games.md",
+        "docs/adr/0028-games.md",
         "docs/games/GAMES.md"
       ],
       "caveat": "Behind the games feature flag (on in staging, off in production). Competitions are Keno only until chess tournaments (phase 6), and entrants are not notified when one starts or ends.",
@@ -1690,7 +1690,7 @@
         "in-app-notifications",
         "data-export"
       ],
-      "notes": "Phase 1 built 3 Nov 2026 (ADR 0018): the module, the game registry, the games database schema, the games feature flag and a games homepage. Phase 5 built 4 Nov 2026: monthly seasons (Lagos time), the Game Score (XP from chess games, Keno rounds and competition places, stored on each game event and kept in precomputed totals), leaderboards for the Game Score, Chess and Keno by season or all time, narrowed to people you follow or a community, with blocks, mutes and suspensions left out; a How games scoring works page; and competitions run by site moderators (Keno for now) with results posted by The Arbiter in Game Night."
+      "notes": "Phase 1 built 3 Nov 2026 (ADR 0028): the module, the game registry, the games database schema, the games feature flag and a games homepage. Phase 5 built 4 Nov 2026: monthly seasons (Lagos time), the Game Score (XP from chess games, Keno rounds and competition places, stored on each game event and kept in precomputed totals), leaderboards for the Game Score, Chess and Keno by season or all time, narrowed to people you follow or a community, with blocks, mutes and suspensions left out; a How games scoring works page; and competitions run by site moderators (Keno for now) with results posted by The Arbiter in Game Night."
     },
     {
       "id": "games-chess",
@@ -1709,7 +1709,7 @@
         "apps/api/src/games/chess/chess.service.test.ts",
         "apps/api/src/games/chess/lichess.test.ts",
         "e2e/tests/chess.spec.ts",
-        "docs/adr/0018-games.md",
+        "docs/adr/0028-games.md",
         "apps/api/src/games/chess/chess-games.service.ts",
         "apps/api/src/games/chess/game-watcher.ts",
         "packages/db/drizzle/0048_chess_play.sql",
@@ -1737,7 +1737,7 @@
       "availability": "not_live",
       "evidence": [
         "docs/games/GAMES.md",
-        "docs/adr/0018-games.md",
+        "docs/adr/0028-games.md",
         "apps/api/src/games/keno/keno.service.ts",
         "apps/api/src/games/keno/draw.ts",
         "apps/web/app/(main)/games/keno/page.tsx",
@@ -1746,7 +1746,7 @@
       "dependency": [
         "games-core"
       ],
-      "notes": "Phase 4 built 3 Nov 2026 (ADR 0018): shared draws every five minutes, 20 free tokens a member a day (midnight Lagos), points from a fixed table, this month and all-time leaderboards, ticket history, and a page for every round that checks it was fair in the browser (a published SHA-256 commitment, then the seed revealed). No money anywhere: tokens and points can never be bought, transferred or redeemed. Still to come: competitions and the Game Score (phase 5).",
+      "notes": "Phase 4 built 3 Nov 2026 (ADR 0028): shared draws every five minutes, 20 free tokens a member a day (midnight Lagos), points from a fixed table, this month and all-time leaderboards, ticket history, and a page for every round that checks it was fair in the browser (a published SHA-256 commitment, then the seed revealed). No money anywhere: tokens and points can never be bought, transferred or redeemed. Still to come: competitions and the Game Score (phase 5).",
       "caveat": "Playable behind the games flag. Keno competitions and Game Score XP arrived in phase 5; no posts for single Keno draws or wins."
     }
   ]

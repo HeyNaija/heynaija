@@ -154,7 +154,7 @@ async function ProfileView({ params, searchParams }: Props) {
         <p className="mt-4 text-xs text-muted">
           Joined <LocalTime at={profile.joinedAt} as="month" />
         </p>
-        {/* Chess (docs/adr/0018): only for members with Games, and loaded on its own so a slow answer never holds up the profile. */}
+        {/* Chess (docs/adr/0028): only for members with Games, and loaded on its own so a slow answer never holds up the profile. */}
         {viewer.state === 'member' && viewer.me.features.games && !profile.viewerBlocks ? (
           <Suspense fallback={null}>
             <LichessLine handle={profile.handle} />

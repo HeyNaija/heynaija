@@ -12,7 +12,7 @@ export const RATINGS_REFRESH_EVERY_MS = 6 * 3600_000
 const connection = (env: Pick<Env, 'REDIS_URL'>) => ({ url: env.REDIS_URL, maxRetriesPerRequest: null })
 
 /**
- * Keeps linked members' Lichess ratings fresh (docs/adr/0018). The job scheduler
+ * Keeps linked members' Lichess ratings fresh (docs/adr/0028). The job scheduler
  * keeps it to one run per interval however many API processes there are. It only
  * touches accounts members linked, so with nobody linked it does nothing.
  */

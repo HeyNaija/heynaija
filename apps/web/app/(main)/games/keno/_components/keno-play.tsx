@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KenoPlay as KenoPlayView, KenoTicket } from '@/lib/api'
 import { plural, ticketResult } from './ticket'
 
-// Keno, free to play (docs/adr/0018, phase 4): pick numbers, play a ticket with
+// Keno, free to play (docs/adr/0028, phase 4): pick numbers, play a ticket with
 // one of today's free tokens, count down to the shared draw and see it come out.
 
 const MAX_PICKS = 10

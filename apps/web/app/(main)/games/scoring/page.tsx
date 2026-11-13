@@ -7,7 +7,7 @@ import { getGameScoring, getViewer } from '@/lib/api'
 import { xpLines } from '@/lib/game-scoring'
 import { periodName } from '../_components/board'
 
-// Behind the games flag until launch, like the rest of Games (docs/adr/0018, phase 5).
+// Behind the games flag until launch, like the rest of Games (docs/adr/0028, phase 5).
 export const metadata: Metadata = { title: 'How games scoring works', robots: { index: false } }
 
 /** Every scoring rule in Games, stated plainly, with the numbers the API scores by. */

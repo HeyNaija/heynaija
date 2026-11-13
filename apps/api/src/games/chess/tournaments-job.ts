@@ -10,7 +10,7 @@ const SCHEDULER = 'sync-chess-tournaments'
 const connection = (env: Pick<Env, 'REDIS_URL'>) => ({ url: env.REDIS_URL, maxRetriesPerRequest: null })
 
 /**
- * Follows community tournaments on Lichess (docs/adr/0018, phase 6): reads the
+ * Follows community tournaments on Lichess (docs/adr/0028, phase 6): reads the
  * standings of those under way and finishes those Lichess has finished
  * (TeamsService.sync). One run at a time however many API processes there are,
  * as often as standings may be read but at least once a minute.

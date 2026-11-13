@@ -10,7 +10,7 @@ import { getKenoRounds, getViewer } from '@/lib/api'
 
 export const metadata: Metadata = { title: 'Past Keno draws', robots: { index: false } }
 
-/** Every draw, newest first, each with its own check (docs/adr/0018, phase 4). */
+/** Every draw, newest first, each with its own check (docs/adr/0028, phase 4). */
 export default function KenoRoundsPage({ searchParams }: PageProps<'/games/keno/rounds'>) {
   return (
     <div className="page-stack">

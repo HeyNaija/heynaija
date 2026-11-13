@@ -1,7 +1,7 @@
 import { type SQL, sql } from 'drizzle-orm'
 
 /**
- * Chess Arena (docs/adr/0018): while a game is on, replies in its thread by anyone
+ * Chess Arena (docs/adr/0028): while a game is on, replies in its thread by anyone
  * but the two players are hidden from the two players. A courtesy, not anti-cheat:
  * anyone can watch on lichess.org. True when the post (a reply: `rootId` set) is in
  * an unfinished game's thread, `viewerId` plays in it and `authorId` does not. Once

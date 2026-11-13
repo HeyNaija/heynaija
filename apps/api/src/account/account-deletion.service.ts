@@ -32,7 +32,7 @@ export class AccountDeletionError extends Error {
 
 export const DELETION_NOTICES = Symbol('DELETION_NOTICES')
 
-/** What Games does before an account's rows go (docs/adr/0018): gives its Lichess token back to Lichess. */
+/** What Games does before an account's rows go (docs/adr/0028): gives its Lichess token back to Lichess. */
 export const GAMES_ERASER = Symbol('GAMES_ERASER')
 export interface GamesEraser {
   revokeFor(memberId: string): Promise<void>
@@ -403,14 +403,14 @@ export class AccountDeletionService {
         and id not in (select gist_id from posts where gist_id is not null)`)
       await run(sql`delete from gist_members where member_id = ${memberId}`)
 
-      // Games (docs/adr/0018): their stats, scores, entries and game history go.
+      // Games (docs/adr/0028): their stats, scores, entries and game history go.
       // Competitions they created as a moderator stay, pointing at the tombstone,
       // like other moderators' records; so do the result posts, as posts.
       await run(sql`delete from games.game_events where member_id = ${memberId}`)
       await run(sql`delete from games.competition_entries where member_id = ${memberId}`)
       await run(sql`delete from games.season_scores where member_id = ${memberId}`)
       await run(sql`delete from games.game_profiles where member_id = ${memberId}`)
-      // Chess (docs/adr/0018): the linked Lichess account and any linking under way, and
+      // Chess (docs/adr/0028): the linked Lichess account and any linking under way, and
       // every challenge they sent or got (their notifications go with them).
       // Their games go too (notifications with them); The Arbiter's threads and results stay, as
       // posts naming the tombstone.
@@ -418,7 +418,7 @@ export class AccountDeletionService {
       await run(sql`delete from games.chess_challenges where challenger_id = ${memberId} or challenged_id = ${memberId}`)
       await run(sql`delete from games.lichess_link_attempts where member_id = ${memberId}`)
       await run(sql`delete from games.lichess_accounts where member_id = ${memberId}`)
-      // Keno (docs/adr/0018, phase 4): their tickets. The rounds are shared and stay.
+      // Keno (docs/adr/0028, phase 4): their tickets. The rounds are shared and stay.
       await run(sql`delete from games.keno_tickets where member_id = ${memberId}`)
       // Their Game Score (phase 5) and any competition invitations.
       await run(sql`delete from games.xp_totals where member_id = ${memberId}`)

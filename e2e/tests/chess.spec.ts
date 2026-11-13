@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 import { newMember } from '../lib/members.ts'
 
-// Chess on Lichess (docs/adr/0018), against the stand-in in lib/fake-lichess.ts.
+// Chess on Lichess (docs/adr/0028), against the stand-in in lib/fake-lichess.ts.
 // It needs the API started with LICHESS_URL pointing at that stand-in and a
 // GAMES_TOKEN_KEY, which CI does; so it runs only with E2E_LICHESS set:
 //

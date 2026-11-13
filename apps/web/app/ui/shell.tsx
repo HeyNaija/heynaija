@@ -128,7 +128,7 @@ function sidebarLinks(me: Looking): SidebarLink[] {
     { href: '/ideas', label: 'Ideas board', icon: IdeaIcon, keep: 4 },
     { href: '/bookmarks', label: 'Bookmarks', icon: BookmarkIcon, keep: 5 },
     { href: '/settings', label: 'Settings', icon: GearIcon, keep: 6 },
-    // Only for members on the Games list (docs/adr/0018), so it is last: when it
+    // Only for members on the Games list (docs/adr/0028), so it is last: when it
     // appears as the page fills in, only the compose button below it moves. First
     // to go into More.
     ...(me?.features.games ? [{ href: '/games', label: 'Games', icon: GamesIcon, keep: 10 }] : []),
@@ -312,7 +312,7 @@ async function UserMenu() {
             <GovernanceIcon size={18} />
             Governance
           </Link>
-          {/* Games is in the sidebar; phones have none, so here too below 1024px (docs/adr/0018). */}
+          {/* Games is in the sidebar; phones have none, so here too below 1024px (docs/adr/0028). */}
           {viewer.state === 'member' && viewer.me.features.games ? (
             <Link href="/games" className="menu-item lg:hidden">
               <GamesIcon size={18} />

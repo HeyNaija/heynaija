@@ -12,7 +12,7 @@ import { ensureSeason, lagosDayStart, lagosMonth } from '../core/seasons.js'
 import { KENO_TOKEN_BOX } from './keno-tokens.js'
 import { CURRENT_TABLE, PAYOUT_TABLES, type PayoutTable, pointsFor } from './payouts.js'
 
-// Keno, free to play (docs/games/GAMES.md, docs/adr/0018 phase 4). No money
+// Keno, free to play (docs/games/GAMES.md, docs/adr/0028 phase 4). No money
 // anywhere: tokens are free each day and points can never be bought, sent or
 // swapped for anything.
 
@@ -211,7 +211,7 @@ export class KenoService {
           points = games.season_scores.points + excluded.points,
           updated_at = case when excluded.points > 0 then excluded.updated_at else games.season_scores.updated_at end`)
     }
-    // One event per member for the round, with its Game Score XP (docs/adr/0018, phase 5).
+    // One event per member for the round, with its Game Score XP (docs/adr/0028, phase 5).
     await recordEvents(
       tx,
       [...byMember].map(([memberId, m]) => ({

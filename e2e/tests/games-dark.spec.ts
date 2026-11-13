@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { grantModerator } from '../lib/cli.ts'
 import { newMember } from '../lib/members.ts'
 
-// Games for anyone the `games` flag is off for (docs/adr/0018, docs/feature-flags.md).
+// Games for anyone the `games` flag is off for (docs/adr/0028, docs/feature-flags.md).
 // The flag is on in development, as in CI, so a site moderator keeps it to one
 // member for the length of this file, and puts it back after. /games must then look
 // exactly like a URL that does not exist to everyone else, with no link to it.

@@ -36,7 +36,7 @@ function formatClock(ms: number): string {
 }
 
 /**
- * A game, played or watched (docs/adr/0018). The board code is fetched only now,
+ * A game, played or watched (docs/adr/0028). The board code is fetched only now,
  * on this page. The page asks the API for the next change and the API answers as
  * soon as there is one (or after about 25 seconds with none): no stream to hold
  * open, so it works through every proxy on the way.

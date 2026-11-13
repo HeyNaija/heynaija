@@ -4,7 +4,7 @@ import { TrophyIcon } from '@/app/ui/icons'
 import type { GameBoard } from '@/lib/api'
 import { periodName } from './board'
 
-// The games homepage's score card (docs/games/GAMES.md, docs/adr/0018 phase 5). Only
+// The games homepage's score card (docs/games/GAMES.md, docs/adr/0028 phase 5). Only
 // real numbers: where there is nothing yet, each says so plainly.
 
 /** Your Game Score this season, your place, and your all-time XP. */

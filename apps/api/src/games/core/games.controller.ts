@@ -60,7 +60,7 @@ const run = async <T>(work: () => Promise<T>): Promise<T> => {
 }
 
 /**
- * Every Games route is behind the `games` flag (docs/feature-flags.md, docs/adr/0018):
+ * Every Games route is behind the `games` flag (docs/feature-flags.md, docs/adr/0028):
  * while it is off for the member, or they are not on its allow-list, the route is a 404.
  */
 @Controller('v1/games')

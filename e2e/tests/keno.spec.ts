@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { newMember } from '../lib/members.ts'
 
-// Keno, free to play (docs/adr/0018, phase 4). Playing needs nothing special. Seeing
+// Keno, free to play (docs/adr/0028, phase 4). Playing needs nothing special. Seeing
 // a draw needs the API drawing often: CI starts it with KENO_DRAW_EVERY_MS=30000 and
 // sets E2E_KENO_DRAW_MS to match. Against a dev API drawing every five minutes:
 //

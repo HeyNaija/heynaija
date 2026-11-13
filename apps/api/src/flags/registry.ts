@@ -69,7 +69,7 @@ export const FLAGS = {
     defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
   games: {
-    description: 'The Games section (docs/adr/0018): /games, its link in the sidebar and every /v1/games route. While Games is being built, an allow-list keeps it to named members.',
+    description: 'The Games section (docs/adr/0028): /games, its link in the sidebar and every /v1/games route. While Games is being built, an allow-list keeps it to named members.',
     owner: 'games',
     defaults: { development: true, staging: true, production: false }, // not in main yet
   },

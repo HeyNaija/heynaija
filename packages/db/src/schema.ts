@@ -678,7 +678,7 @@ export const NOTIFICATION_KINDS = [
   'post_labelled',
   // A story you follow has a new update; post is the update.
   'story_update',
-  // Another member challenged you to a chess game (docs/adr/0018); challenge_id is the challenge.
+  // Another member challenged you to a chess game (docs/adr/0028); challenge_id is the challenge.
   'chess_challenge',
   // Your chess challenge was accepted and the game has begun; game_id is the game.
   'chess_game_started',
@@ -1071,7 +1071,7 @@ export const governanceAuditLog = restricted.table(
 
 // The green identity tick, and Founder: one of the people who founded HeyNaija,
 // given by hand with `pnpm founder:grant` and kept for good (it says nothing about identity).
-// Automated: an account run by HeyNaija itself, not a person (The Arbiter, docs/adr/0018).
+// Automated: an account run by HeyNaija itself, not a person (The Arbiter, docs/adr/0028).
 export const PROFILE_BADGES = ['nin_identity_verified', 'founder', 'automated'] as const
 
 // Badges shown on public profiles and next to authors' names. A tick row exists
@@ -1355,7 +1355,7 @@ export const featureFlagChanges = pgTable(
 )
 
 // ---------------------------------------------------------------------------
-// Games (docs/games/GAMES.md, docs/adr/0018). Their own Postgres schema, kept
+// Games (docs/games/GAMES.md, docs/adr/0028). Their own Postgres schema, kept
 // apart from the social tables the way `restricted` is, though unlike it this
 // is not a privacy boundary. Which games exist is decided by the registry in
 // apps/api/src/games/core/registry.ts, so `game` columns are plain slugs with no
@@ -1380,7 +1380,7 @@ export const gameProfiles = gamesSchema.table(
   },
   (t) => [
     primaryKey({ columns: [t.memberId, t.game] }),
-    // The all-time Keno leaderboard reads points from here (docs/adr/0018, phase 4).
+    // The all-time Keno leaderboard reads points from here (docs/adr/0028, phase 4).
     index('game_profiles_keno_points_idx')
       .on(sql`((stats->>'points')::int) desc`)
       .where(sql`game = 'keno'`),
@@ -1501,7 +1501,7 @@ export const gameEvents = gamesSchema.table(
     data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
     // The Game Score XP it gave (games/core/scoring.ts), set when it is written and
     // added to the totals in the same transaction. Null only for events written
-    // before XP existed, until the API scores them once (docs/adr/0018, phase 5).
+    // before XP existed, until the API scores them once (docs/adr/0028, phase 5).
     xp: integer('xp'),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
@@ -1514,7 +1514,7 @@ export const gameEvents = gamesSchema.table(
 
 // A member's Game Score: XP from every game, for one season ("2026-11") or for
 // all time ("all"). Kept up to date as events are scored, so the leaderboards only
-// read it (docs/adr/0018, phase 5).
+// read it (docs/adr/0028, phase 5).
 export const xpTotals = gamesSchema.table(
   'xp_totals',
   {
@@ -1543,7 +1543,7 @@ export const competitionInvites = gamesSchema.table(
 )
 
 // ---------------------------------------------------------------------------
-// Chess on Lichess (docs/adr/0018, phase 2).
+// Chess on Lichess (docs/adr/0028, phase 2).
 // ---------------------------------------------------------------------------
 
 // A member's linked Lichess account: one Lichess account per member and one member
@@ -1697,7 +1697,7 @@ export const chessGames = gamesSchema.table(
 )
 
 // ---------------------------------------------------------------------------
-// Keno, free to play (docs/adr/0018, phase 4). No money anywhere: tokens are free
+// Keno, free to play (docs/adr/0028, phase 4). No money anywhere: tokens are free
 // each day and points can never be bought, sent or swapped for anything.
 // ---------------------------------------------------------------------------
 

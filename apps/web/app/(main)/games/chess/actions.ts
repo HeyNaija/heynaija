@@ -4,7 +4,7 @@ import { refresh } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { api } from '@/lib/api'
 
-// Chess on Lichess (docs/adr/0018). Plain form actions, so the page works before
+// Chess on Lichess (docs/adr/0028). Plain form actions, so the page works before
 // JavaScript loads; a problem comes back as `?notice=<code>`, which the page words.
 
 const CHESS = '/games/chess'

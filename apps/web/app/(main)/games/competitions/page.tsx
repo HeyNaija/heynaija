@@ -10,7 +10,7 @@ import { CompetitionSection } from './_bits'
 
 export const metadata: Metadata = { title: 'Competitions', robots: { index: false } }
 
-/** Games competitions (docs/adr/0018, phase 5): what is on, coming up and recently finished. */
+/** Games competitions (docs/adr/0028, phase 5): what is on, coming up and recently finished. */
 export default function CompetitionsPage() {
   return (
     <div className="page-stack">

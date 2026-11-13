@@ -11,7 +11,7 @@ const REFRESH_MS = 30_000
 
 const name = (p: LiveChessGame['white']) => p.displayName ?? `@${p.handle}`
 
-/** Games being played now (docs/adr/0018), refreshed while the page is visible. */
+/** Games being played now (docs/adr/0028), refreshed while the page is visible. */
 export function LiveGames({ initial }: { initial: LiveChessGame[] }) {
   const [games, setGames] = useState(initial)
 

@@ -1,5 +1,5 @@
 /**
- * Chess Arena and The Arbiter (docs/adr/0018, phase 3), as plain values so posts
+ * Chess Arena and The Arbiter (docs/adr/0028, phase 3), as plain values so posts
  * and members can use them without depending on the chess module.
  */
 
@@ -12,7 +12,7 @@ export const ARBITER_FALLBACK_HANDLE = 'arbiter_hn'
 /** One thread for every match; only The Arbiter starts threads there. */
 export const ARENA_SLUG = 'chess-arena'
 
-/** Competition results (docs/adr/0018, phase 5); only The Arbiter starts posts there too. */
+/** Competition results (docs/adr/0028, phase 5); only The Arbiter starts posts there too. */
 export const GAME_NIGHT_SLUG = 'game-night'
 
 /** Communities where only The Arbiter starts posts, and what anyone else trying is told. */

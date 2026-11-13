@@ -10,7 +10,7 @@ import { ChessError, LICHESS, TOKEN_BOX } from './chess-tokens.js'
 import { LichessError, type LichessApi, type LichessTeam, TOURNAMENT_SCOPE, type TournamentKind } from './lichess.js'
 import { arenaLengths, SWISS_ROUNDS, swissMinutes, TOURNAMENT_CONTROLS, tournamentControlById } from './time-controls.js'
 
-// A community's Lichess team and its tournaments (docs/games/GAMES.md, docs/adr/0018
+// A community's Lichess team and its tournaments (docs/games/GAMES.md, docs/adr/0028
 // phase 6). A moderator of the community who leads the team on Lichess links it
 // and makes Arena and Swiss tournaments for it with their own Lichess token. Each
 // tournament is a chess competition for the community. Games are played on

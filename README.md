@@ -105,7 +105,7 @@ feature flag decides who has them, which in development is everyone
 the config in `docker-compose.dev.yml` advertises `127.0.0.1` for media. Servers for
 staging and production are a separate piece of work.
 
-Games ([docs/games/GAMES.md](docs/games/GAMES.md), [ADR 0018](docs/adr/0018-games.md))
+Games ([docs/games/GAMES.md](docs/games/GAMES.md), [ADR 0028](docs/adr/0028-games.md))
 is behind the `games` feature flag ([docs/feature-flags.md](docs/feature-flags.md)):
 on in development and staging, off in production until launch. A site moderator can
 turn it on, off, or on for named members only, from Moderation, Feature flags.

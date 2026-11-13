@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test'
 import { grantModerator } from '../lib/cli.ts'
 import { newMember } from '../lib/members.ts'
 
-// Games competitions, the Game Score and the scoring explainer (docs/adr/0018, phase 5).
+// Games competitions, the Game Score and the scoring explainer (docs/adr/0028, phase 5).
 // Seeing a competition finish needs Keno drawing often (see keno.spec.ts): CI starts the
 // API with KENO_DRAW_EVERY_MS=30000 and sets E2E_KENO_DRAW_MS to match.
 

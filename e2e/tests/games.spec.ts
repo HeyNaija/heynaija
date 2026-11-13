@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { newMember } from '../lib/members.ts'
 
-// The games homepage for a member the `games` flag is on for (docs/adr/0018). The
+// The games homepage for a member the `games` flag is on for (docs/adr/0028). The
 // flag is on in development, as in CI; games-dark.spec.ts covers it switched off.
 
 test('a member finds Games in the sidebar: a grid of games, each with its own leaderboard, competitions and posts', async ({ browser }) => {

@@ -1,4 +1,4 @@
-# ADR 0018 — Games: a pluggable section with Chess on Lichess and free-to-play Keno
+# ADR 0028 — Games: a pluggable section with Chess on Lichess and free-to-play Keno
 
 **Date:** 3 November 2026 · **Status:** Accepted 3 November 2026. Phase 1 built: the
 module, the registry, the `games` schema, the `games` flag and a games homepage with

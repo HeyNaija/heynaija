@@ -2,7 +2,7 @@ import { type Db, gameEvents } from '@heynaija/db'
 import { sql } from 'drizzle-orm'
 import { ensureSeason } from './seasons.js'
 
-// The HeyNaija Game Score (docs/games/GAMES.md, docs/adr/0018 phase 5): XP from
+// The HeyNaija Game Score (docs/games/GAMES.md, docs/adr/0028 phase 5): XP from
 // playing, winning and placing in competitions, added up per season (a Lagos month)
 // and for all time. Every rule is here, and the "How games scoring works" page reads
 // these same numbers from the API, so the page and the scoring cannot disagree.

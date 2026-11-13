@@ -3,7 +3,7 @@ import { grantModerator } from '../lib/cli.ts'
 import { createCommunity } from '../lib/db.ts'
 import { newMember } from '../lib/members.ts'
 
-// A community's Lichess team and its tournaments (docs/adr/0018, phase 6), against
+// A community's Lichess team and its tournaments (docs/adr/0028, phase 6), against
 // the stand-in in lib/fake-lichess.ts. Like chess.spec.ts it needs the API pointed
 // at the stand-in, so it runs only with E2E_LICHESS set; and the API started with
 // CHESS_STANDINGS_EVERY_MS short (CI uses 10 seconds) so standings arrive quickly:

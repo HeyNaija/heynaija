@@ -137,7 +137,7 @@ export const visible = (viewerId: string, gistsOn: boolean) => sql`
   and (n.kind <> 'story_update' or exists(select 1 from story_follows sf where sf.story_id = p.story_id and sf.member_id = ${viewerId}))
   and (n.kind <> 'chess_challenge' or (ch.status = 'pending' and ch.expires_at > now()))
   and (n.kind <> 'chess_game_started' or (cg.id is not null and cg.finished_at is null))
-  -- A spectator's reply or mention in a game's thread waits until the game ends (docs/adr/0018).
+  -- A spectator's reply or mention in a game's thread waits until the game ends (docs/adr/0028).
   and (n.kind not in ('reply', 'mention') or not ${hiddenFromPlayer(viewerId, sql`p.root_id`, sql`p.author_id`)})`
 
 /**

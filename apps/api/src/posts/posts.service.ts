@@ -1837,7 +1837,7 @@ export class PostsService {
         // One marked sensitive is not there for anyone who is not an adult (ADR 0020).
         .where(and(eq(communities.slug, communitySlug), eq(communities.active, true), communityOpenTo(authorId)))
       if (!community) throw new CommunityNotFoundError('no such community')
-      // Chess Arena and Game Night (docs/adr/0018): The Arbiter starts the posts; members reply.
+      // Chess Arena and Game Night (docs/adr/0028): The Arbiter starts the posts; members reply.
       const arbiterOnly = ARBITER_ONLY[communitySlug]
       if (arbiterOnly && authorId !== ARBITER_ID) throw new NotACommunityMemberError(arbiterOnly)
       if (!community.joined && !anyMember) throw new NotACommunityMemberError('join the community to post in it')

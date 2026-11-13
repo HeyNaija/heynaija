@@ -4,7 +4,7 @@ import { RETURN_COOKIE, returnPath } from '@/lib/lichess-return'
 
 /**
  * Where Lichess sends a member back after they say yes (or no) to linking their
- * account (docs/adr/0018). The code and state go to the API with the member's
+ * account (docs/adr/0028). The code and state go to the API with the member's
  * session, which checks the state was theirs and fresh, and swaps the code for a
  * token; the browser never sees the token. proxy.ts has already turned away
  * anyone without Games.

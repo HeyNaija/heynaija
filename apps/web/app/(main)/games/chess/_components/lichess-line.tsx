@@ -9,7 +9,7 @@ const SHOWN = [
 ] as const
 
 /**
- * A member's Lichess account on their profile (docs/adr/0018): the username, the
+ * A member's Lichess account on their profile (docs/adr/0028): the username, the
  * ratings they have, and a way to challenge them. Nothing at all when they have
  * not connected one, or the viewer cannot see them.
  */

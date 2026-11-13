@@ -5,7 +5,7 @@ import type { GameManifest } from './manifest.js'
 /**
  * Every game, in the order the games homepage shows them. Adding a game means a
  * folder beside chess/ and keno/ and a line here; game slugs in the `games`
- * schema are plain text, so no migration (docs/adr/0018).
+ * schema are plain text, so no migration (docs/adr/0028).
  */
 export const GAME_REGISTRY: readonly GameManifest[] = [chessManifest, kenoManifest]
 

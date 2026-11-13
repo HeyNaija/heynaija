@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation'
 import { api } from '@/lib/api'
 import { RETURN_COOKIE } from '@/lib/lichess-return'
 
-// A community's Lichess team and its tournaments (docs/adr/0018, phase 6). Plain
+// A community's Lichess team and its tournaments (docs/adr/0028, phase 6). Plain
 // form actions, so the page works before JavaScript loads; a problem comes back
 // as `?error=<message>`.
 

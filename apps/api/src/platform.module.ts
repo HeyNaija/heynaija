@@ -36,7 +36,7 @@ const providers = [
   { provide: FeatureFlags, useFactory: (db: Db, env: Env) => new FeatureFlags(db, env.APP_ENV), inject: [DB, ENV] },
   FeatureGuard,
   { provide: RateLimiter, useClass: RedisRateLimiter },
-  // Posts, which Games also writes (The Arbiter's threads and results, docs/adr/0018), and what
+  // Posts, which Games also writes (The Arbiter's threads and results, docs/adr/0028), and what
   // PostsService asks for. Those are optional to it, so one left in AppModule, where this module
   // cannot see it, would be quietly missing: video limits at their defaults, a sensitive post's
   // files never moved to private storage, and its links signed with a key nothing accepts.
@@ -55,7 +55,7 @@ const providers = [
 /**
  * What every part of the API needs: settings, the database, who is signed in,
  * feature flags, rate limits and posts (with the video settings, media queue and signed
- * media addresses posts need). Global, so feature modules (games/, docs/adr/0018)
+ * media addresses posts need). Global, so feature modules (games/, docs/adr/0028)
  * can use them without AppModule having to know about each one. One instance of
  * each, shared.
  */

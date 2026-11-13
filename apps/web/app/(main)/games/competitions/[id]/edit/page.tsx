@@ -9,7 +9,7 @@ import { CompetitionForm } from '../../_form'
 
 export const metadata: Metadata = { title: 'Change competition', robots: { index: false } }
 
-/** A moderator changes a competition before entry opens (docs/adr/0018, phase 5). */
+/** A moderator changes a competition before entry opens (docs/adr/0028, phase 5). */
 export default function EditCompetitionPage({ params }: PageProps<'/games/competitions/[id]/edit'>) {
   return (
     <div className="page-stack">

@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes } from 'node:crypto'
 
-// How a Keno round's numbers come from its seed (docs/adr/0018, phase 4). The web
+// How a Keno round's numbers come from its seed (docs/adr/0028, phase 4). The web
 // app's checker (apps/web/app/(main)/games/keno/_components/fair.ts) does the same
 // steps in the browser; both are tested against the same examples, so change
 // neither without the other, and never for a round already drawn.

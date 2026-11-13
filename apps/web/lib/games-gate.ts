@@ -1,6 +1,6 @@
 // The decision proxy.ts makes about /games/*, kept free of Next so it can be tested.
 // Like the Gists gate it fails CLOSED: anything but a clear "yes, this member may
-// see Games" looks exactly like a URL that does not exist (docs/adr/0018). Games
+// see Games" looks exactly like a URL that does not exist (docs/adr/0028). Games
 // is for members on its list only, so a visitor with no session always gets the
 // missing page.
 import { sessionCookieHeader } from './gists-gate.ts'

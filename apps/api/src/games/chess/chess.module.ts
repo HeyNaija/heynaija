@@ -17,7 +17,7 @@ import { TeamsService } from './teams.js'
 import { TournamentsJob } from './tournaments-job.js'
 
 /**
- * Chess on Lichess (docs/games/GAMES.md, docs/adr/0018): linking, ratings and
+ * Chess on Lichess (docs/games/GAMES.md, docs/adr/0028): linking, ratings and
  * challenges (phase 2); playing, watching, Chess Arena and results (phase 3);
  * community Lichess teams and their tournaments (phase 6).
  */

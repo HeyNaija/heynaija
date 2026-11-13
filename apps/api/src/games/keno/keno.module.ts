@@ -7,7 +7,7 @@ import { KenoController } from './keno.controller.js'
 import { KenoService } from './keno.service.js'
 import { KENO_TOKEN_BOX } from './keno-tokens.js'
 
-/** Keno, free to play (docs/games/GAMES.md, docs/adr/0018 phase 4): shared draws, tickets, checking a round, standings. */
+/** Keno, free to play (docs/games/GAMES.md, docs/adr/0028 phase 4): shared draws, tickets, checking a round, standings. */
 @Module({
   controllers: [KenoController],
   providers: [

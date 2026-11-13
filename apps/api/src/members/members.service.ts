@@ -103,7 +103,7 @@ export type Profile = {
   identityBadge: boolean
   /** One of the people who founded HeyNaija (`pnpm founder:grant`), for good. */
   founderBadge: boolean
-  /** One of HeyNaija's automated accounts (The Arbiter, docs/adr/0018); nobody signs in to it. */
+  /** One of HeyNaija's automated accounts (The Arbiter, docs/adr/0028); nobody signs in to it. */
   automatedBadge: boolean
 }
 

@@ -14,7 +14,7 @@ import { clockLabel, ELIGIBILITY, gameLabel, scoreLabel, STATUS, When } from '..
 
 export const metadata: Metadata = { title: 'Competition', robots: { index: false } }
 
-/** One competition: its rules, entering, and the standings (docs/adr/0018, phases 5 and 6). */
+/** One competition: its rules, entering, and the standings (docs/adr/0028, phases 5 and 6). */
 export default function CompetitionPage({ params, searchParams }: PageProps<'/games/competitions/[id]'>) {
   return (
     <div className="page-stack">

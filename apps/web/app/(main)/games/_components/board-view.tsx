@@ -10,7 +10,7 @@ const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : u
 
 /**
  * One board's season or all-time standings, with its season and who-is-on-it choices
- * (docs/adr/0018, phase 5). `path` and `fixed` are where the choices go back to: the
+ * (docs/adr/0028, phase 5). `path` and `fixed` are where the choices go back to: the
  * Game Score page, or a game's Leaderboard tab.
  */
 export async function BoardView({ board, params, path, fixed = {} }: { board: GameBoardKind; params: Params; path: string; fixed?: Record<string, string> }) {

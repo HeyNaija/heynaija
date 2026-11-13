@@ -30,7 +30,7 @@ export interface GameChanges {
 export const GAME_CHANGES = Symbol('GAME_CHANGES')
 
 /**
- * One `LISTEN chess_game` connection per API process (docs/adr/0018): whichever
+ * One `LISTEN chess_game` connection per API process (docs/adr/0028): whichever
  * process watches a game on Lichess, every process's long-polls hear about it.
  * If the connection drops, waiters time out as usual and it reconnects.
  */

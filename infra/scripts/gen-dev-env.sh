@@ -37,7 +37,7 @@ ensure REDIS_PASSWORD "$(hex 16)"
 ensure KRATOS_SECRETS_COOKIE "$(hex 32)"
 ensure KRATOS_SECRETS_CIPHER "$(hex 16)" # must be exactly 32 characters
 ensure KRATOS_WEBHOOK_SECRET "$(hex 32)"
-# Encrypts members' Lichess tokens (docs/adr/0018): 64 hex characters.
+# Encrypts members' Lichess tokens (docs/adr/0028): 64 hex characters.
 ensure GAMES_TOKEN_KEY "$(hex 32)"
 
 ensure DATABASE_URL "postgres://heynaija:$(get POSTGRES_PASSWORD)@localhost:5433/heynaija"

@@ -145,7 +145,7 @@ export class AuthController {
       // gives theirs; the web app shows nothing else until then (ADR 0020).
       birthDateNeeded,
       // What is switched on for this member: the database-backed flags (docs/feature-flags.md),
-      // games among them (docs/adr/0018), with videoPosts and gists as they take effect, rules in code included.
+      // games among them (docs/adr/0028), with videoPosts and gists as they take effect, rules in code included.
       features: { ...features, videoPosts, gists },
       // Whether this member may host a Gist and speak in one, or only listen to them:
       // under 18 and unknown ages listen (ADR 0020, section 4). Never true without `gists`.

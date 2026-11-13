@@ -14,7 +14,7 @@ export const COMPETITIONS_EVERY_MS = 60_000
 const connection = (env: Pick<Env, 'REDIS_URL'>) => ({ url: env.REDIS_URL, maxRetriesPerRequest: null })
 
 /**
- * The Games core's background work (docs/adr/0018, phase 5): once a minute, one
+ * The Games core's background work (docs/adr/0028, phase 5): once a minute, one
  * run however many API processes there are, moves competitions on by the clock
  * (CompetitionsService.tick). On start, it also scores any game events written
  * before XP existed, once.

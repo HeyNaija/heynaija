@@ -1,7 +1,7 @@
 /**
  * Where the Lichess callback (/games/chess/callback) sends a member back to after
  * linking, when it is not /games/chess: a community moderator allowing
- * tournaments comes back to that community's chess page (docs/adr/0018, phase 6).
+ * tournaments comes back to that community's chess page (docs/adr/0028, phase 6).
  */
 export const RETURN_COOKIE = 'lichess_return'
 

@@ -31,7 +31,7 @@ async function CommunityView({ params, searchParams }: Props) {
   const games = viewer.state === 'member' && Boolean(viewer.me.features.games)
   const [feed, chess] = await Promise.all([
     getCommunityPosts(community.slug, page),
-    // Its Lichess team and tournaments (docs/adr/0018, phase 6), only for members with Games.
+    // Its Lichess team and tournaments (docs/adr/0028, phase 6), only for members with Games.
     games ? getChessTeam(community.slug).catch(() => null) : Promise.resolve(null),
   ])
   const viewerId = viewer.state === 'member' ? viewer.me.id : null
@@ -126,7 +126,7 @@ async function CommunityView({ params, searchParams }: Props) {
       </header>
 
       {ARBITER_ONLY[community.slug] ? (
-        // Chess Arena and Game Night (docs/adr/0018): The Arbiter starts the posts; members reply in them.
+        // Chess Arena and Game Night (docs/adr/0028): The Arbiter starts the posts; members reply in them.
         <p className="notice">{ARBITER_ONLY[community.slug]}</p>
       ) : viewer.state === 'member' && community.viewerIsMember ? (
         <Composer

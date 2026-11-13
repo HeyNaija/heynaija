@@ -4,7 +4,7 @@ import { avatarPath } from '../../media/media.service.js'
 import { blockedEitherWay } from '../../posts/posts.service.js'
 import { lagosMonth } from './seasons.js'
 
-// The Games leaderboards (docs/games/GAMES.md, docs/adr/0018 phase 5). Every board
+// The Games leaderboards (docs/games/GAMES.md, docs/adr/0028 phase 5). Every board
 // reads rows the scoring keeps up to date as games are played; nothing is added
 // up here. Blocks either way, mutes and inactive members (suspended, deactivated,
 // erased) are left out, as from feeds; members with nothing yet are not ranked;

@@ -28,7 +28,7 @@ const run = async <T>(work: () => Promise<T>): Promise<T> => {
   }
 }
 
-/** Keno, free to play (docs/adr/0018, phase 4). Behind the `games` flag like the rest of Games. */
+/** Keno, free to play (docs/adr/0028, phase 4). Behind the `games` flag like the rest of Games. */
 @Controller('v1/games/keno')
 @UseGuards(SessionGuard, FeatureGuard)
 @Feature('games')

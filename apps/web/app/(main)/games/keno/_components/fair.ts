@@ -1,4 +1,4 @@
-// Checks a Keno round in the browser (docs/adr/0018, phase 4), with the same steps
+// Checks a Keno round in the browser (docs/adr/0028, phase 4), with the same steps
 // the API draws by (apps/api/src/games/keno/draw.ts). Both are tested against the
 // same examples; change neither without the other.
 

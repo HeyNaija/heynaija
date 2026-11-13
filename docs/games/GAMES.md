@@ -13,7 +13,7 @@ Progress and status are not tracked here. They live in `docs/feature-roadmap.jso
 (rendered at `/progress`), like every other feature.
 
 Also read before starting: PLAN.md, PRODUCT.md, AGENTS.md, apps/web/DESIGN.md,
-the games ADR ([0018](../adr/0018-games.md)), and ADRs 0002, 0005 and 0014.
+the games ADR ([0018](../adr/0028-games.md)), and ADRs 0002, 0005 and 0014.
 
 ## Purpose
 
@@ -146,7 +146,7 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
    fixed list of what the Board API allows (no Bullet; Blitz only for direct
    challenges), in `chess/time-controls.ts`, enforced in the API and offered as
    is in the UI. The challenge is made on Lichess only when accepted, with both
-   members' tokens (ADR 0018). The challenged member is notified in the app, by
+   members' tokens (ADR 0028). The challenged member is notified in the app, by
    email and by push (`chess_challenge`), with an opt-out like the others.
 4. **Play inside HeyNaija** through the Board API: stream game state, move, offer
    or accept draws, resign, and reconnect cleanly. Respect Lichess rate limits:
@@ -161,7 +161,7 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
    not anti-cheat, since anyone can watch the game on lichess.org. Live games are
    listed on /games/chess and linked from profiles. The browser long-polls the API
    (no stream to the browser); one watcher per game reads the Board API stream
-   (ADR 0018).
+   (ADR 0028).
 6. **Results:** on game end, fetch the result and new ratings from Lichess, write
    a game_event (XP is awarded from these in phase 5), and The Arbiter replies in
    the game's thread with the result.
@@ -192,7 +192,7 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
   serverSeed and the round id. A public verify page lets anyone check a round.
 - Draws happen only on the server.
 - **Daily play cap,** enforced with the existing Redis rate limiter, with Postgres
-  counting the day's tokens and deciding (ADR 0018, phase 4).
+  counting the day's tokens and deciding (ADR 0028, phase 4).
 - Optional posts for draw results and notable wins (none yet: the owner chose to
   leave them out of phase 4).
 - **Agreed numbers (phase 4):** 20 free tokens a member a day, reset at midnight

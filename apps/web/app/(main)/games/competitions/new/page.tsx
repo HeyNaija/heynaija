@@ -9,7 +9,7 @@ import { lagosInput } from '../_bits'
 
 export const metadata: Metadata = { title: 'New competition', robots: { index: false } }
 
-/** A site moderator makes a competition (docs/adr/0018, phase 5). */
+/** A site moderator makes a competition (docs/adr/0028, phase 5). */
 export default function NewCompetitionPage() {
   return (
     <div className="page-stack">

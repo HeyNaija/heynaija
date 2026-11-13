@@ -1,6 +1,6 @@
-/** Chess Arena (docs/adr/0018): only The Arbiter starts posts there, so composers never offer it. */
+/** Chess Arena (docs/adr/0028): only The Arbiter starts posts there, so composers never offer it. */
 export const CHESS_ARENA = 'chess-arena'
-/** Game Night (docs/adr/0018, phase 5): competition results, also started only by The Arbiter. */
+/** Game Night (docs/adr/0028, phase 5): competition results, also started only by The Arbiter. */
 export const GAME_NIGHT = 'game-night'
 
 /** Communities where only The Arbiter starts posts, with what their page says instead of a composer. */

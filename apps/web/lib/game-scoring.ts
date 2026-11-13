@@ -1,6 +1,6 @@
 import type { GameScoring } from './api'
 
-// Wording for "How games scoring works" (docs/adr/0018, phase 5), built from the
+// Wording for "How games scoring works" (docs/adr/0028, phase 5), built from the
 // rules the API scores by, so the page never states a number the scoring does not use.
 
 const xp = (n: number) => `${n} XP`

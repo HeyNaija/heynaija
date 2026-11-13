@@ -1,4 +1,4 @@
-/** Dependency tokens and the error type shared by the chess services (docs/adr/0018). */
+/** Dependency tokens and the error type shared by the chess services (docs/adr/0028). */
 
 export const LICHESS = Symbol('LICHESS')
 /** The TokenBox for GAMES_TOKEN_KEY, or null when no key is set and linking is not available. */

@@ -11,7 +11,7 @@ import { ticketResult } from '../_components/ticket'
 
 export const metadata: Metadata = { title: 'Your Keno tickets', robots: { index: false } }
 
-/** The member's Keno tickets, newest first (docs/adr/0018, phase 4). */
+/** The member's Keno tickets, newest first (docs/adr/0028, phase 4). */
 export default function KenoTicketsPage({ searchParams }: PageProps<'/games/keno/tickets'>) {
   return (
     <div className="page-stack">

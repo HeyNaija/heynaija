@@ -1,5 +1,5 @@
 /**
- * Everything HeyNaija asks Lichess (docs/adr/0018): OAuth with PKCE, the linked
+ * Everything HeyNaija asks Lichess (docs/adr/0028): OAuth with PKCE, the linked
  * account and its ratings, and challenges. Behind an interface so tests and the
  * end-to-end stand-in can replace it; if Lichess's API changes, this file does.
  * Tokens and codes are never logged.

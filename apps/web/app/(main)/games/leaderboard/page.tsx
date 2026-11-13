@@ -8,7 +8,7 @@ import { BoardView } from '../_components/board-view'
 
 export const metadata: Metadata = { title: 'Game Score leaderboard', robots: { index: false } }
 
-/** Season and all-time Game Score standings, all games together (docs/adr/0018, phase 5). Each game's own board is its page's Leaderboard tab. */
+/** Season and all-time Game Score standings, all games together (docs/adr/0028, phase 5). Each game's own board is its page's Leaderboard tab. */
 export default function LeaderboardsPage({ searchParams }: PageProps<'/games/leaderboard'>) {
   return (
     <div className="page-stack">

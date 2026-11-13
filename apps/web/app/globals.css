@@ -2588,7 +2588,7 @@ a.result-row:hover { color: var(--accent-strong); }
 @keyframes gist-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .gist-mic-state { padding: 0 6px; border-radius: var(--r-chip); background: color-mix(in srgb, currentColor 14%, transparent); font-size: 12px; font-weight: 700; }
 
-/* Chess on Lichess (docs/adr/0018): ratings as quiet inset tiles, and challenges as rows divided by hairlines inside their card. */
+/* Chess on Lichess (docs/adr/0028): ratings as quiet inset tiles, and challenges as rows divided by hairlines inside their card. */
 .chess-ratings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 14px 0 8px; }
 @media (min-width: 640px) { .chess-ratings { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .chess-ratings > div { min-width: 0; border-radius: var(--r-control); background: var(--panel); padding: 10px 12px; }
@@ -2600,7 +2600,7 @@ a.result-row:hover { color: var(--accent-strong); }
 .chess-challenge-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-left: 48px; }
 @media (max-width: 419px) { .chess-challenge-actions { padding-left: 0; } }
 
-/* The chess board (docs/adr/0018, phase 3). Squares from the existing tokens, no new colours: light squares are the
+/* The chess board (docs/adr/0028, phase 3). Squares from the existing tokens, no new colours: light squares are the
    inset fill, dark ones the accent mixed into it. The checker is drawn with hard stops, so it reads as squares, not a
    gradient. As wide as the column, at most 560px, square. */
 .chess-game { display: flex; flex-direction: column; gap: 12px; }
@@ -2625,7 +2625,7 @@ a.result-row:hover { color: var(--accent-strong); }
 .chess-status { font-weight: 600; }
 .chess-moves { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px; font-variant-numeric: tabular-nums; }
 
-/* Keno (docs/adr/0018, phase 4). The picker is a grid of number keys from the existing tokens: picked keys take the
+/* Keno (docs/adr/0028, phase 4). The picker is a grid of number keys from the existing tokens: picked keys take the
    accent, drawn numbers are outlined chips, and a ticket's drawn numbers are filled the soft accent. Eight to a row on a
    phone so the keys stay big enough to press, ten from tablet width. No new colours. */
 .keno-picker { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-top: 14px; }
@@ -2675,7 +2675,7 @@ a.result-row:hover { color: var(--accent-strong); }
 .keno-proof dd { margin: 0 0 8px; overflow-wrap: anywhere; }
 .keno-command { margin-top: 6px; max-width: 100%; overflow-x: auto; border-radius: var(--r-control); background: var(--panel); padding: 10px; font-size: 11px; }
 
-/* Games leaderboards and competitions (docs/adr/0018, phase 5): the board's choices sit in a row that wraps on a
+/* Games leaderboards and competitions (docs/adr/0028, phase 5): the board's choices sit in a row that wraps on a
    phone; competition times are two to a row from tablet width. */
 .leaderboard-controls { display: flex; flex-wrap: wrap; gap: 10px 12px; margin-top: 12px; }
 .leaderboard-controls > label { min-width: 0; flex: 1 1 140px; }

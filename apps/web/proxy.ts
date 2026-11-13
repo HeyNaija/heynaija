@@ -20,7 +20,7 @@ const API_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000'
 const ask = (path: string, headers: HeadersInit = {}) =>
   fetch(`${API_URL}${path}`, { headers, cache: 'no-store', signal: AbortSignal.timeout(2000) })
 
-// Games (docs/adr/0018) is dark the same way, for /games/*, except that a visitor
+// Games (docs/adr/0028) is dark the same way, for /games/*, except that a visitor
 // with no session always gets the missing page: Games is for members on its list.
 
 export async function proxy(request: NextRequest) {

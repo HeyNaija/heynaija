@@ -54,7 +54,7 @@ const sha256 = (value: string) => createHash('sha256').update(value).digest('hex
 const flipColor = (c: 'random' | 'white' | 'black') => (c === 'white' ? 'black' : c === 'black' ? 'white' : 'random')
 
 /**
- * Chess on Lichess (docs/adr/0018, docs/games/GAMES.md): linking an account with
+ * Chess on Lichess (docs/adr/0028, docs/games/GAMES.md): linking an account with
  * OAuth and PKCE, its ratings, and challenges between members who have both
  * linked one. A challenge lives here until it is accepted; then the game is made
  * on Lichess with both members' tokens, so nothing waits on Lichess's side.

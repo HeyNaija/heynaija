@@ -68,7 +68,7 @@ export function resultLine(g: { status: string; winner: Side | null }, names: Re
 const isRunning = (status: string) => (RUNNING_STATUSES as readonly string[]).includes(status)
 
 /**
- * Games made from accepted challenges (docs/adr/0018, phase 3): what the page
+ * Games made from accepted challenges (docs/adr/0028, phase 3): what the page
  * shows, the players' moves and decisions, the state the watcher reads from
  * Lichess, and what happens once a game ends. Lichess decides what is legal and
  * how it ended; this keeps a copy and tells the pages.
@@ -387,7 +387,7 @@ export class ChessGamesService {
       await tx.update(chessGames).set({ ratingsAfter }).where(eq(chessGames.id, gameId))
       for (const [side, memberId] of [['white', g.whiteId], ['black', g.blackId]] as const) {
         const outcome = !played ? 'aborted' : g.winner === side ? 'won' : g.winner ? 'lost' : 'drawn'
-        // With its Game Score XP (docs/adr/0018, phase 5).
+        // With its Game Score XP (docs/adr/0028, phase 5).
         await recordEvents(tx, [
           {
             game: 'chess',

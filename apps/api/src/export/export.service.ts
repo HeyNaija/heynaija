@@ -408,7 +408,7 @@ export class ExportService {
       // (fcm on Android; apns, or apns_sandbox for a test build, on iOS); its token is left out likewise.
       appPushNotifications: pushedToApps,
       notifications: received,
-      // Games (docs/adr/0018): your stats in each game, your points per season and
+      // Games (docs/adr/0028): your stats in each game, your points per season and
       // the competitions you entered.
       games: await this.games(memberId),
     }

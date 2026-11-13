@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 
 /**
- * Encrypts secrets kept for a member, such as their Lichess token (docs/adr/0018),
+ * Encrypts secrets kept for a member, such as their Lichess token (docs/adr/0028),
  * with AES-256-GCM. A box reads `v1.<iv>.<ciphertext>.<tag>` in base64url; the
  * version leaves room to change keys later. The member's id is bound in as
  * associated data, so a box copied onto another member's row does not open.

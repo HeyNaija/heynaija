@@ -26,7 +26,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
   })
 
 /**
- * Follows each game being played (docs/adr/0018): one BullMQ job per game, with
+ * Follows each game being played (docs/adr/0028): one BullMQ job per game, with
  * the game's id as the job's id, so exactly one process follows a game however
  * many API processes there are. The job holds the game's Board API stream open,
  * keeps the game's row up to date (which tells every page), and ends when Lichess

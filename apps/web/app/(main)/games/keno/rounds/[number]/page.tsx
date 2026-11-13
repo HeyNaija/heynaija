@@ -9,7 +9,7 @@ import { RoundCheck } from '../../_components/round-check'
 
 export const metadata: Metadata = { title: 'Check a Keno round', robots: { index: false } }
 
-/** One round, and how anyone can check it was fair (docs/adr/0018, phase 4). */
+/** One round, and how anyone can check it was fair (docs/adr/0028, phase 4). */
 export default function KenoRoundPage({ params }: PageProps<'/games/keno/rounds/[number]'>) {
   return (
     <div className="page-stack">

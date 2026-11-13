@@ -7,7 +7,7 @@ import { ChessGameView } from '../../_components/chess-game'
 
 export const metadata: Metadata = { title: 'Chess game', robots: { index: false } }
 
-/** One game, played or watched (docs/adr/0018, phase 3). */
+/** One game, played or watched (docs/adr/0028, phase 3). */
 export default function ChessGamePage(props: PageProps<'/games/chess/games/[id]'>) {
   return (
     <div className="page-stack">

@@ -4,7 +4,7 @@ import { refresh } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { api } from '@/lib/api'
 
-// Competitions (docs/adr/0018, phases 5 and 6). Plain form actions, so the pages work
+// Competitions (docs/adr/0028, phases 5 and 6). Plain form actions, so the pages work
 // before JavaScript loads.
 
 const BASE = '/games/competitions'

@@ -44,7 +44,7 @@ export type Me = {
   sensitive: { adult: boolean; markPosts: 'author' | 'moderator' | null; showMedia: boolean }
   /**
    * What is switched on for this member: the API's feature flags by key (docs/feature-flags.md),
-   * `games` among them (docs/adr/0018), and `gists` (docs/adr/0017). A missing key counts as off.
+   * `games` among them (docs/adr/0028), and `gists` (docs/adr/0017). A missing key counts as off.
    */
   features: { gists: boolean; games?: boolean } & Record<string, boolean>
   /**
@@ -311,7 +311,7 @@ export type Profile = {
   identityBadge: boolean
   /** Show the Founder badge: one of the people who founded HeyNaija, granted by hand. */
   founderBadge: boolean
-  /** One of HeyNaija's automated accounts (The Arbiter, docs/adr/0018). */
+  /** One of HeyNaija's automated accounts (The Arbiter, docs/adr/0028). */
   automatedBadge?: boolean
 }
 
@@ -515,7 +515,7 @@ export type GameManifest = {
 /** The games in registry order; null while Games is off or the member is not on its list (the API answers 404). */
 export const getGames = () => getOrNull<{ games: GameManifest[] }>('/v1/games')
 
-/** Lichess ratings by speed, as Lichess last said (docs/adr/0018). */
+/** Lichess ratings by speed, as Lichess last said (docs/adr/0028). */
 export type ChessRatings = Partial<Record<'blitz' | 'rapid' | 'classical' | 'correspondence', { rating: number; games: number; provisional: boolean }>>
 
 export type ChessTimeControl =
@@ -565,7 +565,7 @@ export const getChessMember = (handle: string) =>
 
 export type ChessPlayer = { handle: string; displayName: string | null; avatar: string | null; rating: number | null; provisional: boolean }
 
-/** A game as the API shows it (docs/adr/0018, phase 3). `version` goes up with every change. */
+/** A game as the API shows it (docs/adr/0028, phase 3). `version` goes up with every change. */
 export type ChessGame = {
   id: string
   white: ChessPlayer
@@ -605,7 +605,7 @@ export async function getLiveChessGames(): Promise<LiveChessGame[]> {
   return live?.games ?? []
 }
 
-// --- Keno, free to play (docs/adr/0018, phase 4) -------------------------------
+// --- Keno, free to play (docs/adr/0028, phase 4) -------------------------------
 
 export type KenoTicket = { id: string; round: number; numbers: number[]; hits: number | null; points: number | null; createdAt: string }
 
@@ -643,7 +643,7 @@ export const getKenoTickets = (before?: string) =>
   getOrNull<{ tickets: KenoTicket[]; next: string | null }>(`/v1/games/keno/tickets${before ? `?before=${encodeURIComponent(before)}` : ''}`)
 export const getKenoBoard = (period: 'month' | 'all', limit = 50) => getOrNull<KenoBoard>(`/v1/games/keno/leaderboard?period=${period}&limit=${limit}`)
 
-// --- Seasons, Game Score, leaderboards, competitions (docs/adr/0018, phase 5) ----
+// --- Seasons, Game Score, leaderboards, competitions (docs/adr/0028, phase 5) ----
 
 export type GameBoardKind = 'score' | 'chess' | 'keno'
 export type GameBoardFilter = 'everyone' | 'following' | 'community'
@@ -706,7 +706,7 @@ export type CompetitionStanding = {
   /** In a Lichess tournament: their rank among everyone there, and their Lichess name. */
   lichess: { rank: number | null; username: string | null } | null
 }
-/** A chess competition's Lichess tournament (docs/adr/0018, phase 6). */
+/** A chess competition's Lichess tournament (docs/adr/0028, phase 6). */
 export type CompetitionTournament = {
   kind: 'arena' | 'swiss'
   url: string
@@ -730,7 +730,7 @@ export type Competition = CompetitionCard & {
   chess: CompetitionTournament | null
 }
 
-/** A community's Lichess team and what the viewer may do with it (docs/adr/0018, phase 6). */
+/** A community's Lichess team and what the viewer may do with it (docs/adr/0028, phase 6). */
 export type ChessTeam = {
   community: { slug: string; name: string }
   team: { id: string; name: string; nbMembers: number; url: string } | null

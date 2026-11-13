@@ -10,7 +10,7 @@ import { ARBITER_ID, GAME_NIGHT_SLUG } from '../chess/arena-ids.js'
 import { gameBySlug } from './registry.js'
 import { recordEvents } from './scoring.js'
 
-// Competitions (docs/games/GAMES.md, docs/adr/0018 phases 5 and 6): Keno
+// Competitions (docs/games/GAMES.md, docs/adr/0028 phases 5 and 6): Keno
 // competitions are made by site moderators, entered by members and scored from
 // play inside a window. Chess competitions are Lichess tournaments, made by a
 // community's moderators for its Lichess team (chess/teams.ts), and scored from

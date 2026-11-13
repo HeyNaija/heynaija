@@ -26,7 +26,7 @@ const NOTICES: Record<string, { text: string; danger?: boolean }> = {
 }
 
 /**
- * A community's chess on Lichess (docs/adr/0018, phase 6): its linked Lichess
+ * A community's chess on Lichess (docs/adr/0028, phase 6): its linked Lichess
  * team, and its Arena and Swiss tournaments. A moderator of the community who
  * leads the team on Lichess links it and makes the tournaments.
  */

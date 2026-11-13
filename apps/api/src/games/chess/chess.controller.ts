@@ -33,7 +33,7 @@ const challengeBody = z.object({
   rated: z.boolean(),
   timeControl: z.string().max(10),
   color: z.enum(['random', 'white', 'black']).default('random'),
-  // A public thread in Chess Arena when the game starts (docs/adr/0018); on unless turned off.
+  // A public thread in Chess Arena when the game starts (docs/adr/0028); on unless turned off.
   openThread: z.boolean().default(true),
 })
 const opponentsQuery = z.object({ q: z.string().max(30).default('') })
@@ -88,7 +88,7 @@ export const run = async <T>(work: () => Promise<T>): Promise<T> => {
   }
 }
 
-/** Chess on Lichess (docs/adr/0018). Every route is behind the `games` flag: a 404 while it is off for the member. */
+/** Chess on Lichess (docs/adr/0028). Every route is behind the `games` flag: a 404 while it is off for the member. */
 @Controller('v1/games/chess')
 @UseGuards(SessionGuard, FeatureGuard)
 @Feature('games')

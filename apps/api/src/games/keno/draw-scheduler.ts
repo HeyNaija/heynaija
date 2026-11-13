@@ -10,7 +10,7 @@ const SCHEDULER = 'keno-draw'
 const connection = (env: Pick<Env, 'REDIS_URL'>) => ({ url: env.REDIS_URL, maxRetriesPerRequest: null })
 
 /**
- * Makes Keno's shared draws (docs/adr/0018, phase 4). The job scheduler runs one
+ * Makes Keno's shared draws (docs/adr/0028, phase 4). The job scheduler runs one
  * draw job per interval, lined up with the clock, however many API processes
  * there are, and each run draws whatever is due (KenoService.tick), so a run that
  * comes twice or late changes nothing. On start it draws any round missed while

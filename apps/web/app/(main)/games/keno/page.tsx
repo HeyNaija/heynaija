@@ -16,7 +16,7 @@ const KENO: GameInfo = {
   noCompetitions: 'Site moderators run Keno competitions: score the most points within a set window. They show here.',
 }
 
-/** Keno, free to play (docs/games/GAMES.md, docs/adr/0018 phase 4). */
+/** Keno, free to play (docs/games/GAMES.md, docs/adr/0028 phase 4). */
 export default function KenoPage({ searchParams }: PageProps<'/games/keno'>) {
   return (
     <div className="page-stack">

@@ -235,7 +235,7 @@ const schema = z.object({
   GISTS_MAX_COHOSTS: z.coerce.number().int().min(0).max(10).default(2),
   GISTS_MAX_SPEAKERS: z.coerce.number().int().min(0).max(50).default(10),
   GISTS_LISTENER_CAP: z.coerce.number().int().min(1).max(10_000).default(200),
-  // Games, chess (docs/adr/0018). The key that encrypts members' Lichess tokens at
+  // Games, chess (docs/adr/0028). The key that encrypts members' Lichess tokens at
   // rest: 32 bytes as 64 hex characters (`openssl rand -hex 32`). Without it linking
   // a Lichess account is not available. Losing it means everyone links again.
   GAMES_TOKEN_KEY: optional(z.string().regex(/^[0-9a-f]{64}$/i, '64 hex characters')),
@@ -247,11 +247,11 @@ const schema = z.object({
       .default('https://lichess.org')
       .transform((u) => u.replace(/\/$/, '')),
   ),
-  // Games, Keno (docs/adr/0018, phase 4): how often the shared draw is made, and
+  // Games, Keno (docs/adr/0028, phase 4): how often the shared draw is made, and
   // how many free tokens (one ticket each) a member gets a day, Lagos time.
   KENO_DRAW_EVERY_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(300_000),
   KENO_DAILY_TOKENS: z.coerce.number().int().min(1).max(500).default(20),
-  // Games, chess tournaments (docs/adr/0018, phase 6): how often a live Lichess
+  // Games, chess tournaments (docs/adr/0028, phase 6): how often a live Lichess
   // tournament's standings are read. Two minutes; the end-to-end tests make it shorter.
   CHESS_STANDINGS_EVERY_MS: z.coerce.number().int().min(5_000).max(3_600_000).default(120_000),
   // Lets browsers subscribe with an http://127.0.0.1 address, for the end-to-end

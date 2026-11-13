@@ -1,4 +1,4 @@
-// A stand-in for lichess.org, for the chess end-to-end tests (docs/adr/0018).
+// A stand-in for lichess.org, for the chess end-to-end tests (docs/adr/0028).
 // The API is pointed at it with LICHESS_URL. It does what HeyNaija asks of
 // Lichess: the OAuth consent page (with PKCE checked properly), the account,
 // public profiles, making, accepting and cancelling challenges, and (phase 6)

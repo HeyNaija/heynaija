@@ -6,7 +6,7 @@ import { getGameBoard, getGames, getViewer } from '@/lib/api'
 import { GameCard } from './_components/game-card'
 import { ScoreCard } from './_components/home-sections'
 
-// Dark while Games is being built (docs/adr/0018): proxy.ts answers 404 for anyone
+// Dark while Games is being built (docs/adr/0028): proxy.ts answers 404 for anyone
 // not on the list, so this is not indexed either.
 export const metadata: Metadata = { title: 'Games', robots: { index: false } }
 

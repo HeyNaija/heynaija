@@ -4,7 +4,7 @@ import { GamesCoreModule } from './core/games-core.module.js'
 import { KenoModule } from './keno/keno.module.js'
 
 /**
- * The Games section (docs/games/GAMES.md, docs/adr/0018). Built on the global
+ * The Games section (docs/games/GAMES.md, docs/adr/0028). Built on the global
  * PlatformModule for settings, the database, sign-in, feature flags and rate
  * limits. Behind the `games` flag (docs/feature-flags.md).
  */

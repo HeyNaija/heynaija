@@ -8,7 +8,7 @@ import { ChessGamesService } from './chess-games.service.js'
 import { run } from './chess.controller.js'
 import { GAME_CHANGES, type GameChanges } from './game-events.js'
 
-/** How long a page's request waits for the next change before answering "nothing new" (docs/adr/0018). */
+/** How long a page's request waits for the next change before answering "nothing new" (docs/adr/0028). */
 export const LONG_POLL_MS = 25_000
 
 const gameId = (id: string) => {
@@ -20,7 +20,7 @@ const afterQuery = z.object({ after: z.coerce.number().int().min(-1).default(-1)
 const moveBody = z.object({ uci: z.string().regex(/^[a-h][1-8][a-h][1-8][qrbn]?$/) })
 const drawBody = z.object({ answer: z.enum(['offer', 'accept', 'decline']) })
 
-/** Playing and watching games (docs/adr/0018, phase 3). Behind the `games` flag like the rest. */
+/** Playing and watching games (docs/adr/0028, phase 3). Behind the `games` flag like the rest. */
 @Controller('v1/games/chess/games')
 @UseGuards(SessionGuard, FeatureGuard)
 @Feature('games')
