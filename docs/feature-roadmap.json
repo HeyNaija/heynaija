@@ -945,6 +945,36 @@
       "notes": "Web Push with VAPID keys of our own (no Firebase account): Settings has a per-browser button that asks the browser's permission and subscribes it; the service worker (public/sw.js) only shows notifications and opens what they are about. A BullMQ job looks every 10 seconds and pushes what is waiting to each of the member's browsers, in the same words as the email digest: replies, mentions and quotes quote the post briefly, likes, reposts and follows are counted in with ones already pushed and replace them on the device (one tag per post), more than three things at once are one push that says how many, and moderation notices are in general words. What is pushed is decided when it is sent, with the same rules as email: nothing read, opted out of, blocked, muted, taken down, for suspended members, or over ten minutes old. Email waits until the push side has dealt with a notification and leaves out what a browser took (notifications.pushed_at). A browser has one subscription; it moves to whoever turns push on in it, a page load stops one that belongs to another member, and signing out removes it. Subscriptions may only point at Google's, Mozilla's, Apple's or Microsoft's push services. iPhones and iPads get it only from the Home Screen (iOS 16.4+), and Settings says so. The data export (format 8) lists the browsers, without their addresses. The end-to-end tests use a stand-in push service; delivery through the real push services, and how the notifications look on Android, iOS and desktop, have not been checked on staging."
     },
     {
+      "id": "weekly-highlights",
+      "name": "Weekly highlights",
+      "description": "If you have been away a few days, get a few conversations you missed once a week, each saying why it was chosen, with a one-click way to stop.",
+      "category": "discovery",
+      "priority": "P1",
+      "status": "implemented",
+      "availability": "not_live",
+      "evidence": [
+        "docs/adr/0027-weekly-highlights.md",
+        "packages/db/drizzle/0045_weekly_highlights.sql",
+        "apps/api/src/highlights/rules.ts",
+        "apps/api/src/highlights/highlights.service.ts",
+        "apps/api/src/highlights/highlights-email.ts",
+        "apps/api/src/highlights/highlights-queue.ts",
+        "apps/api/src/highlights/highlights.controller.ts",
+        "apps/web/app/(main)/about/highlights/page.tsx",
+        "apps/web/app/ui/notification-preferences-form.tsx",
+        "apps/api/src/highlights/highlights.service.test.ts",
+        "apps/api/src/highlights/highlights-email.test.ts",
+        "apps/api/src/highlights/rules.test.ts",
+        "e2e/tests/weekly-highlights.spec.ts"
+      ],
+      "dependency": [
+        "email-notifications",
+        "push-notifications",
+        "recommendations"
+      ],
+      "notes": "Built 13 Nov 2026 (ADR 0027), behind the weeklyHighlights flag: on in development and staging, off in production until the owner turns it on. The week's run opens on Sunday at 17:00 UTC (6pm in Nigeria) and stays open a day. It reaches an active member with the switch on (members.weekly_highlights, on by default) who was last seen between 3 days and 8 weeks ago, with up to 5 top-level posts from the last 7 days written after they were last here, each author once; fewer than 2 worth sending and nothing goes out. A post is worth sending if someone else replied, quoted, liked or reposted it, or the member follows its author; the order is by Discover's points without its ageing, and Discover's exclusions apply (blocked, muted, suspended, taken down, sensitive, held by reports, a minor's posts to strangers). Each says why in Discover's words. Sent as one push notification where a browser or app takes it, otherwise as an email where notification emails are on, never both; with neither, nothing. Settings has its own switch, shown only while the flag is on for the member, and the email's one-click link turns highlights off and nothing else. Not a notification: nothing is written to notifications. No opens or clicks are tracked; members.highlights_sent_at with last_seen_at says whether people come back. The rules are published at /about/highlights from GET /v1/highlights/rules. The data export (format 15) includes the switch and when highlights were last sent. Not done: the switch in the mobile apps' Settings, which must ship before the flag is on for everyone; delivery through Resend and the real push services has not been checked on staging."
+    },
+    {
       "id": "accessible-interface",
       "name": "Accessibility improvements",
       "description": "Improve keyboard, screen-reader and small-screen access across the product.",

@@ -316,6 +316,13 @@
       "when": 1794145117930,
       "tag": "0044_apns_and_apple_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1794534593871,
+      "tag": "0045_weekly_highlights",
+      "breakpoints": true
     }
   ]
 }

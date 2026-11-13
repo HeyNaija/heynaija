@@ -40,7 +40,7 @@ import { GistsGate } from '../gists/gists-enabled.guard.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/14'
+export const EXPORT_FORMAT = 'heynaija-export/15'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -381,6 +381,10 @@ export class ExportService {
       notificationPreferences: preferencesWithout(turnedOff.map((r) => r.kind)),
       // Whether those notifications are also sent to your email address.
       emailNotifications: me.emailNotifications,
+      // Whether you are sent weekly highlights when you have been away
+      // (docs/adr/0027), and when we last sent you any.
+      weeklyHighlights: me.weeklyHighlights,
+      weeklyHighlightsLastSent: me.highlightsSentAt,
       // Whether everything you post is marked sensitive: your choice ('author'),
       // a moderator's ('moderator'), or not (null). And whether pictures and video
       // in posts marked sensitive are shown to you without a cover.

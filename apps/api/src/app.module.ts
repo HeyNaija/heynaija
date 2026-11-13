@@ -38,6 +38,9 @@ import { GISTS_CONFIG, GistsService } from './gists/gists.service.js'
 import { GistsEnabledGuard, GistsGate, LiveKitConfiguredGuard } from './gists/gists-enabled.guard.js'
 import { roomServiceFor } from './gists/livekit-room-service.js'
 import { ROOM_SERVICE } from './gists/room-service.js'
+import { HighlightsController } from './highlights/highlights.controller.js'
+import { BullHighlightsJobs, HighlightsWorker } from './highlights/highlights-queue.js'
+import { HIGHLIGHTS_JOBS, HIGHLIGHTS_SETTINGS, HighlightsService } from './highlights/highlights.service.js'
 import { GovernanceController } from './governance/governance.controller.js'
 import { GovernanceService } from './governance/governance.service.js'
 import { IdeasController } from './ideas/ideas.controller.js'
@@ -91,7 +94,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, AppleController, PostsController, MembersController, OwnProfileController, OwnSensitiveSettingsController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, PrivateMediaController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, GistRepliesController, LiveKitWebhookController, AccountController, FlagsController, VideosController],
+  controllers: [HealthController, AuthController, AppleController, PostsController, MembersController, OwnProfileController, OwnSensitiveSettingsController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, PrivateMediaController, NotificationsController, EmailController, PushController, HighlightsController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, GistRepliesController, LiveKitWebhookController, AccountController, FlagsController, VideosController],
   providers: [
     { provide: ENV, useFactory: loadEnv },
     { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
@@ -168,6 +171,20 @@ class HealthController {
     { provide: APP_PUSH_SENDER, useFactory: appPushSender, inject: [ENV] },
     PushNotificationsService,
     PushWorker,
+    // Weekly highlights (docs/adr/0027): pushed where a member has push, emailed where they have email on.
+    { provide: HIGHLIGHTS_JOBS, useClass: BullHighlightsJobs },
+    {
+      provide: HIGHLIGHTS_SETTINGS,
+      useFactory: (env: Env) => ({
+        webUrl: env.WEB_PUBLIC_URL,
+        unsubscribeKey: unsubscribeKey(env.KRATOS_WEBHOOK_SECRET),
+        weekday: env.HIGHLIGHTS_WEEKDAY,
+        hourUtc: env.HIGHLIGHTS_HOUR_UTC,
+      }),
+      inject: [ENV],
+    },
+    HighlightsService,
+    HighlightsWorker,
     ExportService,
     GovernanceService,
     OnboardingService,

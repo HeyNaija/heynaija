@@ -67,6 +67,18 @@ export const members = pgTable(
     // When a notification email was last sent to them. The next one waits a while
     // after it, so a steady trickle of activity is not a steady trickle of mail.
     lastNotificationEmailAt: ts('last_notification_email_at'),
+    // Weekly highlights (docs/adr/0027): a few conversations from the week, sent
+    // once a week to a member who has been away. On until they turn it off, in
+    // Settings or by the link in the email. It is not a notification: nothing is
+    // written to `notifications` for it.
+    weeklyHighlights: boolean('weekly_highlights').notNull().default(true),
+    // When the weekly run last dealt with them: sent them highlights, or passed
+    // them over (not away, nothing worth sending, nowhere to send it). Null until
+    // the first run. One run deals with a member once.
+    highlightsSettledAt: ts('highlights_settled_at'),
+    // When highlights were last actually sent to them. With `last_seen_at` it says
+    // whether they came back afterwards, which is how the feature is judged.
+    highlightsSentAt: ts('highlights_sent_at'),
     // The one of their own top-level posts they keep at the top of their profile.
     // Shown only while it is live; a post removed for good takes the pin with it.
     pinnedPostId: uuid('pinned_post_id').references((): AnyPgColumn => posts.id, { onDelete: 'set null' }),

@@ -8,7 +8,7 @@ import { NotificationsService, NotOptionalError, type OptionalNotificationKind }
 
 const readBody = z.object({ upTo: z.uuid() })
 
-// Each kind a member may turn off, true for on, and whether to email them. Any
+// Each kind a member may turn off, true for on, whether to email them, and whether to send weekly highlights. Any
 // other key, including a moderation or account notice, is refused.
 const preferencesBody = z.strictObject({
   ...(Object.fromEntries(OPTIONAL_NOTIFICATION_KINDS.map((kind) => [kind, z.boolean().optional()])) as Record<
@@ -16,6 +16,8 @@ const preferencesBody = z.strictObject({
     z.ZodOptional<z.ZodBoolean>
   >),
   email: z.boolean().optional(),
+  // Weekly highlights (ADR 0027): not a notification, but chosen on the same form.
+  highlights: z.boolean().optional(),
 })
 
 @Controller('v1/notifications')

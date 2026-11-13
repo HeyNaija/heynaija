@@ -25,9 +25,11 @@ test('a member who turns off like notifications is not told of likes, and still 
     'Someone adds to a story you follow',
   ]
   for (const label of labels) await expect(section.getByLabel(label)).toBeChecked()
-  // The kinds, and the box that says whether they are also emailed (on for a new member).
-  await expect(section.getByRole('checkbox')).toHaveCount(labels.length + 1)
+  // The kinds, the box that says whether they are also emailed (on for a new member),
+  // and the one for weekly highlights (weekly-highlights.spec.ts).
+  await expect(section.getByRole('checkbox')).toHaveCount(labels.length + 2)
   await expect(section.getByLabel('Email me my notifications')).toBeChecked()
+  await expect(section.getByLabel('Send me weekly highlights')).toBeChecked()
   await expect(section).toContainText('Safety and moderation notices')
   await section.getByLabel('Someone likes your post').uncheck()
   await section.getByRole('button', { name: 'Save', exact: true }).click()

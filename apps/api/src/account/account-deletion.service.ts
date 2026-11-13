@@ -443,6 +443,9 @@ export class AccountDeletionService {
           onboardedAt: null,
           emailNotifications: false,
           lastNotificationEmailAt: null,
+          weeklyHighlights: false,
+          highlightsSettledAt: null,
+          highlightsSentAt: null,
           pinnedPostId: null,
         })
         .where(eq(members.id, memberId))
