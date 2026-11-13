@@ -105,7 +105,7 @@ test('a member on 1280×720 sees the everyday links and the compose button', asy
     await expect(page.locator('a.sidebar-compose')).toBeVisible()
     const now = await look(page)
     expect(now.problems).toEqual([])
-    expect(now.listed).toEqual(['Home', 'Communities', 'Notifications', 'About HeyNaija', 'Progress', 'Governance', 'Ideas board', 'Bookmarks', 'Settings'])
+    expect(now.listed).toEqual(['Home', 'Communities', 'Notifications', 'About HeyNaija', 'Progress', 'Governance', 'Ideas board', 'Bookmarks', 'Settings', 'Games'])
     expect(now.moved).toEqual([])
     expect(now.more).toBe(false)
     expect(now.card).toBe(false)
@@ -134,10 +134,10 @@ test('a moderator has a member’s sidebar, and Moderation in the account menu',
     await page.setViewportSize({ width: 1280, height: 720 })
     await page.goto('/')
     await expect(page.locator('a.sidebar-compose')).toBeVisible()
-    // The same rows as the first paint, which is drawn for a member (shell.tsx).
+    // A member's rows (Moderation is in the account menu, shell.tsx), Games included as it is on here.
     const now = await look(page)
     expect(now.problems).toEqual([])
-    expect(now.listed).toEqual(['Home', 'Communities', 'Notifications', 'About HeyNaija', 'Progress', 'Governance', 'Ideas board', 'Bookmarks', 'Settings'])
+    expect(now.listed).toEqual(['Home', 'Communities', 'Notifications', 'About HeyNaija', 'Progress', 'Governance', 'Ideas board', 'Bookmarks', 'Settings', 'Games'])
     expect(now.more).toBe(false)
     await page.getByLabel('Account menu').click()
     await page.locator('.account-menu-panel').getByRole('link', { name: 'Moderation' }).click()

@@ -1,8 +1,9 @@
-import { type CanActivate, type ExecutionContext, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { type CanActivate, type ExecutionContext, Inject, Injectable, Logger } from '@nestjs/common'
 import type { FastifyRequest } from 'fastify'
 import type { MaybeAuthedRequest } from '../auth/session.guard.js'
 import type { Env } from '../env.js'
 import { FeatureFlags, type FlagReading } from '../flags/feature-flags.js'
+import { routeNotFound } from '../http.js'
 import type { AgeStatus } from '../governance/age.js'
 import { ENV } from '../tokens.js'
 import { canHostGist, canJoinGist } from './eligibility.js'
@@ -65,9 +66,6 @@ export const gistsShownTo = (access: GistsAccess, member: { id: string; handle: 
 /** And whether they may host and speak too, or only listen: the stage's check (eligibility.ts). */
 export const gistStageFor = (access: GistsAccess, member: { id: string; handle: string }, age: AgeStatus): boolean =>
   canHostGist({ ...member, active: true, age }, { allowed: access.member })
-
-/** What Fastify answers for a route that does not exist, so a dark feature cannot be told from no feature. */
-export const routeNotFound = (req: Pick<FastifyRequest, 'method' | 'url'>) => new NotFoundException(`Cannot ${req.method} ${req.url}`)
 
 /**
  * On every Gists route, after OptionalSessionGuard (so the allow-list can see the

@@ -11,9 +11,30 @@ export const NOTIFICATION_SETTINGS = [
   { kind: 'quote', label: 'Someone quotes your post' },
   { kind: 'follow', label: 'Someone follows you' },
   { kind: 'story_update', label: 'Someone adds to a story you follow' },
+  // Shown only to members with Games (docs/adr/0028); see `settingsFor`. One box for both chess kinds (BOX_ALSO).
+  { kind: 'chess_challenge', label: 'Someone challenges you to chess, or your game starts' },
 ] as const
 
-export type OptionalNotificationKind = (typeof NOTIFICATION_SETTINGS)[number]['kind']
+/** Kinds that have no box of their own and follow another box. */
+const BOX_ALSO = { chess_challenge: ['chess_game_started'] } as const
+
+/** Every kind a member can turn off: one per box, and those that follow a box. */
+export const OPTIONAL_KINDS = [...NOTIFICATION_SETTINGS.map(({ kind }) => kind), ...Object.values(BOX_ALSO).flat()] as const
+
+/** Kinds that belong to a feature behind a flag: the box shows only where the flag is on. */
+const BEHIND_GAMES: readonly OptionalNotificationKind[] = ['chess_challenge', 'chess_game_started']
+
+/**
+ * The boxes to show a member, and the kinds left out. A kind left out keeps what
+ * it was, through a hidden field, so saving the form never changes it unseen.
+ */
+export function settingsFor(features: { games?: boolean }) {
+  const shown = NOTIFICATION_SETTINGS.filter(({ kind }) => features.games || !BEHIND_GAMES.includes(kind))
+  const hidden = OPTIONAL_KINDS.filter((kind) => !shown.some((s) => s.kind === kind || (BOX_ALSO as Record<string, readonly string[]>)[s.kind]?.includes(kind)))
+  return { shown, hidden }
+}
+
+export type OptionalNotificationKind = (typeof NOTIFICATION_SETTINGS)[number]['kind'] | (typeof BOX_ALSO)[keyof typeof BOX_ALSO][number]
 
 /**
  * For each kind a member can turn off, whether it is on, and whether the
@@ -39,6 +60,8 @@ export function preferencesFromForm(formData: FormData): NotificationPreferences
     OptionalNotificationKind,
     boolean
   >
+  // A kind without a box goes with its box.
+  for (const [box, also] of Object.entries(BOX_ALSO)) for (const kind of also) kinds[kind] = on.has(box) || on.has(kind)
   // The highlights box is on the form only while highlights are offered, which the
   // form says with `highlights-offered`. A form without it leaves that choice as it is.
   const highlights = formData.has('highlights-offered') ? { highlights: formData.has('highlights') } : {}

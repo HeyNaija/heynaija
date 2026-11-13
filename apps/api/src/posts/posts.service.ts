@@ -29,13 +29,15 @@ import { type VideoConfig, DEFAULT_VIDEO_CONFIG } from '../video/video-config.js
 import { assertVideoEligible } from '../video/video-eligibility.js'
 import { VIDEO_CONFIG } from '../video/video.service.js'
 import { type PostVideo, toPostVideo, type VideoRow, videoOf } from '../video/video-view.js'
-import { isFounder } from '../members/badges.js'
+import { isAutomated, isFounder } from '../members/badges.js'
 import { decodeCursor, decodeExactCursor, encodeCursor, encodeExactCursor, InvalidCursorError } from '../cursor.js'
 import { adultContentAllowed, communityOpenTo, LabelNotAllowedError, seesAdultContent } from '../governance/adult-content.js'
 import { isMinor, reachesViewer, ReplyAudienceNotAllowedError, strangerToMinor } from '../governance/minors.js'
 import { excerpt, notify } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { Refreshing } from '../refreshing.js'
+import { ARBITER_ID, ARBITER_ONLY } from '../games/chess/arena-ids.js'
+import { hiddenFromPlayer } from '../games/chess/hidden-replies.js'
 import { memberOpensGist } from '../gists/gist-open.js'
 import { DB } from '../tokens.js'
 import {
@@ -218,6 +220,8 @@ export type PostView = {
   authorAvatar: string | null
   /** The author has the Founder badge: one of the people who founded HeyNaija. */
   authorFounder: boolean
+  /** The author is one of HeyNaija's automated accounts (The Arbiter); nobody signs in to it. */
+  authorAutomated: boolean
   /** Empty when `deleted`. */
   text: string
   /** Up to four, in order. Empty when `deleted`. */
@@ -518,6 +522,7 @@ const quoteOf = (viewerId: string | null, quotePostId: SQL) => sql<QuoteRow | nu
   from posts q join members qa on qa.id = q.author_id
   where q.id = ${quotePostId} and q.deleted_at is null and q.removed_at is null and q.gist_id is null
     and ${visibleAuthor(viewerId, sql`q.author_id`, sql`qa.active`)}
+    and not ${hiddenFromPlayer(viewerId, sql`q.root_id`, sql`q.author_id`)}
     and ${postAllowed(viewerId, sql`q.adult_label`, sql`q.author_id`)}
 ), json_build_object('unavailable', true)) end`
 
@@ -670,6 +675,7 @@ const replyContextOf = (viewerId: string | null, parentId: SQL) => sql<ReplyCont
   from posts rp join members ra on ra.id = rp.author_id
   where rp.id = ${parentId} and rp.deleted_at is null and rp.removed_at is null
     and ${visibleAuthor(viewerId, sql`rp.author_id`, sql`ra.active`)}
+    and not ${hiddenFromPlayer(viewerId, sql`rp.root_id`, sql`rp.author_id`)}
     and ${postAllowed(viewerId, sql`rp.adult_label`, sql`rp.author_id`)}
 ), json_build_object('unavailable', true)) end`
 
@@ -756,6 +762,7 @@ export class PostsService {
         authorName: members.displayName,
         authorAvatarId: members.avatarMediaId,
         authorFounder: isFounder(sql`${posts.authorId}`),
+        authorAutomated: isAutomated(sql`${posts.authorId}`),
         text: sql<string>`case when ${shownTo} then ${posts.text} else '' end`,
         images: sql<
           ImageRow[]
@@ -811,6 +818,7 @@ export class PostsService {
             opts.includeDeleted ? sql`(${members.active} or ${members.deletedAt} is not null)` : sql`${members.active}`,
             opts.unmuted,
           ),
+          sql`not ${hiddenFromPlayer(viewerId, sql`${posts.rootId}`, sql`${posts.authorId}`)}`,
           opts.includeDeleted ? undefined : and(live, allowed),
           opts.gist ? eq(posts.gistId, opts.gist) : isNull(posts.gistId),
           where,
@@ -1604,7 +1612,7 @@ export class PostsService {
     }
     const parentAuthor = parentId ? sql`(select author_id from posts where id = ${parentId})` : sql`(select host_id from gists where id = ${gist})`
     const within = parentId ? sql`p.reply_parent_id = ${parentId}` : sql`(p.reply_parent_id is null and p.gist_id = ${gist})`
-    const visible = visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`)
+    const visible = and(visibleAuthor(viewerId, sql`p.author_id`, sql`a.active`), sql`not ${hiddenFromPlayer(viewerId, sql`p.root_id`, sql`p.author_id`)}`)
     // A reply the viewer may not see (marked sensitive, or a minor's to someone signed out) is a placeholder, like a deleted one.
     const allowed = postAllowed(viewerId, sql`p.adult_label`, sql`p.author_id`)
     type ReplyRow = {
@@ -1660,7 +1668,7 @@ export class PostsService {
         to_char(page.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_timestamp,
         case when page.unavailable then null else json_build_object(
           'id', p.id, 'authorId', p.author_id, 'authorHandle', a.handle,
-          'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id, 'authorFounder', ${isFounder(sql`p.author_id`)},
+          'authorName', a.display_name, 'authorAvatarId', a.avatar_media_id, 'authorFounder', ${isFounder(sql`p.author_id`)}, 'authorAutomated', ${isAutomated(sql`p.author_id`)},
           'text', p.text, 'images', ${imagesOf(sql`p.id`)}, 'video', ${videoOf(sql`p.id`)}, 'mentions', ${mentionsOf(viewerId, sql`p.id`)},
           'sensitive', p.adult_label, 'coverMedia', ${coverMediaFor(viewerId, sql`p.adult_label`, sql`p.author_id`)},
           'hashtags', ${hashtagsOf(sql`p.id`)},
@@ -1829,6 +1837,9 @@ export class PostsService {
         // One marked sensitive is not there for anyone who is not an adult (ADR 0020).
         .where(and(eq(communities.slug, communitySlug), eq(communities.active, true), communityOpenTo(authorId)))
       if (!community) throw new CommunityNotFoundError('no such community')
+      // Chess Arena and Game Night (docs/adr/0028): The Arbiter starts the posts; members reply.
+      const arbiterOnly = ARBITER_ONLY[communitySlug]
+      if (arbiterOnly && authorId !== ARBITER_ID) throw new NotACommunityMemberError(arbiterOnly)
       if (!community.joined && !anyMember) throw new NotACommunityMemberError('join the community to post in it')
       communityId = community.id
     }

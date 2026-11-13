@@ -209,8 +209,9 @@ test("a minor's profile says no more than anyone's: no age, no location, no list
   const kids = (await members_().profile(ada, 'kid'))!
   const adults = (await members_().profile(ada, 'bayo'))!
   // A new field here is a decision for ADR 0020 first: a minor's profile stays minimal.
+  // `automatedBadge` (ADR 0028) says only that an account is HeyNaija's own, which no person's is.
   const FIELDS = [
-    'avatar', 'bio', 'displayName', 'followerCount', 'followingCount', 'founderBadge', 'handle', 'id', 'identityBadge',
+    'automatedBadge', 'avatar', 'bio', 'displayName', 'followerCount', 'followingCount', 'founderBadge', 'handle', 'id', 'identityBadge',
     'isSelf', 'joinedAt', 'postCount', 'viewerBlocks', 'viewerFollows', 'viewerMutes',
   ]
   assert.deepEqual(Object.keys(kids).sort(), FIELDS)

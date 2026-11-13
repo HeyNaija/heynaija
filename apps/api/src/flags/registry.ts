@@ -68,6 +68,11 @@ export const FLAGS = {
     owner: 'links',
     defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
+  games: {
+    description: 'The Games section (docs/adr/0028): /games, its link in the sidebar and every /v1/games route. While Games is being built, an allow-list keeps it to named members.',
+    owner: 'games',
+    defaults: { development: true, staging: true, production: false }, // not in main yet
+  },
   videoPosts: {
     description:
       'Attaching one short video to a post (ADR 0019). Gating creation only: videos already published keep playing. Also needs an upload scanner in production: with none bound, video stays closed even if this is on.',

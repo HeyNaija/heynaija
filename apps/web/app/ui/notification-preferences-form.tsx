@@ -3,14 +3,15 @@
 import Link from 'next/link'
 import { useActionState } from 'react'
 import { type FormState, updateNotificationPreferences } from '@/app/actions'
-import { NOTIFICATION_SETTINGS, type NotificationPreferences } from '@/lib/notification-preferences'
+import { type NotificationPreferences, settingsFor } from '@/lib/notification-preferences'
 
 /**
  * One box for email, one for weekly highlights where those are offered, and one
  * per kind of activity. A plain form, so it also works before JavaScript has loaded.
  */
-export function NotificationPreferencesForm({ preferences }: { preferences: NotificationPreferences }) {
+export function NotificationPreferencesForm({ preferences, features }: { preferences: NotificationPreferences; features: { games?: boolean } }) {
   const [state, action, pending] = useActionState<FormState, FormData>(updateNotificationPreferences, {})
+  const { shown, hidden } = settingsFor(features)
 
   return (
     <form action={action} className="flex flex-col gap-4">
@@ -51,7 +52,9 @@ export function NotificationPreferencesForm({ preferences }: { preferences: Noti
 
       <fieldset className="settings-checks">
         <legend className="field-label">Notify me when</legend>
-        {NOTIFICATION_SETTINGS.map(({ kind, label }) => (
+        {/* A kind whose feature this member does not have keeps its setting. */}
+        {hidden.map((kind) => (preferences[kind] ? <input key={kind} type="hidden" name="on" value={kind} /> : null))}
+        {shown.map(({ kind, label }) => (
           <label key={kind} className="settings-check">
             {/* Not controlled: React resets the form after each save, and the boxes
                 then show what was saved (what the page reloaded with). */}

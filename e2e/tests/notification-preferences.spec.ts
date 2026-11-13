@@ -24,6 +24,8 @@ test('a member who turns off like notifications is not told of likes, and still 
     'Someone quotes your post',
     'Someone follows you',
     'Someone adds to a story you follow',
+    // Games is on in development and CI (docs/feature-flags.md); one box for both chess kinds.
+    'Someone challenges you to chess, or your game starts',
   ]
   for (const label of labels) await expect(section.getByLabel(label)).toBeChecked()
   // The kinds, the box that says whether they are also emailed (on for a new member),

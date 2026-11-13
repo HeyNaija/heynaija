@@ -33,6 +33,7 @@ fill REDIS_PASSWORD "$(hex 24)"
 fill KRATOS_SECRETS_COOKIE "$(hex 32)"
 fill KRATOS_SECRETS_CIPHER "$(hex 16)" # exactly 32 characters, as Kratos requires
 fill KRATOS_WEBHOOK_SECRET "$(hex 32)"
+fill GAMES_TOKEN_KEY "$(hex 32)" # 64 hex characters: the key for members' Lichess tokens
 # Made together, and only when both are empty: half a new pair would match nothing.
 if grep -qE '^PUSH_VAPID_PRIVATE_KEY=$' .env && grep -qE '^PUSH_VAPID_PUBLIC_KEY=$' .env; then
   pem="$(openssl ecparam -name prime256v1 -genkey -noout)"

@@ -1,4 +1,5 @@
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, NotFoundException } from '@nestjs/common'
+import type { FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { InvalidCursorError } from './cursor.js'
 
@@ -27,3 +28,6 @@ export async function paged<T>(read: () => Promise<T>): Promise<T> {
     throw err
   }
 }
+
+/** What Fastify answers for a route that does not exist, so a dark feature cannot be told from no feature. */
+export const routeNotFound = (req: Pick<FastifyRequest, 'method' | 'url'>) => new NotFoundException(`Cannot ${req.method} ${req.url}`)

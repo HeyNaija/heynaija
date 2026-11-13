@@ -293,7 +293,7 @@ test(`only the first ${MENTIONS_NOTIFIED_MAX} members a post names are notified;
   assert.equal((await postsService.post(null, id))!.mentions.length, many.length + 1)
 })
 
-const allOn = { email: true, reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true }
+const allOn = { email: true, reply: true, like: true, repost: true, quote: true, mention: true, follow: true, story_update: true, chess_challenge: true, chess_game_started: true }
 
 test('every kind of activity notifies until the member turns it off', async () => {
   assert.deepEqual(await service.preferences(ada), allOn)
@@ -358,7 +358,7 @@ test('moderation and account notices cannot be turned off, by the service or in 
   )
 
   // With every kind of activity off, a decision about their post still reaches them.
-  await service.setPreferences(ada, { reply: false, like: false, repost: false, quote: false, mention: false, follow: false })
+  await service.setPreferences(ada, { reply: false, like: false, repost: false, quote: false, mention: false, follow: false, chess_challenge: false, chess_game_started: false })
   const { id: post } = await postsService.create(ada, 'buy my coin')
   await moderation.report(bayo, { postId: post }, 'scam')
   const [report] = await db.select().from(reports)

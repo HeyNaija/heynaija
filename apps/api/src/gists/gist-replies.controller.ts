@@ -2,12 +2,12 @@ import { Body, Controller, Delete, Get, HttpCode, HttpException, Inject, Param, 
 import { z } from 'zod'
 import { GIST_REPLY_AUDIENCES } from '@heynaija/db'
 import { type AuthedRequest, OptionalSessionGuard, SessionGuard } from '../auth/session.guard.js'
-import { paged, parse } from '../http.js'
+import { paged, parse, routeNotFound } from '../http.js'
 import { postText } from '../posts/posts.service.js'
 import { replyPageQuery } from '../posts/reply-cursor.js'
 import { RateLimiter } from '../rate-limit.js'
 import { GistRepliesService } from './gist-replies.service.js'
-import { GistsEnabledGuard, routeNotFound } from './gists-enabled.guard.js'
+import { GistsEnabledGuard } from './gists-enabled.guard.js'
 import { GistError } from './gists.service.js'
 
 const createBody = z.object({ text: postText, replyTo: z.uuid().optional() })
