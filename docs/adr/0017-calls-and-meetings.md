@@ -647,7 +647,7 @@ built, and this is what shipped, checked against `staging` on 2 November 2026
 
 | Gap | State | Evidence |
 |---|---|---|
-| 1 Phone audio | shipped | screen wake lock and Media Session entry, "keep this screen open" note (`gist-room.tsx`) |
+| 1 Phone audio | shipped | screen wake lock and "keep this screen open" note (`gist-room.tsx`); since 13 November 2026 the Gist is held above the pages (`gist-provider.tsx`), so it keeps playing while the member reads the rest of the site, with a bar on every other page (`gist-dock.tsx`), a Gists button in the top bar (`gists-button.tsx`), and a Media Session entry whose pause silences the Gist without leaving it (`lib/gist-media.ts`); listening with a phone locked is still unmeasured |
 | 2 Captions | not shipped | the room neither says it has no captions nor offers "Captions by the host" |
 | 3 Listener data use | partly | a text data-use hint (`apps/web/lib/gists.ts` `dataUseHint`); sound starts only when the member taps Join; no data-saver choice |
 | 4 Testing | partly | shipped: unit tests of the gate (`apps/api/src/gists/eligibility.test.ts`); one e2e test with Chromium's fake-media flags against a local LiveKit container (host goes live, a listener asks to speak and is given the mic: `e2e/tests/gists.spec.ts`, skipped in CI, which has no LiveKit) and the switched-off cases (`gists-dark.spec.ts`); not shipped: e2e tests for a removed or a blocked member |

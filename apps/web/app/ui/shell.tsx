@@ -5,6 +5,7 @@ import { getCommunities, getTrending, getTrendingTopics, getViewer, type Viewer 
 import { getLogoutUrl } from '@/lib/auth/server'
 import { Avatar } from './avatar'
 import { CommunityMark } from './community-mark'
+import { GistsButton } from './gists/gists-button'
 import {
   ArrowUpRightIcon,
   BellIcon,
@@ -238,6 +239,10 @@ export function TopBar() {
       </form>
 
       <div className="ml-auto flex items-center gap-1.5">
+        {/* First in the row: it arrives with the member, and nothing to its right moves when it does. */}
+        <Suspense fallback={null}>
+          <GistsSlot />
+        </Suspense>
         <Link href="/governance" aria-label="Governance" className="icon-btn lg:hidden">
           <GovernanceIcon />
         </Link>
@@ -256,6 +261,13 @@ export function TopBar() {
       </div>
     </header>
   )
+}
+
+/** The Gists button, for members on the Gists list (docs/adr/0017). */
+async function GistsSlot() {
+  const viewer = await getViewer()
+  if (viewer.state !== 'member' || !viewer.me.features.gists) return null
+  return <GistsButton mayTakeStage={viewer.me.gistStage === true} />
 }
 
 async function UserMenu() {

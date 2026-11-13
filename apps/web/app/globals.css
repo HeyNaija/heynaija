@@ -2591,6 +2591,50 @@ a.result-row:hover { color: var(--accent-strong); }
 @keyframes gist-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .gist-mic-state { padding: 0 6px; border-radius: var(--r-chip); background: color-mix(in srgb, currentColor 14%, transparent); font-size: 12px; font-weight: 700; }
 
+/* The Gists button in the top bar: the selected link's green bubble while the member is in a
+   Gist, and the Live now dot while others are live, ringed in the bar's own colour. */
+.gists-button { position: relative; width: 40px; height: 40px; flex-shrink: 0; padding: 0; border: 1px solid transparent; border-radius: 9999px; }
+.gists-button.is-in { border-color: color-mix(in srgb, var(--accent) 22%, var(--line)); background: var(--accent-soft); color: var(--accent-strong); }
+.gists-button-dot { position: absolute; top: 5px; right: 5px; width: 10px; height: 10px; border-radius: 9999px; background: var(--danger); box-shadow: 0 0 0 2px var(--bg); }
+/* Its panel: the room's bottom sheet on a phone, a popover under the button from 640px up. */
+.gists-panel-head { align-items: flex-start; }
+.gists-panel .gist-subhead { margin-top: 14px; margin-bottom: 2px; }
+.gists-list { display: flex; flex-direction: column; gap: 2px; }
+.gists-row { display: flex; align-items: center; gap: 12px; min-height: 52px; margin-inline: -8px; padding: 6px 8px; border-radius: var(--r-control); }
+.gists-row:hover { background: var(--panel); }
+.gists-row > .gist-live-dot { flex-shrink: 0; }
+.gists-row-text { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 1px; }
+.gists-row-title { overflow-wrap: anywhere; font-size: 15px; font-weight: 600; line-height: 1.35; }
+.gists-row-meta { color: var(--muted); font-size: 13px; }
+.gists-none { padding-block: 6px; color: var(--muted); font-size: 14px; }
+@media (min-width: 640px) {
+  .gists-panel { position: fixed; inset: var(--gists-panel-top, 72px) var(--gists-panel-right, 16px) auto auto; width: 380px; max-width: calc(100vw - 24px); max-height: calc(100dvh - var(--gists-panel-top, 72px) - 16px); margin: 0; overflow-y: auto; border-radius: var(--r-panel); }
+  .gists-panel::backdrop { background: transparent; }
+  .gists-panel .gist-sheet-body { padding-bottom: 18px; }
+}
+
+/* The Gist the member is in, at the foot of every other page: above the tabs on a phone, at
+   the bottom of the column on a computer. */
+.gist-dock { position: sticky; bottom: calc(62px + env(safe-area-inset-bottom, 0px) + 10px); z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 0 2px; margin-top: 20px; padding: 4px 4px 4px 14px; border-color: var(--line-strong); box-shadow: var(--shadow-pop); }
+@media (min-width: 1024px) { .gist-dock { bottom: 14px; } }
+.gist-dock-link { display: flex; min-width: 0; flex: 1; align-items: center; gap: 10px; min-height: var(--touch-target); padding-block: 4px; border-radius: var(--r-control); }
+.gist-dock-link > .gist-live-dot { flex-shrink: 0; }
+.gist-dock-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.gist-dock-title { overflow: hidden; font-size: 14px; font-weight: 700; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.gist-dock-link:hover .gist-dock-title { text-decoration: underline; }
+.gist-dock-status { overflow: hidden; color: var(--muted); font-size: 12px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.gist-dock-note { padding-block: 10px; font-size: 14px; }
+.gist-dock-btn { width: var(--touch-target); height: var(--touch-target); flex-shrink: 0; padding: 0; }
+.gist-dock-btn.is-on, .gist-dock-play { color: var(--accent-strong); }
+.gist-dock-leave { flex-shrink: 0; min-height: var(--touch-target); padding-inline: 10px; color: var(--danger); }
+.gist-dock-leave:hover:not(:disabled) { background: var(--danger-soft); }
+.gist-dock-problem { flex-basis: 100%; padding: 2px 4px 8px 0; color: var(--danger); font-size: 13px; }
+@media (max-width: 1023px) {
+  /* With a thread's reply bar fixed above the tabs, the Gist rides above it, as the room's own bar does. */
+  body:has(.thread-branch.is-root > .thread-editor-host:not(:empty)) .gist-dock { bottom: calc(63px + 72px + env(safe-area-inset-bottom, 0px) + 8px); }
+  body:has(.reply-composer:is(.is-expanded, :focus-within)) .gist-dock { z-index: 3; }
+}
+
 /* Chess on Lichess (docs/adr/0028): ratings as quiet inset tiles, and challenges as rows divided by hairlines inside their card. */
 .chess-ratings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 14px 0 8px; }
 @media (min-width: 640px) { .chess-ratings { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

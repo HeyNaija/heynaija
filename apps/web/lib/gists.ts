@@ -183,3 +183,71 @@ export function createLatest() {
     },
   }
 }
+
+// ---- the Gists button, its panel, and the bar over other pages ------------------
+
+/** The phases in which the member is in a Gist, or on the way in: the sound is theirs to hear. */
+export type InPhase = 'connecting' | 'live' | 'reconnecting'
+
+export const isInGist = (phase: string | null | undefined): phase is InPhase => phase === 'connecting' || phase === 'live' || phase === 'reconnecting'
+
+/** The Gists that are live, without the one the member is in. */
+export const otherLive = <T extends { id: string }>(live: T[], currentId: string | null): T[] => live.filter((g) => g.id !== currentId)
+
+/** What the Gists button in the top bar says to a screen reader: the member's own Gist first, then what else is live. */
+export function gistsButtonLabel(inGist: boolean, othersLive: number): string {
+  const n = othersLive.toLocaleString('en-NG')
+  if (inGist && othersLive > 0) return `Gists. You are in one, and ${n} more ${othersLive === 1 ? 'is' : 'are'} live.`
+  if (inGist) return 'Gists. You are in one.'
+  if (othersLive > 0) return `Gists. ${n} live now.`
+  return 'Gists'
+}
+
+/** Live now in the Gists panel, when there is nothing to list. */
+export const noneLiveText = (inGist: boolean) => (inGist ? 'No other Gists are live right now.' : 'No Gists are live right now.')
+
+/** What the bar and the panel say under the Gist's title: the connection while it is being made, a pause, then the member's microphone. */
+export function gistBarStatus(s: { phase: string | null; hearing: boolean; mayUseMic: boolean; micOn: boolean; micBusy: boolean }): string {
+  if (s.phase === 'connecting') return 'Connecting…'
+  if (s.phase === 'reconnecting') return 'Reconnecting…'
+  if (!s.hearing) return 'Paused. You are still in the Gist.'
+  if (!s.mayUseMic) return 'Listening'
+  if (s.micOn) return 'Your microphone is on'
+  if (s.micBusy) return 'Starting your microphone…'
+  return 'Your microphone is off'
+}
+
+/**
+ * The bar over every page but the Gist's own: the Gist the member is in ('in'), why
+ * they are no longer in it when that happened away from its page ('notice'), or nothing.
+ */
+export function gistDock(s: { roomId: string | null; phase: string | null; pathname: string; notice: string | null }): 'none' | 'in' | 'notice' {
+  if (!s.roomId || s.pathname === `/gists/${s.roomId}`) return 'none'
+  if (isInGist(s.phase)) return 'in'
+  return s.notice ? 'notice' : 'none'
+}
+
+/**
+ * Why the member is no longer in the Gist, said on the bar when it happens while they
+ * are reading another page; null when they are still in, or never were. Leave says nothing:
+ * the member knows.
+ */
+export function lostNotice(before: string | null, after: string | null): string | null {
+  if (!isInGist(before) || isInGist(after)) return null
+  switch (after) {
+    case 'ended':
+      return 'The Gist you were in has ended.'
+    case 'elsewhere':
+      return 'The Gist is playing in another tab or on another device.'
+    case 'failed':
+      return 'The connection to the Gist was lost.'
+    case 'full':
+    case 'locked':
+      return 'Could not get back into the Gist.'
+    // Back from the back/forward cache: the connection was dropped on the way out.
+    case 'prejoin':
+      return 'You left the Gist when you left HeyNaija.'
+    default:
+      return 'You are no longer in the Gist.'
+  }
+}

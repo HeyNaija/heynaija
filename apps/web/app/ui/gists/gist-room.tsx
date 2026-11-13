@@ -2,86 +2,67 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { FlagIcon, GearIcon, HandIcon, HeadphonesIcon, LeaveIcon, LockIcon, MicIcon, MicOffIcon, PeopleIcon, SignalIcon } from '@/app/ui/icons'
-import { weakQuality, type Quality } from '@/lib/gist-connection'
-import {
-  chooseDevice,
-  createSpeakingAnnouncer,
-  DEFAULT_MIC,
-  MIC_SETTINGS_KEY,
-  micFailure,
-  readMicSettings,
-  smoothLevel,
-  staleSavedDevice,
-  writeMicSettings,
-  type InputDevice,
-  type MicFailure,
-  type MicSettings,
-} from '@/lib/gist-mic'
-import { GistSession, type Phase } from '@/lib/gist-session'
-import {
-  applyView,
-  controlsFor,
-  createLatest,
-  CURRENT_GIST_KEY,
-  dataUseHint,
-  listenerLabel,
-  nextPollDelay,
-  personName,
-  type JoinResult,
-  type Snapshot,
-  type GistView,
-  type SpeakRequest,
-} from '@/lib/gists'
+import { useEffect, useRef, useState } from 'react'
+import { FlagIcon, GearIcon, HandIcon, HeadphonesIcon, LeaveIcon, LockIcon, MicIcon, MicOffIcon, PeopleIcon, PlayIcon, SignalIcon } from '@/app/ui/icons'
+import { weakQuality } from '@/lib/gist-connection'
+import { createSpeakingAnnouncer, smoothLevel } from '@/lib/gist-mic'
+import type { Phase } from '@/lib/gist-session'
+import { controlsFor, dataUseHint, listenerLabel, personName, type GistView } from '@/lib/gists'
 import { gistCall } from './api'
-import type { GistAudio } from './audio'
 import { ConnectionPanel } from './connection-panel'
+import { useGist, type HeldGist } from './gist-provider'
 import { HostPanel } from './host-panel'
 import { MicPanel } from './mic-panel'
 import { ReportGist } from './report-gist'
 import { Sheet } from './sheet'
 import { Elapsed, StageGrid, type StagePerson } from './stage'
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 /** Set once a speaker has seen the earphones tip, so it is not shown on every Gist. */
 const EARPHONES_TIP_KEY = 'hn-gist-earphones-tip'
 
-/** `mayTakeStage` is `gistStage` from /v1/me: false for a member who may only listen. */
+/** What the room shows for a Gist the member has not joined (or has left): nothing live. */
+type Live = Pick<HeldGist, 'problem' | 'blocked' | 'speaking' | 'requests' | 'mics' | 'quality' | 'noiseRemoval' | 'micOn' | 'micBusy' | 'micProblem' | 'hearing'>
+const IDLE: Live = {
+  problem: null,
+  blocked: false,
+  speaking: [],
+  requests: [],
+  mics: {},
+  quality: {},
+  noiseRemoval: null,
+  micOn: false,
+  micBusy: false,
+  micProblem: null,
+  hearing: true,
+}
+
+/**
+ * A Gist's page. The Gist the member is in is held by GistProvider, above the pages, so
+ * it keeps playing when they move on; this draws it. A Gist they are not in is drawn
+ * from the server's view, with Join.
+ *
+ * `mayTakeStage` is `gistStage` from /v1/me: false for a member who may only listen.
+ */
 export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; meId: string; mayTakeStage: boolean }) {
   const router = useRouter()
+  const gist = useGist()
   const id = initial.id
-  const [view, setView] = useState(initial)
-  const [phase, setPhase] = useState<Phase>(initial.status === 'ended' ? 'ended' : 'prejoin')
-  const [announcement, setAnnouncement] = useState('')
-  const [micOn, setMicOn] = useState(false)
-  const [micProblem, setMicProblem] = useState<MicFailure | null>(null)
-  const [problem, setProblem] = useState<string | null>(null)
-  const [blocked, setBlocked] = useState(false)
-  const [speaking, setSpeaking] = useState<string[]>([])
-  const [requests, setRequests] = useState<SpeakRequest[]>([])
+  const held = gist.room?.id === id ? gist.room : null
+  const s: Live = held ?? IDLE
+  const view = held?.view ?? initial
+  const [leaving, setLeaving] = useState(false)
+  const phase: Phase = held?.phase ?? (initial.status === 'ended' ? 'ended' : 'prejoin')
+  const { problem, blocked, speaking, requests, mics, quality, noiseRemoval, micOn, micProblem, hearing } = s
   const [hint, setHint] = useState(() => dataUseHint(undefined))
-  const [mics, setMics] = useState<Record<string, boolean>>({})
-  const [quality, setQuality] = useState<Record<string, Quality>>({})
-  const [noiseRemoval, setNoiseRemoval] = useState<boolean | null>(null)
   const [tipSeen, setTipSeen] = useState(true)
   const [level, setLevel] = useState(0)
-  const [micSettings, setMicSettings] = useState<MicSettings>(DEFAULT_MIC)
-  const [devices, setDevices] = useState<InputDevice[]>([])
-  const [noDevice, setNoDevice] = useState(false)
   const [listenersOpen, setListenersOpen] = useState(false)
   const [micSheet, setMicSheet] = useState(false)
   const [reportSheet, setReportSheet] = useState(false)
   const [connectionSheet, setConnectionSheet] = useState(false)
   const [speakingNote, setSpeakingNote] = useState('')
+  const [requestProblem, setRequestProblem] = useState<string | null>(null)
 
-  const audio = useRef<GistAudio | null>(null)
-  const container = useRef<HTMLDivElement>(null)
-  const snapshot = useRef<Snapshot>({ role: initial.viewer.role, status: initial.status })
-  const micRef = useRef(false)
-  const wake = useRef<WakeLockSentinel | null>(null)
-  const latest = useRef(createLatest())
-  const session = useRef<GistSession | null>(null)
   const announcer = useRef(createSpeakingAnnouncer())
   const noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const titleRef = useRef<HTMLHeadingElement>(null)
@@ -90,29 +71,32 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
   const requestRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const wantFocus = useRef<'request' | 'cancel' | null>(null)
-  const firstDeviceList = useRef(true)
   const shownPhase = useRef(phase)
 
-  const announce = useCallback((text: string) => setAnnouncement(text), [])
   const role = view.viewer.role
   const controls = controlsFor({ ...view, mayTakeStage })
   const polling = phase === 'live' || phase === 'reconnecting'
-  const moderating = role === 'host' || role === 'cohost'
   // A modal sheet opens only when asked. A moderator's list lives in the host panel, which exists only while
   // live, so joining, leaving or a role change must not leave it half-open to appear by itself.
   useEffect(() => {
     setListenersOpen(false)
   }, [polling, role])
 
-  // The chosen input if it is still plugged in, else the default one.
-  const choice = chooseDevice(devices, micSettings.deviceId)
-  const effective: MicSettings = { ...micSettings, deviceId: choice.deviceId }
-  const effKey = `${effective.deviceId}|${Number(effective.noiseSuppression)}${Number(effective.echoCancellation)}${Number(effective.autoGainControl)}`
-
   useEffect(() => {
     const connection = (navigator as Navigator & { connection?: { type?: string; saveData?: boolean } }).connection
     setHint(dataUseHint(connection))
   }, [])
+
+  // Back on the Gist's own page, which says for itself what happened: the bar's note is done with.
+  const notice = held?.notice
+  useEffect(() => {
+    if (notice) gist.dismissNotice()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notice])
+
+  // Next keeps a page you leave mounted but hidden, and shows it as it was when you come Back.
+  // Effects run again when it is shown, so a Leave from here leaves no "Leaving…" behind.
+  useEffect(() => setLeaving(false), [])
 
   // Focus never falls to nothing: when the button that was tapped goes away (Join,
   // Try again), it moves to the room's title once live, or to what to do next.
@@ -133,181 +117,18 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
     wantFocus.current = null
   }, [controls.request, controls.cancelRequest])
 
-  const setMic = (on: boolean) => {
-    micRef.current = on
-    setMicOn(on)
-  }
+  // Straight from the tap: the provider starts the sound inside it.
+  const join = () => void gist.join(view, mayTakeStage)
 
-  /** The join / reconnect / leave state machine (lib/gist-session.ts), wired to this page. */
-  function getSession(): GistSession {
-    if (!session.current) {
-      session.current = new GistSession({
-        join: () => gistCall<JoinResult>('POST', `/${id}/join`),
-        // The server grants the microphone to a speaker only after this; the poll repeats it if it is lost.
-        sync: () => void gistCall('POST', `/${id}/sync`),
-        // keepalive lets it finish while the page is closing.
-        leave: () => void fetch(`/api/v1/gists/${id}/leave`, { method: 'POST', keepalive: true }).catch(() => undefined),
-        createAudio: async (events) => {
-          // The one place the SDK is fetched: a separate chunk, only after a tap.
-          const { createAudio } = await import('./audio')
-          const into = container.current
-          if (!into) throw new Error('the room is gone')
-          const made = createAudio(into, events)
-          audio.current = made
-          return made
-        },
-        rememberGist: (on) => (on ? sessionStorage.setItem(CURRENT_GIST_KEY, id) : sessionStorage.removeItem(CURRENT_GIST_KEY)),
-        holdScreen: async () => {
-          try {
-            wake.current = (await navigator.wakeLock?.request('screen')) ?? null
-          } catch {
-            // Denied (low battery, or no support): the "keep this screen open" note is the fallback.
-          }
-          return () => {
-            void wake.current?.release().catch(() => undefined)
-            wake.current = null
-          }
-        },
-        sleep,
-        reloadPage: () => window.location.reload(),
-        ui: {
-          phase: (next) => {
-            setPhase(next)
-            if (next !== 'live' && next !== 'reconnecting') setMic(false)
-          },
-          problem: setProblem,
-          joined: (result) => {
-            setView(result.gist)
-            snapshot.current = { role: result.role, status: result.gist.status }
-          },
-          announce,
-          playbackBlocked: setBlocked,
-          speaking: setSpeaking,
-          micOff: () => setMic(false),
-          mics: setMics,
-          quality: setQuality,
-          noise: setNoiseRemoval,
-        },
-      })
-    }
-    return session.current
-  }
-
-  useEffect(() => {
-    const s = getSession()
-    s.open()
-    const onHide = () => s.pageHide()
-    // Back from the back/forward cache: the connection was dropped on the way out.
-    const onShow = (event: PageTransitionEvent) => event.persisted && s.pageShow()
-    window.addEventListener('pagehide', onHide)
-    window.addEventListener('pageshow', onShow)
-    return () => {
-      window.removeEventListener('pagehide', onHide)
-      window.removeEventListener('pageshow', onShow)
-      // Leaving by any route (a link, Back) drops the connection, the screen lock and the presence.
-      s.dispose()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  async function join() {
-    if (typeof RTCPeerConnection === 'undefined') {
-      setPhase('failed')
-      setProblem('This browser cannot play Gists. Try a recent Chrome, Firefox, Safari or Edge.')
-      return
-    }
-    await getSession().join()
-  }
-
-  async function leave() {
-    await getSession().leave()
+  function leave() {
+    setLeaving(true)
     router.push('/')
+    void gist.leave()
   }
-
-  // ---- polling (there is no realtime channel) ------------------------------------
-
-  const poll = useCallback(async (): Promise<boolean> => {
-    const ticket = latest.current.begin()
-    const res = await gistCall<GistView>('GET', `/${id}`)
-    if (!res.ok) {
-      if (res.status === 404) window.location.reload()
-      return false
-    }
-    // An older response, or one fetched before the member's last action, must not overwrite a newer view.
-    if (!latest.current.accept(ticket)) return true
-    const next = applyView(snapshot.current, res.data)
-    snapshot.current = { role: next.role, status: next.status }
-    setView(res.data)
-    if (next.announcement) announce(next.announcement)
-    if (next.ended) {
-      await getSession().finish()
-      return true
-    }
-    if (next.resync) {
-      // A demotion takes the microphone: switch it off here too, then ask the server to match LiveKit to the role.
-      if (res.data.viewer.role === 'listener' && micRef.current) {
-        await audio.current?.setMic(false, effective, effKey).catch(() => undefined)
-        setMic(false)
-      }
-      void gistCall('POST', `/${id}/sync`)
-    }
-    const r = res.data.viewer.role
-    if (r === 'host' || r === 'cohost') {
-      const queue = await gistCall<{ items: SpeakRequest[] }>('GET', `/${id}/requests`)
-      if (queue.ok) setRequests(queue.data.items)
-    } else {
-      setRequests([])
-    }
-    return true
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, announce])
-  const pollRef = useRef(poll)
-  pollRef.current = poll
-
-  /** After something the member did: views requested before now are out of date, so fetch a fresh one. */
-  const refreshAfterAction = useCallback(async () => {
-    latest.current.noteAction()
-    await pollRef.current()
-  }, [])
-
-  useEffect(() => {
-    if (!polling) return
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let failures = 0
-    let stopped = false
-    const schedule = () => {
-      clearTimeout(timer)
-      const delay = nextPollDelay({ hidden: document.hidden, failures })
-      if (delay !== null && !stopped) timer = setTimeout(tick, delay)
-    }
-    const tick = async () => {
-      failures = (await pollRef.current()) ? 0 : failures + 1
-      schedule()
-    }
-    const onVisibility = () => {
-      clearTimeout(timer)
-      if (document.hidden) return
-      // The browser releases a wake lock when the tab is hidden; take it again.
-      if (wake.current?.released) void navigator.wakeLock?.request('screen').then((l) => (wake.current = l)).catch(() => undefined)
-      void tick()
-    }
-    document.addEventListener('visibilitychange', onVisibility)
-    schedule()
-    return () => {
-      stopped = true
-      clearTimeout(timer)
-      document.removeEventListener('visibilitychange', onVisibility)
-    }
-  }, [polling])
-
-  useEffect(() => {
-    if (phase !== 'live' || !('mediaSession' in navigator)) return
-    navigator.mediaSession.metadata = new MediaMetadata({ title: view.title, artist: `Hosted by ${personName(view.host)}`, album: 'HeyNaija Gists' })
-  }, [phase, view.title, view.host])
 
   // ---- controls ----------------------------------------------------------------------
 
-  const readConnection = useCallback(() => audio.current?.sample() ?? Promise.resolve(null), [])
+  const readConnection = () => gist.audio()?.sample() ?? Promise.resolve(null)
 
   function seeTip() {
     setTipSeen(true)
@@ -318,84 +139,20 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
     }
   }
 
-  async function toggleMic() {
-    setMicProblem(null)
-    const want = !micOn
-    if (want) seeTip()
-    try {
-      await audio.current?.setMic(want, effective, effKey)
-      setMic(want)
-      announce(want ? 'Microphone on.' : 'You are muted.')
-      // Device names appear once the browser has let us use the microphone.
-      if (want) void refreshDevices()
-    } catch (err) {
-      setMic(false)
-      setMicProblem(micFailure(err))
-    }
+  function toggleMic() {
+    if (!micOn) seeTip()
+    void gist.toggleMic()
   }
 
-  function changeMicSettings(next: MicSettings) {
-    setMicSettings(next)
-    try {
-      localStorage.setItem(MIC_SETTINGS_KEY, writeMicSettings(next))
-    } catch {
-      // Private mode: the choice lasts for this visit only.
-    }
-  }
-
-  const refreshDevices = useCallback(async () => {
-    if (!navigator.mediaDevices?.enumerateDevices) return
-    const inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput')
-    setNoDevice(inputs.length === 0)
-    // Before the microphone is allowed, browsers list inputs without ids; they appear after the first Unmute.
-    setDevices(inputs.filter((d) => d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications').map((d) => ({ deviceId: d.deviceId, label: d.label })))
-  }, [])
-
-  // A saved input that was not there when the visit began is forgotten (lib/gist-mic.ts).
-  useEffect(() => {
-    if (devices.length === 0 || !firstDeviceList.current) return
-    firstDeviceList.current = false
-    if (staleSavedDevice(devices, micSettings.deviceId, true)) changeMicSettings({ ...micSettings, deviceId: null })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [devices])
-
-  // What the member chose last time on this browser, and whether they have seen the earphones tip.
+  // Whether the member has seen the earphones tip on this browser.
   useEffect(() => {
     try {
-      setMicSettings(readMicSettings(localStorage.getItem(MIC_SETTINGS_KEY)))
       setTipSeen(localStorage.getItem(EARPHONES_TIP_KEY) === '1')
     } catch {
-      // No storage: defaults, and the tip shows.
+      // No storage: the tip shows.
       setTipSeen(false)
     }
   }, [])
-
-  // The list of inputs, kept current as headsets come and go.
-  useEffect(() => {
-    if (!polling || !controls.mic) return
-    void refreshDevices()
-    const media = navigator.mediaDevices
-    media?.addEventListener?.('devicechange', refreshDevices)
-    return () => media?.removeEventListener?.('devicechange', refreshDevices)
-  }, [polling, controls.mic, refreshDevices])
-
-  // A live microphone follows the settings: a new device or switch restarts it; losing every input mutes it.
-  useEffect(() => {
-    if (!micOn) return
-    if (noDevice) {
-      void audio.current?.setMic(false, effective, effKey).catch(() => undefined)
-      setMic(false)
-      setMicProblem(micFailure({ name: 'NotFoundError' }))
-      announce('Your microphone was unplugged. You are muted.')
-      return
-    }
-    // A no-op unless the device or a switch differs from what the live track was started with.
-    audio.current?.applyMic(effective, effKey).catch((err) => {
-      setMic(false)
-      setMicProblem(micFailure(err))
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [micOn, noDevice, effKey])
 
   // The input level on the member's own tile and in the settings sheet.
   useEffect(() => {
@@ -406,7 +163,7 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
     let value = 0
     let shown = 0
     // Follows the track itself (a device change swaps it), and sleeps while the tab is hidden.
-    const stop = audio.current?.watchLevel((raw) => {
+    const stop = gist.audio()?.watchLevel((raw) => {
       value = smoothLevel(value, raw)
       if (Math.abs(value - shown) > 0.03 || value === 0) {
         shown = value
@@ -414,7 +171,8 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
       }
     })
     return () => stop?.()
-  }, [micOn, effKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [micOn, gist.micKey])
 
   // Who started speaking, for screen readers: new speakers only, throttled, never the member themselves.
   useEffect(() => {
@@ -431,14 +189,14 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
   }, [speaking])
 
   async function speakRequest(on: boolean) {
-    setProblem(null)
+    setRequestProblem(null)
     const res = await gistCall(on ? 'PUT' : 'DELETE', `/${id}/speak-request`)
-    if (!res.ok) setProblem(res.message ?? 'That did not work. Try again.')
+    if (!res.ok) setRequestProblem(res.message ?? 'That did not work. Try again.')
     else {
       wantFocus.current = on ? 'cancel' : 'request'
-      announce(on ? 'Request sent. The host will see it.' : 'Request withdrawn.')
+      gist.announce(on ? 'Request sent. The host will see it.' : 'Request withdrawn.')
     }
-    await refreshAfterAction()
+    await gist.refreshAfterAction()
   }
 
   // ---- drawing -----------------------------------------------------------------------
@@ -452,15 +210,10 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
 
   return (
     <div className="page-stack gist-room">
-      <div role="status" aria-live="polite" className="sr-only">
-        {announcement}
-      </div>
-      {/* Who started speaking, throttled; a second region so it never overwrites a role change. */}
+      {/* Who started speaking, throttled. Everything else is said by the provider's region, on any page. */}
       <div role="status" aria-live="polite" className="sr-only">
         {speakingNote}
       </div>
-      {/* The SDK attaches one <audio> per speaker here. */}
-      <div ref={container} hidden />
 
       <header className="square-card gist-section gist-head">
         <div className="gist-head-row">
@@ -522,13 +275,19 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
         ) : null}
       </header>
 
-      {phase === 'prejoin' ? (
+      {leaving ? (
+        <p className="square-card gist-section text-sm" role="status">
+          Leaving…
+        </p>
+      ) : null}
+
+      {phase === 'prejoin' && !leaving ? (
         <section className="square-card gist-section" aria-labelledby="gist-join-heading">
           <h2 id="gist-join-heading" className="section-title">
             Ready to listen?
           </h2>
           <p className="mt-2 text-sm">
-            <strong>Keep this screen open.</strong> If your phone locks or you switch to another app, the sound can stop. Audio only: no camera, and no recording.
+            <strong>Keep this screen open.</strong> If your phone locks or you switch to another app, the sound can stop. It keeps playing while you move around HeyNaija. Audio only: no camera, and no recording.
           </p>
           <p className="mt-2 text-sm text-muted">{hint}</p>
           <p className="mt-2 text-sm text-muted">The sound starts when you tap Join.{mayTakeStage ? ' You only need your microphone if the host lets you speak.' : ''}</p>
@@ -603,7 +362,7 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
         </section>
       ) : null}
 
-      {polling ? (
+      {polling && !leaving ? (
         <>
           {phase === 'reconnecting' ? (
             <p role="status" className="notice">
@@ -614,9 +373,9 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
               <strong className="text-ink">Keep this screen open.</strong> {hint}
             </p>
           )}
-          {problem ? (
+          {problem || requestProblem ? (
             <p role="alert" className="notice notice-danger">
-              {problem}
+              {problem ?? requestProblem}
             </p>
           ) : null}
           {/* The member's own network, as the server sees it: said before they blame the speaker or the app. */}
@@ -642,8 +401,8 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
               view={view}
               role={role}
               requests={requests}
-              refresh={refreshAfterAction}
-              announce={announce}
+              refresh={gist.refreshAfterAction}
+              announce={gist.announce}
               listenersOpen={listenersOpen}
               onListenersClose={() => setListenersOpen(false)}
             />
@@ -654,7 +413,7 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
               {micProblem.message}
             </p>
           ) : null}
-          {choice.fellBack && controls.mic && !micSheet ? <p className="notice">The microphone you chose is not plugged in. Using the default one.</p> : null}
+          {gist.fellBack && controls.mic && !micSheet ? <p className="notice">The microphone you chose is not plugged in. Using the default one.</p> : null}
           {/* A web page cannot send sound to the earpiece as a phone call does, so a loudspeaker echoes into the microphone. */}
           {controls.mic && !micOn && !tipSeen ? (
             <div className="notice gist-tip">
@@ -667,9 +426,27 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
           ) : null}
 
           {blocked ? (
-            <button type="button" className="btn btn-primary btn-lg gist-btn" onClick={() => void audio.current?.startAudio().then(() => setBlocked(false))}>
+            <button type="button" className="btn btn-primary btn-lg gist-btn" onClick={() => void gist.hear()}>
               Tap to hear the Gist
             </button>
+          ) : null}
+          {/* Paused from the system's media controls (or the bar): still in, hearing nothing. */}
+          {!hearing && !blocked ? (
+            <div role="status" className="notice gist-tip">
+              <PlayIcon size={18} />
+              <p>Paused. You are still in the Gist, and nobody else can tell.</p>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  // The note goes away once it plays: focus moves to the room's title, not to nothing.
+                  titleRef.current?.focus()
+                  void gist.hear()
+                }}
+              >
+                Play
+              </button>
+            </div>
           ) : null}
 
           <div className="gist-bar square-card" role="group" aria-label="Your controls">
@@ -729,15 +506,15 @@ export function GistRoom({ initial, meId, mayTakeStage }: { initial: GistView; m
       </Sheet>
       <Sheet open={micSheet} onClose={() => setMicSheet(false)} title="Microphone settings">
         <MicPanel
-          settings={micSettings}
-          devices={devices}
-          noDevice={noDevice}
-          fellBack={choice.fellBack}
+          settings={gist.micSettings}
+          devices={gist.devices}
+          noDevice={gist.noDevice}
+          fellBack={gist.fellBack}
           failure={micProblem}
           live={micOn}
           level={level}
           noiseRemoval={noiseRemoval}
-          onChange={changeMicSettings}
+          onChange={gist.changeMicSettings}
         />
       </Sheet>
     </div>

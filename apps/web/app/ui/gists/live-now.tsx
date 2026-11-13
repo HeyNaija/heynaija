@@ -1,39 +1,18 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useId, useState } from 'react'
-import { LIVE_POLL_MS, type LiveGist, liveMeta } from '@/lib/gists'
-import { gistCall } from './api'
+import { useId } from 'react'
+import { liveMeta } from '@/lib/gists'
+import { useLiveGists } from './live-gists'
 
 /**
- * Live now, on Home: the live Gists this member may join (GET /v1/gists/live,
- * which never lists one they would be refused). Asked for again every 30
- * seconds while the tab is visible. Shows nothing until a Gist is live.
+ * Live now, on Home: the live Gists this member may join. The list is shared with the
+ * Gists button in the top bar (live-gists.ts), so both ask once. Shows nothing until a
+ * Gist is live.
  */
 export function LiveNow() {
   const headingId = useId()
-  const [items, setItems] = useState<LiveGist[]>([])
-
-  useEffect(() => {
-    let stopped = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const load = async () => {
-      clearTimeout(timer)
-      const res = await gistCall<{ items: LiveGist[] }>('GET', '/live')
-      if (stopped) return
-      // A failed ask keeps what is shown; the next one tries again.
-      if (res.ok) setItems(res.data.items)
-      if (!document.hidden) timer = setTimeout(load, LIVE_POLL_MS)
-    }
-    const onVisibility = () => (document.hidden ? clearTimeout(timer) : void load())
-    void load()
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      stopped = true
-      clearTimeout(timer)
-      document.removeEventListener('visibilitychange', onVisibility)
-    }
-  }, [])
+  const items = useLiveGists()
 
   if (items.length === 0) return null
   return (
