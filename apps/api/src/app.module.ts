@@ -42,9 +42,8 @@ import { LINK_JOBS, LinksService, PAGE_FETCHER } from './links/links.service.js'
 import { SafeFetcher } from './links/safe-fetch.js'
 import { CDN_PURGER, CloudflarePurger, NoPurger } from './media/cdn-purge.js'
 import { CommunityPhotoController, MediaController, PostImagesController } from './media/media.controller.js'
-import { MEDIA_URLS, MediaUrls } from './media/media-urls.js'
 import { PrivateMediaController } from './media/private-media.controller.js'
-import { BullMediaJobs, MediaWorker } from './media/media-queue.js'
+import { type BullMediaJobs, MediaWorker } from './media/media-queue.js'
 import { CONTENT_SCANNER, MEDIA_JOBS, MediaService, OBJECT_STORE } from './media/media.service.js'
 import { S3ObjectStore } from './media/object-store.js'
 import { scannerFromEnv } from './media/scanners.js'
@@ -69,11 +68,10 @@ import { SearchController } from './search/search.controller.js'
 import { ENV } from './tokens.js'
 import { TopicsController } from './topics/topics.controller.js'
 import { TopicsService } from './topics/topics.service.js'
-import { type VideoConfig, videoConfig } from './video/video-config.js'
 import { VideoGate, VideoPostsGuard } from './video/video-gate.js'
 import { BullVideoJobs } from './video/video-queue.js'
 import { VideosController } from './video/video.controller.js'
-import { VIDEO_CONFIG, VIDEO_JOBS, VIDEO_STORE, VideoService } from './video/video.service.js'
+import { VIDEO_JOBS, VIDEO_STORE, VideoService } from './video/video.service.js'
 
 @Controller()
 class HealthController {
@@ -90,7 +88,6 @@ class HealthController {
   providers: [
     ModerationService,
     { provide: OBJECT_STORE, useFactory: (env: Env) => new S3ObjectStore(s3Config(env)), inject: [ENV] },
-    { provide: MEDIA_JOBS, useClass: BullMediaJobs },
     // Arachnid Shield and PhotoDNA, each once its key is set; with neither every image
     // passes and every video is held (docs/safety/abuse-material-scanning.md).
     { provide: CONTENT_SCANNER, useFactory: (env: Env) => scannerFromEnv(env), inject: [ENV] },
@@ -198,14 +195,6 @@ class HealthController {
     // Video posts (docs/adr/0019): dark behind the videoPosts flag and, in production, a bound scanner.
     // The encoding runs in the separate video-worker process; these are the API's half.
     { provide: VIDEO_STORE, useExisting: OBJECT_STORE },
-    { provide: VIDEO_CONFIG, useFactory: (env: Env) => videoConfig(env), inject: [ENV] },
-    // Signed URLs for the files of posts marked sensitive (docs/adr/0025), keyed from the storage secret
-    // only the API holds, so no new setting is needed; absolute on the site for video.
-    {
-      provide: MEDIA_URLS,
-      useFactory: (env: Env, cfg: VideoConfig) => new MediaUrls(env.S3_SECRET_ACCESS_KEY, env.WEB_PUBLIC_URL, cfg.filesBase),
-      inject: [ENV, VIDEO_CONFIG],
-    },
     BullVideoJobs,
     {
       provide: VIDEO_JOBS,
