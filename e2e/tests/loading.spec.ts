@@ -83,8 +83,8 @@ test('nothing in the sidebar moves when a member’s page fills in', async ({ br
       for (const name of watched) {
         const at = seen[name]!
         if (name === 'compose' && games && at.length === 2) {
-          const [[x0, y0], [x1, y1]] = at.map((place) => place.split(',').map(Number))
-          expect([x1! - x0!, y1! - y0!], `${name} at ${height}px: ${at.join(' then ')}`).toEqual([0, 50])
+          const [from, to] = at.map((place) => place.split(',').map(Number)) as [number[], number[]]
+          expect([to[0]! - from[0]!, to[1]! - from[1]!], `${name} at ${height}px: ${at.join(' then ')}`).toEqual([0, 50])
         } else expect(at, `${name} at ${height}px`).toHaveLength(1)
       }
     }
