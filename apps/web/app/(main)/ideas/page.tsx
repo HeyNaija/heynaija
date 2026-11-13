@@ -9,10 +9,13 @@ import { LocalTime } from '@/app/ui/local-time'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { getIdeas, getViewer, type IdeaGroup, type IdeaKind } from '@/lib/api'
 import { type BoardChoice, boardHref, GROUP_LABELS, OPEN_STATUSES } from '@/lib/ideas'
+import { sitePicturePreview } from '@/lib/previews'
 
-export const metadata: Metadata = {
-  title: 'Ideas and problems',
-  description: 'Suggest what HeyNaija should do next or report what is not working, vote for what matters to you, and follow each from review to release.',
+const description = 'Suggest what HeyNaija should do next or report what is not working, vote for what matters to you, and follow each from review to release.'
+
+// Built per request, so its picture's address is the site's.
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: 'Ideas and problems', description, ...(await sitePicturePreview()) }
 }
 
 const one = (value: string | string[] | undefined) => (typeof value === 'string' ? value : undefined)

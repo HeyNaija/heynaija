@@ -1,15 +1,14 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { FeedbackNotice } from '@/app/ui/governance'
-import { defaultPreviewImage, siteOpenGraph } from '@/lib/previews'
+import { sitePicturePreview } from '@/lib/previews'
 import { AVAILABILITY, CATEGORIES, PRIORITIES, ROADMAP, STATUSES, roadmapGroups, statusCounts, type FeatureStatus } from '@/lib/roadmap'
 
 const description = 'What works in HeyNaija, what still needs work, and what comes next. A factual product roadmap, separate from formal governance decisions.'
 
-export const metadata: Metadata = {
-  title: 'Progress',
-  description,
-  openGraph: { ...siteOpenGraph, type: 'website', title: 'Building HeyNaija in the open', description, images: [defaultPreviewImage] },
+// Built per request, so its picture's address is the site's.
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: 'Progress', description, ...(await sitePicturePreview('Building HeyNaija in the open')) }
 }
 
 export default function ProgressPage() {
