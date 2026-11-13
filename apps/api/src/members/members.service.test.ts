@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { follows, members, releasedHandles } from '@heynaija/db'
+import { blocks, follows, members, releasedHandles } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { InvalidCursorError } from '../cursor.js'
 import { PostsService } from '../posts/posts.service.js'
@@ -132,6 +132,17 @@ test('member search matches handle prefixes literally', async () => {
   assert.deepEqual(await found('ada_'), ['ada_obi'])
   assert.deepEqual(await found('%'), [])
   assert.deepEqual(await found('zzz'), [])
+})
+
+test('member search hides members who blocked the searcher or whom the searcher blocked', async () => {
+  await db.insert(blocks).values({ blockerId: ada, blockedId: bayo })
+  const found = async (viewer: string | null, q: string) => (await service.search(viewer, q, 10)).map((m) => m.handle)
+  assert.deepEqual(await found(bayo, 'ada'), [])
+  assert.deepEqual(await found(ada, 'bayo'), [])
+  assert.deepEqual(await found(chi, 'ada'), ['ada'])
+  assert.deepEqual(await found(chi, 'bayo'), ['bayo'])
+  assert.deepEqual(await found(null, 'ada'), ['ada'])
+  assert.deepEqual(await found(null, 'bayo'), ['bayo'])
 })
 
 test('blocking is mutual invisibility and ends follows both ways', async () => {

@@ -33,6 +33,8 @@ const DUE_PER_SWEEP = 500
 // Waiting notifications one push looks at; a member with more is told about the
 // newest and the rest are passed over.
 const PENDING_MAX = 200
+// Browsers kept per member; subscribing past it drops the oldest.
+const SUBSCRIPTIONS_PER_MEMBER = 10
 // Installations of the app kept per member; registering past it drops the oldest.
 const DEVICES_PER_MEMBER = 10
 // How far back already-pushed likes, reposts and follows are counted in.
@@ -102,6 +104,13 @@ export class PushNotificationsService {
           set: { memberId, p256dh: target.p256dh, auth: target.auth },
         })
         .returning({ id: pushSubscriptions.id })
+      await tx.execute(sql`
+        delete from push_subscriptions
+        where member_id = ${memberId}
+          and id not in (
+            select id from push_subscriptions where member_id = ${memberId}
+            order by (id = ${row!.id}) desc, created_at desc, id desc
+            limit ${SUBSCRIPTIONS_PER_MEMBER})`)
       return row!.id
     })
   }
@@ -259,7 +268,13 @@ export class PushNotificationsService {
     const [member] = await this.db.select({ active: members.active }).from(members).where(eq(members.id, memberId))
     const places: Place[] = []
     if (member?.active && web) {
-      for (const browser of await this.db.select().from(pushSubscriptions).where(eq(pushSubscriptions.memberId, memberId))) {
+      const browsers = await this.db
+        .select()
+        .from(pushSubscriptions)
+        .where(eq(pushSubscriptions.memberId, memberId))
+        .orderBy(desc(pushSubscriptions.createdAt))
+        .limit(SUBSCRIPTIONS_PER_MEMBER)
+      for (const browser of browsers) {
         places.push({ kind: 'browser', id: browser.id, send: (message) => web.send(browser, message) })
       }
     }

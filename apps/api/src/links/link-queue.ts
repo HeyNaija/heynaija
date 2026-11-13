@@ -10,6 +10,25 @@ const SWEEP_EVERY_MS = 60 * 60 * 1000
 // Reading other people's pages is mostly waiting, but each one can be slow: a few
 // at a time, so one dead site does not hold up the rest.
 const CONCURRENCY = 4
+// A backstop: a preview is a page and a picture, each held to a few seconds by the
+// fetcher. If something still hangs, the job fails (and is retried) instead of
+// keeping one of the four slots for good.
+export const JOB_TIMEOUT_MS = 60_000
+
+/** Rejects if `work` has not settled within `ms`; the timer never outlives the call. */
+export async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, fail) => {
+        timer = setTimeout(() => fail(new Error(`job timed out after ${ms} ms`)), ms)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 type Job = { name: 'preview'; data: { url: string } } | { name: 'sweep'; data: Record<string, never> }
 
@@ -65,7 +84,7 @@ export class LinkWorker implements OnApplicationBootstrap, OnModuleDestroy {
       QUEUE,
       async (job) => {
         const { name, data } = job as unknown as Job
-        if (name === 'preview') await this.links.buildPreview(data.url)
+        if (name === 'preview') await withDeadline(this.links.buildPreview(data.url), JOB_TIMEOUT_MS)
         else if (name === 'sweep') await this.links.sweep()
       },
       { connection: connection(this.env), concurrency: CONCURRENCY },

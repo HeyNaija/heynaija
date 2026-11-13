@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import http from 'node:http'
-import type { AddressInfo } from 'node:net'
+import net, { type AddressInfo } from 'node:net'
 import { after, before, test } from 'node:test'
 import { FetchRefused, isPublicAddress, SafeFetcher } from './safe-fetch.js'
 
@@ -138,4 +138,64 @@ test('a page is read as far as the limit and no further, while anything else ove
 
 test('gives up on a page that never finishes', async () => {
   await assert.rejects(open().get(`${origin}/slow`, { ...html, timeoutMs: 300 }), /timed out/)
+})
+
+// A server that accepts, then trickles a response header one byte at a time and never ends it.
+// Each byte arrives inside the socket's idle interval, so only a whole-fetch deadline stops it.
+async function dripServer(): Promise<{ origin: string; port: number; close: () => void }> {
+  const sockets = new Set<net.Socket>()
+  const intervals = new Set<NodeJS.Timeout>()
+  const dripping = net.createServer((socket) => {
+    sockets.add(socket)
+    socket.on('error', () => {})
+    socket.once('data', (request) => {
+      if (request.toString().startsWith('GET /hop ')) {
+        socket.end('HTTP/1.1 302 Found\r\nLocation: /drip\r\nContent-Length: 0\r\n\r\n')
+        return
+      }
+      socket.write('HTTP/1.1 200 OK\r\nX-A: ')
+      const timer = setInterval(() => socket.write('a'), 200)
+      intervals.add(timer)
+      socket.on('close', () => clearInterval(timer))
+    })
+  })
+  await new Promise<void>((done) => dripping.listen(0, '127.0.0.1', done))
+  const dripPort = (dripping.address() as AddressInfo).port
+  return {
+    origin: `http://127.0.0.1:${dripPort}`,
+    port: dripPort,
+    close: () => {
+      for (const timer of intervals) clearInterval(timer)
+      for (const socket of sockets) socket.destroy()
+      dripping.close()
+    },
+  }
+}
+
+test('gives up on a server that drips its response headers and never finishes them', async () => {
+  const drip = await dripServer()
+  try {
+    const started = Date.now()
+    await assert.rejects(
+      new SafeFetcher({ allowed: () => true, ports: [drip.port] }).get(`${drip.origin}/drip`, { ...html, timeoutMs: 1500 }),
+      /timed out/,
+    )
+    assert.ok(Date.now() - started < 2500, `took ${Date.now() - started} ms`)
+  } finally {
+    drip.close()
+  }
+})
+
+test('the deadline covers a redirect whose next hop drips its headers', async () => {
+  const drip = await dripServer()
+  try {
+    const started = Date.now()
+    await assert.rejects(
+      new SafeFetcher({ allowed: () => true, ports: [drip.port] }).get(`${drip.origin}/hop`, { ...html, timeoutMs: 1500 }),
+      /timed out/,
+    )
+    assert.ok(Date.now() - started < 2500, `took ${Date.now() - started} ms`)
+  } finally {
+    drip.close()
+  }
 })

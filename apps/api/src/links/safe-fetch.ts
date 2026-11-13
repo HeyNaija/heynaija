@@ -102,37 +102,55 @@ export class SafeFetcher implements PageFetcher {
 
   async get(rawUrl: string, { accept, maxBytes, partial = false, timeoutMs = 6000, maxRedirects = 3 }: GetOptions): Promise<Fetched> {
     const deadline = Date.now() + timeoutMs
+    // The socket's own timeout restarts with every byte, so a server dripping its
+    // headers would never trip it: one timer for the whole fetch instead.
+    let inFlight: { destroy(error?: Error): unknown } | undefined
+    const timer = setTimeout(() => inFlight?.destroy(new FetchRefused('timed out')), timeoutMs)
+    try {
+      return await this.fetch(rawUrl, { accept, maxBytes, partial, maxRedirects }, deadline, (stream) => (inFlight = stream))
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  private async fetch(
+    rawUrl: string,
+    { accept, maxBytes, partial, maxRedirects }: Required<Pick<GetOptions, 'accept' | 'maxBytes' | 'partial' | 'maxRedirects'>>,
+    deadline: number,
+    track: (stream: { destroy(error?: Error): unknown }) => void,
+  ): Promise<Fetched> {
     let url = this.check(rawUrl)
     for (let hop = 0; ; hop++) {
-      const response = await this.once(url, accept, deadline)
+      const response = await this.once(url, accept, deadline, track)
+      track(response)
       const status = response.statusCode ?? 0
       if (status >= 300 && status < 400 && response.headers.location) {
-        response.resume()
+        response.destroy()
         if (hop >= maxRedirects) throw new FetchRefused('too many redirects')
         url = this.check(new URL(response.headers.location, url).href)
         continue
       }
       if (status < 200 || status >= 300) {
-        response.resume()
+        response.destroy()
         throw new FetchRefused(`the site answered ${status}`)
       }
       const contentType = String(response.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase()
       if (!accept.some((type) => contentType.startsWith(type))) {
-        response.resume()
+        response.destroy()
         throw new FetchRefused(`not a kind of page we read (${contentType || 'unknown'})`)
       }
       // Asked for without compression, so a small download cannot unpack into a large one.
       const encoding = String(response.headers['content-encoding'] ?? 'identity').toLowerCase()
       if (encoding !== 'identity') {
-        response.resume()
+        response.destroy()
         throw new FetchRefused('the site compressed its answer anyway')
       }
       const declared = Number(response.headers['content-length'])
       if (!partial && Number.isFinite(declared) && declared > maxBytes) {
-        response.resume()
+        response.destroy()
         throw new FetchRefused('too large')
       }
-      return { url, contentType, body: await this.read(response, maxBytes, partial, deadline) }
+      return { url, contentType, body: await this.read(response, maxBytes, partial) }
     }
   }
 
@@ -166,7 +184,7 @@ export class SafeFetcher implements PageFetcher {
     })
   }
 
-  private once(url: URL, accept: string[], deadline: number): Promise<http.IncomingMessage> {
+  private once(url: URL, accept: string[], deadline: number, track: (stream: http.ClientRequest) => void): Promise<http.IncomingMessage> {
     return new Promise((done, fail) => {
       const request = (url.protocol === 'https:' ? https : http).request(
         url,
@@ -184,27 +202,27 @@ export class SafeFetcher implements PageFetcher {
         done,
       )
       const remaining = deadline - Date.now()
-      if (remaining <= 0) return fail(new FetchRefused('timed out'))
-      request.setTimeout(remaining, () => request.destroy(new FetchRefused('timed out')))
+      if (remaining <= 0) {
+        request.destroy()
+        return fail(new FetchRefused('timed out'))
+      }
+      track(request)
       request.on('error', fail)
       request.end()
     })
   }
 
-  private read(response: http.IncomingMessage, maxBytes: number, partial: boolean, deadline: number): Promise<Buffer> {
+  private read(response: http.IncomingMessage, maxBytes: number, partial: boolean): Promise<Buffer> {
     return new Promise((done, fail) => {
       const chunks: Buffer[] = []
       let size = 0
-      const timer = setTimeout(() => response.destroy(new FetchRefused('timed out')), Math.max(1, deadline - Date.now()))
       const finish = () => {
-        clearTimeout(timer)
         done(Buffer.concat(chunks).subarray(0, maxBytes))
       }
       response.on('data', (chunk: Buffer) => {
         chunks.push(chunk)
         size += chunk.length
         if (size > maxBytes && !partial) {
-          clearTimeout(timer)
           response.destroy()
           return fail(new FetchRefused('too large'))
         }
@@ -215,7 +233,6 @@ export class SafeFetcher implements PageFetcher {
       })
       response.on('end', finish)
       response.on('error', (error) => {
-        clearTimeout(timer)
         // Hanging up on a page we have read enough of is not a failure.
         if (partial && size >= maxBytes) done(Buffer.concat(chunks).subarray(0, maxBytes))
         else fail(error)
