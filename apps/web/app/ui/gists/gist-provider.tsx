@@ -11,7 +11,7 @@
 // reload, closing the tab, or leaving the app's pages (signing out) leaves, as before.
 // While the member is in a Gist, the system's media controls show it (Media Session),
 // and pausing there silences it here without leaving (lib/gist-media.ts).
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Quality } from '@/lib/gist-connection'
 import { GIST_ALBUM, GIST_ARTWORK, gistMediaText, silentWav } from '@/lib/gist-media'
 import {
@@ -132,6 +132,7 @@ export function GistProvider({ children }: { children: ReactNode }) {
   const wake = useRef<WakeLockSentinel | null>(null)
   const carrier = useRef<HTMLAudioElement | null>(null)
   const firstDeviceList = useRef(true)
+  const micSettingsRead = useRef(false)
 
   const announce = useCallback((text: string) => setAnnouncement(text), [])
   const update = useCallback((id: string, patch: Partial<HeldGist>) => setRoom((r) => (r && r.id === id ? { ...r, ...patch } : r)), [])
@@ -272,6 +273,17 @@ export function GistProvider({ children }: { children: ReactNode }) {
   const join = async (initial: GistView, mayTakeStage: boolean) => {
     // First, while still inside the tap: browsers let a page start sound only from one.
     playCarrier()
+    // What the member chose last time on this browser. Read here, not on mount: this provider
+    // wraps every page, and changing its state while the page is still hydrating makes React
+    // throw away the server's HTML for every Suspense boundary not yet hydrated.
+    if (!micSettingsRead.current) {
+      micSettingsRead.current = true
+      try {
+        setMicSettings(readMicSettings(localStorage.getItem(MIC_SETTINGS_KEY)))
+      } catch {
+        // No storage: the defaults.
+      }
+    }
     const id = initial.id
     if (idRef.current !== id || !session.current) {
       // One Gist at a time: out of the one the member is in before into this one.
@@ -506,15 +518,6 @@ export function GistProvider({ children }: { children: ReactNode }) {
 
   const mayUseMic = room !== null && controlsFor({ ...room.view, mayTakeStage: room.mayTakeStage }).mic
 
-  // What the member chose last time on this browser.
-  useEffect(() => {
-    try {
-      setMicSettings(readMicSettings(localStorage.getItem(MIC_SETTINGS_KEY)))
-    } catch {
-      // No storage: the defaults.
-    }
-  }, [])
-
   // The list of inputs, kept current as headsets come and go.
   useEffect(() => {
     if (!polling || !mayUseMic) return
@@ -590,26 +593,33 @@ export function GistProvider({ children }: { children: ReactNode }) {
     if (inside && 'mediaSession' in navigator) navigator.mediaSession.playbackState = hearing ? 'playing' : 'paused'
   }, [inside, hearing])
 
-  const value: GistContextValue = {
-    room,
-    micSettings,
-    devices,
-    noDevice,
-    fellBack: choice.fellBack,
-    micKey,
-    join,
-    leave,
-    toggleMic,
-    setHearing,
-    hear,
-    changeMicSettings,
-    refreshAfterAction,
-    announce,
-    dismissNotice: () => {
-      if (room) update(room.id, { notice: null })
-    },
-    audio: () => audio.current,
-  }
+  // The same object until something a page shows changes, so an announcement (or any other
+  // state of this provider's own) re-renders nothing below it, least of all mid-hydration.
+  const value = useMemo<GistContextValue>(
+    () => ({
+      room,
+      micSettings,
+      devices,
+      noDevice,
+      fellBack: choice.fellBack,
+      micKey,
+      join,
+      leave,
+      toggleMic,
+      setHearing,
+      hear,
+      changeMicSettings,
+      refreshAfterAction,
+      announce,
+      dismissNotice: () => {
+        if (room) update(room.id, { notice: null })
+      },
+      audio: () => audio.current,
+    }),
+    // Everything else it holds reads refs, or is derived from these.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [room, micSettings, devices, noDevice],
+  )
 
   return (
     <GistContext.Provider value={value}>
