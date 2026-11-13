@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { FeedbackNotice } from '@/app/ui/governance'
-import { sitePicturePreview } from '@/lib/previews'
+import { sitePicturePreview } from '@/lib/previews-server'
 import { AVAILABILITY, CATEGORIES, PRIORITIES, ROADMAP, STATUSES, roadmapGroups, statusCounts, type FeatureStatus } from '@/lib/roadmap'
 
 const description = 'What works in HeyNaija, what still needs work, and what comes next. A factual product roadmap, separate from formal governance decisions.'

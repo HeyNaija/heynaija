@@ -224,7 +224,7 @@ test('a post link previews its author and text where WhatsApp reads it', async (
 
 // The addresses invite messages carry. None has a picture of its own, so each shows
 // the site's, added per request: the build does not know the site's address
-// (apps/web/lib/previews.ts).
+// (apps/web/lib/previews-server.ts).
 for (const path of ['/', '/join?code=HN-AAAA-BBBB-CCCC', '/about', '/progress', '/ideas', '/about/discover']) {
   test(`a link to ${path} previews with the site's picture`, async ({ request }) => {
     const res = await request.get(path, { headers: { 'user-agent': 'WhatsApp/2.24.1.6 A' } })

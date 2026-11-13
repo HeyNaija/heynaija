@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { type DiscoverRules, getDiscoverRules } from '@/lib/api'
 import { discoverPeriod } from '@/lib/discover'
-import { sitePicturePreview } from '@/lib/previews'
+import { sitePicturePreview } from '@/lib/previews-server'
 
 const description = 'The rules Discover ranks posts by, the same for everyone, and what it never uses.'
 

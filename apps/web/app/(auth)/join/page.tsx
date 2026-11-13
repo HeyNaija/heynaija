@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AuthPage, linkClass } from '@/app/ui/auth-page'
 import { getSignupAge } from '@/lib/api'
-import { sitePicturePreview } from '@/lib/previews'
+import { sitePicturePreview } from '@/lib/previews-server'
 import { JoinForm } from './join-form'
 
 // Invite links are this page, so its preview reads as the invitation it is. Built

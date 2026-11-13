@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { FoundingStageNotice } from '@/app/ui/governance'
 import { ArrowUpRightIcon, DocumentIcon, HistoryIcon, OwnershipIcon, PeopleIcon, ShieldIcon } from '@/app/ui/icons'
 import { PolicyLinks } from '@/app/ui/policy-page'
-import { sitePicturePreview } from '@/lib/previews'
+import { sitePicturePreview } from '@/lib/previews-server'
 
 const description = 'Why HeyNaija exists: a Nigeria-first discussion network, built around our conversations and a proposed path for members to shape its future.'
 
