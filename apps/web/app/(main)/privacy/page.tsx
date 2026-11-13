@@ -10,7 +10,7 @@ export default function PrivacyPage() {
       eyebrow="Your data"
       title="Privacy policy"
       summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, and how you get your data or have it deleted. No ads, no selling data, no trackers."
-      updated="8 November 2026"
+      updated="13 November 2026"
       draft={false}
       sections={[
         {
@@ -86,7 +86,7 @@ export default function PrivacyPage() {
               </dd>
               <dt>Technical data</dt>
               <dd>
-                When you were last active, and the short-lived logs our servers and Cloudflare keep to run
+                When you were last active, when weekly highlights were last sent to you, and the short-lived logs our servers and Cloudflare keep to run
                 the service and protect it, which include IP addresses.
               </dd>
             </dl>
@@ -100,7 +100,8 @@ export default function PrivacyPage() {
               <ul>
                 <li>To run HeyNaija: show posts, deliver notifications, sign you in.</li>
                 <li>To keep it safe: rate limits, moderation, and checking images against lists of known child abuse material.</li>
-                <li>To email you sign-in codes and account messages, and, if notification emails are on for you, a short email when there is something new for you (grouped, at most about twice an hour). Every one has a link that turns them off. We send no newsletters or marketing.</li>
+                <li>To email you sign-in codes and account messages, and, if notification emails are on for you, a short email when there is something new for you (grouped, at most about twice an hour). Every one has a link that turns them off.</li>
+                <li>If weekly highlights are on for you and you have not opened HeyNaija for a few days: at most one message a week with a few conversations you missed, chosen by <Link href="/about/highlights">published rules</Link>. It comes as a push notification where you turned those on, otherwise as an email if notification emails are on. It has its own switch in Settings and its own link that turns it off. To judge whether these are worth sending we keep when we last sent you one; we do not track whether you open it or what you tap. We send no advertising or marketing.</li>
                 <li>If you turn on push notifications in a browser or the app, to show your notifications there as they happen. What reaches you that way is not emailed as well.</li>
               </ul>
               <p>
@@ -120,7 +121,7 @@ export default function PrivacyPage() {
               <p>These companies handle data for us, only to provide their service:</p>
               <ul>
                 <li><strong>Cloudflare</strong>: the network in front of the site, security, and storage of images (R2). Its abuse-material scanning tool checks images served through it.</li>
-                <li><strong>Resend</strong>: sends the emails with your sign-in codes and your notification emails.</li>
+                <li><strong>Resend</strong>: sends the emails with your sign-in codes, your notification emails and weekly highlights.</li>
                 <li>
                   <strong>Your browser’s push service</strong>, only if you turn on push notifications: Google for Chrome
                   and most Android browsers, Apple for Safari, Mozilla for Firefox, Microsoft for Edge on Windows. It

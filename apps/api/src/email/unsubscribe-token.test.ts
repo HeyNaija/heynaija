@@ -53,3 +53,15 @@ test('the signing key is not the secret it is derived from', () => {
   assert.notEqual(key.toString(), 'a'.repeat(32))
   assert.equal(key.length, 32)
 })
+
+test('a link that turns off weekly highlights is not a link that turns off email, and the other way round', () => {
+  const id = randomUUID()
+  const email = unsubscribeToken(key, id)
+  const highlights = unsubscribeToken(key, id, 'highlights')
+  assert.notEqual(email, highlights)
+  assert.equal(memberOfUnsubscribeToken(key, highlights, 'highlights'), id)
+  assert.equal(memberOfUnsubscribeToken(key, highlights), null)
+  assert.equal(memberOfUnsubscribeToken(key, email, 'highlights'), null)
+  // The first kind keeps the signature it has always had, so links in old emails still work.
+  assert.equal(unsubscribeToken(key, id, 'unsubscribe'), email)
+})

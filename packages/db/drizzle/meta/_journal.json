@@ -316,6 +316,55 @@
       "when": 1794145117930,
       "tag": "0044_apns_and_apple_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1794534593871,
+      "tag": "0045_weekly_highlights",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1794560676000,
+      "tag": "0046_games_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1794560736000,
+      "tag": "0047_chess_linking",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1794560796000,
+      "tag": "0048_chess_play",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1794560856000,
+      "tag": "0049_keno",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1794560916000,
+      "tag": "0050_games_scoring",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1794560976000,
+      "tag": "0051_games_teams",
+      "breakpoints": true
     }
   ]
 }

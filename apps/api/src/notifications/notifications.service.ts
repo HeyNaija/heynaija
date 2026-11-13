@@ -3,10 +3,13 @@ import { Inject, Injectable, Optional } from '@nestjs/common'
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm'
 import { decodeCursor, encodeCursor } from '../cursor.js'
 import { adultContentAllowed } from '../governance/adult-content.js'
+import { FeatureFlags } from '../flags/feature-flags.js'
 import { memberOpensGist } from '../gists/gist-open.js'
 import { GistsGate } from '../gists/gists-enabled.guard.js'
 import { avatarPath } from '../media/media.service.js'
 import { isFounder } from '../members/badges.js'
+import { hiddenFromPlayer } from '../games/chess/hidden-replies.js'
+import { challengePhrase } from '../games/chess/time-controls.js'
 import { DB } from '../tokens.js'
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]
@@ -19,7 +22,15 @@ export type OptionalNotificationKind = (typeof OPTIONAL_NOTIFICATION_KINDS)[numb
  * notifications are also sent by email. The kinds decide what notifies the
  * member at all, so they decide what is emailed too.
  */
-export type NotificationPreferences = Record<OptionalNotificationKind, boolean> & { email: boolean }
+export type NotificationPreferences = Record<OptionalNotificationKind, boolean> & {
+  email: boolean
+  /**
+   * Weekly highlights (ADR 0027), which are not a notification but are chosen
+   * in the same place. Left out while they are not offered to the member (the
+   * weeklyHighlights flag), so Settings and the apps show no switch for them.
+   */
+  highlights?: boolean
+}
 
 const isOptional = (kind: string): kind is OptionalNotificationKind =>
   (OPTIONAL_NOTIFICATION_KINDS as readonly string[]).includes(kind)
@@ -42,6 +53,10 @@ export type NewNotification = {
   subjectId?: string | null
   communityId?: string | null
   detail?: string | null
+  /** chess_challenge: the challenge. */
+  challengeId?: string | null
+  /** chess_game_started: the game. */
+  gameId?: string | null
 }
 
 /**
@@ -56,15 +71,17 @@ export async function notify(db: Pick<Db, 'execute'>, rows: NewNotification[]): 
   const values = sql.join(
     wanted.map(
       (r) => sql`(${r.recipientId}::uuid, ${r.kind}::text, ${r.actorId ?? null}::uuid, ${r.postId ?? null}::uuid,
-        ${r.subjectId ?? null}::uuid, ${r.communityId ?? null}::uuid, ${r.detail ?? null}::text)`,
+        ${r.subjectId ?? null}::uuid, ${r.communityId ?? null}::uuid, ${r.detail ?? null}::text, ${r.challengeId ?? null}::uuid, ${r.gameId ?? null}::text)`,
     ),
     sql`, `,
   )
   await db.execute(sql`
-    insert into notifications (recipient_id, kind, actor_id, post_id, subject_id, community_id, detail)
-    select * from (values ${values}) as v(recipient_id, kind, actor_id, post_id, subject_id, community_id, detail)
+    insert into notifications (recipient_id, kind, actor_id, post_id, subject_id, community_id, detail, challenge_id, game_id)
+    select * from (values ${values}) as v(recipient_id, kind, actor_id, post_id, subject_id, community_id, detail, challenge_id, game_id)
     where not exists(select 1 from notification_opt_outs o where o.member_id = v.recipient_id and o.kind = v.kind)
       and not exists(select 1 from members m where m.id = v.recipient_id and m.deleted_at is not null)
+      -- HeyNaija's own accounts (The Arbiter) read nothing.
+      and not exists(select 1 from profile_badges pb where pb.member_id = v.recipient_id and pb.kind = 'automated')
     on conflict do nothing`)
 }
 
@@ -85,6 +102,10 @@ export type NotificationView = {
   detail: string | null
   /** idea_status: an idea or a problem, and whether the recipient sent it (or voted for it). */
   idea: { kind: 'idea' | 'problem'; yours: boolean } | null
+  /** chess_challenge: the challenge, and how it reads ("a rated Rapid game (10+5)"). */
+  challenge: { id: string; phrase: string } | null
+  /** chess_game_started: the game. */
+  game: { id: string } | null
 }
 
 export type NotificationPage = { notifications: NotificationView[]; cursor: string | null }
@@ -113,7 +134,11 @@ export const visible = (viewerId: string, gistsOn: boolean) => sql`
   and (n.kind <> 'like' or exists(select 1 from likes l where l.post_id = n.post_id and l.member_id = n.actor_id))
   and (n.kind <> 'repost' or exists(select 1 from reposts r where r.post_id = n.post_id and r.member_id = n.actor_id))
   and (n.kind <> 'follow' or exists(select 1 from follows f where f.follower_id = n.actor_id and f.followee_id = ${viewerId}))
-  and (n.kind <> 'story_update' or exists(select 1 from story_follows sf where sf.story_id = p.story_id and sf.member_id = ${viewerId}))`
+  and (n.kind <> 'story_update' or exists(select 1 from story_follows sf where sf.story_id = p.story_id and sf.member_id = ${viewerId}))
+  and (n.kind <> 'chess_challenge' or (ch.status = 'pending' and ch.expires_at > now()))
+  and (n.kind <> 'chess_game_started' or (cg.id is not null and cg.finished_at is null))
+  -- A spectator's reply or mention in a game's thread waits until the game ends (docs/adr/0028).
+  and (n.kind not in ('reply', 'mention') or not ${hiddenFromPlayer(viewerId, sql`p.root_id`, sql`p.author_id`)})`
 
 /**
  * Whether the post a notification names may be shown to its recipient: not in a Gist, or in one they can
@@ -135,13 +160,44 @@ export const joins = sql`
   left join posts p on p.id = n.post_id
   left join members s on s.id = n.subject_id
   left join communities c on c.id = n.community_id
-  left join ideas i on i.post_id = n.post_id`
+  left join ideas i on i.post_id = n.post_id
+  left join games.chess_challenges ch on ch.id = n.challenge_id
+  left join games.chess_games cg on cg.id = n.game_id`
+
+/** The challenge's columns, for `challengeOf`. */
+export const challengeColumns = sql`ch.id as challenge_id, ch.rated as challenge_rated,
+  ch.clock_limit as challenge_clock_limit, ch.clock_increment as challenge_clock_increment, ch.days as challenge_days,
+  n.game_id as game_id`
+
+export type ChallengeColumns = {
+  challenge_id: string | null
+  challenge_rated: boolean | null
+  challenge_clock_limit: number | null
+  challenge_clock_increment: number | null
+  challenge_days: number | null
+  game_id: string | null
+}
+
+/** A chess challenge as a notification shows it, from `challengeColumns`. */
+export const challengeOf = (r: ChallengeColumns): { id: string; phrase: string } | null =>
+  r.challenge_id
+    ? {
+        id: r.challenge_id,
+        phrase: challengePhrase({
+          rated: Boolean(r.challenge_rated),
+          clockLimit: r.challenge_clock_limit,
+          clockIncrement: r.challenge_clock_increment,
+          days: r.challenge_days,
+        }),
+      }
+    : null
 
 @Injectable()
 export class NotificationsService {
   constructor(
     @Inject(DB) private readonly db: Db,
     @Optional() @Inject(GistsGate) private readonly gate: Pick<GistsGate, 'access'> | null = null,
+    @Optional() @Inject(FeatureFlags) private readonly flags: Pick<FeatureFlags, 'isEnabled'> | null = null,
   ) {}
 
   /** Newest first, cursor-paginated. */
@@ -171,13 +227,13 @@ export class NotificationsService {
       community_name: string | null
       idea_kind: 'idea' | 'problem' | null
       idea_yours: boolean
-    }>(sql`
+    } & ChallengeColumns>(sql`
       select n.id, n.kind, n.created_at, n.read_at, n.detail,
         a.handle as actor_handle, a.display_name as actor_name, a.avatar_media_id as actor_avatar,
         ${isFounder(sql`a.id`)} as actor_founder,
         case when ${shown} then p.id end as post_id, case when ${shown} then p.text end as post_text, case when ${shown} then p.gist_id end as gist_id, s.handle as subject_handle,
         c.slug as community_slug, c.name as community_name,
-        i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours
+        i.kind as idea_kind, coalesce(p.author_id = n.recipient_id, false) as idea_yours, ${challengeColumns}
       ${joins}
       where ${visible(viewerId, gistsOn)} and ${before}
       order by n.created_at desc, n.id desc
@@ -197,6 +253,8 @@ export class NotificationsService {
         community: r.community_slug ? { slug: r.community_slug, name: r.community_name! } : null,
         detail: r.detail,
         idea: r.kind === 'idea_status' && r.idea_kind ? { kind: r.idea_kind, yours: r.idea_yours } : null,
+        challenge: challengeOf(r),
+        game: r.game_id ? { id: r.game_id } : null,
       }),
     )
     const last = page.at(-1)
@@ -223,25 +281,31 @@ export class NotificationsService {
   }
 
   /** Everything is on until the member turns it off, except email for members who joined before it existed. */
+  // `highlights` is there only while the weeklyHighlights flag is on for them.
   async preferences(memberId: string): Promise<NotificationPreferences> {
-    const [off, [member]] = await Promise.all([
+    const [off, [member], highlightsOffered] = await Promise.all([
       this.db.select({ kind: notificationOptOuts.kind }).from(notificationOptOuts).where(eq(notificationOptOuts.memberId, memberId)),
-      this.db.select({ email: members.emailNotifications }).from(members).where(eq(members.id, memberId)),
+      this.db.select({ email: members.emailNotifications, highlights: members.weeklyHighlights }).from(members).where(eq(members.id, memberId)),
+      this.flags?.isEnabled('weeklyHighlights', memberId) ?? false,
     ])
-    return { email: member?.email ?? true, ...preferencesWithout(off.map((r) => r.kind)) }
+    return {
+      email: member?.email ?? true,
+      ...(highlightsOffered ? { highlights: member?.highlights ?? true } : {}),
+      ...preferencesWithout(off.map((r) => r.kind)),
+    }
   }
 
   /**
-   * Turns kinds on (true) or off (false), and email on or off; anything left out
-   * stays as it is. Only other members' activity can be turned off: asking to
+   * Turns kinds on (true) or off (false), and email and weekly highlights on or
+   * off; anything left out stays as it is. Only other members' activity can be turned off: asking to
    * turn off a moderation or account notice changes nothing and throws
    * NotOptionalError. Turning email off does not touch the kinds.
    */
   async setPreferences(
     memberId: string,
-    changes: Partial<Record<NotificationKind | 'email', boolean>>,
+    changes: Partial<Record<NotificationKind | 'email' | 'highlights', boolean>>,
   ): Promise<NotificationPreferences> {
-    const { email, ...kinds } = changes
+    const { email, highlights, ...kinds } = changes
     const entries = Object.entries(kinds).filter(([, on]) => on !== undefined)
     const always = entries.map(([kind]) => kind).filter((kind) => !isOptional(kind))
     if (always.length) throw new NotOptionalError(`always sent: ${always.join(', ')}`)
@@ -260,6 +324,7 @@ export class NotificationsService {
           .where(and(eq(notificationOptOuts.memberId, memberId), inArray(notificationOptOuts.kind, turnedOn)))
       }
       if (email !== undefined) await tx.update(members).set({ emailNotifications: email }).where(eq(members.id, memberId))
+      if (highlights !== undefined) await tx.update(members).set({ weeklyHighlights: highlights }).where(eq(members.id, memberId))
     })
     return this.preferences(memberId)
   }

@@ -30,6 +30,10 @@ const tagOf = (item: DigestItem): string => {
     case 'moderator_granted':
     case 'moderator_revoked':
       return `${item.kind}:${item.community}`
+    case 'chess_challenge':
+      return `${item.kind}:${item.challenge?.id}`
+    case 'chess_game_started':
+      return `${item.kind}:${item.game?.id}`
     default:
       return item.kind
   }

@@ -49,6 +49,17 @@ export async function cleanTestData(log = (_: string) => {}) {
       // A test Gist's comment section goes with it, whoever wrote the replies.
       await client.query(`create temp table e2e_p on commit drop as select id from posts where author_id in (select id from e2e_m)
          or gist_id in (select id from e2e_g)`)
+      // The Arbiter's threads and results for test members' games (docs/adr/0028), and every reply under them.
+      await client.query(`insert into e2e_p select p.id from posts p where (p.id in (select thread_post_id from games.chess_games
+           where white_id in (select id from e2e_m) or black_id in (select id from e2e_m))
+         or p.root_id in (select thread_post_id from games.chess_games
+           where white_id in (select id from e2e_m) or black_id in (select id from e2e_m)))
+         and p.id not in (select id from e2e_p)`)
+      // The Arbiter's result posts for competitions test moderators made (phase 5), and replies under them.
+      await client.query(`insert into e2e_p select p.id from posts p where (p.id in (select result_post_id from games.competitions
+           where created_by in (select id from e2e_m)) or p.root_id in (select result_post_id from games.competitions
+           where created_by in (select id from e2e_m)))
+         and p.id not in (select id from e2e_p)`)
       const steps: [string, string][] = [
         ['notifications', `delete from notifications where recipient_id in (select id from e2e_m) or actor_id in (select id from e2e_m)
            or subject_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
@@ -80,6 +91,26 @@ export async function cleanTestData(log = (_: string) => {}) {
            or gist_id in (select id from gists where host_id in (select id from e2e_m))`],
         ['gist role changes', `update gist_members set role_changed_by = null where role_changed_by in (select id from e2e_m)`],
         ['gist removals', `update gist_members set removed_by = null where removed_by in (select id from e2e_m)`],
+        // Chess (docs/adr/0028): challenges (their notifications cascade) and Lichess accounts.
+        ['chess games', `delete from games.chess_games where white_id in (select id from e2e_m) or black_id in (select id from e2e_m)`],
+        ['chess challenges', `delete from games.chess_challenges where challenger_id in (select id from e2e_m) or challenged_id in (select id from e2e_m)`],
+        ['lichess linking', `delete from games.lichess_link_attempts where member_id in (select id from e2e_m)`],
+        ['lichess accounts', `delete from games.lichess_accounts where member_id in (select id from e2e_m)`],
+        // Keno (docs/adr/0028, phase 4): tickets. The shared rounds stay.
+        ['keno tickets', `delete from games.keno_tickets where member_id in (select id from e2e_m)`],
+        // The Game Score and competitions (phase 5); competitions the test moderators made go with their entries.
+        ['xp totals', `delete from games.xp_totals where member_id in (select id from e2e_m)`],
+        ['competition invites', `delete from games.competition_invites where member_id in (select id from e2e_m)`],
+        // Community Lichess teams (phase 6): test communities' links go, and a test member who linked one is forgotten.
+        ['community teams', `delete from games.community_teams where community_id in (select id from communities where slug like 'e2e-%')`],
+        ['community teams linked', `update games.community_teams set linked_by = null where linked_by in (select id from e2e_m)`],
+        // Games (docs/adr/0028): competitions test members created go whole, entries and events with them.
+        ['game events', `delete from games.game_events where member_id in (select id from e2e_m)
+           or competition_id in (select id from games.competitions where created_by in (select id from e2e_m))`],
+        ['competition entries', `delete from games.competition_entries where member_id in (select id from e2e_m)`],
+        ['competitions', `delete from games.competitions where created_by in (select id from e2e_m)`],
+        ['season scores', `delete from games.season_scores where member_id in (select id from e2e_m)`],
+        ['game profiles', `delete from games.game_profiles where member_id in (select id from e2e_m)`],
         // A community photo points at a media row by id only, so unlink before the media goes.
         ['community photos', `update communities set photo_media_id = null where photo_media_id in (select id from media where owner_id in (select id from e2e_m))`],
         ['media', `delete from media where owner_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],

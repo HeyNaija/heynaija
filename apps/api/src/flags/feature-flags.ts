@@ -150,6 +150,18 @@ export class FeatureFlags {
   }
 
   /**
+   * Whether the flag is on for anybody at all: on for everyone, or for a listed
+   * few. Background work for a feature (such as Keno's draws) runs only then.
+   */
+  async onForAnyone(key: FlagKey): Promise<boolean> {
+    if (!isFlagKey(key)) return false
+    const snapshot = await this.current()
+    const override = snapshot?.get(key)
+    if (override && override.allow.size > 0) return true
+    return resolveFlag(key, snapshot ? this.appEnv : 'production', override, null, this.registry)
+  }
+
+  /**
    * One flag as it stands now, for code that asks about several members in one
    * go: every answer comes from the same read, and none is awaited.
    */

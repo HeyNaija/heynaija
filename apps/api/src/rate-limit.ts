@@ -57,6 +57,22 @@ export const LIMITS = {
   gistJoinBurst: [{ max: 120, windowMs: MINUTE }],
   gistRequest: [{ max: 10, windowMs: MINUTE }],
   gistSync: [{ max: 20, windowMs: MINUTE }],
+  // Chess on Lichess (docs/adr/0028): linking an account, reading ratings again
+  // on demand, and challenging. Each asks Lichess on the member's behalf.
+  lichessLink: [{ max: 10, windowMs: HOUR }],
+  lichessRefresh: [{ max: 6, windowMs: HOUR }],
+  chessChallenge: [{ max: 20, windowMs: HOUR }],
+  // Linking a community's Lichess team, and making its tournaments (Lichess allows 12 a day).
+  chessTeam: [{ max: 20, windowMs: HOUR }],
+  chessTournament: [{ max: 12, windowMs: 24 * HOUR }],
+  // Moves, draw offers and resignations in a game (docs/adr/0028, phase 3).
+  chessMove: [{ max: 120, windowMs: MINUTE }],
+  // Keno tickets (docs/adr/0028, phase 4): a burst limit, and an outer bound on a
+  // day's tickets, counted under a key that carries the Lagos date so the window is
+  // that day (the most KENO_DAILY_TOKENS may be). The day's tokens themselves
+  // (KENO_DAILY_TOKENS) are counted in Postgres, which decides.
+  kenoTicket: [{ max: 30, windowMs: MINUTE }],
+  kenoDaily: [{ max: 500, windowMs: 25 * HOUR }],
 } satisfies Record<string, { max: number; windowMs: number }[]>
 
 export type LimitKind = keyof typeof LIMITS

@@ -164,6 +164,13 @@ const schema = z.object({
   EMAIL_DIGEST_GAP_S: z.coerce.number().int().min(0).max(86_400).default(1800),
   // How often the job that finds due emails runs, in seconds.
   EMAIL_SWEEP_EVERY_S: z.coerce.number().int().min(1).max(3600).default(60),
+  // Weekly highlights (docs/adr/0027). When the week's run starts: the day of the
+  // week (0 is Sunday) and the hour, both in UTC. The default is Sunday at 17:00
+  // UTC, 6pm in Nigeria. And how often the job that finds who is due runs, in
+  // seconds. Sent only while the weeklyHighlights flag is on (docs/feature-flags.md).
+  HIGHLIGHTS_WEEKDAY: z.coerce.number().int().min(0).max(6).default(0),
+  HIGHLIGHTS_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(17),
+  HIGHLIGHTS_SWEEP_EVERY_S: z.coerce.number().int().min(10).max(3600).default(300),
   // Push notifications (docs/adr/0011): the VAPID key pair browsers subscribe
   // with, both base64url (infra/scripts/gen-dev-env.sh and infra/deploy/gen-env.sh
   // make one). Without them nothing is pushed and Settings does not offer push.
@@ -228,6 +235,25 @@ const schema = z.object({
   GISTS_MAX_COHOSTS: z.coerce.number().int().min(0).max(10).default(2),
   GISTS_MAX_SPEAKERS: z.coerce.number().int().min(0).max(50).default(10),
   GISTS_LISTENER_CAP: z.coerce.number().int().min(1).max(10_000).default(200),
+  // Games, chess (docs/adr/0028). The key that encrypts members' Lichess tokens at
+  // rest: 32 bytes as 64 hex characters (`openssl rand -hex 32`). Without it linking
+  // a Lichess account is not available. Losing it means everyone links again.
+  GAMES_TOKEN_KEY: optional(z.string().regex(/^[0-9a-f]{64}$/i, '64 hex characters')),
+  // Where Lichess is; the end-to-end tests point it at a stand-in.
+  LICHESS_URL: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z
+      .url()
+      .default('https://lichess.org')
+      .transform((u) => u.replace(/\/$/, '')),
+  ),
+  // Games, Keno (docs/adr/0028, phase 4): how often the shared draw is made, and
+  // how many free tokens (one ticket each) a member gets a day, Lagos time.
+  KENO_DRAW_EVERY_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(300_000),
+  KENO_DAILY_TOKENS: z.coerce.number().int().min(1).max(500).default(20),
+  // Games, chess tournaments (docs/adr/0028, phase 6): how often a live Lichess
+  // tournament's standings are read. Two minutes; the end-to-end tests make it shorter.
+  CHESS_STANDINGS_EVERY_MS: z.coerce.number().int().min(5_000).max(3_600_000).default(120_000),
   // Lets browsers subscribe with an http://127.0.0.1 address, for the end-to-end
   // tests' stand-in push service. Only allowed while WEB_PUBLIC_URL is on this machine.
   PUSH_ALLOW_LOOPBACK: z

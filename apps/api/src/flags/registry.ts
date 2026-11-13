@@ -68,6 +68,11 @@ export const FLAGS = {
     owner: 'links',
     defaults: onEverywhere, // code in main: see LIVE_IN_MAIN in feature-flags.test.ts
   },
+  games: {
+    description: 'The Games section (docs/adr/0028): /games, its link in the sidebar and every /v1/games route. While Games is being built, an allow-list keeps it to named members.',
+    owner: 'games',
+    defaults: { development: true, staging: true, production: false }, // not in main yet
+  },
   videoPosts: {
     description:
       'Attaching one short video to a post (ADR 0019). Gating creation only: videos already published keep playing. Also needs an upload scanner in production: with none bound, video stays closed even if this is on.',
@@ -90,6 +95,12 @@ export const FLAGS = {
     description:
       'Marking posts sensitive (ADR 0020): the flag on media in the composer, the post menu item, the Settings switch that marks everything a member posts, the moderators\' mark and the report reason. Gating creation only: a post already marked stays hidden from anyone who is not an adult, whatever this says.',
     owner: 'posts',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
+  weeklyHighlights: {
+    description:
+      'Weekly highlights (ADR 0027): once a week, a member who has been away is sent a few conversations they missed, by push or email. Also the switch for them in Settings. Turning it off stops the next send; nothing already sent is affected.',
+    owner: 'highlights',
     defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
   },
 } as const satisfies Record<string, FlagDefinition>

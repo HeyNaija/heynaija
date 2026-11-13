@@ -11,7 +11,7 @@ export const { db, pool } = createDb(url)
 export const migrate = () => runMigrations(url)
 
 export const reset = () =>
-  db.execute(sql`truncate gist_members, gists, link_previews, notifications, notification_opt_outs, push_subscriptions, push_devices, poll_votes, poll_options, post_polls, post_mentions, post_hashtags, media, moderation_actions, reports, blocks, mutes, likes, reposts, bookmarks, follows, community_memberships, communities, invite_redemptions, invites, profile_badges, restricted.identity_verifications, restricted.governance_memberships, restricted.governance_audit_log, restricted.age_assurances, posts, members cascade`)
+  db.execute(sql`truncate games.community_teams, games.xp_totals, games.competition_invites, games.keno_tickets, games.keno_rounds, games.chess_games, games.chess_challenges, games.lichess_link_attempts, games.lichess_accounts, games.game_events, games.competition_entries, games.competitions, games.season_scores, games.seasons, games.game_profiles, gist_members, gists, link_previews, notifications, notification_opt_outs, push_subscriptions, push_devices, poll_votes, poll_options, post_polls, post_mentions, post_hashtags, media, moderation_actions, reports, blocks, mutes, likes, reposts, bookmarks, follows, community_memberships, communities, invite_redemptions, invites, profile_badges, restricted.identity_verifications, restricted.governance_memberships, restricted.governance_audit_log, restricted.age_assurances, posts, members restart identity cascade`)
 
 /** A date of birth that makes someone `years` old today in Lagos (never after the 28th, so every month has it). */
 export function bornYearsAgo(years: number): string {

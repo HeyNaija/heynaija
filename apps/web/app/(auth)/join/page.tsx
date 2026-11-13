@@ -2,9 +2,14 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AuthPage, linkClass } from '@/app/ui/auth-page'
 import { getSignupAge } from '@/lib/api'
+import { sitePicturePreview } from '@/lib/previews-server'
 import { JoinForm } from './join-form'
 
-export const metadata: Metadata = { title: 'Join' }
+// Invite links are this page, so its preview reads as the invitation it is. Built
+// per request, so its picture's address is the site's.
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: 'Join', ...(await sitePicturePreview('You’re invited to HeyNaija')) }
+}
 
 export default function JoinPage({ searchParams }: PageProps<'/join'>) {
   return (

@@ -43,10 +43,10 @@ export type Me = {
    */
   sensitive: { adult: boolean; markPosts: 'author' | 'moderator' | null; showMedia: boolean }
   /**
-   * What is switched on for this member: the API's feature flags by key (docs/feature-flags.md) and
-   * `gists` (docs/adr/0017). A missing key counts as off.
+   * What is switched on for this member: the API's feature flags by key (docs/feature-flags.md),
+   * `games` among them (docs/adr/0028), and `gists` (docs/adr/0017). A missing key counts as off.
    */
-  features: { gists: boolean } & Record<string, boolean>
+  features: { gists: boolean; games?: boolean } & Record<string, boolean>
   /**
    * Whether they may start a Gist and speak in one, or only listen: under 18 and
    * no date of birth listen (ADR 0020). Never true without `features.gists`.
@@ -154,6 +154,8 @@ export type Post = {
   authorAvatar: string | null
   /** The author has the Founder badge: one of the people who founded HeyNaija. */
   authorFounder: boolean
+  /** The author is one of HeyNaija's automated accounts (The Arbiter); nobody signs in to it. */
+  authorAutomated?: boolean
   text: string
   images: PostImage[]
   /** The post's video once it is ready; a held or unfinished one is never sent. */
@@ -309,6 +311,8 @@ export type Profile = {
   identityBadge: boolean
   /** Show the Founder badge: one of the people who founded HeyNaija, granted by hand. */
   founderBadge: boolean
+  /** One of HeyNaija's automated accounts (The Arbiter, docs/adr/0028). */
+  automatedBadge?: boolean
 }
 
 /**
@@ -418,6 +422,36 @@ export async function getDiscoverRules(): Promise<DiscoverRules> {
   return res.json()
 }
 
+/**
+ * The rules weekly highlights are chosen by, as the API applies them (ADR 0027),
+ * when the week's run starts (a day of the week, 0 for Sunday, and an hour, in UTC),
+ * and whether they are being sent to everyone yet.
+ */
+export type HighlightsRules = {
+  awayDays: number
+  stopAfterDays: number
+  windowDays: number
+  maxPosts: number
+  minPosts: number
+  conversationPoints: number
+  likePoints: number
+  repostPoints: number
+  followedPoints: number
+  followsAuthorPoints: number
+  joinedCommunityPoints: number
+  reportsToHold: number
+  openHours: number
+  weekday: number
+  hourUtc: number
+  live: boolean
+}
+
+export async function getHighlightsRules(): Promise<HighlightsRules> {
+  const res = await api('/v1/highlights/rules')
+  if (!res.ok) throw new Error(`API /v1/highlights/rules responded ${res.status}`)
+  return res.json()
+}
+
 export type IdeaKind = 'idea' | 'problem'
 export type IdeaStatus = 'under_review' | 'planned' | 'in_progress' | 'shipped' | 'not_now' | 'duplicate'
 export type IdeaGroup = 'open' | 'shipped' | 'closed'
@@ -465,6 +499,258 @@ async function getOrNull<T>(path: string): Promise<T | null> {
   if (!res.ok) throw new Error(`API ${path} responded ${res.status}`)
   return res.json()
 }
+
+/** One game from the API's registry (docs/games/GAMES.md); `cover` is null until approved art exists. */
+export type GameManifest = {
+  slug: string
+  name: string
+  tagline: string
+  description: string
+  cover: string | null
+  status: 'live' | 'beta' | 'coming_soon'
+  rankingType: 'rating' | 'points'
+  supportsCompetitions: boolean
+}
+
+/** The games in registry order; null while Games is off or the member is not on its list (the API answers 404). */
+export const getGames = () => getOrNull<{ games: GameManifest[] }>('/v1/games')
+
+/** Lichess ratings by speed, as Lichess last said (docs/adr/0028). */
+export type ChessRatings = Partial<Record<'blitz' | 'rapid' | 'classical' | 'correspondence', { rating: number; games: number; provisional: boolean }>>
+
+export type ChessTimeControl =
+  | { id: string; speed: 'blitz' | 'rapid' | 'classical'; limit: number; increment: number }
+  | { id: string; speed: 'correspondence'; days: number }
+
+export type ChessChallenge = {
+  id: string
+  opponent: { handle: string; displayName: string | null; avatar: string | null }
+  /** Whether the viewer sent it. */
+  sent: boolean
+  rated: boolean
+  speed: 'blitz' | 'rapid' | 'classical' | 'correspondence'
+  /** "10+5", "3 days a move". */
+  time: string
+  /** The colour the viewer plays. */
+  color: 'random' | 'white' | 'black'
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'failed' | 'expired'
+  createdAt: string
+  expiresAt: string
+  /** The game on lichess.org, once accepted. */
+  gameUrl: string | null
+  /** The game's id, for its page here, once accepted. */
+  gameId: string | null
+  /** Whether The Arbiter opens a public thread in Chess Arena when it starts. */
+  openThread: boolean
+}
+
+export type ChessOverview = {
+  /** False where no token key is set: linking cannot be offered. */
+  linkingAvailable: boolean
+  account: { username: string; ratings: ChessRatings; ratingsRefreshedAt: string | null; linkedAt: string; url: string } | null
+  timeControls: ChessTimeControl[]
+  incoming: ChessChallenge[]
+  outgoing: ChessChallenge[]
+  recent: ChessChallenge[]
+}
+
+/** The chess page; null when Games is off for the member (the API answers 404). */
+export const getChessOverview = () => getOrNull<ChessOverview>('/v1/games/chess')
+
+/** A member's Lichess account for their profile; null if they have none, the viewer cannot see them, or Games is off. */
+export const getChessMember = (handle: string) =>
+  getOrNull<{ username: string; ratings: ChessRatings; url: string; canChallenge: boolean; playing: { id: string } | null }>(
+    `/v1/games/chess/members/${encodeURIComponent(handle)}`,
+  )
+
+export type ChessPlayer = { handle: string; displayName: string | null; avatar: string | null; rating: number | null; provisional: boolean }
+
+/** A game as the API shows it (docs/adr/0028, phase 3). `version` goes up with every change. */
+export type ChessGame = {
+  id: string
+  white: ChessPlayer
+  black: ChessPlayer
+  /** The colour the viewer plays; null for a spectator. */
+  you: 'white' | 'black' | null
+  rated: boolean
+  speed: 'blitz' | 'rapid' | 'classical' | 'correspondence'
+  time: string
+  clock: { limit: number; increment: number } | null
+  days: number | null
+  status: string
+  finished: boolean
+  winner: 'white' | 'black' | null
+  /** Every move so far, in UCI. */
+  moves: string[]
+  whiteMs: number | null
+  blackMs: number | null
+  clockAt: string | null
+  drawOffer: 'white' | 'black' | null
+  version: number
+  startedAt: string
+  finishedAt: string | null
+  threadPostId: string | null
+  resultPostId: string | null
+  ratingsAfter: Record<'white' | 'black', { before: number | null; after: number | null }> | null
+  lichessUrl: string
+}
+
+export type LiveChessGame = { id: string; white: ChessPlayer; black: ChessPlayer; speed: ChessGame['speed']; time: string; rated: boolean; startedAt: string; moveCount: number }
+
+/** A game the viewer may watch; null when it is not there, or they may not see it. */
+export const getChessGame = (id: string) => getOrNull<ChessGame>(`/v1/games/chess/games/${encodeURIComponent(id)}`)
+
+export async function getLiveChessGames(): Promise<LiveChessGame[]> {
+  const live = await getOrNull<{ games: LiveChessGame[] }>('/v1/games/chess/games/live')
+  return live?.games ?? []
+}
+
+// --- Keno, free to play (docs/adr/0028, phase 4) -------------------------------
+
+export type KenoTicket = { id: string; round: number; numbers: number[]; hits: number | null; points: number | null; createdAt: string }
+
+/** A round: its hash from the start; its seed and numbers (in the order drawn) once drawn. */
+export type KenoRound = {
+  number: number
+  drawsAt: string
+  seedHash: string
+  seed: string | null
+  numbers: number[] | null
+  drawnAt: string | null
+  late: boolean
+}
+
+export type KenoPlay = {
+  open: KenoRound & { closesAt: string }
+  last: KenoRound | null
+  openTickets: KenoTicket[]
+  lastTickets: KenoTicket[]
+  tokens: { left: number; daily: number; resetsAt: string }
+  serverTime: string
+  drawEveryMs: number
+  /** Points a ticket of N numbers earns, by how many were drawn. */
+  payouts: { version: string; table: Record<string, Record<string, number>> }
+}
+
+export type KenoBoardRow = { rank: number; handle: string; displayName: string | null; avatar: string | null; points: number; you: boolean }
+export type KenoBoard = { period: 'month' | 'all'; season: string | null; rows: KenoBoardRow[]; you: KenoBoardRow | null }
+
+/** The Keno page; null when Games is off for the member. */
+export const getKenoPlay = () => getOrNull<KenoPlay>('/v1/games/keno/round')
+export const getKenoRound = (n: number) => getOrNull<KenoRound>(`/v1/games/keno/rounds/${n}`)
+export const getKenoRounds = (before?: number) => getOrNull<{ rounds: KenoRound[]; next: number | null }>(`/v1/games/keno/rounds${before ? `?before=${before}` : ''}`)
+export const getKenoTickets = (before?: string) =>
+  getOrNull<{ tickets: KenoTicket[]; next: string | null }>(`/v1/games/keno/tickets${before ? `?before=${encodeURIComponent(before)}` : ''}`)
+export const getKenoBoard = (period: 'month' | 'all', limit = 50) => getOrNull<KenoBoard>(`/v1/games/keno/leaderboard?period=${period}&limit=${limit}`)
+
+// --- Seasons, Game Score, leaderboards, competitions (docs/adr/0028, phase 5) ----
+
+export type GameBoardKind = 'score' | 'chess' | 'keno'
+export type GameBoardFilter = 'everyone' | 'following' | 'community'
+export type GameBoardRow = { rank: number; handle: string; displayName: string | null; avatar: string | null; value: number; you: boolean }
+export type GameBoard = {
+  board: GameBoardKind
+  unit: 'xp' | 'points'
+  /** "2026-11" for a season, or "all". */
+  period: string
+  filter: GameBoardFilter
+  community: string | null
+  rows: GameBoardRow[]
+  you: GameBoardRow | null
+}
+
+export const getGameBoard = (q: { board: GameBoardKind; period?: string; filter?: GameBoardFilter; community?: string; limit?: number }) => {
+  const params = new URLSearchParams({ board: q.board, filter: q.filter ?? 'everyone', limit: String(q.limit ?? 50) })
+  if (q.period) params.set('period', q.period)
+  if (q.community) params.set('community', q.community)
+  return getOrNull<GameBoard>(`/v1/games/leaderboard?${params}`)
+}
+export const getGameSeasons = () => getOrNull<{ current: string; seasons: string[] }>('/v1/games/seasons')
+
+/** Every scoring rule, as the API scores: the explainer shows these numbers. */
+export type GameScoring = {
+  xp: {
+    chess: { finished: number; win: number; draw: number }
+    keno: { round: number; pointsPerXp: number; pointsXpMax: number }
+    competition: { entered: number; places: number[]; topTen: number }
+  }
+  keno: { tableVersion: string; payouts: Record<string, Record<string, number>> }
+  formats: Record<string, Record<string, string>>
+  season: string
+}
+export const getGameScoring = () => getOrNull<GameScoring>('/v1/games/scoring')
+
+export type CompetitionStatus = 'draft' | 'open' | 'live' | 'finished' | 'cancelled'
+export type CompetitionEligibility = 'open' | 'community' | 'invite'
+export type CompetitionCard = {
+  id: string
+  name: string
+  game: string
+  format: string
+  status: CompetitionStatus
+  eligibility: CompetitionEligibility
+  entryOpensAt: string
+  entryClosesAt: string
+  startsAt: string
+  endsAt: string
+  entrants: number
+  resultPostId: string | null
+}
+export type CompetitionStanding = {
+  place: number | null
+  handle: string
+  displayName: string | null
+  avatar: string | null
+  score: number | null
+  you: boolean
+  /** In a Lichess tournament: their rank among everyone there, and their Lichess name. */
+  lichess: { rank: number | null; username: string | null } | null
+}
+/** A chess competition's Lichess tournament (docs/adr/0028, phase 6). */
+export type CompetitionTournament = {
+  kind: 'arena' | 'swiss'
+  url: string
+  teamUrl: string
+  teamName: string | null
+  clock: { limit: number; increment: number }
+  minutes: number | null
+  rounds: number | null
+  rated: boolean
+  players: number | null
+  standingsAt: string | null
+  unfinished: boolean
+}
+export type Competition = CompetitionCard & {
+  formatText: string
+  community: { slug: string; name: string } | null
+  you: { entered: boolean; canEnter: boolean; canWithdraw: boolean; reason: string | null; moderator: boolean; canCancel: boolean }
+  standings: CompetitionStanding[]
+  yourStanding: CompetitionStanding | null
+  invite: string[]
+  chess: CompetitionTournament | null
+}
+
+/** A community's Lichess team and what the viewer may do with it (docs/adr/0028, phase 6). */
+export type ChessTeam = {
+  community: { slug: string; name: string }
+  team: { id: string; name: string; nbMembers: number; url: string } | null
+  you: {
+    communityModerator: boolean
+    siteModerator: boolean
+    lichess: string | null
+    canCreate: boolean
+    needsTournamentScope: boolean
+    canLink: boolean
+    canUnlink: boolean
+  }
+  controls: { id: string; speed: string; limit: number; increment: number; arenaMinutes: number[] }[]
+  swissRounds: { min: number; max: number }
+  tournaments: { current: CompetitionCard[]; recent: CompetitionCard[] }
+}
+export const getChessTeam = (slug: string) => getOrNull<ChessTeam>(`/v1/games/chess/teams/${encodeURIComponent(slug)}`)
+
+export const getCompetitions = () => getOrNull<{ current: CompetitionCard[]; recent: CompetitionCard[]; drafts: CompetitionCard[] }>('/v1/games/competitions')
+export const getCompetition = (id: string) => getOrNull<Competition>(`/v1/games/competitions/${encodeURIComponent(id)}`)
 
 /** A Gist the viewer may see; null for every refusal, which the API makes the same 404. */
 export const getGist = (id: string) => getOrNull<GistView>(`/v1/gists/${encodeURIComponent(id)}`)
@@ -737,6 +1023,8 @@ export type NotificationKind =
   | 'moderator_revoked'
   | 'idea_status'
   | 'story_update'
+  | 'chess_challenge'
+  | 'chess_game_started'
 
 export type Notification = {
   id: string
@@ -752,6 +1040,10 @@ export type Notification = {
   detail: string | null
   /** idea_status: an idea or a problem, and whether the reader sent it (or only voted for it). */
   idea?: { kind: IdeaKind; yours: boolean } | null
+  /** chess_challenge: the challenge, and how it reads ("a rated Rapid game (10+5)"). */
+  challenge?: { id: string; phrase: string } | null
+  /** chess_game_started: the game. */
+  game?: { id: string } | null
 }
 
 /** Null when the visitor is not a signed-in member. */

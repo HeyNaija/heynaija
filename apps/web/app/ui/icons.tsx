@@ -11,12 +11,15 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  ChessKnight,
   CircleCheck,
   CircleDashed,
   CircleDot,
   Ellipsis,
   EyeOff,
   FileText,
+  Gamepad2,
+  Grid3x3,
   Flag,
   Flame,
   Hash,
@@ -53,6 +56,7 @@ import {
   Share2,
   Shield,
   Signal,
+  Trophy,
   User,
   UserPlus,
   Users,
@@ -125,6 +129,10 @@ export const GovernanceIcon = icon(Landmark)
 export const TreasuryIcon = icon(Wallet)
 export const HistoryIcon = icon(History)
 export const IdeaIcon = icon(Lightbulb)
+export const GamesIcon = icon(Gamepad2)
+export const ChessIcon = icon(ChessKnight)
+export const KenoIcon = icon(Grid3x3)
+export const TrophyIcon = icon(Trophy)
 export const BellIcon = icon(Bell)
 export const FollowIcon = icon(UserPlus)
 export const FlagIcon = icon(Flag)

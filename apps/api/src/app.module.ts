@@ -1,7 +1,6 @@
-import { createDb, type Db } from '@heynaija/db'
 import { Controller, Get, Module } from '@nestjs/common'
 import { AccountController } from './account/account.controller.js'
-import { AccountDeletionService, DELETION_NOTICES } from './account/account-deletion.service.js'
+import { AccountDeletionService, DELETION_NOTICES, GAMES_ERASER } from './account/account-deletion.service.js'
 import { AccountWorker, BullAccountJobs } from './account/account-queue.js'
 import { EmailDeletionNotices } from './account/deletion-notices.js'
 import { PrivacyRequestsService } from './account/privacy-requests.service.js'
@@ -9,13 +8,6 @@ import { RetentionService } from './account/retention.service.js'
 import { AppleController } from './apple/apple.controller.js'
 import { AppleTokensService } from './apple/apple-tokens.service.js'
 import { AuthController } from './auth/auth.controller.js'
-import { AuthService } from './auth/auth.service.js'
-import { AUTH_SESSION_PROVIDER } from './auth/auth-session.provider.js'
-import { KratosAdmin } from './auth/kratos-admin.js'
-import { KratosSessionProvider } from './auth/kratos-session.provider.js'
-import { KratosService } from './auth/kratos.service.js'
-import { RedisSessionCache, SESSION_CACHE } from './auth/session-cache.js'
-import { OptionalSessionGuard, SessionGuard, SuspendedAllowedGuard } from './auth/session.guard.js'
 import { CommunitiesController } from './communities/communities.controller.js'
 import { CommunitiesService } from './communities/communities.service.js'
 import { EMAIL_ADDRESSES, type EmailAddresses, KratosAddresses } from './email/addresses.js'
@@ -24,12 +16,12 @@ import { BullEmailJobs, EmailWorker } from './email/email-queue.js'
 import { EMAIL_JOBS, EMAIL_SETTINGS, EmailNotificationsService } from './email/email-notifications.service.js'
 import { MAILER, type Mailer, smtpMailer } from './email/mailer.js'
 import { unsubscribeKey } from './email/unsubscribe-token.js'
-import { appleKey, type Env, loadEnv } from './env.js'
-import { FeatureFlags } from './flags/feature-flags.js'
-import { FeatureGuard } from './flags/feature.guard.js'
+import { appleKey, type Env } from './env.js'
 import { FlagsController } from './flags/flags.controller.js'
 import { ExportController } from './export/export.controller.js'
 import { ExportService } from './export/export.service.js'
+import { ChessService } from './games/chess/chess.service.js'
+import { GamesModule } from './games/games.module.js'
 import { GistReconciler } from './gists/gist-queue.js'
 import { GistRepliesController } from './gists/gist-replies.controller.js'
 import { GistRepliesService } from './gists/gist-replies.service.js'
@@ -38,19 +30,20 @@ import { GISTS_CONFIG, GistsService } from './gists/gists.service.js'
 import { GistsEnabledGuard, GistsGate, LiveKitConfiguredGuard } from './gists/gists-enabled.guard.js'
 import { roomServiceFor } from './gists/livekit-room-service.js'
 import { ROOM_SERVICE } from './gists/room-service.js'
+import { HighlightsController } from './highlights/highlights.controller.js'
+import { BullHighlightsJobs, HighlightsWorker } from './highlights/highlights-queue.js'
+import { HIGHLIGHTS_JOBS, HIGHLIGHTS_SETTINGS, HighlightsService } from './highlights/highlights.service.js'
 import { GovernanceController } from './governance/governance.controller.js'
 import { GovernanceService } from './governance/governance.service.js'
 import { IdeasController } from './ideas/ideas.controller.js'
 import { IdeasService } from './ideas/ideas.service.js'
-import { InvitesService } from './invites/invites.service.js'
 import { BullLinkJobs, LinkWorker } from './links/link-queue.js'
 import { LINK_JOBS, LinksService, PAGE_FETCHER } from './links/links.service.js'
 import { SafeFetcher } from './links/safe-fetch.js'
 import { CDN_PURGER, CloudflarePurger, NoPurger } from './media/cdn-purge.js'
 import { CommunityPhotoController, MediaController, PostImagesController } from './media/media.controller.js'
-import { MEDIA_URLS, MediaUrls } from './media/media-urls.js'
 import { PrivateMediaController } from './media/private-media.controller.js'
-import { BullMediaJobs, MediaWorker } from './media/media-queue.js'
+import { type BullMediaJobs, MediaWorker } from './media/media-queue.js'
 import { CONTENT_SCANNER, MEDIA_JOBS, MediaService, OBJECT_STORE } from './media/media.service.js'
 import { S3ObjectStore } from './media/object-store.js'
 import { scannerFromEnv } from './media/scanners.js'
@@ -65,22 +58,20 @@ import { NotificationsService } from './notifications/notifications.service.js'
 import { OnboardingController } from './onboarding/onboarding.controller.js'
 import { OnboardingService } from './onboarding/onboarding.service.js'
 import { PostsController } from './posts/posts.controller.js'
-import { PostsService } from './posts/posts.service.js'
 import { PushController } from './push/push.controller.js'
 import { PUSH_JOBS, PushNotificationsService } from './push/push-notifications.service.js'
 import { BullPushJobs, PushWorker } from './push/push-queue.js'
+import { PlatformModule } from './platform.module.js'
 import { appPushSender } from './push/app-push-sender.js'
 import { APP_PUSH_SENDER, PUSH_SENDER, webPushSender } from './push/push-sender.js'
-import { RateLimiter, RedisRateLimiter } from './rate-limit.js'
 import { SearchController } from './search/search.controller.js'
-import { DB, ENV } from './tokens.js'
+import { ENV } from './tokens.js'
 import { TopicsController } from './topics/topics.controller.js'
 import { TopicsService } from './topics/topics.service.js'
-import { type VideoConfig, videoConfig } from './video/video-config.js'
 import { VideoGate, VideoPostsGuard } from './video/video-gate.js'
 import { BullVideoJobs } from './video/video-queue.js'
 import { VideosController } from './video/video.controller.js'
-import { VIDEO_CONFIG, VIDEO_JOBS, VIDEO_STORE, VideoService } from './video/video.service.js'
+import { VIDEO_JOBS, VIDEO_STORE, VideoService } from './video/video.service.js'
 
 @Controller()
 class HealthController {
@@ -91,25 +82,12 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, AppleController, PostsController, MembersController, OwnProfileController, OwnSensitiveSettingsController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, PrivateMediaController, NotificationsController, EmailController, PushController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, GistRepliesController, LiveKitWebhookController, AccountController, FlagsController, VideosController],
+  // Settings, the database, sign-in, feature flags and rate limits; then the modules built on them.
+  imports: [PlatformModule, GamesModule],
+  controllers: [HealthController, AuthController, AppleController, PostsController, MembersController, OwnProfileController, OwnSensitiveSettingsController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, PrivateMediaController, NotificationsController, EmailController, PushController, HighlightsController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, GistRepliesController, LiveKitWebhookController, AccountController, FlagsController, VideosController],
   providers: [
-    { provide: ENV, useFactory: loadEnv },
-    { provide: DB, useFactory: (env: Env) => createDb(env.DATABASE_URL).db, inject: [ENV] },
-    { provide: SESSION_CACHE, useClass: RedisSessionCache },
-    KratosService,
-    KratosAdmin,
-    { provide: AUTH_SESSION_PROVIDER, useClass: KratosSessionProvider },
-    AuthService,
-    SessionGuard,
-    OptionalSessionGuard,
-    SuspendedAllowedGuard,
-    // Runtime feature flags, per APP_ENV (docs/feature-flags.md).
-    { provide: FeatureFlags, useFactory: (db: Db, env: Env) => new FeatureFlags(db, env.APP_ENV), inject: [DB, ENV] },
-    FeatureGuard,
-    { provide: RateLimiter, useClass: RedisRateLimiter },
     ModerationService,
     { provide: OBJECT_STORE, useFactory: (env: Env) => new S3ObjectStore(s3Config(env)), inject: [ENV] },
-    { provide: MEDIA_JOBS, useClass: BullMediaJobs },
     // Arachnid Shield and PhotoDNA, each once its key is set; with neither every image
     // passes and every video is held (docs/safety/abuse-material-scanning.md).
     { provide: CONTENT_SCANNER, useFactory: (env: Env) => scannerFromEnv(env), inject: [ENV] },
@@ -138,8 +116,6 @@ class HealthController {
     LinkWorker,
     MembersService,
     CommunitiesService,
-    InvitesService,
-    PostsService,
     TopicsService,
     IdeasService,
     NotificationsService,
@@ -168,6 +144,20 @@ class HealthController {
     { provide: APP_PUSH_SENDER, useFactory: appPushSender, inject: [ENV] },
     PushNotificationsService,
     PushWorker,
+    // Weekly highlights (docs/adr/0027): pushed where a member has push, emailed where they have email on.
+    { provide: HIGHLIGHTS_JOBS, useClass: BullHighlightsJobs },
+    {
+      provide: HIGHLIGHTS_SETTINGS,
+      useFactory: (env: Env) => ({
+        webUrl: env.WEB_PUBLIC_URL,
+        unsubscribeKey: unsubscribeKey(env.KRATOS_WEBHOOK_SECRET),
+        weekday: env.HIGHLIGHTS_WEEKDAY,
+        hourUtc: env.HIGHLIGHTS_HOUR_UTC,
+      }),
+      inject: [ENV],
+    },
+    HighlightsService,
+    HighlightsWorker,
     ExportService,
     GovernanceService,
     OnboardingService,
@@ -177,6 +167,7 @@ class HealthController {
       useFactory: (env: Env, mailer: Mailer | null, addresses: EmailAddresses) => new EmailDeletionNotices(mailer, addresses, env.WEB_PUBLIC_URL),
       inject: [ENV, MAILER, EMAIL_ADDRESSES],
     },
+    { provide: GAMES_ERASER, useExisting: ChessService },
     AccountDeletionService,
     AppleTokensService,
     PrivacyRequestsService,
@@ -204,14 +195,6 @@ class HealthController {
     // Video posts (docs/adr/0019): dark behind the videoPosts flag and, in production, a bound scanner.
     // The encoding runs in the separate video-worker process; these are the API's half.
     { provide: VIDEO_STORE, useExisting: OBJECT_STORE },
-    { provide: VIDEO_CONFIG, useFactory: (env: Env) => videoConfig(env), inject: [ENV] },
-    // Signed URLs for the files of posts marked sensitive (docs/adr/0025), keyed from the storage secret
-    // only the API holds, so no new setting is needed; absolute on the site for video.
-    {
-      provide: MEDIA_URLS,
-      useFactory: (env: Env, cfg: VideoConfig) => new MediaUrls(env.S3_SECRET_ACCESS_KEY, env.WEB_PUBLIC_URL, cfg.filesBase),
-      inject: [ENV, VIDEO_CONFIG],
-    },
     BullVideoJobs,
     {
       provide: VIDEO_JOBS,

@@ -63,6 +63,9 @@ x-api-env: &api-env
   LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
   LIVEKIT_WEBHOOK_KEY: ${LIVEKIT_WEBHOOK_KEY:-}
   LIVEKIT_WEBHOOK_SECRET: ${LIVEKIT_WEBHOOK_SECRET:-}
+  # Chess on Lichess (docs/adr/0028): the key for members' Lichess tokens. Empty means
+  # connecting Lichess is not offered.
+  GAMES_TOKEN_KEY: ${GAMES_TOKEN_KEY:-}
   # Safety (docs/safety/abuse-material-scanning.md): where alerts are emailed, the
   # upload scanners' logins (Arachnid Shield, PhotoDNA once approved), and what
   # purging Cloudflare's cache needs. Each is optional; without them alerts are
