@@ -61,7 +61,8 @@ test('a moderator notifies every member of a community once a day, and a member 
   await expect(row).toBeVisible()
   await expect(row).toContainText(text)
   await row.click()
-  await member.page.waitForURL(/\/p\/[0-9a-f-]+$/)
+  // The address ends with the post's own anchor (#post-…), so only the path is matched.
+  await member.page.waitForURL((url) => /^\/p\/[0-9a-f-]+$/.test(url.pathname))
   await expect(member.page.locator('article', { hasText: text }).first()).toBeVisible()
 
   // The one who turned them off is not.
