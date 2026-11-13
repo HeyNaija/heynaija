@@ -4,6 +4,7 @@ import { ageSignIn, pool } from '../lib/db.ts'
 import { env } from '../lib/env.ts'
 import { codeFor, emailWhere } from '../lib/mailpit.ts'
 import { newMember, post, replyBox, signIn } from '../lib/members.ts'
+import { reloadSettings } from '../lib/settings.ts'
 
 // Deleting your own account (docs/adr/0016). Most of this stops at the grace
 // period, which erasing waits for; the last test has the operator's command
@@ -76,9 +77,7 @@ test('a member deletes their account from Settings, is signed out, and keeps it 
   // Settings sends the browser on to Kratos and back with ?flow= for its sign-in form; a click before then is lost.
   await page.waitForURL((url) => url.searchParams.has('flow'))
   // A reload starts a fresh form, rather than the one made then with what was true then.
-  const first = new URL(page.url()).searchParams.get('flow')
-  await page.reload()
-  await page.waitForURL((url) => url.searchParams.has('flow') && url.searchParams.get('flow') !== first)
+  await reloadSettings(page)
   await page.getByRole('link', { name: 'Delete your account' }).click()
   await page.waitForURL((url) => url.pathname === '/settings/delete')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Delete your account')

@@ -3,6 +3,7 @@ import { ageNotifications, pushSubscriptionCount, waitForEmailJob, waitForPushJo
 import { countFor, emailWhere } from '../lib/mailpit.ts'
 import { handleFor, type Member, newMember, post, replyBox, signUpOverHttp } from '../lib/members.ts'
 import { allowPush, standInPushService, waitForPushes } from '../lib/push.ts'
+import { reloadSettings } from '../lib/settings.ts'
 
 // See lib/push.ts: the browser's push service is a stand-in on this machine, which
 // the API sends to only when PUSH_ALLOW_LOOPBACK is on (pnpm infra:env sets it).
@@ -40,7 +41,7 @@ test('a reply is pushed to the browser that turned push on, and is not emailed a
   await expect(group.getByRole('button', { name: 'Turn off on this device' })).toBeVisible()
   expect(await pushSubscriptionCount(author.handle)).toBe(1)
   // It stays on across visits.
-  await author.page.reload()
+  await reloadSettings(author.page)
   await expect(pushGroup(author.page).getByRole('button', { name: 'Turn off on this device' })).toBeVisible()
 
   const text = `Push me about this, says ${author.handle}`
