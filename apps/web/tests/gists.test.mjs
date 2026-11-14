@@ -4,10 +4,17 @@ import {
   applyView,
   controlsFor,
   dataUseHint,
+  gistBarStatus,
+  gistDock,
+  gistsButtonLabel,
+  isInGist,
   joinFailure,
   listenerLabel,
   liveMeta,
+  lostNotice,
   nextPollDelay,
+  noneLiveText,
+  otherLive,
   POLL_BASE_MS,
   POLL_MAX_MS,
   titleProblem,
@@ -136,4 +143,68 @@ test('a Live now row says who hosts it, in which community, and how many listen'
     liveMeta({ host: { ...host, displayName: null }, community: { id: 'c', slug: 'lagos', name: 'Lagos' }, listenerCount: 3 }),
     'Hosted by @ada · in Lagos · 3 listeners',
   )
+})
+
+test('the Gists button says whether the member is in one, and how many others are live', () => {
+  assert.equal(gistsButtonLabel(false, 0), 'Gists')
+  assert.equal(gistsButtonLabel(false, 2), 'Gists. 2 live now.')
+  assert.equal(gistsButtonLabel(true, 0), 'Gists. You are in one.')
+  assert.equal(gistsButtonLabel(true, 1), 'Gists. You are in one, and 1 more is live.')
+  assert.equal(gistsButtonLabel(true, 3), 'Gists. You are in one, and 3 more are live.')
+  assert.equal(gistsButtonLabel(false, 1200), 'Gists. 1,200 live now.')
+})
+
+test('the red dot counts the live Gists other than the one the member is in', () => {
+  const live = [{ id: 'a' }, { id: 'b' }]
+  assert.deepEqual(otherLive(live, null), live)
+  assert.deepEqual(otherLive(live, 'a'), [{ id: 'b' }])
+  assert.deepEqual(otherLive([{ id: 'a' }], 'a'), [])
+  assert.equal(noneLiveText(false), 'No Gists are live right now.')
+  assert.equal(noneLiveText(true), 'No other Gists are live right now.')
+})
+
+test('a member is in a Gist while connecting, live or reconnecting, and in nothing else', () => {
+  for (const phase of ['connecting', 'live', 'reconnecting']) assert.equal(isInGist(phase), true, phase)
+  for (const phase of ['prejoin', 'ended', 'full', 'locked', 'failed', 'elsewhere', 'gone', null, undefined]) assert.equal(isInGist(phase), false, String(phase))
+})
+
+test('the bar says what the connection, then the pause, then the microphone is doing', () => {
+  const base = { phase: 'live', hearing: true, mayUseMic: false, micOn: false, micBusy: false }
+  assert.equal(gistBarStatus(base), 'Listening')
+  assert.equal(gistBarStatus({ ...base, phase: 'connecting' }), 'Connecting…')
+  assert.equal(gistBarStatus({ ...base, phase: 'reconnecting', hearing: false }), 'Reconnecting…')
+  assert.equal(gistBarStatus({ ...base, hearing: false, mayUseMic: true, micOn: true }), 'Paused. You are still in the Gist.')
+  assert.equal(gistBarStatus({ ...base, mayUseMic: true, micOn: true }), 'Your microphone is on')
+  assert.equal(gistBarStatus({ ...base, mayUseMic: true, micBusy: true }), 'Starting your microphone…')
+  assert.equal(gistBarStatus({ ...base, mayUseMic: true }), 'Your microphone is off')
+  // A listener's microphone is never mentioned, even if a stale flag says it is on.
+  assert.equal(gistBarStatus({ ...base, micOn: true }), 'Listening')
+})
+
+test('the bar shows over every page but the Gist\'s own, while the member is in it', () => {
+  const at = (pathname, phase = 'live', notice = null) => gistDock({ roomId: 'g1', phase, pathname, notice })
+  assert.equal(at('/'), 'in')
+  assert.equal(at('/c/lagos'), 'in')
+  assert.equal(at('/gists/g1'), 'none')
+  assert.equal(at('/gists/g2'), 'in')
+  assert.equal(at('/', 'connecting'), 'in')
+  assert.equal(at('/', 'reconnecting'), 'in')
+  assert.equal(at('/', 'prejoin'), 'none')
+  assert.equal(at('/', 'ended'), 'none')
+  assert.equal(at('/', 'ended', 'The Gist you were in has ended.'), 'notice')
+  assert.equal(at('/gists/g1', 'ended', 'The Gist you were in has ended.'), 'none')
+  assert.equal(gistDock({ roomId: null, phase: null, pathname: '/', notice: null }), 'none')
+})
+
+test('losing a Gist away from its page is explained; leaving it or never getting in is not', () => {
+  assert.equal(lostNotice('live', 'ended'), 'The Gist you were in has ended.')
+  assert.equal(lostNotice('reconnecting', 'failed'), 'The connection to the Gist was lost.')
+  assert.equal(lostNotice('live', 'elsewhere'), 'The Gist is playing in another tab or on another device.')
+  assert.equal(lostNotice('live', 'gone'), 'You are no longer in the Gist.')
+  assert.equal(lostNotice('reconnecting', 'full'), 'Could not get back into the Gist.')
+  assert.equal(lostNotice('live', 'prejoin'), 'You left the Gist when you left HeyNaija.')
+  assert.equal(lostNotice('live', 'reconnecting'), null)
+  assert.equal(lostNotice('connecting', 'live'), null)
+  assert.equal(lostNotice('prejoin', 'full'), null)
+  assert.equal(lostNotice(null, 'ended'), null)
 })

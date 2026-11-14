@@ -1,29 +1,41 @@
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { getViewer } from '@/lib/api'
+import { GistDock } from '@/app/ui/gists/gist-dock'
+import { GistProvider } from '@/app/ui/gists/gist-provider'
 import { BottomNav, RightRail, Sidebar, TopBar } from '@/app/ui/shell'
 
 // The app proper: navigation on the left, the page in the middle, discovery on the
 // right. On a phone only the middle column shows, with a bar along the bottom.
+// GistProvider holds the Gist the member is in, so it keeps playing from page to
+// page; GistDock shows it at the foot of every page but its own.
 export default function MainLayout({ children }: LayoutProps<'/'>) {
   return (
-    <div className="town-square">
-      <Suspense fallback={null}>
-        <BirthDateGate />
-      </Suspense>
-      <a href="#main-content" className="skip-link">
-        Skip to content
-      </a>
-      <Sidebar />
-      <div className="square-content">
-        <TopBar />
-        <div className="square-columns">
-          <main id="main-content" className="square-feed">{children}</main>
-          <RightRail />
+    <GistProvider>
+      <div className="town-square">
+        <Suspense fallback={null}>
+          <BirthDateGate />
+        </Suspense>
+        <a href="#main-content" className="skip-link">
+          Skip to content
+        </a>
+        <Sidebar />
+        <div className="square-content">
+          <TopBar />
+          <div className="square-columns">
+            <main id="main-content" className="square-feed">
+              {children}
+              {/* It reads the current page (usePathname), which is known only per request. */}
+              <Suspense fallback={null}>
+                <GistDock />
+              </Suspense>
+            </main>
+            <RightRail />
+          </div>
         </div>
+        <BottomNav />
       </div>
-      <BottomNav />
-    </div>
+    </GistProvider>
   )
 }
 
