@@ -16,9 +16,11 @@ const aboutHref = (handle: string) => (handle === 'keke' || handle === 'keke_hn'
  * green identity tick, which means a person's NIN was checked. Tapping it opens
  * a small card saying it is an official, automated account, with a link to what
  * it does; Escape, a second tap or a tap elsewhere closes it. The profile also
- * says "Automated account" in words.
+ * says "Automated account" in words. On the account's own profile the link is
+ * left out where it would only lead back to that page, as in the apps.
  */
-export function OfficialBadge({ handle, size = 16 }: { handle: string; size?: number }) {
+export function OfficialBadge({ handle, size = 16, onProfile = false }: { handle: string; size?: number; onProfile?: boolean }) {
+  const about = aboutHref(handle)
   const cardId = useId()
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLSpanElement>(null)
@@ -59,9 +61,11 @@ export function OfficialBadge({ handle, size = 16 }: { handle: string; size?: nu
       <span id={cardId} className="identity-badge-tip official-badge-card" data-open={open || undefined} hidden={!open}>
         <strong className="block font-semibold">{OFFICIAL_LABEL}</strong>
         <span className="block">{OFFICIAL_AUTOMATED}</span>
-        <Link prefetch={false} href={aboutHref(handle)} className="mt-1 block font-semibold text-accent-strong hover:underline">
-          About this account
-        </Link>
+        {onProfile && about === `/u/${handle}` ? null : (
+          <Link prefetch={false} href={about} className="mt-1 block font-semibold text-accent-strong hover:underline">
+            About this account
+          </Link>
+        )}
       </span>
     </span>
   )
