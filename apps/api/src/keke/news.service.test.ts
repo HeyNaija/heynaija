@@ -22,7 +22,11 @@ import { KekeNews, NewsDecisionError } from './news.service.js'
 const site = 'https://heynaija.test'
 const sources: NewsSource[] = ['A', 'B', 'C', 'D', 'E'].map((x) => ({ id: x.toLowerCase(), name: `Outlet ${x}`, site: `https://${x.toLowerCase()}.example`, feed: `https://${x.toLowerCase()}.example/feed` }))
 
-const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000)
+const day = lagosDay()
+const at = (hour: number, minute = 0) => lagosTime(day, { hour, minute })
+/** The moment every date here is measured from: 05:30 today in Nigeria, when the draft is made. */
+const T0 = at(5, 30)
+const hoursAgo = (h: number) => new Date(T0.getTime() - h * 3_600_000)
 const rss = (items: { title: string; slug: string; at: Date; description?: string }[], host: string) =>
   `<?xml version="1.0"?><rss version="2.0"><channel><title>${host}</title>${items
     .map((i) => `<item><title><![CDATA[${i.title}]]></title><link>https://${host}/${i.slug}</link><pubDate>${i.at.toUTCString()}</pubDate><description><![CDATA[<p>${i.description ?? `${i.title}, in more words.`}</p>]]></description></item>`)
@@ -84,8 +88,6 @@ class Alerts implements KekeAlerts {
 
 const [ada, mod] = [randomUUID(), randomUUID()]
 const flags = new FeatureFlags(db, 'development', { ttlMs: 0 })
-const day = lagosDay()
-const at = (hour: number, minute = 0) => lagosTime(day, { hour, minute })
 let fetcher: Fetcher
 let model: GroupingModel
 let alerts: Alerts
@@ -112,24 +114,24 @@ beforeEach(async () => {
 after(() => pool.end())
 
 test('feeds: RSS and Atom items from the last 24 hours, as plain text, with nothing else taken', () => {
-  const items = parseFeed(FEEDS['https://a.example/feed']!, 'a', hoursAgo(24))
+  const items = parseFeed(FEEDS['https://a.example/feed']!, 'a', hoursAgo(24), 0, T0)
   assert.deepEqual(items.map((i) => i.title), ['Budget passes Senate (Outlet A)', 'Fuel price falls (Outlet A)', 'Floods in Kogi (Outlet A)', 'Eagles win (Outlet A)'])
   assert.equal(items[0]!.url, 'https://a.example/budget')
   assert.equal(items[0]!.description, 'Budget passes Senate (Outlet A), in more words.')
   const atom = `<feed xmlns="http://www.w3.org/2005/Atom"><entry><title type="html">Tinubu &amp; governors meet</title><link rel="alternate" href="https://x.example/meet"/><updated>${hoursAgo(1).toISOString()}</updated><summary>${'Long '.repeat(100)}</summary></entry><entry><title>No link</title><updated>${hoursAgo(1).toISOString()}</updated></entry></feed>`
-  const [entry, ...rest] = parseFeed(atom, 'x', hoursAgo(24))
+  const [entry, ...rest] = parseFeed(atom, 'x', hoursAgo(24), 0, T0)
   assert.equal(rest.length, 0)
   assert.equal(entry!.title, 'Tinubu & governors meet')
   assert.equal(entry!.url, 'https://x.example/meet')
   assert.ok(entry!.description.length <= 300 && entry!.description.endsWith('…'))
   // Tracking tags off the link, the feed's own footer off the description, paid-for items left out.
   const tidy = rss([{ title: 'Real', slug: 'real?utm_source=rss&id=7', at: hoursAgo(1), description: 'Words. The post Real appeared first on Punch Newspapers.' }, { title: 'Ad', slug: 'promoted/ad', at: hoursAgo(1) }], 'p.example')
-  assert.deepEqual(parseFeed(tidy, 'p', hoursAgo(24)).map((i) => [i.url, i.description]), [['https://p.example/real?id=7', 'Words.']])
+  assert.deepEqual(parseFeed(tidy, 'p', hoursAgo(24), 0, T0).map((i) => [i.url, i.description]), [['https://p.example/real?id=7', 'Words.']])
   // Zero-width joiners some outlets put in headlines are taken out.
-  assert.equal(parseFeed(rss([{ title: 'Obi \u200d\u200d\u200dis incorruptible', slug: 'obi', at: hoursAgo(1) }], 'p.example'), 'p', hoursAgo(24))[0]!.title, 'Obi is incorruptible')
+  assert.equal(parseFeed(rss([{ title: 'Obi \u200d\u200d\u200dis incorruptible', slug: 'obi', at: hoursAgo(1) }], 'p.example'), 'p', hoursAgo(24), 0, T0)[0]!.title, 'Obi is incorruptible')
   // A feed that writes Nigerian time as UTC is put right.
-  const ahead = rss([{ title: 'Late', slug: 'late', at: new Date(Date.now() + 30 * 60_000) }], 'p.example')
-  assert.ok(Math.abs(parseFeed(ahead, 'p', hoursAgo(24), 1)[0]!.publishedAt.getTime() - (Date.now() - 30 * 60_000)) < 5000)
+  const ahead = rss([{ title: 'Late', slug: 'late', at: new Date(T0.getTime() + 30 * 60_000) }], 'p.example')
+  assert.equal(parseFeed(ahead, 'p', hoursAgo(24), 1, T0)[0]!.publishedAt.getTime(), T0.getTime() - 30 * 60_000)
 })
 
 test('the rule: 3 or more different outlets, the 5 carried by most, and fewer than 3 such stories is no post', () => {
@@ -179,14 +181,14 @@ test('the 05:30 draft: Naija Today is made, the rule picks the stories, the oper
 })
 
 test('the day is built from hourly reads: a headline gone from its feed by 05:30 still counts', async () => {
-  // At 01:15 every feed shows its stories, yesterday's included: all 20 headlines are kept.
-  assert.deepEqual(await news.collect(at(1, 15)), { kept: 20, failed: [] })
+  // At 05:00 every feed shows its stories, yesterday's included: all 20 headlines are kept.
+  assert.deepEqual(await news.collect(at(5)), { kept: 20, failed: [] })
   // By 05:30 each feed has moved on and shows only its fuel story.
   for (const s of sources) fetcher.showing.set(s.feed, rss([{ title: `Fuel price falls (${s.name})`, slug: 'fuel', at: hoursAgo(3) }], `${s.id}.example`))
   assert.equal(await news.draft(at(5, 30)), 'waiting')
   assert.deepEqual((await news.today(at(6)))!.stories.map((s) => s.sentence.split(',')[0]), ['The fuel story', 'The budget story', 'The floods story'])
   // Read again, nothing is kept twice.
-  assert.deepEqual(await news.collect(at(6, 15)), { kept: 0, failed: [] })
+  assert.deepEqual(await news.collect(at(6)), { kept: 0, failed: [] })
 })
 
 test('headlines are kept 48 hours, and only the last 24 go into a draft', async () => {

@@ -108,7 +108,7 @@ export class KekeNews {
    */
   async collect(now = new Date()): Promise<{ kept: number; failed: string[] } | 'off'> {
     if (!(await this.flags.isEnabled('kekeNews', null))) return 'off'
-    const { items, failed } = await readFeeds(this.fetcher, this.sources, KEEP_HOURS)
+    const { items, failed } = await readFeeds(this.fetcher, this.sources, KEEP_HOURS, now)
     if (failed.length) this.log.warn(`could not read the feeds of ${failed.join(', ')}`)
     const kept = items.length
       ? await this.db
