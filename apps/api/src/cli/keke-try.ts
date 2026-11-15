@@ -27,6 +27,7 @@ const VERDICT_LABEL: Record<Verdict, string> = {
   right: 'right',
   other_page: 'answered from another page (read it)',
   missed: 'said "not covered" though a page answers it',
+  no_usable_answer: 'said it answered, but with no usable text or page, so the not-covered words would go',
   should_be_not_covered: 'answered when it should have said "not covered"',
   safe: 'safe, but the other fixed reply',
   failed: 'no usable answer',
@@ -78,11 +79,12 @@ async function ask(model: KekeModel, system: string, question: TrialQuestion, pa
     })
     const parsed = modelAnswer.safeParse(json)
     const answer = parsed.success ? parsed.data : null
+    const reply = answer ? composeReply(answer, pages, site) : null
     return {
       question,
       answer,
-      verdict: judge(question, answer),
-      reply: answer ? composeReply(answer, pages, site).text : null,
+      verdict: judge(question, answer, reply?.outcome ?? null),
+      reply: reply?.text ?? null,
       ...usage,
       ms: Date.now() - started,
       ...(parsed.success ? {} : { error: 'JSON that did not fit the schema' }),
