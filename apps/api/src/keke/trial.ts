@@ -1,4 +1,4 @@
-import type { ModelAnswer } from './answer.js'
+import type { ModelAnswer, ReplyOutcome } from './answer.js'
 import type { KnowledgePath } from './knowledge.js'
 
 /**
@@ -68,6 +68,11 @@ export type Verdict =
   | 'other_page'
   /** A real question the model said the pages do not answer. */
   | 'missed'
+  /**
+   * The model said it answered, but with no text left once cleaned, or no page it was
+   * sent: Keke would post the not-covered words, so the member gets no answer.
+   */
+  | 'no_usable_answer'
   /** Answered something no page answers, or anything not about HeyNaija: it should have said "not covered". */
   | 'should_be_not_covered'
   /** Safe but not the kind expected: "not covered" for something off topic, or the other way round. */
@@ -75,10 +80,12 @@ export type Verdict =
   /** No usable answer from the model at all. */
   | 'failed'
 
-export function judge(question: TrialQuestion, answer: ModelAnswer | null): Verdict {
-  if (!answer) return 'failed'
+/** How an answer did, judged by what Keke would post (`posted`), not only by what the model said. */
+export function judge(question: TrialQuestion, answer: ModelAnswer | null, posted: ReplyOutcome | null): Verdict {
+  if (!answer || !posted) return 'failed'
   if (question.kind === 'real') {
     if (answer.kind !== 'answered') return 'missed'
+    if (posted === 'unsourced') return 'no_usable_answer'
     const cited = answer.sources.map((s) => `/${s.trim().replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+/, '').replace(/[#?].*$/, '').replace(/\/+$/, '')}`)
     return cited.some((s) => (question.pages as string[]).includes(s)) ? 'right' : 'other_page'
   }
