@@ -1380,6 +1380,8 @@ export const KEKE_OUTCOMES = [
   // No usable answer: an error, a timeout, JSON that did not fit, or the model declining.
   'failed',
   'refused',
+  // The daily news: the day's headlines grouped into stories.
+  'drafted',
 ] as const
 
 export const kekeUsage = pgTable(
@@ -1403,6 +1405,56 @@ export const kekeUsage = pgTable(
   },
   (t) => [index('keke_usage_created_idx').on(t.createdAt)],
 )
+
+// Keke's daily news (docs/adr/0030): one draft a day, Nigerian time, made from the
+// outlets' feeds at 05:30, which a site moderator approves, edits or skips before it is
+// posted at 08:00. Its stories are what the moderator sees and what is posted:
+// [{ sentence, outlets: [{ id, name, title, url }], link, replyId? }].
+export const KEKE_NEWS_STATUSES = [
+  // Made and waiting for a moderator.
+  'waiting',
+  'approved',
+  'skipped',
+  // Nobody approved it by 08:00.
+  'missed',
+  'published',
+  // Fewer stories than the rule needs: no post that day.
+  'too_few',
+] as const
+
+// The headlines the outlets' feeds gave, read every hour and kept 48 hours (docs/adr/0030):
+// most feeds hold only their last few hours, so one read at 05:30 would miss the day.
+// Headline, link and a short description only; never article text.
+export const kekeNewsItems = pgTable(
+  'keke_news_items',
+  {
+    url: text('url').primaryKey(),
+    // The outlet's ID in NEWS_SOURCES.
+    outlet: text('outlet').notNull(),
+    title: text('title').notNull(),
+    description: text('description').notNull().default(''),
+    publishedAt: ts('published_at').notNull(),
+    seenAt: ts('seen_at').notNull().defaultNow(),
+  },
+  (t) => [index('keke_news_items_published_idx').on(t.publishedAt)],
+)
+
+export const kekeNewsDrafts = pgTable('keke_news_drafts', {
+  // The day in Nigeria the draft is for.
+  day: date('day').primaryKey(),
+  status: text('status', { enum: KEKE_NEWS_STATUSES }).notNull(),
+  stories: jsonb('stories').notNull().default([]),
+  // How many items the feeds gave and how many outlets answered, for /mod.
+  items: integer('items').notNull().default(0),
+  outlets: integer('outlets').notNull().default(0),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  // The site moderator who approved or skipped it; gone with their account.
+  decidedBy: uuid('decided_by').references(() => members.id, { onDelete: 'set null' }),
+  decidedAt: ts('decided_at'),
+  // The day's post in Naija Today, once published.
+  postId: uuid('post_id').references(() => posts.id, { onDelete: 'set null' }),
+  publishedAt: ts('published_at'),
+})
 
 // The months Keke reached its monthly cap in, so the operators are emailed once a month, not on every question.
 export const kekeBudgetAlerts = pgTable('keke_budget_alerts', {

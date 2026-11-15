@@ -898,7 +898,33 @@
         "moderator-tools",
         "rate-limits"
       ],
-      "notes": "Built 15 Nov 2026 (ADR 0030), behind the keke flag: on in development and staging, off in production, and needing ANTHROPIC_API_KEY or OPENROUTER_API_KEY on the server. Claude Haiku 5.5 answers (directly at Anthropic with its key, otherwise through OpenRouter); the kekeDeepSeek flag sends questions to DeepSeek V4.1 Flash through OpenRouter instead, for everyone or for a list of members, and each is the other's fallback. It reads only the <main> of eleven public pages, every hour; the model sorts a question as answered, not covered or off topic, and code posts the answer with its page's link, or fixed wording for the other two. 5 answers per member an hour and 20 a day, 3 replies per conversation, silence where Keke may not reply. Each call's tokens and cost are recorded without member or text, with a monthly cap (KEKE_MONTHLY_BUDGET_USD) and one email when it is reached; /mod shows the month by model. /about/keke and the privacy policy name the companies a question goes to on that server. pnpm keke:try compares the models on about 40 written questions. Not yet tried with a real key; the daily news roundup is the next step."
+      "notes": "Built 15 Nov 2026 (ADR 0030), behind the keke flag: on in development and staging, off in production, and needing ANTHROPIC_API_KEY or OPENROUTER_API_KEY on the server. Claude Haiku 5.5 answers (directly at Anthropic with its key, otherwise through OpenRouter); the kekeDeepSeek flag sends questions to DeepSeek V4.1 Flash through OpenRouter instead, for everyone or for a list of members, and each is the other's fallback. It reads only the <main> of eleven public pages, every hour; the model sorts a question as answered, not covered or off topic, and code posts the answer with its page's link, or fixed wording for the other two. 5 answers per member an hour and 20 a day, 3 replies per conversation, silence where Keke may not reply. Each call's tokens and cost are recorded without member or text, with a monthly cap (KEKE_MONTHLY_BUDGET_USD) and one email when it is reached; /mod shows the month by model. /about/keke and the privacy policy name the companies a question goes to on that server. pnpm keke:try compares the models on about 40 written questions. Not yet tried with a real key. The daily news is keke-news."
+    },
+    {
+      "id": "keke-news",
+      "name": "Keke's daily news",
+      "description": "Each morning, the Nigerian stories carried by three or more of ten outlets, one neutral sentence each, posted by Keke in Naija Today once a site moderator has approved them.",
+      "category": "discovery",
+      "priority": "P2",
+      "status": "implemented",
+      "availability": "not_live",
+      "evidence": [
+        "docs/adr/0030-keke.md",
+        "packages/db/drizzle/0054_keke_news.sql",
+        "apps/api/src/keke/news.service.ts",
+        "apps/api/src/keke/news-rule.ts",
+        "apps/api/src/keke/news-feeds.ts",
+        "apps/api/src/keke/news-sources.ts",
+        "apps/web/app/ui/keke-news.tsx",
+        "apps/web/app/(main)/about/keke/page.tsx",
+        "apps/api/src/keke/news.service.test.ts"
+      ],
+      "dependency": [
+        "keke",
+        "community-announcements",
+        "link-previews"
+      ],
+      "notes": "Built 15 Nov 2026 (ADR 0030), behind the kekeNews flag: on in development and staging, off in production. The outlets' feeds are read every hour and their headlines, links and short descriptions kept 48 hours, since most feeds hold only a few hours. At 05:30 Nigerian time the model groups the last 24 hours' headlines into stories with one neutral sentence each; code keeps stories carried by 3 or more outlets, the 5 carried by most, and makes no post with fewer than 3. A site moderator edits, approves or skips it on /mod until 08:00, when an approved draft is posted in Naija Today as its daily announcement with a reply per story naming the outlets and one outlet's link. Naija Today is made with the first draft and only Keke starts posts there. The outlet list awaits the owner's confirmation; not yet run against the live feeds with a real model."
     },
     {
       "id": "notification-preferences",

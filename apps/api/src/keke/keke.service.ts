@@ -24,6 +24,8 @@ export const KEKE_ALERTS = Symbol('KEKE_ALERTS')
 /** Tells the operators about Keke. Never throws. */
 export interface KekeAlerts {
   budgetReached(spentUsd: number, budgetUsd: number): Promise<void>
+  /** The day's news draft is waiting for a site moderator on /mod. */
+  newsWaiting(day: string, stories: number): Promise<void>
 }
 
 export type Outcome = (typeof KEKE_OUTCOMES)[number]
@@ -139,9 +141,10 @@ export class KekeService {
     return { done: 'failed' }
   }
 
-  private async record(model: KekeModel, usage: ModelUsage, outcome: Outcome, started: number): Promise<void> {
+  /** One call to a model, for the cap and /mod: no member, post or text. */
+  async record(model: KekeModel, usage: ModelUsage, outcome: Outcome, started: number, job: 'answer' | 'news' = 'answer'): Promise<void> {
     await this.db.insert(kekeUsage).values({
-      job: 'answer',
+      job,
       model: model.id,
       via: model.via,
       inputTokens: usage.inputTokens,
@@ -162,7 +165,7 @@ export class KekeService {
   }
 
   /** At or past the month's cap. The first time in a month, the operators are emailed. */
-  private async overBudget(): Promise<boolean> {
+  async overBudget(): Promise<boolean> {
     const spent = await this.spentThisMonth()
     if (spent < this.settings.monthlyBudgetUsd) return false
     const first = await this.db
