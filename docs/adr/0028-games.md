@@ -233,7 +233,11 @@ API starts (`ensureArena`) together with Chess Arena and its place as Chess Aren
 moderator. It has no sign-in: nothing in Kratos, so nobody can sign in to it, and
 its handle is reserved (`RESERVED_HANDLES`), so nobody can take it. It carries an
 `automated` badge, shown as "Automated" beside its name on posts and "Automated
-account" on its profile, and is notified of nothing. If someone already had
+account" on its profile, and is notified of nothing. (Changed on 15 November 2026,
+by the owner, for all of HeyNaija's automated accounts: posts show an official
+tick, a shield so it is not read as the NIN identity tick, and tapping it says
+"Official HeyNaija account" and "Automated: nobody signs in to it"; the profile
+shows the tick and "Automated account".) If someone already had
 `@arbiter`, it takes `@arbiter_hn` and leaves theirs alone.
 
 In Chess Arena only The Arbiter starts posts; members reply, without joining. The

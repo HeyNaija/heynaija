@@ -6,6 +6,7 @@ import { setBlock, setFollow, setMute } from '@/app/actions'
 import { LichessLine } from '@/app/(main)/games/chess/_components/lichess-line'
 import { Avatar } from '@/app/ui/avatar'
 import { FounderBadge } from '@/app/ui/founder-badge'
+import { OfficialBadge } from '@/app/ui/official-badge'
 import { IdentityBadge } from '@/app/ui/identity-badge'
 import { DotsIcon } from '@/app/ui/icons'
 import { LocalTime } from '@/app/ui/local-time'
@@ -93,6 +94,7 @@ async function ProfileView({ params, searchParams }: Props) {
                 {profile.displayName ?? `@${profile.handle}`}
                 {profile.identityBadge ? <> <IdentityBadge /></> : null}
                 {profile.founderBadge ? <> <FounderBadge size={18} /></> : null}
+                {profile.automatedBadge ? <> <OfficialBadge handle={profile.handle} size={18} /></> : null}
               </h1>
               {profile.displayName ? <p className="mt-1 break-words text-sm text-muted">@{profile.handle}</p> : null}
               {profile.automatedBadge ? <span className="chip mt-2">Automated account</span> : null}
