@@ -461,6 +461,48 @@ export async function getHighlightsRules(): Promise<HighlightsRules> {
   return res.json()
 }
 
+/**
+ * Keke, the help bot (docs/adr/0030), as this server runs it: whether it answers
+ * everyone (`live`) or anyone at all (`inUse`, a list included), which models it
+ * can use and who a question is sent to, and its limits. Read from the API so
+ * /about/keke and /privacy never say more or less than is true.
+ */
+export type KekeAbout = {
+  live: boolean
+  inUse: boolean
+  models: { family: 'haiku' | 'deepseek'; name: string; maker: string; via: 'anthropic' | 'openrouter' }[]
+  firstChoice: 'haiku' | 'deepseek' | null
+  trial: boolean
+  pages: string[]
+  answerMax: number
+  perHour: number
+  perDay: number
+  perConversation: number
+}
+
+export async function getKekeAbout(): Promise<KekeAbout> {
+  const res = await api('/v1/keke/about')
+  if (!res.ok) throw new Error(`API /v1/keke/about responded ${res.status}`)
+  return res.json()
+}
+
+export type KekeOutcome = 'answered' | 'not_covered' | 'off_topic' | 'unsourced' | 'failed' | 'refused'
+
+/** Keke's month, for site moderators on /mod: each model's calls by outcome and cost, and the cap. */
+export type KekeMonth = {
+  month: string
+  budgetUsd: number
+  spentUsd: number
+  stopped: boolean
+  models: { model: string; name: string; via: string; calls: number; costUsd: number; outcomes: Partial<Record<KekeOutcome, number>> }[]
+}
+
+/** Null for anyone who is not a site moderator. */
+export async function getKekeMonth(): Promise<KekeMonth | null> {
+  const res = await api('/v1/keke/month')
+  return res.ok ? res.json() : null
+}
+
 export type IdeaKind = 'idea' | 'problem'
 export type IdeaStatus = 'under_review' | 'planned' | 'in_progress' | 'shipped' | 'not_now' | 'duplicate'
 export type IdeaGroup = 'open' | 'shipped' | 'closed'

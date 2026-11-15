@@ -37,7 +37,9 @@ import { mayAnnounce, nextAnnouncementAt } from '../communities/announcements.js
 import { excerpt, notify, notifyCommunity } from '../notifications/notifications.service.js'
 import { graphemes } from '../text.js'
 import { Refreshing } from '../refreshing.js'
-import { ARBITER_ID, ARBITER_ONLY } from '../games/chess/arena-ids.js'
+import { BOT_ONLY } from '../members/automated.js'
+import { KEKE_ID } from '../keke/keke-ids.js'
+import { KEKE_JOBS, type KekeJobs } from '../keke/keke-jobs.js'
 import { hiddenFromPlayer } from '../games/chess/hidden-replies.js'
 import { memberOpensGist } from '../gists/gist-open.js'
 import { DB } from '../tokens.js'
@@ -738,6 +740,9 @@ export class PostsService {
     @Optional() @Inject(MEDIA_URLS) private readonly urls: MediaUrls = localMediaUrls(videoCfg.filesBase),
     // Moves a post's files when its sensitive mark changes. Optional so tests about posts alone need no queue.
     @Optional() @Inject(MEDIA_JOBS) private readonly placement?: PlacementJobs,
+    // Asks Keke to answer a post that mentions it (docs/adr/0030). Optional for the same reason, and so
+    // Keke, which posts its answers through this service, can depend on it without a cycle.
+    @Optional() @Inject(KEKE_JOBS) private readonly keke?: KekeJobs,
   ) {}
 
   /**
@@ -1862,8 +1867,8 @@ export class PostsService {
         .where(and(eq(communities.slug, communitySlug), eq(communities.active, true), communityOpenTo(authorId)))
       if (!community) throw new CommunityNotFoundError('no such community')
       // Chess Arena and Game Night (docs/adr/0028): The Arbiter starts the posts; members reply.
-      const arbiterOnly = ARBITER_ONLY[communitySlug]
-      if (arbiterOnly && authorId !== ARBITER_ID) throw new NotACommunityMemberError(arbiterOnly)
+      const botOnly = BOT_ONLY[communitySlug]
+      if (botOnly && authorId !== botOnly.authorId) throw new NotACommunityMemberError(botOnly.refusal)
       if (!community.joined && !anyMember) throw new NotACommunityMemberError('join the community to post in it')
       if (announce && !community.mayAnnounce) throw new NotACommunityModeratorError("only its moderators can notify a community's members")
       communityId = community.id
@@ -1880,6 +1885,7 @@ export class PostsService {
     // once the post exists (see `LinksService.request`).
     const linkUrl = previewUrlOf(text)
     let gistHost: string | null = null
+    let askKeke = false
     const created = await this.db.transaction(async (tx) => {
       if (parent) {
         // Locking the root waits out a change to its reply audience, so a reply
@@ -2015,7 +2021,11 @@ export class PostsService {
       // Someone told about this post as a reply, a quote or a story's update is not
       // told again that it mentions them, and only the first few others named are told at all.
       const replyRecipient = parent?.authorId ?? gistHost
-      const named = (await recordMentions(tx, { id: row!.id, authorId, text })).filter(
+      const mentionable = await recordMentions(tx, { id: row!.id, authorId, text })
+      // Keke answers a mention in a conversation, never in a Gist and never its own (docs/adr/0030).
+      // recordMentions has already left Keke out if either side blocked the other.
+      askKeke = !gist && authorId !== KEKE_ID && mentionable.includes(KEKE_ID)
+      const named = mentionable.filter(
         (id) => id !== replyRecipient && id !== quoted?.authorId && !followers.includes(id),
       )
       const told = gist ? new Set(await this.whoOpensGist(tx, gist, [...named, ...(replyRecipient ? [replyRecipient] : [])], gistAccess)) : null
@@ -2040,6 +2050,7 @@ export class PostsService {
     })
     // Its pictures or video were published before it was marked: they move to the private place (ADR 0025).
     if (created.marked && (images.length > 0 || video)) await this.placeMedia(created.id)
+    if (askKeke) await this.queueKeke(created.id)
     return { id: created.id, linkUrl: created.linkUrl }
   }
 
@@ -2098,6 +2109,18 @@ export class PostsService {
     // Its pictures and video follow the mark: private while it is on (ADR 0025).
     if (changed.length > 0) await this.placeMedia(postId)
     return changed.length > 0
+  }
+
+  /**
+   * Asks Keke to answer a post, once it is committed. The post is made already, so a
+   * queue that cannot take the job does not fail it: Keke just does not answer.
+   */
+  private async queueKeke(postId: string): Promise<void> {
+    try {
+      await this.keke?.answer(postId)
+    } catch (err) {
+      this.log.warn(`could not ask Keke to answer ${postId}: ${(err as Error).message}`)
+    }
   }
 
   /**

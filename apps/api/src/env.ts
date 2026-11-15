@@ -254,6 +254,27 @@ const schema = z.object({
   // Games, chess tournaments (docs/adr/0028, phase 6): how often a live Lichess
   // tournament's standings are read. Two minutes; the end-to-end tests make it shorter.
   CHESS_STANDINGS_EVERY_MS: z.coerce.number().int().min(5_000).max(3_600_000).default(120_000),
+  // Keke, HeyNaija's help bot (docs/adr/0030). Either key turns it on; with neither
+  // it is off everywhere, whatever the keke flag says. With ANTHROPIC_API_KEY,
+  // Claude Haiku 5.5 is asked directly at Anthropic; with OPENROUTER_API_KEY,
+  // DeepSeek V4.1 Flash (the kekeDeepSeek flag) and, without an Anthropic key,
+  // Claude Haiku 5.5 go through OpenRouter. The base URLs are for tests' stand-ins.
+  ANTHROPIC_API_KEY: optional(z.string().min(1)),
+  ANTHROPIC_BASE_URL: optional(z.url().transform((u) => u.replace(/\/$/, ''))),
+  OPENROUTER_API_KEY: optional(z.string().min(1)),
+  OPENROUTER_BASE_URL: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z
+      .url()
+      .default('https://openrouter.ai/api/v1')
+      .transform((u) => u.replace(/\/$/, '')),
+  ),
+  // What Keke may spend on its model in a calendar month (UTC), in US dollars. At
+  // the cap it stops answering until the next month, and the operators are emailed once.
+  KEKE_MONTHLY_BUDGET_USD: z.preprocess((value) => (value === '' ? undefined : value), z.coerce.number().min(0).max(1000).default(10)),
+  // Who is emailed when Keke reaches its cap. Without it, SAFETY_ALERT_EMAIL; without
+  // either it is only logged. Needs the SMTP settings above.
+  KEKE_ALERT_EMAIL: optional(z.email()),
   // Lets browsers subscribe with an http://127.0.0.1 address, for the end-to-end
   // tests' stand-in push service. Only allowed while WEB_PUBLIC_URL is on this machine.
   PUSH_ALLOW_LOOPBACK: z
@@ -288,6 +309,9 @@ const checked = schema.superRefine((env, ctx) => {
   }
   if (Boolean(env.CLOUDFLARE_ZONE_ID) !== Boolean(env.CLOUDFLARE_PURGE_TOKEN)) {
     ctx.addIssue({ code: 'custom', path: ['CLOUDFLARE_PURGE_TOKEN'], message: 'set both CLOUDFLARE_ZONE_ID and CLOUDFLARE_PURGE_TOKEN, or neither' })
+  }
+  if (env.KEKE_ALERT_EMAIL && !env.SMTP_CONNECTION_URI) {
+    ctx.addIssue({ code: 'custom', path: ['KEKE_ALERT_EMAIL'], message: 'KEKE_ALERT_EMAIL needs SMTP_CONNECTION_URI to send anything' })
   }
   if (env.SAFETY_ALERT_EMAIL && !env.SMTP_CONNECTION_URI) {
     ctx.addIssue({ code: 'custom', path: ['SAFETY_ALERT_EMAIL'], message: 'SAFETY_ALERT_EMAIL needs SMTP_CONNECTION_URI to send anything' })

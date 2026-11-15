@@ -8,6 +8,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgSchema,
   pgTable,
   primaryKey,
@@ -1363,6 +1364,52 @@ export const featureFlagChanges = pgTable(
   },
   (t) => [index('feature_flag_changes_key_created_idx').on(t.flagKey, t.createdAt)],
 )
+
+// Keke, HeyNaija's help bot (docs/adr/0030): one row for every call to the model
+// behind @keke, for its monthly cap and its numbers on /mod. Nothing about who
+// asked or what: no member, no post and no text, so the data export and account
+// erasure have nothing to do here.
+export const KEKE_OUTCOMES = [
+  // The model's answer, posted with a link to the page it came from.
+  'answered',
+  // Our own fixed wording: the pages do not say, or the question is not about HeyNaija.
+  'not_covered',
+  'off_topic',
+  // It said it answered but named no page it was sent, so the not-covered wording went instead.
+  'unsourced',
+  // No usable answer: an error, a timeout, JSON that did not fit, or the model declining.
+  'failed',
+  'refused',
+] as const
+
+export const kekeUsage = pgTable(
+  'keke_usage',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // What the call was for: answering a mention (later also drafting the daily news).
+    job: text('job', { enum: ['answer', 'news'] }).notNull(),
+    // The model as named to whoever ran it: claude-haiku-5-5, deepseek/deepseek-v4.1-flash-1017.
+    model: text('model').notNull(),
+    // Who it was sent to: Anthropic directly, or OpenRouter.
+    via: text('via', { enum: ['anthropic', 'openrouter'] }).notNull(),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    // US dollars: as OpenRouter reports it, or worked out from Anthropic's prices.
+    costUsd: numeric('cost_usd', { precision: 12, scale: 6, mode: 'number' }).notNull().default(0),
+    outcome: text('outcome', { enum: KEKE_OUTCOMES }).notNull(),
+    // How long the call took, in milliseconds.
+    ms: integer('ms'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('keke_usage_created_idx').on(t.createdAt)],
+)
+
+// The months Keke reached its monthly cap in, so the operators are emailed once a month, not on every question.
+export const kekeBudgetAlerts = pgTable('keke_budget_alerts', {
+  // The first day of the month, UTC.
+  month: date('month').primaryKey(),
+  sentAt: ts('sent_at').notNull().defaultNow(),
+})
 
 // ---------------------------------------------------------------------------
 // Games (docs/games/GAMES.md, docs/adr/0028). Their own Postgres schema, kept

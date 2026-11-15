@@ -117,6 +117,20 @@ every five minutes (`KENO_DRAW_EVERY_MS`, in milliseconds) and gives each member
 free tokens a day (`KENO_DAILY_TOKENS`). Community chess tournaments' standings are read
 from Lichess every two minutes (`CHESS_STANDINGS_EVERY_MS`).
 
+Keke, the help bot ([ADR 0030](docs/adr/0030-keke.md)), answers members who mention
+@keke from the site's own pages. It is off without a model key: put
+`ANTHROPIC_API_KEY` (Claude Haiku 5.5, directly at Anthropic) and/or
+`OPENROUTER_API_KEY` (DeepSeek V4.1 Flash, and Haiku without an Anthropic key) in
+`.env` and restart the API; the `keke` and `kekeDeepSeek` flags then decide who it
+answers and with which model. It reads the pages from `WEB_PUBLIC_URL`, so the web app
+must be running there. `KEKE_MONTHLY_BUDGET_USD` (default 10) caps its monthly spend.
+Before turning it on anywhere, try both models on about 40 written questions (real
+money, about ten cents a model; nothing is written to the database):
+
+```bash
+pnpm keke:try --site https://staging.heynaija.ng
+```
+
 The demo members can sign in as `<handle>@demo.heynaija.test` with the code
 Mailpit catches; `pnpm demo:clean` removes them and everything they did.
 

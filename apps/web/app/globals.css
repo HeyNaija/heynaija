@@ -2739,3 +2739,10 @@ a.result-row:hover { color: var(--accent-strong); }
 .game-tabs { position: static; gap: 20px; background: transparent; overflow-x: auto; scrollbar-width: none; }
 .game-score { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-top: 10px; }
 .game-score strong { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+
+/* Numbers on /mod, such as Keke's month (ADR 0030): plain rows that scroll sideways on a phone rather than squeeze. */
+.mod-table-wrap { margin-top: 12px; overflow-x: auto; }
+.mod-table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.mod-table th, .mod-table td { border-top: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: top; white-space: nowrap; }
+.mod-table thead th { border-top: 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+.mod-table tbody th { min-width: 11rem; font-weight: 600; white-space: normal; }
