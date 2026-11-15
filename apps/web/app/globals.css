@@ -2753,3 +2753,28 @@ a.result-row:hover { color: var(--accent-strong); }
 .mod-table th, .mod-table td { border-top: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: top; white-space: nowrap; }
 .mod-table thead th { border-top: 0; color: var(--muted); font-size: 12px; font-weight: 600; }
 .mod-table tbody th { min-width: 11rem; font-weight: 600; white-space: normal; }
+
+/* Trivia (docs/adr/0028, phase 7). The stage shows one thing at a time: the start time, the countdown, the question or
+   the answer. Choices are full-width keys from the existing tokens, two to a row from tablet width; the one picked takes
+   the accent, and at the reveal the right one is the soft accent. The time left is a bar that shrinks. No new colours. */
+.trivia-big { font-size: 17px; font-weight: 600; }
+.trivia-countdown { font-size: 56px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: var(--accent-strong); }
+.trivia-left { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+.trivia-bar { height: 6px; overflow: hidden; border-radius: 999px; background: var(--line); }
+.trivia-bar > span { display: block; height: 100%; background: var(--accent); transform-origin: left; transition: transform 100ms linear; }
+.trivia-prompt { font-size: 18px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.trivia-choices { display: grid; grid-template-columns: 1fr; gap: 8px; padding: 0; list-style: none; }
+@media (min-width: 560px) { .trivia-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.trivia-choice {
+  display: flex; min-height: var(--touch-target); align-items: center; justify-content: space-between; gap: 8px;
+  border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--panel); color: var(--ink);
+  padding: 10px 14px; font-size: 15px; font-weight: 600; text-align: left; overflow-wrap: anywhere;
+}
+button.trivia-choice:hover:not(:disabled) { border-color: var(--accent); }
+.trivia-choice[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.trivia-choice:disabled:not([aria-pressed="true"]) { opacity: 0.5; }
+.trivia-choice.is-shown[data-right] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.trivia-choice.is-shown[data-yours]:not([data-right]) { border-color: var(--danger); }
+.trivia-typed { border: 1px solid var(--accent); border-radius: var(--r-control); padding: 10px 14px; font-weight: 600; }
+.trivia-edit { border: 1px solid var(--line); border-radius: var(--r-control); padding: 12px; }
+@media (prefers-reduced-motion: reduce) { .trivia-bar > span { transition: none; } }

@@ -111,6 +111,8 @@ export const ADULT_ASSURANCE_REQUIRED = {
   gist_stage: 'declared',
   /** Posting a video, at upload and when it goes on a post (ADR 0019, section 4.6, which needs no age check). */
   video_posting: 'declared',
+  /** Hosting a trivia round: writing the questions everyone sees (docs/adr/0028, phase 7). Under 18 play, never host. */
+  trivia_host: 'declared',
   /** Draft constitution Article 2: voting members are verified adults. */
   governance_vote: 'verified',
 } as const satisfies Record<string, AgeAssurance>

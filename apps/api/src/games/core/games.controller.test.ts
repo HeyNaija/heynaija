@@ -22,14 +22,26 @@ test('an allow-list keeps Games to the members on it', () => {
   assert.equal(resolveFlag('games', 'production', { enabled: true, allow: new Set() }, 'bayo'), true)
 })
 
-test('GET /v1/games lists the registry, without the providers', () => {
-  const { games } = new GamesController({} as never, {} as never, {} as never).list()
+const viewer = { member: { id: 'm1' } } as never
+
+test('GET /v1/games lists the registry, without the providers', async () => {
+  const flags = { isEnabled: async () => true }
+  const { games } = await new GamesController({} as never, {} as never, {} as never, flags).list(viewer)
   assert.deepEqual(
     games.map((game) => [game.slug, game.status]),
     [
       ['chess', 'beta'],
       ['keno', 'beta'],
+      ['trivia', 'beta'],
     ],
   )
   for (const game of games) assert.equal('providers' in game, false)
+})
+
+test('a game with its own flag is listed only where that flag is on for the member (Trivia)', async () => {
+  const asked: string[] = []
+  const flags = { isEnabled: async (key: string) => (asked.push(key), key !== 'trivia') }
+  const { games } = await new GamesController({} as never, {} as never, {} as never, flags as never).list(viewer)
+  assert.deepEqual(games.map((g) => g.slug), ['chess', 'keno'])
+  assert.deepEqual(asked, ['trivia'])
 })

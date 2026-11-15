@@ -10,8 +10,10 @@ import { lagosMonth } from './seasons.js'
 // erased) are left out, as from feeds; members with nothing yet are not ranked;
 // ties share a rank; and the viewer's own row is always given.
 
-export const BOARDS = ['score', 'chess', 'keno'] as const
+export const BOARDS = ['score', 'chess', 'keno', 'trivia'] as const
 export type Board = (typeof BOARDS)[number]
+/** Boards of games that rank by points scored (Keno, Trivia); the others count XP. */
+const POINT_BOARDS: ReadonlySet<Board> = new Set(['keno', 'trivia'])
 export const FILTERS = ['everyone', 'following', 'community'] as const
 export type Filter = (typeof FILTERS)[number]
 
@@ -37,7 +39,7 @@ const isPeriod = (p: string) => p === 'all' || /^\d{4}-(0[1-9]|1[0-2])$/.test(p)
 /** The rows a board ranks: member, value and when it last changed (earlier first among ties). */
 function source(board: Board, period: Period): SQL {
   if (board === 'score') return sql`select member_id, xp as value, updated_at from games.xp_totals where period = ${period}`
-  const column = board === 'keno' ? 'points' : 'xp'
+  const column = POINT_BOARDS.has(board) ? 'points' : 'xp'
   if (period === 'all') {
     return sql`select member_id, coalesce((stats->>${column})::int, 0) as value, updated_at from games.game_profiles where game = ${board}`
   }
@@ -83,7 +85,7 @@ export async function leaderboard(db: Db, viewerId: string, q: BoardQuery): Prom
     value: Number(r.value),
     you: r.member_id === viewerId,
   })
-  return { board: q.board, unit: q.board === 'keno' ? 'points' : 'xp', period, filter, community, rows: top.rows.map(row), you: me ? row(me) : null }
+  return { board: q.board, unit: POINT_BOARDS.has(q.board) ? 'points' : 'xp', period, filter, community, rows: top.rows.map(row), you: me ? row(me) : null }
 }
 
 /** Seasons that have any scores, newest first, for the season picker. */

@@ -22,6 +22,16 @@ export const XP_RULES = {
     /** … up to this much a round. */
     pointsXpMax: 20,
   },
+  trivia: {
+    /** Each round you answered at least one question in. */
+    played: 2,
+    /** Plus 1 XP for each right answer … */
+    right: 1,
+    /** … and 2 more for each question you got right first … */
+    first: 2,
+    /** … up to this much a round. */
+    extraMax: 20,
+  },
   competition: {
     /** Everyone who took part, whatever their place. */
     entered: 5,
@@ -47,6 +57,12 @@ export function xpFor(e: ScoredEvent): number {
       const r = XP_RULES.keno
       const points = Number(e.data.points ?? 0)
       return r.round + Math.min(r.pointsXpMax, Math.floor(Math.max(0, points) / r.pointsPerXp))
+    }
+    case 'trivia_round_played': {
+      const r = XP_RULES.trivia
+      const right = Math.max(0, Number(e.data.right ?? 0))
+      const firsts = Math.max(0, Number(e.data.firsts ?? 0))
+      return r.played + Math.min(r.extraMax, right * r.right + firsts * r.first)
     }
     case 'competition_placed': {
       const r = XP_RULES.competition

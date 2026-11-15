@@ -1,5 +1,6 @@
 import { chessManifest } from '../chess/manifest.js'
 import { kenoManifest } from '../keno/manifest.js'
+import { triviaManifest } from '../trivia/manifest.js'
 import type { GameManifest } from './manifest.js'
 
 /**
@@ -7,7 +8,7 @@ import type { GameManifest } from './manifest.js'
  * folder beside chess/ and keno/ and a line here; game slugs in the `games`
  * schema are plain text, so no migration (docs/adr/0028).
  */
-export const GAME_REGISTRY: readonly GameManifest[] = [chessManifest, kenoManifest]
+export const GAME_REGISTRY: readonly GameManifest[] = [chessManifest, kenoManifest, triviaManifest]
 
 /** The game with this slug, or undefined: services check slugs here, never in the database. */
 export const gameBySlug = (slug: string): GameManifest | undefined => GAME_REGISTRY.find((game) => game.slug === slug)

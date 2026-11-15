@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { ChessModule } from './chess/chess.module.js'
 import { GamesCoreModule } from './core/games-core.module.js'
 import { KenoModule } from './keno/keno.module.js'
+import { TriviaModule } from './trivia/trivia.module.js'
 
 /**
  * The Games section (docs/games/GAMES.md, docs/adr/0028). Built on the global
@@ -9,7 +10,7 @@ import { KenoModule } from './keno/keno.module.js'
  * limits. Behind the `games` flag (docs/feature-flags.md).
  */
 @Module({
-  imports: [GamesCoreModule, ChessModule, KenoModule],
+  imports: [GamesCoreModule, ChessModule, KenoModule, TriviaModule],
   // Account erasure (AppModule) asks chess to give back a member's Lichess token.
   exports: [ChessModule],
 })

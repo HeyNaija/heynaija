@@ -1863,3 +1863,140 @@ export const kenoTickets = gamesSchema.table(
     check('keno_tickets_numbers_check', sql.raw('cardinality(numbers) between 1 and 10')),
   ],
 )
+
+// --- Trivia (docs/adr/0028, phase 7) ------------------------------------------
+// A host's round of questions. Live rounds open one question at a time, each for
+// a set number of seconds; answers are kept apart from posts, so nothing a player
+// typed can show anywhere before its question closes. Who answered first is the
+// database's own clock, never a browser's.
+
+export const triviaRounds = gamesSchema.table(
+  'trivia_rounds',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    hostId: uuid('host_id')
+      .notNull()
+      .references(() => members.id),
+    // Where The Arbiter posts its thread and results; Game Night when null.
+    communityId: uuid('community_id').references(() => communities.id),
+    title: text('title').notNull(),
+    format: text('format').notNull().default('live'),
+    status: text('status').notNull().default('draft'),
+    startsAt: ts('starts_at').notNull(),
+    secondsPerQuestion: integer('seconds_per_question').notNull().default(20),
+    // The next question opens by itself a few seconds after each reveal.
+    autoAdvance: boolean('auto_advance').notNull().default(false),
+    threadPostId: uuid('thread_post_id'),
+    resultPostId: uuid('result_post_id'),
+    // Raised with every change players should see, for their long-polls.
+    version: integer('version').notNull().default(0),
+    // When the host last did anything, so an abandoned round ends by itself.
+    activeAt: ts('active_at').notNull().defaultNow(),
+    // When the last question closed (or the host ended it): review runs from here.
+    endedAt: ts('ended_at'),
+    publishedAt: ts('published_at'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('trivia_rounds_status_idx').on(t.status, t.startsAt),
+    index('trivia_rounds_host_idx').on(t.hostId),
+    check('trivia_rounds_status_check', sql.raw(`status in ('draft', 'scheduled', 'live', 'reviewing', 'published', 'cancelled')`)),
+    check('trivia_rounds_format_check', sql.raw(`format in ('live')`)),
+    check('trivia_rounds_seconds_check', sql.raw('seconds_per_question between 10 and 60')),
+  ],
+)
+
+export const triviaQuestions = gamesSchema.table(
+  'trivia_questions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    roundId: uuid('round_id')
+      .notNull()
+      .references(() => triviaRounds.id),
+    position: integer('position').notNull(),
+    // 'choice': one of `choices` is right; 'typed': any of `accepted`, as the matcher reads it.
+    kind: text('kind').notNull(),
+    prompt: text('prompt').notNull(),
+    choices: text('choices').array(),
+    correctChoice: smallint('correct_choice'),
+    accepted: text('accepted').array(),
+    explanation: text('explanation'),
+    opensAt: ts('opens_at'),
+    closesAt: ts('closes_at'),
+    judgedAt: ts('judged_at'),
+    voidedAt: ts('voided_at'),
+    revealPostId: uuid('reveal_post_id'),
+    // The first three right answers, kept as judged: [{ memberId, ms }].
+    firsts: jsonb('firsts').notNull().default(sql`'[]'::jsonb`),
+    answered: integer('answered').notNull().default(0),
+    rightCount: integer('right_count').notNull().default(0),
+  },
+  (t) => [
+    unique('trivia_questions_round_position_unique').on(t.roundId, t.position),
+    index('trivia_questions_due_idx').on(t.closesAt).where(sql`judged_at is null and closes_at is not null`),
+    check('trivia_questions_kind_check', sql.raw(`kind in ('choice', 'typed')`)),
+    check(
+      'trivia_questions_answer_check',
+      sql.raw(
+        `(kind = 'choice' and cardinality(choices) between 2 and 4 and correct_choice between 0 and cardinality(choices) - 1)` +
+          ` or (kind = 'typed' and cardinality(accepted) >= 1) or prompt = ''`,
+      ),
+    ),
+    check('trivia_questions_window_check', sql.raw('(opens_at is null) = (closes_at is null) and (closes_at is null or closes_at > opens_at)')),
+  ],
+)
+
+export const triviaAnswers = gamesSchema.table(
+  'trivia_answers',
+  {
+    questionId: uuid('question_id')
+      .notNull()
+      .references(() => triviaQuestions.id),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    roundId: uuid('round_id')
+      .notNull()
+      .references(() => triviaRounds.id),
+    choice: smallint('choice'),
+    text: text('text'),
+    // `text` as the matcher compares it: lower case, no accents, no spaces or punctuation.
+    normalised: text('normalised'),
+    // Set when the question is judged; the host may accept more after.
+    correct: boolean('correct'),
+    acceptedBy: uuid('accepted_by'),
+    // The database's clock when the answer was written, to the microsecond.
+    answeredAt: ts('answered_at').notNull().default(sql`clock_timestamp()`),
+    // Written order, for two answers in the same microsecond.
+    seq: integer('seq').generatedAlwaysAsIdentity(),
+    // Among the right answers: 1 for the first, and so on.
+    place: integer('place'),
+    points: integer('points').notNull().default(0),
+  },
+  (t) => [
+    primaryKey({ columns: [t.questionId, t.memberId] }),
+    index('trivia_answers_member_idx').on(t.memberId),
+    index('trivia_answers_round_idx').on(t.roundId),
+    check('trivia_answers_one_kind_check', sql.raw('(choice is null) <> (text is null)')),
+  ],
+)
+
+// A player's round as published: points, right answers, firsts, time and place.
+export const triviaResults = gamesSchema.table(
+  'trivia_results',
+  {
+    roundId: uuid('round_id')
+      .notNull()
+      .references(() => triviaRounds.id),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id),
+    points: integer('points').notNull(),
+    rightCount: integer('right_count').notNull(),
+    firsts: integer('firsts').notNull(),
+    // Milliseconds from each question's opening to the member's right answer, added up: the tiebreak.
+    timeMs: integer('time_ms').notNull(),
+    place: integer('place').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.roundId, t.memberId] }), index('trivia_results_member_idx').on(t.memberId)],
+)

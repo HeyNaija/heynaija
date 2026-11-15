@@ -127,6 +127,12 @@ export const FLAGS = {
     owner: 'keke',
     defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
   },
+  trivia: {
+    description:
+      'Trivia in Games (docs/adr/0028, phase 7): live rounds of questions hosted by site moderators, answered at once by members, with who was first decided by the server. Needs `games` too. Turning it off hides Trivia and stops its background work; rounds and results stay.',
+    owner: 'games',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
 } as const satisfies Record<string, FlagDefinition>
 
 export type FlagKey = keyof typeof FLAGS

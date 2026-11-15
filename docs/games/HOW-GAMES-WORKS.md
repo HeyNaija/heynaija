@@ -7,10 +7,11 @@ technical detail, see [GAMES.md](GAMES.md) and
 
 ## In one paragraph
 
-Games is a section of HeyNaija with two games: **Chess** and **Keno**. Chess is
-played on Lichess, the free chess site, but members can challenge each other,
-play and watch from inside HeyNaija. Keno is our own number game, free to play,
-with free daily tokens. Playing earns **XP** (experience points) that adds up to
+Games is a section of HeyNaija with three games: **Chess**, **Keno** and
+**Trivia**. Chess is played on Lichess, the free chess site, but members can
+challenge each other, play and watch from inside HeyNaija. Keno is our own number
+game, free to play, with free daily tokens. Trivia is live quiz rounds, run by a
+host, where the fastest right answers score most. Playing earns **XP** (experience points) that adds up to
 a member's **Game Score**, and there are monthly leaderboards and competitions.
 There is **no money anywhere**: nothing can be bought, sold, sent to someone
 else or swapped for anything.
@@ -116,6 +117,46 @@ that round's numbers. After the draw, it shows how the numbers were made. Anyone
 can open a round's page and check that the numbers match what was locked in
 beforehand. So the numbers can't be changed after people have played.
 
+## Trivia
+
+A trivia **round** is a set of questions asked live, one at a time, by a host.
+Anime is first; any topic works.
+
+### How to play
+
+1. Open the round from **Games → Trivia** (or the link in The Arbiter's post) a
+   little before it starts.
+2. When the host opens a question, a 3-second countdown runs, then the question
+   appears on everyone's screen at the same moment.
+3. Answer before time runs out (usually 20 seconds). Some questions have choices
+   to tap; others you type. You get **one answer**, and it can't be changed.
+4. When time is up you see the right answer, how many got it, and who was
+   fastest. Talk about it in the replies to The Arbiter's thread.
+
+### Points
+
+| What you did | Points |
+| --- | --- |
+| A right answer | 10 |
+| ...and the first right answer | +5 more |
+| ...or the second, or third | +3 or +2 more |
+
+- The round's winner has the most points; on equal points, whoever spent less
+  time on their right answers.
+- **Who was first** is decided by HeyNaija's server as it receives each answer,
+  not by your phone's clock.
+- **Typed answers:** capitals, accents, spaces and punctuation don't matter, and
+  a small typo in a longer answer is forgiven. After the round, the host can
+  accept a spelling the checker missed, and can cancel a bad question so nobody
+  scores from it. Results are posted within 15 minutes of the last question.
+- Points count for the Trivia leaderboard and Game Score only. There are no
+  prizes.
+
+### Who hosts
+
+For now, site moderators who are 18 or over host rounds. They write the
+questions, set the time, and run the round from the web.
+
 ## Game Score, seasons and leaderboards
 
 ### XP: how you score
@@ -126,6 +167,7 @@ beforehand. So the numbers can't be changed after people have played.
 | ...and won it | +10 more |
 | ...or drew it | +5 more |
 | Played a Keno round | 2, plus 1 for every 10 points it scored (up to 20 more) |
+| Played a Trivia round | 2, plus 1 for each right answer and 2 for each first right answer (up to 20 more) |
 | Took part in a competition | 5 |
 | Came 1st, 2nd or 3rd | +100, +60 or +40 more |
 | Came 4th to 10th | +20 more |
@@ -202,7 +244,10 @@ games:
 
 - chess game threads and results in Chess Arena;
 - competition results in Game Night, or in a community;
-- tournament results in the community that ran the tournament.
+- tournament results in the community that ran the tournament;
+- each Trivia round's thread, its answers as each question closes, and its
+  results, in Game Night or the round's community. A member under 18 is named
+  "a member" in these posts.
 
 ## No money, ever
 
@@ -218,13 +263,16 @@ games:
   - your Keno tickets;
   - your chess challenges and games, with every move;
   - your competitions;
+  - your Trivia answers and results, and any rounds you hosted;
   - your Lichess username;
   - any Lichess team you linked.
 
   It never includes your Lichess key.
 - **Deleting your account:**
   - your Lichess key is given back to Lichess;
-  - your game history, tickets and scores are deleted;
+  - your game history, tickets, Trivia answers and scores are deleted;
+  - Trivia rounds you were hosting are called off, and the questions you wrote
+    are blanked;
   - posts The Arbiter made about your games stay, as posts, naming the deleted
     account.
 - Blocks and mutes apply in Games too: on leaderboards, standings, challenges
@@ -237,7 +285,10 @@ games:
     Feature flags → games**;
   - make Keno competitions: **Moderation → Games competitions**;
   - can cancel any competition or tournament, and unlink any community's Lichess
-    team.
+    team;
+  - host Trivia rounds, if they are 18 or over: **Games → Trivia → Host a
+    round**. Trivia also has its own switch: **Moderation → Feature flags →
+    trivia**.
 - **Community moderators** who lead their community's Lichess team can link it
   and make tournaments, from the community page (**Set it up** or **Manage**).
 
@@ -253,6 +304,11 @@ Games sits behind the `games` feature flag:
 When it is off for someone, Games doesn't exist for them: no link, no pages,
 and the API answers "not found". Background jobs (draws, competitions,
 tournaments) do nothing while Games is off for everyone.
+
+Trivia has a second switch, the `trivia` flag (on in development and staging,
+off in production). It needs `games` on as well. Trivia's background job (judging
+questions nobody is watching, ending rounds left idle, publishing results) does
+nothing while Trivia is off for everyone.
 
 ### Settings (in `.env`)
 
@@ -278,5 +334,8 @@ Staging needs `GAMES_TOKEN_KEY` set before anyone can connect Lichess there.
   and the result post says so.
 - **Keno draws:** the draw job is safe to run on several servers at once; each
   round is drawn once.
+- **Trivia rounds:** the same goes for judging Trivia questions: each is judged
+  once, whichever server gets there first. A round whose host does nothing for 10
+  minutes ends by itself.
 - **Signed-out visitors:** they can't see Games at all. Whether to make it
   public is decided at launch.

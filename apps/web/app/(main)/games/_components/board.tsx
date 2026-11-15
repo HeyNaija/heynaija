@@ -7,7 +7,7 @@ const MONTH = new Intl.DateTimeFormat('en-NG', { month: 'long', year: 'numeric',
 /** "November 2026" for "2026-11"; "All time" for "all". */
 export const periodName = (period: string) => (period === 'all' ? 'All time' : MONTH.format(new Date(`${period}-15T00:00:00Z`)))
 
-export const BOARD_NAMES = { score: 'Game Score', chess: 'Chess', keno: 'Keno' } as const
+export const BOARD_NAMES = { score: 'Game Score', chess: 'Chess', keno: 'Keno', trivia: 'Trivia' } as const
 
 const unit = (board: Pick<GameBoard, 'unit'>, n: number) => `${n.toLocaleString('en-NG')} ${board.unit === 'xp' ? 'XP' : n === 1 ? 'point' : 'points'}`
 

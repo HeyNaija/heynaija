@@ -8,7 +8,7 @@ const ORDINAL = ['1st', '2nd', '3rd']
 
 /** Each rule as a line: what you do, and what it gives. */
 export function xpLines(rules: GameScoring['xp']): { game: string; lines: [string, string][] }[] {
-  const { chess, keno, competition } = rules
+  const { chess, keno, trivia, competition } = rules
   return [
     {
       game: 'Chess',
@@ -24,6 +24,15 @@ export function xpLines(rules: GameScoring['xp']): { game: string; lines: [strin
       lines: [
         ['Each round you have a ticket in', xp(keno.round)],
         [`Every ${keno.pointsPerXp} points you score in a round, on top`, `+1 XP, up to +${keno.pointsXpMax} a round`],
+      ],
+    },
+    {
+      game: 'Trivia',
+      lines: [
+        ['Each round you answer at least one question in', xp(trivia.played)],
+        ['Each right answer, on top', `+${xp(trivia.right)}`],
+        ['Each question you got right first, on top', `+${xp(trivia.first)}`],
+        ['Right and first answers together, at most', `+${xp(trivia.extraMax)} a round`],
       ],
     },
     {
