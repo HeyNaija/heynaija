@@ -17,6 +17,9 @@ export { ChessError, type ChessErrorCode, LICHESS, TOKEN_BOX } from './chess-tok
 
 /** How long a linking step may take, from leaving for Lichess to coming back. */
 export const LINK_ATTEMPT_MS = 10 * 60_000
+
+/** The start of the state when an app asked to link: Lichess's answer goes back to the app (`redirectUri`). */
+export const APP_STATE = 'app.'
 /** How long a challenge waits for an answer: a day for a clock game, a week for correspondence. */
 export const CHALLENGE_WAIT_MS = { clock: 24 * 3600_000, correspondence: 7 * 24 * 3600_000 }
 /** Ratings older than this are read again by the scheduled job. */
@@ -77,8 +80,16 @@ export class ChessService {
     return new URL(this.env.WEB_PUBLIC_URL).host
   }
 
-  private get redirectUri() {
-    return `${this.env.WEB_PUBLIC_URL}/games/chess/callback`
+  /**
+   * Where Lichess sends the member back. The website's own page finishes the link
+   * with the web session; for the apps, `/lichess/return` only passes the code and
+   * state on to the app (`ng.heynaija.app://lichess/return`), which finishes it with
+   * its own session. Which one is part of the state itself (APP_STATE), so it is
+   * known again when the code comes back, and cannot be changed without the state
+   * no longer matching its hash.
+   */
+  private redirectUri(app: boolean) {
+    return `${this.env.WEB_PUBLIC_URL}${app ? '/lichess/return' : '/games/chess/callback'}`
   }
 
   private gameUrl(id: string) {
@@ -97,10 +108,15 @@ export class ChessService {
    * to send the member. `tournaments` also asks for tournament:write, for a
    * community moderator who runs tournaments (phase 6); nobody else is asked for it.
    */
-  async startLink(memberId: string, now = new Date(), { tournaments = false }: { tournaments?: boolean } = {}): Promise<{ url: string }> {
+  async startLink(
+    memberId: string,
+    now = new Date(),
+    { tournaments = false, app = false }: { tournaments?: boolean; app?: boolean } = {},
+  ): Promise<{ url: string; returnsTo: 'app' | 'web' }> {
     const box = this.sealer()
     const scopes = [...LICHESS_SCOPES, ...(tournaments ? [TOURNAMENT_SCOPE] : [])]
-    const state = randomBytes(24).toString('base64url')
+    // base64url has no '.', so the app's mark cannot be mistaken for part of the random state.
+    const state = `${app ? APP_STATE : ''}${randomBytes(24).toString('base64url')}`
     const verifier = randomBytes(32).toString('base64url')
     const challenge = createHash('sha256').update(verifier).digest('base64url')
     await this.db.transaction(async (tx) => {
@@ -114,7 +130,10 @@ export class ChessService {
         expiresAt: new Date(now.getTime() + LINK_ATTEMPT_MS),
       })
     })
-    return { url: this.lichess.authorizeUrl({ clientId: this.clientId, redirectUri: this.redirectUri, codeChallenge: challenge, state, scopes }) }
+    return {
+      url: this.lichess.authorizeUrl({ clientId: this.clientId, redirectUri: this.redirectUri(app), codeChallenge: challenge, state, scopes }),
+      returnsTo: app ? 'app' : 'web',
+    }
   }
 
   /**
@@ -129,7 +148,9 @@ export class ChessService {
       throw new ChessError('link_expired', 'That link to Lichess has run out or was not yours. Start again.')
     }
     const verifier = box.open(attempt.verifierBox, memberId)
-    const token = await this.ask(() => this.lichess.token({ code, codeVerifier: verifier, redirectUri: this.redirectUri, clientId: this.clientId }))
+    // Lichess checks the address matches the one the member was sent with.
+    const redirectUri = this.redirectUri(state.startsWith(APP_STATE))
+    const token = await this.ask(() => this.lichess.token({ code, codeVerifier: verifier, redirectUri, clientId: this.clientId }))
     const user = await this.ask(() => this.lichess.account(token.accessToken))
 
     const linked = await this.db.transaction(async (tx) => {

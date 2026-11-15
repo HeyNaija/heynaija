@@ -138,7 +138,9 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
    board:play; tournament:write only from a community moderator who asks to run
    tournaments (phase 6). No team scope is needed: team pages are public.
    Tokens are sealed with `GAMES_TOKEN_KEY`. Unlinking revokes and
-   deletes the token. Linking lives on /games/chess only.
+   deletes the token. Linking lives on /games/chess only, and on the apps' chess
+   screen, whose return goes through `/lichess/return` to the app (ADR 0028,
+   phase 2).
 2. **Profile:** the Lichess username, plus Blitz, Rapid, Classical and
    Correspondence ratings, cached and refreshed on a schedule and on demand.
 3. **Challenges:** a member challenges another member who has linked Lichess
