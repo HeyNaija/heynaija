@@ -1422,6 +1422,23 @@ export const KEKE_NEWS_STATUSES = [
   'too_few',
 ] as const
 
+// The headlines the outlets' feeds gave, read every hour and kept 48 hours (docs/adr/0030):
+// most feeds hold only their last few hours, so one read at 05:30 would miss the day.
+// Headline, link and a short description only; never article text.
+export const kekeNewsItems = pgTable(
+  'keke_news_items',
+  {
+    url: text('url').primaryKey(),
+    // The outlet's ID in NEWS_SOURCES.
+    outlet: text('outlet').notNull(),
+    title: text('title').notNull(),
+    description: text('description').notNull().default(''),
+    publishedAt: ts('published_at').notNull(),
+    seenAt: ts('seen_at').notNull().defaultNow(),
+  },
+  (t) => [index('keke_news_items_published_idx').on(t.publishedAt)],
+)
+
 export const kekeNewsDrafts = pgTable('keke_news_drafts', {
   // The day in Nigeria the draft is for.
   day: date('day').primaryKey(),

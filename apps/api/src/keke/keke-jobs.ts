@@ -14,7 +14,8 @@ export const KEKE_QUEUE = 'keke'
 
 export type KekeJob =
   | { name: 'answer'; data: { postId: string } }
-  // The daily news (docs/adr/0030): drafted at 05:30 and posted at 08:00, Nigerian time.
+  // The daily news (docs/adr/0030): the feeds read every hour, drafted at 05:30 and posted at 08:00, Nigerian time.
+  | { name: 'news-collect'; data: Record<string, never> }
   | { name: 'news-draft'; data: Record<string, never> }
   | { name: 'news-publish'; data: Record<string, never> }
 

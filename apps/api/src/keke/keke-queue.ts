@@ -10,8 +10,10 @@ import { KekeNews } from './news.service.js'
 /** A daily cron pattern for `hour:minute`, read in Nigerian time by the scheduler. */
 const daily = ({ hour, minute }: { hour: number; minute: number }) => `${minute} ${hour} * * *`
 const SCHEDULES = [
-  { id: 'keke-news-draft', name: 'news-draft', at: NEWS_RULE.draftAt },
-  { id: 'keke-news-publish', name: 'news-publish', at: NEWS_RULE.publishAt },
+  // On the quarter hour, away from the draft at half past and the post on the hour.
+  { id: 'keke-news-collect', name: 'news-collect', pattern: '15 * * * *' },
+  { id: 'keke-news-draft', name: 'news-draft', pattern: daily(NEWS_RULE.draftAt) },
+  { id: 'keke-news-publish', name: 'news-publish', pattern: daily(NEWS_RULE.publishAt) },
 ] as const
 
 // Each answer is mostly waiting on the model. A few at a time keeps one slow answer
@@ -45,11 +47,13 @@ export class KekeWorker implements OnApplicationBootstrap, OnModuleDestroy {
     }
     // Whether there is news is the kekeNews flag's to say, read when each job runs.
     for (const s of SCHEDULES) {
-      await this.jobs.queue.upsertJobScheduler(s.id, { pattern: daily(s.at), tz: 'Africa/Lagos' }, { name: s.name, data: {} })
+      await this.jobs.queue.upsertJobScheduler(s.id, { pattern: s.pattern, tz: 'Africa/Lagos' }, { name: s.name, data: {} })
     }
-    // Started between the draft and the post (a deploy at 06:00): today's draft now, if it was missed.
+    // A read now, so a server just started does not wait for the quarter hour to begin keeping headlines.
     const now = new Date()
     const day = lagosDay(now)
+    await this.jobs.queue.add('news-collect', {}, { jobId: `news-collect-start-${day}-${now.getUTCHours()}` })
+    // Started between the draft and the post (a deploy at 06:00): today's draft now, if it was missed.
     if (now >= lagosTime(day, NEWS_RULE.draftAt) && now < lagosTime(day, NEWS_RULE.publishAt)) {
       await this.jobs.queue.add('news-draft', {}, { jobId: `news-draft-${day}` })
     }
@@ -60,6 +64,9 @@ export class KekeWorker implements OnApplicationBootstrap, OnModuleDestroy {
         if (name === 'answer') {
           const result = await this.keke.answer(data.postId)
           if (result.done === 'failed') this.log.warn(`no answer for ${data.postId}: every model failed`)
+        } else if (name === 'news-collect') {
+          const read = await this.news.collect()
+          if (read !== 'off') this.log.log(`news feeds read: ${read.kept} new headlines${read.failed.length ? `; failed: ${read.failed.join(', ')}` : ''}`)
         } else if (name === 'news-draft') {
           this.log.log(`daily news draft: ${await this.news.draft()}`)
         } else if (name === 'news-publish') {

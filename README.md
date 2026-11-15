@@ -131,6 +131,10 @@ money, about ten cents a model; nothing is written to the database):
 pnpm keke:try --site https://staging.heynaija.ng
 ```
 
+With the `kekeNews` flag on as well, Keke reads ten Nigerian outlets' news feeds every
+hour, drafts the day's stories at 05:30 Nigerian time for a site moderator to approve on
+`/mod`, and posts them in Naija Today at 08:00 if approved (ADR 0030, "The daily news").
+
 The demo members can sign in as `<handle>@demo.heynaija.test` with the code
 Mailpit catches; `pnpm demo:clean` removes them and everything they did.
 

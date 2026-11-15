@@ -3,7 +3,14 @@
  * Their order is the order outlets are named in, and the first outlet carrying a
  * story gives its link. Changing the list is a change in review, like the rule.
  */
-export type NewsSource = { id: string; name: string; site: string; feed: string }
+export type NewsSource = {
+  id: string
+  name: string
+  site: string
+  feed: string
+  /** Hours the feed's times run ahead: Nigerian time written as if it were UTC. */
+  hoursAhead?: number
+}
 
 // Checked on 15 November 2026: each feed answered a server with RSS, every item had a
 // description, and none of these outlets' terms forbids reading its feed. Left out: The
@@ -11,7 +18,8 @@ export type NewsSource = { id: string; name: string; site: string; feed: string 
 // pass), ThisDay and The Sun (their terms forbid crawling), Arise (stale), and business-only
 // outlets. Awaiting the owner's confirmation (docs/adr/0030).
 export const NEWS_SOURCES: readonly NewsSource[] = [
-  { id: 'punch', name: 'Punch', site: 'https://punchng.com', feed: 'https://rss.punchng.com/v1/category/latest_news' },
+  // Punch writes Nigerian time with a +0000 offset.
+  { id: 'punch', name: 'Punch', site: 'https://punchng.com', feed: 'https://rss.punchng.com/v1/category/latest_news', hoursAhead: 1 },
   { id: 'premium-times', name: 'Premium Times', site: 'https://www.premiumtimesng.com', feed: 'https://www.premiumtimesng.com/feed' },
   { id: 'channels', name: 'Channels', site: 'https://www.channelstv.com', feed: 'https://www.channelstv.com/feed/' },
   { id: 'vanguard', name: 'Vanguard', site: 'https://www.vanguardngr.com', feed: 'https://www.vanguardngr.com/feed/' },

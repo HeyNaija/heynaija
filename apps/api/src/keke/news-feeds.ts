@@ -45,7 +45,7 @@ const sponsored = (url: string) => /\/(promoted|sponsored)(\/|$)/i.test(new URL(
  * link, a short plain description and when. Items without a headline, a link
  * or a date it can read are left out.
  */
-export function parseFeed(xml: string, outlet: string, since: Date): NewsItem[] {
+export function parseFeed(xml: string, outlet: string, since: Date, hoursAhead = 0): NewsItem[] {
   const entries = [...xml.matchAll(/<(item|entry)\b[^>]*>([\s\S]*?)<\/\1>/gi)]
   const items: NewsItem[] = []
   for (const [, kind, body] of entries) {
@@ -54,7 +54,8 @@ export function parseFeed(xml: string, outlet: string, since: Date): NewsItem[] 
       kind!.toLowerCase() === 'item'
         ? address(field(body!, 'link') ?? field(body!, 'guid'))
         : address(/<link\b[^>]*rel="alternate"[^>]*href="([^"]+)"/i.exec(body!)?.[1] ?? /<link\b[^>]*href="([^"]+)"/i.exec(body!)?.[1] ?? null)
-    const when = new Date(plain(field(body!, 'pubDate') ?? field(body!, 'published') ?? field(body!, 'updated') ?? field(body!, 'dc:date')))
+    const stated = new Date(plain(field(body!, 'pubDate') ?? field(body!, 'published') ?? field(body!, 'updated') ?? field(body!, 'dc:date')))
+    const when = new Date(stated.getTime() - hoursAhead * 3_600_000)
     // Never content:encoded, which some outlets fill with the whole article: only the short description.
     const description = boilerplate(plain(field(body!, 'description') ?? field(body!, 'summary')))
     if (!title || !url || sponsored(url) || Number.isNaN(when.getTime()) || when < since || when.getTime() > Date.now() + 3_600_000) continue
@@ -78,7 +79,7 @@ export async function readFeeds(fetcher: PageFetcher, sources: readonly NewsSour
           maxBytes: FEED_MAX_BYTES,
           timeoutMs: 15_000,
         })
-        return { source, items: parseFeed(page.body.toString('utf8'), source.id, since) }
+        return { source, items: parseFeed(page.body.toString('utf8'), source.id, since, source.hoursAhead) }
       } catch {
         return { source, items: null }
       }

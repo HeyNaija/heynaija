@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { communities, communityMemberships, featureFlags, kekeNewsDrafts, kekeUsage, members, notifications, posts } from '@heynaija/db'
+import { communities, communityMemberships, featureFlags, kekeNewsDrafts, kekeNewsItems, kekeUsage, members, notifications, posts } from '@heynaija/db'
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { FeatureFlags } from '../flags/feature-flags.js'
 import type { PageFetcher } from '../links/safe-fetch.js'
@@ -44,9 +44,12 @@ const FEEDS: Record<string, string> = Object.fromEntries(
 
 class Fetcher implements PageFetcher {
   down = new Set<string>()
+  /** What a feed shows now, in place of the full test feed. */
+  showing = new Map<string, string>()
   async get(url: string) {
-    if (this.down.has(url) || !FEEDS[url]) throw new Error('unreachable')
-    return { url: new URL(url), contentType: 'application/rss+xml', body: Buffer.from(FEEDS[url]!) }
+    const feed = this.showing.get(url) ?? FEEDS[url]
+    if (this.down.has(url) || !feed) throw new Error('unreachable')
+    return { url: new URL(url), contentType: 'application/rss+xml', body: Buffer.from(feed) }
   }
 }
 
@@ -122,6 +125,9 @@ test('feeds: RSS and Atom items from the last 24 hours, as plain text, with noth
   // Tracking tags off the link, the feed's own footer off the description, paid-for items left out.
   const tidy = rss([{ title: 'Real', slug: 'real?utm_source=rss&id=7', at: hoursAgo(1), description: 'Words. The post Real appeared first on Punch Newspapers.' }, { title: 'Ad', slug: 'promoted/ad', at: hoursAgo(1) }], 'p.example')
   assert.deepEqual(parseFeed(tidy, 'p', hoursAgo(24)).map((i) => [i.url, i.description]), [['https://p.example/real?id=7', 'Words.']])
+  // A feed that writes Nigerian time as UTC is put right.
+  const ahead = rss([{ title: 'Late', slug: 'late', at: new Date(Date.now() + 30 * 60_000) }], 'p.example')
+  assert.ok(Math.abs(parseFeed(ahead, 'p', hoursAgo(24), 1)[0]!.publishedAt.getTime() - (Date.now() - 30 * 60_000)) < 5000)
 })
 
 test('the rule: 3 or more different outlets, the 5 carried by most, and fewer than 3 such stories is no post', () => {
@@ -155,10 +161,11 @@ test('the 05:30 draft: Naija Today is made, the rule picks the stories, the oper
   assert.ok(community)
   const view = (await news.today(at(6)))!
   assert.equal(view.status, 'waiting')
-  // Budget and fuel (5 outlets each), floods (3); the match (2) does not count, nor the old story.
-  assert.deepEqual(view.stories.map((s) => [s.sentence.slice(0, 16), s.outlets.length]), [['The budget story', 5], ['The fuel story, ', 5], ['The floods story', 3]])
+  // Fuel and budget (5 outlets each; level, so in the model's order, which is oldest first), then
+  // floods (3); the match (2) does not count, nor the old story.
+  assert.deepEqual(view.stories.map((s) => [s.sentence.slice(0, 16), s.outlets.length]), [['The fuel story, ', 5], ['The budget story', 5], ['The floods story', 3]])
   // The model's own @mention and link do not survive.
-  assert.equal(view.stories[0]!.sentence, 'The budget story, said plainly. Ask ada')
+  assert.equal(view.stories[1]!.sentence, 'The budget story, said plainly. Ask ada')
   assert.equal(view.open, true)
   assert.deepEqual(alerts.waiting, [{ day, stories: 3 }])
   // Its cost is recorded like any call, with no text.
@@ -167,6 +174,35 @@ test('the 05:30 draft: Naija Today is made, the rule picks the stories, the oper
   // Run again (a retry, a restart): the same draft, not a second.
   assert.equal(await news.draft(at(6)), 'exists')
   assert.equal(model.asked.length, 1)
+})
+
+test('the day is built from hourly reads: a headline gone from its feed by 05:30 still counts', async () => {
+  // At 01:15 every feed shows its stories, yesterday's included: all 20 headlines are kept.
+  assert.deepEqual(await news.collect(at(1, 15)), { kept: 20, failed: [] })
+  // By 05:30 each feed has moved on and shows only its fuel story.
+  for (const s of sources) fetcher.showing.set(s.feed, rss([{ title: `Fuel price falls (${s.name})`, slug: 'fuel', at: hoursAgo(3) }], `${s.id}.example`))
+  assert.equal(await news.draft(at(5, 30)), 'waiting')
+  assert.deepEqual((await news.today(at(6)))!.stories.map((s) => s.sentence.split(',')[0]), ['The fuel story', 'The budget story', 'The floods story'])
+  // Read again, nothing is kept twice.
+  assert.deepEqual(await news.collect(at(6, 15)), { kept: 0, failed: [] })
+})
+
+test('headlines are kept 48 hours, and only the last 24 go into a draft', async () => {
+  await db.insert(kekeNewsItems).values([
+    { url: 'https://a.example/two-days', outlet: 'a', title: 'Two days old', publishedAt: hoursAgo(50) },
+    { url: 'https://a.example/yesterday', outlet: 'a', title: 'Yesterday morning', publishedAt: hoursAgo(30) },
+    // An outlet no longer on the list is not read into a draft.
+    { url: 'https://gone.example/x', outlet: 'gone', title: 'Gone outlet', publishedAt: hoursAgo(1) },
+  ])
+  await news.draft(at(5, 30))
+  const kept = (await db.select({ url: kekeNewsItems.url }).from(kekeNewsItems)).map((r) => r.url)
+  assert.ok(!kept.includes('https://a.example/two-days'))
+  assert.ok(kept.includes('https://a.example/yesterday'))
+  const sent = model.asked[0]!.user
+  assert.doesNotMatch(sent, /Yesterday morning|Gone outlet|Old story/)
+  assert.match(sent, /Budget passes Senate/)
+  // One line per headline of the last 24 hours: budget and fuel from five outlets, floods from three, the match from two.
+  assert.equal(sent.split('\n').length, 15)
 })
 
 test('a day with too few stories has no post; the flag off makes no draft at all', async () => {
@@ -182,6 +218,7 @@ test('a day with too few stories has no post; the flag off makes no draft at all
   await db.delete(kekeNewsDrafts)
   await flags.set(mod, 'kekeNews', { enabled: false })
   assert.equal(await news.draft(at(5, 30)), 'off')
+  assert.equal(await news.collect(at(6, 15)), 'off')
 })
 
 test('a model that fails leaves no draft and says so', async () => {
@@ -226,7 +263,7 @@ test('08:00: one announcement in Naija Today and a reply per story; members repl
   assert.match(main!.text, /^Naija today, \w+day \d+ \w+\n\n1\. Story 0\.\n2\. Story 1\.\n3\. Story 2\./)
   assert.equal(replies.length, 3)
   assert.ok(replies.every((r) => r.replyParentId === main!.id))
-  assert.equal(replies[0]!.text, 'Story 0.\n\nCarried by Outlet A, Outlet B, Outlet C, Outlet D and Outlet E\n\nhttps://a.example/budget')
+  assert.equal(replies[0]!.text, 'Story 0.\n\nCarried by Outlet A, Outlet B, Outlet C, Outlet D and Outlet E\n\nhttps://a.example/fuel')
   // The day's announcement: Naija Today's member is told, once.
   const told = await db.select().from(notifications).where(and(eq(notifications.recipientId, ada), eq(notifications.kind, 'community_announcement')))
   assert.equal(told.length, 1)

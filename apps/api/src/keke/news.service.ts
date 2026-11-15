@@ -1,6 +1,6 @@
-import { communities, communityMemberships, type Db, kekeNewsDrafts } from '@heynaija/db'
+import { communities, communityMemberships, type Db, kekeNewsDrafts, kekeNewsItems } from '@heynaija/db'
 import { Inject, Injectable, Logger } from '@nestjs/common'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, lt, sql } from 'drizzle-orm'
 import { FeatureFlags } from '../flags/feature-flags.js'
 import { LinksService, PAGE_FETCHER } from '../links/links.service.js'
 import type { PageFetcher } from '../links/safe-fetch.js'
@@ -9,7 +9,7 @@ import { DB } from '../tokens.js'
 import { KEKE_ID, NAIJA_TODAY_SLUG } from './keke-ids.js'
 import { chooseModels, KEKE_MODELS, type KekeModels, ModelCallError } from './keke-model.js'
 import { KEKE_ALERTS, KEKE_SETTINGS, type KekeAlerts, KekeService, type KekeSettings } from './keke.service.js'
-import { readFeeds } from './news-feeds.js'
+import { type NewsItem, readFeeds } from './news-feeds.js'
 import {
   chooseStories,
   grouping,
@@ -25,6 +25,9 @@ import {
   storyReplyText,
 } from './news-rule.js'
 import { NEWS_SOURCES, type NewsSource } from './news-sources.js'
+
+/** How long headlines are kept: the draft reads 24 hours, and a day's margin covers a late or missed draft. */
+const KEEP_HOURS = 48
 
 /** How long publishing waits for Naija Today's daily announcement to come free, at most. */
 const ANNOUNCEMENT_WAIT_MAX_MS = 15 * 60 * 1000
@@ -74,9 +77,10 @@ export const NEWS_FETCHER = Symbol('NEWS_FETCHER')
 export const NEWS_SOURCE_LIST = Symbol('NEWS_SOURCE_LIST')
 
 /**
- * Keke's daily news (docs/adr/0030). At 05:30 Nigerian time, `draft` reads the
- * outlets' feeds, has the model group the day's headlines into stories, keeps
- * the stories the rule keeps and saves them for a site moderator. At 08:00,
+ * Keke's daily news (docs/adr/0030). Every hour, `collect` keeps the headlines
+ * the outlets' feeds show. At 05:30 Nigerian time, `draft` has the model group
+ * the last 24 hours' headlines into stories, keeps the stories the rule keeps and
+ * saves them for a site moderator. At 08:00,
  * `publish` posts an approved draft in Naija Today as the day's announcement,
  * with a reply per story. A day nobody approves is skipped.
  */
@@ -97,6 +101,41 @@ export class KekeNews {
     @Inject(NEWS_SOURCE_LIST) private readonly sources: readonly NewsSource[] = NEWS_SOURCES,
   ) {}
 
+  /**
+   * Every hour: reads the outlets' feeds and keeps what is new (headline, link,
+   * short description), and forgets anything older than 48 hours. Most feeds
+   * hold only their last few hours, so the day is built up this way.
+   */
+  async collect(now = new Date()): Promise<{ kept: number; failed: string[] } | 'off'> {
+    if (!(await this.flags.isEnabled('kekeNews', null))) return 'off'
+    const { items, failed } = await readFeeds(this.fetcher, this.sources, KEEP_HOURS)
+    if (failed.length) this.log.warn(`could not read the feeds of ${failed.join(', ')}`)
+    const kept = items.length
+      ? await this.db
+          .insert(kekeNewsItems)
+          .values(items.map((i) => ({ url: i.url, outlet: i.outlet, title: i.title, description: i.description, publishedAt: i.publishedAt })))
+          .onConflictDoNothing()
+          .returning({ url: kekeNewsItems.url })
+      : []
+    await this.db.delete(kekeNewsItems).where(lt(kekeNewsItems.publishedAt, new Date(now.getTime() - KEEP_HOURS * 3_600_000)))
+    return { kept: kept.length, failed }
+  }
+
+  /** The headlines kept from the last `windowHours`, from outlets still on the list, oldest first. */
+  private async lastDay(now: Date): Promise<NewsItem[]> {
+    const rows = await this.db
+      .select()
+      .from(kekeNewsItems)
+      .where(
+        and(
+          gt(kekeNewsItems.publishedAt, new Date(now.getTime() - NEWS_RULE.windowHours * 3_600_000)),
+          inArray(kekeNewsItems.outlet, this.sources.map((s) => s.id)),
+        ),
+      )
+      .orderBy(asc(kekeNewsItems.publishedAt))
+    return rows.map((r) => ({ outlet: r.outlet, title: r.title, url: r.url, description: r.description, publishedAt: r.publishedAt }))
+  }
+
   /** Today's draft, made once. What happened, for the log and tests. */
   async draft(now = new Date()): Promise<'off' | 'exists' | 'over_budget' | 'failed' | 'too_few' | 'waiting'> {
     if (!(await this.flags.isEnabled('kekeNews', null))) return 'off'
@@ -107,8 +146,9 @@ export class KekeNews {
     if (existing) return 'exists'
     await ensureNaijaToday(this.db)
 
-    const { items, failed } = await readFeeds(this.fetcher, this.sources, NEWS_RULE.windowHours)
-    if (failed.length) this.log.warn(`could not read the feeds of ${failed.join(', ')}`)
+    // One more read first, so the last hour is in too; then the day as kept.
+    await this.collect(now)
+    const items = await this.lastDay(now)
     const outlets = new Set(items.map((i) => i.outlet)).size
     let stories: NewsStory[] | null = null
     if (outlets >= NEWS_RULE.minOutlets) {
