@@ -150,6 +150,8 @@ does nothing for an inactive author. The text search index follows the text.
 | Chess challenges they sent or got (`games.chess_challenges`), with their notifications | — | deleted, both sides: a challenge is between the two of them | delete |
 | Chess games they played (`games.chess_games`), with their notifications | — | deleted, both sides; The Arbiter's thread and result posts about the game stay, naming the tombstone | delete |
 | Keno tickets they played (`games.keno_tickets`) ([ADR 0028](0028-games.md), phase 4) | — | deleted; the shared rounds stay | delete |
+| Trivia answers and round results (`games.trivia_answers`, `games.trivia_results`) ([ADR 0028](0028-games.md), phase 7) | — | deleted; other players' places, points and firsts stay as published | delete |
+| Trivia rounds they host (`games.trivia_rounds`, `games.trivia_questions`) (phase 7) | — | any not over are cancelled; every round's title and questions are blanked, the rows stay for other players' results | blank |
 | Their Game Score totals (`games.xp_totals`) and competition invitations (`games.competition_invites`) ([ADR 0028](0028-games.md), phase 5) | — | deleted | delete |
 | A community's Lichess team they linked (`games.community_teams.linked_by`) ([ADR 0028](0028-games.md), phase 6) | — | the link stays; who linked it is forgotten | set to null |
 

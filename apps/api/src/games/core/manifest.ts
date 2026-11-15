@@ -1,8 +1,10 @@
+import type { FlagKey } from '../../flags/registry.js'
+
 /** Where a game is: playable, playable with rough edges, or announced only. */
 export const GAME_STATUSES = ['live', 'beta', 'coming_soon'] as const
 export type GameStatus = (typeof GAME_STATUSES)[number]
 
-/** Chess ranks by rating (Lichess's), keno by points scored in a season. */
+/** Chess ranks by rating (Lichess's), Keno and Trivia by points scored in a season. */
 export type RankingType = 'rating' | 'points'
 
 /** One line of a game's leaderboard, already ranked. */
@@ -33,6 +35,8 @@ export type GameManifest = {
   status: GameStatus
   rankingType: RankingType
   supportsCompetitions: boolean
+  /** Its own flag beside `games`: while it is off for a member, the game is not listed for them (Trivia). */
+  flag?: FlagKey
   providers?: GameProviders
 }
 

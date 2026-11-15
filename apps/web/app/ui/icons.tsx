@@ -3,6 +3,7 @@ import {
   AtSign,
   Award,
   BadgeCheck,
+  BadgeQuestionMark,
   Bell,
   BellOff,
   Bookmark,
@@ -137,6 +138,7 @@ export const IdeaIcon = icon(Lightbulb)
 export const GamesIcon = icon(Gamepad2)
 export const ChessIcon = icon(ChessKnight)
 export const KenoIcon = icon(Grid3x3)
+export const TriviaIcon = icon(BadgeQuestionMark)
 export const TrophyIcon = icon(Trophy)
 export const BellIcon = icon(Bell)
 export const BellOffIcon = icon(BellOff)

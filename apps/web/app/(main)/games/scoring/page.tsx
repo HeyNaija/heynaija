@@ -67,7 +67,7 @@ async function Rules() {
         ))}
         <p className="mt-3 text-sm text-muted">
           Chess games count rated or casual alike; Lichess decides who won. XP is added the moment a game ends, a Keno round is
-          drawn or a competition finishes.
+          drawn, a Trivia round’s results are published or a competition finishes.
         </p>
       </section>
 
@@ -79,6 +79,10 @@ async function Rules() {
           <li>
             <strong className="text-[var(--ink)]">Keno</strong> ranks by Keno points, from the{' '}
             <Link href="/games/keno" className="underline">points table</Link> (version {rules.keno.tableVersion}).
+          </li>
+          <li>
+            <strong className="text-[var(--ink)]">Trivia</strong> ranks by Trivia points: {rules.trivia.right} for a right answer,
+            and {rules.trivia.order.join(', ')} more for the first three right answers to each question, by the server’s clock.
           </li>
           <li>Ties share a place. You can narrow any board to the people you follow, or to a community you joined.</li>
           <li>
@@ -101,6 +105,10 @@ async function Rules() {
             team. You play them on lichess.org. HeyNaija members of the community who have connected Lichess are placed in
             Lichess’s order, so Lichess’s tiebreaks decide who is ahead, and only those members count for places and XP.
             Games played in a tournament give no XP of their own.
+          </p>
+          <p>
+            Trivia is not in competitions: each round already has its own places, posted by The Arbiter when its results are
+            out.
           </p>
           <p>
             When a competition ends, The Arbiter posts the top ten in Game Night, or in the competition’s own community, and

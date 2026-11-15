@@ -34,7 +34,7 @@ async function Boards({ searchParams }: Pick<PageProps<'/games/leaderboard'>, 's
   if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
   // Old links to a game's board go to that game's Leaderboard tab, with the same choices.
   const { board, ...rest } = params
-  if (board === 'chess' || board === 'keno') {
+  if (board === 'chess' || board === 'keno' || board === 'trivia') {
     const q = new URLSearchParams({ tab: 'leaderboard' })
     for (const [k, v] of Object.entries(rest)) if (typeof v === 'string') q.set(k, v)
     redirect(`/games/${board}?${q}`)

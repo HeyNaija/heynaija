@@ -69,7 +69,7 @@ async function GamePosts({ game, viewerId }: { game: GameInfo; viewerId: string 
       <div className="section-heading">
         <h2 id="game-posts" className="section-title">{game.name} posts</h2>
         <span className="text-xs">
-          {game.community ? (
+          {game.community && game.community.slug !== 'game-night' ? (
             <>
               <Link href={`/c/${game.community.slug}`} className="underline">{game.community.name}</Link> ·{' '}
             </>

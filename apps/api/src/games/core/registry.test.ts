@@ -13,12 +13,13 @@ test('every game has a unique slug and a valid status', () => {
   }
 })
 
-test('the launch games are chess and keno, both in beta', () => {
+test('the games are chess, keno and trivia, all in beta', () => {
   assert.deepEqual(
     GAME_REGISTRY.map((game) => [game.slug, game.status, game.rankingType]),
     [
       ['chess', 'beta', 'rating'],
       ['keno', 'beta', 'points'],
+      ['trivia', 'beta', 'points'],
     ],
   )
 })

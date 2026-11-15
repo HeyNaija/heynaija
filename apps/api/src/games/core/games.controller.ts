@@ -3,10 +3,12 @@ import type { Db } from '@heynaija/db'
 import { z } from 'zod'
 import { type AuthedRequest, SessionGuard } from '../../auth/session.guard.js'
 import { Feature, FeatureGuard } from '../../flags/feature.guard.js'
+import { FeatureFlags } from '../../flags/feature-flags.js'
 import { parse } from '../../http.js'
 import { RateLimiter } from '../../rate-limit.js'
 import { DB } from '../../tokens.js'
 import { PAYOUT_TABLES, CURRENT_TABLE } from '../keno/payouts.js'
+import { TRIVIA_POINTS } from '../trivia/judging.js'
 import { CompetitionError, CompetitionsService, ELIGIBILITIES, FORMATS } from './competitions.js'
 import { BOARDS, FILTERS, leaderboard, seasonsWithScores } from './leaderboards.js'
 import { publicManifest } from './manifest.js'
@@ -71,18 +73,20 @@ export class GamesController {
     @Inject(DB) private readonly db: Db,
     @Inject(CompetitionsService) private readonly competitions: CompetitionsService,
     @Inject(RateLimiter) private readonly limits: RateLimiter,
+    @Inject(FeatureFlags) private readonly flags: Pick<FeatureFlags, 'isEnabled'>,
   ) {}
 
-  /** The registry, for the games homepage. */
+  /** The registry, for the games homepage; a game with its own flag only where that flag is on for the member. */
   @Get()
-  list() {
-    return { games: GAME_REGISTRY.map(publicManifest) }
+  async list(@Req() req: AuthedRequest) {
+    const shown = await Promise.all(GAME_REGISTRY.map(async (game) => !game.flag || (await this.flags.isEnabled(game.flag, req.member.id))))
+    return { games: GAME_REGISTRY.filter((_, i) => shown[i]).map(publicManifest) }
   }
 
   /** Every scoring rule, for "How games scoring works": the page shows the numbers the scoring uses. */
   @Get('scoring')
   scoring() {
-    return { xp: XP_RULES, keno: { tableVersion: CURRENT_TABLE, payouts: PAYOUT_TABLES[CURRENT_TABLE] }, formats: FORMATS, season: lagosMonth(new Date()).slug }
+    return { xp: XP_RULES, keno: { tableVersion: CURRENT_TABLE, payouts: PAYOUT_TABLES[CURRENT_TABLE] }, trivia: TRIVIA_POINTS, formats: FORMATS, season: lagosMonth(new Date()).slug }
   }
 
   @Get('leaderboard')
