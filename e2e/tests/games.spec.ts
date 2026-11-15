@@ -11,13 +11,17 @@ test('a member finds Games in the sidebar: a grid of games, each with its own le
 
   await expect(page.getByRole('heading', { level: 1, name: 'Games' })).toBeVisible()
   const cards = page.getByRole('list').filter({ has: page.getByRole('heading', { name: 'Chess' }) }).getByRole('listitem')
-  await expect(cards).toHaveCount(2)
+  await expect(cards).toHaveCount(3)
   const chess = cards.filter({ has: page.getByRole('heading', { name: 'Chess' }) })
   await expect(chess.getByText('Beta')).toBeVisible()
   await expect(chess.getByRole('link', { name: 'Play Chess' })).toHaveAttribute('href', '/games/chess')
   const keno = cards.filter({ has: page.getByRole('heading', { name: 'Keno' }) })
   await expect(keno.getByText('Beta')).toBeVisible()
   await expect(keno.getByRole('link', { name: 'Play Keno' })).toHaveAttribute('href', '/games/keno')
+  // Trivia has a flag of its own, on in development as `games` is.
+  const trivia = cards.filter({ has: page.getByRole('heading', { name: 'Trivia' }) })
+  await expect(trivia.getByText('Beta')).toBeVisible()
+  await expect(trivia.getByRole('link', { name: 'Play Trivia' })).toHaveAttribute('href', '/games/trivia')
   // A new member has no score.
   await expect(page.getByText('No Game Score yet')).toBeVisible()
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/)
@@ -35,10 +39,12 @@ test('a member finds Games in the sidebar: a grid of games, each with its own le
   await expect(page.getByRole('heading', { name: 'Chess posts' })).toBeVisible()
   await page.goto('/games/keno?tab=leaderboard')
   await expect(page.getByRole('heading', { name: /^Keno · / })).toBeVisible()
+  await page.goto('/games/trivia?tab=leaderboard')
+  await expect(page.getByRole('heading', { name: /^Trivia · / })).toBeVisible()
 
   // Mobile first: nothing scrolls sideways on a 320px phone.
   await page.setViewportSize({ width: 320, height: 640 })
-  for (const path of ['/games', '/games/chess', '/games/keno?tab=competitions']) {
+  for (const path of ['/games', '/games/chess', '/games/keno?tab=competitions', '/games/trivia']) {
     await page.goto(path)
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), path).toBeLessThanOrEqual(0)
   }
