@@ -12,7 +12,11 @@ export interface KekeJobs {
 
 export const KEKE_QUEUE = 'keke'
 
-export type KekeJob = { name: 'answer'; data: { postId: string } }
+export type KekeJob =
+  | { name: 'answer'; data: { postId: string } }
+  // The daily news (docs/adr/0030): drafted at 05:30 and posted at 08:00, Nigerian time.
+  | { name: 'news-draft'; data: Record<string, never> }
+  | { name: 'news-publish'; data: Record<string, never> }
 
 export const kekeConnection = (env: Pick<Env, 'REDIS_URL'>): ConnectionOptions => ({
   url: env.REDIS_URL,

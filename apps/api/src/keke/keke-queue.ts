@@ -2,8 +2,17 @@ import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnModuleD
 import { Worker } from 'bullmq'
 import type { Env } from '../env.js'
 import { ENV } from '../tokens.js'
-import { KEKE_QUEUE, type KekeJob, kekeConfigured, kekeConnection } from './keke-jobs.js'
+import { type BullKekeJobs, KEKE_JOBS, KEKE_QUEUE, type KekeJob, kekeConfigured, kekeConnection } from './keke-jobs.js'
 import { KekeService } from './keke.service.js'
+import { lagosDay, lagosTime, NEWS_RULE } from './news-rule.js'
+import { KekeNews } from './news.service.js'
+
+/** A daily cron pattern for `hour:minute`, read in Nigerian time by the scheduler. */
+const daily = ({ hour, minute }: { hour: number; minute: number }) => `${minute} ${hour} * * *`
+const SCHEDULES = [
+  { id: 'keke-news-draft', name: 'news-draft', at: NEWS_RULE.draftAt },
+  { id: 'keke-news-publish', name: 'news-publish', at: NEWS_RULE.publishAt },
+] as const
 
 // Each answer is mostly waiting on the model. A few at a time keeps one slow answer
 // from holding up the rest without letting a burst of mentions run up the bill at once.
@@ -23,20 +32,39 @@ export class KekeWorker implements OnApplicationBootstrap, OnModuleDestroy {
   constructor(
     @Inject(ENV) private readonly env: Env,
     @Inject(KekeService) private readonly keke: KekeService,
+    @Inject(KekeNews) private readonly news: KekeNews,
+    @Inject(KEKE_JOBS) private readonly jobs: BullKekeJobs,
   ) {}
 
-  onApplicationBootstrap(): void {
+  async onApplicationBootstrap(): Promise<void> {
     if (!kekeConfigured(this.env)) {
       this.log.log('Keke is off: neither ANTHROPIC_API_KEY nor OPENROUTER_API_KEY is set')
+      // Schedules left from when it was on would only fill the queue.
+      for (const s of SCHEDULES) await this.jobs.queue.removeJobScheduler(s.id)
       return
+    }
+    // Whether there is news is the kekeNews flag's to say, read when each job runs.
+    for (const s of SCHEDULES) {
+      await this.jobs.queue.upsertJobScheduler(s.id, { pattern: daily(s.at), tz: 'Africa/Lagos' }, { name: s.name, data: {} })
+    }
+    // Started between the draft and the post (a deploy at 06:00): today's draft now, if it was missed.
+    const now = new Date()
+    const day = lagosDay(now)
+    if (now >= lagosTime(day, NEWS_RULE.draftAt) && now < lagosTime(day, NEWS_RULE.publishAt)) {
+      await this.jobs.queue.add('news-draft', {}, { jobId: `news-draft-${day}` })
     }
     this.worker = new Worker(
       KEKE_QUEUE,
       async (job) => {
         const { name, data } = job as unknown as KekeJob
-        if (name !== 'answer') return
-        const result = await this.keke.answer(data.postId)
-        if (result.done === 'failed') this.log.warn(`no answer for ${data.postId}: every model failed`)
+        if (name === 'answer') {
+          const result = await this.keke.answer(data.postId)
+          if (result.done === 'failed') this.log.warn(`no answer for ${data.postId}: every model failed`)
+        } else if (name === 'news-draft') {
+          this.log.log(`daily news draft: ${await this.news.draft()}`)
+        } else if (name === 'news-publish') {
+          this.log.log(`daily news: ${await this.news.publish()}`)
+        }
       },
       { connection: kekeConnection(this.env), concurrency: CONCURRENCY },
     )
