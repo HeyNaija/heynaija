@@ -125,6 +125,8 @@ test('feeds: RSS and Atom items from the last 24 hours, as plain text, with noth
   // Tracking tags off the link, the feed's own footer off the description, paid-for items left out.
   const tidy = rss([{ title: 'Real', slug: 'real?utm_source=rss&id=7', at: hoursAgo(1), description: 'Words. The post Real appeared first on Punch Newspapers.' }, { title: 'Ad', slug: 'promoted/ad', at: hoursAgo(1) }], 'p.example')
   assert.deepEqual(parseFeed(tidy, 'p', hoursAgo(24)).map((i) => [i.url, i.description]), [['https://p.example/real?id=7', 'Words.']])
+  // Zero-width joiners some outlets put in headlines are taken out.
+  assert.equal(parseFeed(rss([{ title: 'Obi \u200d\u200d\u200dis incorruptible', slug: 'obi', at: hoursAgo(1) }], 'p.example'), 'p', hoursAgo(24))[0]!.title, 'Obi is incorruptible')
   // A feed that writes Nigerian time as UTC is put right.
   const ahead = rss([{ title: 'Late', slug: 'late', at: new Date(Date.now() + 30 * 60_000) }], 'p.example')
   assert.ok(Math.abs(parseFeed(ahead, 'p', hoursAgo(24), 1)[0]!.publishedAt.getTime() - (Date.now() - 30 * 60_000)) < 5000)

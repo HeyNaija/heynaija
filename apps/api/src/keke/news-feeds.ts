@@ -17,8 +17,11 @@ function field(xml: string, tag: string): string | null {
   return m[1]!.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
 }
 
-/** Markup, entities and spacing out of a feed's text. */
-const plain = (text: string | null) => cleanLine(decodeEntities((text ?? '').replace(/<[^>]+>/g, ' ')).replace(/<[^>]+>/g, ' '))
+/**
+ * Markup, entities and spacing out of a feed's text, and the zero-width joiners some
+ * outlets scatter through headlines ("Obi \u200d\u200dis…"), which cleanLine keeps for emoji.
+ */
+const plain = (text: string | null) => cleanLine(decodeEntities((text ?? '').replace(/<[^>]+>/g, ' ')).replace(/<[^>]+>/g, ' ').replace(/\u200d/g, ''))
 
 const shorten = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1).replace(/\s+\S*$/, '')}…`)
 
