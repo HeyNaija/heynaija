@@ -1051,6 +1051,13 @@ summary.menu::-webkit-details-marker {
   text-align: left;
 }
 .identity-badge-tip[data-open] { display: block; }
+/* HeyNaija's own automated accounts (docs/adr/0028): a shield in the accent, a 24px target
+   that opens a small card saying the account is official and automated. */
+.official-badge { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; vertical-align: middle; }
+.official-badge-mark { display: inline-flex; min-width: 24px; min-height: 24px; align-items: center; justify-content: center; border-radius: var(--r-chip); color: var(--accent); }
+.official-badge-mark:hover { color: var(--accent-strong); }
+.official-badge-card { min-width: 200px; }
+.official-badge-card[hidden] { display: none; }
 /* The Founder badge: only the award, in the colour of the name beside it.
    As a link it is a 24px target without growing the line it sits on. */
 .founder-badge { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; vertical-align: middle; }

@@ -121,6 +121,12 @@ export const FLAGS = {
     owner: 'keke',
     defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
   },
+  kekeNews: {
+    description:
+      'Keke’s daily news (ADR 0030): at 05:30 a draft of the day’s Nigerian stories carried by 3 or more outlets, which a site moderator approves, edits or skips on /mod, then at 08:00 one announcement in Naija Today with a reply per story. Read for everyone, not per member. Also needs a model key. Turning it off stops the next draft; posts already made stay.',
+    owner: 'keke',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
 } as const satisfies Record<string, FlagDefinition>
 
 export type FlagKey = keyof typeof FLAGS

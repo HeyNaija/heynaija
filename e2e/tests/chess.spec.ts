@@ -99,7 +99,10 @@ test('two members connect, play a game watched by a third, and The Arbiter posts
   await expect(chi.page.getByRole('list', { name: 'Moves' })).toContainText('1. e4 e5')
   await expect(chi.page.getByRole('button', { name: 'Resign' })).toHaveCount(0)
   await chi.page.getByRole('link', { name: 'The thread in Chess Arena' }).click()
-  await expect(chi.page.getByText('Automated').first()).toBeVisible()
+  // The Arbiter carries the official tick; tapping it says the account is automated.
+  await chi.page.getByRole('button', { name: 'Official HeyNaija account' }).first().click()
+  await expect(chi.page.getByText('Automated: nobody signs in to it.').first()).toBeVisible()
+  await chi.page.keyboard.press('Escape')
   const threadUrl = chi.page.url()
   await chi.page.getByRole('textbox').first().fill('Watch the d-pawn, Ada')
   await chi.page.getByRole('button', { name: 'Reply', exact: true }).click()

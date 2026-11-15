@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Suspense } from 'react'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { getKekeAbout, type KekeAbout } from '@/lib/api'
+import { NAIJA_TODAY } from '@/lib/automated'
 import { kekeRoute, PAGE_NAMES } from '@/lib/keke'
 
 export const metadata: Metadata = {
@@ -12,6 +13,9 @@ export const metadata: Metadata = {
 
 const link = 'font-semibold text-accent-strong hover:underline'
 
+/** 05:30, from the rule's hour and minute. */
+const time = ({ hour, minute }: { hour: number; minute: number }) => `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+
 export default function KekePage() {
   return (
     <div className="page-stack">
@@ -20,7 +24,8 @@ export default function KekePage() {
         <h1 className="page-title">Keke, the help bot</h1>
         <p className="page-description">
           Keke answers questions about HeyNaija. Write @keke in a post or a reply with your question, and it answers in the
-          thread, from HeyNaija&rsquo;s own pages and nothing else. It is an automated account, and it can be wrong.
+          thread, from HeyNaija&rsquo;s own pages and nothing else. It also posts a short roundup of the day&rsquo;s
+          Nigerian news, which a person checks first. It is an automated account, and it can be wrong.
         </p>
       </header>
 
@@ -139,6 +144,53 @@ async function Details() {
           <li>An answer is at most {keke.answerMax} characters, plus the link to its page.</li>
           <li>We spend at most a fixed amount on Keke each month. If it is reached, Keke stops answering until the next month.</li>
         </ul>
+      </section>
+
+      <section id="news" className="content-panel" aria-labelledby="keke-news">
+        <h2 id="keke-news" className="section-title">The daily news</h2>
+        <div className="mt-3 space-y-3 text-sm leading-relaxed text-muted">
+          {keke.news.live ? null : <p className="notice">The daily news is not running yet. This is how it will work when it is.</p>}
+          <p>
+            Each morning Keke posts the day&rsquo;s main Nigerian stories in{' '}
+            <Link href={`/c/${NAIJA_TODAY}`} className={link}>Naija Today</Link>, one neutral line each, once a person has
+            checked them. Join Naija Today to be told each morning; its bell, or the box in Settings, turns that off.
+          </p>
+          <ol className="list-decimal space-y-2 pl-5">
+            <li>
+              Every hour Keke reads the news feeds of the outlets below and keeps each headline, its link and the short
+              description the feed gives, for two days. It never copies an article.
+            </li>
+            <li>
+              At {time(keke.news.rule.draftAt)}, Nigerian time, the model is given the last {keke.news.rule.windowHours}{' '}
+              hours&rsquo; headlines. It says which are the same story and writes one neutral sentence for each, from those
+              headlines only. It decides nothing else.
+            </li>
+            <li>
+              The rule, applied by our code: a story counts if {keke.news.rule.minOutlets} or more different outlets carry it,
+              and the {keke.news.rule.maxStories} carried by the most outlets are kept. Fewer than{' '}
+              {keke.news.rule.minStories} stories that count, and there is no post that day.
+            </li>
+            <li>
+              A site moderator reads the draft and may correct a sentence, remove a story, approve it or skip the day. Not
+              approved by {time(keke.news.rule.publishAt)}, nothing is posted.
+            </li>
+            <li>
+              At {time(keke.news.rule.publishAt)} Keke posts the day&rsquo;s stories in Naija Today, and under that post one
+              reply per story: its sentence, the outlets that carried it, and one outlet&rsquo;s link. Reply under the story
+              you want to talk about.
+            </li>
+          </ol>
+          <p>
+            The outlets, named in this order:{' '}
+            {keke.news.sources.map((s, i) => (
+              <span key={s.site}>
+                {i > 0 ? (i === keke.news.sources.length - 1 ? ' and ' : ', ') : ''}
+                <a href={s.site} target="_blank" rel="noopener noreferrer" className={link}>{s.name}</a>
+              </span>
+            ))}
+            . The model is sent only their headlines and descriptions: nothing about members.
+          </p>
+        </div>
       </section>
 
       <section id="reporting" className="content-panel" aria-labelledby="keke-reporting">

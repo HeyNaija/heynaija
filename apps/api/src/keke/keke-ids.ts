@@ -15,3 +15,9 @@ export const KEKE_HANDLES: readonly string[] = [KEKE_HANDLE, KEKE_FALLBACK_HANDL
 /** At most BIO_MAX (160) characters, like anyone's. */
 export const KEKE_BIO =
   'Automated account. Mention @keke with a question about HeyNaija and it answers from HeyNaija’s own pages. It can be wrong. Nobody signs in to it.'
+
+/** Naija Today: Keke's daily news, one post a day; only Keke starts posts there (docs/adr/0030). */
+export const NAIJA_TODAY_SLUG = 'naija-today'
+
+/** What anyone else trying to start a post there is told. */
+export const NAIJA_TODAY_REFUSAL = 'Naija Today posts are Keke’s daily news; reply under a story instead.'

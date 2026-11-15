@@ -478,6 +478,19 @@ export type KekeAbout = {
   perHour: number
   perDay: number
   perConversation: number
+  /** The daily news: on or not, its rule (Nigerian times) and its outlets. */
+  news: {
+    live: boolean
+    rule: {
+      minOutlets: number
+      maxStories: number
+      minStories: number
+      windowHours: number
+      draftAt: { hour: number; minute: number }
+      publishAt: { hour: number; minute: number }
+    }
+    sources: { name: string; site: string }[]
+  }
 }
 
 export async function getKekeAbout(): Promise<KekeAbout> {
@@ -495,6 +508,29 @@ export type KekeMonth = {
   spentUsd: number
   stopped: boolean
   models: { model: string; name: string; via: string; calls: number; costUsd: number; outcomes: Partial<Record<KekeOutcome, number>> }[]
+}
+
+/** A story in Keke's daily news, as drafted, edited and posted. */
+export type KekeNewsStory = { sentence: string; outlets: { id: string; name: string; title: string; url: string }[]; link: string; replyId?: string }
+
+/** Today's news draft, for site moderators on /mod. `open` is whether it can still be approved or skipped (until 08:00). */
+export type KekeNewsDraft = {
+  day: string
+  status: 'waiting' | 'approved' | 'skipped' | 'missed' | 'published' | 'too_few'
+  stories: KekeNewsStory[]
+  items: number
+  outlets: number
+  decidedBy: string | null
+  decidedAt: string | null
+  postId: string | null
+  cutOff: string
+  open: boolean
+}
+
+/** Undefined for anyone who is not a site moderator; null when there is no draft today yet. */
+export async function getKekeNews(): Promise<KekeNewsDraft | null | undefined> {
+  const res = await api('/v1/keke/news')
+  return res.ok ? ((await res.json()) as { draft: KekeNewsDraft | null }).draft : undefined
 }
 
 /** Null for anyone who is not a site moderator. */

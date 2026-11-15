@@ -1,7 +1,6 @@
 import { type Db, members, profileBadges } from '@heynaija/db'
-import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common'
+import type { Logger } from '@nestjs/common'
 import { and, eq, ne } from 'drizzle-orm'
-import { DB } from '../tokens.js'
 import { KEKE_BIO, KEKE_FALLBACK_HANDLE, KEKE_HANDLE, KEKE_ID } from './keke-ids.js'
 
 /**
@@ -33,15 +32,4 @@ export async function ensureKeke(db: Db, logger?: Pick<Logger, 'warn'>): Promise
   await db.insert(profileBadges).values({ memberId: KEKE_ID, kind: 'automated' }).onConflictDoNothing()
   // An older Keke keeps its bio in step with what it now does.
   await db.update(members).set({ bio: KEKE_BIO }).where(eq(members.id, KEKE_ID))
-}
-
-@Injectable()
-export class KekeSetup implements OnApplicationBootstrap {
-  private readonly logger = new Logger('Keke')
-
-  constructor(@Inject(DB) private readonly db: Db) {}
-
-  async onApplicationBootstrap() {
-    await ensureKeke(this.db, this.logger)
-  }
 }

@@ -204,6 +204,12 @@ is turned off for it. /about/keke and /privacy read the same flags through
 `GET /v1/keke/about`: `live` is on for everyone, `inUse` is on for anyone at all.
 Turning `keke` off stops new answers; those already posted stay.
 
+`kekeNews` (the same defaults) turns on Keke's daily news: the hourly read of the
+outlets' feeds, the 05:30 draft and the 08:00 post in Naija Today. It is read for
+everyone, not per member, as the news is one public post. Off, nothing is read or
+drafted, and an approved draft is not posted. The daily notice also needs
+`communityAnnouncements`; without it the news is posted with no notice.
+
 ## Known limits
 
 - The kill switches (`reposts`, `quotePosts`, `linkPreviews`) are on in production, so a

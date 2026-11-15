@@ -39,11 +39,12 @@ import { IdeasController } from './ideas/ideas.controller.js'
 import { EmailKekeAlerts } from './keke/keke-alerts.js'
 import { KEKE_MODELS } from './keke/keke-model.js'
 import { KekeWorker } from './keke/keke-queue.js'
-import { KekeSetup } from './keke/keke-setup.js'
 import { KekeController } from './keke/keke.controller.js'
 import { KEKE_ALERTS, KEKE_SETTINGS, KekeService } from './keke/keke.service.js'
 import { Knowledge } from './keke/knowledge.js'
 import { kekeModels } from './keke/models.js'
+import { NEWS_SOURCES } from './keke/news-sources.js'
+import { KekeNews, NEWS_FETCHER, NEWS_SOURCE_LIST } from './keke/news.service.js'
 import { IdeasService } from './ideas/ideas.service.js'
 import { BullLinkJobs, LinkWorker } from './links/link-queue.js'
 import { LINK_JOBS, LinksService, PAGE_FETCHER } from './links/links.service.js'
@@ -58,6 +59,7 @@ import { scannerFromEnv } from './media/scanners.js'
 import { s3Config } from './media/s3-config.js'
 import { MembersController, OwnProfileController, OwnSensitiveSettingsController } from './members/members.controller.js'
 import { MembersService } from './members/members.service.js'
+import { AutomatedAccountsSetup } from './members/automated-avatars.js'
 import { ModerationController } from './moderation/moderation.controller.js'
 import { ModerationService } from './moderation/moderation.service.js'
 import { EmailSafetyAlerts, SAFETY_ALERTS } from './moderation/safety-alerts.js'
@@ -230,8 +232,13 @@ class HealthController {
       inject: [ENV, MAILER],
     },
     KekeService,
+    // The daily news reads outlets' feeds, from the public internet only, like link previews.
+    { provide: NEWS_FETCHER, useFactory: () => new SafeFetcher() },
+    { provide: NEWS_SOURCE_LIST, useValue: NEWS_SOURCES },
+    KekeNews,
     KekeWorker,
-    KekeSetup,
+    // Keke's account, then both automated accounts' photos (The Arbiter is made by Games, which starts first).
+    AutomatedAccountsSetup,
   ],
 })
 export class AppModule {}

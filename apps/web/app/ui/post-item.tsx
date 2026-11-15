@@ -15,6 +15,7 @@ import { Avatar } from './avatar'
 import { EmptyState } from './empty-state'
 import type { FeedSource } from './feed-source'
 import { FounderBadge } from './founder-badge'
+import { OfficialBadge } from './official-badge'
 import { BookmarkIcon, BubbleIcon, DotsIcon, HeartIcon, PinIcon, RepostIcon } from './icons'
 import { LikeButton } from './like-button'
 import { LinkCard } from './link-card'
@@ -266,12 +267,8 @@ export function PostItem({
                   <span className="truncate font-semibold">{post.authorName ?? `@${post.authorHandle}`}</span>
                 </Link>
                 {post.authorFounder ? <FounderBadge /> : null}
-                {/* HeyNaija's own accounts say so on every post (The Arbiter, docs/adr/0028). */}
-                {post.authorAutomated ? (
-                  <span className="chip shrink-0" title="An automated HeyNaija account. Nobody signs in to it.">
-                    Automated
-                  </span>
-                ) : null}
+                {/* HeyNaija's own accounts carry the official tick; tapping it says they are automated (docs/adr/0028). */}
+                {post.authorAutomated ? <OfficialBadge handle={post.authorHandle} /> : null}
               </p>
               {compact ? <ThreadAuthorLabel authorId={post.authorId} /> : null}
               <p className="post-meta">
