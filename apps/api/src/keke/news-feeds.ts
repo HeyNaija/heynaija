@@ -48,7 +48,7 @@ const sponsored = (url: string) => /\/(promoted|sponsored)(\/|$)/i.test(new URL(
  * link, a short plain description and when. Items without a headline, a link
  * or a date it can read are left out.
  */
-export function parseFeed(xml: string, outlet: string, since: Date, hoursAhead = 0): NewsItem[] {
+export function parseFeed(xml: string, outlet: string, since: Date, hoursAhead = 0, now = new Date()): NewsItem[] {
   const entries = [...xml.matchAll(/<(item|entry)\b[^>]*>([\s\S]*?)<\/\1>/gi)]
   const items: NewsItem[] = []
   for (const [, kind, body] of entries) {
@@ -61,7 +61,7 @@ export function parseFeed(xml: string, outlet: string, since: Date, hoursAhead =
     const when = new Date(stated.getTime() - hoursAhead * 3_600_000)
     // Never content:encoded, which some outlets fill with the whole article: only the short description.
     const description = boilerplate(plain(field(body!, 'description') ?? field(body!, 'summary')))
-    if (!title || !url || sponsored(url) || Number.isNaN(when.getTime()) || when < since || when.getTime() > Date.now() + 3_600_000) continue
+    if (!title || !url || sponsored(url) || Number.isNaN(when.getTime()) || when < since || when.getTime() > now.getTime() + 3_600_000) continue
     items.push({ outlet, title: shorten(title, 200), url, description: shorten(description, DESCRIPTION_MAX), publishedAt: when })
   }
   return items
@@ -72,8 +72,13 @@ export function parseFeed(xml: string, outlet: string, since: Date, hoursAhead =
  * goes to public addresses. An outlet whose feed fails is listed in `failed`
  * and the rest go on.
  */
-export async function readFeeds(fetcher: PageFetcher, sources: readonly NewsSource[], hours = 24): Promise<{ items: NewsItem[]; failed: string[] }> {
-  const since = new Date(Date.now() - hours * 3_600_000)
+export async function readFeeds(
+  fetcher: PageFetcher,
+  sources: readonly NewsSource[],
+  hours = 24,
+  now = new Date(),
+): Promise<{ items: NewsItem[]; failed: string[] }> {
+  const since = new Date(now.getTime() - hours * 3_600_000)
   const read = await Promise.all(
     sources.map(async (source) => {
       try {
@@ -82,7 +87,7 @@ export async function readFeeds(fetcher: PageFetcher, sources: readonly NewsSour
           maxBytes: FEED_MAX_BYTES,
           timeoutMs: 15_000,
         })
-        return { source, items: parseFeed(page.body.toString('utf8'), source.id, since, source.hoursAhead) }
+        return { source, items: parseFeed(page.body.toString('utf8'), source.id, since, source.hoursAhead, now) }
       } catch {
         return { source, items: null }
       }
