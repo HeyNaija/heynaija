@@ -11,6 +11,7 @@ import { type Env, loadEnv } from './env.js'
 import { FeatureFlags } from './flags/feature-flags.js'
 import { FeatureGuard } from './flags/feature.guard.js'
 import { InvitesService } from './invites/invites.service.js'
+import { BullKekeJobs, KEKE_JOBS } from './keke/keke-jobs.js'
 import { BullMediaJobs } from './media/media-queue.js'
 import { MEDIA_URLS, MediaUrls } from './media/media-urls.js'
 import { MEDIA_JOBS } from './media/media.service.js'
@@ -49,6 +50,9 @@ const providers = [
     useFactory: (env: Env, cfg: VideoConfig) => new MediaUrls(env.S3_SECRET_ACCESS_KEY, env.WEB_PUBLIC_URL, cfg.filesBase),
     inject: [ENV, VIDEO_CONFIG],
   },
+  // What a post that mentions Keke queues (docs/adr/0030). Only the producer is here: Keke's
+  // worker posts its answers through PostsService, so it lives in AppModule, beyond the cycle.
+  { provide: KEKE_JOBS, useClass: BullKekeJobs },
   PostsService,
 ]
 

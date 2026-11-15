@@ -10,7 +10,7 @@ import { avatarPath } from '../media/media.service.js'
 import { notify } from '../notifications/notifications.service.js'
 import { cleanLine, cleanLines, graphemes } from '../text.js'
 import { DB, ENV } from '../tokens.js'
-import { RESERVED_HANDLES } from '../games/chess/arena-ids.js'
+import { RESERVED_HANDLES } from './automated.js'
 import { isAutomated, isFounder } from './badges.js'
 
 export const DISPLAY_NAME_MAX = 50

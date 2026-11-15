@@ -13,7 +13,8 @@ import { PostImages } from '@/app/ui/post-images'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
 import { FlagControls } from '@/app/ui/flag-controls'
-import { getFlags, getModeration, type LogEntry, type QueueItem } from '@/lib/api'
+import { KekeMonthPanel } from '@/app/ui/keke-month'
+import { getFlags, getKekeMonth, getModeration, type LogEntry, type QueueItem } from '@/lib/api'
 
 export const metadata: Metadata = { title: 'Moderation' }
 
@@ -66,7 +67,7 @@ async function Moderation() {
   // To anyone who is not a moderator this page does not exist.
   if (!data) notFound()
   // Site moderators only: everyone else gets null.
-  const flags = data.roster ? await getFlags() : null
+  const [flags, keke] = data.roster ? await Promise.all([getFlags(), getKekeMonth()]) : [null, null]
   const now = Date.now()
 
   return (
@@ -116,6 +117,13 @@ async function Moderation() {
           <div className="mt-3">
             <FlagControls flags={flags} />
           </div>
+        </section>
+      ) : null}
+
+      {keke ? (
+        <section aria-label="Keke this month" className="content-panel">
+          <h2 className="section-title">Keke this month</h2>
+          <KekeMonthPanel month={keke} />
         </section>
       ) : null}
 
