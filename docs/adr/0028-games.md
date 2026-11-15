@@ -144,6 +144,13 @@ only on the chess page, and Chess marked Beta on /games.
   nothing.
 - One Lichess account belongs to one member. Unlinking revokes the token at
   Lichess where it can, and forgets it either way.
+- *Added 15 November 2026, for the apps:* an app asks with `?return=app`. The state
+  then starts `app.` and Lichess returns the member to `/lichess/return`, a web
+  route outside `/games` that finishes nothing: it passes the code and state on to
+  `ng.heynaija.app://lichess/return`, and the app calls `link/complete` with its own
+  session. The mark is inside the hashed state, so it cannot be added or removed on
+  the way back, and the code exchange uses the same return address. The phone's
+  browser has no HeyNaija session, which is why the web callback cannot be used.
 
 ### Tokens at rest
 

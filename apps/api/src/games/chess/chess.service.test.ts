@@ -56,6 +56,23 @@ const refusal = async (run: () => Promise<unknown>): Promise<string> => {
   assert.fail('expected a ChessError')
 }
 
+test('an app asks for Lichess to send the member back to it, and the code is traded with that same address', async () => {
+  const web = await service.startLink(ada)
+  assert.equal(web.returnsTo, 'web')
+  const app = await service.startLink(ada, new Date(), { app: true })
+  assert.equal(app.returnsTo, 'app')
+  const sent = new URL(app.url).searchParams
+  assert.equal(sent.get('redirect_uri'), 'https://heynaija.test/lichess/return')
+  assert.ok(sent.get('state')!.startsWith('app.'))
+
+  lichess.accounts.set('tok-Ada', { id: 'ada', username: 'Ada', ratings: {} })
+  await service.completeLink(ada, 'Ada', sent.get('state')!)
+  assert.deepEqual(lichess.redirects, ['https://heynaija.test/lichess/return'])
+  // The mark is part of what was hashed: taking it off leaves a state nobody started.
+  const again = new URL((await service.startLink(ada, new Date(), { app: true })).url).searchParams.get('state')!
+  assert.equal(await refusal(() => service.completeLink(ada, 'Ada', again.slice('app.'.length))), 'link_expired')
+})
+
 test('linking sends the member to Lichess with PKCE, then keeps the account with its token sealed', async () => {
   const { url } = await service.startLink(ada)
   const sent = new URL(url).searchParams

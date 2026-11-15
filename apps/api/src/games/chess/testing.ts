@@ -35,8 +35,11 @@ export class FakeLichess implements LichessApi {
   authorizeUrl({ clientId, redirectUri, codeChallenge, state, scopes = ['challenge:read', 'challenge:write', 'board:play'] }: Parameters<LichessApi['authorizeUrl']>[0]) {
     return `https://lichess.test/oauth?${new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, code_challenge: codeChallenge, state, scope: scopes.join(' ') })}`
   }
-  async token({ code }: { code: string }) {
+  /** The address each token request said the member was sent back to. */
+  redirects: string[] = []
+  async token({ code, redirectUri }: { code: string; redirectUri?: string }) {
     this.calls.push(`token:${code}`)
+    if (redirectUri) this.redirects.push(redirectUri)
     if (this.fail.token) throw this.fail.token
     return { accessToken: `tok-${code}`, expiresAt: null }
   }
