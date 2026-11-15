@@ -36,8 +36,19 @@ export function TriviaRound({ initial }: { initial: Round }) {
     let failures = 0
     let controller: AbortController | null = null
     const over = () => latest.current.status === 'published' || latest.current.status === 'cancelled'
+    // The Arbiter's results post is written a moment after the results: once they are out, look again a few times for it.
+    let lookedForPost = 0
     const loop = async () => {
-      while (!stopped && !over()) {
+      while (!stopped) {
+        if (over()) {
+          if (latest.current.status !== 'published' || latest.current.resultPostId || lookedForPost >= 3) return
+          lookedForPost += 1
+          await new Promise((done) => setTimeout(done, 2000))
+          const res = await fetch(`/api/v1/games/trivia/rounds/${latest.current.id}`, { cache: 'no-store' }).catch(() => null)
+          if (stopped) return
+          if (res?.ok) take((await res.json()) as Round)
+          continue
+        }
         if (document.visibilityState !== 'visible') return
         controller = new AbortController()
         const res = await fetch(`/api/v1/games/trivia/rounds/${latest.current.id}?after=${latest.current.version}`, { cache: 'no-store', signal: controller.signal }).catch(() => null)

@@ -681,7 +681,9 @@ export class TriviaService {
       order by q.position`)
     const options = round.threadPostId ? { replyTo: round.threadPostId } : { communitySlug: await this.postingSlug(round), anyMember: true }
     const posted = await this.posts.create(ARBITER_ID, results, options)
-    await this.db.update(triviaRounds).set({ resultPostId: posted.id }).where(eq(triviaRounds.id, roundId))
+    // The round already reads as published; pages still open look once more for this post.
+    await this.db.update(triviaRounds).set({ resultPostId: posted.id, version: sql`${triviaRounds.version} + 1` }).where(eq(triviaRounds.id, roundId))
+    await notifyRound(this.db, roundId)
     if (firsts.length && round.threadPostId) {
       const lines = firsts.map((f) => `Q${f.position}: ${publicName(f)}, ${seconds(Number(f.ms))}`)
       // A post holds 1,000 characters: the list stops short of that.
