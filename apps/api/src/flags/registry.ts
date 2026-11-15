@@ -109,6 +109,24 @@ export const FLAGS = {
     owner: 'communities',
     defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
   },
+  keke: {
+    description:
+      'Keke, the help bot (ADR 0030): when a member mentions @keke, it answers in the thread from HeyNaija’s own public pages. On for a list of members, only their questions are answered. Also needs ANTHROPIC_API_KEY or OPENROUTER_API_KEY on the server. Turning it off stops new answers; those already posted stay.',
+    owner: 'keke',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
+  kekeDeepSeek: {
+    description:
+      'Which model answers for Keke (ADR 0030). Off: Claude Haiku 5.5. On: DeepSeek V4.1 Flash, through OpenRouter. On for a list of members, those members’ questions go to DeepSeek and everyone else’s to Haiku, to compare the two on real questions; /mod shows how each did. Without OPENROUTER_API_KEY on the server, Haiku answers whatever this says.',
+    owner: 'keke',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
+  kekeNews: {
+    description:
+      'Keke’s daily news (ADR 0030): at 05:30 a draft of the day’s Nigerian stories carried by 3 or more outlets, which a site moderator approves, edits or skips on /mod, then at 08:00 one announcement in Naija Today with a reply per story. Read for everyone, not per member. Also needs a model key. Turning it off stops the next draft; posts already made stay.',
+    owner: 'keke',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
 } as const satisfies Record<string, FlagDefinition>
 
 export type FlagKey = keyof typeof FLAGS

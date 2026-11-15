@@ -79,7 +79,10 @@ push notifications, community voting, treasury transactions, the Top reply order
 (planned, ADR 0014).
 
 Phase 1 non-goals: native apps, DMs, video, payments or creator revenue, AI
-recommendations, ranking by predicted engagement, federation.
+recommendations, ranking by predicted engagement, federation. Keke, the help bot
+([ADR 0030](docs/adr/0030-keke.md)), is not an AI recommendation: it answers
+questions about HeyNaija from HeyNaija's own pages when a member mentions it, and
+chooses, ranks or recommends nothing.
 
 The canonical, prioritised inventory is [docs/FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md),
 generated from `docs/feature-roadmap.json` and also rendered at `/progress`.

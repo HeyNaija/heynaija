@@ -461,6 +461,84 @@ export async function getHighlightsRules(): Promise<HighlightsRules> {
   return res.json()
 }
 
+/**
+ * Keke, the help bot (docs/adr/0030), as this server runs it: whether it answers
+ * everyone (`live`) or anyone at all (`inUse`, a list included), which models it
+ * can use and who a question is sent to, and its limits. Read from the API so
+ * /about/keke and /privacy never say more or less than is true.
+ */
+export type KekeAbout = {
+  live: boolean
+  inUse: boolean
+  models: { family: 'haiku' | 'deepseek'; name: string; maker: string; via: 'anthropic' | 'openrouter' }[]
+  firstChoice: 'haiku' | 'deepseek' | null
+  trial: boolean
+  pages: string[]
+  answerMax: number
+  perHour: number
+  perDay: number
+  perConversation: number
+  /** The daily news: on or not, its rule (Nigerian times) and its outlets. */
+  news: {
+    live: boolean
+    rule: {
+      minOutlets: number
+      maxStories: number
+      minStories: number
+      windowHours: number
+      draftAt: { hour: number; minute: number }
+      publishAt: { hour: number; minute: number }
+    }
+    sources: { name: string; site: string }[]
+  }
+}
+
+export async function getKekeAbout(): Promise<KekeAbout> {
+  const res = await api('/v1/keke/about')
+  if (!res.ok) throw new Error(`API /v1/keke/about responded ${res.status}`)
+  return res.json()
+}
+
+export type KekeOutcome = 'answered' | 'not_covered' | 'off_topic' | 'unsourced' | 'failed' | 'refused'
+
+/** Keke's month, for site moderators on /mod: each model's calls by outcome and cost, and the cap. */
+export type KekeMonth = {
+  month: string
+  budgetUsd: number
+  spentUsd: number
+  stopped: boolean
+  models: { model: string; name: string; via: string; calls: number; costUsd: number; outcomes: Partial<Record<KekeOutcome, number>> }[]
+}
+
+/** A story in Keke's daily news, as drafted, edited and posted. */
+export type KekeNewsStory = { sentence: string; outlets: { id: string; name: string; title: string; url: string }[]; link: string; replyId?: string }
+
+/** Today's news draft, for site moderators on /mod. `open` is whether it can still be approved or skipped (until 08:00). */
+export type KekeNewsDraft = {
+  day: string
+  status: 'waiting' | 'approved' | 'skipped' | 'missed' | 'published' | 'too_few'
+  stories: KekeNewsStory[]
+  items: number
+  outlets: number
+  decidedBy: string | null
+  decidedAt: string | null
+  postId: string | null
+  cutOff: string
+  open: boolean
+}
+
+/** Undefined for anyone who is not a site moderator; null when there is no draft today yet. */
+export async function getKekeNews(): Promise<KekeNewsDraft | null | undefined> {
+  const res = await api('/v1/keke/news')
+  return res.ok ? ((await res.json()) as { draft: KekeNewsDraft | null }).draft : undefined
+}
+
+/** Null for anyone who is not a site moderator. */
+export async function getKekeMonth(): Promise<KekeMonth | null> {
+  const res = await api('/v1/keke/month')
+  return res.ok ? res.json() : null
+}
+
 export type IdeaKind = 'idea' | 'problem'
 export type IdeaStatus = 'under_review' | 'planned' | 'in_progress' | 'shipped' | 'not_now' | 'duplicate'
 export type IdeaGroup = 'open' | 'shipped' | 'closed'

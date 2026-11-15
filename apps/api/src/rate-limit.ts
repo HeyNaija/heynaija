@@ -73,6 +73,12 @@ export const LIMITS = {
   // (KENO_DAILY_TOKENS) are counted in Postgres, which decides.
   kenoTicket: [{ max: 30, windowMs: MINUTE }],
   kenoDaily: [{ max: 500, windowMs: 25 * HOUR }],
+  // Questions Keke answers for one member (docs/adr/0030). Each costs a call to its
+  // model, so over this Keke says nothing; asking is never refused.
+  kekeAsk: [
+    { max: 5, windowMs: HOUR },
+    { max: 20, windowMs: 24 * HOUR },
+  ],
 } satisfies Record<string, { max: number; windowMs: number }[]>
 
 export type LimitKind = keyof typeof LIMITS

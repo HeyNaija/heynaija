@@ -679,6 +679,34 @@ export async function resolveReport(formData: FormData): Promise<void> {
   refresh()
 }
 
+/**
+ * A site moderator approves Keke's news for the day with the stories they kept,
+ * in their own words, or skips the day (docs/adr/0030). The button pressed decides.
+ */
+export async function decideKekeNews(_prev: FormState, formData: FormData): Promise<FormState> {
+  const day = String(formData.get('day') ?? '')
+  const skip = formData.get('decision') === 'skip'
+  const count = Number(formData.get('count') ?? 0)
+  const stories = Array.from({ length: Math.min(count, 20) }, (_, index) => index)
+    .filter((index) => formData.get(`keep_${index}`) === 'on')
+    .map((index) => ({ index, sentence: String(formData.get(`sentence_${index}`) ?? '').trim() }))
+  if (!skip && stories.length === 0) return { error: 'Keep at least one story, or skip today.' }
+  if (!skip && stories.some((s) => !s.sentence)) return { error: 'A story you keep needs its sentence.' }
+  const res = await api(`/v1/keke/news/${encodeURIComponent(day)}/${skip ? 'skip' : 'approve'}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: skip ? '{}' : JSON.stringify({ stories }),
+  })
+  if (res.status === 401) redirect('/login')
+  if (res.status === 400) {
+    const body = (await res.json().catch(() => ({}))) as { message?: unknown }
+    return { error: typeof body.message === 'string' && body.message.length < 160 ? `Not saved: ${body.message}.` : 'Not saved. Check the stories.' }
+  }
+  if (!res.ok) return { error: 'Could not save that. Try again in a moment.' }
+  refresh()
+  return { done: true }
+}
+
 /** A site moderator turns a feature on or off, or limits it to some members (docs/feature-flags.md). */
 export async function setFlag(_prev: FormState, formData: FormData): Promise<FormState> {
   const key = String(formData.get('key') ?? '')

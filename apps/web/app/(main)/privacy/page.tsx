@@ -1,6 +1,9 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { ContactEmail, PolicyPage } from '@/app/ui/policy-page'
+import { getKekeAbout } from '@/lib/api'
+import { kekeRoute } from '@/lib/keke'
 
 export const metadata: Metadata = { title: 'Privacy' }
 
@@ -10,7 +13,7 @@ export default function PrivacyPage() {
       eyebrow="Your data"
       title="Privacy policy"
       summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, and how you get your data or have it deleted. No ads, no selling data, no trackers."
-      updated="13 November 2026"
+      updated="15 November 2026"
       draft={false}
       sections={[
         {
@@ -103,6 +106,7 @@ export default function PrivacyPage() {
                 <li>To email you sign-in codes and account messages, and, if notification emails are on for you, a short email when there is something new for you (grouped, at most about twice an hour). Every one has a link that turns them off.</li>
                 <li>If weekly highlights are on for you and you have not opened HeyNaija for a few days: at most one message a week with a few conversations you missed, chosen by <Link href="/about/highlights">published rules</Link>. It comes as a push notification where you turned those on, otherwise as an email if notification emails are on. It has its own switch in Settings and its own link that turns it off. To judge whether these are worth sending we keep when we last sent you one; we do not track whether you open it or what you tap. We send no advertising or marketing.</li>
                 <li>If you turn on push notifications in a browser or the app, to show your notifications there as they happen. What reaches you that way is not emailed as well.</li>
+                <li>If you mention <Link href="/about/keke">Keke</Link>, our help bot, in a post, to answer you: the text of that post, and of the post it replies to if it is a reply, is sent to the company that runs Keke&rsquo;s model (below), with other members&rsquo; @handles replaced. Your name, handle, email and pictures are not sent. We keep which model answered, its length and cost, and what kind of answer it was, but not who asked or what.</li>
               </ul>
               <p>
                 Latest and Following are in time order. <Link href="/about/discover">Discover</Link> ranks recent
@@ -136,12 +140,15 @@ export default function PrivacyPage() {
                 <li><strong>netcup</strong>: the servers HeyNaija runs on, in Germany.</li>
                 <li><strong>Google</strong>: only if you choose to sign in with Google.</li>
                 <li><strong>Apple</strong>: only if you choose to sign in with Apple in the iPhone app.</li>
+                <Suspense fallback={null}>
+                  <KekeProcessors />
+                </Suspense>
               </ul>
               <p>
                 So your data is processed outside Nigeria: by netcup in Germany, under the European Union’s data
-                protection law (the GDPR), and by Cloudflare, Resend, Google, Apple and the push services, mainly in
-                the United States and Europe, each under its own data protection terms. It is encrypted on its way to
-                each of them.
+                protection law (the GDPR), and by Cloudflare, Resend, Google, Apple, the push services and, if you
+                mention Keke, the companies that run its model, mainly in the United States and Europe, each under its
+                own data protection terms. It is encrypted on its way to each of them.
               </p>
             </>
           ),
@@ -320,5 +327,27 @@ export default function PrivacyPage() {
         },
       ]}
     />
+  )
+}
+
+/**
+ * Who handles a question to Keke on this server (ADR 0030), read from the API so
+ * this never names a company that is not used. Nothing while Keke answers nobody;
+ * nothing either if the API cannot say, rather than a guess.
+ */
+async function KekeProcessors() {
+  const keke = await getKekeAbout().catch(() => null)
+  if (!keke?.inUse || keke.models.length === 0) return null
+  const who = [
+    ...(keke.models.some((m) => m.via === 'anthropic') ? ['Anthropic'] : []),
+    ...(keke.models.some((m) => m.via === 'openrouter') ? ['OpenRouter and the companies it passes to'] : []),
+  ].join(', and ')
+  return (
+    <li>
+      <strong>{who}</strong>, only
+      if you mention <Link href="/about/keke">Keke</Link>: the post that mentions it and the one it replies to, to answer
+      it.{' '}
+      {keke.models.map((m) => `For ${m.name}, made by ${m.maker}, it ${kekeRoute(m)}`).join(' ')}
+    </li>
   )
 }

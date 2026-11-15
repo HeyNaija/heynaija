@@ -13,7 +13,9 @@ import { PostImages } from '@/app/ui/post-images'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
 import { FlagControls } from '@/app/ui/flag-controls'
-import { getFlags, getModeration, type LogEntry, type QueueItem } from '@/lib/api'
+import { KekeMonthPanel } from '@/app/ui/keke-month'
+import { KekeNewsPanel } from '@/app/ui/keke-news'
+import { getFlags, getKekeMonth, getKekeNews, getModeration, type LogEntry, type QueueItem } from '@/lib/api'
 
 export const metadata: Metadata = { title: 'Moderation' }
 
@@ -66,7 +68,7 @@ async function Moderation() {
   // To anyone who is not a moderator this page does not exist.
   if (!data) notFound()
   // Site moderators only: everyone else gets null.
-  const flags = data.roster ? await getFlags() : null
+  const [flags, keke, news] = data.roster ? await Promise.all([getFlags(), getKekeMonth(), getKekeNews()]) : [null, null, undefined]
   const now = Date.now()
 
   return (
@@ -116,6 +118,25 @@ async function Moderation() {
           <div className="mt-3">
             <FlagControls flags={flags} />
           </div>
+        </section>
+      ) : null}
+
+      {news !== undefined ? (
+        <section id="keke-news" aria-labelledby="keke-news-title" className="content-panel">
+          <h2 id="keke-news-title" className="section-title">Keke&rsquo;s news for today</h2>
+          <p className="mt-1 text-sm text-muted">
+            Stories carried by three or more outlets, drafted at 05:30. Edit a sentence, untick a story to leave it out, then
+            approve; or skip today. Nothing is posted in Naija Today unless it is approved by 08:00.{' '}
+            <Link href="/about/keke#news" className="font-semibold text-accent-strong hover:underline">The rule</Link>
+          </p>
+          <KekeNewsPanel draft={news} />
+        </section>
+      ) : null}
+
+      {keke ? (
+        <section aria-label="Keke this month" className="content-panel">
+          <h2 className="section-title">Keke this month</h2>
+          <KekeMonthPanel month={keke} />
         </section>
       ) : null}
 

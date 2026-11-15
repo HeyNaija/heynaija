@@ -189,6 +189,27 @@ announcements back on (`PUT /v1/communities/:slug/announcements`) is a 404 while
 off; turning them off always works. Off stops new announcements and leaves the ones
 already sent in members' notifications.
 
+## `keke` and `kekeDeepSeek`
+
+Keke, the help bot (ADR 0030). `keke` (off in production, on in staging and
+development) decides whose mentions of @keke are answered: read for the member who
+asked, so a list keeps it to named members while it is tried out. It also needs
+`ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY` on the server; with neither, nothing is
+queued and the flag does nothing. `kekeDeepSeek` (the same defaults) picks the model
+for the member who asked: off is Claude Haiku 5.5, on is DeepSeek V4.1 Flash, which
+needs `OPENROUTER_API_KEY` (without it Haiku answers). On for a list, those members'
+questions go to DeepSeek and everyone else's to Haiku, and /mod shows how each did.
+Because staging follows the all-on rule, DeepSeek answers there until `kekeDeepSeek`
+is turned off for it. /about/keke and /privacy read the same flags through
+`GET /v1/keke/about`: `live` is on for everyone, `inUse` is on for anyone at all.
+Turning `keke` off stops new answers; those already posted stay.
+
+`kekeNews` (the same defaults) turns on Keke's daily news: the hourly read of the
+outlets' feeds, the 05:30 draft and the 08:00 post in Naija Today. It is read for
+everyone, not per member, as the news is one public post. Off, nothing is read or
+drafted, and an approved draft is not posted. The daily notice also needs
+`communityAnnouncements`; without it the news is posted with no notice.
+
 ## Known limits
 
 - The kill switches (`reposts`, `quotePosts`, `linkPreviews`) are on in production, so a

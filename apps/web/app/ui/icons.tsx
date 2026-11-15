@@ -57,6 +57,7 @@ import {
   Share,
   Share2,
   Shield,
+  ShieldCheck,
   Signal,
   Trophy,
   User,
@@ -114,6 +115,8 @@ export const FlameIcon = icon(Flame)
 export const HashIcon = icon(Hash)
 export const PinIcon = icon(Pin)
 export const ShieldIcon = icon(Shield)
+/** HeyNaija's own (automated) accounts: a shield, so it is never read as the green identity tick. */
+export const OfficialIcon = icon(ShieldCheck)
 export const VoteIcon = icon(Vote)
 export const ImageIcon = icon(ImagePlus)
 export const VideoIcon = icon(Video)

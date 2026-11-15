@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ARBITER_ONLY } from '@/lib/chess-arena'
+import { BOT_ONLY } from '@/lib/automated'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { setCommunityAnnouncements, setCommunitySensitive } from '@/app/actions'
@@ -144,9 +144,9 @@ async function CommunityView({ params, searchParams }: Props) {
         ) : null}
       </header>
 
-      {ARBITER_ONLY[community.slug] ? (
-        // Chess Arena and Game Night (docs/adr/0028): The Arbiter starts the posts; members reply in them.
-        <p className="notice">{ARBITER_ONLY[community.slug]}</p>
+      {BOT_ONLY[community.slug] ? (
+        // Chess Arena and Game Night (docs/adr/0028), Naija Today (docs/adr/0030): the automated account starts the posts; members reply.
+        <p className="notice">{BOT_ONLY[community.slug]}</p>
       ) : viewer.state === 'member' && community.viewerIsMember ? (
         <Composer
           handle={viewer.me.handle}

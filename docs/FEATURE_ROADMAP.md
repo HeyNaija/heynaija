@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 48 | 20 | 16 | 11 | 95 |
+| 50 | 20 | 16 | 11 | 97 |
 
 ## Priority order
 
@@ -590,6 +590,15 @@ This tracks product development, not formal governance decisions. Priority means
 
 ### People and discovery
 
+#### Keke's daily news
+
+- **ID:** `keke-news`
+- **Priority:** P2 · **Status:** Implemented · **Availability:** Not live
+- **Description:** Each morning, the Nigerian stories carried by three or more of ten outlets, one neutral sentence each, posted by Keke in Naija Today once a site moderator has approved them.
+- **Dependencies:** `keke`, `community-announcements`, `link-previews`
+- **Inspected evidence:** `docs/adr/0030-keke.md`, `packages/db/drizzle/0054_keke_news.sql`, `apps/api/src/keke/news.service.ts`, `apps/api/src/keke/news-rule.ts`, `apps/api/src/keke/news-feeds.ts`, `apps/api/src/keke/news-sources.ts`, `apps/web/app/ui/keke-news.tsx`, `apps/web/app/(main)/about/keke/page.tsx`, `apps/api/src/keke/news.service.test.ts`
+- **Audit notes:** Built 15 Nov 2026 (ADR 0030), behind the kekeNews flag: on in development and staging, off in production. The outlets' feeds are read every hour and their headlines, links and short descriptions kept 48 hours, since most feeds hold only a few hours. At 05:30 Nigerian time the model groups the last 24 hours' headlines into stories with one neutral sentence each; code keeps stories carried by 3 or more outlets, the 5 carried by most, and makes no post with fewer than 3. A site moderator edits, approves or skips it on /mod until 08:00, when an approved draft is posted in Naija Today as its daily announcement with a reply per story naming the outlets and one outlet's link. Naija Today is made with the first draft and only Keke starts posts there. The outlet list awaits the owner's confirmation; not yet run against the live feeds with a real model.
+
 #### More local discovery
 
 - **ID:** `local-discovery`
@@ -629,6 +638,15 @@ This tracks product development, not formal governance decisions. Priority means
 - **Audit notes:** The model exists (restricted.age_assurances, ageStatus) but nothing can yet produce a verified assurance: NIN verification is locked off and no age-assurance provider is chosen. Direct messages and calls are not built until it exists (owner, 6 Nov 2026, ADR 0020); meanwhile hosting and speaking in Gists read the stated age. Governance voting always needs an ID-verified age. The provider must not require a NIN (under-18 rollout section 2).
 
 ### Transparency and governance
+
+#### Keke, the help bot
+
+- **ID:** `keke`
+- **Priority:** P2 · **Status:** Implemented · **Availability:** Not live
+- **Description:** Members mention @keke in a post or reply with a question about HeyNaija, and an automated account answers in the thread from HeyNaija's own public pages, with a link to the page; anything else gets fixed wording.
+- **Dependencies:** `mentions`, `public-policies`, `moderator-tools`, `rate-limits`
+- **Inspected evidence:** `docs/adr/0030-keke.md`, `packages/db/drizzle/0053_keke.sql`, `apps/api/src/keke/keke.service.ts`, `apps/api/src/keke/knowledge.ts`, `apps/api/src/keke/answer.ts`, `apps/api/src/keke/anthropic-model.ts`, `apps/api/src/keke/openrouter-model.ts`, `apps/api/src/posts/posts.service.ts`, `apps/api/src/cli/keke-try.ts`, `apps/web/app/(main)/about/keke/page.tsx`, `apps/web/app/ui/keke-month.tsx`, `apps/api/src/keke/keke.service.test.ts`, `apps/api/src/keke/knowledge.test.ts`, `apps/api/src/keke/answer.test.ts`, `apps/api/src/keke/models.test.ts`
+- **Audit notes:** Built 15 Nov 2026 (ADR 0030), behind the keke flag: on in development and staging, off in production, and needing ANTHROPIC_API_KEY or OPENROUTER_API_KEY on the server. Claude Haiku 5.5 answers (directly at Anthropic with its key, otherwise through OpenRouter); the kekeDeepSeek flag sends questions to DeepSeek V4.1 Flash through OpenRouter instead, for everyone or for a list of members, and each is the other's fallback. It reads only the <main> of eleven public pages, every hour; the model sorts a question as answered, not covered or off topic, and code posts the answer with its page's link, or fixed wording for the other two. 5 answers per member an hour and 20 a day, 3 replies per conversation, silence where Keke may not reply. Each call's tokens and cost are recorded without member or text, with a monthly cap (KEKE_MONTHLY_BUDGET_USD) and one email when it is reached; /mod shows the month by model. /about/keke and the privacy policy name the companies a question goes to on that server. pnpm keke:try compares the models on about 40 written questions. Not yet tried with a real key. The daily news is keke-news.
 
 #### Community proposals and consultation
 

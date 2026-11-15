@@ -8,6 +8,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgSchema,
   pgTable,
   primaryKey,
@@ -1363,6 +1364,104 @@ export const featureFlagChanges = pgTable(
   },
   (t) => [index('feature_flag_changes_key_created_idx').on(t.flagKey, t.createdAt)],
 )
+
+// Keke, HeyNaija's help bot (docs/adr/0030): one row for every call to the model
+// behind @keke, for its monthly cap and its numbers on /mod. Nothing about who
+// asked or what: no member, no post and no text, so the data export and account
+// erasure have nothing to do here.
+export const KEKE_OUTCOMES = [
+  // The model's answer, posted with a link to the page it came from.
+  'answered',
+  // Our own fixed wording: the pages do not say, or the question is not about HeyNaija.
+  'not_covered',
+  'off_topic',
+  // It said it answered but named no page it was sent, so the not-covered wording went instead.
+  'unsourced',
+  // No usable answer: an error, a timeout, JSON that did not fit, or the model declining.
+  'failed',
+  'refused',
+  // The daily news: the day's headlines grouped into stories.
+  'drafted',
+] as const
+
+export const kekeUsage = pgTable(
+  'keke_usage',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // What the call was for: answering a mention (later also drafting the daily news).
+    job: text('job', { enum: ['answer', 'news'] }).notNull(),
+    // The model as named to whoever ran it: claude-haiku-5-5, deepseek/deepseek-v4.1-flash-1017.
+    model: text('model').notNull(),
+    // Who it was sent to: Anthropic directly, or OpenRouter.
+    via: text('via', { enum: ['anthropic', 'openrouter'] }).notNull(),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    // US dollars: as OpenRouter reports it, or worked out from Anthropic's prices.
+    costUsd: numeric('cost_usd', { precision: 12, scale: 6, mode: 'number' }).notNull().default(0),
+    outcome: text('outcome', { enum: KEKE_OUTCOMES }).notNull(),
+    // How long the call took, in milliseconds.
+    ms: integer('ms'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('keke_usage_created_idx').on(t.createdAt)],
+)
+
+// Keke's daily news (docs/adr/0030): one draft a day, Nigerian time, made from the
+// outlets' feeds at 05:30, which a site moderator approves, edits or skips before it is
+// posted at 08:00. Its stories are what the moderator sees and what is posted:
+// [{ sentence, outlets: [{ id, name, title, url }], link, replyId? }].
+export const KEKE_NEWS_STATUSES = [
+  // Made and waiting for a moderator.
+  'waiting',
+  'approved',
+  'skipped',
+  // Nobody approved it by 08:00.
+  'missed',
+  'published',
+  // Fewer stories than the rule needs: no post that day.
+  'too_few',
+] as const
+
+// The headlines the outlets' feeds gave, read every hour and kept 48 hours (docs/adr/0030):
+// most feeds hold only their last few hours, so one read at 05:30 would miss the day.
+// Headline, link and a short description only; never article text.
+export const kekeNewsItems = pgTable(
+  'keke_news_items',
+  {
+    url: text('url').primaryKey(),
+    // The outlet's ID in NEWS_SOURCES.
+    outlet: text('outlet').notNull(),
+    title: text('title').notNull(),
+    description: text('description').notNull().default(''),
+    publishedAt: ts('published_at').notNull(),
+    seenAt: ts('seen_at').notNull().defaultNow(),
+  },
+  (t) => [index('keke_news_items_published_idx').on(t.publishedAt)],
+)
+
+export const kekeNewsDrafts = pgTable('keke_news_drafts', {
+  // The day in Nigeria the draft is for.
+  day: date('day').primaryKey(),
+  status: text('status', { enum: KEKE_NEWS_STATUSES }).notNull(),
+  stories: jsonb('stories').notNull().default([]),
+  // How many items the feeds gave and how many outlets answered, for /mod.
+  items: integer('items').notNull().default(0),
+  outlets: integer('outlets').notNull().default(0),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  // The site moderator who approved or skipped it; gone with their account.
+  decidedBy: uuid('decided_by').references(() => members.id, { onDelete: 'set null' }),
+  decidedAt: ts('decided_at'),
+  // The day's post in Naija Today, once published.
+  postId: uuid('post_id').references(() => posts.id, { onDelete: 'set null' }),
+  publishedAt: ts('published_at'),
+})
+
+// The months Keke reached its monthly cap in, so the operators are emailed once a month, not on every question.
+export const kekeBudgetAlerts = pgTable('keke_budget_alerts', {
+  // The first day of the month, UTC.
+  month: date('month').primaryKey(),
+  sentAt: ts('sent_at').notNull().defaultNow(),
+})
 
 // ---------------------------------------------------------------------------
 // Games (docs/games/GAMES.md, docs/adr/0028). Their own Postgres schema, kept

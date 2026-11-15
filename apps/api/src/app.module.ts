@@ -36,6 +36,15 @@ import { HIGHLIGHTS_JOBS, HIGHLIGHTS_SETTINGS, HighlightsService } from './highl
 import { GovernanceController } from './governance/governance.controller.js'
 import { GovernanceService } from './governance/governance.service.js'
 import { IdeasController } from './ideas/ideas.controller.js'
+import { EmailKekeAlerts } from './keke/keke-alerts.js'
+import { KEKE_MODELS } from './keke/keke-model.js'
+import { KekeWorker } from './keke/keke-queue.js'
+import { KekeController } from './keke/keke.controller.js'
+import { KEKE_ALERTS, KEKE_SETTINGS, KekeService } from './keke/keke.service.js'
+import { Knowledge } from './keke/knowledge.js'
+import { kekeModels } from './keke/models.js'
+import { NEWS_SOURCES } from './keke/news-sources.js'
+import { KekeNews, NEWS_FETCHER, NEWS_SOURCE_LIST } from './keke/news.service.js'
 import { IdeasService } from './ideas/ideas.service.js'
 import { BullLinkJobs, LinkWorker } from './links/link-queue.js'
 import { LINK_JOBS, LinksService, PAGE_FETCHER } from './links/links.service.js'
@@ -50,6 +59,7 @@ import { scannerFromEnv } from './media/scanners.js'
 import { s3Config } from './media/s3-config.js'
 import { MembersController, OwnProfileController, OwnSensitiveSettingsController } from './members/members.controller.js'
 import { MembersService } from './members/members.service.js'
+import { AutomatedAccountsSetup } from './members/automated-avatars.js'
 import { ModerationController } from './moderation/moderation.controller.js'
 import { ModerationService } from './moderation/moderation.service.js'
 import { EmailSafetyAlerts, SAFETY_ALERTS } from './moderation/safety-alerts.js'
@@ -84,7 +94,7 @@ class HealthController {
 @Module({
   // Settings, the database, sign-in, feature flags and rate limits; then the modules built on them.
   imports: [PlatformModule, GamesModule],
-  controllers: [HealthController, AuthController, AppleController, PostsController, MembersController, OwnProfileController, OwnSensitiveSettingsController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, PrivateMediaController, NotificationsController, EmailController, PushController, HighlightsController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, GistRepliesController, LiveKitWebhookController, AccountController, FlagsController, VideosController],
+  controllers: [HealthController, AuthController, AppleController, PostsController, MembersController, OwnProfileController, OwnSensitiveSettingsController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, PrivateMediaController, NotificationsController, EmailController, PushController, HighlightsController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, GistRepliesController, LiveKitWebhookController, AccountController, FlagsController, VideosController, KekeController],
   providers: [
     ModerationService,
     { provide: OBJECT_STORE, useFactory: (env: Env) => new S3ObjectStore(s3Config(env)), inject: [ENV] },
@@ -207,6 +217,28 @@ class HealthController {
     VideoService,
     VideoGate,
     VideoPostsGuard,
+    // Keke, the help bot (docs/adr/0030): dark unless the keke flag is on and a model key is set.
+    // PostsService queues the posts that mention it (KEKE_JOBS, in PlatformModule).
+    { provide: KEKE_MODELS, useFactory: (env: Env) => kekeModels(env), inject: [ENV] },
+    { provide: Knowledge, useFactory: (env: Env) => new Knowledge(env.WEB_PUBLIC_URL), inject: [ENV] },
+    {
+      provide: KEKE_SETTINGS,
+      useFactory: (env: Env) => ({ siteUrl: env.WEB_PUBLIC_URL, monthlyBudgetUsd: env.KEKE_MONTHLY_BUDGET_USD }),
+      inject: [ENV],
+    },
+    {
+      provide: KEKE_ALERTS,
+      useFactory: (env: Env, mailer: Mailer | null) => new EmailKekeAlerts(mailer, env.KEKE_ALERT_EMAIL ?? env.SAFETY_ALERT_EMAIL, env.WEB_PUBLIC_URL),
+      inject: [ENV, MAILER],
+    },
+    KekeService,
+    // The daily news reads outlets' feeds, from the public internet only, like link previews.
+    { provide: NEWS_FETCHER, useFactory: () => new SafeFetcher() },
+    { provide: NEWS_SOURCE_LIST, useValue: NEWS_SOURCES },
+    KekeNews,
+    KekeWorker,
+    // Keke's account, then both automated accounts' photos (The Arbiter is made by Games, which starts first).
+    AutomatedAccountsSetup,
   ],
 })
 export class AppModule {}
