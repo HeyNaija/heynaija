@@ -19,7 +19,7 @@ the games ADR ([0018](../adr/0028-games.md)), and ADRs 0002, 0005 and 0014.
 
 Games give members reasons to return: leaderboards, seasons and competitions,
 tied into the social side of HeyNaija. Launch games are Chess (through Lichess)
-and Keno (in-house, free to play). The system is pluggable: a future game means a
+and Keno (in-house, free to play); Trivia (in-house, hosted live rounds) follows. The system is pluggable: a future game means a
 new folder on each side plus a registry entry, and nothing else.
 
 Use the repo's terminology: "members", "posts", "communities". Posts made by game
@@ -37,6 +37,8 @@ apps/api/src/games/
                        challenges, results
   keno/                draw engine, provably fair RNG, payout table,
                        BullMQ draw job, tickets
+  trivia/              rounds, questions and answers, judging, the tick job,
+                       long-polled round view
 apps/web/app/(main)/games/   inside the (main) route group, for the normal shell
   page.tsx             games homepage
   AGENTS.md, CLAUDE.md pointers to this document
@@ -45,6 +47,8 @@ apps/web/app/(main)/games/   inside the (main) route group, for the normal shell
                        card, live view)
   keno/                routes + _components (number picker, draw board,
                        ticket history, verify page)
+  trivia/              routes + _components (round list, the round as a player
+                       sees it, the host's editor and live console)
 ```
 
 `GamesModule` is built on the global `PlatformModule`
@@ -88,8 +92,13 @@ member foreign key cascades.
 - **Agreed XP (phase 5):** chess 10 for a game played to the end, +10 a win, +5 a
   draw, 0 aborted; Keno 2 a round played, +1 per 10 points (at most +20 a round);
   competitions 5 for playing, +100 / +60 / +40 for 1st / 2nd / 3rd, +20 for 4th to
-  10th. Rules live in `core/scoring.ts` only; change them there and the explainer
-  follows.
+  10th; Trivia 2 a round played, +1 a right answer, +2 a first right answer (at
+  most +20 a round). Rules live in `core/scoring.ts` only; change them there and
+  the explainer follows.
+- **A game's own flag:** a manifest may name a feature flag of its own (`flag`).
+  While it is off for a member the game is missing from `/api/v1/games` and its
+  routes answer 404, as the `games` flag does for the whole section. Trivia has
+  `trivia`.
 - **Safety:** blocks and mutes apply to leaderboards, challenges and game posts
   the same way they apply to feeds. Suspended members cannot play or appear on
   leaderboards.
@@ -138,7 +147,9 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
    board:play; tournament:write only from a community moderator who asks to run
    tournaments (phase 6). No team scope is needed: team pages are public.
    Tokens are sealed with `GAMES_TOKEN_KEY`. Unlinking revokes and
-   deletes the token. Linking lives on /games/chess only.
+   deletes the token. Linking lives on /games/chess only, and on the apps' chess
+   screen, whose return goes through `/lichess/return` to the app (ADR 0028,
+   phase 2).
 2. **Profile:** the Lichess username, plus Blitz, Rapid, Classical and
    Correspondence ratings, cached and refreshed on a schedule and on demand.
 3. **Challenges:** a member challenges another member who has linked Lichess
@@ -201,6 +212,48 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
   next; points from table `v1` in `keno/payouts.ts`, never edited once used (add a
   version instead); standings for this month and all time.
 
+## Trivia (in-house, hosted live rounds)
+
+- **Hosts:** site moderators who are adults by their stated age (owner, 15
+  November 2026). Community moderators may host later; the round already belongs
+  to a community when it has one.
+- **A round:** 1 to 30 questions, each multiple choice (2 to 4 choices, one right)
+  or typed (1 to 10 accepted answers), with an optional note shown at the reveal
+  and an optional picture (an uploaded post image, described for screen readers,
+  sent only once the question opens, then put on The Arbiter's reply; ADR 0028);
+  10 to 60 seconds a question (20 by default). A draft is the host's alone;
+  publishing it puts The Arbiter's thread in the round's community, or in Game
+  Night when it has none, and nothing about the round can change once a question
+  has opened. Any host may run another host's round (if theirs goes quiet), so no
+  host answers in any round: they can all see the answers.
+- **Live, one question at a time.** The host opens each question (or lets the
+  round go on by itself, 8 seconds after each reveal). Its text appears 3 seconds
+  later on every screen at once, by the database's clock, and is never sent before
+  then. Answers are not posts: one per member per question, final, and kept on the
+  server until the question closes. The host does not play.
+- **Who was first** is decided by `clock_timestamp()` as the answer is written,
+  inside the same insert that checks the question is open, so neither the phone's
+  clock nor the network's order counts. Exact ties go to the order the database
+  wrote them.
+- **Points:** 10 for a right answer, plus 5, 3 and 2 for the first three right
+  answers; a round's places by points, then by less time spent on right answers,
+  then shared. Points go into the season like Keno's; nothing can be bought or
+  won with them. No prizes.
+- **Typed answers** are read without case, accents, spaces, punctuation or a
+  leading "the", and forgive one typo from 6 letters and two from 12. After the
+  last question the host has 15 minutes to accept spellings the matcher missed
+  (which can change who was first) or void a bad question; then the results
+  publish themselves.
+- **The Arbiter** replies under the thread as each question closes (the question,
+  the answer, how many got it) and with the results: the top ten, and who was
+  first on each question with their time. A member under 18, or a deleted account,
+  is "a member" in these posts; in the app, the round's standings show members as
+  they are shown everywhere else.
+- **Safety:** a member blocked by the host, or who blocked them, does not see the
+  round. A round whose host has done nothing for 10 minutes ends by itself.
+- **Not in competitions** (`supportsCompetitions: false`): a round is already one.
+  No prizes, no questions from members, no question bank yet.
+
 ## Competitions engine
 
 Shared across games: name, game, format, eligibility (open, community, invite),
@@ -233,8 +286,9 @@ posts in Game Night.
 
 - **API tests** against a real Postgres (pnpm test): keno seed derivation and
   verification, payout scoring, daily cap, XP and season scoring, leaderboard
-  ranking (including blocks and suspensions), and the Lichess client with the
-  HTTP layer mocked.
+  ranking (including blocks and suspensions), the Lichess client with the
+  HTTP layer mocked, and Trivia's judging (first answers by the database's clock,
+  typed-answer matching, accepting and voiding, results).
 - **Playwright:** targeted runs only (pnpm e2e games, or -g by title), with
   newMember from e2e/lib/members.ts. Never run the full suite locally; follow
   AGENTS.md.
@@ -253,5 +307,7 @@ posts in Game Night.
 4. Keno: draw job, provably fair verification, play UI, daily cap, leaderboard.
 5. Seasons, Game Score, scoring explainer page, competitions engine.
 6. Community to Lichess team linking, and tournaments.
+7. Trivia: hosted live rounds, typed and multiple-choice questions, results by
+   The Arbiter.
 
 Stop for review after each phase.

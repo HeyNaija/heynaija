@@ -210,6 +210,17 @@ everyone, not per member, as the news is one public post. Off, nothing is read o
 drafted, and an approved draft is not posted. The daily notice also needs
 `communityAnnouncements`; without it the news is posted with no notice.
 
+## `trivia`
+
+Trivia, the Games section's live quiz rounds (ADR 0028, phase 7). `trivia` (off in
+production, on in staging and development) is read for the member on every
+`/v1/games/trivia` route, after `games`: off, they answer 404 and Trivia is left out
+of `/v1/games`, so its tile is not shown. It is the game's `flag` in its manifest.
+The `trivia-tick` job (judging questions nobody is watching, ending idle rounds and
+publishing results) runs while it is on for anyone at all. Turning it off stops new
+answers and hosting; rounds already published stay, and a round that was live stops
+where it was until it is turned back on.
+
 ## Known limits
 
 - The kill switches (`reposts`, `quotePosts`, `linkPreviews`) are on in production, so a

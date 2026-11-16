@@ -23,7 +23,7 @@ This tracks product development, not formal governance decisions. Priority means
 
 | Implemented | Partial | Planned | Blocked | Total |
 | --- | --- | --- | --- | --- |
-| 50 | 20 | 16 | 11 | 97 |
+| 50 | 21 | 16 | 11 | 98 |
 
 ## Priority order
 
@@ -258,7 +258,7 @@ This tracks product development, not formal governance decisions. Priority means
 - **Priority:** P0 · **Status:** Implemented · **Availability:** Availability not verified
 - **Description:** Download your own profile, posts, social choices and account-status records as JSON.
 - **Inspected evidence:** `apps/api/src/export/export.service.ts`, `apps/api/src/export/export.controller.ts`, `apps/web/app/(main)/settings/export/route.ts`, `apps/api/src/export/export.service.test.ts`, `e2e/tests/governance.spec.ts`
-- **Audit notes:** Format 19: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, since format 11 reply boundaries, polls you created and your public poll ballots, and since format 19 a games section (stats, season scores, competition entries, the linked Lichess account but never its token, chess challenges and the chess games played, Keno tickets and the Game Score); restricted person keys and reports about someone stay excluded.
+- **Audit notes:** Format 22: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, since format 11 reply boundaries, polls you created and your public poll ballots, and since format 19 a games section (stats, season scores, competition entries, the linked Lichess account but never its token, chess challenges and the chess games played, Keno tickets and the Game Score), since format 20 whether each community you joined announces to you, since format 21 Trivia answers, round results and the rounds you hosted, and since format 22 each hosted Trivia question's picture (address and description); restricted person keys and reports about someone stay excluded.
 
 #### Account deletion and privacy requests
 
@@ -827,6 +827,16 @@ This tracks product development, not formal governance decisions. Priority means
 - **Dependencies:** `games-core`
 - **Inspected evidence:** `docs/games/GAMES.md`, `docs/adr/0028-games.md`, `apps/api/src/games/keno/keno.service.ts`, `apps/api/src/games/keno/draw.ts`, `apps/web/app/(main)/games/keno/page.tsx`, `e2e/tests/keno.spec.ts`
 - **Audit notes:** Phase 4 built 3 Nov 2026 (ADR 0028): shared draws every five minutes, 20 free tokens a member a day (midnight Lagos), points from a fixed table, this month and all-time leaderboards, ticket history, and a page for every round that checks it was fair in the browser (a published SHA-256 commitment, then the seed revealed). No money anywhere: tokens and points can never be bought, transferred or redeemed. Still to come: competitions and the Game Score (phase 5).
+
+#### Trivia (hosted live rounds)
+
+- **ID:** `games-trivia`
+- **Priority:** P2 · **Status:** Partial · **Availability:** Not live
+- **Description:** Join a live trivia round run by a host: each question appears on every screen at once, and the fastest right answers score most.
+- **Remaining work / caveat:** Behind the games and trivia flags (on in staging, off in production). Hosts are site moderators only; no question bank, no questions from members, and Trivia is not in competitions. The mobile apps play rounds; hosting is on the web.
+- **Dependencies:** `games-core`
+- **Inspected evidence:** `docs/games/GAMES.md`, `docs/adr/0028-games.md`, `apps/api/src/games/trivia/trivia.service.ts`, `apps/api/src/games/trivia/judging.ts`, `apps/api/src/games/trivia/trivia.service.test.ts`, `apps/web/app/(main)/games/trivia/page.tsx`
+- **Audit notes:** Phase 7 built 15 Nov 2026 (ADR 0028): site moderators who are adults host live rounds of multiple-choice and typed questions; each question appears on every screen at once by the database's clock and answers stay on the server until it closes; 10 points a right answer plus 5/3/2 for the first three, by the database's clock; typed answers forgive small typos and the host can accept spellings or void a question; The Arbiter posts the thread, each answer and the results (minors as "a member"); points go into the season and Game Score. From 16 Nov a question can have one picture: an uploaded post image, checked and described like any, sent only once the question opens, then on The Arbiter's reply. No prizes.
 
 ## P3 — Later experiments
 

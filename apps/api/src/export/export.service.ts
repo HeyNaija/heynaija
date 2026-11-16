@@ -51,7 +51,7 @@ import { describeTime } from '../games/chess/time-controls.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/20'
+export const EXPORT_FORMAT = 'heynaija-export/22'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -422,7 +422,7 @@ export class ExportService {
   }
 
   private async games(memberId: string) {
-    const [profiles, scores, entries, [lichess], challenges, played, tickets, xp, invites, teams] = await Promise.all([
+    const [profiles, scores, entries, [lichess], challenges, played, tickets, xp, invites, teams, trivia] = await Promise.all([
       this.db
         .select({ game: gameProfiles.game, stats: gameProfiles.stats, since: gameProfiles.createdAt, updatedAt: gameProfiles.updatedAt })
         .from(gameProfiles)
@@ -508,6 +508,7 @@ export class ExportService {
         .innerJoin(communities, eq(communities.id, communityTeams.communityId))
         .where(eq(communityTeams.linkedBy, memberId))
         .orderBy(asc(communityTeams.linkedAt)),
+      this.trivia(memberId),
     ])
     return {
       profiles,
@@ -547,6 +548,59 @@ export class ExportService {
       competitionInvites: invites,
       // Lichess teams you linked to a community you moderate.
       lichessTeamsLinked: teams,
+      // Trivia (phase 7): rounds you played, every answer you gave, and rounds you hosted with their questions.
+      trivia,
+    }
+  }
+
+  private async trivia(memberId: string) {
+    const [results, answers, hosted] = await Promise.all([
+      this.db.execute<{ round: string; title: string; published_at: Date | string | null; place: number; points: number; right_count: number; firsts: number }>(sql`
+        select r.id as round, r.title, r.published_at, x.place, x.points, x.right_count, x.firsts
+        from games.trivia_results x join games.trivia_rounds r on r.id = x.round_id
+        where x.member_id = ${memberId} order by r.published_at`),
+      this.db.execute<{
+        round: string
+        position: number
+        prompt: string
+        kind: string
+        choices: string[] | null
+        choice: number | null
+        text: string | null
+        correct: boolean | null
+        points: number
+        place: number | null
+        ms: number | null
+        answered_at: Date | string
+      }>(sql`
+        select a.round_id as round, q.position, q.prompt, q.kind, q.choices, a.choice, a.text, a.correct, a.points, a.place,
+          (extract(epoch from (a.answered_at - q.opens_at)) * 1000)::int as ms, a.answered_at
+        from games.trivia_answers a join games.trivia_questions q on q.id = a.question_id
+        where a.member_id = ${memberId} order by a.answered_at`),
+      this.db.execute<{ id: string; title: string; status: string; starts_at: Date | string; questions: unknown }>(sql`
+        select r.id, r.title, r.status, r.starts_at,
+          coalesce((select json_agg(json_build_object('position', q.position, 'kind', q.kind, 'question', q.prompt, 'choices', q.choices,
+            'rightChoice', q.correct_choice, 'accepted', q.accepted, 'note', q.explanation,
+            'picture', case when m.id is null then null else json_build_object('url', '/media/posts/' || m.id, 'description', q.image_alt) end)
+            order by q.position)
+            from games.trivia_questions q left join media m on m.id = q.image_id and m.status = 'ready' and not m.served_privately
+            where q.round_id = r.id), '[]'::json) as questions
+        from games.trivia_rounds r where r.host_id = ${memberId} order by r.starts_at`),
+    ])
+    return {
+      rounds: results.rows.map((r) => ({ round: r.round, title: r.title, publishedAt: r.published_at ? new Date(r.published_at) : null, place: r.place, points: r.points, right: r.right_count, firsts: r.firsts })),
+      answers: answers.rows.map((a) => ({
+        round: a.round,
+        question: a.position,
+        prompt: a.prompt,
+        answer: a.kind === 'choice' ? (a.choice !== null ? (a.choices?.[a.choice] ?? null) : null) : a.text,
+        right: a.correct,
+        points: a.points,
+        place: a.place,
+        msAfterOpening: a.ms,
+        at: new Date(a.answered_at),
+      })),
+      hosted: hosted.rows.map((r) => ({ round: r.id, title: r.title, status: r.status, startsAt: new Date(r.starts_at), questions: r.questions })),
     }
   }
 }

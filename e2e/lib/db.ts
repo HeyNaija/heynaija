@@ -60,6 +60,12 @@ export async function cleanTestData(log = (_: string) => {}) {
            where created_by in (select id from e2e_m)) or p.root_id in (select result_post_id from games.competitions
            where created_by in (select id from e2e_m)))
          and p.id not in (select id from e2e_p)`)
+      // The Arbiter's Trivia threads, answers and results for rounds test members hosted (phase 7), and replies under them.
+      await client.query(`insert into e2e_p select p.id from posts p where (p.id in (select thread_post_id from games.trivia_rounds
+           where host_id in (select id from e2e_m)) or p.id in (select result_post_id from games.trivia_rounds
+           where host_id in (select id from e2e_m)) or p.root_id in (select thread_post_id from games.trivia_rounds
+           where host_id in (select id from e2e_m)))
+         and p.id not in (select id from e2e_p)`)
       const steps: [string, string][] = [
         ['notifications', `delete from notifications where recipient_id in (select id from e2e_m) or actor_id in (select id from e2e_m)
            or subject_id in (select id from e2e_m) or post_id in (select id from e2e_p)`],
@@ -98,6 +104,13 @@ export async function cleanTestData(log = (_: string) => {}) {
         ['lichess accounts', `delete from games.lichess_accounts where member_id in (select id from e2e_m)`],
         // Keno (docs/adr/0028, phase 4): tickets. The shared rounds stay.
         ['keno tickets', `delete from games.keno_tickets where member_id in (select id from e2e_m)`],
+        // Trivia (phase 7): test members' answers and results, and the rounds test hosts ran with everything in them.
+        ['trivia answers', `delete from games.trivia_answers where member_id in (select id from e2e_m)
+           or round_id in (select id from games.trivia_rounds where host_id in (select id from e2e_m))`],
+        ['trivia results', `delete from games.trivia_results where member_id in (select id from e2e_m)
+           or round_id in (select id from games.trivia_rounds where host_id in (select id from e2e_m))`],
+        ['trivia questions', `delete from games.trivia_questions where round_id in (select id from games.trivia_rounds where host_id in (select id from e2e_m))`],
+        ['trivia rounds', `delete from games.trivia_rounds where host_id in (select id from e2e_m)`],
         // The Game Score and competitions (phase 5); competitions the test moderators made go with their entries.
         ['xp totals', `delete from games.xp_totals where member_id in (select id from e2e_m)`],
         ['competition invites', `delete from games.competition_invites where member_id in (select id from e2e_m)`],

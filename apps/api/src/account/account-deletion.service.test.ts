@@ -44,6 +44,10 @@ import {
   postHashtags,
   postMentions,
   seasonScores,
+  triviaAnswers,
+  triviaQuestions,
+  triviaResults,
+  triviaRounds,
   posts,
   privacyRequests,
   problemDetails,
@@ -999,6 +1003,38 @@ test('Keno: their tickets go; the shared rounds and other members’ tickets sta
   assert.equal(await count(kenoTickets, eq(kenoTickets.memberId, xena)), 0)
   assert.equal(await count(kenoTickets, eq(kenoTickets.memberId, yemi)), 1)
   assert.equal(await count(kenoRounds, eq(kenoRounds.number, round!.number)), 1)
+})
+
+test('Trivia: their answers and results go; a round they host is called off and their questions blanked', async () => {
+  const [played] = await db.insert(triviaRounds).values({ hostId: sam, title: 'Anime night', status: 'published', startsAt: days(-1) }).returning()
+  const [q] = await db
+    .insert(triviaQuestions)
+    .values({ roundId: played!.id, position: 1, kind: 'choice', prompt: 'Who?', choices: ['A', 'B'], correctChoice: 0, opensAt: days(-1), closesAt: days(-0.9), judgedAt: days(-0.9) })
+    .returning()
+  await db.insert(triviaAnswers).values([
+    { questionId: q!.id, memberId: xena, roundId: played!.id, choice: 0, correct: true, place: 1, points: 15 },
+    { questionId: q!.id, memberId: yemi, roundId: played!.id, choice: 0, correct: true, place: 2, points: 13 },
+  ])
+  await db.insert(triviaResults).values([
+    { roundId: played!.id, memberId: xena, points: 15, rightCount: 1, firsts: 1, timeMs: 900, place: 1 },
+    { roundId: played!.id, memberId: yemi, points: 13, rightCount: 1, firsts: 0, timeMs: 1200, place: 2 },
+  ])
+  const [hosted] = await db.insert(triviaRounds).values({ hostId: xena, title: 'Xena’s round', status: 'scheduled', startsAt: days(2) }).returning()
+  await db.insert(triviaQuestions).values({ roundId: hosted!.id, position: 1, kind: 'typed', prompt: 'Her question', accepted: ['Her answer'], explanation: 'Her note' })
+
+  await deletion.request(xena, { channel: 'self_service' }, now)
+  await deletion.erase(xena, days(14))
+
+  assert.equal(await count(triviaAnswers, eq(triviaAnswers.memberId, xena)), 0)
+  assert.equal(await count(triviaResults, eq(triviaResults.memberId, xena)), 0)
+  assert.equal(await count(triviaResults, eq(triviaResults.memberId, yemi)), 1, 'other players keep their places and points')
+  const [theirs] = await db.select().from(triviaRounds).where(eq(triviaRounds.id, hosted!.id))
+  assert.equal(theirs!.status, 'cancelled')
+  assert.equal(theirs!.title, '')
+  const [blank] = await db.select().from(triviaQuestions).where(eq(triviaQuestions.roundId, hosted!.id))
+  assert.deepEqual([blank!.prompt, blank!.accepted, blank!.explanation], ['', null, null])
+  const [other] = await db.select().from(triviaQuestions).where(eq(triviaQuestions.id, q!.id))
+  assert.equal(other!.prompt, 'Who?', 'rounds others hosted are untouched')
 })
 
 // --- Video (ADR 0019): the new tables are covered by the erase inventory ---

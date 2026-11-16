@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ChessIcon, GamesIcon, KenoIcon } from '@/app/ui/icons'
+import { ChessIcon, GamesIcon, KenoIcon, TriviaIcon } from '@/app/ui/icons'
 import type { GameManifest } from '@/lib/api'
 
 const STATUS_LABELS: Record<GameManifest['status'], string> = { live: 'Live', beta: 'Beta', coming_soon: 'Coming soon' }
@@ -17,7 +17,7 @@ function GameLogo({ game }: { game: GameManifest }) {
       </span>
     )
   }
-  const Icon = game.slug === 'chess' ? ChessIcon : game.slug === 'keno' ? KenoIcon : GamesIcon
+  const Icon = game.slug === 'chess' ? ChessIcon : game.slug === 'keno' ? KenoIcon : game.slug === 'trivia' ? TriviaIcon : GamesIcon
   return (
     <span className="game-logo">
       <Icon size={34} />

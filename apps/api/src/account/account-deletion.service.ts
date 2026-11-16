@@ -425,6 +425,19 @@ export class AccountDeletionService {
       await run(sql`delete from games.competition_invites where member_id = ${memberId}`)
       // A community's Lichess team they linked (phase 6) stays linked; who linked it is forgotten.
       await run(sql`update games.community_teams set linked_by = null where linked_by = ${memberId}`)
+      // Trivia (phase 7): their answers and round results go; other players' places, points and
+      // firsts stay as published, a first they held naming the tombstone. Rounds they hosted: any
+      // not over are called off; finished ones keep their rows with the questions blanked, as
+      // their posts' text is. The Arbiter's posts stay, as posts.
+      await run(sql`delete from games.trivia_answers where member_id = ${memberId}`)
+      await run(sql`delete from games.trivia_results where member_id = ${memberId}`)
+      await run(sql`
+        update games.trivia_rounds set status = 'cancelled', ended_at = coalesce(ended_at, now()), version = version + 1
+        where host_id = ${memberId} and status in ('draft', 'scheduled', 'live', 'reviewing')`)
+      await run(sql`update games.trivia_rounds set title = '' where host_id = ${memberId}`)
+      await run(sql`
+        update games.trivia_questions set prompt = '', choices = null, correct_choice = null, accepted = null, explanation = null, image_id = null, image_alt = ''
+        where round_id in (select id from games.trivia_rounds where host_id = ${memberId})`)
 
       await run(sql`delete from notifications where recipient_id = ${memberId} or actor_id = ${memberId}`)
       await run(sql`delete from notification_opt_outs where member_id = ${memberId}`)

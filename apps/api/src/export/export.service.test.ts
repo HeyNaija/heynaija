@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { chessChallenges, chessGames, competitionEntries, kenoRounds, kenoTickets, competitions, gameProfiles, gameSeasons, gistMembers, gists, lichessAccounts, media, members, notifications, seasonScores } from '@heynaija/db'
+import { chessChallenges, chessGames, competitionEntries, kenoRounds, kenoTickets, competitions, gameProfiles, gameSeasons, gistMembers, gists, lichessAccounts, media, members, notifications, seasonScores, triviaAnswers, triviaQuestions, triviaResults, triviaRounds } from '@heynaija/db'
 import { eq } from 'drizzle-orm'
 import { GovernanceService } from '../governance/governance.service.js'
 import { MembersService } from '../members/members.service.js'
@@ -194,7 +194,7 @@ test('an export includes the age confirmation and verification history, but neve
 })
 
 test('an export includes the member’s games: stats, season scores and competition entries', async () => {
-  assert.deepEqual((await service.export(ada, null))!.games, { profiles: [], seasonScores: [], competitionEntries: [], lichess: null, chessChallenges: [], chessGames: [], kenoTickets: [], gameScore: [], competitionInvites: [], lichessTeamsLinked: [] })
+  assert.deepEqual((await service.export(ada, null))!.games, { profiles: [], seasonScores: [], competitionEntries: [], lichess: null, chessChallenges: [], chessGames: [], kenoTickets: [], gameScore: [], competitionInvites: [], lichessTeamsLinked: [], trivia: { rounds: [], answers: [], hosted: [] } })
 
   const [season] = await db
     .insert(gameSeasons)
@@ -255,6 +255,26 @@ test('an export includes the linked Lichess account, never its token, and the ch
   await db.insert(chessGames).values({ id: 'gm000001', whiteId: ada, blackId: bayo, rated: true, clockLimit: 600, clockIncrement: 5, status: 'mate', winner: 'white', moves: 'e2e4 e7e5', finishedAt: new Date() })
   const [game] = (await service.export(ada, null))!.games.chessGames
   assert.deepEqual([game!.colour, game!.opponent, game!.result, game!.moves, game!.time], ['white', 'bayo', 'won', ['e2e4', 'e7e5'], '10+5'])
+})
+
+test('the export has your Trivia answers and results, and the rounds you hosted with their questions', async () => {
+  const opens = new Date('2026-11-15T19:00:00Z')
+  const [round] = await db.insert(triviaRounds).values({ hostId: bayo, title: 'Anime night', status: 'published', startsAt: opens, publishedAt: new Date('2026-11-15T19:10:00Z') }).returning()
+  const [q] = await db
+    .insert(triviaQuestions)
+    .values({ roundId: round!.id, position: 1, kind: 'choice', prompt: 'Who?', choices: ['Light', 'L'], correctChoice: 0, opensAt: opens, closesAt: new Date(opens.getTime() + 20_000), judgedAt: opens })
+    .returning()
+  await db.insert(triviaAnswers).values({ questionId: q!.id, memberId: ada, roundId: round!.id, choice: 0, correct: true, place: 1, points: 15, answeredAt: new Date(opens.getTime() + 2_410) })
+  await db.insert(triviaResults).values({ roundId: round!.id, memberId: ada, points: 15, rightCount: 1, firsts: 1, timeMs: 2410, place: 1 })
+
+  const mine = (await service.export(ada, null))!.games.trivia
+  assert.deepEqual(mine.rounds.map((r) => [r.title, r.place, r.points, r.right, r.firsts]), [['Anime night', 1, 15, 1, 1]])
+  assert.deepEqual(mine.answers.map((a) => [a.question, a.answer, a.right, a.points, a.place, a.msAfterOpening]), [[1, 'Light', true, 15, 1, 2410]])
+  assert.deepEqual(mine.hosted, [])
+  const hosts = (await service.export(bayo, null))!.games.trivia
+  assert.deepEqual(hosts.answers, [])
+  assert.equal(hosts.hosted.length, 1)
+  assert.deepEqual(hosts.hosted[0]!.questions, [{ position: 1, kind: 'choice', question: 'Who?', choices: ['Light', 'L'], rightChoice: 0, accepted: null, note: null, picture: null }])
 })
 
 test('the export has your Keno tickets, and only yours', async () => {

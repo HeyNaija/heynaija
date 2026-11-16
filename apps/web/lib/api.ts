@@ -730,9 +730,135 @@ export const getKenoTickets = (before?: string) =>
   getOrNull<{ tickets: KenoTicket[]; next: string | null }>(`/v1/games/keno/tickets${before ? `?before=${encodeURIComponent(before)}` : ''}`)
 export const getKenoBoard = (period: 'month' | 'all', limit = 50) => getOrNull<KenoBoard>(`/v1/games/keno/leaderboard?period=${period}&limit=${limit}`)
 
+// --- Trivia, hosted live rounds (docs/adr/0028, phase 7) ------------------------
+
+export type TriviaPerson = { handle: string; displayName: string | null; avatar: string | null }
+export type TriviaStatus = 'draft' | 'scheduled' | 'live' | 'reviewing' | 'published' | 'cancelled'
+
+export type TriviaRoundCard = {
+  id: string
+  title: string
+  status: TriviaStatus
+  startsAt: string
+  questions: number
+  secondsPerQuestion: number
+  host: TriviaPerson
+  community: { slug: string; name: string } | null
+  /** Members who have answered at least once. */
+  players: number
+  /** The viewer's place, once the results are out. */
+  yourPlace: number | null
+}
+
+export type TriviaList = { live: TriviaRoundCard[]; upcoming: TriviaRoundCard[]; recent: TriviaRoundCard[]; hosting: TriviaRoundCard[]; mayHost: boolean }
+
+export type TriviaStanding = TriviaPerson & { rank: number; points: number; you: boolean }
+
+/** A question's picture, already resized: append `/640.webp` or `/1600.webp` to `src`, as for a post's. */
+export type TriviaPicture = { src: string; alt: string; width: number | null; height: number | null; animated: boolean }
+
+/** The question being asked: its text, choices and picture only once it has opened, by the server's clock. */
+export type TriviaCurrent = {
+  id: string
+  position: number
+  opensAt: string
+  closesAt: string
+  kind: 'choice' | 'typed'
+  prompt: string | null
+  /** In the viewer's own order; `id` is what to send back. */
+  choices: { id: number; text: string }[] | null
+  image: TriviaPicture | null
+  yourAnswer: { choice: number | null; text: string | null; ms: number } | null
+}
+
+/** The last question asked, with its answer, once it has closed. */
+export type TriviaReveal = {
+  id: string
+  position: number
+  prompt: string
+  kind: 'choice' | 'typed'
+  voided: boolean
+  answer: string
+  alsoAccepted: string[]
+  explanation: string | null
+  choices: { id: number; text: string; count: number; right: boolean }[] | null
+  image: TriviaPicture | null
+  answered: number
+  rightCount: number
+  firsts: (TriviaPerson & { ms: number })[]
+  you: { choice: number | null; text: string | null; correct: boolean; points: number; place: number | null; ms: number } | null
+}
+
+/** A round as a player sees it. `version` goes up with every change; `serverTime` is the API's clock. */
+export type TriviaRound = {
+  id: string
+  title: string
+  status: TriviaStatus
+  startsAt: string
+  secondsPerQuestion: number
+  questions: number
+  host: TriviaPerson
+  community: { slug: string; name: string } | null
+  threadPostId: string | null
+  resultPostId: string | null
+  version: number
+  serverTime: string
+  /** `canAnswer` is false for the host and for anyone else who may see the answers (other hosts). */
+  you: { host: boolean; canAnswer: boolean; points: number }
+  current: TriviaCurrent | null
+  last: TriviaReveal | null
+  standings: TriviaStanding[]
+  yourStanding: TriviaStanding | null
+  final: boolean
+}
+
+export type TriviaHostQuestion = {
+  id: string
+  position: number
+  kind: 'choice' | 'typed'
+  prompt: string
+  choices: string[] | null
+  correctChoice: number | null
+  accepted: string[] | null
+  explanation: string | null
+  /** `id` is the uploaded image's, which the form sends back. */
+  image: (TriviaPicture & { id: string }) | null
+  opensAt: string | null
+  closesAt: string | null
+  judged: boolean
+  voided: boolean
+  answered: number
+  rightCount: number
+  /** Wrong typed answers, grouped as the checker reads them; `fast` answered within 0.6 s of the question appearing. */
+  wrong: { normalised: string; sample: string; count: number; fast: number }[]
+}
+
+export type TriviaHostView = {
+  id: string
+  title: string
+  status: TriviaStatus
+  startsAt: string
+  secondsPerQuestion: number
+  autoAdvance: boolean
+  community: { slug: string; name: string } | null
+  threadPostId: string | null
+  version: number
+  serverTime: string
+  endedAt: string | null
+  publishesAt: string | null
+  questions: TriviaHostQuestion[]
+}
+
+/** The Trivia page; null when Games or Trivia is off for the member. */
+export const getTriviaList = () => getOrNull<TriviaList>('/v1/games/trivia')
+/** A round as the viewer may see it; null when it is not there or they may not. */
+export const getTriviaRound = (id: string) => getOrNull<TriviaRound>(`/v1/games/trivia/rounds/${encodeURIComponent(id)}`)
+/** Everything about a round for its host; null if it is not theirs (the API answers 403 or 404). */
+export const getTriviaHost = (id: string) => getOrNull<TriviaHostView>(`/v1/games/trivia/rounds/${encodeURIComponent(id)}/host`).catch(() => null)
+
 // --- Seasons, Game Score, leaderboards, competitions (docs/adr/0028, phase 5) ----
 
-export type GameBoardKind = 'score' | 'chess' | 'keno'
+export type GameBoardKind = 'score' | 'chess' | 'keno' | 'trivia'
 export type GameBoardFilter = 'everyone' | 'following' | 'community'
 export type GameBoardRow = { rank: number; handle: string; displayName: string | null; avatar: string | null; value: number; you: boolean }
 export type GameBoard = {
@@ -759,9 +885,12 @@ export type GameScoring = {
   xp: {
     chess: { finished: number; win: number; draw: number }
     keno: { round: number; pointsPerXp: number; pointsXpMax: number }
+    trivia: { played: number; right: number; first: number; extraMax: number }
     competition: { entered: number; places: number[]; topTen: number }
   }
   keno: { tableVersion: string; payouts: Record<string, Record<string, number>> }
+  /** Points in a Trivia round: a right answer, and more for the first three right answers. */
+  trivia: { right: number; order: number[] }
   formats: Record<string, Record<string, string>>
   season: string
 }

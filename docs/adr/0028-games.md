@@ -144,6 +144,13 @@ only on the chess page, and Chess marked Beta on /games.
   nothing.
 - One Lichess account belongs to one member. Unlinking revokes the token at
   Lichess where it can, and forgets it either way.
+- *Added 15 November 2026, for the apps:* an app asks with `?return=app`. The state
+  then starts `app.` and Lichess returns the member to `/lichess/return`, a web
+  route outside `/games` that finishes nothing: it passes the code and state on to
+  `ng.heynaija.app://lichess/return`, and the app calls `link/complete` with its own
+  session. The mark is inside the hashed state, so it cannot be added or removed on
+  the way back, and the code exchange uses the same return address. The phone's
+  browser has no HeyNaija session, which is why the web callback cannot be used.
 
 ### Tokens at rest
 
@@ -468,14 +475,119 @@ to the community's page from the callback.
   the page says when it may still run there. The Keno cancel route refuses
   tournaments so this one is always used.
 
+## Phase 7: Trivia (15 November 2026)
+
+Hosted, live trivia rounds, anime first (plan: `trivia-plan.md` outside the
+repository). The owner chose: hosts are site moderators who are adults by their
+stated age; live rounds first, with multiple-choice and typed questions; 10 points
+a right answer and 5, 3 and 2 more for the first three; results posted by The
+Arbiter in the round's community or Game Night; minors as "a member" in those
+posts; text only and no prizes; hosting on the web, playing on the web and in the
+apps.
+
+### Rounds and questions
+
+- `games.trivia_rounds` (host, optional community, title, start time, seconds a
+  question, whether it goes on by itself, status, The Arbiter's thread and result
+  posts, a `version` for long-polls), `games.trivia_questions` (position, kind,
+  prompt, choices and the right one, or accepted answers; when it opens and closes,
+  by the database's clock; when it was judged or voided; the first three; counts),
+  `games.trivia_answers` (one per member per question) and `games.trivia_results`
+  (a member's points, right answers, firsts, time and place in a published round).
+- Status: `draft` (the host's alone) → `scheduled` (The Arbiter's thread posted)
+  → `live` (a question has been opened) → `reviewing` (every question asked, or
+  ended) → `published`; `cancelled` from any but the last. Nothing about a round
+  changes once a question has opened.
+- The host opens each question. Its `opens_at` is `clock_timestamp()` plus three
+  seconds and `closes_at` that plus the round's seconds, so every screen counts
+  down from the same moment. With `auto_advance`, judging a question schedules the
+  next one eight seconds later.
+
+### Who was first
+
+The answer insert carries its own check: `insert ... select ... where opens_at <=
+clock_timestamp() and closes_at > clock_timestamp() on conflict do nothing`, with
+`answered_at` defaulting to `clock_timestamp()` and an identity `seq` breaking an
+exact tie. An answer that arrives a microsecond late is refused by the same
+statement that would have written it; the phone's clock and the order requests
+arrive in never count. Answers are rows, not posts, so nobody reads them before the
+question closes; a question's text is sent only once `opens_at` has passed by the
+database's clock (the round view returns `serverTime` for the countdown), and each
+member gets the choices in their own order (seeded by question and member) so
+"the second one" helps nobody.
+
+### Judging
+
+- A question is judged once its time is up, by whichever comes first: a player's
+  long-poll, the host's next action, or the `trivia-tick` job scheduler (every 30
+  seconds). `select ... for update skip locked` makes it once only across API
+  processes. Judging marks every answer, places the right ones by `answered_at`
+  then `seq`, gives `10 + 5/3/2` points, and The Arbiter replies under the thread
+  with the question, the answer and how many got it.
+- Typed answers are normalised (NFKD, accents off, lower case, a leading "the"
+  dropped, letters and digits only) and match an accepted answer exactly, or within
+  one edit from 6 letters and two from 12 (Damerau-Levenshtein).
+- Review: after the last question the host has 15 minutes. Accepting a group of
+  wrong answers (by their normalised form) makes them right and works the places
+  out again, which can change who was first; voiding a question gives it no points.
+  The host's view counts answers in each group written within 0.6 seconds of the
+  question opening, as a hint of automation. Then the host publishes, or the tick
+  job does.
+
+### Results
+
+Publishing writes `trivia_results` (places by points, then by less time on right
+answers, ties shared), adds each member's points to the season's `trivia` scores
+and `game_profiles` stats, and records a `trivia_round_played` game event: XP 2,
++1 a right answer, +2 a first, at most +20. The Arbiter replies with the top ten
+and with the first right answer on each question and its time, by display name;
+a member under 18 or a deleted account is "a member". Once only: the publish takes
+the round's row with `skip locked` and needs it to be `reviewing`.
+
+### Flags, limits and safety
+
+- `trivia` flag (on in development and staging, off in production), on top of
+  `games`. A game's manifest may now name its own flag; `/api/v1/games` leaves the
+  game out while it is off for the member.
+- Rate limits: `triviaAnswer` 20 a minute, `triviaHost` 120 an hour,
+  `triviaRound` 10 rounds a day.
+- A member blocked by the host, or who blocked them, does not see the round and
+  cannot answer. A round whose host does nothing for 10 minutes ends by itself.
+- Hosting needs `trivia_host` adult assurance (`declared`, as Gists' hosting).
+
+### Pictures (16 November 2026)
+
+At the owner's request a question may have one picture (the first release was
+text only), on the web and in the apps.
+
+- It is an ordinary post image (`/v1/me/images`): the same size limit, the same
+  checks before it is used (Arachnid Shield's hash match, then resizing to 640
+  and 1600 pixel WebP), and a description for screen readers, which the host must
+  write. `trivia_questions.image_id` points at it and `image_alt` holds the
+  description.
+- Only a ready image of the editor's that no question uses yet, or one already on
+  the round, can be put on a question, and each on one question only.
+- It is sent like the question's text: never before the question opens, so nobody
+  has its address during the countdown. While the question is open, pages load
+  the 640 version only, so a slow phone is not also fetching a large file against
+  the clock.
+- The abandoned-upload sweep leaves an image alone while a question has it. When
+  the question closes, the image goes on The Arbiter's reply in the thread, so
+  the talk there shows what was asked; from then on it is that post's, reported,
+  removed and erased with it like any post's image. A question voided before it
+  closes has no reply, so its picture is shown nowhere.
+
 ## Data export and account deletion
 
-- The export is `heynaija-export/19`: a `games` section with the member's game
+- The export is `heynaija-export/22` (format 20 is ADR 0029's; 22 added Trivia pictures): a `games` section with the member's game
   profiles, season scores and competition entries, the linked Lichess account
   (username, when linked, ratings; never the token), their chess challenges and the
   games they played, with every move, their Keno tickets (round, numbers, hits,
   points, when), their Game Score per season and all time, and the competitions
-  they were invited to, and the Lichess teams they linked to a community.
+  they were invited to, and the Lichess teams they linked to a community; and a
+  `trivia` section with the rounds they played (their answers, points and place)
+  and the rounds they hosted, with their questions and each question's picture
+  (its address and description).
 - No member foreign key in `games` cascades (ADR 0016). Erasing an account
   deletes the member's game profiles, season scores, competition entries and game
   events; competitions a moderator created stay, pointing at the tombstone. A
@@ -484,7 +596,11 @@ to the community's page from the callback.
   are deleted (their notifications go with them). The Arbiter's threads and results
   stay, as posts that name the tombstone. Their Keno tickets are deleted; the shared
   rounds stay. Their Game Score totals and competition invitations are deleted. A Lichess team
-  they linked stays linked to its community, with who linked it forgotten.
+  they linked stays linked to its community, with who linked it forgotten. Their
+  Trivia answers and results are deleted; other players' places and points stay as
+  published (a first they held names the tombstone). Rounds they host that are not
+  over are cancelled, and every round they hosted keeps its rows with its title
+  and questions blanked.
 
 ## Known limitations
 
@@ -510,6 +626,10 @@ to the community's page from the callback.
   board uses a gradient.
 - A challenge is not withdrawn when one member blocks the other; it is hidden from
   both and runs out.
+- Trivia: a host writes the answers to their own round, so a
+  host's own round is only as fair as the host. A bot answering within a fraction
+  of a second is only hinted at to the host, not stopped. A long-poll wakes a few
+  hundred milliseconds after a question appears or closes, not on the instant.
 - Keno: the operator could read a sealed seed before its draw (see Phase 4); the
   hash only proves the numbers were not changed afterwards. At every draw each open
   Keno page asks for it within a few seconds of the others.
@@ -522,6 +642,6 @@ Revert the code. Then, before any real game data exists:
 `chess_game_started` (after deleting those rows), `alter table notifications drop
 column game_id;`, `drop schema games cascade;`, delete The Arbiter's posts and
 membership, Chess Arena and The Arbiter's member row, and delete the
-`0046_games_core`, `0047_chess_linking`, `0048_chess_play`, `0049_keno`, `0050_games_scoring` and `0051_games_teams` entries from
+`0046_games_core`, `0047_chess_linking`, `0048_chess_play`, `0049_keno`, `0050_games_scoring`, `0051_games_teams` and `0055_trivia` entries from
 `drizzle.__drizzle_migrations` (and `packages/db/drizzle/meta/_journal.json`).
 Put `EXPORT_FORMAT` back only together with the code that reads the tables.

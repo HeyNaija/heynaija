@@ -37,7 +37,8 @@ const challengeBody = z.object({
   openThread: z.boolean().default(true),
 })
 const opponentsQuery = z.object({ q: z.string().max(30).default('') })
-const linkQuery = z.object({ scope: z.enum(['tournaments']).optional() })
+// `return=app`: one of the apps asks, and Lichess's answer goes back to it (chess.service.ts, `redirectUri`).
+const linkQuery = z.object({ scope: z.enum(['tournaments']).optional(), return: z.enum(['app']).optional() })
 const communitySlug = z.string().regex(/^[a-z0-9-]{1,60}$/)
 const teamBody = z.object({ team: z.string().trim().min(1).max(200) })
 const tournamentBody = z.object({
@@ -105,12 +106,15 @@ export class ChessController {
     return this.chess.overview(req.member.id)
   }
 
-  /** Where to send the member to link their Lichess account; `?scope=tournaments` also asks to make tournaments (phase 6). */
+  /**
+   * Where to send the member to link their Lichess account; `?scope=tournaments` also
+   * asks to make tournaments (phase 6), `?return=app` brings Lichess's answer back to the app.
+   */
   @Post('link')
   async startLink(@Req() req: AuthedRequest, @Query() query: unknown) {
-    const { scope } = parse(linkQuery, query)
+    const { scope, return: back } = parse(linkQuery, query)
     await this.limits.hit('lichessLink', req.member.id)
-    return run(() => this.chess.startLink(req.member.id, new Date(), { tournaments: scope === 'tournaments' }))
+    return run(() => this.chess.startLink(req.member.id, new Date(), { tournaments: scope === 'tournaments', app: back === 'app' }))
   }
 
   /** What Lichess sent back to /games/chess/callback, passed on by the web app. */

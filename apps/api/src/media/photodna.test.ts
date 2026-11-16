@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import sharp from 'sharp'
-import { framesToScan, MAX_SCANNED_FRAMES, PHOTODNA_MATCH_URL, PhotoDnaScanner } from './photodna.js'
+import { ANIMATION_MAX_FRAMES } from './media.service.js'
+import { framesToScan, PHOTODNA_MATCH_URL, PhotoDnaScanner } from './photodna.js'
 
 const still = (width: number, height: number) =>
   sharp({ create: { width, height, channels: 3, background: '#2a7' } }).png().toBuffer()
@@ -32,13 +33,50 @@ test('a still image is sent once, as a JPEG within the service’s sizes', async
   assert.equal((await sharp(large!).metadata()).width, 2048)
 })
 
-test('an animation is sent frame by frame, or as an even spread of a long one starting at the first', async () => {
+test('an animation is sent frame by frame, however long', async () => {
   assert.equal((await framesToScan(await animation(3))).length, 3)
 
   const frames = await framesToScan(await animation(50))
-  assert.equal(frames.length, MAX_SCANNED_FRAMES)
-  assert.ok((await redOf(frames[0]!)) < 2, 'the first frame is always scanned')
+  assert.equal(frames.length, 50)
+  assert.ok((await redOf(frames[0]!)) < 2, 'the first frame is scanned')
   assert.ok((await redOf(frames.at(-1)!)) > 190, 'and so is the last')
+})
+
+const tinyAnimation = async (frames: number) =>
+  sharp(
+    await Promise.all(
+      Array.from({ length: frames }, (_, i) =>
+        sharp({ create: { width: 8, height: 8, channels: 3, background: { r: (i % 16) * 16, g: Math.floor(i / 16) * 13, b: 0 } } }).png().toBuffer(),
+      ),
+    ),
+    { join: { animated: true } },
+  )
+    .gif()
+    .toBuffer()
+
+test('a longest-allowed animation has every one of its frames scanned', async () => {
+  const gif = await tinyAnimation(ANIMATION_MAX_FRAMES)
+  assert.equal((await sharp(gif).metadata()).pages, ANIMATION_MAX_FRAMES)
+  const clear = photoDna([ok(false)])
+  assert.equal(await new PhotoDnaScanner('KEY', PHOTODNA_MATCH_URL, clear.fetchFn).scan(gif), 'clear')
+  assert.equal(clear.calls.length, ANIMATION_MAX_FRAMES)
+})
+
+test('a match on a frame the old sampling skipped blocks the animation', async () => {
+  const gif = await tinyAnimation(ANIMATION_MAX_FRAMES)
+  let n = 0
+  const fetchFn = (async () => new Response(JSON.stringify({ Status: { Code: 3000 }, IsMatch: ++n === 138 }))) as typeof fetch
+  assert.equal(await new PhotoDnaScanner('KEY', PHOTODNA_MATCH_URL, fetchFn).scan(gif), 'match')
+})
+
+test('one frame with no answer stops the animation being published', async () => {
+  const gif = await tinyAnimation(ANIMATION_MAX_FRAMES)
+  let n = 0
+  const fetchFn = (async () => {
+    if (++n === 137) throw new Error('connection reset')
+    return new Response(JSON.stringify({ Status: { Code: 3000 }, IsMatch: false }))
+  }) as typeof fetch
+  await assert.rejects(new PhotoDnaScanner('KEY', PHOTODNA_MATCH_URL, fetchFn).scan(gif), /connection reset/)
 })
 
 /** A stand-in for PhotoDNA, answering each request in turn. */
@@ -59,9 +97,9 @@ test('an image is clear only when no frame matches', async () => {
   assert.deepEqual(clear.calls, Array(3).fill({ url: `${PHOTODNA_MATCH_URL}?enhance=false`, key: 'KEY' }))
 
   const second = photoDna([ok(false), ok(true)])
-  assert.equal(await new PhotoDnaScanner('KEY', PHOTODNA_MATCH_URL, second.fetchFn).scan(await animation(3)), 'match')
-  // It stops at the first match.
-  assert.equal(second.calls.length, 2)
+  assert.equal(await new PhotoDnaScanner('KEY', PHOTODNA_MATCH_URL, second.fetchFn).scan(await animation(10)), 'match')
+  // It stops after the batch of four requests holding the match.
+  assert.equal(second.calls.length, 4)
 })
 
 test('anything but a clear answer throws, so the upload waits instead of being published', async () => {
