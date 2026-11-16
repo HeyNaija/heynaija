@@ -50,7 +50,8 @@ const refusal = async (run: () => Promise<unknown>): Promise<string> => {
 
 const input = (over: Partial<RoundInput> = {}): RoundInput => ({
   title: 'Anime Trivia Night',
-  startsAt: new Date('2026-11-22T19:00:00Z'),
+  // Far ahead, so it never becomes a time that has passed.
+  startsAt: new Date('2030-11-24T19:00:00Z'),
   secondsPerQuestion: 20,
   autoAdvance: false,
   questions: [
@@ -95,11 +96,46 @@ test('a draft is the host’s alone; publishing it puts The Arbiter’s thread i
   const [round] = await db.select().from(triviaRounds).where(eq(triviaRounds.id, id))
   assert.equal(round!.status, 'scheduled')
   const [thread] = await db.select().from(posts).where(eq(posts.id, round!.threadPostId!))
-  assert.match(thread!.text, /^Anime Trivia Night: Sunday, 22 November at 20:00 Lagos time\./)
+  assert.match(thread!.text, /^Anime Trivia Night: Sunday, 24 November at 20:00 Lagos time\./)
   assert.match(thread!.text, /https:\/\/heynaija\.test\/games\/trivia\/rounds\//)
   const list = await trivia.list(ada)
   assert.deepEqual(list.upcoming.map((r) => r.id), [id])
   assert.equal(list.mayHost, false)
+})
+
+test('a start time that has passed is refused; changing a scheduled round reaches open pages and its thread, never another community', async () => {
+  const gone = new Date(Date.now() - 60 * 60_000)
+  assert.equal(await refusal(() => trivia.create(sam, input({ startsAt: gone }))), 'invalid')
+  // A round set to start a minute ago is a round run now.
+  const now = await trivia.create(sam, input({ startsAt: new Date(Date.now() - 60_000) }))
+  // A draft whose time went by while it waited cannot be announced.
+  await db.update(triviaRounds).set({ startsAt: gone }).where(eq(triviaRounds.id, now))
+  assert.equal(await refusal(() => trivia.publish(sam, now)), 'invalid')
+
+  const id = await trivia.create(sam, input())
+  await trivia.publish(sam, id)
+  const [before] = await db.select().from(triviaRounds).where(eq(triviaRounds.id, id))
+  assert.equal(await refusal(() => trivia.update(sam, id, input({ startsAt: gone }))), 'invalid')
+  const replies = () => db.select().from(posts).where(eq(posts.replyParentId, before!.threadPostId!))
+
+  const later = new Date('2030-11-25T20:30:00Z')
+  await trivia.update(sam, id, input({ startsAt: later }))
+  const [moved] = await db.select().from(triviaRounds).where(eq(triviaRounds.id, id))
+  assert.equal(moved!.startsAt.getTime(), later.getTime())
+  assert.ok(moved!.version > before!.version, 'open pages are woken')
+  assert.equal(new Date((await trivia.view(ada, id))!.startsAt).getTime(), later.getTime())
+  // Posts are never edited, so The Arbiter says what changed under its announcement.
+  assert.deepEqual((await replies()).map((p) => p.text), ['Update: Anime Trivia Night is now on Monday, 25 November at 21:30 Lagos time. 2 questions, 20 seconds each.'])
+
+  // Changing only a question's note tells nobody anything new.
+  const [first, second] = input().questions
+  await trivia.update(sam, id, input({ startsAt: later, questions: [{ ...first!, explanation: 'Light finds it in a schoolyard.' }, second!] }))
+  assert.equal((await replies()).length, 1)
+  // The thread is in Game Night, so the round stays there.
+  assert.equal(await refusal(() => trivia.update(sam, id, input({ startsAt: later, community: 'chess-arena' }))), 'not_editable')
+  // A draft can still go anywhere.
+  const draft = await trivia.create(sam, input())
+  await trivia.update(sam, draft, input({ community: 'chess-arena' }))
 })
 
 test('a question is never sent before it opens, and an answer counts only while it is open, once', async () => {

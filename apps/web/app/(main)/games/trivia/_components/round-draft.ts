@@ -16,6 +16,8 @@ export type RoundDraft = {
   community: string
   /** Lagos time, as a datetime-local value. */
   startsAt: string
+  /** On the schedule: The Arbiter has posted it, so its community is fixed. */
+  scheduled?: boolean
   secondsPerQuestion: number
   autoAdvance: boolean
   questions: QuestionDraft[]

@@ -27,6 +27,8 @@ export const REVIEW_MS = 15 * 60_000
 /** A live round whose host has done nothing for this long ends by itself. */
 export const IDLE_MS = 10 * 60_000
 export const MAX_QUESTIONS = 30
+/** A round may be set to start this long ago, so a host can run one now; never earlier. */
+export const START_GRACE_MS = 5 * 60_000
 export const PROMPT_MAX = 300
 export const CHOICE_MAX = 80
 export const ANSWER_MAX = 80
@@ -288,6 +290,7 @@ export class TriviaService {
   async create(hostId: string, raw: RoundInput): Promise<string> {
     await this.requireHost(hostId)
     const input = this.checked(raw)
+    await this.startNotPast(input.startsAt)
     const communityId = await this.communityId(input.community)
     return this.db.transaction(async (tx) => {
       const [round] = await tx
@@ -299,27 +302,66 @@ export class TriviaService {
     })
   }
 
-  /** Changes a round until its first question opens. */
+  /**
+   * Changes a round until its first question opens. Once it is on the schedule its
+   * thread stays in its community (posts are never edited or moved), open pages
+   * see the change at once, and The Arbiter replies in the thread with what changed.
+   */
   async update(memberId: string, roundId: string, raw: RoundInput): Promise<void> {
     const input = this.checked(raw)
     const communityId = await this.communityId(input.community)
-    await this.db.transaction(async (tx) => {
+    const thread = await this.db.transaction(async (tx) => {
       const round = await this.ownRound(tx, memberId, roundId, true)
-      const [opened] = await tx.execute<{ n: number }>(sql`select count(*)::int as n from games.trivia_questions where round_id = ${roundId} and opens_at is not null`).then((r) => r.rows)
-      if (!['draft', 'scheduled'].includes(round.status) || (opened?.n ?? 0) > 0) throw new TriviaError('not_editable', 'A round cannot be changed once a question has opened.')
+      const [count] = await tx
+        .execute<{ n: number; opened: number }>(sql`select count(*)::int as n, count(opens_at)::int as opened from games.trivia_questions where round_id = ${roundId}`)
+        .then((r) => r.rows)
+      if (!['draft', 'scheduled'].includes(round.status) || (count?.opened ?? 0) > 0) throw new TriviaError('not_editable', 'A round cannot be changed once a question has opened.')
+      const scheduled = round.status === 'scheduled'
+      if (scheduled && communityId !== round.communityId) {
+        throw new TriviaError('not_editable', 'The Arbiter has already posted this round in its community, so it stays there. To move it, call it off and make it again.')
+      }
+      const moved = input.startsAt.getTime() !== round.startsAt.getTime()
+      if (moved) await this.startNotPast(input.startsAt, tx)
       await tx
         .update(triviaRounds)
-        .set({ title: input.title, communityId, startsAt: input.startsAt, secondsPerQuestion: input.secondsPerQuestion, autoAdvance: input.autoAdvance, activeAt: new Date() })
+        .set({
+          title: input.title,
+          communityId,
+          startsAt: input.startsAt,
+          secondsPerQuestion: input.secondsPerQuestion,
+          autoAdvance: input.autoAdvance,
+          activeAt: new Date(),
+          version: sql`${triviaRounds.version} + 1`,
+        })
         .where(eq(triviaRounds.id, roundId))
       await tx.delete(triviaQuestions).where(eq(triviaQuestions.roundId, roundId))
       await tx.insert(triviaQuestions).values(this.questionRows(roundId, input.questions))
+      await notifyRound(tx, roundId)
+      const told = moved || round.title !== input.title || round.secondsPerQuestion !== input.secondsPerQuestion || count?.n !== input.questions.length
+      return scheduled && told ? round.threadPostId : null
     })
+    if (!thread) return
+    // The announcement cannot change, so its thread hears what is true now.
+    const n = input.questions.length
+    const text = `Update: ${input.title} is now on ${lagosTime(input.startsAt)} Lagos time. ${n} ${n === 1 ? 'question' : 'questions'}, ${input.secondsPerQuestion} seconds each.`
+    await this.posts.create(ARBITER_ID, text, { replyTo: thread }).catch((err) => this.logger.warn(`telling round ${roundId}'s thread of a change: ${(err as Error).message}`))
+  }
+
+  /** Refuses a start time that has already passed (by more than a few minutes). */
+  private async startNotPast(at: Date, q: Pick<Db, 'execute'> = this.db): Promise<void> {
+    if (at.getTime() < (await this.dbNow(q)).getTime() - START_GRACE_MS) {
+      throw new TriviaError('invalid', 'That start time has already passed. Pick a later one.')
+    }
   }
 
   /** Puts a draft on the schedule: The Arbiter posts its thread, where members will talk about it. */
   async publish(memberId: string, roundId: string): Promise<void> {
     const round = await this.ownRound(this.db, memberId, roundId)
     if (round.status !== 'draft') throw new TriviaError('not_editable', 'This round is already on the schedule.')
+    // The Arbiter would announce a time that has gone.
+    if (round.startsAt.getTime() < (await this.dbNow()).getTime() - START_GRACE_MS) {
+      throw new TriviaError('invalid', 'Its start time has already passed. Edit the round and pick a later one first.')
+    }
     const [{ n }] = (await this.db.execute<{ n: number }>(sql`select count(*)::int as n from games.trivia_questions where round_id = ${roundId}`)).rows as [{ n: number }]
     const slug = await this.postingSlug(round)
     const text = [

@@ -1,7 +1,8 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, startTransition, useState, useSyncExternalStore } from 'react'
+import { formatTime, HOME_ZONE } from '@/app/ui/time'
 import { triviaCall } from './call'
 import { blankQuestion, type QuestionDraft, type RoundDraft } from './round-draft'
 
@@ -9,6 +10,21 @@ import { blankQuestion, type QuestionDraft, type RoundDraft } from './round-draf
 // Arbiter posts it, and its questions. The API checks everything again.
 
 const MAX_QUESTIONS = 30
+
+const unchanging = () => () => {}
+
+/**
+ * The start time in the host's own zone, when that is not Lagos: the form asks for
+ * Lagos time, and pages show each reader their own. Nothing on the server's render.
+ */
+function YourTime({ lagos }: { lagos: string }) {
+  const zone = useSyncExternalStore(unchanging, () => Intl.DateTimeFormat().resolvedOptions().timeZone || HOME_ZONE, () => null)
+  const at = new Date(`${lagos}:00+01:00`)
+  if (!zone || Number.isNaN(at.getTime())) return null
+  const yours = formatTime(at.toISOString(), 'posted', 0, zone)
+  if (yours === formatTime(at.toISOString(), 'posted', 0, HOME_ZONE)) return null
+  return <span className="field-hint">That is {yours} where you are.</span>
+}
 
 export function RoundForm({ defaults, communities }: { defaults: RoundDraft; communities: { slug: string; name: string }[] }) {
   const router = useRouter()
@@ -61,8 +77,15 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
       return
     }
     const id = draft.id ?? (res.body as { id: string }).id
-    router.push(`/games/trivia/rounds/${id}/host`)
-    router.refresh()
+    // Next keeps this page as it was when the host comes back to it, so it is left
+    // ready: not busy, and a new round's form empty again. In the navigation's
+    // transition, so the form does not change before the console shows.
+    startTransition(() => {
+      setBusy(false)
+      if (!draft.id) setDraft(defaults)
+      router.push(`/games/trivia/rounds/${id}/host`)
+      router.refresh()
+    })
   }
 
   return (
@@ -75,6 +98,7 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
         <label className="flex flex-col gap-1.5">
           <span className="field-label">Starts (Lagos time)</span>
           <input type="datetime-local" className="field" required value={draft.startsAt} onChange={(e) => set('startsAt', e.target.value)} />
+          <YourTime lagos={draft.startsAt} />
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="field-label">Seconds a question</span>
@@ -91,13 +115,17 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
       </div>
       <label className="flex flex-col gap-1.5">
         <span className="field-label">Posted in</span>
-        <select className="field" value={draft.community} onChange={(e) => set('community', e.target.value)}>
+        <select className="field" value={draft.community} disabled={draft.scheduled} onChange={(e) => set('community', e.target.value)}>
           <option value="">Game Night</option>
           {communities.map((c) => (
             <option key={c.slug} value={c.slug}>{c.name}</option>
           ))}
         </select>
-        <span className="field-hint">The Arbiter posts the round’s thread, each answer and the results there.</span>
+        <span className="field-hint">
+          {draft.scheduled
+            ? 'The Arbiter has posted this round here, so it stays here. Changes to its time, title or questions are posted in its thread.'
+            : 'The Arbiter posts the round’s thread, each answer and the results there.'}
+        </span>
       </label>
       <label className="flex items-start gap-2 text-sm">
         <input type="checkbox" className="mt-1" checked={draft.autoAdvance} onChange={(e) => set('autoAdvance', e.target.checked)} />
@@ -175,8 +203,10 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
         </button>
       </div>
       <p className="text-xs text-muted">
-        Saving keeps it as a draft only you see. Put it on the schedule from your console: The Arbiter then posts it. A round
-        cannot change once its first question has opened.
+        {draft.scheduled
+          ? 'It is on the schedule: saving changes it for everyone at once. '
+          : 'Saving keeps it as a draft only you see. Put it on the schedule from your console: The Arbiter then posts it. '}
+        A round cannot change once its first question has opened.
       </p>
       {error ? (
         <p className="text-sm text-danger" role="alert">{error}</p>

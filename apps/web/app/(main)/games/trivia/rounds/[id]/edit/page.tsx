@@ -46,12 +46,15 @@ async function EditRound({ params }: Pick<PageProps<'/games/trivia/rounds/[id]/e
   return (
     <section className="content-panel">
       <RoundForm
+        // A new version (a save here, or another host's) starts the form again from it.
+        key={`${round.id}:${round.version}`}
         communities={communities}
         defaults={{
           id: round.id,
           title: round.title,
           community: round.community?.slug ?? '',
           startsAt: lagosInput(round.startsAt),
+          scheduled: round.status === 'scheduled',
           secondsPerQuestion: round.secondsPerQuestion,
           autoAdvance: round.autoAdvance,
           questions: round.questions.map((q) => ({
