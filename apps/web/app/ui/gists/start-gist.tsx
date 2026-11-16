@@ -3,12 +3,11 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useId, useRef, useState } from 'react'
-import { LiveIcon } from '@/app/ui/icons'
 import { CURRENT_GIST_KEY, TITLE_MAX, titleProblem, type GistView } from '@/lib/gists'
 import { gistCall } from './api'
 
-/** "Start a Gist": a title and a button. Shown on Home to members on the Gists list, and at /gists/new. */
-export function StartGist({ heading = true }: { heading?: boolean }) {
+/** "Start a Gist" at /gists/new, reached from the Gists button in the top bar: a title and a button. */
+export function StartGist() {
   const router = useRouter()
   const fieldId = useId()
   const hintId = useId()
@@ -53,15 +52,9 @@ export function StartGist({ heading = true }: { heading?: boolean }) {
 
   return (
     <section className="square-card gist-section" aria-labelledby={`${fieldId}-h`}>
-      {heading ? (
-        <h2 id={`${fieldId}-h`} className="section-title flex items-center gap-2">
-          <LiveIcon size={18} /> Start a Gist
-        </h2>
-      ) : (
-        <h1 id={`${fieldId}-h`} className="page-title">
-          Start a Gist
-        </h1>
-      )}
+      <h1 id={`${fieldId}-h`} className="page-title">
+        Start a Gist
+      </h1>
       <p id={hintId} className="mt-1 text-sm text-muted">
         A live audio room. You talk, others listen, and you choose who else may speak. Not recorded. Needs JavaScript and a browser with a microphone.
       </p>
