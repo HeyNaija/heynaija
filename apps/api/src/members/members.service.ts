@@ -354,8 +354,9 @@ export class MembersService {
 
   /**
    * Active members whose handle starts with `query`, or whose name contains it.
-   * Handle matches come first. A minor is found only by people they follow
-   * (ADR 0020), so never by a visitor (`viewerId` null).
+   * Handle matches come first. Members who blocked the viewer, or whom the viewer blocked,
+   * are left out. A minor is found only by people they follow (ADR 0020), so never by a
+   * visitor (`viewerId` null).
    */
   async search(viewerId: string | null, query: string, limit: number): Promise<MemberSummary[]> {
     // Handles are [a-z0-9_]; anything else cannot match, and "_" must not act as a wildcard.
@@ -365,6 +366,10 @@ export class MembersService {
     const escape = (t: string) => t.replace(/[\\%_]/g, (c) => `\\${c}`)
     const byHandle = handlePrefix ? like(members.handle, `${escape(handlePrefix)}%`) : undefined
     const byName = name ? ilike(members.displayName, `%${escape(name)}%`) : undefined
+    const notBlocked = viewerId
+      ? sql`not exists(select 1 from blocks b where (b.blocker_id = ${members.id} and b.blocked_id = ${viewerId})
+          or (b.blocker_id = ${viewerId} and b.blocked_id = ${members.id}))`
+      : undefined
     const rows = await this.db
       .select({
         handle: members.handle,
@@ -373,7 +378,7 @@ export class MembersService {
         founder: isFounder(outerId),
       })
       .from(members)
-      .where(and(or(byHandle, byName), eq(members.active, true), sql`not ${strangerToMinor(viewerId, outerId)}`))
+      .where(and(or(byHandle, byName), eq(members.active, true), notBlocked, sql`not ${strangerToMinor(viewerId, outerId)}`))
       .orderBy(...(byHandle ? [sql`${byHandle} desc`] : []), asc(members.handle))
       .limit(limit)
     return rows.map(({ avatarMediaId, ...r }) => ({ ...r, avatar: avatarPath(avatarMediaId) }))
