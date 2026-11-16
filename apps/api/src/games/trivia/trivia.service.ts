@@ -202,7 +202,8 @@ const publicName = (r: { display_name: string | null; handle: string; minor: boo
 export const seconds = (ms: number) => `${(ms / 1000).toFixed(2)} s`
 
 const lagosTime = (at: Date) =>
-  new Intl.DateTimeFormat('en-NG', { timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' }).format(at)
+  // "at 00:26", not "at 0:26", after midnight.
+  new Intl.DateTimeFormat('en-NG', { timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(at)
 
 @Injectable()
 export class TriviaService {

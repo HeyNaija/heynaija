@@ -97,6 +97,10 @@ test('a draft is the host’s alone; publishing it puts The Arbiter’s thread i
   assert.equal(round!.status, 'scheduled')
   const [thread] = await db.select().from(posts).where(eq(posts.id, round!.threadPostId!))
   assert.match(thread!.text, /^Anime Trivia Night: Sunday, 24 November at 20:00 Lagos time\./)
+  // After midnight the hour has two digits: "at 00:05".
+  await trivia.update(sam, id, input({ startsAt: new Date('2030-11-24T23:05:00Z') }))
+  const [update] = await db.select().from(posts).where(eq(posts.replyParentId, round!.threadPostId!))
+  assert.match(update!.text, /Monday, 25 November at 00:05 Lagos time/)
   assert.match(thread!.text, /https:\/\/heynaija\.test\/games\/trivia\/rounds\//)
   const list = await trivia.list(ada)
   assert.deepEqual(list.upcoming.map((r) => r.id), [id])
