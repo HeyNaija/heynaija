@@ -51,7 +51,12 @@ export function TriviaRound({ initial }: { initial: Round }) {
         }
         if (document.visibilityState !== 'visible') return
         controller = new AbortController()
-        const res = await fetch(`/api/v1/games/trivia/rounds/${latest.current.id}?after=${latest.current.version}`, { cache: 'no-store', signal: controller.signal }).catch(() => null)
+        // `has`: the open question on screen, so one that opened while this request was on its way comes back at once.
+        const showing = latest.current.current?.prompt ? latest.current.current.id : ''
+        const res = await fetch(`/api/v1/games/trivia/rounds/${latest.current.id}?after=${latest.current.version}&has=${encodeURIComponent(showing)}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        }).catch(() => null)
         if (stopped) return
         if (res?.ok) {
           failures = 0

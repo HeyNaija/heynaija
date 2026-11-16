@@ -1089,6 +1089,18 @@ export class TriviaService {
     }
   }
 
+  /**
+   * Whether a long-poll should answer now instead of waiting. A new version always does.
+   * A question opening by the clock is not a new version, so a page also says which open
+   * question it already shows (`has`; '' for none): a request that reaches the server just
+   * after a question opened, still showing the countdown, gets the question at once instead
+   * of waiting until it closes. Pages that do not say (older apps) wait as before.
+   */
+  answersNow(view: Pick<RoundView, 'version' | 'status' | 'current'>, after: number, has?: string): boolean {
+    if (after < 0 || view.version > after || view.status === 'published' || view.status === 'cancelled') return true
+    return has !== undefined && view.current?.prompt != null && view.current.id !== has
+  }
+
   /** The next moment a round changes by the clock alone (a question appears or closes), for the long-poll. */
   nextEdge(view: RoundView): Date | null {
     const c = view.current
