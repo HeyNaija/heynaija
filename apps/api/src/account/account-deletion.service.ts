@@ -436,7 +436,7 @@ export class AccountDeletionService {
         where host_id = ${memberId} and status in ('draft', 'scheduled', 'live', 'reviewing')`)
       await run(sql`update games.trivia_rounds set title = '' where host_id = ${memberId}`)
       await run(sql`
-        update games.trivia_questions set prompt = '', choices = null, correct_choice = null, accepted = null, explanation = null
+        update games.trivia_questions set prompt = '', choices = null, correct_choice = null, accepted = null, explanation = null, image_id = null, image_alt = ''
         where round_id in (select id from games.trivia_rounds where host_id = ${memberId})`)
 
       await run(sql`delete from notifications where recipient_id = ${memberId} or actor_id = ${memberId}`)

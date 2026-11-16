@@ -1,12 +1,12 @@
-import { communities, type Db, members, triviaQuestions, triviaRounds } from '@heynaija/db'
+import { communities, type Db, media, members, triviaQuestions, triviaRounds } from '@heynaija/db'
 import { Inject, Injectable, Logger } from '@nestjs/common'
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import type { Env } from '../../env.js'
 import { FeatureFlags } from '../../flags/feature-flags.js'
 import { ageStatusOf } from '../../governance/governance.service.js'
 import { isAdultFor } from '../../governance/age.js'
 import { isMinor } from '../../governance/minors.js'
-import { avatarPath } from '../../media/media.service.js'
+import { ALT_MAX, avatarPath, postImagePath } from '../../media/media.service.js'
 import { blockedEitherWay, PostsService } from '../../posts/posts.service.js'
 import { DB, ENV } from '../../tokens.js'
 import { ARBITER_ID, GAME_NIGHT_SLUG } from '../chess/arena-ids.js'
@@ -27,6 +27,8 @@ export const REVIEW_MS = 15 * 60_000
 /** A live round whose host has done nothing for this long ends by itself. */
 export const IDLE_MS = 10 * 60_000
 export const MAX_QUESTIONS = 30
+/** A round may be set to start this long ago, so a host can run one now; never earlier. */
+export const START_GRACE_MS = 5 * 60_000
 export const PROMPT_MAX = 300
 export const CHOICE_MAX = 80
 export const ANSWER_MAX = 80
@@ -53,7 +55,12 @@ export type QuestionInput = {
   correctChoice?: number
   accepted?: string[]
   explanation?: string | null
+  /** An uploaded post image (ready, not on a post) and its description for screen readers. */
+  image?: { id: string; alt: string } | null
 }
+
+/** A question's picture as pages show it, like a post's: its files are `src` plus `/640.webp` or `/1600.webp`. */
+export type QuestionPicture = { src: string; alt: string; width: number | null; height: number | null; animated: boolean }
 
 export type RoundInput = {
   title: string
@@ -94,6 +101,8 @@ export type CurrentQuestion = {
   prompt: string | null
   /** In the viewer's own order, each with its id; only once it has opened. */
   choices: { id: number; text: string }[] | null
+  /** Only once it has opened, like the question itself. */
+  image: QuestionPicture | null
   yourAnswer: { choice: number | null; text: string | null; ms: number } | null
 }
 
@@ -108,6 +117,7 @@ export type Reveal = {
   alsoAccepted: string[]
   explanation: string | null
   choices: { id: number; text: string; count: number; right: boolean }[] | null
+  image: QuestionPicture | null
   answered: number
   rightCount: number
   firsts: (Person & { ms: number })[]
@@ -147,6 +157,8 @@ export type HostQuestion = {
   correctChoice: number | null
   accepted: string[] | null
   explanation: string | null
+  /** With the uploaded image's id, so the form can send it back. */
+  image: (QuestionPicture & { id: string }) | null
   opensAt: Date | null
   closesAt: Date | null
   judged: boolean
@@ -244,6 +256,10 @@ export class TriviaService {
       if (!prompt || prompt.length > PROMPT_MAX) throw new TriviaError('invalid', `Question ${n} needs its question, up to ${PROMPT_MAX} characters.`)
       const explanation = q.explanation?.trim() || null
       if (explanation && explanation.length > PROMPT_MAX) throw new TriviaError('invalid', `Question ${n}'s note is longer than ${PROMPT_MAX} characters.`)
+      const image = q.image ? { id: q.image.id, alt: q.image.alt.trim() } : null
+      if (image && (!image.alt || image.alt.length > ALT_MAX)) {
+        throw new TriviaError('invalid', `Describe question ${n}'s picture for people who cannot see it, in up to ${ALT_MAX} characters.`)
+      }
       if (q.kind === 'choice') {
         const choices = (q.choices ?? []).map((c) => c.trim())
         if (choices.length < 2 || choices.length > 4 || choices.some((c) => !c || c.length > CHOICE_MAX)) {
@@ -253,14 +269,16 @@ export class TriviaService {
         if (!Number.isInteger(q.correctChoice) || q.correctChoice! < 0 || q.correctChoice! >= choices.length) {
           throw new TriviaError('invalid', `Question ${n} needs one right choice.`)
         }
-        return { kind: 'choice', prompt, choices, correctChoice: q.correctChoice, explanation }
+        return { kind: 'choice', prompt, choices, correctChoice: q.correctChoice, explanation, image }
       }
       const accepted = [...new Set((q.accepted ?? []).map((a) => a.trim()).filter(Boolean))]
       if (!accepted.length || accepted.length > ACCEPTED_MAX || accepted.some((a) => a.length > ANSWER_MAX || !normalise(a))) {
         throw new TriviaError('invalid', `Question ${n} needs 1 to ${ACCEPTED_MAX} accepted answers, each up to ${ANSWER_MAX} characters.`)
       }
-      return { kind: 'typed', prompt, accepted, explanation }
+      return { kind: 'typed', prompt, accepted, explanation, image }
     })
+    const pictures = questions.flatMap((q) => (q.image ? [q.image.id] : []))
+    if (new Set(pictures).size !== pictures.length) throw new TriviaError('invalid', 'Each picture can be on one question only.')
     return { ...input, title, questions }
   }
 
@@ -281,15 +299,59 @@ export class TriviaService {
       correctChoice: q.kind === 'choice' ? q.correctChoice! : null,
       accepted: q.kind === 'typed' ? q.accepted! : null,
       explanation: q.explanation ?? null,
+      imageId: q.image?.id ?? null,
+      imageAlt: q.image?.alt ?? '',
     }))
+  }
+
+  /**
+   * Every picture is a ready image that is on no post: one the editor uploaded and
+   * no question uses yet, or one already on this round (another host may be editing
+   * it). The pictures' files are public once processed, but nobody is given their
+   * address until the question opens.
+   */
+  private async checkPictures(q: Tx, memberId: string, roundId: string | null, questions: QuestionInput[]): Promise<void> {
+    const ids = questions.flatMap((x) => (x.image ? [x.image.id] : []))
+    if (!ids.length) return
+    const { rows } = await q.execute<{ id: string }>(sql`
+      select m.id from media m
+      where m.id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+        and m.kind = 'post_image' and m.status = 'ready' and m.post_id is null and not m.served_privately
+        and (${roundId ? sql`exists(select 1 from games.trivia_questions t where t.image_id = m.id and t.round_id = ${roundId})` : sql`false`}
+          or (m.owner_id = ${memberId} and not exists(select 1 from games.trivia_questions t where t.image_id = m.id)))`)
+    const usable = new Set(rows.map((r) => r.id))
+    questions.forEach((x, i) => {
+      if (x.image && !usable.has(x.image.id)) {
+        throw new TriviaError('invalid', `Question ${i + 1}'s picture is not ready to use yet, or is used elsewhere. Wait a moment, or add it again.`)
+      }
+    })
+  }
+
+  /** The pictures of these questions that can be shown, by question id. */
+  private async pictures(questions: QuestionRow[]): Promise<Map<string, QuestionPicture & { id: string }>> {
+    const ids = questions.flatMap((q) => (q.imageId ? [q.imageId] : []))
+    if (!ids.length) return new Map()
+    const rows = await this.db
+      .select({ id: media.id, width: media.width, height: media.height, animated: media.animated })
+      .from(media)
+      .where(and(inArray(media.id, ids), eq(media.status, 'ready'), eq(media.servedPrivately, false)))
+    const files = new Map(rows.map((r) => [r.id, r]))
+    return new Map(
+      questions.flatMap((q) => {
+        const m = q.imageId ? files.get(q.imageId) : undefined
+        return m ? [[q.id, { id: m.id, src: postImagePath(m.id), alt: q.imageAlt, width: m.width, height: m.height, animated: m.animated }] as const] : []
+      }),
+    )
   }
 
   /** A new round, as a draft nobody else sees. Returns its id. */
   async create(hostId: string, raw: RoundInput): Promise<string> {
     await this.requireHost(hostId)
     const input = this.checked(raw)
+    await this.startNotPast(input.startsAt)
     const communityId = await this.communityId(input.community)
     return this.db.transaction(async (tx) => {
+      await this.checkPictures(tx, hostId, null, input.questions)
       const [round] = await tx
         .insert(triviaRounds)
         .values({ hostId, communityId, title: input.title, startsAt: input.startsAt, secondsPerQuestion: input.secondsPerQuestion, autoAdvance: input.autoAdvance })
@@ -299,31 +361,72 @@ export class TriviaService {
     })
   }
 
-  /** Changes a round until its first question opens. */
+  /**
+   * Changes a round until its first question opens. Once it is on the schedule its
+   * thread stays in its community (posts are never edited or moved), open pages
+   * see the change at once, and The Arbiter replies in the thread with what changed.
+   */
   async update(memberId: string, roundId: string, raw: RoundInput): Promise<void> {
     const input = this.checked(raw)
     const communityId = await this.communityId(input.community)
-    await this.db.transaction(async (tx) => {
+    const thread = await this.db.transaction(async (tx) => {
       const round = await this.ownRound(tx, memberId, roundId, true)
-      const [opened] = await tx.execute<{ n: number }>(sql`select count(*)::int as n from games.trivia_questions where round_id = ${roundId} and opens_at is not null`).then((r) => r.rows)
-      if (!['draft', 'scheduled'].includes(round.status) || (opened?.n ?? 0) > 0) throw new TriviaError('not_editable', 'A round cannot be changed once a question has opened.')
+      const [count] = await tx
+        .execute<{ n: number; opened: number }>(sql`select count(*)::int as n, count(opens_at)::int as opened from games.trivia_questions where round_id = ${roundId}`)
+        .then((r) => r.rows)
+      if (!['draft', 'scheduled'].includes(round.status) || (count?.opened ?? 0) > 0) throw new TriviaError('not_editable', 'A round cannot be changed once a question has opened.')
+      const scheduled = round.status === 'scheduled'
+      if (scheduled && communityId !== round.communityId) {
+        throw new TriviaError('not_editable', 'The Arbiter has already posted this round in its community, so it stays there. To move it, call it off and make it again.')
+      }
+      const moved = input.startsAt.getTime() !== round.startsAt.getTime()
+      if (moved) await this.startNotPast(input.startsAt, tx)
+      await this.checkPictures(tx, memberId, roundId, input.questions)
       await tx
         .update(triviaRounds)
-        .set({ title: input.title, communityId, startsAt: input.startsAt, secondsPerQuestion: input.secondsPerQuestion, autoAdvance: input.autoAdvance, activeAt: new Date() })
+        .set({
+          title: input.title,
+          communityId,
+          startsAt: input.startsAt,
+          secondsPerQuestion: input.secondsPerQuestion,
+          autoAdvance: input.autoAdvance,
+          activeAt: new Date(),
+          version: sql`${triviaRounds.version} + 1`,
+        })
         .where(eq(triviaRounds.id, roundId))
       await tx.delete(triviaQuestions).where(eq(triviaQuestions.roundId, roundId))
       await tx.insert(triviaQuestions).values(this.questionRows(roundId, input.questions))
+      await notifyRound(tx, roundId)
+      const told = moved || round.title !== input.title || round.secondsPerQuestion !== input.secondsPerQuestion || count?.n !== input.questions.length
+      return scheduled && told ? round.threadPostId : null
     })
+    if (!thread) return
+    // The announcement cannot change, so its thread hears what is true now.
+    const n = input.questions.length
+    const text = `Update: ${input.title} is now on ${lagosTime(input.startsAt)} Lagos time. ${n} ${n === 1 ? 'question' : 'questions'}, ${input.secondsPerQuestion} seconds each.`
+    await this.posts.create(ARBITER_ID, text, { replyTo: thread }).catch((err) => this.logger.warn(`telling round ${roundId}'s thread of a change: ${(err as Error).message}`))
+  }
+
+  /** Refuses a start time that has already passed (by more than a few minutes). */
+  private async startNotPast(at: Date, q: Pick<Db, 'execute'> = this.db): Promise<void> {
+    if (at.getTime() < (await this.dbNow(q)).getTime() - START_GRACE_MS) {
+      throw new TriviaError('invalid', 'That start time has already passed. Pick a later one.')
+    }
   }
 
   /** Puts a draft on the schedule: The Arbiter posts its thread, where members will talk about it. */
   async publish(memberId: string, roundId: string): Promise<void> {
     const round = await this.ownRound(this.db, memberId, roundId)
     if (round.status !== 'draft') throw new TriviaError('not_editable', 'This round is already on the schedule.')
+    // The Arbiter would announce a time that has gone.
+    if (round.startsAt.getTime() < (await this.dbNow()).getTime() - START_GRACE_MS) {
+      throw new TriviaError('invalid', 'Its start time has already passed. Edit the round and pick a later one first.')
+    }
     const [{ n }] = (await this.db.execute<{ n: number }>(sql`select count(*)::int as n from games.trivia_questions where round_id = ${roundId}`)).rows as [{ n: number }]
     const slug = await this.postingSlug(round)
     const text = [
-      `${round.title}: ${lagosTime(round.startsAt)}.`,
+      // Members abroad read it too, so the time says whose clock it is.
+      `${round.title}: ${lagosTime(round.startsAt)} Lagos time.`,
       `${n} ${n === 1 ? 'question' : 'questions'}, ${round.secondsPerQuestion} seconds each. Play here: ${this.link(round.id)}`,
       'Answers stay hidden until each question closes. The first right answer scores most. Talk about each question in the replies once it closes.',
     ].join('\n\n')
@@ -518,6 +621,14 @@ export class TriviaService {
       replyTo: round.threadPostId,
       alongside: async (tx, postId) => {
         await tx.update(triviaQuestions).set({ revealPostId: postId }).where(eq(triviaQuestions.id, q.id))
+        // The picture goes on the reply, so the talk under it shows what was asked. From
+        // here on it is that post's: reported, removed or erased with it, like any post's.
+        if (q.imageId) {
+          await tx
+            .update(media)
+            .set({ postId, position: 0, alt: q.imageAlt })
+            .where(and(eq(media.id, q.imageId), eq(media.kind, 'post_image'), eq(media.status, 'ready'), isNull(media.postId)))
+        }
       },
     })
   }
@@ -805,6 +916,11 @@ export class TriviaService {
       from games.trivia_answers a join games.trivia_questions q on q.id = a.question_id
       where a.round_id = ${roundId} and a.member_id = ${viewerId}`)
     const myAnswer = new Map(mine.map((a) => [a.question_id, a]))
+    const pictures = await this.pictures(questions)
+    const picture = (q: QuestionRow): QuestionPicture | null => {
+      const p = pictures.get(q.id)
+      return p ? { src: p.src, alt: p.alt, width: p.width, height: p.height, animated: p.animated } : null
+    }
 
     const live = questions.find((q) => q.opensAt && !q.judgedAt && !q.voidedAt)
     let current: CurrentQuestion | null = null
@@ -819,6 +935,7 @@ export class TriviaService {
         kind: live.kind as 'choice' | 'typed',
         prompt: opened ? live.prompt : null,
         choices: opened && live.kind === 'choice' ? choiceOrder(live.id, viewerId, live.choices!.length).map((i) => ({ id: i, text: live.choices![i]! })) : null,
+        image: opened ? picture(live) : null,
         yourAnswer: a ? { choice: a.choice, text: a.text, ms: Number(a.ms) } : null,
       }
     }
@@ -826,7 +943,7 @@ export class TriviaService {
     const judged = questions.filter((q) => q.judgedAt && (!q.voidedAt || q.opensAt))
     const lastQ = judged.sort((a, b) => b.position - a.position)[0]
     let last: Reveal | null = null
-    if (lastQ) last = await this.reveal(lastQ, viewerId, myAnswer.get(lastQ.id) ?? null)
+    if (lastQ) last = await this.reveal(lastQ, viewerId, myAnswer.get(lastQ.id) ?? null, lastQ.voidedAt ? null : picture(lastQ))
 
     const final = round.status === 'published'
     const { rows: board } = await this.db.execute<{ member_id: string; points: number; handle: string; display_name: string | null; avatar_media_id: string | null }>(
@@ -883,6 +1000,7 @@ export class TriviaService {
     q: QuestionRow,
     viewerId: string,
     a: { choice: number | null; text: string | null; correct: boolean | null; points: number; place: number | null; ms: number } | null,
+    image: QuestionPicture | null,
   ): Promise<Reveal> {
     const firstIds = (q.firsts as { memberId: string; ms: number }[]) ?? []
     const people = firstIds.length
@@ -907,6 +1025,7 @@ export class TriviaService {
       alsoAccepted: q.kind === 'typed' ? (q.accepted ?? []).slice(1) : [],
       explanation: q.explanation,
       choices,
+      image,
       answered: q.answered,
       rightCount: q.rightCount,
       firsts: firstIds.flatMap((f) => {
@@ -935,6 +1054,7 @@ export class TriviaService {
     const { rows: counts } = await this.db.execute<{ question_id: string; n: number }>(sql`
       select question_id, count(*)::int as n from games.trivia_answers where round_id = ${roundId} group by question_id`)
     const answered = new Map(counts.map((c) => [c.question_id, Number(c.n)]))
+    const pictures = await this.pictures(questions)
     return {
       id: round.id,
       title: round.title,
@@ -957,6 +1077,7 @@ export class TriviaService {
         correctChoice: q.correctChoice,
         accepted: q.accepted,
         explanation: q.explanation,
+        image: pictures.get(q.id) ?? null,
         opensAt: q.opensAt,
         closesAt: q.closesAt,
         judged: Boolean(q.judgedAt),

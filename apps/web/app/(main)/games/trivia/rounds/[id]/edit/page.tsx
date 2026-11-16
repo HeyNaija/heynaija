@@ -46,12 +46,15 @@ async function EditRound({ params }: Pick<PageProps<'/games/trivia/rounds/[id]/e
   return (
     <section className="content-panel">
       <RoundForm
+        // A new version (a save here, or another host's) starts the form again from it.
+        key={`${round.id}:${round.version}`}
         communities={communities}
         defaults={{
           id: round.id,
           title: round.title,
           community: round.community?.slug ?? '',
           startsAt: lagosInput(round.startsAt),
+          scheduled: round.status === 'scheduled',
           secondsPerQuestion: round.secondsPerQuestion,
           autoAdvance: round.autoAdvance,
           questions: round.questions.map((q) => ({
@@ -61,6 +64,7 @@ async function EditRound({ params }: Pick<PageProps<'/games/trivia/rounds/[id]/e
             correctChoice: q.correctChoice ?? 0,
             accepted: (q.accepted ?? []).join('\n'),
             explanation: q.explanation ?? '',
+            image: q.image ? { mediaId: q.image.id, preview: `${q.image.src}/640.webp`, status: 'ready', error: null, alt: q.image.alt } : null,
           })),
         }}
       />

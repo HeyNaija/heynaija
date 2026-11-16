@@ -218,7 +218,9 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
   November 2026). Community moderators may host later; the round already belongs
   to a community when it has one.
 - **A round:** 1 to 30 questions, each multiple choice (2 to 4 choices, one right)
-  or typed (1 to 10 accepted answers), with an optional note shown at the reveal;
+  or typed (1 to 10 accepted answers), with an optional note shown at the reveal
+  and an optional picture (an uploaded post image, described for screen readers,
+  sent only once the question opens, then put on The Arbiter's reply; ADR 0028);
   10 to 60 seconds a question (20 by default). A draft is the host's alone;
   publishing it puts The Arbiter's thread in the round's community, or in Game
   Night when it has none, and nothing about the round can change once a question
@@ -236,7 +238,7 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
 - **Points:** 10 for a right answer, plus 5, 3 and 2 for the first three right
   answers; a round's places by points, then by less time spent on right answers,
   then shared. Points go into the season like Keno's; nothing can be bought or
-  won with them. Text only, no prizes.
+  won with them. No prizes.
 - **Typed answers** are read without case, accents, spaces, punctuation or a
   leading "the", and forgive one typo from 6 letters and two from 12. After the
   last question the host has 15 minutes to accept spellings the matcher missed

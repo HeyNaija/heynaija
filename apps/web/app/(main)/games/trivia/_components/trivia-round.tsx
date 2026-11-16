@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { LocalTime } from '@/app/ui/local-time'
 import type { TriviaReveal, TriviaRound as Round } from '@/lib/api'
-import { nameOf, ordinal, secondsLabel, Standings } from './bits'
+import { nameOf, ordinal, QuestionPicture, secondsLabel, Standings } from './bits'
 import { triviaCall } from './call'
 
 /** After a failed request the page waits a little longer each time, up to this. */
@@ -209,6 +209,7 @@ function Question({ round, closesIn, onAnswered }: { round: Round; closesIn: num
         <span style={{ transform: `scaleX(${share})` }} />
       </div>
       <p className="trivia-prompt">{q.prompt}</p>
+      {q.image ? <QuestionPicture picture={q.image} live /> : null}
       {q.kind === 'choice' ? (
         <div className="trivia-choices" role="group" aria-label="Choices">
           {q.choices!.map((c) => (
@@ -267,6 +268,7 @@ function RevealPanel({ reveal, total, plays }: { reveal: TriviaReveal; total: nu
     <section className="content-panel" aria-labelledby="trivia-reveal">
       <p className="text-sm text-muted">Question {reveal.position} of {total}</p>
       <h2 id="trivia-reveal" className="trivia-prompt mt-1">{reveal.prompt}</h2>
+      {reveal.image ? <div className="mt-3"><QuestionPicture picture={reveal.image} /></div> : null}
       {reveal.voided ? (
         <p className="mt-2 text-sm">The host cancelled this question. Nobody scores from it.</p>
       ) : (

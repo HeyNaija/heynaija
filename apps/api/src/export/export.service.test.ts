@@ -274,7 +274,7 @@ test('the export has your Trivia answers and results, and the rounds you hosted 
   const hosts = (await service.export(bayo, null))!.games.trivia
   assert.deepEqual(hosts.answers, [])
   assert.equal(hosts.hosted.length, 1)
-  assert.deepEqual(hosts.hosted[0]!.questions, [{ position: 1, kind: 'choice', question: 'Who?', choices: ['Light', 'L'], rightChoice: 0, accepted: null, note: null }])
+  assert.deepEqual(hosts.hosted[0]!.questions, [{ position: 1, kind: 'choice', question: 'Who?', choices: ['Light', 'L'], rightChoice: 0, accepted: null, note: null, picture: null }])
 })
 
 test('the export has your Keno tickets, and only yours', async () => {

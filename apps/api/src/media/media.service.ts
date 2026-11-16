@@ -769,6 +769,8 @@ export class MediaService {
           eq(media.status, 'ready'),
           isNull(media.postId),
           lt(media.readyAt, cutoff),
+          // A Trivia question's picture waits for its question, then goes on The Arbiter's reply (docs/adr/0028, phase 7).
+          sql`not exists (select 1 from games.trivia_questions t where t.image_id = ${media.id})`,
         ),
       )
       .returning({ id: media.id })

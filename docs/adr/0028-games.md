@@ -555,16 +555,39 @@ the round's row with `skip locked` and needs it to be `reviewing`.
   cannot answer. A round whose host does nothing for 10 minutes ends by itself.
 - Hosting needs `trivia_host` adult assurance (`declared`, as Gists' hosting).
 
+### Pictures (16 November 2026)
+
+At the owner's request a question may have one picture (the first release was
+text only), on the web and in the apps.
+
+- It is an ordinary post image (`/v1/me/images`): the same size limit, the same
+  checks before it is used (Arachnid Shield's hash match, then resizing to 640
+  and 1600 pixel WebP), and a description for screen readers, which the host must
+  write. `trivia_questions.image_id` points at it and `image_alt` holds the
+  description.
+- Only a ready image of the editor's that no question uses yet, or one already on
+  the round, can be put on a question, and each on one question only.
+- It is sent like the question's text: never before the question opens, so nobody
+  has its address during the countdown. While the question is open, pages load
+  the 640 version only, so a slow phone is not also fetching a large file against
+  the clock.
+- The abandoned-upload sweep leaves an image alone while a question has it. When
+  the question closes, the image goes on The Arbiter's reply in the thread, so
+  the talk there shows what was asked; from then on it is that post's, reported,
+  removed and erased with it like any post's image. A question voided before it
+  closes has no reply, so its picture is shown nowhere.
+
 ## Data export and account deletion
 
-- The export is `heynaija-export/21` (format 20 is ADR 0029's): a `games` section with the member's game
+- The export is `heynaija-export/22` (format 20 is ADR 0029's; 22 added Trivia pictures): a `games` section with the member's game
   profiles, season scores and competition entries, the linked Lichess account
   (username, when linked, ratings; never the token), their chess challenges and the
   games they played, with every move, their Keno tickets (round, numbers, hits,
   points, when), their Game Score per season and all time, and the competitions
   they were invited to, and the Lichess teams they linked to a community; and a
   `trivia` section with the rounds they played (their answers, points and place)
-  and the rounds they hosted, with their questions.
+  and the rounds they hosted, with their questions and each question's picture
+  (its address and description).
 - No member foreign key in `games` cascades (ADR 0016). Erasing an account
   deletes the member's game profiles, season scores, competition entries and game
   events; competitions a moderator created stay, pointing at the tombstone. A
