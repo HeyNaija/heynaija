@@ -665,7 +665,7 @@
         "apps/api/src/export/export.service.test.ts",
         "e2e/tests/governance.spec.ts"
       ],
-      "notes": "Format 21: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, since format 11 reply boundaries, polls you created and your public poll ballots, and since format 19 a games section (stats, season scores, competition entries, the linked Lichess account but never its token, chess challenges and the chess games played, Keno tickets and the Game Score), since format 20 whether each community you joined announces to you, and since format 21 Trivia answers, round results and the rounds you hosted; restricted person keys and reports about someone stay excluded."
+      "notes": "Format 22: since format 3 it includes reposts and quoteOf, since format 9 the post pinned to the profile, since format 10 the ideas you sent (with a problem report's private details) and your votes on the board, since format 11 reply boundaries, polls you created and your public poll ballots, and since format 19 a games section (stats, season scores, competition entries, the linked Lichess account but never its token, chess challenges and the chess games played, Keno tickets and the Game Score), since format 20 whether each community you joined announces to you, since format 21 Trivia answers, round results and the rounds you hosted, and since format 22 each hosted Trivia question's picture (address and description); restricted person keys and reports about someone stay excluded."
     },
     {
       "id": "member-onboarding",
@@ -1854,7 +1854,7 @@
       "dependency": [
         "games-core"
       ],
-      "notes": "Phase 7 built 15 Nov 2026 (ADR 0028): site moderators who are adults host live rounds of multiple-choice and typed questions; each question appears on every screen at once by the database's clock and answers stay on the server until it closes; 10 points a right answer plus 5/3/2 for the first three, by the database's clock; typed answers forgive small typos and the host can accept spellings or void a question; The Arbiter posts the thread, each answer and the results (minors as \"a member\"); points go into the season and Game Score. Text only, no prizes.",
+      "notes": "Phase 7 built 15 Nov 2026 (ADR 0028): site moderators who are adults host live rounds of multiple-choice and typed questions; each question appears on every screen at once by the database's clock and answers stay on the server until it closes; 10 points a right answer plus 5/3/2 for the first three, by the database's clock; typed answers forgive small typos and the host can accept spellings or void a question; The Arbiter posts the thread, each answer and the results (minors as \"a member\"); points go into the season and Game Score. From 16 Nov a question can have one picture: an uploaded post image, checked and described like any, sent only once the question opens, then on The Arbiter's reply. No prizes.",
       "caveat": "Behind the games and trivia flags (on in staging, off in production). Hosts are site moderators only; no question bank, no questions from members, and Trivia is not in competitions. The mobile apps play rounds; hosting is on the web."
     }
   ]

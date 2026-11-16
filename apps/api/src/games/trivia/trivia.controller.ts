@@ -4,6 +4,7 @@ import { type AuthedRequest, SessionGuard } from '../../auth/session.guard.js'
 import { Feature, FeatureGuard } from '../../flags/feature.guard.js'
 import { FeatureFlags } from '../../flags/feature-flags.js'
 import { parse } from '../../http.js'
+import { ALT_MAX } from '../../media/media.service.js'
 import { RateLimiter } from '../../rate-limit.js'
 import { ROUND_CHANGES, type RoundChanges } from './round-events.js'
 import { ANSWER_MAX, CHOICE_MAX, MAX_QUESTIONS, PROMPT_MAX, TITLE_MAX, TriviaError, TriviaService } from './trivia.service.js'
@@ -19,6 +20,7 @@ const question = z.object({
   correctChoice: z.number().int().min(0).max(3).optional(),
   accepted: z.array(z.string().max(ANSWER_MAX * 2)).max(20).optional(),
   explanation: z.string().max(PROMPT_MAX * 2).nullish(),
+  image: z.object({ id: z.uuid(), alt: z.string().max(ALT_MAX * 2) }).nullish(),
 })
 const roundBody = z.object({
   title: z.string().max(TITLE_MAX * 2),

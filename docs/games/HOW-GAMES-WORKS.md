@@ -129,7 +129,8 @@ Anime is first; any topic works.
 2. When the host opens a question, a 3-second countdown runs, then the question
    appears on everyone's screen at the same moment.
 3. Answer before time runs out (usually 20 seconds). Some questions have choices
-   to tap; others you type. You get **one answer**, and it can't be changed.
+   to tap; others you type. Some come with a picture, which appears with the
+   question and not before. You get **one answer**, and it can't be changed.
 4. When time is up you see the right answer, how many got it, and who was
    fastest. Talk about it in the replies to The Arbiter's thread.
 
@@ -155,7 +156,9 @@ Anime is first; any topic works.
 ### Who hosts
 
 For now, site moderators who are 18 or over host rounds. They write the
-questions, set the time, and run the round from the web.
+questions, set the time, and run the round from the web. A question can have one
+picture, checked like any picture posted on HeyNaija, with a description for
+people who cannot see it. Questions and pictures must suit every member.
 
 ## Game Score, seasons and leaderboards
 

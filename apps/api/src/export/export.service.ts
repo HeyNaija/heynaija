@@ -51,7 +51,7 @@ import { describeTime } from '../games/chess/time-controls.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/21'
+export const EXPORT_FORMAT = 'heynaija-export/22'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -580,8 +580,11 @@ export class ExportService {
       this.db.execute<{ id: string; title: string; status: string; starts_at: Date | string; questions: unknown }>(sql`
         select r.id, r.title, r.status, r.starts_at,
           coalesce((select json_agg(json_build_object('position', q.position, 'kind', q.kind, 'question', q.prompt, 'choices', q.choices,
-            'rightChoice', q.correct_choice, 'accepted', q.accepted, 'note', q.explanation) order by q.position)
-            from games.trivia_questions q where q.round_id = r.id), '[]'::json) as questions
+            'rightChoice', q.correct_choice, 'accepted', q.accepted, 'note', q.explanation,
+            'picture', case when m.id is null then null else json_build_object('url', '/media/posts/' || m.id, 'description', q.image_alt) end)
+            order by q.position)
+            from games.trivia_questions q left join media m on m.id = q.image_id and m.status = 'ready' and not m.served_privately
+            where q.round_id = r.id), '[]'::json) as questions
         from games.trivia_rounds r where r.host_id = ${memberId} order by r.starts_at`),
     ])
     return {

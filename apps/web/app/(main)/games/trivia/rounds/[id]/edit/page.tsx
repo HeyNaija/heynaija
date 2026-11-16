@@ -64,6 +64,7 @@ async function EditRound({ params }: Pick<PageProps<'/games/trivia/rounds/[id]/e
             correctChoice: q.correctChoice ?? 0,
             accepted: (q.accepted ?? []).join('\n'),
             explanation: q.explanation ?? '',
+            image: q.image ? { mediaId: q.image.id, preview: `${q.image.src}/640.webp`, status: 'ready', error: null, alt: q.image.alt } : null,
           })),
         }}
       />

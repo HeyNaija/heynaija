@@ -1,15 +1,22 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { type FormEvent, startTransition, useState, useSyncExternalStore } from 'react'
+import { type FormEvent, startTransition, useRef, useState, useSyncExternalStore } from 'react'
+import { finishPostImageUpload, postImageStatus, startPostImageUpload } from '@/app/actions'
+import { isGif, POST_IMAGE_TYPES, shrinkImage } from '@/app/ui/shrink-image'
 import { formatTime, HOME_ZONE } from '@/app/ui/time'
 import { triviaCall } from './call'
-import { blankQuestion, type QuestionDraft, type RoundDraft } from './round-draft'
+import { blankQuestion, type PictureDraft, type QuestionDraft, type RoundDraft } from './round-draft'
 
 // A host writes a round (docs/adr/0028, phase 7): its title, when, where The
 // Arbiter posts it, and its questions. The API checks everything again.
 
 const MAX_QUESTIONS = 30
+// As for a post's pictures (app/ui/use-image-drafts.ts): sharp enough full screen, small enough to send from a phone.
+const PICTURE_MAX_BYTES = 10 * 1024 * 1024
+const PICTURE_LONGEST_EDGE = 2048
+const ALT_MAX = 1000
+const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
 const unchanging = () => () => {}
 
@@ -45,8 +52,50 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
     })
   const remove = (i: number) => setDraft((d) => ({ ...d, questions: d.questions.filter((_, j) => j !== i) }))
 
+  // A picture is found again by its local preview, so moving or removing questions while it uploads is fine.
+  const setPicture = (preview: string, change: Partial<PictureDraft>) =>
+    setDraft((d) => ({ ...d, questions: d.questions.map((q) => (q.image?.preview === preview ? { ...q, image: { ...q.image, ...change } } : q)) }))
+
+  /** Uploads a picture as a post image is uploaded: straight to storage, then checked and resized by the server. */
+  const addPicture = async (i: number, file: File) => {
+    const preview = URL.createObjectURL(file)
+    setQuestion(i, { image: { mediaId: null, preview, status: 'uploading', error: null, alt: '' } })
+    const failed = (error: string) => setPicture(preview, { status: 'failed', error })
+    try {
+      if (!POST_IMAGE_TYPES.includes(file.type)) return failed('Choose a JPEG, PNG, WebP or GIF image.')
+      const image = isGif(file) ? file : await shrinkImage(file, { max: PICTURE_LONGEST_EDGE })
+      if (image.size > PICTURE_MAX_BYTES) return failed('That picture is too large. The limit is 10 MB.')
+      const ticket = await startPostImageUpload(image.type, image.size)
+      if ('error' in ticket) return failed(ticket.error)
+      setPicture(preview, { mediaId: ticket.mediaId })
+      // Straight to storage: the picture never passes through our servers on the way in.
+      const put = await fetch(ticket.uploadUrl, { method: 'PUT', headers: { 'content-type': image.type }, body: image }).catch(() => null)
+      if (!put?.ok) return failed('The upload did not go through. Check your connection, remove it and try again.')
+      const done = await finishPostImageUpload(ticket.mediaId)
+      if ('error' in done) return failed(done.error)
+      if (done.status === 'ready') return setPicture(preview, { status: 'ready' })
+      setPicture(preview, { status: 'processing' })
+      // About two minutes: quick checks first, since most pictures take a second or two.
+      for (let k = 0; k < 90; k++) {
+        await wait(k < 5 ? 600 : 1500)
+        const status = await postImageStatus(ticket.mediaId).catch(() => 'processing' as const)
+        if (status === 'ready') return setPicture(preview, { status: 'ready' })
+        if (status === 'failed') return failed('That picture cannot be used. Choose a JPEG, PNG, WebP or GIF image.')
+        if (status === null) return failed('That upload has expired. Remove it and add it again.')
+      }
+      failed('This is taking too long. Remove the picture and try again.')
+    } catch {
+      failed('Something went wrong. Remove the picture and try again.')
+    }
+  }
+
   const submit = async (e: FormEvent) => {
     e.preventDefault()
+    const waiting = draft.questions.findIndex((q) => q.image && q.image.status !== 'ready')
+    if (waiting >= 0) {
+      setError(`Question ${waiting + 1}’s picture is not ready. Wait for it to finish, or remove it.`)
+      return
+    }
     setBusy(true)
     setError(null)
     const body = {
@@ -56,8 +105,9 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
       secondsPerQuestion: draft.secondsPerQuestion,
       autoAdvance: draft.autoAdvance,
       questions: draft.questions.map((q) => {
+        const image = q.image?.mediaId ? { id: q.image.mediaId, alt: q.image.alt } : null
         if (q.kind === 'typed') {
-          return { kind: 'typed', prompt: q.prompt, accepted: q.accepted.split('\n').map((a) => a.trim()).filter(Boolean), explanation: q.explanation || null }
+          return { kind: 'typed', prompt: q.prompt, accepted: q.accepted.split('\n').map((a) => a.trim()).filter(Boolean), explanation: q.explanation || null, image }
         }
         // Empty choice boxes are left out, and the right one keeps its place among those left.
         const kept = q.choices.map((text, i) => ({ text: text.trim(), i })).filter((c) => c.text)
@@ -67,6 +117,7 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
           choices: kept.map((c) => c.text),
           correctChoice: kept.findIndex((c) => c.i === q.correctChoice),
           explanation: q.explanation || null,
+          image,
         }
       }),
     }
@@ -181,6 +232,13 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
                   <textarea className="field" rows={3} required value={q.accepted} onChange={(e) => setQuestion(i, { accepted: e.target.value })} placeholder={'Attack on Titan\nShingeki no Kyojin'} />
                 </label>
               )}
+              <PictureField
+                n={i + 1}
+                picture={q.image}
+                onPick={(file) => void addPicture(i, file)}
+                onDescribe={(alt) => q.image && setPicture(q.image.preview, { alt })}
+                onRemove={() => setQuestion(i, { image: null })}
+              />
               <label className="flex flex-col gap-1.5">
                 <span className="field-hint">A note shown with the answer (optional)</span>
                 <input className="field" maxLength={300} value={q.explanation} onChange={(e) => setQuestion(i, { explanation: e.target.value })} />
@@ -215,5 +273,69 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
         <button type="submit" className="btn btn-primary" disabled={busy}>{draft.id ? 'Save changes' : 'Save draft'}</button>
       </div>
     </form>
+  )
+}
+
+const PICTURE_STATUS: Record<PictureDraft['status'], string> = {
+  uploading: 'Uploading…',
+  processing: 'Checking the picture…',
+  ready: 'Ready. Players see it when the question opens, not before.',
+  failed: '',
+}
+
+/** A question's one picture: add it, describe it, take it off again. */
+function PictureField({
+  n,
+  picture,
+  onPick,
+  onDescribe,
+  onRemove,
+}: {
+  n: number
+  picture: PictureDraft | null
+  onPick: (file: File) => void
+  onDescribe: (alt: string) => void
+  onRemove: () => void
+}) {
+  const input = useRef<HTMLInputElement>(null)
+  if (!picture) {
+    return (
+      <div>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => input.current?.click()}>
+          Add a picture
+        </button>
+        <input
+          ref={input}
+          type="file"
+          accept={POST_IMAGE_TYPES.join(',')}
+          className="sr-only"
+          tabIndex={-1}
+          aria-label={`Picture for question ${n}`}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (file) onPick(file)
+          }}
+        />
+      </div>
+    )
+  }
+  return (
+    <div className="trivia-picture-edit">
+      {/* eslint-disable-next-line @next/next/no-img-element -- a local preview, or the already resized picture */}
+      <img src={picture.preview} alt="" />
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <p className={picture.status === 'failed' ? 'text-sm text-danger' : 'text-xs text-muted'} role="status">
+          {picture.status === 'failed' ? picture.error : PICTURE_STATUS[picture.status]}
+        </p>
+        <label className="flex flex-col gap-1.5">
+          <span className="field-hint">Describe the picture for people who cannot see it, without giving the answer away</span>
+          <input className="field" required maxLength={ALT_MAX} value={picture.alt} aria-label={`Question ${n}: describe the picture`} onChange={(e) => onDescribe(e.target.value)} />
+        </label>
+        <div>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onRemove}>Remove picture</button>
+        </div>
+      </div>
+    </div>
   )
 }

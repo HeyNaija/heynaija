@@ -393,6 +393,13 @@
       "when": 1794744310087,
       "tag": "0055_trivia",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1794820892141,
+      "tag": "0056_trivia_pictures",
+      "breakpoints": true
     }
   ]
 }

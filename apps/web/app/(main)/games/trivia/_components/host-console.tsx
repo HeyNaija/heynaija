@@ -225,6 +225,10 @@ function QuestionRow({
         <span className="text-xs text-muted">{q.kind === 'choice' ? 'Choices' : 'Typed'}</span>
       </div>
       <p className="text-[15px]">{q.prompt}</p>
+      {q.image ? (
+        // eslint-disable-next-line @next/next/no-img-element -- already resized
+        <img className="trivia-picture-thumb" src={`${q.image.src}/640.webp`} alt={q.image.alt} width={q.image.width ?? undefined} height={q.image.height ?? undefined} loading="lazy" />
+      ) : null}
       {q.kind === 'choice' ? (
         <p className="text-sm text-muted">
           {(q.choices ?? []).map((c, i) => (

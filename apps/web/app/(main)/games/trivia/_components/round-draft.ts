@@ -1,5 +1,17 @@
 // A round as the host's form edits it (docs/adr/0028, phase 7); shared by the server pages and the form.
 
+/** A picture being added to a question: from choosing it to the server having checked it. */
+export type PictureDraft = {
+  /** The uploaded image's id, once the upload has started. */
+  mediaId: string | null
+  /** What the form shows: a local copy while uploading, the resized one once saved. */
+  preview: string
+  status: 'uploading' | 'processing' | 'ready' | 'failed'
+  error: string | null
+  /** For people who cannot see it. */
+  alt: string
+}
+
 export type QuestionDraft = {
   kind: 'choice' | 'typed'
   prompt: string
@@ -8,6 +20,7 @@ export type QuestionDraft = {
   /** One accepted answer a line. */
   accepted: string
   explanation: string
+  image: PictureDraft | null
 }
 
 export type RoundDraft = {
@@ -30,4 +43,5 @@ export const blankQuestion = (kind: QuestionDraft['kind'] = 'choice'): QuestionD
   correctChoice: 0,
   accepted: '',
   explanation: '',
+  image: null,
 })

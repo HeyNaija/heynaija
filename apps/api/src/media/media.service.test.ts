@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { media, members, notifications, posts, reports } from '@heynaija/db'
+import { media, members, notifications, posts, reports, triviaQuestions, triviaRounds } from '@heynaija/db'
 import { eq, ne, sql } from 'drizzle-orm'
 import sharp from 'sharp'
 import { slugParam } from '../http.js'
@@ -378,6 +378,20 @@ test('the images of a deleted post leave the CDN in one purge', async () => {
   await service.discardPostImages(deleted)
   assert.equal(jobs.purged.length, 1)
   assert.deepEqual([...jobs.purged[0]!].sort(), [first, second].flatMap((id) => [`posts/${id}/640.webp`, `posts/${id}/1600.webp`, `posts/${id}/still.webp`]).sort())
+})
+
+test('a Trivia question’s picture is not swept while a question has it', async () => {
+  const picture = await readyPostImage(ada)
+  const anHourAgo = new Date(Date.now() - 61 * 60 * 1000)
+  await db.update(media).set({ readyAt: anHourAgo, createdAt: anHourAgo }).where(eq(media.id, picture))
+  const [round] = await db.insert(triviaRounds).values({ hostId: ada, title: 'Picture night', startsAt: new Date() }).returning()
+  await db.insert(triviaQuestions).values({ roundId: round!.id, position: 1, kind: 'typed', prompt: 'Who is this?', accepted: ['Ada'], imageId: picture, imageAlt: 'A face' })
+  await service.sweepAbandoned()
+  assert.equal(await statusOf(picture), 'ready')
+  // Taken off its question (the round was changed or deleted), it goes like any unused upload.
+  await db.delete(triviaQuestions).where(eq(triviaQuestions.roundId, round!.id))
+  await service.sweepAbandoned()
+  assert.equal(await statusOf(picture), 'deleted')
 })
 
 test('images never put on a post are swept after an hour, by the hourly job too', async () => {
