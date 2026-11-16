@@ -323,7 +323,8 @@ export class TriviaService {
     const [{ n }] = (await this.db.execute<{ n: number }>(sql`select count(*)::int as n from games.trivia_questions where round_id = ${roundId}`)).rows as [{ n: number }]
     const slug = await this.postingSlug(round)
     const text = [
-      `${round.title}: ${lagosTime(round.startsAt)}.`,
+      // Members abroad read it too, so the time says whose clock it is.
+      `${round.title}: ${lagosTime(round.startsAt)} Lagos time.`,
       `${n} ${n === 1 ? 'question' : 'questions'}, ${round.secondsPerQuestion} seconds each. Play here: ${this.link(round.id)}`,
       'Answers stay hidden until each question closes. The first right answer scores most. Talk about each question in the replies once it closes.',
     ].join('\n\n')
