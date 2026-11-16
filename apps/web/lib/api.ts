@@ -754,7 +754,10 @@ export type TriviaList = { live: TriviaRoundCard[]; upcoming: TriviaRoundCard[];
 
 export type TriviaStanding = TriviaPerson & { rank: number; points: number; you: boolean }
 
-/** The question being asked: its text and choices only once it has opened, by the server's clock. */
+/** A question's picture, already resized: append `/640.webp` or `/1600.webp` to `src`, as for a post's. */
+export type TriviaPicture = { src: string; alt: string; width: number | null; height: number | null; animated: boolean }
+
+/** The question being asked: its text, choices and picture only once it has opened, by the server's clock. */
 export type TriviaCurrent = {
   id: string
   position: number
@@ -764,6 +767,7 @@ export type TriviaCurrent = {
   prompt: string | null
   /** In the viewer's own order; `id` is what to send back. */
   choices: { id: number; text: string }[] | null
+  image: TriviaPicture | null
   yourAnswer: { choice: number | null; text: string | null; ms: number } | null
 }
 
@@ -778,6 +782,7 @@ export type TriviaReveal = {
   alsoAccepted: string[]
   explanation: string | null
   choices: { id: number; text: string; count: number; right: boolean }[] | null
+  image: TriviaPicture | null
   answered: number
   rightCount: number
   firsts: (TriviaPerson & { ms: number })[]
@@ -816,6 +821,8 @@ export type TriviaHostQuestion = {
   correctChoice: number | null
   accepted: string[] | null
   explanation: string | null
+  /** `id` is the uploaded image's, which the form sends back. */
+  image: (TriviaPicture & { id: string }) | null
   opensAt: string | null
   closesAt: string | null
   judged: boolean

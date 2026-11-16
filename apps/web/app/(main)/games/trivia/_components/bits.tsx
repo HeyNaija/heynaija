@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Avatar } from '@/app/ui/avatar'
 import { LocalTime } from '@/app/ui/local-time'
-import type { TriviaPerson, TriviaRoundCard, TriviaStanding, TriviaStatus } from '@/lib/api'
+import type { TriviaPerson, TriviaPicture, TriviaRoundCard, TriviaStanding, TriviaStatus } from '@/lib/api'
 
 // Pieces every Trivia page shares (docs/games/GAMES.md, docs/adr/0028 phase 7).
 
@@ -89,5 +89,28 @@ export function Standings({ rows, you, final }: { rows: TriviaStanding[]; you: T
       )}
       {!final && rows.length ? <p className="mt-2 text-xs text-muted">Places are final once the host publishes the results.</p> : null}
     </section>
+  )
+}
+
+/**
+ * A question's picture. While the question is open it is the 640 version only, so a
+ * phone on a slow connection is not also fetching a large file against the clock;
+ * afterwards, the larger one on screens that want it.
+ */
+export function QuestionPicture({ picture, live = false }: { picture: TriviaPicture; live?: boolean }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- already resized to the sizes we need
+    <img
+      className="trivia-picture"
+      src={`${picture.src}/640.webp`}
+      srcSet={live ? undefined : `${picture.src}/640.webp 640w, ${picture.src}/1600.webp 1600w`}
+      sizes={live ? undefined : '(min-width: 720px) 640px, 100vw'}
+      alt={picture.alt}
+      width={picture.width ?? undefined}
+      height={picture.height ?? undefined}
+      loading={live ? 'eager' : 'lazy'}
+      fetchPriority={live ? 'high' : undefined}
+      decoding="async"
+    />
   )
 }

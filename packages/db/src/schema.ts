@@ -1921,6 +1921,12 @@ export const triviaQuestions = gamesSchema.table(
     correctChoice: smallint('correct_choice'),
     accepted: text('accepted').array(),
     explanation: text('explanation'),
+    // A picture shown with the question: an uploaded post image, kept out of the
+    // abandoned-upload sweep while a question uses it, and put on The Arbiter's
+    // reply once the question closes. Its description for screen readers is here
+    // until then. Gone with the uploader's account.
+    imageId: uuid('image_id').references(() => media.id, { onDelete: 'set null' }),
+    imageAlt: text('image_alt').notNull().default(''),
     opensAt: ts('opens_at'),
     closesAt: ts('closes_at'),
     judgedAt: ts('judged_at'),
@@ -1933,6 +1939,7 @@ export const triviaQuestions = gamesSchema.table(
   },
   (t) => [
     unique('trivia_questions_round_position_unique').on(t.roundId, t.position),
+    index('trivia_questions_image_idx').on(t.imageId).where(sql`image_id is not null`),
     index('trivia_questions_due_idx').on(t.closesAt).where(sql`judged_at is null and closes_at is not null`),
     check('trivia_questions_kind_check', sql.raw(`kind in ('choice', 'typed')`)),
     check(
