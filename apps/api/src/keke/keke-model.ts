@@ -18,7 +18,10 @@ export type ModelRequest = {
   schemaName: string
   schema: Record<string, unknown>
   maxTokens: number
-  /** How long to wait for the answer, in milliseconds. A question's is 30 seconds; the morning's news grouping takes longer. */
+  /**
+   * How long the whole call may take, in milliseconds, retries included. Without
+   * it a question's limit applies: 30 seconds an attempt, with the usual retries.
+   */
   timeoutMs?: number
 }
 

@@ -30,8 +30,9 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * Asks a model through OpenRouter's chat completions with plain `fetch`: JSON by
- * a strict schema, a 30-second limit, two retries on rate limits and server
- * errors. Only hosts that say they neither keep nor train on what is sent are
+ * a strict schema, and two retries on rate limits, server errors and failed
+ * connections. For a question each attempt has 30 seconds; a request with its own
+ * `timeoutMs` (the morning's news) has that long for all its attempts. Only hosts that say they neither keep nor train on what is sent are
  * used (`data_collection: "deny"`), and only those that can follow the schema.
  * With no such host OpenRouter answers 404, and this fails rather than relaxing it.
  */
@@ -59,14 +60,18 @@ export class OpenRouterModel implements KekeModel {
       reasoning: { effort: 'medium' },
       max_tokens: request.maxTokens,
     })
+    // A request's own time limit covers every attempt; otherwise each attempt has a question's.
+    const until = request.timeoutMs ? Date.now() + request.timeoutMs : null
+    const attemptMs = () => (until === null ? ANSWER_TIMEOUT_MS : until - Date.now())
     for (let attempt = 0; ; attempt++) {
+      if (attemptMs() <= 0) throw new ModelCallError('failed', 'OpenRouter did not answer in time')
       let res: Response
       try {
         res = await fetch(`${this.baseUrl}/chat/completions`, {
           method: 'POST',
           headers: { authorization: `Bearer ${this.apiKey}`, 'content-type': 'application/json' },
           body,
-          signal: AbortSignal.timeout(request.timeoutMs ?? ANSWER_TIMEOUT_MS),
+          signal: AbortSignal.timeout(attemptMs()),
         })
       } catch (err) {
         if (attempt < RETRY_DELAYS_MS.length) {

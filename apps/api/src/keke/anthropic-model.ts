@@ -29,9 +29,11 @@ function describe(err: unknown): string {
 
 /**
  * Asks Claude Haiku 5.5 directly, through Anthropic's SDK: JSON by schema
- * (structured outputs), a 30-second limit and the SDK's two retries on rate
- * limits and server errors. Thinking is on by default on this model; effort is
- * set rather than left to the default.
+ * (structured outputs), and for a question a 30-second limit with the SDK's two
+ * retries on rate limits and server errors. A request with its own `timeoutMs`
+ * (the morning's news) gets that long for one attempt and no retry: the draft has
+ * another model and tries again later. Thinking is on by default on this model;
+ * effort is set rather than left to the default.
  */
 export class AnthropicModel implements KekeModel {
   readonly family = 'haiku' as const
@@ -52,7 +54,7 @@ export class AnthropicModel implements KekeModel {
         system: request.system,
         messages: [{ role: 'user', content: request.user }],
         output_config: { effort: 'medium', format: { type: 'json_schema', schema: request.schema } },
-      }, request.timeoutMs ? { timeout: request.timeoutMs, maxRetries: 1 } : undefined)
+      }, request.timeoutMs ? { timeout: request.timeoutMs, maxRetries: 0 } : undefined)
     } catch (err) {
       throw new ModelCallError('failed', describe(err))
     }

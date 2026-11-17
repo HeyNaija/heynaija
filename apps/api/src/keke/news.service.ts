@@ -33,16 +33,24 @@ const KEEP_HOURS = 48
 /** How a morning's draft went; each is saved for /mod and told to every site moderator. */
 export type DraftOutcome = 'waiting' | 'too_few' | 'failed' | 'over_budget'
 
-/** A morning that ended like this is tried again if the draft job runs again before 08:00. */
+/** A morning that ended like this is tried again (NEWS_RULE.retryAt, or the API starting) before 08:00. */
 const TRIED_AGAIN: DraftOutcome[] = ['failed', 'over_budget']
 
 /**
- * How long the morning's grouping may take: a day of hourly reads is 400 to 500
- * headlines, about 60,000 tokens in. On 17 November 2026 Haiku took 49 seconds over
- * 465 and DeepSeek 105 over 470; a question's 30 seconds had failed both. The draft
- * has until 08:00, so waiting minutes costs nothing.
+ * How long one model may take over the morning's grouping, all of it: a day of
+ * hourly reads is 400 to 500 headlines, about 60,000 tokens in. On 17 November 2026
+ * Haiku took 49 seconds over 465 and DeepSeek 105 over 470; a question's 30 seconds
+ * had failed both.
  */
 const DRAFT_TIMEOUT_MS = 240_000
+
+/**
+ * The draft is saved this long before 08:00 at the latest, so a moderator is never
+ * told of news that can no longer be approved; and a model is not asked with less
+ * time than CALL_MIN_MS left.
+ */
+const CLOSE_MARGIN_MS = 60_000
+const CALL_MIN_MS = 60_000
 
 /** How long publishing waits for Naija Today's daily announcement to come free, at most. */
 const ANNOUNCEMENT_WAIT_MAX_MS = 15 * 60 * 1000
@@ -151,12 +159,21 @@ export class KekeNews {
     return rows.map((r) => ({ outlet: r.outlet, title: r.title, url: r.url, description: r.description, publishedAt: r.publishedAt }))
   }
 
-  /** Today's draft, made once (again only after a failure). What happened, for the log and tests. */
-  async draft(now = new Date()): Promise<'off' | 'exists' | DraftOutcome> {
+  /**
+   * Today's draft, made once (again only after a failure, until shortly before
+   * 08:00). What happened, for the log and tests. `now` is when the job started;
+   * the time it takes is added to it.
+   */
+  async draft(now = new Date()): Promise<'off' | 'exists' | 'closed' | DraftOutcome> {
     if (!(await this.flags.isEnabled('kekeNews', null))) return 'off'
     const order = chooseModels(this.models, await this.flags.isEnabled('kekeDeepSeek', null))
     if (!order.length) return 'off'
     const day = lagosDay(now)
+    // 08:00 has passed: the post has gone or been missed, and nothing drafted now could be approved.
+    const closes = lagosTime(day, NEWS_RULE.publishAt).getTime() - CLOSE_MARGIN_MS
+    const started = Date.now()
+    const timeLeft = () => closes - now.getTime() - (Date.now() - started)
+    if (timeLeft() <= 0) return 'closed'
     const [existing] = await this.db.select({ status: kekeNewsDrafts.status }).from(kekeNewsDrafts).where(eq(kekeNewsDrafts.day, day))
     if (existing && !TRIED_AGAIN.includes(existing.status as DraftOutcome)) return 'exists'
     await ensureNaijaToday(this.db)
@@ -173,7 +190,13 @@ export class KekeNews {
           outcome = 'over_budget'
           break
         }
-        const started = Date.now()
+        const left = timeLeft()
+        if (left < CALL_MIN_MS) {
+          this.log.warn(`too close to 08:00 to ask ${model.id} for the news`)
+          outcome = 'failed'
+          break
+        }
+        const asked = Date.now()
         try {
           const { json, usage } = await model.ask({
             system: groupingSystem,
@@ -181,17 +204,17 @@ export class KekeNews {
             schemaName: 'keke_news',
             schema: GROUPING_SCHEMA as unknown as Record<string, unknown>,
             maxTokens: 20_000,
-            timeoutMs: DRAFT_TIMEOUT_MS,
+            timeoutMs: Math.min(DRAFT_TIMEOUT_MS, left),
           })
           const parsed = grouping.safeParse(json)
           if (!parsed.success) throw new ModelCallError('failed', 'the JSON did not fit the schema', usage)
-          await this.keke.record(model, usage, 'drafted', started, 'news')
+          await this.keke.record(model, usage, 'drafted', asked, 'news')
           stories = chooseStories(items, parsed.data, this.sources, this.settings.siteUrl)
           outcome = stories ? 'waiting' : 'too_few'
           break
         } catch (err) {
           const failure = err instanceof ModelCallError ? err : new ModelCallError('failed', (err as Error).message)
-          await this.keke.record(model, failure.usage, failure.reason, started, 'news')
+          await this.keke.record(model, failure.usage, failure.reason, asked, 'news')
           this.log.warn(`${model.id} could not group the news: ${failure.message}`)
           if (i === order.length - 1) outcome = 'failed'
         }
@@ -204,8 +227,9 @@ export class KekeNews {
    * Saves how the morning went and tells every site moderator, in one transaction.
    * The notification reaches them in the app and as a push at once, and by email
    * after the usual wait (EMAIL_DIGEST_DELAY_S, 5 minutes) if they have not seen it,
-   * like any other. A failed morning is replaced if it is tried again; anything else
-   * already saved stands, and then this is 'exists'.
+   * like any other. They are told once per outcome: a morning that fails again the
+   * same way tells nobody again. A failed morning is replaced when it is tried
+   * again; anything else already saved stands, and then this is 'exists'.
    */
   private async finish(
     day: string,
@@ -213,12 +237,18 @@ export class KekeNews {
     draft: { stories: NewsStory[]; items: number; outlets: number },
   ): Promise<DraftOutcome | 'exists'> {
     const saved = await this.db.transaction(async (tx) => {
-      const rows = await tx
-        .insert(kekeNewsDrafts)
-        .values({ day, status: outcome, ...draft })
-        .onConflictDoUpdate({ target: kekeNewsDrafts.day, set: { status: outcome, ...draft, createdAt: sql`now()` }, setWhere: inArray(kekeNewsDrafts.status, TRIED_AGAIN) })
-        .returning({ day: kekeNewsDrafts.day })
+      // Locked, so two runs at once save (and tell) one after the other.
+      const [before] = await tx.select({ status: kekeNewsDrafts.status }).from(kekeNewsDrafts).where(eq(kekeNewsDrafts.day, day)).for('update')
+      if (before && !TRIED_AGAIN.includes(before.status as DraftOutcome)) return false
+      const rows = before
+        ? await tx
+            .update(kekeNewsDrafts)
+            .set({ status: outcome, ...draft, createdAt: sql`now()` })
+            .where(eq(kekeNewsDrafts.day, day))
+            .returning({ day: kekeNewsDrafts.day })
+        : await tx.insert(kekeNewsDrafts).values({ day, status: outcome, ...draft }).onConflictDoNothing().returning({ day: kekeNewsDrafts.day })
       if (!rows.length) return false
+      if (before?.status === outcome) return true
       const moderators = await tx
         .select({ id: members.id })
         .from(members)

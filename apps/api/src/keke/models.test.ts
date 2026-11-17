@@ -131,11 +131,11 @@ test('OpenRouter: tries again twice on rate limits and server errors, then gives
 })
 
 test('the morning’s news may take longer than a question: a slow model times out at the request’s limit, not before', async () => {
-  // Anthropic: past the limit it is tried once more, then it is a failure.
-  replies = [{ status: 200, body: message('{"kind":"answered"}'), delayMs: 400 }, { status: 200, body: message('{"kind":"answered"}'), delayMs: 400 }]
+  // Anthropic: the limit is for one attempt, with no retry (the draft has another model, and tries again later).
+  replies = [{ status: 200, body: message('{"kind":"answered"}'), delayMs: 400 }]
   const slow = await new AnthropicModel('k', base).ask({ ...request, timeoutMs: 150 }).catch((e: unknown) => e)
   assert.ok(slow instanceof ModelCallError && slow.message === 'Anthropic did not answer in time')
-  assert.equal(received.length, 2)
+  assert.equal(received.length, 1)
   replies = [{ status: 200, body: message('{"kind":"answered"}'), delayMs: 400 }]
   assert.deepEqual((await new AnthropicModel('k', base).ask({ ...request, timeoutMs: 5000 })).json, { kind: 'answered' })
 
@@ -145,6 +145,13 @@ test('the morning’s news may take longer than a question: a slow model times o
   assert.ok(late instanceof ModelCallError && late.message === 'OpenRouter did not answer in time')
   replies = [{ status: 200, body: completion('{"kind":"answered"}'), delayBodyMs: 400 }]
   assert.deepEqual((await new OpenRouterModel('deepseek', 'k', base).ask({ ...request, timeoutMs: 5000 })).json, { kind: 'answered' })
+
+  // The limit covers OpenRouter's retries too: no answer before it, and no attempt after it.
+  replies = [{ status: 200, body: completion('{"kind":"answered"}'), delayMs: 400 }]
+  received = []
+  const none = await new OpenRouterModel('deepseek', 'k', base).ask({ ...request, timeoutMs: 150 }).catch((e: unknown) => e)
+  assert.ok(none instanceof ModelCallError && none.message === 'OpenRouter did not answer in time')
+  assert.equal(received.length, 1)
 })
 
 test('OpenRouter: no host that keeps nothing is a failure, not a quiet switch to one that does', async () => {

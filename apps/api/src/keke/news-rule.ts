@@ -19,6 +19,11 @@ export const NEWS_RULE = {
   windowHours: 24,
   /** Nigerian time: the draft is made at 05:30 and posted at 08:00 if approved. */
   draftAt: { hour: 5, minute: 30 },
+  /** A morning whose model failed (or that met the cap) is tried again at these times. */
+  retryAt: [
+    { hour: 6, minute: 30 },
+    { hour: 7, minute: 30 },
+  ],
   publishAt: { hour: 8, minute: 0 },
 } as const
 

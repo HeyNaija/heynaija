@@ -259,13 +259,36 @@ test('a model that fails: no stories, /mod and the moderators are told, and a se
   const view = (await news.today(at(6)))!
   assert.deepEqual([view.status, view.stories, view.open], ['failed', [], false])
   assert.deepEqual(await told(), [['site_mod', 'failed']])
-  // The API restarts at 06:10 and the model answers this time.
+  // 06:30: it fails again the same way, and nobody is told twice.
+  assert.equal(await news.draft(at(6, 30)), 'failed')
+  assert.deepEqual(await told(), [['site_mod', 'failed']])
+  // 07:30: the model answers this time.
   model.failWith = null
-  assert.equal(await news.draft(at(6, 10)), 'waiting')
-  assert.equal((await news.today(at(6, 15)))!.status, 'waiting')
+  assert.equal(await news.draft(at(7, 30)), 'waiting')
+  assert.equal((await news.today(at(7, 35)))!.status, 'waiting')
   assert.deepEqual(await told(), [['site_mod', 'failed'], ['site_mod', 'waiting']])
   // Made now, it is not made again.
-  assert.equal(await news.draft(at(6, 20)), 'exists')
+  assert.equal(await news.draft(at(7, 40)), 'exists')
+  assert.equal(model.asked.length, 3)
+})
+
+test('close to 08:00 the model gets only the time left, none with less than a minute, and nothing runs once the day has closed', async () => {
+  // Started at 07:56: three minutes until the draft must be saved at 07:59.
+  assert.equal(await news.draft(at(7, 56)), 'waiting')
+  const limit = model.asked[0]!.timeoutMs!
+  assert.ok(limit <= 180_000 && limit > 170_000, String(limit))
+
+  // Started at 07:58 after a failed morning: under a minute left, so no model is asked.
+  await db.update(kekeNewsDrafts).set({ status: 'failed' })
+  assert.equal(await news.draft(at(7, 58)), 'failed')
+  assert.equal(model.asked.length, 1)
+  assert.equal((await news.today(at(7, 58)))!.status, 'failed')
+
+  // 07:59 and after: the day is closed. Nothing is drafted, saved or told.
+  const before = await told()
+  assert.equal(await news.draft(at(7, 59)), 'closed')
+  assert.equal(await news.draft(at(8, 0)), 'closed')
+  assert.deepEqual(await told(), before)
 })
 
 test('over the monthly cap: the model is not asked, and the moderators are told why there is no news', async () => {
@@ -273,6 +296,9 @@ test('over the monthly cap: the model is not asked, and the moderators are told 
   assert.equal(await news.draft(at(5, 30)), 'over_budget')
   assert.equal(model.asked.length, 0)
   assert.equal((await news.today(at(6)))!.status, 'over_budget')
+  assert.deepEqual(await told(), [['site_mod', 'over_budget']])
+  // Tried again at 06:30, still over: nobody is told twice.
+  assert.equal(await news.draft(at(6, 30)), 'over_budget')
   assert.deepEqual(await told(), [['site_mod', 'over_budget']])
   assert.equal(await news.publish(at(8)), 'not_approved')
 })

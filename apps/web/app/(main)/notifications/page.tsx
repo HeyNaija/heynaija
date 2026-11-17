@@ -166,7 +166,7 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
 const KEKE_NEWS: Record<string, string> = {
   waiting: 'Keke’s news for today is ready to check. Nothing is posted unless a site moderator approves it by 08:00.',
   too_few: 'No news from Keke today: fewer than three stories were carried by three or more outlets.',
-  failed: 'Keke could not draft today’s news: the model did not answer.',
+  failed: 'Keke could not draft today’s news: the model gave no usable answer.',
   over_budget: 'Keke did not draft today’s news: it has reached this month’s spending cap.',
 }
 

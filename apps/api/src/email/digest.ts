@@ -34,7 +34,7 @@ export function kekeNewsHeadline(outcome: string | null | undefined): string {
     case 'too_few':
       return 'No news from Keke today: fewer than three stories were carried by three or more outlets'
     case 'failed':
-      return 'Keke could not draft today’s news: the model did not answer'
+      return 'Keke could not draft today’s news: the model gave no usable answer'
     case 'over_budget':
       return 'Keke did not draft today’s news: it has reached this month’s spending cap'
     default:

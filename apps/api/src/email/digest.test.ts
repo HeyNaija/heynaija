@@ -127,7 +127,7 @@ test('Keke’s news: the site moderators are told how the morning went, with a l
   assert.match(mail.text, /https:\/\/heynaija\.test\/mod#keke-news\n/)
   const said = (detail: string) => linesFor([item({ kind: 'keke_news', actor: null, postId: null, detail })], '')[0]!
   assert.match(said('too_few').headline, /^No news from Keke today: fewer than three stories/)
-  assert.match(said('failed').headline, /the model did not answer$/)
+  assert.match(said('failed').headline, /the model gave no usable answer$/)
   assert.match(said('over_budget').headline, /spending cap$/)
   assert.equal(said('failed').href, '/mod#keke-news')
 })
