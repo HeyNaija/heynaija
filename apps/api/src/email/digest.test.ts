@@ -120,3 +120,14 @@ test('a chess challenge says who, what game, and links to the challenge', () => 
   assert.equal(mail.subject, '@bayo challenged you to a rated Rapid game (10+5)')
   assert.match(mail.text, /https:\/\/heynaija\.test\/games\/chess#challenge-c1/)
 })
+
+test('Keke’s news: the site moderators are told how the morning went, with a link to /mod', () => {
+  const mail = render([item({ kind: 'keke_news', actor: null, postId: null, detail: 'waiting' })])
+  assert.equal(mail.subject, 'Keke’s news for today is ready to check. Nothing is posted unless it is approved by 08:00')
+  assert.match(mail.text, /https:\/\/heynaija\.test\/mod#keke-news\n/)
+  const said = (detail: string) => linesFor([item({ kind: 'keke_news', actor: null, postId: null, detail })], '')[0]!
+  assert.match(said('too_few').headline, /^No news from Keke today: fewer than three stories/)
+  assert.match(said('failed').headline, /the model did not answer$/)
+  assert.match(said('over_budget').headline, /spending cap$/)
+  assert.equal(said('failed').href, '/mod#keke-news')
+})

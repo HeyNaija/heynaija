@@ -55,7 +55,6 @@ class Alerts implements KekeAlerts {
   async budgetReached(spentUsd: number, budgetUsd: number) {
     this.sent.push({ spentUsd, budgetUsd })
   }
-  async newsWaiting() {}
 }
 
 const [ada, bayo, chi, dayo, siteMod] = [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()]

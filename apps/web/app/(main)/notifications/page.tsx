@@ -157,7 +157,17 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
       return { icon: <ChessIcon size={18} />, text: <>{who} challenged you to {n.challenge?.phrase ?? 'a game of chess'}.</> }
     case 'chess_game_started':
       return { icon: <ChessIcon size={18} />, text: <>{who} accepted your challenge. Your game has started.</> }
+    case 'keke_news':
+      return { icon: <ShieldIcon size={18} />, text: KEKE_NEWS[n.detail ?? ''] ?? 'Keke’s news for today.' }
   }
+}
+
+/** keke_news (ADR 0030): how the morning's draft went, for site moderators. The push and email say the same (apps/api/src/email/digest.ts). */
+const KEKE_NEWS: Record<string, string> = {
+  waiting: 'Keke’s news for today is ready to check. Nothing is posted unless a site moderator approves it by 08:00.',
+  too_few: 'No news from Keke today: fewer than three stories were carried by three or more outlets.',
+  failed: 'Keke could not draft today’s news: the model did not answer.',
+  over_budget: 'Keke did not draft today’s news: it has reached this month’s spending cap.',
 }
 
 function NotificationRow({ notification: n, now }: { notification: Notification; now: number }) {
@@ -186,7 +196,7 @@ function NotificationRow({ notification: n, now }: { notification: Notification;
         )}
       </div>
       {n.post?.excerpt ? <p className="line-clamp-2 break-words text-[13px] leading-5 text-muted">{n.post.excerpt}</p> : null}
-      {href ? <span className="notification-destination">{n.kind === 'reply' ? 'View reply' : n.kind === 'quote' ? 'View quote' : n.kind === 'mention' ? 'View mention' : n.kind === 'story_update' ? 'View update' : n.kind === 'community_announcement' ? 'View announcement' : n.kind === 'follow' ? 'View profile' : n.kind === 'chess_challenge' ? 'View challenge' : n.kind === 'chess_game_started' ? 'Play' : n.post ? 'View post' : 'View details'} →</span> : null}
+      {href ? <span className="notification-destination">{n.kind === 'reply' ? 'View reply' : n.kind === 'quote' ? 'View quote' : n.kind === 'mention' ? 'View mention' : n.kind === 'story_update' ? 'View update' : n.kind === 'community_announcement' ? 'View announcement' : n.kind === 'follow' ? 'View profile' : n.kind === 'chess_challenge' ? 'View challenge' : n.kind === 'chess_game_started' ? 'Play' : n.kind === 'keke_news' ? 'View the news' : n.post ? 'View post' : 'View details'} →</span> : null}
     </>
   )
   const className = `notification-row ${n.read ? '' : 'is-unread'}`

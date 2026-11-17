@@ -139,7 +139,8 @@ const EXCERPT = 140
  * and neither blocked nor muted, the post is still up, a like, repost or
  * follow has not been taken back, a story's update is shown only while the
  * viewer still follows the story, and a community's announcement only while they
- * are still a member who has not turned its announcements off. A moderation decision about your own post
+ * are still a member who has not turned its announcements off. Keke's news (keke_news) shows only to a
+ * site moderator. A moderation decision about your own post
  * shows even though the post is down. A reply in a Gist shows only to someone who
  * can open it now, and `gistsOn` (the `gists` flag for the viewer) is part of that.
  * Nothing about a post marked sensitive reaches anyone it would not be shown to
@@ -163,7 +164,8 @@ export const visible = (viewerId: string, gistsOn: boolean) => sql`
   -- A spectator's reply or mention in a game's thread waits until the game ends (docs/adr/0028).
   and (n.kind not in ('reply', 'mention') or not ${hiddenFromPlayer(viewerId, sql`p.root_id`, sql`p.author_id`)})
   and (n.kind <> 'community_announcement' or exists(select 1 from community_memberships cm join communities cc on cc.id = cm.community_id and cc.active
-    where cm.community_id = n.community_id and cm.member_id = ${viewerId} and cm.announcements))`
+    where cm.community_id = n.community_id and cm.member_id = ${viewerId} and cm.announcements))
+  and (n.kind <> 'keke_news' or exists(select 1 from members sm where sm.id = ${viewerId} and sm.role = 'moderator'))`
 
 /**
  * Whether the post a notification names may be shown to its recipient: not in a Gist, or in one they can

@@ -6,6 +6,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { FeatureFlags } from '../flags/feature-flags.js'
 import type { PageFetcher } from '../links/safe-fetch.js'
 import { NotACommunityMemberError, PostsService } from '../posts/posts.service.js'
+import { NotificationsService } from '../notifications/notifications.service.js'
 import { MemoryRateLimiter } from '../rate-limit.js'
 import { db, migrate, pool, reset } from '../test-db.js'
 import { KEKE_ID, NAIJA_TODAY_SLUG } from './keke-ids.js'
@@ -79,14 +80,20 @@ class GroupingModel implements KekeModel {
 }
 
 class Alerts implements KekeAlerts {
-  waiting: { day: string; stories: number }[] = []
   async budgetReached() {}
-  async newsWaiting(day: string, stories: number) {
-    this.waiting.push({ day, stories })
-  }
 }
 
-const [ada, mod] = [randomUUID(), randomUUID()]
+const [ada, mod, formerMod] = [randomUUID(), randomUUID(), randomUUID()]
+/** Who has been told about the morning's draft, and what: [handle, outcome], oldest first. */
+const told = async () =>
+  (
+    await db
+      .select({ handle: members.handle, detail: notifications.detail })
+      .from(notifications)
+      .innerJoin(members, eq(members.id, notifications.recipientId))
+      .where(eq(notifications.kind, 'keke_news'))
+      .orderBy(notifications.createdAt)
+  ).map((r) => [r.handle, r.detail])
 const flags = new FeatureFlags(db, 'development', { ttlMs: 0 })
 let fetcher: Fetcher
 let model: GroupingModel
@@ -99,7 +106,12 @@ beforeEach(async () => {
   await reset()
   await db.delete(featureFlags).where(inArray(featureFlags.key, ['kekeNews', 'kekeDeepSeek', 'communityAnnouncements', 'linkPreviews']))
   flags.invalidate()
-  await db.insert(members).values([{ id: ada, handle: 'ada' }, { id: mod, handle: 'site_mod', role: 'moderator' }])
+  // A suspended site moderator is not told.
+  await db.insert(members).values([
+    { id: ada, handle: 'ada' },
+    { id: mod, handle: 'site_mod', role: 'moderator' },
+    { id: formerMod, handle: 'suspended_mod', role: 'moderator', active: false },
+  ])
   await ensureKeke(db)
   fetcher = new Fetcher()
   model = new GroupingModel()
@@ -109,7 +121,7 @@ beforeEach(async () => {
   const models = { haiku: model, deepseek: null }
   const links = { request: async () => {} }
   const keke = new KekeService(db, postsService, flags, new MemoryRateLimiter(), links, models, { pages: async () => [] }, settings, alerts)
-  news = new KekeNews(db, postsService, flags, links, models, keke, settings, alerts, fetcher, sources)
+  news = new KekeNews(db, postsService, flags, links, models, keke, settings, fetcher, sources)
 })
 after(() => pool.end())
 
@@ -159,7 +171,7 @@ test('the rule: 3 or more different outlets, the 5 carried by most, and fewer th
   assert.equal(outletList(['Punch', 'Premium Times', 'Channels']), 'Punch, Premium Times and Channels')
 })
 
-test('the 05:30 draft: Naija Today is made, the rule picks the stories, the operators are told once', async () => {
+test('the 05:30 draft: Naija Today is made, the rule picks the stories, every site moderator is told once', async () => {
   assert.equal(await news.draft(at(5, 30)), 'waiting')
   const [community] = await db.select().from(communities).where(eq(communities.slug, NAIJA_TODAY_SLUG))
   assert.ok(community)
@@ -171,13 +183,28 @@ test('the 05:30 draft: Naija Today is made, the rule picks the stories, the oper
   // The model's own @mention and link do not survive.
   assert.equal(view.stories[1]!.sentence, 'The budget story, said plainly. Ask ada')
   assert.equal(view.open, true)
-  assert.deepEqual(alerts.waiting, [{ day, stories: 3 }])
+  assert.deepEqual(await told(), [['site_mod', 'waiting']])
+  // The model is asked only for stories from three or more outlets, and given minutes to answer.
+  assert.match(model.asked[0]!.system, /at least 3 different outlets/)
+  assert.ok((model.asked[0]!.timeoutMs ?? 0) >= 120_000)
   // Its cost is recorded like any call, with no text.
   const [usage] = await db.select().from(kekeUsage)
   assert.deepEqual([usage!.job, usage!.outcome], ['news', 'drafted'])
-  // Run again (a retry, a restart): the same draft, not a second.
+  // Run again (a retry, a restart): the same draft, not a second, and nobody told twice.
   assert.equal(await news.draft(at(6)), 'exists')
   assert.equal(model.asked.length, 1)
+  assert.equal((await told()).length, 1)
+})
+
+test('the moderators’ notification: in their list with what happened, and gone for someone no longer a site moderator', async () => {
+  await news.draft(at(5, 30))
+  const list = new NotificationsService(db)
+  const [shown] = (await list.list(mod, 10)).notifications
+  assert.deepEqual([shown!.kind, shown!.detail, shown!.actor, shown!.post], ['keke_news', 'waiting', null, null])
+  assert.equal(await list.unreadCount(mod), 1)
+  assert.equal((await list.list(ada, 10)).notifications.length, 0)
+  await db.update(members).set({ role: 'member' }).where(eq(members.id, mod))
+  assert.equal((await list.list(mod, 10)).notifications.length, 0)
 })
 
 test('the day is built from hourly reads: a headline gone from its feed by 05:30 still counts', async () => {
@@ -214,7 +241,8 @@ test('a day with too few stories has no post; the flag off makes no draft at all
   fetcher.down = new Set([sources[2]!.feed, sources[3]!.feed, sources[4]!.feed])
   assert.equal(await news.draft(at(5, 30)), 'too_few')
   assert.equal((await news.today(at(6)))!.status, 'too_few')
-  assert.equal(alerts.waiting.length, 0)
+  // The moderators hear about a day with no news too.
+  assert.deepEqual(await told(), [['site_mod', 'too_few']])
   assert.equal(await news.publish(at(8)), 'not_approved')
   assert.equal((await db.select().from(posts).where(eq(posts.authorId, KEKE_ID))).length, 0)
   assert.equal(model.asked.length, 0)
@@ -225,10 +253,28 @@ test('a day with too few stories has no post; the flag off makes no draft at all
   assert.equal(await news.collect(at(6, 15)), 'off')
 })
 
-test('a model that fails leaves no draft and says so', async () => {
+test('a model that fails: no stories, /mod and the moderators are told, and a second run that morning tries again', async () => {
   model.failWith = new ModelCallError('failed', 'timed out')
   assert.equal(await news.draft(at(5, 30)), 'failed')
-  assert.equal(await news.today(at(6)), null)
+  const view = (await news.today(at(6)))!
+  assert.deepEqual([view.status, view.stories, view.open], ['failed', [], false])
+  assert.deepEqual(await told(), [['site_mod', 'failed']])
+  // The API restarts at 06:10 and the model answers this time.
+  model.failWith = null
+  assert.equal(await news.draft(at(6, 10)), 'waiting')
+  assert.equal((await news.today(at(6, 15)))!.status, 'waiting')
+  assert.deepEqual(await told(), [['site_mod', 'failed'], ['site_mod', 'waiting']])
+  // Made now, it is not made again.
+  assert.equal(await news.draft(at(6, 20)), 'exists')
+})
+
+test('over the monthly cap: the model is not asked, and the moderators are told why there is no news', async () => {
+  await db.insert(kekeUsage).values({ job: 'answer', model: 'fake-haiku', via: 'anthropic', costUsd: 10, outcome: 'answered' })
+  assert.equal(await news.draft(at(5, 30)), 'over_budget')
+  assert.equal(model.asked.length, 0)
+  assert.equal((await news.today(at(6)))!.status, 'over_budget')
+  assert.deepEqual(await told(), [['site_mod', 'over_budget']])
+  assert.equal(await news.publish(at(8)), 'not_approved')
 })
 
 test('approving: stories kept in the moderator’s order and words; removing; skipping; and nothing after 08:00', async () => {

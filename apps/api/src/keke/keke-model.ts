@@ -18,7 +18,12 @@ export type ModelRequest = {
   schemaName: string
   schema: Record<string, unknown>
   maxTokens: number
+  /** How long to wait for the answer, in milliseconds. A question's is 30 seconds; the morning's news grouping takes longer. */
+  timeoutMs?: number
 }
+
+/** How long a question waits for the model. */
+export const ANSWER_TIMEOUT_MS = 30_000
 
 /** What a call cost. Tokens as the model counted them, dollars as charged or as worked out from the price list. */
 export type ModelUsage = { inputTokens: number; outputTokens: number; costUsd: number }

@@ -692,6 +692,9 @@ export const NOTIFICATION_KINDS = [
   // A moderator notified every member of a community you joined about a new
   // post in it (docs/adr/0029); post is that post.
   'community_announcement',
+  // How the morning's draft of Keke's daily news went (docs/adr/0030), to every site
+  // moderator; detail is the draft's status: waiting, too_few, failed or over_budget.
+  'keke_news',
 ] as const
 
 // Something that happened to a member: a reply, like, repost, quote, mention or follow by
@@ -1420,6 +1423,10 @@ export const KEKE_NEWS_STATUSES = [
   'published',
   // Fewer stories than the rule needs: no post that day.
   'too_few',
+  // No draft: the model did not answer, or Keke had reached its monthly cap. Tried
+  // again if the draft job runs again that morning (the API restarting before 08:00).
+  'failed',
+  'over_budget',
 ] as const
 
 // The headlines the outlets' feeds gave, read every hour and kept 48 hours (docs/adr/0030):

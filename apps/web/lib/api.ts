@@ -516,7 +516,7 @@ export type KekeNewsStory = { sentence: string; outlets: { id: string; name: str
 /** Today's news draft, for site moderators on /mod. `open` is whether it can still be approved or skipped (until 08:00). */
 export type KekeNewsDraft = {
   day: string
-  status: 'waiting' | 'approved' | 'skipped' | 'missed' | 'published' | 'too_few'
+  status: 'waiting' | 'approved' | 'skipped' | 'missed' | 'published' | 'too_few' | 'failed' | 'over_budget'
   stories: KekeNewsStory[]
   items: number
   outlets: number
@@ -1242,6 +1242,8 @@ export type NotificationKind =
   | 'chess_challenge'
   | 'chess_game_started'
   | 'community_announcement'
+  /** How the morning's draft of Keke's news went (ADR 0030), to site moderators; `detail` is its status. */
+  | 'keke_news'
 
 export type Notification = {
   id: string

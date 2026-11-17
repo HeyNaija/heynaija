@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { type KekeModel, type ModelRequest, type ModelUsage, ModelCallError, parseModelJson } from './keke-model.js'
+import { ANSWER_TIMEOUT_MS, type KekeModel, ModelCallError, type ModelRequest, type ModelUsage, parseModelJson } from './keke-model.js'
 
 /** Claude Haiku 5.5 on Anthropic's own API (docs/adr/0030). */
 export const HAIKU_ID = 'claude-haiku-5-5'
@@ -40,7 +40,7 @@ export class AnthropicModel implements KekeModel {
   private readonly client: Anthropic
 
   constructor(apiKey: string, baseURL?: string) {
-    this.client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}), timeout: 30_000, maxRetries: 2 })
+    this.client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}), timeout: ANSWER_TIMEOUT_MS, maxRetries: 2 })
   }
 
   async ask(request: ModelRequest): Promise<{ json: unknown; usage: ModelUsage }> {
@@ -52,7 +52,7 @@ export class AnthropicModel implements KekeModel {
         system: request.system,
         messages: [{ role: 'user', content: request.user }],
         output_config: { effort: 'medium', format: { type: 'json_schema', schema: request.schema } },
-      })
+      }, request.timeoutMs ? { timeout: request.timeoutMs, maxRetries: 1 } : undefined)
     } catch (err) {
       throw new ModelCallError('failed', describe(err))
     }
