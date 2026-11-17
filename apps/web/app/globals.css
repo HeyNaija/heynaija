@@ -2777,9 +2777,10 @@ button.trivia-choice:hover:not(:disabled) { border-color: var(--accent); }
 .trivia-choice.is-shown[data-yours]:not([data-right]) { border-color: var(--danger); }
 .trivia-typed { border: 1px solid var(--accent); border-radius: var(--r-control); padding: 10px 14px; font-weight: 600; }
 .trivia-edit { border: 1px solid var(--line); border-radius: var(--r-control); padding: 12px; }
+/* As wide as the panel, up to most of the screen's height: players answer from it. Small uploads are scaled up. */
 .trivia-picture {
-  display: block; width: auto; max-width: 100%; height: auto; max-height: min(22rem, 45vh);
-  margin-inline: auto; border-radius: var(--r-control); background: var(--panel); object-fit: contain;
+  display: block; width: 100%; height: auto; max-height: min(36rem, 60vh);
+  border-radius: var(--r-control); background: var(--panel); object-fit: contain;
 }
 .trivia-picture-thumb { width: 96px; height: 96px; border-radius: var(--r-control); background: var(--panel); object-fit: cover; }
 .trivia-picture-edit { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }

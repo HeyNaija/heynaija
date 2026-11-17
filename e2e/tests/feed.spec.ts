@@ -137,11 +137,15 @@ test('"Back to the feed" on a post returns to where the post was in the feed', a
     // From the feed, it goes back to it: the same posts, the same scroll position. Read down
     // to the post as a reader would, so every card above it is drawn at its real height
     // (cards off screen are skipped, at an estimated height, until they are first drawn).
+    // Stop with the post's top mid-screen, clear of the sticky top bar and feed tabs: a link
+    // under them would make the click scroll first, and `before` would no longer be where
+    // the reader left.
     const target = cards(page).nth(20)
     const id = await target.getAttribute('id')
     await target.evaluate(async (node) => {
-      while (node.getBoundingClientRect().top > window.innerHeight / 2) {
-        window.scrollBy(0, 300)
+      let top: number
+      while ((top = node.getBoundingClientRect().top) > window.innerHeight / 2) {
+        window.scrollBy(0, Math.min(300, Math.ceil(top - window.innerHeight / 2)))
         await new Promise(requestAnimationFrame)
       }
     })

@@ -97,6 +97,10 @@ test('a draft is the host’s alone; publishing it puts The Arbiter’s thread i
   assert.equal(round!.status, 'scheduled')
   const [thread] = await db.select().from(posts).where(eq(posts.id, round!.threadPostId!))
   assert.match(thread!.text, /^Anime Trivia Night: Sunday, 24 November at 20:00 Lagos time\./)
+  // After midnight the hour has two digits: "at 00:05".
+  await trivia.update(sam, id, input({ startsAt: new Date('2030-11-24T23:05:00Z') }))
+  const [update] = await db.select().from(posts).where(eq(posts.replyParentId, round!.threadPostId!))
+  assert.match(update!.text, /Monday, 25 November at 00:05 Lagos time/)
   assert.match(thread!.text, /https:\/\/heynaija\.test\/games\/trivia\/rounds\//)
   const list = await trivia.list(ada)
   assert.deepEqual(list.upcoming.map((r) => r.id), [id])
@@ -175,6 +179,23 @@ test('a question can have a picture: a ready one the host uploaded, hidden until
   const [file] = await db.select().from(media).where(eq(media.id, mine))
   assert.equal(file!.postId, judged!.revealPostId)
   assert.equal(file!.alt, 'A black notebook')
+})
+
+test('a long-poll answers at once when the page still shows the countdown of a question that has opened', async () => {
+  const id = await trivia.create(sam, input())
+  await trivia.publish(sam, id)
+  await trivia.open(sam, id)
+  const [first] = await questionsOf(id)
+  const counting = (await trivia.view(ada, id))!
+  assert.equal(trivia.answersNow(counting, counting.version, ''), false, 'counting down: wait for it to open')
+  await openNow(first!.id)
+  const open = (await trivia.view(ada, id))!
+  assert.equal(open.version, counting.version, 'opening by the clock is not a new version')
+  assert.equal(trivia.answersNow(open, open.version, ''), true, 'the page still shows the countdown')
+  assert.equal(trivia.answersNow(open, open.version, first!.id), false, 'the page has it: wait for the next change')
+  assert.equal(trivia.answersNow(open, open.version), false, 'an app that does not say waits as before')
+  assert.equal(trivia.answersNow(open, open.version - 1, first!.id), true, 'a new version')
+  assert.equal(trivia.answersNow(open, -1, first!.id), true, 'no version: at once')
 })
 
 test('a question is never sent before it opens, and an answer counts only while it is open, once', async () => {

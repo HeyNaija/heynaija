@@ -13,8 +13,10 @@ const SCHEDULES = [
   // On the quarter hour, away from the draft at half past and the post on the hour.
   { id: 'keke-news-collect', name: 'news-collect', pattern: '15 * * * *' },
   { id: 'keke-news-draft', name: 'news-draft', pattern: daily(NEWS_RULE.draftAt) },
+  // A morning that failed is tried again; any other day's draft is left as it is (`draft` says 'exists').
+  ...NEWS_RULE.retryAt.map((at, i) => ({ id: `keke-news-draft-retry-${i + 1}`, name: 'news-draft', pattern: daily(at) })),
   { id: 'keke-news-publish', name: 'news-publish', pattern: daily(NEWS_RULE.publishAt) },
-] as const
+]
 
 // Each answer is mostly waiting on the model. A few at a time keeps one slow answer
 // from holding up the rest without letting a burst of mentions run up the bill at once.

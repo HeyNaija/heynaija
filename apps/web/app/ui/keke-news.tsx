@@ -12,6 +12,8 @@ const STATUS: Record<KekeNewsDraft['status'], string> = {
   missed: 'Nobody approved it by 08:00, so nothing was posted today.',
   published: 'Posted in Naija Today.',
   too_few: 'No news today: fewer than three stories were carried by three or more outlets.',
+  failed: 'No news yet: the model gave no usable answer. Keke tries again at 06:30 and 07:30; the reason is in the API’s log.',
+  over_budget: 'No news today: Keke has reached this month’s spending cap (Keke this month, below).',
 }
 
 /**

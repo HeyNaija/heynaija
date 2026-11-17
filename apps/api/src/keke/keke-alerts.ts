@@ -30,17 +30,6 @@ export class EmailKekeAlerts implements KekeAlerts {
     await this.send(subject, text)
   }
 
-  async newsWaiting(day: string, stories: number): Promise<void> {
-    const subject = `Keke's news for ${day} is waiting`
-    const lines = [
-      `Keke has drafted ${stories} ${stories === 1 ? 'story' : 'stories'} for today's news in Naija Today.`,
-      'A site moderator can read, edit, approve or skip it on the moderation page. Nothing is posted unless it is approved by 08:00.',
-    ]
-    this.log.log(`${subject}: ${stories} stories`)
-    if (!this.mailer || !this.to) return
-    await this.send(subject, [...lines, '', `Moderation: ${this.webUrl}/mod#keke-news`].join('\n'))
-  }
-
   private async send(subject: string, text: string): Promise<void> {
     try {
       await this.mailer!.send({ to: this.to!, subject: `[HeyNaija] ${subject}`, text, html: `<pre>${escapeHtml(text)}</pre>` })

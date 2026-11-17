@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { type KekeModel, type ModelRequest, type ModelUsage, ModelCallError, parseModelJson } from './keke-model.js'
+import { ANSWER_TIMEOUT_MS, type KekeModel, ModelCallError, type ModelRequest, type ModelUsage, parseModelJson } from './keke-model.js'
 
 /** Claude Haiku 5.5 on Anthropic's own API (docs/adr/0030). */
 export const HAIKU_ID = 'claude-haiku-5-5'
@@ -29,9 +29,11 @@ function describe(err: unknown): string {
 
 /**
  * Asks Claude Haiku 5.5 directly, through Anthropic's SDK: JSON by schema
- * (structured outputs), a 30-second limit and the SDK's two retries on rate
- * limits and server errors. Thinking is on by default on this model; effort is
- * set rather than left to the default.
+ * (structured outputs), and for a question a 30-second limit with the SDK's two
+ * retries on rate limits and server errors. A request with its own `timeoutMs`
+ * (the morning's news) gets that long for one attempt and no retry: the draft has
+ * another model and tries again later. Thinking is on by default on this model;
+ * effort is set rather than left to the default.
  */
 export class AnthropicModel implements KekeModel {
   readonly family = 'haiku' as const
@@ -40,7 +42,7 @@ export class AnthropicModel implements KekeModel {
   private readonly client: Anthropic
 
   constructor(apiKey: string, baseURL?: string) {
-    this.client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}), timeout: 30_000, maxRetries: 2 })
+    this.client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}), timeout: ANSWER_TIMEOUT_MS, maxRetries: 2 })
   }
 
   async ask(request: ModelRequest): Promise<{ json: unknown; usage: ModelUsage }> {
@@ -52,7 +54,7 @@ export class AnthropicModel implements KekeModel {
         system: request.system,
         messages: [{ role: 'user', content: request.user }],
         output_config: { effort: 'medium', format: { type: 'json_schema', schema: request.schema } },
-      })
+      }, request.timeoutMs ? { timeout: request.timeoutMs, maxRetries: 0 } : undefined)
     } catch (err) {
       throw new ModelCallError('failed', describe(err))
     }

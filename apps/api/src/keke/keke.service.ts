@@ -24,8 +24,6 @@ export const KEKE_ALERTS = Symbol('KEKE_ALERTS')
 /** Tells the operators about Keke. Never throws. */
 export interface KekeAlerts {
   budgetReached(spentUsd: number, budgetUsd: number): Promise<void>
-  /** The day's news draft is waiting for a site moderator on /mod. */
-  newsWaiting(day: string, stories: number): Promise<void>
 }
 
 export type Outcome = (typeof KEKE_OUTCOMES)[number]

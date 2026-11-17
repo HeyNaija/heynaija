@@ -12,7 +12,8 @@ import { ANSWER_MAX, CHOICE_MAX, MAX_QUESTIONS, PROMPT_MAX, TITLE_MAX, TriviaErr
 /** How long a page's request waits for the round to change before answering "nothing new", as chess's (docs/adr/0028). */
 export const LONG_POLL_MS = 25_000
 
-const afterQuery = z.object({ after: z.coerce.number().int().min(-1).default(-1) })
+// `has`: the open question whose text the page shows ('' for none); see TriviaService.answersNow.
+const afterQuery = z.object({ after: z.coerce.number().int().min(-1).default(-1), has: z.string().max(64).optional() })
 const question = z.object({
   kind: z.enum(['choice', 'typed']),
   prompt: z.string().max(PROMPT_MAX * 2),
@@ -85,12 +86,12 @@ export class TriviaController {
   @Get('rounds/:id')
   async view(@Req() req: AuthedRequest, @Param('id') id: string, @Query() query: unknown) {
     await this.gate(req.member.id)
-    const { after } = parse(afterQuery, query)
+    const { after, has } = parse(afterQuery, query)
     const roundId = uuid(id)
     await this.trivia.judgeDue(roundId)
     const view = await this.trivia.view(req.member.id, roundId)
     if (!view) throw new NotFoundException()
-    if (after < 0 || view.version > after || view.status === 'published' || view.status === 'cancelled') return view
+    if (this.trivia.answersNow(view, after, has)) return view
     const edge = this.trivia.nextEdge(view)
     const ms = edge ? Math.max(250, Math.min(LONG_POLL_MS, edge.getTime() - view.serverTime.getTime() + 20)) : LONG_POLL_MS
     await this.changes.wait(roundId, ms)

@@ -18,7 +18,15 @@ export type ModelRequest = {
   schemaName: string
   schema: Record<string, unknown>
   maxTokens: number
+  /**
+   * How long the whole call may take, in milliseconds, retries included. Without
+   * it a question's limit applies: 30 seconds an attempt, with the usual retries.
+   */
+  timeoutMs?: number
 }
+
+/** How long a question waits for the model. */
+export const ANSWER_TIMEOUT_MS = 30_000
 
 /** What a call cost. Tokens as the model counted them, dollars as charged or as worked out from the price list. */
 export type ModelUsage = { inputTokens: number; outputTokens: number; costUsd: number }

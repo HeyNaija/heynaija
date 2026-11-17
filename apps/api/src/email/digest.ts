@@ -20,9 +20,27 @@ export type DigestItem = {
   challenge?: { id: string; phrase: string } | null
   /** chess_game_started: the game. */
   game?: { id: string } | null
+  /** keke_news: how the morning's draft went (waiting, too_few, failed, over_budget). */
+  detail?: string | null
 }
 
 export type Digest = { subject: string; text: string; html: string }
+
+/** keke_news (docs/adr/0030): how the morning's draft of Keke's daily news went, for site moderators. */
+export function kekeNewsHeadline(outcome: string | null | undefined): string {
+  switch (outcome) {
+    case 'waiting':
+      return 'Keke’s news for today is ready to check. Nothing is posted unless it is approved by 08:00'
+    case 'too_few':
+      return 'No news from Keke today: fewer than three stories were carried by three or more outlets'
+    case 'failed':
+      return 'Keke could not draft today’s news: the model gave no usable answer'
+    case 'over_budget':
+      return 'Keke did not draft today’s news: it has reached this month’s spending cap'
+    default:
+      return 'Keke’s news for today'
+  }
+}
 
 /** The kinds whose email shows a piece of a post. Moderation notices never do. */
 export const KINDS_WITH_EXCERPT: readonly NotificationKind[] = ['reply', 'like', 'repost', 'quote', 'mention', 'idea_status', 'story_update', 'community_announcement']
@@ -144,6 +162,8 @@ export function linesFor<T extends DigestItem>(items: T[], webUrl: string): Line
           quote: null,
           href: item.game ? `${webUrl}/games/chess/games/${item.game.id}` : `${webUrl}/games/chess`,
         }
+      case 'keke_news':
+        return { headline: kekeNewsHeadline(item.detail), quote: null, href: `${webUrl}/mod#keke-news` }
     }
   }
 }

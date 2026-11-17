@@ -29,6 +29,8 @@ export function notificationTarget(n: Pick<Notification, 'kind' | 'post' | 'acto
       return n.challenge ? `/games/chess#challenge-${n.challenge.id}` : '/games/chess'
     case 'chess_game_started':
       return n.game ? `/games/chess/games/${n.game.id}` : '/games/chess'
+    case 'keke_news':
+      return '/mod#keke-news'
     default:
       return null
   }

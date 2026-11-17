@@ -202,7 +202,8 @@ const publicName = (r: { display_name: string | null; handle: string; minor: boo
 export const seconds = (ms: number) => `${(ms / 1000).toFixed(2)} s`
 
 const lagosTime = (at: Date) =>
-  new Intl.DateTimeFormat('en-NG', { timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' }).format(at)
+  // "at 00:26", not "at 0:26", after midnight.
+  new Intl.DateTimeFormat('en-NG', { timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(at)
 
 @Injectable()
 export class TriviaService {
@@ -1087,6 +1088,18 @@ export class TriviaService {
         wrong: wrong.filter((w) => w.question_id === q.id).map((w) => ({ normalised: w.normalised, sample: w.sample, count: Number(w.n), fast: Number(w.fast) })),
       })),
     }
+  }
+
+  /**
+   * Whether a long-poll should answer now instead of waiting. A new version always does.
+   * A question opening by the clock is not a new version, so a page also says which open
+   * question it already shows (`has`; '' for none): a request that reaches the server just
+   * after a question opened, still showing the countdown, gets the question at once instead
+   * of waiting until it closes. Pages that do not say (older apps) wait as before.
+   */
+  answersNow(view: Pick<RoundView, 'version' | 'status' | 'current'>, after: number, has?: string): boolean {
+    if (after < 0 || view.version > after || view.status === 'published' || view.status === 'cancelled') return true
+    return has !== undefined && view.current?.prompt != null && view.current.id !== has
   }
 
   /** The next moment a round changes by the clock alone (a question appears or closes), for the long-poll. */

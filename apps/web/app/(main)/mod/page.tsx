@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { resolveReport, restorePost, unlabelPost } from '@/app/actions'
 import { Avatar } from '@/app/ui/avatar'
@@ -15,7 +15,9 @@ import { SubmitButton } from '@/app/ui/submit-button'
 import { FlagControls } from '@/app/ui/flag-controls'
 import { KekeMonthPanel } from '@/app/ui/keke-month'
 import { KekeNewsPanel } from '@/app/ui/keke-news'
-import { getFlags, getKekeMonth, getKekeNews, getModeration, type LogEntry, type QueueItem } from '@/lib/api'
+import { getFlags, getKekeMonth, getKekeNews, getModeration, getViewer, type LogEntry, type QueueItem } from '@/lib/api'
+import { signInUrl } from '@/lib/auth/server'
+import { siteOrigin } from '@/lib/previews'
 
 export const metadata: Metadata = { title: 'Moderation' }
 
@@ -64,6 +66,8 @@ export default function ModerationPage() {
 }
 
 async function Moderation() {
+  // Signed out (a moderator opening Keke's news from the app or an email): sign in, then back here.
+  if ((await getViewer()).state === 'anonymous') redirect(signInUrl(new URL('/mod', siteOrigin).href))
   const data = await getModeration()
   // To anyone who is not a moderator this page does not exist.
   if (!data) notFound()
