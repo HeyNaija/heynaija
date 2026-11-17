@@ -629,7 +629,10 @@ text only), on the web and in the apps.
 - Trivia: a host writes the answers to their own round, so a
   host's own round is only as fair as the host. A bot answering within a fraction
   of a second is only hinted at to the host, not stopped. A long-poll wakes a few
-  hundred milliseconds after a question appears or closes, not on the instant.
+  hundred milliseconds after a question appears or closes, not on the instant. A
+  question appearing is not a new version, so pages send `has` (the open question
+  they show) with `after`; without it, a request arriving just after a question
+  appeared waited until it closed (seen on a phone, 16 November 2026).
 - Keno: the operator could read a sealed seed before its draw (see Phase 4); the
   hash only proves the numbers were not changed afterwards. At every draw each open
   Keno page asks for it within a few seconds of the others.
