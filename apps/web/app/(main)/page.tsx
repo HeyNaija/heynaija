@@ -14,7 +14,6 @@ import { ArrowUpRightIcon, PeopleIcon } from '@/app/ui/icons'
 import { LocalTime } from '@/app/ui/local-time'
 import { card, PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { LiveNow } from '@/app/ui/gists/live-now'
-import { StartGist } from '@/app/ui/gists/start-gist'
 import {
   type Feed,
   getCommunities,
@@ -214,12 +213,8 @@ async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) 
 
   return (
     <>
-      {me?.features.gists ? (
-        <>
-          <LiveNow />
-          {me.gistStage ? <StartGist /> : null}
-        </>
-      ) : null}
+      {/* Start a Gist is in the Gists button's panel in the top bar, not here. */}
+      {me?.features.gists ? <LiveNow /> : null}
       {me ? (
         <Composer
           handle={me.handle}

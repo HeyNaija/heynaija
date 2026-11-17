@@ -27,11 +27,14 @@ test('a host goes live, a listener asks to speak, and approval gives them the mi
   const host = await hostContext.newPage()
   await signUpOverHttp(host, HOST)
 
+  // Start a Gist is in the Gists button's panel in the top bar; Home has no form for it.
+  await host.getByRole('button', { name: /^Gists/ }).click()
+  await host.getByRole('dialog', { name: 'Gists' }).getByRole('link', { name: 'Start a Gist' }).click()
   await host.getByLabel('Gist title').fill('Jollof, settled')
   await host.getByRole('button', { name: 'Go live' }).click()
   await host.waitForURL(/\/gists\/[0-9a-f-]{36}$/)
   const url = host.url()
-  // Back on Home, which Next shows as it was left, the form is ready again, not stuck on Starting….
+  // Back on the start page, which Next shows as it was left, the form is ready again, not stuck on Starting….
   await host.goBack()
   await expect(host.getByRole('button', { name: 'Go live' })).toBeEnabled()
   await expect(host.getByLabel('Gist title')).toHaveValue('')
@@ -132,16 +135,21 @@ test('a member under 18 listens: they find and join a Gist, and are offered neit
   const minor = await newMember(browser, 'gist_minor')
   await makeMinor(minor.handle)
 
+  await host.page.goto('/gists/new')
   await host.page.getByLabel('Gist title').fill('Homework, settled')
   await host.page.getByRole('button', { name: 'Go live' }).click()
   await host.page.waitForURL(/\/gists\/[0-9a-f-]{36}$/)
   const url = host.page.url()
   await host.page.getByRole('button', { name: 'Join the Gist' }).click()
 
-  // Home lists the Gist, without the form to start one.
+  // Home lists the Gist, and so does the Gists panel, which offers them no Start a Gist.
   await minor.page.goto('/')
   await expect(minor.page.getByRole('link', { name: /Homework, settled/ })).toBeVisible()
-  await expect(minor.page.getByLabel('Gist title')).toHaveCount(0)
+  await minor.page.getByRole('button', { name: /^Gists/ }).click()
+  const panel = minor.page.getByRole('dialog', { name: 'Gists' })
+  await expect(panel.getByRole('link', { name: /Homework, settled/ })).toBeVisible()
+  await expect(panel.getByRole('link', { name: 'Start a Gist' })).toHaveCount(0)
+  await panel.getByRole('button', { name: 'Close Gists' }).click()
   await minor.page.getByRole('link', { name: /Homework, settled/ }).click()
   await minor.page.waitForURL(url)
   await expect(minor.page.getByText('The sound starts when you tap Join.')).toBeVisible()
@@ -170,6 +178,7 @@ test('a Gist has a reply thread: reply while live and after it ends, the host hi
   const blocked = await newMember(browser, 'gist_reply_blocked')
   expect((await host.page.request.put(`/api/v1/members/${blocked.handle}/block`)).status()).toBe(204)
 
+  await host.page.goto('/gists/new')
   await host.page.getByLabel('Gist title').fill('Replies, settled')
   await host.page.getByRole('button', { name: 'Go live' }).click()
   await host.page.waitForURL(/\/gists\/[0-9a-f-]{36}$/)
