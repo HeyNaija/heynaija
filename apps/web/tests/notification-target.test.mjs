@@ -26,6 +26,8 @@ test('moderation notifications open the relevant actionable screen', () => {
   assert.equal(notificationTarget(notification('profile_cleared')), '/settings')
   assert.equal(notificationTarget(notification('moderator_granted')), '/mod')
   assert.equal(notificationTarget(notification('moderator_revoked', { community: { slug: 'lagos' } })), '/c/lagos')
+  // Keke's morning news, for site moderators: the day's draft on /mod.
+  assert.equal(notificationTarget(notification('keke_news')), '/mod#keke-news')
 })
 
 test('informational moderation outcomes remain readable without a misleading destination', () => {

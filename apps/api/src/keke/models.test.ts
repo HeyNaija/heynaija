@@ -9,7 +9,8 @@ import { OPENROUTER_IDS, OpenRouterModel } from './openrouter-model.js'
 
 // Stand-ins for Anthropic and OpenRouter on this machine: they record what was
 // sent and answer what each test says, so no key and no money are needed.
-type Reply = { status: number; body: unknown }
+/** `delayMs`: wait before answering at all; `delayBodyMs`: say the status at once and send the body later, as OpenRouter does. */
+type Reply = { status: number; body: unknown; delayMs?: number; delayBodyMs?: number }
 let replies: Reply[] = []
 let received: { path: string; headers: IncomingMessage['headers']; body: Record<string, unknown> }[] = []
 let server: Server
@@ -22,7 +23,11 @@ before(async () => {
     req.on('end', () => {
       received.push({ path: req.url ?? '', headers: req.headers, body: JSON.parse(raw || '{}') })
       const reply = replies.shift() ?? { status: 500, body: { error: { message: 'no reply set' } } }
-      res.writeHead(reply.status, { 'content-type': 'application/json' }).end(JSON.stringify(reply.body))
+      setTimeout(() => {
+        res.writeHead(reply.status, { 'content-type': 'application/json' })
+        res.write(' ')
+        setTimeout(() => res.end(JSON.stringify(reply.body)), reply.delayBodyMs ?? 0)
+      }, reply.delayMs ?? 0)
     })
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -123,6 +128,30 @@ test('OpenRouter: tries again twice on rate limits and server errors, then gives
   received = []
   await assert.rejects(new OpenRouterModel('haiku', 'k', base).ask(request), ModelCallError)
   assert.equal(received.length, 3)
+})
+
+test('the morning’s news may take longer than a question: a slow model times out at the request’s limit, not before', async () => {
+  // Anthropic: the limit is for one attempt, with no retry (the draft has another model, and tries again later).
+  replies = [{ status: 200, body: message('{"kind":"answered"}'), delayMs: 400 }]
+  const slow = await new AnthropicModel('k', base).ask({ ...request, timeoutMs: 150 }).catch((e: unknown) => e)
+  assert.ok(slow instanceof ModelCallError && slow.message === 'Anthropic did not answer in time')
+  assert.equal(received.length, 1)
+  replies = [{ status: 200, body: message('{"kind":"answered"}'), delayMs: 400 }]
+  assert.deepEqual((await new AnthropicModel('k', base).ask({ ...request, timeoutMs: 5000 })).json, { kind: 'answered' })
+
+  // OpenRouter says 200 at once and sends the answer when it is done: running out of time then says so.
+  replies = [{ status: 200, body: completion('{"kind":"answered"}'), delayBodyMs: 400 }]
+  const late = await new OpenRouterModel('deepseek', 'k', base).ask({ ...request, timeoutMs: 150 }).catch((e: unknown) => e)
+  assert.ok(late instanceof ModelCallError && late.message === 'OpenRouter did not answer in time')
+  replies = [{ status: 200, body: completion('{"kind":"answered"}'), delayBodyMs: 400 }]
+  assert.deepEqual((await new OpenRouterModel('deepseek', 'k', base).ask({ ...request, timeoutMs: 5000 })).json, { kind: 'answered' })
+
+  // The limit covers OpenRouter's retries too: no answer before it, and no attempt after it.
+  replies = [{ status: 200, body: completion('{"kind":"answered"}'), delayMs: 400 }]
+  received = []
+  const none = await new OpenRouterModel('deepseek', 'k', base).ask({ ...request, timeoutMs: 150 }).catch((e: unknown) => e)
+  assert.ok(none instanceof ModelCallError && none.message === 'OpenRouter did not answer in time')
+  assert.equal(received.length, 1)
 })
 
 test('OpenRouter: no host that keeps nothing is a failure, not a quiet switch to one that does', async () => {
