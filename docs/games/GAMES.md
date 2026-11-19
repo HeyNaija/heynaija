@@ -229,8 +229,10 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
 - **Live, one question at a time.** The host opens each question (or lets the
   round go on by itself, 8 seconds after each reveal). Its text appears 3 seconds
   later on every screen at once, by the database's clock, and is never sent before
-  then. Answers are not posts: one per member per question, final, and kept on the
-  server until the question closes. The host does not play.
+  then. Answers are not posts: one per member per question, kept on the server
+  until the question closes. A choice can be changed while the question is open,
+  and the change is the answer's time (owner, 19 November 2026), so switching late
+  to the right choice is not first; a typed answer is final. The host does not play.
 - **Who was first** is decided by `clock_timestamp()` as the answer is written,
   inside the same insert that checks the question is open, so neither the phone's
   clock nor the network's order counts. Exact ties go to the order the database

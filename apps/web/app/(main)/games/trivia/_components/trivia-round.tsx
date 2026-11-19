@@ -101,8 +101,9 @@ export function TriviaRound({ initial }: { initial: Round }) {
   // The text arrives with the next answer from the API once the question opens; until then, the countdown.
   const open = current && current.prompt && opensIn <= 0 && closesIn > 0
 
-  const setAnswer = (answer: { choice: number | null; text: string | null; ms: number }) =>
-    setRound((r) => (r.current ? { ...r, current: { ...r.current, yourAnswer: answer } } : r))
+  // Only for the question it answers: a late reply must not mark the next question answered.
+  const setAnswer = (question: string, answer: { choice: number | null; text: string | null; ms: number }) =>
+    setRound((r) => (r.current?.id === question ? { ...r, current: { ...r.current, yourAnswer: answer } } : r))
 
   return (
     <div className="flex flex-col gap-4">
@@ -179,25 +180,60 @@ export function TriviaRound({ initial }: { initial: Round }) {
   )
 }
 
-/** The question while it is open: tap a choice, or type, once. */
-function Question({ round, closesIn, onAnswered }: { round: Round; closesIn: number; onAnswered: (a: { choice: number | null; text: string | null; ms: number }) => void }) {
+/** The question while it is open: tap a choice (and tap another to change it), or type once. */
+function Question({
+  round,
+  closesIn,
+  onAnswered,
+}: {
+  round: Round
+  closesIn: number
+  onAnswered: (question: string, a: { choice: number | null; text: string | null; ms: number }) => void
+}) {
   const q = round.current!
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The choice on its way to the server, shown as picked until the server has it.
+  const [pending, setPending] = useState<number | null>(null)
+  const wanted = useRef<number | null>(null)
+  const sending = useRef(false)
   const mine = q.yourAnswer
-  const locked = Boolean(mine) || !round.you.canAnswer || busy
+  const plays = round.you.canAnswer
+  const locked = Boolean(mine) || !plays || busy
+  const picked = pending ?? mine?.choice ?? null
   const left = Math.max(0, closesIn)
   const share = Math.min(1, left / (round.secondsPerQuestion * 1000))
 
-  const send = async (given: { choice?: number; text?: string }) => {
+  const send = async (given: { text: string }) => {
     if (locked) return
     setBusy(true)
     setError(null)
     const res = await triviaCall<{ ms: number }>(`/rounds/${round.id}/questions/${q.id}/answer`, 'POST', given)
     setBusy(false)
-    if (res.ok) onAnswered({ choice: given.choice ?? null, text: given.text ?? null, ms: res.body.ms })
+    if (res.ok) onAnswered(q.id, { choice: null, text: given.text, ms: res.body.ms })
     else setError(res.message)
+  }
+  // Choices can change until time is up, and the last one counts: a tap while one is on its way is sent after it.
+  const pick = async (choice: number) => {
+    if (!plays || (choice === picked && !sending.current)) return
+    wanted.current = choice
+    setPending(choice)
+    if (sending.current) return
+    sending.current = true
+    setError(null)
+    while (wanted.current !== null) {
+      const next = wanted.current
+      wanted.current = null
+      const res = await triviaCall<{ ms: number }>(`/rounds/${round.id}/questions/${q.id}/answer`, 'POST', { choice: next })
+      if (res.ok) onAnswered(q.id, { choice: next, text: null, ms: res.body.ms })
+      else {
+        wanted.current = null
+        setError(res.message)
+      }
+    }
+    sending.current = false
+    setPending(null)
   }
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -222,9 +258,9 @@ function Question({ round, closesIn, onAnswered }: { round: Round; closesIn: num
               key={c.id}
               type="button"
               className="trivia-choice"
-              aria-pressed={mine?.choice === c.id}
-              disabled={locked && mine?.choice !== c.id}
-              onClick={() => void send({ choice: c.id })}
+              aria-pressed={picked === c.id}
+              disabled={!plays}
+              onClick={() => void pick(c.id)}
             >
               {c.text}
             </button>
@@ -232,7 +268,7 @@ function Question({ round, closesIn, onAnswered }: { round: Round; closesIn: num
         </div>
       ) : mine ? (
         <p className="trivia-typed">{mine.text}</p>
-      ) : !round.you.canAnswer ? null : (
+      ) : !plays ? null : (
         <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row">
           <label className="sr-only" htmlFor="trivia-answer">Your answer</label>
           <input
@@ -254,9 +290,10 @@ function Question({ round, closesIn, onAnswered }: { round: Round; closesIn: num
       )}
       {mine ? (
         <p className="text-sm text-muted" role="status">
-          Answered in {secondsLabel(mine.ms)}. You see whether it was right when time is up.
+          Answered in {secondsLabel(mine.ms)}.{' '}
+          {q.kind === 'choice' ? 'You can change it until time is up, and your last choice counts.' : 'You see whether it was right when time is up.'}
         </p>
-      ) : !round.you.canAnswer ? (
+      ) : !plays ? (
         <p className="text-sm text-muted">You watch without answering.</p>
       ) : null}
       {error ? (

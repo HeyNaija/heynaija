@@ -521,17 +521,34 @@ export class TriviaService {
       normalised = normalise(text)
       if (!normalised) throw new TriviaError('invalid', 'Type an answer.')
     }
+    // A choice can be changed while the question is open, and the change is the answer's time:
+    // a new `answered_at` and a new `seq`, so a late switch to the right choice is not first.
+    // A typed answer is final. The question row is held (`for share`) while the answer is
+    // written, so judging (`for update skip locked`) waits for it rather than reading the
+    // choice it replaces.
     const { rows } = await this.db.execute<{ ms: number }>(sql`
       insert into games.trivia_answers (question_id, member_id, round_id, choice, text, normalised)
       select q.id, ${memberId}, ${roundId}, ${choice}::smallint, ${text}, ${normalised}
       from games.trivia_questions q
       where q.id = ${questionId} and q.voided_at is null and q.judged_at is null
         and q.opens_at <= clock_timestamp() and q.closes_at > clock_timestamp()
-      on conflict (question_id, member_id) do nothing
+      for share
+      on conflict (question_id, member_id) do update
+        set choice = excluded.choice, answered_at = clock_timestamp(), seq = default
+        where games.trivia_answers.choice is not null and excluded.choice is not null
+          and games.trivia_answers.choice <> excluded.choice
       returning (extract(epoch from (answered_at - (select opens_at from games.trivia_questions where id = ${questionId}))) * 1000)::int as ms`)
     if (rows[0]) return { ms: Number(rows[0].ms) }
-    const [mine] = (await this.db.execute(sql`select 1 from games.trivia_answers where question_id = ${questionId} and member_id = ${memberId}`)).rows
-    if (mine) throw new TriviaError('answered', 'You have answered this one already.')
+    const [mine] = (
+      await this.db.execute<{ choice: number | null; ms: number; open: boolean }>(sql`
+        select a.choice, (extract(epoch from (a.answered_at - q.opens_at)) * 1000)::int as ms,
+          (q.voided_at is null and q.judged_at is null and q.opens_at <= clock_timestamp() and q.closes_at > clock_timestamp()) as open
+        from games.trivia_answers a join games.trivia_questions q on q.id = a.question_id
+        where a.question_id = ${questionId} and a.member_id = ${memberId}`)
+    ).rows
+    // The same choice again while it is open changes nothing, and keeps its time.
+    if (mine && mine.open && question.kind === 'choice' && mine.choice !== null && Number(mine.choice) === choice) return { ms: Number(mine.ms) }
+    if (mine && question.kind !== 'choice') throw new TriviaError('answered', 'You have answered this one already.')
     throw new TriviaError('closed', 'Time is up for this question.')
   }
 

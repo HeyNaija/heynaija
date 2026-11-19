@@ -130,7 +130,9 @@ Anime is first; any topic works.
    appears on everyone's screen at the same moment.
 3. Answer before time runs out (usually 20 seconds). Some questions have choices
    to tap; others you type. Some come with a picture, which appears with the
-   question and not before. You get **one answer**, and it can't be changed.
+   question and not before. On a question with choices you can change your
+   choice until time is up: the last one counts, and its time is when you made
+   it. A typed answer is final.
 4. When time is up you see the right answer, how many got it, and who was
    fastest. Talk about it in the replies to The Arbiter's thread.
 
