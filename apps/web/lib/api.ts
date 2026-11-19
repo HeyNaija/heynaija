@@ -160,6 +160,8 @@ export type Post = {
   images: PostImage[]
   /** The post's video once it is ready; a held or unfinished one is never sent. */
   video: PostVideo | null
+  /** A GIF from Giphy: its id and the author's description. The reader's browser loads it from Giphy. */
+  giphy: { id: string; alt: string } | null
   /**
    * Marked sensitive (ADR 0020), by its author, a moderator or its community (one
    * marked sensitive as a whole). Only adults and its author are sent such a post,

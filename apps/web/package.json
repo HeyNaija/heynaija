@@ -10,6 +10,7 @@
     "test": "node --experimental-strip-types --test \"tests/*.test.mjs\""
   },
   "dependencies": {
+    "@giphy/js-fetch-api": "^5.8.0",
     "@sapphi-red/web-noise-suppressor": "0.4.1",
     "chessground": "^9.2.1",
     "chessops": "^0.15.1",

@@ -23,6 +23,8 @@ import { useFixedPlacement } from './use-fixed-placement'
 import { useMentionSuggestions } from './use-mention-suggestions'
 import { PostVideo } from './post-video'
 import { composerOffers } from '@/lib/composer-offers'
+import { giphyMediaUrl } from '@/lib/giphy'
+import { GIPHY_API_KEY } from '@/lib/giphy-key'
 import { postedReplyHref } from '@/lib/posted-href'
 import { useOneVideo } from './use-one-video'
 import { VideoPlayer } from './video-player'
@@ -32,6 +34,8 @@ const LIMIT = POST_MAX
 
 // The emoji list is a separate chunk, fetched when the picker is first opened.
 const EmojiPicker = dynamic(() => import('./emoji-picker'), { ssr: false })
+// Giphy's fetch library and the search box are one more, fetched when someone first opens the GIF search.
+const GiphyPicker = dynamic(() => import('./giphy-picker'), { ssr: false })
 
 type Props = {
   /** The member writing; shown as their avatar. */
@@ -74,6 +78,8 @@ type Props = {
   replyControls?: boolean
   /** Who the member may let reply, the default first (`Me.replyAudiences`): a minor's never include everyone. */
   replyAudiences?: readonly ReplyAudience[]
+  /** From `me.features.giphyGifs`: the GIF search is offered, if a Giphy key is built in. */
+  giphy?: boolean
   /** False for a text-only box: no pictures, GIFs or video to attach. */
   media?: boolean
   /**
@@ -96,7 +102,7 @@ const REPLY_AUDIENCE_CHOICE = {
   mentioned: 'Only people mentioned',
 } satisfies Record<ReplyAudience, string>
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, announcements = null, choices, quote, story, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, replyAudiences = REPLY_AUDIENCES, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, announcements = null, choices, quote, story, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, giphy = false, replyControls = true, replyAudiences = REPLY_AUDIENCES, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -128,14 +134,26 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   }, [clearImages, clearVideo])
   const videoPicker = useRef<HTMLInputElement>(null)
   const picker = useRef<HTMLInputElement>(null)
-  const offers = composerOffers({ media, polls, videoAvailable: videoLimits !== null, replyTo, pollOpen, videoDrafted: video.draft !== null })
+  // The one GIF picked from Giphy, with the description that goes with it.
+  const [gif, setGif] = useState<{ id: string; description: string } | null>(null)
+  const offers = composerOffers({
+    media,
+    polls,
+    videoAvailable: videoLimits !== null,
+    replyTo,
+    pollOpen,
+    videoDrafted: video.draft !== null,
+    giphyAvailable: giphy && GIPHY_API_KEY !== null,
+    giphyDrafted: gif !== null,
+    imagesDrafted: images.drafts.length > 0,
+  })
   const form = useRef<HTMLFormElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   // A reply or an update is the small box, in place under what it follows.
   const inline = !!replyTo || !!story
   const formId = story ? 'add-update' : 'compose'
   // A quote keeps the box open: the post being quoted is shown under it.
-  const active = expanded || text.length > 0 || images.drafts.length > 0 || !!video.draft || !!quote || pollOpen
+  const active = expanded || text.length > 0 || images.drafts.length > 0 || !!video.draft || !!gif || !!quote || pollOpen
   const rows = active ? (inline ? 2 : 3) : 1
   useAutoGrow(input, text, rows)
 
@@ -176,6 +194,17 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     const inside = emojiPanel.current?.contains(document.activeElement)
     setEmojiOpen(false)
     if (inside) emojiButton.current?.focus()
+  }
+
+  // The Giphy search: its button, and whether the keyboard opened it (focus then moves in).
+  const [giphyOpen, setGiphyOpen] = useState(false)
+  const [giphyByKeyboard, setGiphyByKeyboard] = useState(false)
+  const gifButton = useRef<HTMLButtonElement>(null)
+  const giphyPanel = useRef<HTMLSpanElement>(null)
+  const closeGiphy = () => {
+    const inside = giphyPanel.current?.contains(document.activeElement)
+    setGiphyOpen(false)
+    if (inside) gifButton.current?.focus()
   }
 
   // Puts the emoji over the selection and the caret after it. A pointer pick keeps the
@@ -238,7 +267,10 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     const outside = (e: PointerEvent) => {
       // The @mention list is drawn outside the form, but belongs to it.
       if (!form.current?.contains(e.target as Node) && !mentionList.current?.contains(e.target as Node)) setExpanded(false)
-      if (!form.current?.contains(e.target as Node)) setEmojiOpen(false)
+      if (!form.current?.contains(e.target as Node)) {
+        setEmojiOpen(false)
+        setGiphyOpen(false)
+      }
     }
     document.addEventListener('pointerdown', outside)
     return () => document.removeEventListener('pointerdown', outside)
@@ -267,8 +299,10 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       setSensitive(false)
       setAnnounce(false)
       clear()
+      setGif(null)
       setExpanded(false)
       setEmojiOpen(false)
+      setGiphyOpen(false)
       onPosted?.(state)
     }
   }, [state, clear, onPosted])
@@ -293,10 +327,10 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const announcing = announce && announceOffer !== null && announceWait === null
   const left = LIMIT - graphemes(text.trim())
   // The mark goes with pictures and video; with none attached there is nothing to offer.
-  const markable = sensitiveLabels && (images.drafts.length > 0 || video.draft !== null)
+  const markable = sensitiveLabels && (images.drafts.length > 0 || video.draft !== null || gif !== null)
   // A video that is held, rejected or failed blocks the post until it is removed: only a ready one can go.
   const waiting = images.drafts.some((d) => d.status !== 'ready') || (video.draft !== null && video.draft.status !== 'ready')
-  const empty = left === LIMIT && images.drafts.length === 0 && !video.draft
+  const empty = left === LIMIT && images.drafts.length === 0 && !video.draft && !gif
   const pollReady = !pollOpen || (text.trim().length > 0 && pollOptions.length >= 2 && pollOptions.every((option) => option.trim().length > 0))
 
   const content = (
@@ -306,6 +340,9 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
         if (e.key === 'Escape' && emojiOpen && !e.defaultPrevented) {
           e.preventDefault()
           closeEmoji()
+        } else if (e.key === 'Escape' && giphyOpen && !e.defaultPrevented) {
+          e.preventDefault()
+          closeGiphy()
         }
       }}
     >
@@ -317,6 +354,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       {story ? <input type="hidden" name="storyOf" value={story.id} /> : null}
       {!replyTo && replyControls ? <input type="hidden" name="replyAudience" value={replyAudience} /> : null}
       {pollOpen ? <input type="hidden" name="poll" value="1" /> : null}
+      {gif ? <input type="hidden" name="giphy" value={gif.id} /> : null}
       {markable && sensitive ? <input type="hidden" name="sensitive" value="1" /> : null}
       {announcing ? <input type="hidden" name="announce" value="1" /> : null}
 
@@ -429,6 +467,11 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               ))}
             </ul>
           ) : null}
+          {gif ? (
+            <ul className="composer-images" aria-label="GIF">
+              <GiphyRow gif={gif} onRemove={() => setGif(null)} onDescribe={(description) => setGif({ ...gif, description })} />
+            </ul>
+          ) : null}
           {video.draft ? (
             <ul className="composer-images" aria-label="Video">
               <VideoRow draft={video.draft} onRemove={video.remove} onRetry={video.retry} onSend={video.send} onDescribe={video.describe} />
@@ -526,23 +569,55 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               className="icon-btn composer-photo"
               aria-label={`Add images (up to ${MAX_IMAGES})`}
               title="Add images"
-              disabled={images.drafts.length >= MAX_IMAGES || !!video.draft}
+              disabled={images.drafts.length >= MAX_IMAGES || !!video.draft || !offers.pictureFiles}
               onClick={() => choose(IMAGE_TYPES)}
             >
               <ImageIcon size={20} />
               <span className="composer-photo-label">Photo</span>
             </button>
-            <button
-              type="button"
-              className="icon-btn composer-photo"
-              aria-label={`Add a GIF (the post can have up to ${MAX_IMAGES} pictures in all)`}
-              title="Add a GIF"
-              disabled={images.drafts.length >= MAX_IMAGES || !!video.draft}
-              onClick={() => choose(['image/gif'])}
-            >
-              <GifIcon size={20} />
-              <span className="composer-photo-label">GIF</span>
-            </button>
+            <span ref={giphyPanel} className="contents">
+              <button
+                ref={gifButton}
+                type="button"
+                className="icon-btn composer-photo"
+                aria-label={offers.giphy ? 'Search GIFs' : `Add a GIF (the post can have up to ${MAX_IMAGES} pictures in all)`}
+                aria-haspopup={offers.giphy ? 'dialog' : undefined}
+                aria-expanded={offers.giphy ? giphyOpen : undefined}
+                title={offers.giphy ? 'Search for a GIF' : 'Add a GIF'}
+                disabled={images.drafts.length >= MAX_IMAGES || !!video.draft || !offers.pictureFiles}
+                // The press does not move focus off the box.
+                onMouseDown={offers.giphy ? (e) => e.preventDefault() : undefined}
+                onClick={(e) => {
+                  if (!offers.giphy) return choose(['image/gif'])
+                  if (giphyOpen) return closeGiphy()
+                  setGiphyByKeyboard(e.detail === 0)
+                  if (e.detail > 0) input.current?.focus({ preventScroll: true })
+                  if (typing) setDismissed(typing.start)
+                  setEmojiOpen(false)
+                  setGiphyOpen(true)
+                  setExpanded(true)
+                }}
+              >
+                <GifIcon size={20} />
+                <span className="composer-photo-label">GIF</span>
+              </button>
+              {giphyOpen && offers.giphy && GIPHY_API_KEY ? (
+                <GiphyPicker
+                  anchor={toolbar}
+                  apiKey={GIPHY_API_KEY}
+                  focusSearch={giphyByKeyboard}
+                  onPick={(picked) => {
+                    setGif({ id: picked.id, description: picked.title })
+                    setGiphyOpen(false)
+                    input.current?.focus({ preventScroll: true })
+                  }}
+                  onUpload={() => {
+                    setGiphyOpen(false)
+                    choose(['image/gif'])
+                  }}
+                />
+              ) : null}
+            </span>
             {/* One hidden picker for both buttons; each says what it will offer before it opens. */}
             <input
               ref={picker}
@@ -621,6 +696,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
                 if (e.detail > 0) input.current?.focus({ preventScroll: true })
                 // The list of members to mention gives way to the picker.
                 if (typing) setDismissed(typing.start)
+                setGiphyOpen(false)
                 setEmojiOpen(true)
                 setExpanded(true)
               }}
@@ -865,6 +941,34 @@ function DraftRow({
         )}
       </div>
       <button type="button" className="icon-btn -mr-1" aria-label={`Remove ${draft.gif ? 'GIF' : 'image'} ${index + 1}`} onClick={onRemove}>
+        <CloseIcon size={18} />
+      </button>
+    </li>
+  )
+}
+
+/** The GIF picked from Giphy: a preview from Giphy, its description, and a way to take it off. */
+function GiphyRow({ gif, onRemove, onDescribe }: { gif: { id: string; description: string }; onRemove: () => void; onDescribe: (description: string) => void }) {
+  const id = useId()
+  const url = giphyMediaUrl(gif.id)
+  return (
+    <li className="composer-image">
+      {/* eslint-disable-next-line @next/next/no-img-element -- the member's pick, loaded from Giphy by their browser */}
+      {url ? <img src={url} alt="" className="composer-thumb" /> : null}
+      <div className="min-w-0 flex-1">
+        <label htmlFor={id} className="sr-only">Description of GIF</label>
+        <input
+          id={id}
+          name="giphyDescription"
+          value={gif.description}
+          onChange={(e) => onDescribe(e.target.value)}
+          maxLength={1000}
+          placeholder="Describe this GIF (optional)"
+          className="field field-sm"
+        />
+        <p className="giphy-attrib mt-1">Powered by GIPHY</p>
+      </div>
+      <button type="button" className="icon-btn -mr-1" aria-label="Remove GIF" onClick={onRemove}>
         <CloseIcon size={18} />
       </button>
     </li>
