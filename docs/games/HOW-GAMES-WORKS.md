@@ -135,6 +135,10 @@ Anime is first; any topic works.
    it. A typed answer is final.
 4. When time is up you see the right answer, how many got it, and who was
    fastest. Talk about it in the replies to The Arbiter's thread.
+5. When the results are out, The Arbiter adds them to its thread as an update
+   to the story, so the round comes back to the top of the feed with the
+   results. If the host moves the start time, The Arbiter posts that as an
+   update too.
 
 ### Points
 
