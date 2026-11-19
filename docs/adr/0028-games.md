@@ -506,10 +506,16 @@ apps.
 ### Who was first
 
 The answer insert carries its own check: `insert ... select ... where opens_at <=
-clock_timestamp() and closes_at > clock_timestamp() on conflict do nothing`, with
+clock_timestamp() and closes_at > clock_timestamp() for share on conflict ...`, with
 `answered_at` defaulting to `clock_timestamp()` and an identity `seq` breaking an
 exact tie. An answer that arrives a microsecond late is refused by the same
-statement that would have written it; the phone's clock and the order requests
+statement that would have written it. A typed answer is final (`on conflict` does
+nothing); a choice can be changed while the question is open (owner, 19 November
+2026): the conflict updates the choice with a new `answered_at` and `seq`, so the
+last choice counts at the time it was made, and the same choice again changes
+nothing. `for share` holds the question row while the answer is written, so judging
+(`for update skip locked`) leaves it to the next caller instead of reading a choice
+that is being replaced; the phone's clock and the order requests
 arrive in never count. Answers are rows, not posts, so nobody reads them before the
 question closes; a question's text is sent only once `opens_at` has passed by the
 database's clock (the round view returns `serverTime` for the countdown), and each
@@ -549,7 +555,7 @@ the round's row with `skip locked` and needs it to be `reviewing`.
 - `trivia` flag (on in development and staging, off in production), on top of
   `games`. A game's manifest may now name its own flag; `/api/v1/games` leaves the
   game out while it is off for the member.
-- Rate limits: `triviaAnswer` 20 a minute, `triviaHost` 120 an hour,
+- Rate limits: `triviaAnswer` 60 a minute (choices can be changed), `triviaHost` 120 an hour,
   `triviaRound` 10 rounds a day.
 - A member blocked by the host, or who blocked them, does not see the round and
   cannot answer. A round whose host does nothing for 10 minutes ends by itself.
