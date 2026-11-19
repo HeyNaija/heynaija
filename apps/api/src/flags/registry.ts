@@ -73,6 +73,12 @@ export const FLAGS = {
     owner: 'games',
     defaults: { development: true, staging: true, production: false }, // not in main yet
   },
+  giphyGifs: {
+    description:
+      'Picking a GIF from Giphy for a new post. Members\' browsers contact Giphy to search and to show it; we store only its id and do not scan it (docs/safety/giphy.md). Gating creation only: GIFs already posted keep showing.',
+    owner: 'media',
+    defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
+  },
   videoPosts: {
     description:
       'Attaching one short video to a post (ADR 0019). Gating creation only: videos already published keep playing. Also needs an upload scanner in production: with none bound, video stays closed even if this is on.',
