@@ -117,6 +117,11 @@ export default function EmojiPicker({
           setQuery(e.target.value)
           setActive(0)
         }}
+        onKeyDown={(e) => {
+          if (e.key !== 'ArrowDown') return
+          e.preventDefault()
+          scroll.current?.querySelector<HTMLElement>('[data-cell][tabindex="0"]')?.focus()
+        }}
       />
       {/* Always in the page, so a change in it is spoken. */}
       <p role="status" className="sr-only">{searching ? (found.length ? `${found.length} emoji found` : 'No emoji match') : ''}</p>

@@ -243,9 +243,11 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   // the pointer and swallow a click on the image button.
   useEffect(() => {
     const outside = (e: PointerEvent) => {
-      // The @mention list is drawn outside the form, but belongs to it.
-      if (!form.current?.contains(e.target as Node) && !mentionList.current?.contains(e.target as Node)) setExpanded(false)
-      if (!form.current?.contains(e.target as Node) && !emojiPanel.current?.contains(e.target as Node)) setEmojiOpen(false)
+      // The @mention list and the emoji picker are drawn outside the form, but belong to it.
+      const target = e.target as Node
+      if (form.current?.contains(target) || emojiPanel.current?.contains(target)) return
+      if (!mentionList.current?.contains(target)) setExpanded(false)
+      setEmojiOpen(false)
     }
     document.addEventListener('pointerdown', outside)
     return () => document.removeEventListener('pointerdown', outside)

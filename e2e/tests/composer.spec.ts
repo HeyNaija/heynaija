@@ -105,6 +105,10 @@ test('the emoji picker is two tab stops, moves by arrow keys and lets Tab carry 
 
   const picker = page.getByRole('dialog', { name: 'Emoji' })
   await expect(picker.getByRole('searchbox', { name: 'Search emoji' })).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(picker.getByRole('button', { name: 'grinning face', exact: true })).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(picker.getByRole('searchbox', { name: 'Search emoji' })).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(picker.getByRole('button', { name: 'grinning face', exact: true })).toBeFocused()
   // Every emoji but the one the arrows are on is out of the tab order.
@@ -118,5 +122,30 @@ test('the emoji picker is two tab stops, moves by arrow keys and lets Tab carry 
   await page.keyboard.press('Tab')
   await expect(picker).toBeHidden()
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await context.close()
+})
+
+test('pressing inside the emoji picker keeps a reply box open around it, and Escape returns to its button @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojireply')
+  const article = await post(page, `Reply with emoji ${handle}`)
+  const id = (await article.getAttribute('id'))!.replace('post-', '')
+  await page.goto(`/p/${id}`)
+  const box = await replyBox(page)
+  await box.click()
+
+  const toggle = page.getByRole('button', { name: 'Emoji', exact: true })
+  await toggle.focus()
+  await page.keyboard.press('Enter')
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await expect(picker.getByRole('searchbox', { name: 'Search emoji' })).toBeFocused()
+
+  // The picker is drawn in the body, outside the form, but it belongs to the box.
+  await picker.getByRole('searchbox', { name: 'Search emoji' }).click()
+  await expect(toggle).toBeVisible()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+  await page.keyboard.press('Escape')
+  await expect(picker).toBeHidden()
+  await expect(toggle).toBeFocused()
   await context.close()
 })
