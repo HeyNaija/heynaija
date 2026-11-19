@@ -545,10 +545,11 @@ member gets the choices in their own order (seeded by question and member) so
 Publishing writes `trivia_results` (places by points, then by less time on right
 answers, ties shared), adds each member's points to the season's `trivia` scores
 and `game_profiles` stats, and records a `trivia_round_played` game event: XP 2,
-+1 a right answer, +2 a first, at most +20. The Arbiter replies with the top ten
-and with the first right answer on each question and its time, by display name;
-a member under 18 or a deleted account is "a member". Once only: the publish takes
-the round's row with `skip locked` and needs it to be `reviewing`.
++1 a right answer, +2 a first, at most +20. The Arbiter posts the top ten as an
+update to its thread (below, 19 November), and replies under that with the first
+right answer on each question and its time, by display name; a member under 18 or
+a deleted account is "a member". Once only: the publish takes the round's row with
+`skip locked` and needs it to be `reviewing`.
 
 ### Flags, limits and safety
 
@@ -582,6 +583,28 @@ text only), on the web and in the apps.
   the talk there shows what was asked; from then on it is that post's, reported,
   removed and erased with it like any post's image. A question voided before it
   closes has no reply, so its picture is shown nowhere.
+
+### Results as a story update (19 November 2026)
+
+At first the results were a reply in the round's thread. Feeds list top-level
+posts only, so they reached nobody who did not open the thread again, and the
+round left feeds once it had been announced. The results are now an update to
+the thread's story ([ADR 0024](0024-stories.md)):
+
+- The top ten is posted with `storyOf` the thread. The round comes back to the
+  top of Latest, Following and its community at that time, as the newest update
+  under a box of the announcement, and the story's followers are told
+  (`story_update`). The first right answer on each question is a reply under the
+  results, so talk about them goes there, apart from the answers' replies.
+- A new start time is an update too, since people planning to play need it.
+  Other changes (title, seconds, how many questions) stay replies, as each
+  question's answer does: every update tells every follower and moves the card
+  to the top, so ten answers in five minutes would be ten notifications.
+- A round with no thread, or whose thread has been taken down or deleted (an
+  update needs its first post live), gets its results as a post of its own in
+  the round's community or Game Night, as before.
+- Members are not made to follow a round's story by playing it: players are on
+  the round's page when the results come out.
 
 ## Data export and account deletion
 

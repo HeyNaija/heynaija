@@ -7,7 +7,7 @@ import { ageStatusOf } from '../../governance/governance.service.js'
 import { isAdultFor } from '../../governance/age.js'
 import { isMinor } from '../../governance/minors.js'
 import { ALT_MAX, avatarPath, postImagePath } from '../../media/media.service.js'
-import { blockedEitherWay, PostsService } from '../../posts/posts.service.js'
+import { blockedEitherWay, PostsService, StoryNotFoundError } from '../../posts/posts.service.js'
 import { DB, ENV } from '../../tokens.js'
 import { ARBITER_ID, GAME_NIGHT_SLUG } from '../chess/arena-ids.js'
 import { recordEvents } from '../core/scoring.js'
@@ -365,12 +365,14 @@ export class TriviaService {
   /**
    * Changes a round until its first question opens. Once it is on the schedule its
    * thread stays in its community (posts are never edited or moved), open pages
-   * see the change at once, and The Arbiter replies in the thread with what changed.
+   * see the change at once, and The Arbiter says what changed: a new start time as
+   * an update to its thread's story (docs/adr/0024), which brings the round back
+   * into feeds and tells the story's followers; anything else as a reply.
    */
   async update(memberId: string, roundId: string, raw: RoundInput): Promise<void> {
     const input = this.checked(raw)
     const communityId = await this.communityId(input.community)
-    const thread = await this.db.transaction(async (tx) => {
+    const told = await this.db.transaction(async (tx) => {
       const round = await this.ownRound(tx, memberId, roundId, true)
       const [count] = await tx
         .execute<{ n: number; opened: number }>(sql`select count(*)::int as n, count(opens_at)::int as opened from games.trivia_questions where round_id = ${roundId}`)
@@ -398,14 +400,18 @@ export class TriviaService {
       await tx.delete(triviaQuestions).where(eq(triviaQuestions.roundId, roundId))
       await tx.insert(triviaQuestions).values(this.questionRows(roundId, input.questions))
       await notifyRound(tx, roundId)
-      const told = moved || round.title !== input.title || round.secondsPerQuestion !== input.secondsPerQuestion || count?.n !== input.questions.length
-      return scheduled && told ? round.threadPostId : null
+      const changed = moved || round.title !== input.title || round.secondsPerQuestion !== input.secondsPerQuestion || count?.n !== input.questions.length
+      return scheduled && changed && round.threadPostId ? { thread: round.threadPostId, moved } : null
     })
-    if (!thread) return
-    // The announcement cannot change, so its thread hears what is true now.
+    if (!told) return
+    // The announcement cannot change, so its thread hears what is true now. People
+    // planning to play need a new time, so that is an update; a new title or
+    // question count is only a reply.
     const n = input.questions.length
     const text = `Update: ${input.title} is now on ${lagosTime(input.startsAt)} Lagos time. ${n} ${n === 1 ? 'question' : 'questions'}, ${input.secondsPerQuestion} seconds each.`
-    await this.posts.create(ARBITER_ID, text, { replyTo: thread }).catch((err) => this.logger.warn(`telling round ${roundId}'s thread of a change: ${(err as Error).message}`))
+    await this.posts
+      .create(ARBITER_ID, text, told.moved ? { storyOf: told.thread } : { replyTo: told.thread })
+      .catch((err) => this.logger.warn(`telling round ${roundId}'s thread of a change: ${(err as Error).message}`))
   }
 
   /** Refuses a start time that has already passed (by more than a few minutes). */
@@ -723,7 +729,7 @@ export class TriviaService {
 
   /**
    * The results: places, points into the season, Game Score XP, and The Arbiter's
-   * replies with the top ten and who was first on each question. Once only.
+   * update to the thread with the top ten and who was first on each question. Once only.
    */
   async publishResults(memberId: string | null, roundId: string): Promise<void> {
     if (memberId) await this.ownRound(this.db, memberId, roundId)
@@ -783,7 +789,7 @@ export class TriviaService {
     if (published) await this.postResults(roundId).catch((err) => this.logger.warn(`posting round ${roundId}'s results: ${(err as Error).message}`))
   }
 
-  /** The Arbiter's two replies: the top ten, then the first right answer on each question with its time. Names, not @handles. */
+  /** The Arbiter's results, an update to the round's thread: the top ten, then a reply under it with the first right answer on each question and its time. Names, not @handles. */
   private async postResults(roundId: string): Promise<void> {
     const [round] = await this.db.select().from(triviaRounds).where(eq(triviaRounds.id, roundId))
     if (!round) return
@@ -808,12 +814,21 @@ export class TriviaService {
       join members m on m.id = a.member_id
       where q.round_id = ${roundId} and q.voided_at is null
       order by q.position`)
-    const options = round.threadPostId ? { replyTo: round.threadPostId } : { communitySlug: await this.postingSlug(round), anyMember: true }
-    const posted = await this.posts.create(ARBITER_ID, results, options)
+    // An update to the thread's story (docs/adr/0024): a reply would reach nobody's
+    // feed, while an update brings the round back to the top of them, under its
+    // announcement, and tells the story's followers. A thread taken down or never
+    // posted leaves the results a post of their own.
+    const alone = async () => this.posts.create(ARBITER_ID, results, { communitySlug: await this.postingSlug(round), anyMember: true })
+    const posted = round.threadPostId
+      ? await this.posts.create(ARBITER_ID, results, { storyOf: round.threadPostId }).catch((err) => {
+          if (err instanceof StoryNotFoundError) return alone()
+          throw err
+        })
+      : await alone()
     // The round already reads as published; pages still open look once more for this post.
     await this.db.update(triviaRounds).set({ resultPostId: posted.id, version: sql`${triviaRounds.version} + 1` }).where(eq(triviaRounds.id, roundId))
     await notifyRound(this.db, roundId)
-    if (firsts.length && round.threadPostId) {
+    if (firsts.length) {
       const lines = firsts.map((f) => `Q${f.position}: ${publicName(f)}, ${seconds(Number(f.ms))}`)
       // A post holds 1,000 characters: the list stops short of that.
       let text = 'First right answer on each question:\n'
@@ -821,7 +836,8 @@ export class TriviaService {
         if (text.length + line.length + 1 > 950) break
         text += `\n${line}`
       }
-      await this.posts.create(ARBITER_ID, text, { replyTo: round.threadPostId })
+      // Under the results, where talk about them goes.
+      await this.posts.create(ARBITER_ID, text, { replyTo: posted.id })
     }
   }
 
