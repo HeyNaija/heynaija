@@ -32,7 +32,7 @@ export function kekeNewsHeadline(outcome: string | null | undefined): string {
     case 'waiting':
       return 'Keke’s news for today is ready to check. Nothing is posted unless it is approved by 08:00'
     case 'too_few':
-      return 'No news from Keke today: fewer than three stories were carried by three or more outlets'
+      return 'No news from Keke today: fewer than three headlines were carried by three or more outlets'
     case 'failed':
       return 'Keke could not draft today’s news: the model gave no usable answer'
     case 'over_budget':

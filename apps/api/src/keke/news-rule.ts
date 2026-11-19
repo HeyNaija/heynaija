@@ -113,7 +113,7 @@ export const outletList = (names: string[]) => (names.length <= 1 ? (names[0] ??
 /** The day's post: "Naija today, Saturday 15 November" and the sentences, numbered. */
 export function newsPostText(day: string, stories: NewsStory[]): string {
   const date = new Date(`${day}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
-  return [`Naija today, ${date}`, '', ...stories.map((s, i) => `${i + 1}. ${s.sentence}`), '', 'Reply under a story to talk about it.'].join('\n')
+  return [`Naija today, ${date}`, '', ...stories.map((s, i) => `${i + 1}. ${s.sentence}`), '', 'Reply under a headline to talk about it.'].join('\n')
 }
 
 /** One story's reply: its sentence, who carried it, and one outlet's link (which gets a preview card). */
