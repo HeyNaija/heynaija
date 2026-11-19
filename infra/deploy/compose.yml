@@ -110,6 +110,10 @@ services:
     build:
       context: ../..
       target: web
+      # Fixed into the bundle at build time; the images the servers pull get it from the
+      # repository variable of the same name (docs/deployment/giphy.md). Empty hides the GIF search.
+      args:
+        NEXT_PUBLIC_GIPHY_API_KEY: ${NEXT_PUBLIC_GIPHY_API_KEY:-}
     ports:
       # Loopback only: nginx on the host is the way in.
       - "127.0.0.1:${WEB_PORT:-3100}:3000"
