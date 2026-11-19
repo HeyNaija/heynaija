@@ -99,7 +99,18 @@ test('the queue shows what was reported, by whom, and how many times', async () 
     { reason: queue[0]!.reason, details: queue[0]!.details, by: queue[0]!.reporterHandle, count: queue[0]!.reportCount },
     { reason: 'scam', details: 'crypto scam', by: 'ada', count: 2 },
   )
-  assert.deepEqual(queue[0]!.post, { id, text: 'buy my coin', images: [], hasVideo: false, authorHandle: 'bayo', communityName: null, markable: true })
+  assert.deepEqual(queue[0]!.post, { id, text: 'buy my coin', images: [], hasVideo: false, giphy: null, authorHandle: 'bayo', communityName: null, markable: true })
+})
+
+test('a reported Giphy GIF is in the queue for site and community moderators, with its description', async () => {
+  await communitiesService.join(bayo, 'lagos')
+  const { id } = await postsService.create(bayo, '', { communitySlug: 'lagos', giphy: { id: 'danceHall1', description: 'a man dancing' } })
+  await service.report(ada, { postId: id }, 'spam')
+
+  for (const moderator of [sam, lola]) {
+    const [item] = await service.queue(moderator)
+    assert.deepEqual(item!.post!.giphy, { id: 'danceHall1', alt: 'a man dancing' }, moderator === sam ? 'site-wide' : 'community-scoped')
+  }
 })
 
 test('removing a post hides it everywhere, closes every report on it, and is logged', async () => {
@@ -535,7 +546,7 @@ test('a reply in a Gist is reported, queued with its text, and removed like any 
   await service.report(lola, { postId: reply }, 'scam', 'crypto scam')
   await assert.rejects(service.report(bayo, { postId: reply }, 'spam'), /your own post/)
   const [item] = await service.queue(sam)
-  assert.deepEqual(item!.post, { id: reply, text: 'buy my coin', images: [], hasVideo: false, authorHandle: 'bayo', communityName: null, markable: true })
+  assert.deepEqual(item!.post, { id: reply, text: 'buy my coin', images: [], hasVideo: false, giphy: null, authorHandle: 'bayo', communityName: null, markable: true })
 
   await service.resolve(sam, item!.id, 'remove_post', 'scam')
 
