@@ -10,13 +10,17 @@
   and digits, up to 32), so someone sending the request by hand could name a GIF the
   search would not have offered.
 - **Members' browsers contact Giphy**: to search (their IP address, the words searched
-  for, the key) and to show a GIF (their IP address, the GIF asked for). Readers' browsers
+  for, the key, and the SDK's pingback id: a random id the library makes once per browser
+  session, keeps in `sessionStorage` as `giphyPingbackId` and sends with every request,
+  trending included) and to show a GIF (their IP address, the GIF asked for). Readers' browsers
   do the same for every post with a GIF, without a referrer. A reader saving data
-  gets a tap-to-load placeholder first, and one who asks for less motion gets the first
-  frame. This differs from link previews, which our server fetches so readers' browsers
+  gets a tap-to-load placeholder first. Every GIF has Pause and Play, and one who asks for
+  less motion starts on the first frame. This differs from link previews, which our server fetches so readers' browsers
   never contact the linked site (ADR 0008).
-- **Moderation.** A reported post with a GIF shows moderators its text only: the queue
-  does not yet show the GIF (follow-up). A post with a GIF can be removed like any other.
+- **Moderation.** The report queue (site-wide and community moderators alike) shows a
+  reported GIF, loaded from Giphy, with its description and the label "GIF from GIPHY, not
+  scanned by us"; it plays without a tap (it can be paused). A post with a GIF can be removed
+  like any other.
 - **Erase and export.** The id and description go with the post's text when an account is
   erased or the retention sweep blanks a deleted post (ADR 0016), and are in the data
   export (`posts[].giphy`, `heynaija-export/23`).

@@ -32,10 +32,11 @@ GIFs from GIPHY" in the picker.
 ## Limits and launch
 
 A beta key allows 100 requests an hour and 1,000 a day for the whole site, shared by every
-member (each search or "More GIFs" is one request; searching waits for Enter to save
-them). Giphy must approve a production key before the `giphyGifs` flag is turned on in
+member (every time the picker opens it fetches the trending GIFs, one request, then each
+search and each "More GIFs" is one more; searching waits for Enter to save them. The
+picker sends the SDK's per-session pingback id with each of them). Giphy must approve a production key before the `giphyGifs` flag is turned on in
 production, where it is off by default ([feature-flags.md](../feature-flags.md)). The
-privacy page (`/privacy`, "Who helps us run it") must name GIPHY, as a site members' browsers contact,
-before that.
+privacy page (`/privacy`, "Who helps us run it") must name GIPHY, as a site members' browsers contact (their IP address, what they search for and the SDK's
+per-session pingback id), before that.
 
 Safety and privacy notes are in [../safety/giphy.md](../safety/giphy.md).

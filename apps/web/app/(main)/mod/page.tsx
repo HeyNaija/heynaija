@@ -9,6 +9,7 @@ import { EmptyState } from '@/app/ui/empty-state'
 import { ShieldIcon } from '@/app/ui/icons'
 import { LocalTime } from '@/app/ui/local-time'
 import { ModeratorRoster } from '@/app/ui/moderator-roster'
+import { PostGiphy } from '@/app/ui/post-giphy'
 import { PostImages } from '@/app/ui/post-images'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
@@ -190,6 +191,12 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
           {item.post.images.length ? (
             <div className="mt-2">
               <PostImages images={item.post.images} compact />
+            </div>
+          ) : null}
+          {item.post.giphy ? (
+            <div className="mt-2">
+              <p className="font-medium">GIF from GIPHY, not scanned by us. It loads from GIPHY.</p>
+              <PostGiphy giphy={item.post.giphy} />
             </div>
           ) : null}
           {item.post.hasVideo ? (

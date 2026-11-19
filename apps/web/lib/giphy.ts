@@ -15,3 +15,6 @@ export const giphyStillUrl = (id: string) => mediaUrl(id, 'giphy_s.gif')
 
 /** A key from the environment: empty or blank is unset. */
 export const giphyKeyFrom = (raw: string | undefined) => raw?.trim() || null
+
+/** What to show: the animation while `playing`, its first frame while paused. */
+export const giphySource = (id: string, playing: boolean) => (playing ? giphyMediaUrl(id) : giphyStillUrl(id))

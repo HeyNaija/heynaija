@@ -1,40 +1,10 @@
 'use client'
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PostImage } from '@/lib/api'
-import { CloseIcon, NextIcon, PauseIcon, PlayIcon, PreviousIcon } from './icons'
-
-const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
-const watchMotion = (notify: () => void) => {
-  const query = window.matchMedia(REDUCED_MOTION)
-  query.addEventListener('change', notify)
-  return () => query.removeEventListener('change', notify)
-}
-/** Whether the reader's device asks for less motion. False while rendering on the server. */
-const useReducedMotion = () =>
-  useSyncExternalStore(watchMotion, () => window.matchMedia(REDUCED_MOTION).matches, () => false)
-
-/**
- * Pause and play for a GIF. It plays on its own unless the reader's device asks
- * for less motion; either way the reader can change it, and anything that moves
- * for more than a few seconds must be pausable.
- */
-function useGif(): [playing: boolean, toggle: () => void] {
-  const reduced = useReducedMotion()
-  const [chosen, setChosen] = useState<boolean | null>(null)
-  const playing = chosen ?? !reduced
-  return [playing, () => setChosen(!playing)]
-}
-
-function GifToggle({ playing, onToggle, className = '' }: { playing: boolean; onToggle: () => void; className?: string }) {
-  return (
-    <button type="button" className={`gif-toggle ${className}`} aria-label={playing ? 'Pause GIF' : 'Play GIF'} onClick={onToggle}>
-      {playing ? <PauseIcon size={14} filled /> : <PlayIcon size={14} filled />}
-      <span aria-hidden="true">GIF</span>
-    </button>
-  )
-}
+import { CloseIcon, NextIcon, PreviousIcon } from './icons'
+import { GifToggle, useGif, useReducedMotion } from './use-gif'
 
 /**
  * A post's images. One image keeps its own shape (within limits); two to four
@@ -68,7 +38,7 @@ export function PostImages({ images, compact = false, saver = false }: { images:
 
 /** One image in the grid; a GIF has a pause button beside its link, since a button cannot sit inside one. */
 function Tile({ image, label, sizes, saver, onOpen }: { image: PostImage; label: string; sizes: string; saver: boolean; onOpen: () => void }) {
-  const [playing, toggle] = useGif()
+  const { playing, toggle } = useGif()
   // Saving data: nothing is fetched until the reader taps. Without JavaScript the
   // placeholder is a plain link to the small version, so it still works. The tap
   // is the reader's own choice, so a GIF then plays as it would for anyone else.
