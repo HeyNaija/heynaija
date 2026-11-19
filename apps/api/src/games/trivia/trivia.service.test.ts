@@ -218,7 +218,13 @@ test('a question is never sent before it opens, and an answer counts only while 
   assert.equal(JSON.stringify(open).includes('"correctChoice"'), false, 'the right answer is not sent')
   const { ms } = await trivia.answer(ada, id, first!.id, { choice: 0 })
   assert.ok(ms >= 1000 && ms < 3000)
-  assert.equal(await refusal(() => trivia.answer(ada, id, first!.id, { choice: 1 })), 'answered')
+  // A choice can be changed while the question is open; the change is the answer's time.
+  await new Promise((done) => setTimeout(done, 20))
+  const changed = await trivia.answer(ada, id, first!.id, { choice: 1 })
+  assert.ok(changed.ms > ms, 'the time moves to the change')
+  assert.equal((await trivia.view(ada, id))!.current!.yourAnswer!.choice, 1)
+  assert.equal((await trivia.answer(ada, id, first!.id, { choice: 1 })).ms, changed.ms, 'the same choice again keeps its time')
+  await trivia.answer(ada, id, first!.id, { choice: 0 })
   assert.equal(await refusal(() => trivia.answer(sam, id, first!.id, { choice: 0 })), 'invalid', 'the host does not play')
   // Another adult site moderator could open the host's view, so does not play either; a moderator under 18 cannot, and does.
   const other = randomUUID()
@@ -262,6 +268,27 @@ test('judging: the first right answers by the server’s clock, points, the reve
   assert.match(reveal!.text, /2 of 3 got it right/)
 })
 
+test('a changed choice counts as it was last left, at the time it was changed', async () => {
+  const { id, qs } = await running()
+  await trivia.answer(ada, id, qs[0]!.id, { choice: 0 }) // right, first
+  await trivia.answer(bayo, id, qs[0]!.id, { choice: 0 }) // right, second
+  await trivia.answer(chi, id, qs[0]!.id, { choice: 0 }) // right, then changed to wrong
+  await trivia.answer(ada, id, qs[0]!.id, { choice: 2 })
+  await trivia.answer(ada, id, qs[0]!.id, { choice: 0 }) // back to right, but now after bayo
+  await trivia.answer(chi, id, qs[0]!.id, { choice: 3 })
+  await closeNow(qs[0]!.id)
+  assert.equal(await refusal(() => trivia.answer(ada, id, qs[0]!.id, { choice: 1 })), 'closed', 'no changes once time is up')
+  await trivia.judgeDue(id)
+  const answers = await db.select().from(triviaAnswers).where(eq(triviaAnswers.questionId, qs[0]!.id))
+  const of = (m: string) => answers.find((a) => a.memberId === m)!
+  assert.deepEqual([of(bayo).place, of(bayo).points], [1, 15])
+  assert.deepEqual([of(ada).choice, of(ada).place, of(ada).points], [0, 2, 13])
+  assert.deepEqual([of(chi).choice, of(chi).correct, of(chi).points], [3, false, 0])
+  const view = (await trivia.view(chi, id))!
+  assert.equal(view.last?.you?.choice, 3)
+  assert.equal(view.last?.choices?.find((c) => c.id === 0)?.count, 2, 'each member counts once, for their last choice')
+})
+
 test('many answers at the same moment still give exactly one first', async () => {
   const { id, qs } = await running()
   const players = Array.from({ length: 30 }, (_, i) => ({ id: randomUUID(), handle: `p${i}` }))
@@ -280,6 +307,7 @@ test('typed answers: small typos count, the host accepts a spelling, a bad quest
   await trivia.open(sam, id)
   await openNow(qs[1]!.id)
   await trivia.answer(bayo, id, qs[1]!.id, { text: 'AOT' }) // not accepted (yet)
+  assert.equal(await refusal(() => trivia.answer(bayo, id, qs[1]!.id, { text: 'Attack on Titan' })), 'answered', 'a typed answer is final')
   await trivia.answer(ada, id, qs[1]!.id, { text: 'Atack on Titan' }) // one typo
   await closeNow(qs[1]!.id)
   await trivia.judgeDue(id)
