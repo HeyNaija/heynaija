@@ -9,5 +9,5 @@ export const NAIJA_TODAY = 'naija-today'
  */
 export const BOT_ONLY: Readonly<Record<string, string>> = {
   ...ARBITER_ONLY,
-  [NAIJA_TODAY]: 'Posts here are Keke’s daily news, one each morning once a person has checked it. Reply under a story to talk about it.',
+  [NAIJA_TODAY]: 'Posts here are Keke’s daily news, one each morning once a person has checked it. Reply under a headline to talk about it.',
 }
