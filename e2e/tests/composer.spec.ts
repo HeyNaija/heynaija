@@ -93,3 +93,30 @@ test('emoji picked from the picker go in at the caret, whole, and are in the pos
   await expect(page.locator('article', { hasText: `Hello ${handle}😀👨‍👩‍👧` }).first()).toBeVisible()
   await context.close()
 })
+
+test('the emoji picker is two tab stops, moves by arrow keys and lets Tab carry on', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojikeys')
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Hi ${handle}`)
+  const toggle = page.getByRole('button', { name: 'Emoji', exact: true })
+  await toggle.focus()
+  await page.keyboard.press('Enter')
+
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await expect(picker.getByRole('searchbox', { name: 'Search emoji' })).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(picker.getByRole('button', { name: 'grinning face', exact: true })).toBeFocused()
+  // Every emoji but the one the arrows are on is out of the tab order.
+  await expect(picker.locator('button[tabindex="0"]')).toHaveCount(1)
+  await page.keyboard.press('ArrowRight')
+  await expect(picker.getByRole('button', { name: 'grinning face with big eyes', exact: true })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(box).toHaveValue(`Hi ${handle}😃`)
+  await expect(picker).toBeVisible()
+
+  await page.keyboard.press('Tab')
+  await expect(picker).toBeHidden()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await context.close()
+})
