@@ -2,17 +2,19 @@
 
 import { type KeyboardEvent, type ReactNode, useActionState, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { Globe } from 'lucide-react'
 import { type ComposeState, createPost } from '@/app/actions'
 import { announcementWait } from '@/lib/announcements'
+import { insertAtSelection } from '@/lib/emoji-insert'
 import { insertMention, mentionBeforeCaret } from '@/lib/mention-suggest'
 import { POLL_OPTION_INPUT_MAX, POLL_OPTIONS_MAX } from '@/lib/polls'
 import { REPLY_AUDIENCES, type ReplyAudience } from '@/lib/reply-audience'
 import { limitSize, type VideoLimits } from '@/lib/video'
 import { Avatar } from './avatar'
 import { FounderBadge } from './founder-badge'
-import { BubbleIcon, CloseIcon, GifIcon, ImageIcon, MegaphoneIcon, PeopleIcon, PlusIcon, SensitiveIcon, VideoIcon, VoteIcon } from './icons'
+import { BubbleIcon, CloseIcon, GifIcon, ImageIcon, MegaphoneIcon, PeopleIcon, PlusIcon, SensitiveIcon, SmileIcon, VideoIcon, VoteIcon } from './icons'
 import { IMAGE_TYPES } from './shrink-image'
 import { useAutoGrow } from './use-auto-grow'
 import { type VideoDraft, useVideoDraft } from './use-video-draft'
@@ -27,6 +29,9 @@ import { VideoPlayer } from './video-player'
 import { graphemes, POST_MAX } from '@/lib/post-length'
 
 const LIMIT = POST_MAX
+
+// The emoji list is a separate chunk, fetched when the picker is first opened.
+const EmojiPicker = dynamic(() => import('./emoji-picker'), { ssr: false })
 
 type Props = {
   /** The member writing; shown as their avatar. */
@@ -161,6 +166,31 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     nextCaret.current = null
   }, [text])
 
+  // The emoji picker: its button, and whether the keyboard opened it (focus then moves in).
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const [emojiByKeyboard, setEmojiByKeyboard] = useState(false)
+  const emojiButton = useRef<HTMLButtonElement>(null)
+  const emojiPanel = useRef<HTMLSpanElement>(null)
+  const toolbar = useRef<HTMLDivElement>(null)
+  const closeEmoji = () => {
+    const inside = emojiPanel.current?.contains(document.activeElement)
+    setEmojiOpen(false)
+    if (inside) emojiButton.current?.focus()
+  }
+
+  // Puts the emoji over the selection and the caret after it. A pointer pick keeps the
+  // box focused; a keyboard pick stays on the emoji button so the next pick is a keypress away.
+  const pickEmoji = (emoji: string, byPointer: boolean) => {
+    const box = input.current
+    if (!box) return
+    const next = insertAtSelection(text, box.selectionStart, box.selectionEnd, emoji)
+    nextCaret.current = next.caret
+    setText(next.value)
+    setCaret(next.caret)
+    setExpanded(true)
+    if (byPointer) box.focus({ preventScroll: true })
+  }
+
   const pickMention = (handle: string) => {
     if (!typing) return
     const next = insertMention(text, typing, caret, handle)
@@ -208,6 +238,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     const outside = (e: PointerEvent) => {
       // The @mention list is drawn outside the form, but belongs to it.
       if (!form.current?.contains(e.target as Node) && !mentionList.current?.contains(e.target as Node)) setExpanded(false)
+      if (!form.current?.contains(e.target as Node)) setEmojiOpen(false)
     }
     document.addEventListener('pointerdown', outside)
     return () => document.removeEventListener('pointerdown', outside)
@@ -237,6 +268,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       setAnnounce(false)
       clear()
       setExpanded(false)
+      setEmojiOpen(false)
       onPosted?.(state)
     }
   }, [state, clear, onPosted])
@@ -268,7 +300,15 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const pollReady = !pollOpen || (text.trim().length > 0 && pollOptions.length >= 2 && pollOptions.every((option) => option.trim().length > 0))
 
   const content = (
-    <form ref={form} id={formId} action={action} className={`${inline ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''}${answeringReply ? ' is-answering' : ''} scroll-mt-32`}>
+    <form ref={form} id={formId} action={action} className={`${inline ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''}${answeringReply ? ' is-answering' : ''} scroll-mt-32`}
+      onKeyDown={(e) => {
+        // Escape closes the picker from the box or from inside it; the mention list gets it first.
+        if (e.key === 'Escape' && emojiOpen && !e.defaultPrevented) {
+          e.preventDefault()
+          closeEmoji()
+        }
+      }}
+    >
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
       {replyDepth ? <input type="hidden" name="threadDepth" value={replyDepth} /> : null}
       {replyHandle ? <input type="hidden" name="replyHandle" value={replyHandle} /> : null}
@@ -478,7 +518,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
           <p>Votes and voter names are public. A submitted ballot cannot be changed.</p>
         </fieldset>
       ) : null}
-      <div className="composer-toolbar">
+      <div ref={toolbar} className="composer-toolbar">
         {offers.pictures ? (
           <>
             <button
@@ -560,6 +600,36 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
             <VoteIcon size={20} />
             <span className="composer-photo-label">Poll</span>
           </button>
+        ) : null}
+        {live ? (
+          <span ref={emojiPanel} className="contents">
+            <button
+              ref={emojiButton}
+              type="button"
+              className="icon-btn composer-photo composer-emoji"
+              aria-label="Emoji"
+              aria-haspopup="dialog"
+              aria-expanded={emojiOpen}
+              title="Add an emoji"
+              disabled={pending}
+              // The press does not move focus off the box.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                if (emojiOpen) return closeEmoji()
+                setEmojiByKeyboard(e.detail === 0)
+                // Keeps Escape and the caret with the box when a pointer opens the picker.
+                if (e.detail > 0) input.current?.focus({ preventScroll: true })
+                // The list of members to mention gives way to the picker.
+                if (typing) setDismissed(typing.start)
+                setEmojiOpen(true)
+                setExpanded(true)
+              }}
+            >
+              <SmileIcon size={20} />
+              <span className="composer-photo-label">Emoji</span>
+            </button>
+            {emojiOpen ? <EmojiPicker anchor={toolbar} focusSearch={emojiByKeyboard} onPick={pickEmoji} /> : null}
+          </span>
         ) : null}
         {choices?.length ? (
           <label className="composer-audience">

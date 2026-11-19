@@ -63,3 +63,33 @@ test('a long post still shows all of its text after it is posted, and the box sh
   await expect.poll(() => height(box)).toBeLessThan(empty)
   await context.close()
 })
+
+test('emoji picked from the picker go in at the caret, whole, and are in the post @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emoji')
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Hello ${handle}`)
+  const toggle = page.getByRole('button', { name: 'Emoji', exact: true })
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await expect(picker).toBeVisible()
+  const { bottom, right } = await picker.evaluate((el) => el.getBoundingClientRect().toJSON())
+  expect(bottom).toBeLessThanOrEqual(page.viewportSize()!.height)
+  expect(right).toBeLessThanOrEqual(page.viewportSize()!.width)
+
+  // The picker stays open for several picks, and the box keeps the focus.
+  await picker.getByRole('button', { name: 'grinning face', exact: true }).click()
+  await picker.getByRole('searchbox', { name: 'Search emoji' }).fill('family')
+  await picker.getByRole('button', { name: 'family: man, woman, girl' }).click()
+  await expect(box).toHaveValue(`Hello ${handle}😀👨‍👩‍👧`)
+  await expect(box).toBeFocused()
+
+  await box.press('Escape')
+  await expect(picker).toBeHidden()
+  await page.getByRole('button', { name: 'Post', exact: true }).click()
+  await expect(page.locator('article', { hasText: `Hello ${handle}😀👨‍👩‍👧` }).first()).toBeVisible()
+  await context.close()
+})
