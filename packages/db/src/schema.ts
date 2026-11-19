@@ -318,6 +318,11 @@ export const posts = pgTable(
     // The first web address in the text, without its #fragment: the one that gets a
     // preview card. Matches link_previews.url; null when the text has no address.
     linkUrl: text('link_url'),
+    // A GIF the member picked from Giphy in their browser: only its id is kept, and
+    // readers' browsers load it from Giphy. Null when the post has none. The
+    // description is the author's alt text.
+    giphyId: text('giphy_id'),
+    giphyAlt: text('giphy_alt'),
     // At most one community per post. Replies inherit their parent's.
     communityId: uuid('community_id').references(() => communities.id),
     // A reply in a Gist's comment section, inherited by the replies under it. Read only through the Gist's routes.
