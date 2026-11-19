@@ -72,6 +72,16 @@ test('a post with no GIF says null', async () => {
   assert.equal((await service().post(null, id))!.giphy, null)
 })
 
+test('a deleted ancestor stands in as a placeholder without its GIF', async () => {
+  const parent = await service().create(ada, 'parent', { giphy: { id: ID, description: 'secret cat' } })
+  const reply = await service().create(bayo, 'reply', { replyTo: parent.id })
+  await service().remove(ada, parent.id)
+  const thread = await service().thread(null, reply.id)
+  const ancestor = thread!.ancestors[0]!
+  assert.equal(ancestor.deleted, true)
+  assert.equal(ancestor.giphy, null)
+})
+
 test('a deleted post gives its GIF to no one', async () => {
   const { id } = await service().create(ada, '', { giphy: { id: ID, description: '' } })
   await db.update(posts).set({ deletedAt: new Date() }).where(eq(posts.id, id))
