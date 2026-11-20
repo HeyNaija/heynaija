@@ -12,6 +12,8 @@ import { PostsSkeleton } from '@/app/ui/post-item'
 import { getNotifications, getViewer, type Notification } from '@/lib/api'
 import { ideaNews } from '@/lib/ideas'
 import { notificationTarget } from '@/lib/notification-target'
+import { signInUrl } from '@/lib/auth/server'
+import { siteOrigin } from '@/lib/previews'
 
 export const metadata: Metadata = { title: 'Notifications' }
 
@@ -32,6 +34,8 @@ export default function NotificationsPage({ searchParams }: PageProps<'/notifica
 
 async function Notifications({ searchParams }: Pick<PageProps<'/notifications'>, 'searchParams'>) {
   const viewer = await getViewer()
+  // Signed out: sign in, then back here (docs/deployment/app-links.md). Signed in but refused: /login says why.
+  if (viewer.state === 'anonymous') redirect(signInUrl(new URL('/notifications', siteOrigin).href))
   if (viewer.state !== 'member') redirect('/login')
 
   const { cursor } = await searchParams

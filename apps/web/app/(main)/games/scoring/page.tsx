@@ -6,6 +6,7 @@ import { PostsSkeleton } from '@/app/ui/post-item'
 import { getGameScoring, getViewer } from '@/lib/api'
 import { xpLines } from '@/lib/game-scoring'
 import { periodName } from '../_components/board'
+import { requireGames } from '../_components/require-games'
 
 // Behind the games flag until launch, like the rest of Games (docs/adr/0028, phase 5).
 export const metadata: Metadata = { title: 'How games scoring works', robots: { index: false } }
@@ -33,7 +34,7 @@ export default function ScoringPage() {
 
 async function Rules() {
   const viewer = await getViewer()
-  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  requireGames(viewer, '/games/scoring')
   const rules = await getGameScoring()
   if (!rules) notFound()
   return (

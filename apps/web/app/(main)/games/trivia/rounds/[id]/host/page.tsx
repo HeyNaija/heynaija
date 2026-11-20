@@ -5,6 +5,7 @@ import { Suspense } from 'react'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { getTriviaHost, getViewer } from '@/lib/api'
 import { HostConsole } from '../../../_components/host-console'
+import { requireGames } from '../../../../_components/require-games'
 
 export const metadata: Metadata = { title: 'Trivia console', robots: { index: false } }
 
@@ -21,7 +22,7 @@ export default function TriviaHostPage({ params }: PageProps<'/games/trivia/roun
 
 async function Console({ params }: Pick<PageProps<'/games/trivia/rounds/[id]/host'>, 'params'>) {
   const [{ id }, viewer] = await Promise.all([params, getViewer()])
-  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  requireGames(viewer, `/games/trivia/rounds/${id}/host`)
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound()
   const round = await getTriviaHost(id)
   if (!round) notFound()
