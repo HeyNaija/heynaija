@@ -606,6 +606,29 @@ the thread's story ([ADR 0024](0024-stories.md)):
 - Members are not made to follow a round's story by playing it: players are on
   the round's page when the results come out.
 
+### Questions from a file (20 November 2026)
+
+At the owner's request a host can bring questions in from a JSON file instead of
+typing each one, and take a round's questions out again.
+
+- **Import** is in the round form, new or edit. The browser reads the file; the
+  API is unchanged and checks the round on save as before. The file's questions go
+  after those already in the form, and an empty question makes way. A title in the
+  file fills an empty Title box. The file is checked against the API's limits
+  first, and every problem is listed by question number, so nothing is cut or
+  guessed. A choice question's `answer` is the right choice's text, not its
+  number, so it cannot point at the wrong one.
+- **Download questions** is on the host's console, for a round in any state, so a
+  finished round can be used again. It includes spellings the host accepted
+  during review.
+- **Pictures are not in the file.** Each uploaded picture can be on one question
+  only, so a file cannot carry it to another round. The host adds pictures in the
+  form after importing.
+- The format is `{ "format": "heynaija-trivia", "version": 1, "title", "questions":
+  [{ "question", "choices" + "answer" | "answers", "note" }] }`. Import also takes
+  a file without `format` and `version`, or a plain list of questions, since hosts
+  write these by hand. `apps/web/lib/trivia-file.ts` reads and writes it.
+
 ## Data export and account deletion
 
 - The export is `heynaija-export/22` (format 20 is ADR 0029's; 22 added Trivia pictures): a `games` section with the member's game
