@@ -1,14 +1,17 @@
 'use client'
 
 import { type RefObject, useLayoutEffect } from 'react'
+import { freeSpan, placeList } from '@/lib/placement'
 
 const GAP = 4
 const EDGE = 8
+// The phone's top bar and bottom tabs paint over a list placed under them, so a list keeps clear of them.
+const BARS = '.square-topbar, .square-bottom-nav'
 
 /**
  * Places a `position: fixed` list next to `anchor` while `open`: below it if it
  * fits in what the window shows (the on-screen keyboard taken off), otherwise
- * on whichever side has more room. Fixed to the window, so a scrolling bar
+ * on whichever side has more room, clear of the phone's top bar and bottom tabs. Fixed to the window, so a scrolling bar
  * around the anchor, like the phone reply bar, cannot clip it. Follows the
  * anchor as the page scrolls, the window or keyboard changes, or either grows.
  */
@@ -20,14 +23,13 @@ export function useFixedPlacement(anchor: RefObject<HTMLElement | null>, list: R
       const box = anchor.current?.getBoundingClientRect()
       if (!el || !box) return
       const view = window.visualViewport
-      const top = (view?.offsetTop ?? 0) + EDGE
-      const bottom = (view?.offsetTop ?? 0) + (view?.height ?? window.innerHeight) - EDGE
-      const below = bottom - box.bottom - GAP
-      const above = box.top - top - GAP
-      const down = below >= Math.min(tallest, el.scrollHeight + 2) || below >= above
+      const offset = view?.offsetTop ?? 0
+      const bars = [...document.querySelectorAll(BARS)].map((bar) => bar.getBoundingClientRect())
+      const span = freeSpan({ top: offset, bottom: offset + (view?.height ?? window.innerHeight) }, bars, EDGE)
+      const { down, maxHeight } = placeList({ anchor: box, span, gap: GAP, tallest, content: el.scrollHeight })
       el.style.left = `${box.left}px`
       el.style.width = `${Math.min(widest, box.width)}px`
-      el.style.maxHeight = `${Math.max(0, Math.min(tallest, down ? below : above))}px`
+      el.style.maxHeight = `${maxHeight}px`
       el.style.top = down ? `${box.bottom + GAP}px` : 'auto'
       el.style.bottom = down ? 'auto' : `${document.documentElement.clientHeight - box.top + GAP}px`
     }

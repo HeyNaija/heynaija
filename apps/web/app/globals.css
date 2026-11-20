@@ -1172,6 +1172,15 @@ summary.menu::-webkit-details-marker {
 .mention-option { display: flex; align-items: center; gap: 10px; border-radius: 6px; padding: 8px 10px; cursor: pointer; font-size: 14px; line-height: 1.3; }
 .mention-option[aria-selected="true"] { background: var(--panel); }
 .mention-loading { padding: 8px 10px; color: var(--muted); font-size: 13px; text-align: center; }
+/* The emoji popover: fixed to the window and placed by useFixedPlacement, like the mention list. */
+.emoji-picker { position: fixed; z-index: 40; display: flex; flex-direction: column; gap: 8px; max-width: calc(100vw - 16px); overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); padding: 8px; box-shadow: var(--shadow-pop); animation: menu-in 0.12s ease-out; }
+.emoji-scroll { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+.emoji-heading { margin: 8px 4px 2px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--touch-target), 1fr)); }
+.emoji-btn { display: flex; min-height: var(--touch-target); align-items: center; justify-content: center; border-radius: var(--r-chip); font-size: 24px; line-height: 1; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+.emoji-btn:hover { background: var(--panel); }
+.emoji-empty { padding: 12px 4px; color: var(--muted); font-size: 14px; }
+@media (pointer: coarse) { .composer-toolbar .composer-emoji { min-height: var(--touch-target); min-width: var(--touch-target); } }
 .composer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
 .composer-toolbar .icon-btn { min-height: 36px; font-size: 11px; }
 .composer-audience { display: inline-flex; min-width: 0; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }

@@ -63,3 +63,89 @@ test('a long post still shows all of its text after it is posted, and the box sh
   await expect.poll(() => height(box)).toBeLessThan(empty)
   await context.close()
 })
+
+test('emoji picked from the picker go in at the caret, whole, and are in the post @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emoji')
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Hello ${handle}`)
+  const toggle = page.getByRole('button', { name: 'Emoji', exact: true })
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await expect(picker).toBeVisible()
+  const { bottom, right } = await picker.evaluate((el) => el.getBoundingClientRect().toJSON())
+  expect(bottom).toBeLessThanOrEqual(page.viewportSize()!.height)
+  expect(right).toBeLessThanOrEqual(page.viewportSize()!.width)
+
+  // The picker stays open for several picks, and the box keeps the focus.
+  await picker.getByRole('button', { name: 'grinning face', exact: true }).click()
+  await picker.getByRole('searchbox', { name: 'Search emoji' }).fill('family')
+  await picker.getByRole('button', { name: 'family: man, woman, girl' }).click()
+  await expect(box).toHaveValue(`Hello ${handle}😀👨‍👩‍👧`)
+  await expect(box).toBeFocused()
+
+  await box.press('Escape')
+  await expect(picker).toBeHidden()
+  await page.getByRole('button', { name: 'Post', exact: true }).click()
+  await expect(page.locator('article', { hasText: `Hello ${handle}😀👨‍👩‍👧` }).first()).toBeVisible()
+  await context.close()
+})
+
+test('the emoji picker is two tab stops, moves by arrow keys and lets Tab carry on', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojikeys')
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Hi ${handle}`)
+  const toggle = page.getByRole('button', { name: 'Emoji', exact: true })
+  await toggle.focus()
+  await page.keyboard.press('Enter')
+
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await expect(picker.getByRole('searchbox', { name: 'Search emoji' })).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(picker.getByRole('button', { name: 'grinning face', exact: true })).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(picker.getByRole('searchbox', { name: 'Search emoji' })).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(picker.getByRole('button', { name: 'grinning face', exact: true })).toBeFocused()
+  // Every emoji but the one the arrows are on is out of the tab order.
+  await expect(picker.locator('button[tabindex="0"]')).toHaveCount(1)
+  await page.keyboard.press('ArrowRight')
+  await expect(picker.getByRole('button', { name: 'grinning face with big eyes', exact: true })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(box).toHaveValue(`Hi ${handle}😃`)
+  await expect(picker).toBeVisible()
+
+  await page.keyboard.press('Tab')
+  await expect(picker).toBeHidden()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await context.close()
+})
+
+test('pressing inside the emoji picker keeps a reply box open around it, and Escape returns to its button @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojireply')
+  const article = await post(page, `Reply with emoji ${handle}`)
+  const id = (await article.getAttribute('id'))!.replace('post-', '')
+  await page.goto(`/p/${id}`)
+  const box = await replyBox(page)
+  await box.click()
+
+  const toggle = page.getByRole('button', { name: 'Emoji', exact: true })
+  await toggle.focus()
+  await page.keyboard.press('Enter')
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await expect(picker.getByRole('searchbox', { name: 'Search emoji' })).toBeFocused()
+
+  // The picker is drawn in the body, outside the form, but it belongs to the box.
+  await picker.getByRole('searchbox', { name: 'Search emoji' }).click()
+  await expect(toggle).toBeVisible()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+  await page.keyboard.press('Escape')
+  await expect(picker).toBeHidden()
+  await expect(toggle).toBeFocused()
+  await context.close()
+})
