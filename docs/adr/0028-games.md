@@ -528,8 +528,9 @@ member gets the choices in their own order (seeded by question and member) so
   long-poll, the host's next action, or the `trivia-tick` job scheduler (every 30
   seconds). `select ... for update skip locked` makes it once only across API
   processes. Judging marks every answer, places the right ones by `answered_at`
-  then `seq`, gives `10 + 5/3/2` points, and The Arbiter replies under the thread
-  with the question, the answer and how many got it.
+  then `seq`, gives `10 + 5/3/2` points, and The Arbiter adds an update to the
+  thread's story with the question, the answer and how many got it (20 November;
+  at first it was a reply).
 - Typed answers are normalised (NFKD, accents off, lower case, a leading "the"
   dropped, letters and digits only) and match an accepted answer exactly, or within
   one edit from 6 letters and two from 12 (Damerau-Levenshtein).
@@ -579,10 +580,10 @@ text only), on the web and in the apps.
   the 640 version only, so a slow phone is not also fetching a large file against
   the clock.
 - The abandoned-upload sweep leaves an image alone while a question has it. When
-  the question closes, the image goes on The Arbiter's reply in the thread, so
-  the talk there shows what was asked; from then on it is that post's, reported,
+  the question closes, the image goes on The Arbiter's update with the answer, so
+  the talk under it shows what was asked; from then on it is that post's, reported,
   removed and erased with it like any post's image. A question voided before it
-  closes has no reply, so its picture is shown nowhere.
+  closes has no answer posted, so its picture is shown nowhere.
 
 ### Results as a story update (19 November 2026)
 
@@ -597,14 +598,28 @@ the thread's story ([ADR 0024](0024-stories.md)):
   (`story_update`). The first right answer on each question is a reply under the
   results, so talk about them goes there, apart from the answers' replies.
 - A new start time is an update too, since people planning to play need it.
-  Other changes (title, seconds, how many questions) stay replies, as each
-  question's answer does: every update tells every follower and moves the card
-  to the top, so ten answers in five minutes would be ten notifications.
+  Other changes (title, seconds, how many questions) stay replies.
 - A round with no thread, or whose thread has been taken down or deleted (an
   update needs its first post live), gets its results as a post of its own in
   the round's community or Game Night, as before.
 - Members are not made to follow a round's story by playing it: players are on
   the round's page when the results come out.
+
+**Each question's answer too (20 November 2026).** With only the results as an
+update, the owner found the story showed one thing, while its point is to show
+how something went. Each question's answer is now an update as well, so the
+story reads as the round did: a new time if there was one, each question with
+its answer, then the results.
+
+- Talk about a question goes in the replies to its own answer, not all together
+  under the announcement. The announcement says so.
+- Followers are told of every update, answers included. The owner's call: a
+  member who taps Follow story has asked for each one. A round of ten questions
+  can mean ten notifications in a few minutes.
+- The feed shows the round once, at its newest update, so it stays one card that
+  moves up as the round goes on.
+- On the story page, more than four updates fold: the announcement, "Updates 1
+  to N" folded, then the newest three (ADR 0024).
 
 ### Questions from a file (20 November 2026)
 

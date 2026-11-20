@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { blocks, media, members, posts, seasonScores, triviaAnswers, triviaQuestions, triviaResults, triviaRounds, xpTotals } from '@heynaija/db'
+import { blocks, media, members, notifications, posts, seasonScores, triviaAnswers, triviaQuestions, triviaResults, triviaRounds, xpTotals } from '@heynaija/db'
 import { and, asc, eq, sql } from 'drizzle-orm'
 import { PostsService } from '../../posts/posts.service.js'
 import { db, giveBirthDates, migrate, pool, reset } from '../../test-db.js'
@@ -149,7 +149,7 @@ test('a start time that has passed is refused; changing a scheduled round reache
   await trivia.update(sam, draft, input({ community: 'chess-arena' }))
 })
 
-test('a question can have a picture: a ready one the host uploaded, hidden until it opens, then on The Arbiter’s reply', async () => {
+test('a question can have a picture: a ready one the host uploaded, hidden until it opens, then on The Arbiter’s update', async () => {
   const upload = async (owner: string, status: 'ready' | 'processing' = 'ready') =>
     (
       await db
@@ -181,7 +181,7 @@ test('a question can have a picture: a ready one the host uploaded, hidden until
   await closeNow(q1!.id)
   await trivia.judgeDue(id)
   assert.deepEqual((await trivia.view(ada, id))!.last!.image, picture)
-  // The Arbiter's reply under the thread carries it, so the talk there shows what was asked.
+  // The Arbiter's update with the answer carries it, so the talk under it shows what was asked.
   const [judged] = await questionsOf(id)
   const [file] = await db.select().from(media).where(eq(media.id, mine))
   assert.equal(file!.postId, judged!.revealPostId)
@@ -246,7 +246,7 @@ test('a question is never sent before it opens, and an answer counts only while 
   assert.equal(await refusal(() => trivia.answer(bayo, id, first!.id, { choice: 0 })), 'closed')
 })
 
-test('judging: the first right answers by the server’s clock, points, the reveal and The Arbiter’s reply', async () => {
+test('judging: the first right answers by the server’s clock, points, the reveal and The Arbiter’s update', async () => {
   const { id, qs } = await running()
   await trivia.answer(bayo, id, qs[0]!.id, { choice: 2 }) // wrong
   await trivia.answer(ada, id, qs[0]!.id, { choice: 0 })
@@ -273,6 +273,9 @@ test('judging: the first right answers by the server’s clock, points, the reve
   const [reveal] = await db.select().from(posts).where(eq(posts.id, q!.revealPostId!))
   assert.match(reveal!.text, /Answer: Light/)
   assert.match(reveal!.text, /2 of 3 got it right/)
+  // An update to the thread's story, not a reply: the story shows the round question by question.
+  const [round] = await db.select().from(triviaRounds).where(eq(triviaRounds.id, id))
+  assert.deepEqual([reveal!.storyId, reveal!.replyParentId], [round!.threadPostId, null])
 })
 
 test('a changed choice counts as it was last left, at the time it was changed', async () => {
@@ -343,6 +346,9 @@ test('publishing: places, season points, Game Score XP, and the results by name,
   await trivia.answer(ada, id, qs[0]!.id, { choice: 0 })
   await closeNow(qs[0]!.id)
   await trivia.judgeDue(id)
+  // The first answer makes the thread a story, which bayo, watching, follows.
+  const [{ threadPostId }] = (await db.select({ threadPostId: triviaRounds.threadPostId }).from(triviaRounds).where(eq(triviaRounds.id, id))) as [{ threadPostId: string }]
+  assert.equal(await postsService.followStory(bayo, threadPostId), true)
   await trivia.open(sam, id)
   await openNow(qs[1]!.id)
   await trivia.answer(ada, id, qs[1]!.id, { text: 'Shingeki no Kyojin' })
@@ -372,12 +378,19 @@ test('publishing: places, season points, Game Score XP, and the results by name,
   assert.deepEqual([result!.storyId, result!.replyParentId, result!.superseded], [round!.threadPostId, null, false])
   const [thread] = await db.select().from(posts).where(eq(posts.id, round!.threadPostId!))
   assert.equal(thread!.superseded, true)
+  // The story, in order: each question's answer, then the results.
+  const story = await db.select().from(posts).where(eq(posts.storyId, thread!.id)).orderBy(posts.createdAt)
+  const [q1, q2] = await questionsOf(id)
+  assert.deepEqual(story.map((p) => p.id), [q1!.revealPostId, q2!.revealPostId, result!.id])
   // Game Night's feed shows the round once, as its results, with the announcement above them.
   const feed = await postsService.inCommunity(bayo, thread!.communityId!, 20)
   assert.deepEqual(
     feed.posts.map((p) => [p.id, p.story?.number, p.story?.id]),
-    [[result!.id, 1, thread!.id]],
+    [[result!.id, 3, thread!.id]],
   )
+  // bayo followed after the first answer, so is told of the second and of the results.
+  const told = await db.select().from(notifications).where(and(eq(notifications.recipientId, bayo), eq(notifications.kind, 'story_update')))
+  assert.deepEqual(told.map((n) => n.postId).sort(), [q2!.revealPostId, result!.id].sort())
   // Who was first goes under the results, where they are talked about.
   const firsts = await db.select().from(posts).where(and(eq(posts.replyParentId, result!.id), sql`text like 'First right answer%'`))
   assert.match(firsts[0]!.text, /Q1: a member/)

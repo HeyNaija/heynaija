@@ -249,11 +249,12 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
   last question the host has 15 minutes to accept spellings the matcher missed
   (which can change who was first) or void a bad question; then the results
   publish themselves.
-- **The Arbiter** replies under the thread as each question closes (the question,
-  the answer, how many got it). The results are an update to the thread's story
-  (ADR 0024), so the round comes back into feeds: the top ten, with a reply under
-  it saying who was first on each question and their time. A new start time is an
-  update too; other changes are replies. A member under 18, or a deleted account,
+- **The Arbiter** adds an update to the thread's story (ADR 0024) as each question
+  closes: the question, the answer, how many got it. The results are the last
+  update: the top ten, with a reply under it saying who was first on each question
+  and their time. A new start time is an update too; other changes are replies.
+  The story shows how the round went, the feed shows it once at its newest update,
+  and followers are told of each update. A member under 18, or a deleted account,
   is "a member" in these posts; in the app, the round's standings show members as
   they are shown everywhere else.
 - **Safety:** a member blocked by the host, or who blocked them, does not see the
