@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { DotsIcon, FlagIcon } from '@/app/ui/icons'
 import { ContactEmail, PolicyPage } from '@/app/ui/policy-page'
 
 export const metadata: Metadata = {
@@ -90,9 +91,9 @@ export default function ChildSafetyPage() {
                 Tool as they are delivered.
               </li>
               <li>
-                <strong>Reports from people.</strong> Anyone can report a post, an account or a Gist, or report a
-                safety concern from Settings, all without leaving the app, and the people who handle safety look at every
-                report.
+                <strong>Reports from people.</strong> Anyone can report a post, an account or a Gist. They can also
+                report a safety concern from Settings. Both work without leaving the app. The safety team looks at
+                every report.
               </li>
             </ul>
           ),
@@ -122,37 +123,83 @@ export default function ChildSafetyPage() {
           id: 'report',
           title: 'How to report it',
           body: (
-            <ul>
-              <li>
-                <strong>In the HeyNaija app or on the website, about a post or an account:</strong> open the menu on the
-                post or account (in a Gist, the flag at the top), choose <strong>Report</strong>, then{' '}
-                <strong>Child sexual abuse or exploitation</strong>.
-              </li>
-              <li>
-                <strong>About anything else:</strong> go to <strong>Settings</strong>, then{' '}
-                <strong>Report a safety concern</strong>. Use it for something you saw, something that happened to you or
-                someone you know, or anything that is not one post or account. Say what happened and where, with links
-                to any posts or accounts involved.
-              </li>
-              <li>
-                Both work inside the app, without leaving it, and the same way on the website. Reports of child sexual
-                abuse or exploitation alert the people who handle safety straight away and come first in the
-                moderation queue. Only moderators see who made a report, and the person reported is never told.
-              </li>
-              <li>
-                <strong>Not a member, or reporting for an authority?</strong> Write to <ContactEmail /> with a link to
-                the post or account. Never send the picture or video itself, and never send any image of a child: the
-                link is enough for us to find it.
-              </li>
-              <li>
-                <strong>If a child is in danger now,</strong> call the police first. In Nigeria, call 112.
-              </li>
-              <li>
-                You can also report child sexual abuse material found anywhere online to the{' '}
-                <a href="https://report.cybertip.org/">NCMEC CyberTipline</a> or the{' '}
+            <>
+              <p>
+                You can report from the HeyNaija app or the website. It works the same way in both, and you never have to
+                leave the app.
+              </p>
+
+              <h3>To report a post</h3>
+              <ol>
+                <li>
+                  Tap <MenuDots /> on the post.
+                </li>
+                <li>
+                  Choose <strong>Report post</strong>.
+                </li>
+                <li>
+                  Choose <strong>Child sexual abuse or exploitation</strong>, then send.
+                </li>
+              </ol>
+
+              <h3>To report an account</h3>
+              <ol>
+                <li>Open their profile.</li>
+                <li>
+                  Tap <MenuDots /> at the top.
+                </li>
+                <li>
+                  Choose <strong>Report</strong>.
+                </li>
+                <li>
+                  Choose <strong>Child sexual abuse or exploitation</strong>, then send.
+                </li>
+              </ol>
+
+              <h3>To report a Gist</h3>
+              <ol>
+                <li>
+                  In the Gist, tap the <GistFlag /> button.
+                </li>
+                <li>
+                  Choose <strong>Child sexual abuse or exploitation</strong>, then send.
+                </li>
+              </ol>
+
+              <h3>To report anything else</h3>
+              <p>Use this for something you saw, or something that happened to you or someone you know.</p>
+              <ol>
+                <li>
+                  Go to <strong>Settings</strong>.
+                </li>
+                <li>
+                  Choose <strong>Report a safety concern</strong>.
+                </li>
+                <li>Say what happened and where. Add links to any posts or accounts involved.</li>
+              </ol>
+
+              <h3>What happens next</h3>
+              <p>
+                Reports of child sexual abuse or exploitation reach the safety team straight away. Only moderators see
+                who made the report. The person you report is never told.
+              </p>
+
+              <h3>Not a member?</h3>
+              <p>
+                Write to <ContactEmail />. Send a link to the post or account. Do not send the picture or video itself.
+                Never send any image of a child. The link is enough for us to find it.
+              </p>
+              <p>Authorities can write to the same address.</p>
+
+              <h3>If a child is in danger now</h3>
+              <p>Call the police first. In Nigeria, call 112.</p>
+
+              <h3>Abuse material anywhere else online</h3>
+              <p>
+                You can also report it to the <a href="https://report.cybertip.org/">NCMEC CyberTipline</a> or the{' '}
                 <a href="https://report.iwf.org.uk/">Internet Watch Foundation</a>.
-              </li>
-            </ul>
+              </p>
+            </>
           ),
         },
         {
@@ -168,5 +215,25 @@ export default function ChildSafetyPage() {
         },
       ]}
     />
+  )
+}
+
+/** The ⋯ menu button, drawn as the app and the website draw it; screen readers hear its name instead. */
+function MenuDots() {
+  return (
+    <span className="inline-flex align-[-0.25em] font-semibold text-ink">
+      <DotsIcon size={20} />
+      <span className="sr-only">the three dots button</span>
+    </span>
+  )
+}
+
+/** The flag that reports a Gist, as the app and the website draw it. */
+function GistFlag() {
+  return (
+    <span className="inline-flex items-center gap-1 align-[-0.2em] font-semibold text-ink">
+      <FlagIcon size={17} />
+      flag
+    </span>
   )
 }
