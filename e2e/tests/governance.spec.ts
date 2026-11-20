@@ -31,7 +31,10 @@ test('the child safety standards name CSAE and CSAM, say how to report, and give
   await expect(page.getByRole('heading', { level: 1, name: 'Child safety standards' })).toBeVisible()
   await expect(page.getByText('HeyNaija does not allow child sexual abuse and exploitation (CSAE)')).toBeVisible()
   await expect(page.locator('#standards')).toContainText('Child sexual abuse material (CSAM)')
-  await expect(page.locator('#report')).toContainText('Illegal content')
+  // Play also asks for a way to report without leaving the app: both are named here.
+  await expect(page.locator('#report')).toContainText('choose Report, then Child sexual abuse or exploitation')
+  await expect(page.locator('#report')).toContainText('go to Settings, then Report a safety concern')
+  await expect(page.locator('#report')).toContainText('without leaving it')
   await expect(page.locator('#contact').getByRole('link', { name: 'contact@heynaija.ng' })).toHaveAttribute('href', 'mailto:contact@heynaija.ng')
 })
 

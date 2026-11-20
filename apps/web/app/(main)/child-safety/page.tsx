@@ -18,7 +18,7 @@ export default function ChildSafetyPage() {
       eyebrow="Keeping children safe"
       title="Child safety standards"
       summary="HeyNaija does not allow child sexual abuse and exploitation (CSAE) of any kind. This page sets out what is not allowed, how we find it and what we do about it, how to report it, and who to contact."
-      updated="8 November 2026"
+      updated="20 November 2026"
       draft={false}
       sections={[
         {
@@ -90,8 +90,9 @@ export default function ChildSafetyPage() {
                 Tool as they are delivered.
               </li>
               <li>
-                <strong>Reports from people.</strong> Anyone can report a post or an account, and moderators look at
-                every report.
+                <strong>Reports from people.</strong> Anyone can report a post, an account or a Gist, or report a
+                safety concern from Settings, all without leaving the app, and the people who handle safety look at every
+                report.
               </li>
             </ul>
           ),
@@ -123,9 +124,20 @@ export default function ChildSafetyPage() {
           body: (
             <ul>
               <li>
-                <strong>On HeyNaija:</strong> open the menu on the post or account, choose <strong>Report</strong>, then{' '}
-                <strong>Illegal content</strong>. This works the same in the apps and on the website. Reports of illegal
-                content alert the people who handle safety straight away, and only moderators see who made a report.
+                <strong>In the HeyNaija app or on the website, about a post or an account:</strong> open the menu on the
+                post or account (in a Gist, the flag at the top), choose <strong>Report</strong>, then{' '}
+                <strong>Child sexual abuse or exploitation</strong>.
+              </li>
+              <li>
+                <strong>About anything else:</strong> go to <strong>Settings</strong>, then{' '}
+                <strong>Report a safety concern</strong>. Use it for something you saw, something that happened to you or
+                someone you know, or anything that is not one post or account. Say what happened and where, with links
+                to any posts or accounts involved.
+              </li>
+              <li>
+                Both work inside the app, without leaving it, and the same way on the website. Reports of child sexual
+                abuse or exploitation alert the people who handle safety straight away and come first in the
+                moderation queue. Only moderators see who made a report, and the person reported is never told.
               </li>
               <li>
                 <strong>Not a member, or reporting for an authority?</strong> Write to <ContactEmail /> with a link to
