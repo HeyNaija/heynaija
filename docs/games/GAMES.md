@@ -226,6 +226,9 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
   Night when it has none, and nothing about the round can change once a question
   has opened. Any host may run another host's round (if theirs goes quiet), so no
   host answers in any round: they can all see the answers.
+- **Questions from a file:** the round form imports questions from a JSON file,
+  and the host's console downloads a round's questions in the same format, to use
+  them again. Pictures are not in the file (ADR 0028, 20 November 2026).
 - **Live, one question at a time.** The host opens each question (or lets the
   round go on by itself, 8 seconds after each reveal). Its text appears 3 seconds
   later on every screen at once, by the database's clock, and is never sent before
