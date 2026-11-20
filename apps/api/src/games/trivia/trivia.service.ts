@@ -435,7 +435,8 @@ export class TriviaService {
       // Members abroad read it too, so the time says whose clock it is.
       `${round.title}: ${lagosTime(round.startsAt)} Lagos time.`,
       `${n} ${n === 1 ? 'question' : 'questions'}, ${round.secondsPerQuestion} seconds each. Play here: ${this.link(round.id)}`,
-      'Answers stay hidden until each question closes. The first right answer scores most. Talk about each question in the replies once it closes.',
+      'Answers stay hidden until each question closes. The first right answer scores most.',
+      'As each question closes, its answer is added to this post. Talk about a question in the replies to its answer.',
     ].join('\n\n')
     await this.posts.create(ARBITER_ID, text, {
       communitySlug: slug,
@@ -626,7 +627,11 @@ export class TriviaService {
       .where(eq(triviaQuestions.id, q.id))
   }
 
-  /** The Arbiter's reply under the thread once a question closes: the question, the answer, and how many got it. */
+  /**
+   * The Arbiter's update to the thread's story once a question closes: the question, the
+   * answer, and how many got it. Question by question, the story shows how the round went,
+   * each question's talk goes under its own answer, and the story's followers are told of each.
+   */
   private async postReveal(questionId: string): Promise<void> {
     const [q] = await this.db.select().from(triviaQuestions).where(eq(triviaQuestions.id, questionId))
     if (!q || q.revealPostId || q.voidedAt) return
@@ -642,10 +647,10 @@ export class TriviaService {
       `${q.rightCount} of ${q.answered} got it right.`,
     ].join('\n\n')
     await this.posts.create(ARBITER_ID, text, {
-      replyTo: round.threadPostId,
+      storyOf: round.threadPostId,
       alongside: async (tx, postId) => {
         await tx.update(triviaQuestions).set({ revealPostId: postId }).where(eq(triviaQuestions.id, q.id))
-        // The picture goes on the reply, so the talk under it shows what was asked. From
+        // The picture goes on the update, so the talk under it shows what was asked. From
         // here on it is that post's: reported, removed or erased with it, like any post's.
         if (q.imageId) {
           await tx
