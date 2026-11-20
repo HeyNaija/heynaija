@@ -84,6 +84,18 @@ export default function SettingsPage({ searchParams }: PageProps<'/settings'>) {
           <GovernanceStanding />
         </Suspense>
       </section>
+      <section className="content-panel settings-section" aria-labelledby="report-heading">
+        <div>
+          <h2 id="report-heading" className="section-title">Report a safety concern</h2>
+          <p className="field-hint mt-1">
+            Tell the people who handle safety, privately, about something you saw or something that happened, above
+            all anything that puts a child at risk. It does not need to be about one post or account. Something not
+            working, or an idea? Use the <Link href="/ideas" className="font-semibold text-accent-strong hover:underline">ideas board</Link>.{' '}
+            <Link href="/child-safety" className="font-semibold text-accent-strong hover:underline">Child safety standards</Link>
+          </p>
+        </div>
+        <Link href="/report" className="btn btn-secondary self-start">Report a safety concern</Link>
+      </section>
       <section className="content-panel settings-section" aria-labelledby="data-heading">
         <div>
           <h2 id="data-heading" className="section-title">Your data</h2>

@@ -151,7 +151,7 @@ async function Details() {
         <div className="mt-3 space-y-3 text-sm leading-relaxed text-muted">
           {keke.news.live ? null : <p className="notice">The daily news is not running yet. This is how it will work when it is.</p>}
           <p>
-            Each morning Keke posts the day&rsquo;s main Nigerian stories in{' '}
+            Each morning Keke posts the day&rsquo;s main Nigerian headlines in{' '}
             <Link href={`/c/${NAIJA_TODAY}`} className={link}>Naija Today</Link>, one neutral line each, once a person has
             checked them. Join Naija Today to be told each morning; its bell, or the box in Settings, turns that off.
           </p>
@@ -162,21 +162,21 @@ async function Details() {
             </li>
             <li>
               At {time(keke.news.rule.draftAt)}, Nigerian time, the model is given the last {keke.news.rule.windowHours}{' '}
-              hours&rsquo; headlines. It says which are the same story and writes one neutral sentence for each, from those
+              hours&rsquo; headlines. It says which are about the same news and writes one neutral sentence for each, from those
               headlines only. It decides nothing else.
             </li>
             <li>
-              The rule, applied by our code: a story counts if {keke.news.rule.minOutlets} or more different outlets carry it,
+              The rule, applied by our code: a headline counts if {keke.news.rule.minOutlets} or more different outlets carry it,
               and the {keke.news.rule.maxStories} carried by the most outlets are kept. Fewer than{' '}
-              {keke.news.rule.minStories} stories that count, and there is no post that day.
+              {keke.news.rule.minStories} headlines that count, and there is no post that day.
             </li>
             <li>
-              A site moderator reads the draft and may correct a sentence, remove a story, approve it or skip the day. Not
+              A site moderator reads the draft and may correct a sentence, remove a headline, approve it or skip the day. Not
               approved by {time(keke.news.rule.publishAt)}, nothing is posted.
             </li>
             <li>
-              At {time(keke.news.rule.publishAt)} Keke posts the day&rsquo;s stories in Naija Today, and under that post one
-              reply per story: its sentence, the outlets that carried it, and one outlet&rsquo;s link. Reply under the story
+              At {time(keke.news.rule.publishAt)} Keke posts the day&rsquo;s headlines in Naija Today, and under that post one
+              reply per headline: its sentence, the outlets that carried it, and one outlet&rsquo;s link. Reply under the headline
               you want to talk about.
             </li>
           </ol>

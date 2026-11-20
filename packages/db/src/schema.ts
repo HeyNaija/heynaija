@@ -597,11 +597,20 @@ export const mutes = pgTable(
 )
 
 // needs_label: sensitive content that is not marked as sensitive (ADR 0020).
-export const REPORT_REASONS = ['spam', 'harassment', 'hate', 'scam', 'illegal', 'needs_label', 'other', 'appeal'] as const
+// child_safety: child sexual abuse or exploitation (the /child-safety standards).
+export const REPORT_REASONS = ['spam', 'harassment', 'hate', 'scam', 'child_safety', 'illegal', 'needs_label', 'other', 'appeal'] as const
+
+/**
+ * Reasons that need a person soon: they alert whoever handles safety, come
+ * first in the moderation queue, and hide a reported post's video at once.
+ */
+export const URGENT_REPORT_REASONS = ['child_safety', 'illegal'] as const
 
 // A report about a post, an account, a Gist or a community's photo. An appeal is a report a suspended member
 // files about themselves (reason 'appeal'), so it lands in the same queue. A
-// report with no reporter was filed by the upload scanner, not by a person.
+// report with no reporter was filed by the upload scanner, not by a person. A
+// report about none of these is a safety concern a member sent from Settings
+// (Report a safety concern): only its reason and details say what it is about.
 export const reports = pgTable(
   'reports',
   {
@@ -640,6 +649,8 @@ export const MODERATION_ACTIONS = [
   // Marking a post sensitive, and taking a moderator's mark off again (ADR 0020).
   'label_post',
   'unlabel_post',
+  // Closing a safety concern (Settings) once it has been dealt with: it names nothing to act on here.
+  'close_report',
 ] as const
 
 // Append-only record of every moderator decision: who did what, to what, and why.
