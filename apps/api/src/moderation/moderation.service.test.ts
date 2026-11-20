@@ -333,6 +333,82 @@ test('reports of illegal content come first in the queue, and alert whoever hand
   assert.doesNotMatch(alerts[0]!.lines.join(' '), /something illegal/)
 })
 
+test('a child-safety report is urgent like illegal content: first in the queue, alerts safety, and a dismissal elsewhere leaves it open', async () => {
+  const spam = await postsService.create(bayo, 'buy followers')
+  const abuse = await postsService.create(bayo, 'something harmful')
+  await service.report(ada, { postId: spam.id }, 'spam')
+  await service.report(ada, { postId: abuse.id }, 'spam')
+  assert.equal(alerts.length, 0)
+  // Saying more about the same post makes the open report an urgent one.
+  await service.report(ada, { postId: abuse.id }, 'child_safety', 'a child')
+  await service.report(lola, { postId: abuse.id }, 'other')
+
+  const queue = await service.queue(sam)
+  assert.deepEqual(queue.map((i) => [i.post!.text, i.reason]), [
+    ['something harmful', 'child_safety'],
+    ['buy followers', 'spam'],
+    ['something harmful', 'other'],
+  ])
+  assert.equal(alerts.length, 1)
+  assert.match(alerts[0]!.subject, /child sexual abuse or exploitation/)
+  assert.match(alerts[0]!.lines.join(' '), new RegExp(abuse.id))
+  assert.doesNotMatch(alerts[0]!.lines.join(' '), /something harmful|a child/)
+
+  // Dismissing the ordinary report about the post does not close the child-safety one.
+  await service.resolve(sam, queue[2]!.id, 'dismiss')
+  assert.deepEqual((await service.queue(sam)).map((i) => i.reason), ['child_safety', 'spam'])
+})
+
+test('Report a safety concern: about nothing in particular, for site moderators only, closed as handled, and the reporter told', async () => {
+  await service.reportConcern(ada, 'child_safety', 'Someone in a Gist kept asking teenagers for photos.')
+  await service.reportConcern(bayo, 'other', 'The app crashes when I open a Gist.')
+  await assert.rejects(service.reportConcern(ada, 'needs_label', 'not a post at all'), ModerationTargetError)
+
+  // An urgent one alerts safety without what was written.
+  assert.equal(alerts.length, 1)
+  assert.match(alerts[0]!.subject, /child sexual abuse or exploitation/)
+  assert.doesNotMatch(alerts[0]!.lines.join(' '), /teenagers/)
+
+  const queue = await service.queue(sam)
+  assert.deepEqual(
+    queue.map((i) => ({ reason: i.reason, concern: i.concern, by: i.reporterHandle, count: i.reportCount, about: [i.post, i.member, i.gist, i.communityPhoto] })),
+    [
+      { reason: 'child_safety', concern: true, by: 'ada', count: 1, about: [null, null, null, null] },
+      { reason: 'other', concern: true, by: 'bayo', count: 1, about: [null, null, null, null] },
+    ],
+  )
+  // A community moderator sees only their community's posts.
+  assert.deepEqual(await service.queue(lola), [])
+  await assert.rejects(service.resolve(lola, queue[0]!.id, 'handled'), NotAModeratorError)
+
+  // Nothing to remove or suspend: it is closed once dealt with, or dismissed.
+  await assert.rejects(service.resolve(sam, queue[0]!.id, 'remove_post'), ModerationTargetError)
+  await assert.rejects(service.resolve(sam, queue[0]!.id, 'suspend_member'), ModerationTargetError)
+  await service.resolve(sam, queue[0]!.id, 'handled', 'suspended the account and reported it')
+  await service.resolve(sam, queue[1]!.id, 'dismiss')
+  assert.equal(await openReports(), 0)
+
+  const told = await db.select().from(notifications)
+  assert.deepEqual(
+    told.map((n) => [n.recipientId, n.kind, n.detail]).sort(),
+    [
+      [ada, 'report_resolved', 'concern_actioned'],
+      [bayo, 'report_resolved', 'concern_dismissed'],
+    ].sort(),
+  )
+  const log = await db.select().from(moderationActions)
+  assert.deepEqual(log.map((a) => a.action).sort(), ['close_report', 'dismiss_report'])
+})
+
+test('only a safety concern is closed as handled', async () => {
+  const { id } = await postsService.create(bayo, 'rude')
+  await service.report(ada, { postId: id }, 'harassment')
+  const [item] = await service.queue(sam)
+  assert.equal(item!.concern, false)
+  await assert.rejects(service.resolve(sam, item!.id, 'handled'), ModerationTargetError)
+  assert.equal(await openReports(), 1)
+})
+
 test('a report the upload scanner filed has no reporter, and closing it tells nobody', async () => {
   await db.insert(reports).values({ reporterId: null, memberId: bayo, reason: 'illegal', details: 'matched' })
   const [item] = await service.queue(sam)

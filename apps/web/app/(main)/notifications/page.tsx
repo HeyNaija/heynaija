@@ -77,6 +77,7 @@ const REASONS: Record<string, string> = {
   harassment: 'harassment',
   hate: 'hate speech',
   scam: 'being a scam',
+  child_safety: 'child sexual abuse or exploitation',
   illegal: 'illegal content',
   needs_label: 'sensitive content that was not marked',
   other: 'breaking the community rules',
@@ -119,6 +120,16 @@ function describe(n: Notification): { icon: ReactNode; text: ReactNode } {
         text: <>A moderator marked your post as sensitive. People under 18 won’t see it, and its pictures and video show behind a warning.</>,
       }
     case 'report_resolved': {
+      // Report a safety concern names no post or account.
+      if (n.detail?.startsWith('concern_')) {
+        return {
+          icon: <FlagIcon size={20} />,
+          text:
+            n.detail === 'concern_actioned'
+              ? 'Thanks for reporting a safety concern. The people who handle safety looked into it and took action.'
+              : 'Thanks for reporting a safety concern. The people who handle safety looked into it and found nothing more to do.',
+        }
+      }
       const gist = n.detail?.startsWith('gist_') ?? false
       const about = gist ? 'a Gist' : n.subjectHandle ? `@${n.subjectHandle}` : n.community ? `the photo of ${n.community.name}` : 'a post'
       return {

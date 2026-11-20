@@ -1,4 +1,4 @@
-import { type Db, media, members, moderationActions, posts, reports, videoDetails, videoRenditions } from '@heynaija/db'
+import { type Db, media, members, moderationActions, posts, reports, URGENT_REPORT_REASONS, videoDetails, videoRenditions } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { and, count, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import type { MediaJobs } from '../media/media.service.js'
@@ -237,7 +237,7 @@ export class VideoService {
   }
 
   /**
-   * A report of illegal content hides the video at once, pending review. This is
+   * A report of illegal content or child abuse hides the video at once, pending review. This is
    * deliberately unlike images: video costs more to leave up and to review.
    */
   hideReportedVideos(postId: string): Promise<void> {
@@ -246,7 +246,7 @@ export class VideoService {
 
   /**
    * After a dismissed report: puts the video back if nothing else keeps it down. The post must be
-   * neither removed nor deleted, and no other illegal report on it may be open or acted on: a
+   * neither removed nor deleted, and no other urgent report (illegal, child abuse) on it may be open or acted on: a
    * moderator who upheld one without removing the post (by suspending the author, say) left the video
    * down, and a later dismissal of some other report must not undo that.
    */
@@ -256,7 +256,7 @@ export class VideoService {
     const [held] = await this.db
       .select({ id: reports.id })
       .from(reports)
-      .where(and(eq(reports.postId, postId), inArray(reports.status, ['open', 'actioned']), eq(reports.reason, 'illegal')))
+      .where(and(eq(reports.postId, postId), inArray(reports.status, ['open', 'actioned']), inArray(reports.reason, [...URGENT_REPORT_REASONS])))
       .limit(1)
     if (held) return
     await this.releasePostVideos(postId)
@@ -482,7 +482,7 @@ export class VideoService {
       .where(and(eq(media.kind, 'post_video'), eq(media.status, 'ready'), isNotNull(posts.removedAt)))
     for (const { id } of exposed) await this.quarantine(id)
 
-    // A report of illegal content hides the video at once; if that hide failed (storage down), it is finished here.
+    // A report of illegal content or child abuse hides the video at once; if that hide failed (storage down), it is finished here.
     const reported = await this.db
       .select({ id: media.id })
       .from(media)
@@ -490,7 +490,7 @@ export class VideoService {
         and(
           eq(media.kind, 'post_video'),
           eq(media.status, 'ready'),
-          sql`exists (select 1 from reports r where r.post_id = ${media.postId} and r.status = 'open' and r.reason = 'illegal')`,
+          sql`exists (select 1 from reports r where r.post_id = ${media.postId} and r.status = 'open' and r.reason in (${sql.join(URGENT_REPORT_REASONS.map((r) => sql`${r}`), sql`, `)}))`,
         ),
       )
     for (const { id } of reported) await this.quarantine(id)
