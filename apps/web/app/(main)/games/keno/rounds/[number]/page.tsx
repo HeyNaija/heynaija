@@ -6,6 +6,7 @@ import { LocalTime } from '@/app/ui/local-time'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { getKenoRound, getViewer } from '@/lib/api'
 import { RoundCheck } from '../../_components/round-check'
+import { requireGames } from '../../../_components/require-games'
 
 export const metadata: Metadata = { title: 'Check a Keno round', robots: { index: false } }
 
@@ -22,7 +23,7 @@ export default function KenoRoundPage({ params }: PageProps<'/games/keno/rounds/
 
 async function Round({ params }: Pick<PageProps<'/games/keno/rounds/[number]'>, 'params'>) {
   const [{ number: raw }, viewer] = await Promise.all([params, getViewer()])
-  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  requireGames(viewer, `/games/keno/rounds/${raw}`)
   if (!/^\d{1,9}$/.test(raw)) notFound()
   const round = await getKenoRound(Number(raw))
   if (!round) notFound()

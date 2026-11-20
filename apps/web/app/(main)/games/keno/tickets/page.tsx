@@ -8,6 +8,7 @@ import { LocalTime } from '@/app/ui/local-time'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { getKenoTickets, getViewer } from '@/lib/api'
 import { ticketResult } from '../_components/ticket'
+import { requireGames } from '../../_components/require-games'
 
 export const metadata: Metadata = { title: 'Your Keno tickets', robots: { index: false } }
 
@@ -30,7 +31,7 @@ export default function KenoTicketsPage({ searchParams }: PageProps<'/games/keno
 
 async function Tickets({ searchParams }: Pick<PageProps<'/games/keno/tickets'>, 'searchParams'>) {
   const [params, viewer] = await Promise.all([searchParams, getViewer()])
-  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  requireGames(viewer, '/games/keno/tickets')
   const before = typeof params.before === 'string' && !Number.isNaN(Date.parse(params.before)) ? params.before : undefined
   const page = await getKenoTickets(before)
   if (!page) notFound()

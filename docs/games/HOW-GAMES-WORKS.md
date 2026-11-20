@@ -314,9 +314,10 @@ Games sits behind the `games` feature flag:
 - **Development and staging:** on.
 - **Production:** off until launch.
 
-When it is off for someone, Games doesn't exist for them: no link, no pages,
-and the API answers "not found". Background jobs (draws, competitions,
-tournaments) do nothing while Games is off for everyone.
+When it is off for someone, they get no Games link, and the API answers "not
+found". If they open a link to a Games page anyway, the page says Games is not
+open to them yet. Someone signed out is asked to sign in first. Background jobs
+(draws, competitions, tournaments) do nothing while Games is off for everyone.
 
 Trivia has a second switch, the `trivia` flag (on in development and staging,
 off in production). It needs `games` on as well. Trivia's background job (judging

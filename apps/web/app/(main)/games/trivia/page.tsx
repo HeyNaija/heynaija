@@ -9,6 +9,7 @@ import { getGameScoring, getTriviaList, getViewer } from '@/lib/api'
 import { type GameInfo, GameSection } from '../_components/game-section'
 import { gameTab, GameTabs } from '../_components/game-tabs'
 import { RoundSection } from './_components/bits'
+import { requireGames } from '../_components/require-games'
 
 export const metadata: Metadata = { title: 'Trivia', robots: { index: false } }
 
@@ -43,7 +44,7 @@ export default function TriviaPage({ searchParams }: PageProps<'/games/trivia'>)
 
 async function Trivia({ searchParams }: Pick<PageProps<'/games/trivia'>, 'searchParams'>) {
   const [params, viewer] = await Promise.all([searchParams, getViewer()])
-  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  requireGames(viewer, '/games/trivia')
   const tab = gameTab(params.tab)
   const tabs = <GameTabs slug="trivia" name="Trivia" tab={tab} />
   if (tab !== 'play') {

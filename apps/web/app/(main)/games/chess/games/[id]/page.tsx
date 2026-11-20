@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { getChessGame, getViewer } from '@/lib/api'
 import { ChessGameView } from '../../_components/chess-game'
+import { requireGames } from '../../../_components/require-games'
 
 export const metadata: Metadata = { title: 'Chess game', robots: { index: false } }
 
@@ -28,7 +29,7 @@ export default function ChessGamePage(props: PageProps<'/games/chess/games/[id]'
 
 async function Game({ params }: Pick<PageProps<'/games/chess/games/[id]'>, 'params'>) {
   const [{ id }, viewer] = await Promise.all([params, getViewer()])
-  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  requireGames(viewer, `/games/chess/games/${id}`)
   const game = await getChessGame(id)
   if (!game) notFound()
   const players = `${game.white.displayName ?? `@${game.white.handle}`} and ${game.black.displayName ?? `@${game.black.handle}`}`
