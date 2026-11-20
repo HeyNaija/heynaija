@@ -31,10 +31,14 @@ test('the child safety standards name CSAE and CSAM, say how to report, and give
   await expect(page.getByRole('heading', { level: 1, name: 'Child safety standards' })).toBeVisible()
   await expect(page.getByText('HeyNaija does not allow child sexual abuse and exploitation (CSAE)')).toBeVisible()
   await expect(page.locator('#standards')).toContainText('Child sexual abuse material (CSAM)')
-  // Play also asks for a way to report without leaving the app: both are named here.
-  await expect(page.locator('#report')).toContainText('choose Report, then Child sexual abuse or exploitation')
-  await expect(page.locator('#report')).toContainText('go to Settings, then Report a safety concern')
-  await expect(page.locator('#report')).toContainText('without leaving it')
+  // Play also asks for a way to report without leaving the app: each kind of report has its own steps.
+  const report = page.locator('#report')
+  for (const name of ['To report a post', 'To report an account', 'To report a Gist', 'To report anything else']) {
+    await expect(report.getByRole('heading', { level: 3, name })).toBeVisible()
+  }
+  await expect(report).toContainText('Choose Report post.')
+  await expect(report).toContainText('Choose Report a safety concern.')
+  await expect(report).toContainText('you never have to leave the app')
   await expect(page.locator('#contact').getByRole('link', { name: 'contact@heynaija.ng' })).toHaveAttribute('href', 'mailto:contact@heynaija.ng')
 })
 
