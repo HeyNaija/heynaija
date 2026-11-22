@@ -1680,7 +1680,12 @@ a.notification-row:hover {
 }
 
 /* Images on a post: one keeps its shape, two to four tile a 16:9 frame. The
-   frame is sized before the images load, so nothing jumps. */
+   frame is sized before the images load, so nothing jumps. As on Threads and X,
+   media never takes more than --media-max-h of the screen's height: a tall
+   picture or video is narrower instead of taller, and the viewer shows it large. */
+:root { --media-max-h: 320px; }
+/* A computer's screen has room for more: still under half its height. */
+@media (min-width: 720px) and (min-height: 760px) { :root { --media-max-h: 420px; } }
 .post-images {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1688,16 +1693,17 @@ a.notification-row:hover {
   overflow: hidden;
   gap: 2px;
   width: 100%;
-  max-height: 520px;
+  max-width: calc(var(--media-max-h) * 16 / 9);
   border: 1px solid var(--line);
   border-radius: var(--r-panel);
   background: var(--line);
 }
-.post-images.is-compact {
-  max-width: 360px;
+.post-images[data-count="1"] {
+  width: min(100%, calc(var(--media-max-h) * var(--ratio)));
+  max-width: none;
 }
-.post-list .post-images {
-  max-height: 360px;
+.post-images.is-compact {
+  --media-max-h: 200px;
 }
 .post-card .post-images {
   border-radius: var(--r-control);
@@ -1970,11 +1976,11 @@ html:has(.image-viewer[open]) {
   color: var(--accent-strong);
 }
 .composer-sensitive:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-/* A post's video: a poster to tap, then our own player (below). */
+/* A post's video: a poster to tap, then our own player (below). Like a picture,
+   it keeps its shape and is never taller than --media-max-h. */
 .post-video {
   position: relative;
-  width: 100%;
-  max-height: 520px;
+  width: min(100%, calc(var(--media-max-h) * var(--ratio)));
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--r-control);
