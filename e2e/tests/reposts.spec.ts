@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { newMember, post } from '../lib/members.ts'
+import { confirmWith, newMember, post } from '../lib/members.ts'
 import { expectQuoteFrame } from '../lib/layout.ts'
 
 test('a repost reaches the reposter’s followers and profile; a quote embeds the post until it is deleted @mobile', async ({ browser }) => {
@@ -62,10 +62,10 @@ test('a repost reaches the reposter’s followers and profile; a quote embeds th
 
   // Deleting the original takes the repost away and leaves a placeholder in the quote.
   await author.page.goto(`/u/${author.handle}`)
-  author.page.once('dialog', (dialog) => dialog.accept())
   const original = author.page.locator('article', { hasText: text })
   await original.getByLabel('Post options').click()
   await original.getByRole('button', { name: 'Delete post' }).click()
+  await confirmWith(author.page, 'Delete post')
   await expect(author.page.locator('article', { hasText: text })).toHaveCount(0)
 
   await reader.page.goto('/?feed=following')

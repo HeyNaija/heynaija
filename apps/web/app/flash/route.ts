@@ -1,0 +1,16 @@
+import { type NextRequest, NextResponse } from 'next/server'
+import { decodeFlash, FLASH_COOKIE } from '@/lib/flash'
+
+/**
+ * The browser says it has shown flash `id`, so it is forgotten and no later page
+ * shows it again. JavaScript cannot clear the cookie itself: it is httpOnly. Only
+ * the flash that was shown is cleared, so a newer one set meanwhile is kept.
+ * Nothing here is worth forging: the most another site could do is make a member
+ * miss one "Post deleted".
+ */
+export async function POST(request: NextRequest) {
+  const id = (await request.text()).slice(0, 64)
+  const response = new NextResponse(null, { status: 204, headers: { 'cache-control': 'no-store' } })
+  if (decodeFlash(request.cookies.get(FLASH_COOKIE)?.value)?.id === id) response.cookies.delete(FLASH_COOKIE)
+  return response
+}

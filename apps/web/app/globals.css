@@ -1116,7 +1116,7 @@ summary.menu::-webkit-details-marker {
   .governance-actions .btn { width: 100%; }
 }
 @media print {
-  .square-sidebar, .square-rail, .square-topbar, .square-bottom-nav, .thread-editor-host, .governance-tabs, .policy-contents, .policy-footer, .no-print { display: none !important; }
+  .square-sidebar, .square-rail, .square-topbar, .square-bottom-nav, .thread-editor-host, .governance-tabs, .policy-contents, .policy-footer, .toast-stack, .no-print { display: none !important; }
   .square-feed { padding: 0 !important; }
   .policy-section, .governance-section { break-inside: avoid-page; border: 0; padding: 12px 0; }
 }
@@ -1392,6 +1392,35 @@ html:has(.share-dialog[open]) { overflow: hidden; }
 @media (max-width: 639px) {
   .share-dialog { width: 100%; max-height: calc(100dvh - 24px); margin: auto 0 0; border-bottom: 0; border-radius: 20px 20px 0 0; }
   .share-dialog-content { padding: 24px max(20px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
+}
+/* A confirmation (app/ui/confirm-dialog.tsx), shaped like the Gist sheets: a bottom
+   sheet on phones and a centred card from 640px, with the Pop shadow and the scrim. */
+html:has(.confirm-dialog[open]) { overflow: hidden; }
+.confirm-dialog { width: 100%; max-width: none; max-height: 88dvh; margin: auto 0 0; border: 1px solid var(--line); border-bottom: 0; border-radius: 16px 16px 0 0; background: var(--surface); padding: 0; color: var(--ink); box-shadow: var(--shadow-pop); overflow-y: auto; overscroll-behavior: contain; }
+.confirm-dialog::backdrop { background: var(--modal-scrim); }
+.confirm-dialog-body { padding: 22px max(18px, env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left)); }
+.confirm-dialog-title { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.4; overflow-wrap: anywhere; }
+.confirm-dialog-message { margin-top: 6px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+/* A long handle in the label gives that button a row of its own instead of clipping. */
+.confirm-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.confirm-dialog-actions .btn { flex: 1 1 auto; min-width: min(100%, 120px); max-width: 100%; min-height: var(--touch-target); overflow-wrap: anywhere; white-space: normal; }
+@media (min-width: 640px) {
+  .confirm-dialog { max-width: 420px; margin: auto; border-bottom: 1px solid var(--line); border-radius: var(--r-panel); }
+  .confirm-dialog-body { padding: 22px; }
+}
+/* Toasts (app/ui/toasts.tsx). On phones they sit under the 64px top bar, which keeps
+   them clear of the bottom tabs, the reply bar and the Gist dock; on desktop, bottom
+   right. Above every bar and menu, and below dialogs, which are in the top layer.
+   The stack itself lets presses through to the page between and beside the toasts. */
+.toast-stack { position: fixed; z-index: 60; top: calc(64px + env(safe-area-inset-top, 0px) + 8px); right: max(12px, env(safe-area-inset-right)); left: max(12px, env(safe-area-inset-left)); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { display: flex; width: 100%; max-width: 420px; align-items: center; gap: 10px; margin-inline: auto; border: 1px solid var(--line-strong); border-radius: var(--r-panel); background: var(--surface); padding: 4px 4px 4px 14px; color: var(--ink); font-size: 14px; line-height: 1.5; box-shadow: var(--shadow-pop); pointer-events: auto; animation: menu-in 0.12s ease-out; }
+.toast > svg { color: var(--accent-strong); }
+.toast > p { min-width: 0; flex: 1; padding-block: 8px; overflow-wrap: anywhere; }
+.toast-error { border-color: color-mix(in srgb, var(--danger) 35%, var(--line-strong)); }
+.toast-error > svg { color: var(--danger); }
+.toast-close { min-width: var(--touch-target); min-height: var(--touch-target); }
+@media (min-width: 1024px) {
+  .toast-stack { top: auto; right: 24px; bottom: 24px; left: auto; width: 360px; }
 }
 /* Repost sits near the card's left edge, so its menu opens rightwards, inside the card. */
 .repost-menu .menu-panel { left: -8px; right: auto; }

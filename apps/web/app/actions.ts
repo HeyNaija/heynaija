@@ -17,6 +17,7 @@ import { announcementWait } from '@/lib/announcements'
 import { DATA_COOKIE, DATA_COOKIE_MAX_AGE, dataMode } from '@/lib/low-data'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, AGE_REFUSED_COOKIE, INVITE_COOKIE } from '@/lib/invite'
 import { forgetEndedSession, reauthUrl, startAuthUrl } from '@/lib/auth/server'
+import { flash } from '@/lib/flash-server'
 import { siteOrigin } from '@/lib/previews'
 import { preferencesFromForm } from '@/lib/notification-preferences'
 import { PUSH_COOKIE } from '@/lib/push'
@@ -131,6 +132,8 @@ export async function deletePost(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '')
   const res = await api(`/v1/posts/${encodeURIComponent(id)}`, { method: 'DELETE' })
   if (res.status === 401) redirect('/login')
+  // A post that is already gone (a second press, another tab) is deleted all the same.
+  await flash(res.ok || res.status === 404 ? 'post_deleted' : 'action_failed')
   refresh()
 }
 
@@ -201,6 +204,8 @@ export async function setProfilePin(formData: FormData): Promise<void> {
   const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
   const res = await api(`/v1/posts/${encodeURIComponent(id)}/pin`, { method })
   if (res.status === 401) redirect('/login')
+  // The feed looks the same after a pin, so say it happened.
+  await flash(!res.ok ? 'action_failed' : method === 'PUT' ? 'pinned_to_profile' : 'unpinned_from_profile')
   refresh()
 }
 
@@ -210,6 +215,7 @@ export async function setCommunityPin(formData: FormData): Promise<void> {
   const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
   const res = await api(`/v1/posts/${encodeURIComponent(id)}/community-pin`, { method })
   if (res.status === 401) redirect('/login')
+  await flash(!res.ok ? 'action_failed' : method === 'PUT' ? 'pinned_in_community' : 'unpinned_in_community')
   refresh()
 }
 
@@ -313,6 +319,9 @@ async function setRelation(formData: FormData, relation: 'block' | 'mute'): Prom
   const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
   const res = await api(`/v1/members/${encodeURIComponent(handle)}/${relation}`, { method })
   if (res.status === 401) redirect('/login')
+  // A blocked member's posts just vanish from the page, so say why. Muting stays
+  // silent (DESIGN.md), and unblocking shows on the profile's own button.
+  if (relation === 'block' && method === 'PUT') await flash(res.ok ? 'blocked' : 'action_failed')
   refresh()
 }
 

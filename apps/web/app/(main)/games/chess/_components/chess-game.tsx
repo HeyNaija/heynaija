@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Key } from 'chessground/types'
 import { Avatar } from '@/app/ui/avatar'
+import { ConfirmDialog } from '@/app/ui/confirm-dialog'
 import type { ChessGame, ChessPlayer } from '@/lib/api'
 import type { Board } from './board'
 
@@ -49,6 +50,8 @@ export function ChessGameView({ initial }: { initial: ChessGame }) {
   const [now, setNow] = useState(() => Date.now())
   const [san, setSan] = useState<string[]>([])
   const [said, setSaid] = useState('')
+  const [resigning, setResigning] = useState(false)
+  const resign = useRef<HTMLButtonElement>(null)
   const el = useRef<HTMLDivElement>(null)
   const board = useRef<Board | null>(null)
   const lib = useRef<BoardModule | null>(null)
@@ -253,17 +256,23 @@ export function ChessGameView({ initial }: { initial: ChessGame }) {
               Abort
             </button>
           ) : (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              disabled={busy}
-              onClick={() => {
-                if (confirm('Resign this game? It counts as a loss.')) void act('resign')
-              }}
-            >
+            <button ref={resign} type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setResigning(true)}>
               Resign
             </button>
           )}
+          {resigning ? (
+            <ConfirmDialog
+              title="Resign this game?"
+              message="It counts as a loss."
+              confirmLabel="Resign"
+              trigger={resign}
+              onCancel={() => setResigning(false)}
+              onConfirm={() => {
+                setResigning(false)
+                void act('resign')
+              }}
+            />
+          ) : null}
         </div>
       ) : null}
       <p role="alert" className="text-sm text-danger empty:hidden">

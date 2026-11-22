@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { grantModerator } from '../lib/cli.ts'
-import { newMember } from '../lib/members.ts'
+import { confirmWith, newMember } from '../lib/members.ts'
 
 // Games competitions, the Game Score and the scoring explainer (docs/adr/0028, phase 5).
 // Seeing a competition finish needs Keno drawing often (see keno.spec.ts): CI starts the
@@ -54,8 +54,8 @@ test('a moderator runs a Keno competition; a member enters it; the explainer and
 
   // The moderator calls it off.
   await mod.page.goto(url)
-  mod.page.once('dialog', (d) => d.accept())
   await mod.page.getByRole('button', { name: 'Cancel competition' }).click()
+  await confirmWith(mod.page, 'Cancel competition')
   await expect(mod.page.getByText('Cancelled', { exact: true })).toBeVisible()
 
   await player.page.setViewportSize({ width: 320, height: 640 })

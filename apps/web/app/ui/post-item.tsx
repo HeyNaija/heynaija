@@ -341,6 +341,7 @@ export function PostItem({
                       <SubmitButton
                         className="menu-item menu-item-danger"
                         confirmMessage="Delete this post? This cannot be undone."
+                        confirmLabel="Delete post"
                       >
                         Delete post
                       </SubmitButton>
@@ -371,6 +372,7 @@ export function PostItem({
                       <SubmitButton
                         className="menu-item menu-item-danger"
                         confirmMessage={`Block @${post.authorHandle}? You will stop seeing each other's posts.`}
+                        confirmLabel={`Block @${post.authorHandle}`}
                       >
                         Block @{post.authorHandle}
                       </SubmitButton>
