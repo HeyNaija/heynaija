@@ -23,6 +23,7 @@ import { useFixedPlacement } from './use-fixed-placement'
 import { useMentionSuggestions } from './use-mention-suggestions'
 import { PostVideo } from './post-video'
 import { composerOffers } from '@/lib/composer-offers'
+import { composerContent } from '@/lib/composer-required'
 import { giphyMediaUrl } from '@/lib/giphy'
 import { GIPHY_API_KEY } from '@/lib/giphy-key'
 import { postedReplyHref } from '@/lib/posted-href'
@@ -337,7 +338,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const markable = sensitiveLabels && (images.drafts.length > 0 || video.draft !== null || gif !== null)
   // A video that is held, rejected or failed blocks the post until it is removed: only a ready one can go.
   const waiting = images.drafts.some((d) => d.status !== 'ready') || (video.draft !== null && video.draft.status !== 'ready')
-  const empty = left === LIMIT && images.drafts.length === 0 && !video.draft && !gif
+  const { empty, textRequired } = composerContent({ text, images: images.drafts.length, video: video.draft !== null, gif: gif !== null, pollOpen })
   const pollReady = !pollOpen || (text.trim().length > 0 && pollOptions.length >= 2 && pollOptions.every((option) => option.trim().length > 0))
 
   const content = (
@@ -398,7 +399,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
                 const next = e.relatedTarget as Node | null
                 if (next && !form.current?.contains(next) && !emojiPanel.current?.contains(next)) setExpanded(false)
               }}
-              required={images.drafts.length === 0 && !video.draft}
+              required={textRequired}
               disabled={pending}
               value={text}
               onChange={(e) => {

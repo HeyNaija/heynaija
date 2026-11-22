@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { gif } from '../lib/gif.ts'
 import { newMember, post, replyBox } from '../lib/members.ts'
 
 const lines = (count: number) => Array.from({ length: count }, (_, i) => `line ${i + 1}`).join('\n')
@@ -147,5 +148,47 @@ test('pressing inside the emoji picker keeps a reply box open around it, and Esc
   await page.keyboard.press('Escape')
   await expect(picker).toBeHidden()
   await expect(toggle).toBeFocused()
+  await context.close()
+})
+
+// The Giphy controls exist only in a web app built with a key (NEXT_PUBLIC_GIPHY_API_KEY, any
+// value: Giphy itself is answered here, never reached), so this runs only when the run is told
+// the app has one:
+//
+//   NEXT_PUBLIC_GIPHY_API_KEY=stand-in pnpm dev:web
+//   NEXT_PUBLIC_GIPHY_API_KEY=stand-in pnpm e2e composer
+test('a GIF from Giphy with no words can be posted', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, 'needs a web app built with a Giphy key; see the comment above this test')
+  const { page, handle, context } = await newMember(browser, 'gifonly')
+  const id = `e2e${crypto.randomUUID().replaceAll('-', '').slice(0, 20)}`
+  const title = `Waving for ${handle}`
+  const rendition = { url: `https://media1.giphy.com/media/${id}/100w.gif`, width: '100', height: '100' }
+  await context.route(/^https:\/\/[a-z0-9.-]*\bgiphy\.com\//, (route) => {
+    const url = new URL(route.request().url())
+    if (url.hostname !== 'api.giphy.com') return route.fulfill({ contentType: 'image/gif', body: gif() })
+    return route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: {
+        data: [{ id, title, type: 'gif', images: { fixed_width_small: rendition, fixed_width: rendition } }],
+        pagination: { total_count: 1, count: 1, offset: 0 },
+        meta: { status: 200, msg: 'OK', response_id: 'e2e' },
+      },
+    })
+  })
+
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.click()
+  await page.getByRole('button', { name: 'Search GIFs' }).click()
+  await page.getByRole('dialog', { name: 'Search GIFs' }).getByRole('button', { name: title }).click()
+  await expect(page.getByLabel('Description of GIF')).toHaveValue(title)
+
+  await expect(box).toHaveValue('')
+  // The browser's own check of the form, which runs before a press on Post reaches the app.
+  expect(await page.locator('#compose').evaluate((form: HTMLFormElement) => form.checkValidity())).toBe(true)
+  await page.getByRole('button', { name: 'Post', exact: true }).click()
+
+  await expect(page.locator('article').filter({ has: page.locator(`img[src*="/media/${id}/"]`) }).first()).toBeVisible()
+  await expect(page.getByLabel('Description of GIF')).toBeHidden()
   await context.close()
 })
