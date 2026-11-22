@@ -53,7 +53,15 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
       ;[qs[i], qs[j]] = [qs[j]!, qs[i]!]
       return { ...d, questions: qs }
     })
-  const remove = (i: number) => setDraft((d) => ({ ...d, questions: d.questions.filter((_, j) => j !== i) }))
+  // A round always keeps one question in the form, so removing the last one empties it instead.
+  const remove = (i: number) =>
+    setDraft((d) => ({ ...d, questions: d.questions.length === 1 ? [blankQuestion(d.questions[0]!.kind)] : d.questions.filter((_, j) => j !== i) }))
+  // Starts again from an empty form: the title and every question go; the start time and settings stay.
+  const [clearing, setClearing] = useState(false)
+  const clear = () => {
+    setDraft((d) => ({ ...d, title: '', questions: [blankQuestion('choice')] }))
+    setClearing(false)
+  }
   // Imported questions go after those already written; an empty one, like the one a new round starts with, makes way.
   const written = draft.questions.filter((q) => !isBlankQuestion(q)).length
   const addImported = (title: string, imported: QuestionDraft[]) =>
@@ -194,6 +202,22 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
 
       <ImportQuestions room={MAX_QUESTIONS - written} onImport={addImported} />
 
+      {written > 0 || draft.title.trim() ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {clearing ? (
+            <>
+              <button type="button" className="btn btn-primary btn-sm" onClick={clear}>
+                Yes, clear the title and {written} {written === 1 ? 'question' : 'questions'}
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setClearing(false)}>Keep them</button>
+              <span className="text-sm text-muted">The start time and settings stay.</span>
+            </>
+          ) : (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setClearing(true)}>Clear the form</button>
+          )}
+        </div>
+      ) : null}
+
       <ol className="flex flex-col gap-3">
         {draft.questions.map((q, i) => (
           <li key={i} className="trivia-edit">
@@ -255,7 +279,7 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
               <div className="flex flex-wrap gap-2">
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => move(i, -1)} disabled={i === 0}>Move up</button>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => move(i, 1)} disabled={i === draft.questions.length - 1}>Move down</button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => remove(i)} disabled={draft.questions.length === 1}>Remove</button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => remove(i)} disabled={draft.questions.length === 1 && isBlankQuestion(q)}>Remove</button>
               </div>
             </fieldset>
           </li>
