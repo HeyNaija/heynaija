@@ -75,9 +75,14 @@ test('confirming deletes the post and says so in a toast, once @mobile', async (
     expect(Math.round(sheet.width)).toBe(view.width)
     expect(Math.round(sheet.y + sheet.height)).toBe(view.height)
   } else {
-    // A card in the middle of the window.
-    expect(Math.abs(sheet.x + sheet.width / 2 - view.width / 2)).toBeLessThan(2)
-    expect(Math.abs(sheet.y + sheet.height / 2 - view.height / 2)).toBeLessThan(2)
+    // A card in the middle of the window. A page scrollbar (Linux CI draws a
+    // 15px one) is not part of the area the dialog is centred in.
+    const area = await page.evaluate(() => ({
+      width: document.documentElement.clientWidth,
+      height: document.documentElement.clientHeight,
+    }))
+    expect(Math.abs(sheet.x + sheet.width / 2 - area.width / 2)).toBeLessThan(2)
+    expect(Math.abs(sheet.y + sheet.height / 2 - area.height / 2)).toBeLessThan(2)
   }
   for (const name of ['Cancel', 'Delete post']) {
     const button = (await question(page).getByRole('button', { name }).boundingBox())!
