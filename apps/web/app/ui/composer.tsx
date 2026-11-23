@@ -1,6 +1,6 @@
 'use client'
 
-import { type KeyboardEvent, type ReactNode, useActionState, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { Component, type KeyboardEvent, type ReactNode, useActionState, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
@@ -11,6 +11,7 @@ import { insertAtSelection } from '@/lib/emoji-insert'
 import { insertMention, mentionBeforeCaret } from '@/lib/mention-suggest'
 import { POLL_OPTION_INPUT_MAX, POLL_OPTIONS_MAX } from '@/lib/polls'
 import { REPLY_AUDIENCES, type ReplyAudience } from '@/lib/reply-audience'
+import { retryOnce } from '@/lib/retry-once'
 import { limitSize, type VideoLimits } from '@/lib/video'
 import { Avatar } from './avatar'
 import { FounderBadge } from './founder-badge'
@@ -30,8 +31,24 @@ import { graphemes, POST_MAX } from '@/lib/post-length'
 
 const LIMIT = POST_MAX
 
-// The emoji list is a separate chunk, fetched when the picker is first opened.
-const EmojiPicker = dynamic(() => import('./emoji-picker'), { ssr: false })
+// The emoji list is a separate chunk, fetched when the picker is first opened. A failed
+// fetch (a new deploy removed the chunk, or the connection dropped) is remembered by the
+// component dynamic() returns, so after one the composer makes a fresh one to try again.
+const emojiPicker = () => dynamic(() => retryOnce(() => import('./emoji-picker')), { ssr: false })
+
+/** Keeps a picker that failed to load from taking the page, and the draft, down with it. */
+class PickerBoundary extends Component<{ onError: () => void; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  componentDidCatch() {
+    this.props.onError()
+  }
+  render() {
+    return this.state.failed ? null : this.props.children
+  }
+}
 
 type Props = {
   /** The member writing; shown as their avatar. */
@@ -168,6 +185,11 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
 
   // The emoji picker: its button, and whether the keyboard opened it (focus then moves in).
   const [emojiOpen, setEmojiOpen] = useState(false)
+  const [EmojiPicker, setEmojiPicker] = useState(emojiPicker)
+  const emojiFailed = () => {
+    setEmojiOpen(false)
+    setEmojiPicker(() => emojiPicker())
+  }
   const [emojiByKeyboard, setEmojiByKeyboard] = useState(false)
   const emojiButton = useRef<HTMLButtonElement>(null)
   const emojiPanel = useRef<HTMLDivElement>(null)
@@ -642,7 +664,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               <SmileIcon size={20} />
               <span className="composer-photo-label">Emoji</span>
             </button>
-            {emojiOpen ? <EmojiPicker anchor={toolbar} panel={emojiPanel} focusSearch={emojiByKeyboard} onPick={pickEmoji} onExit={leaveEmoji} /> : null}
+            {emojiOpen ? <PickerBoundary onError={emojiFailed}><EmojiPicker anchor={toolbar} panel={emojiPanel} focusSearch={emojiByKeyboard} onPick={pickEmoji} onExit={leaveEmoji} /></PickerBoundary> : null}
           </>
         ) : null}
         {choices?.length ? (

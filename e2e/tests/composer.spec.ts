@@ -94,6 +94,37 @@ test('emoji picked from the picker go in at the caret, whole, and are in the pos
   await context.close()
 })
 
+test('when the emoji picker cannot be downloaded it closes, the draft stays, and the next open tries again', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojioffline')
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  const draft = `A long draft ${handle}`
+  await box.fill(draft)
+
+  // The picker's code is fetched on first open; a new deploy or a dropped connection makes that fail.
+  const chunks = /\/_next\/static\/chunks\//
+  let refused = 0
+  await page.route(chunks, (route) => {
+    refused++
+    return route.abort('internetdisconnected')
+  })
+  const toggle = page.getByRole('button', { name: 'Emoji', exact: true })
+  await toggle.click()
+  await expect.poll(() => refused).toBeGreaterThan(0)
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByRole('dialog', { name: 'Emoji' })).toBeHidden()
+  await expect(page.getByRole('heading', { name: 'We could not load this page' })).toBeHidden()
+  await expect(box).toHaveValue(draft)
+
+  await page.unroute(chunks)
+  await toggle.click()
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await expect(picker).toBeVisible()
+  await picker.getByRole('button', { name: 'grinning face', exact: true }).click()
+  await expect(box).toHaveValue(`${draft}😀`)
+  await context.close()
+})
+
 test('the emoji picker is two tab stops, moves by arrow keys and lets Tab carry on', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'emojikeys')
   await page.goto('/')
