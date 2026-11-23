@@ -10,6 +10,7 @@ import { getChessTeam, getViewer } from '@/lib/api'
 import { CompetitionSection, lagosInput } from '../../../competitions/_bits'
 import { allowTournaments, linkTeam, unlinkTeam } from './actions'
 import { TournamentForm } from './tournament-form'
+import { requireGames } from '../../../_components/require-games'
 
 export const metadata: Metadata = { title: 'Community chess', robots: { index: false } }
 
@@ -42,7 +43,8 @@ export default function CommunityChessPage({ params, searchParams }: PageProps<'
 
 async function CommunityChess({ params, searchParams }: Pick<PageProps<'/games/chess/teams/[slug]'>, 'params' | 'searchParams'>) {
   const [{ slug }, query, viewer] = await Promise.all([params, searchParams, getViewer()])
-  if (viewer.state !== 'member' || !viewer.me.features.games || !/^[a-z0-9-]{1,60}$/.test(slug)) notFound()
+  requireGames(viewer, `/games/chess/teams/${slug}`)
+  if (!/^[a-z0-9-]{1,60}$/.test(slug)) notFound()
   const view = await getChessTeam(slug)
   if (!view) notFound()
   const notice = typeof query.notice === 'string' ? NOTICES[query.notice] : undefined
