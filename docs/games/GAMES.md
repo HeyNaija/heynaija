@@ -278,10 +278,12 @@ posts in Game Night.
 - **Feature flag:** the whole Games module sits behind the `games` feature flag
   (docs/feature-flags.md): on in development and staging, off in production until
   launch, and a site moderator can keep it to named members from Moderation,
-  Feature flags. Off means invisible: every Games route uses
-  `@Feature('games')` and answers 404, the web proxy serves the missing page, and
-  the Games link (last in the sidebar, and in the account menu on phones) is
-  hidden. New Games routes and jobs check the same flag.
+  Feature flags. Off means hidden: every Games route uses
+  `@Feature('games')` and answers 404, and the Games link (last in the sidebar,
+  and in the account menu on phones) is hidden. A Games address still says why
+  (docs/deployment/app-links.md): the web proxy asks someone signed out to sign in
+  and come back, and tells a member Games is not open to them yet. New Games
+  routes and jobs check the same flag.
 - **Roadmap:** Games entries live in `docs/feature-roadmap.json` as P2. After
   edits, run pnpm roadmap:generate, roadmap:check and roadmap:test.
 - **ADR:** one ADR records the games architecture, the Lichess dependency, keno

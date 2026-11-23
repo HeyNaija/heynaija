@@ -16,7 +16,10 @@ a folder in the web app and an entry in the registry, and nothing else.
 All of it sits behind the **`games` feature flag** (docs/feature-flags.md): on in
 development and staging, off in production until the team launches it. While the
 flag is off for a member, or they are not on its allow-list, every `/v1/games` route
-and `/games` answer 404 like an address that does not exist.
+answers 404 like an address that does not exist. So did the web's `/games` pages
+until 20 November 2026. Since then they follow the rule for every link
+(docs/deployment/app-links.md): someone signed out is asked to sign in and comes
+back, and a member Games is not open to is told so.
 
 ## Why
 

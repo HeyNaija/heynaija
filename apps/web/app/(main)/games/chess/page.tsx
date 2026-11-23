@@ -13,6 +13,7 @@ import { connectLichess, disconnectLichess, refreshRatings } from './actions'
 import { ChallengeForm } from './_components/challenge-form'
 import { ChallengeList } from './_components/challenge-list'
 import { LiveGames } from './_components/live-games'
+import { requireGames } from '../_components/require-games'
 
 export const metadata: Metadata = { title: 'Chess', robots: { index: false } }
 
@@ -70,7 +71,7 @@ export default function ChessPage({ searchParams }: PageProps<'/games/chess'>) {
 
 async function Chess({ searchParams }: Pick<PageProps<'/games/chess'>, 'searchParams'>) {
   const [params, viewer] = await Promise.all([searchParams, getViewer()])
-  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  requireGames(viewer, '/games/chess')
   const tab = gameTab(params.tab)
   const tabs = <GameTabs slug="chess" name="Chess" tab={tab} />
   if (tab !== 'play') {
