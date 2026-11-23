@@ -17,8 +17,8 @@
  * - `app`: the app has a screen for it, and opens it.
  * - `browser`: the app has no screen for it yet, so it hands the page to the browser.
  * - `website`: it must stay on the website, so the phone never gives it to the app:
- *   signing in, unsubscribing, downloads, Lichess's callbacks, and Keno while the
- *   Apple developer account is an individual's.
+ *   signing in, unsubscribing, downloads, Lichess's callbacks, the website's own
+ *   /flash, and Keno while the Apple developer account is an individual's.
  */
 export type Opens = 'app' | 'browser' | 'website'
 
@@ -42,6 +42,7 @@ export const PAGES = {
   '/charter': 'browser',
   '/child-safety': 'browser',
   '/email-off': 'website',
+  '/flash': 'website',
   '/games': 'app',
   '/games/chess': 'app',
   '/games/chess/callback': 'website',

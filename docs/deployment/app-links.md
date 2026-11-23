@@ -17,8 +17,8 @@ The app decides what each link does. The website follows rules 2 and 3 too.
    shown "page not found".
 4. **The app has no screen for the page yet.** The page opens in the browser.
 5. **The page must stay on the website.** These are the sign-in steps, email
-   confirmation, unsubscribing, downloads, Lichess's callbacks and Keno. The phone
-   never gives them to the app.
+   confirmation, unsubscribing, downloads, Lichess's callbacks, Keno, and `/flash`,
+   which only the website's own pages call. The phone never gives them to the app.
 
 ## Every page is marked
 
