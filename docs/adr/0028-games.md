@@ -216,6 +216,19 @@ changed since that version, and otherwise waits up to 25 seconds for the next
 change. One plain answer at a time; nginx, Cloudflare and the web app need nothing
 new.
 
+On patchy mobile data a reply can be lost on the way while the client still
+thinks the request is open (a Trivia player on 3G missed whole questions that way,
+22 November 2026). A move has no set time to come, so the game page and the app
+give up on a request and ask again (`apps/web/lib/chess-wait.ts`, the app's
+`ChessWait.kt`): after 10 seconds in a game with a clock, and after 30 seconds in
+a correspondence game. The server answers at once if the game moved on meanwhile.
+A player's own move, draw offer, resignation or abort comes back from Lichess
+within a moment, so if no reply has brought it 3 seconds after Lichess took it,
+the client asks again then. While a game goes on, a failed request is tried again
+within 2 seconds. The app sets its socket limit on purpose: OkHttp's default of 10
+seconds had cut every Android wait short, and each cut was then treated as an
+error with a growing pause.
+
 The streaming happens between servers. For each game being played, one BullMQ job
 (`GameWatcher`, with the game's id as the job id, so one per game however many API
 processes there are) holds the Board API stream open with a player's token, keeps
