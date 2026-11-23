@@ -32,7 +32,9 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
   const length = formatDuration(video.durationMs)
   const label = video.description.trim() ? `${video.description.trim()}, ${length}` : `Video, ${length}`
   // Reserve the box from the stored size so the page does not jump; very tall clips are cropped to a limit.
-  const ratio = Math.min(Math.max(video.width / video.height, 9 / 16), 2)
+  // Never narrower than 3:4 (240px wide at the phone height cap), so the player's play,
+  // time, sound and full-screen controls all fit; a taller clip is letterboxed inside it.
+  const ratio = Math.min(Math.max(video.width / video.height, 3 / 4), 2)
 
   // Starting another puts the poster back.
   const playing = useOneVideo(player, started, () => setStarted(false))
