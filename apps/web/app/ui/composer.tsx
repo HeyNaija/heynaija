@@ -38,8 +38,8 @@ const LIMIT = POST_MAX
 // fetch (a new deploy removed the chunk, or the connection dropped) is remembered by the
 // component dynamic() returns, so after one the composer makes a fresh one to try again.
 const emojiPicker = () => dynamic(() => retryOnce(() => import('./emoji-picker')), { ssr: false })
-// Giphy's fetch library and the search box are one more, fetched when someone first opens the GIF search.
-const GiphyPicker = dynamic(() => import('./giphy-picker'), { ssr: false })
+// Giphy's fetch library and the search box are one more, fetched the same way when someone first opens the GIF search.
+const giphyPicker = () => dynamic(() => retryOnce(() => import('./giphy-picker')), { ssr: false })
 
 /** Keeps a picker that failed to load from taking the page, and the draft, down with it. */
 class PickerBoundary extends Component<{ onError: () => void; children: ReactNode }, { failed: boolean }> {
@@ -228,6 +228,11 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
 
   // The Giphy search: its button, and whether the keyboard opened it (focus then moves in).
   const [giphyOpen, setGiphyOpen] = useState(false)
+  const [GiphyPicker, setGiphyPicker] = useState(giphyPicker)
+  const giphyFailed = () => {
+    setGiphyOpen(false)
+    setGiphyPicker(() => giphyPicker())
+  }
   const [giphyByKeyboard, setGiphyByKeyboard] = useState(false)
   const gifButton = useRef<HTMLButtonElement>(null)
   const giphyPanel = useRef<HTMLSpanElement>(null)
@@ -638,20 +643,22 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
                 <span className="composer-photo-label">GIF</span>
               </button>
               {giphyOpen && offers.giphy && GIPHY_API_KEY ? (
-                <GiphyPicker
-                  anchor={toolbar}
-                  apiKey={GIPHY_API_KEY}
-                  focusSearch={giphyByKeyboard}
-                  onPick={(picked) => {
-                    setGif({ id: picked.id, description: picked.title })
-                    setGiphyOpen(false)
-                    input.current?.focus({ preventScroll: true })
-                  }}
-                  onUpload={() => {
-                    setGiphyOpen(false)
-                    choose(['image/gif'])
-                  }}
-                />
+                <PickerBoundary onError={giphyFailed}>
+                  <GiphyPicker
+                    anchor={toolbar}
+                    apiKey={GIPHY_API_KEY}
+                    focusSearch={giphyByKeyboard}
+                    onPick={(picked) => {
+                      setGif({ id: picked.id, description: picked.title })
+                      setGiphyOpen(false)
+                      input.current?.focus({ preventScroll: true })
+                    }}
+                    onUpload={() => {
+                      setGiphyOpen(false)
+                      choose(['image/gif'])
+                    }}
+                  />
+                </PickerBoundary>
               ) : null}
             </span>
             {/* One hidden picker for both buttons; each says what it will offer before it opens. */}

@@ -243,3 +243,38 @@ test('a GIF from Giphy with no words can be posted', async ({ browser }) => {
   await expect(page.getByLabel('Description of GIF')).toBeHidden()
   await context.close()
 })
+
+test('when the GIF search cannot be downloaded it closes, the draft stays, and the next open tries again', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, 'needs a web app built with a Giphy key; see the comment above the test before this one')
+  const { page, handle, context } = await newMember(browser, 'gifoffline')
+  await context.route(/^https:\/\/[a-z0-9.-]*\bgiphy\.com\//, (route) =>
+    route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: { data: [], pagination: { total_count: 0, count: 0, offset: 0 }, meta: { status: 200, msg: 'OK', response_id: 'e2e' } },
+    }),
+  )
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  const draft = `A long draft ${handle}`
+  await box.fill(draft)
+
+  const chunks = /\/_next\/static\/chunks\//
+  let refused = 0
+  await page.route(chunks, (route) => {
+    refused++
+    return route.abort('internetdisconnected')
+  })
+  const toggle = page.getByRole('button', { name: 'Search GIFs' })
+  await toggle.click()
+  await expect.poll(() => refused).toBeGreaterThan(0)
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByRole('dialog', { name: 'Search GIFs' })).toBeHidden()
+  await expect(page.getByRole('heading', { name: 'We could not load this page' })).toBeHidden()
+  await expect(box).toHaveValue(draft)
+
+  await page.unroute(chunks)
+  await toggle.click()
+  await expect(page.getByRole('dialog', { name: 'Search GIFs' })).toBeVisible()
+  await expect(box).toHaveValue(draft)
+  await context.close()
+})
