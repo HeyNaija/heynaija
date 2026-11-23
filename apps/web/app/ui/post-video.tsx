@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useRef, useState } from 'react'
 import type { PostVideo as PostVideoData } from '@/lib/api'
 import { formatDuration, formatSize, videoFiles } from '@/lib/video'
 import { PlayIcon } from './icons'
@@ -59,7 +59,7 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
   }
 
   return (
-    <div className="post-video" style={{ aspectRatio: ratio }}>
+    <div className="post-video" style={{ aspectRatio: ratio, '--ratio': ratio } as CSSProperties}>
       {started ? (
         // It replaces the poster's button, so focus moves to its own play button.
         <VideoPlayer player={player} length={video.durationMs / 1000} failed={hls.failed} autoFocus>
