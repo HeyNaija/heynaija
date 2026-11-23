@@ -703,6 +703,16 @@ typing each one, and take a round's questions out again.
   question appearing is not a new version, so pages send `has` (the open question
   they show) with `after`; without it, a request arriving just after a question
   appeared waited until it closed (seen on a phone, 16 November 2026).
+- Trivia: on patchy mobile data a long-poll's reply can be lost on the way while
+  the client still thinks the request is open. On 22 November 2026 a player on 3G
+  missed two whole questions that way: the server sent each reply on time, and the
+  app waited out its 45-second limit. So the page and the app give up on a reply
+  that is 2 seconds late for a question opening or closing, and ask again
+  (`apps/web/lib/trivia-wait.ts`, the app's `TriviaWait.kt`): at least 4 seconds a
+  request, doubled for each one given up on in a row; 10 seconds before the host
+  starts the round; never past 30 seconds. While a round is on, a failed request
+  is tried again within 2 seconds. The app sets its socket limit on purpose, since
+  OkHttp's default of 10 seconds cut every Android wait short.
 - Keno: the operator could read a sealed seed before its draw (see Phase 4); the
   hash only proves the numbers were not changed afterwards. At every draw each open
   Keno page asks for it within a few seconds of the others.

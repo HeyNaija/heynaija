@@ -4,11 +4,9 @@ import Link from 'next/link'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { LocalTime } from '@/app/ui/local-time'
 import type { TriviaReveal, TriviaRound as Round } from '@/lib/api'
+import { retryPause, waitLimit } from '@/lib/trivia-wait'
 import { nameOf, ordinal, QuestionPicture, secondsLabel, Standings } from './bits'
 import { triviaCall } from './call'
-
-/** After a failed request the page waits a little longer each time, up to this. */
-const RETRY_MAX_MS = 30_000
 
 /**
  * A round as a player sees it (docs/adr/0028, phase 7). The page asks the API for
@@ -24,53 +22,92 @@ export function TriviaRound({ initial }: { initial: Round }) {
   const [said, setSaid] = useState('')
   const latest = useRef(round)
   latest.current = round
+  // The same offset, for the loop below, which runs outside React's renders.
+  const skew = useRef(offset)
 
   const take = (next: Round) => {
-    setOffset(Date.parse(next.serverTime) - Date.now())
-    if (next.version !== latest.current.version || next.current?.prompt !== latest.current.current?.prompt) setRound(next)
+    skew.current = Date.parse(next.serverTime) - Date.now()
+    setOffset(skew.current)
+    if (next.version !== latest.current.version || next.current?.prompt !== latest.current.current?.prompt) {
+      // Now, not at the next render: the loop asks again straight away, and must ask after this version.
+      latest.current = next
+      setRound(next)
+    }
   }
 
   // Waits for each change, for as long as the round goes on and the page is in view.
   useEffect(() => {
     let stopped = false
+    // One loop at a time: coming back to the page must not start a second one beside it.
+    let running = false
     let failures = 0
+    // Requests given up on in a row (lib/trivia-wait.ts): each next one is given longer.
+    let cuts = 0
     let controller: AbortController | null = null
+    let cutShort: (() => void) | null = null
     const over = () => latest.current.status === 'published' || latest.current.status === 'cancelled'
     // The Arbiter's results post is written a moment after the results: once they are out, look again a few times for it.
     let lookedForPost = 0
     const loop = async () => {
-      while (!stopped) {
-        if (over()) {
-          if (latest.current.status !== 'published' || latest.current.resultPostId || lookedForPost >= 3) return
-          lookedForPost += 1
-          await new Promise((done) => setTimeout(done, 2000))
-          const res = await fetch(`/api/v1/games/trivia/rounds/${latest.current.id}`, { cache: 'no-store' }).catch(() => null)
+      if (running) return
+      running = true
+      try {
+        while (!stopped) {
+          if (over()) {
+            if (latest.current.status !== 'published' || latest.current.resultPostId || lookedForPost >= 3) return
+            lookedForPost += 1
+            await new Promise((done) => setTimeout(done, 2000))
+            const res = await fetch(`/api/v1/games/trivia/rounds/${latest.current.id}`, { cache: 'no-store' }).catch(() => null)
+            if (stopped) return
+            if (res?.ok) take((await res.json()) as Round)
+            continue
+          }
+          if (document.visibilityState !== 'visible') return
+          const have = latest.current
+          const ask = new AbortController()
+          controller = ask
+          let cut = false
+          cutShort = () => {
+            cut = true
+            ask.abort()
+          }
+          // A reply that is late was lost on the way (patchy data drops them): give up on it and ask again.
+          const timer = setTimeout(cutShort, waitLimit(have, Date.now() + skew.current, cuts))
+          // `has`: the open question on screen, so one that opened while this request was on its way comes back at once.
+          const showing = have.current?.prompt ? have.current.id : ''
+          const reply = await fetch(`/api/v1/games/trivia/rounds/${have.id}?after=${have.version}&has=${encodeURIComponent(showing)}`, {
+            cache: 'no-store',
+            signal: ask.signal,
+          })
+            .then(async (res) => (res.ok ? ((await res.json()) as Round) : res.status))
+            .catch(() => null)
+          clearTimeout(timer)
+          cutShort = null
           if (stopped) return
-          if (res?.ok) take((await res.json()) as Round)
-          continue
+          if (reply !== null && typeof reply === 'object') {
+            failures = 0
+            cuts = 0
+            take(reply)
+            continue
+          }
+          if (cut) {
+            cuts += 1
+            continue
+          }
+          if (reply === 404) return
+          failures += 1
+          await new Promise((done) => setTimeout(done, retryPause(latest.current, Date.now() + skew.current, failures)))
         }
-        if (document.visibilityState !== 'visible') return
-        controller = new AbortController()
-        // `has`: the open question on screen, so one that opened while this request was on its way comes back at once.
-        const showing = latest.current.current?.prompt ? latest.current.current.id : ''
-        const res = await fetch(`/api/v1/games/trivia/rounds/${latest.current.id}?after=${latest.current.version}&has=${encodeURIComponent(showing)}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        }).catch(() => null)
-        if (stopped) return
-        if (res?.ok) {
-          failures = 0
-          take((await res.json()) as Round)
-          continue
-        }
-        if (res?.status === 404) return
-        failures += 1
-        await new Promise((done) => setTimeout(done, Math.min(1000 * 2 ** failures, RETRY_MAX_MS)))
+      } finally {
+        running = false
       }
     }
     void loop()
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void loop()
+      if (document.visibilityState !== 'visible') return
+      // A request from before the page was hidden may have died with its connection: ask again now.
+      if (running) cutShort?.()
+      else void loop()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => {
