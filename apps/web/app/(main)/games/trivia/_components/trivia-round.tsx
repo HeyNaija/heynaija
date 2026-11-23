@@ -101,6 +101,15 @@ export function TriviaRound({ initial }: { initial: Round }) {
   // The text arrives with the next answer from the API once the question opens; until then, the countdown.
   const open = current && current.prompt && opensIn <= 0 && closesIn > 0
 
+  // When a question opens, bring it into view: a player scrolled down to the last answer or the
+  // standings would otherwise see only the new picture, with the question above the screen.
+  const stage = useRef<HTMLElement>(null)
+  const openId = open ? current.id : null
+  useEffect(() => {
+    if (!openId || !stage.current) return
+    if (stage.current.getBoundingClientRect().top < 0) stage.current.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [openId])
+
   // Only for the question it answers: a late reply must not mark the next question answered.
   const setAnswer = (question: string, answer: { choice: number | null; text: string | null; ms: number }) =>
     setRound((r) => (r.current?.id === question ? { ...r, current: { ...r.current, yourAnswer: answer } } : r))
@@ -118,7 +127,7 @@ export function TriviaRound({ initial }: { initial: Round }) {
         </p>
       ) : null}
 
-      <section className="content-panel trivia-stage" aria-labelledby="trivia-now">
+      <section ref={stage} className="content-panel trivia-stage" aria-labelledby="trivia-now">
         <h2 id="trivia-now" className="sr-only">Now</h2>
         {round.status === 'cancelled' ? (
           <p className="text-sm">This round was called off. Nobody scores anything from it.</p>

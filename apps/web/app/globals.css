@@ -2780,9 +2780,12 @@ button.trivia-choice:hover:not(:disabled) { border-color: var(--accent); }
 .trivia-file-example { margin-top: 8px; overflow-x: auto; border-radius: var(--r-control); padding: 12px; background: var(--panel); color: var(--ink); font-size: 12px; line-height: 1.6; }
 /* As wide as the panel, up to most of the screen's height: players answer from it. Small uploads are scaled up. */
 .trivia-picture {
-  display: block; width: 100%; height: auto; max-height: min(36rem, 60vh);
+  /* Under half the screen, so the question and its choices fit beside it on a phone. */
+  display: block; width: 100%; height: auto; max-height: min(36rem, 40vh); max-height: min(36rem, 40svh);
   border-radius: var(--r-control); background: var(--panel); object-fit: contain;
 }
+/* Clear of the top bar when a new question scrolls into view. */
+.trivia-stage { scroll-margin-top: 88px; }
 .trivia-picture-thumb { width: 96px; height: 96px; border-radius: var(--r-control); background: var(--panel); object-fit: cover; }
 .trivia-picture-edit { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
 .trivia-picture-edit > img { flex: none; width: 112px; height: 112px; border-radius: var(--r-control); background: var(--panel); object-fit: cover; }
