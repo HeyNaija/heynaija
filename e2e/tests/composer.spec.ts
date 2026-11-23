@@ -125,6 +125,26 @@ test('when the emoji picker cannot be downloaded it closes, the draft stays, and
   await context.close()
 })
 
+test('picking the emoji that is selected leaves the caret where the member next puts it', async ({ browser }) => {
+  const { page, context } = await newMember(browser, 'emojisame')
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill('Good 😀 morning')
+  // Selects the 😀 (two UTF-16 units), so picking 😀 writes the same text back.
+  await box.evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(5, 7))
+  await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await picker.getByRole('button', { name: 'grinning face', exact: true }).click()
+  await expect(box).toHaveValue('Good 😀 morning')
+  await expect(box).toBeFocused()
+  expect(await box.evaluate((el: HTMLTextAreaElement) => [el.selectionStart, el.selectionEnd])).toEqual([7, 7])
+
+  await box.evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(el.value.length, el.value.length))
+  await box.pressSequentially('!?')
+  await expect(box).toHaveValue('Good 😀 morning!?')
+  await context.close()
+})
+
 test('the emoji picker is two tab stops, moves by arrow keys and lets Tab carry on', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'emojikeys')
   await page.goto('/')

@@ -213,7 +213,8 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     const box = input.current
     if (!box) return
     const next = insertAtSelection(text, box.selectionStart, box.selectionEnd, emoji)
-    nextCaret.current = next.caret
+    if (next.value === text) box.setSelectionRange(next.caret, next.caret)
+    else nextCaret.current = next.caret
     setText(next.value)
     setCaret(next.caret)
     setExpanded(true)
