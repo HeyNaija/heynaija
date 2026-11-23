@@ -2146,10 +2146,14 @@ html:has(.video-player:fullscreen) { scrollbar-gutter: auto; }
   text-align: center;
 }
 @container (max-width: 419px) {
+  /* The buttons keep their size; the time takes what is left and is cut short
+     rather than pushing the full-screen button out of the frame. */
   .video-player-bar {
+    grid-template-columns: auto minmax(0, auto) minmax(0, 1fr) auto auto;
     grid-template-areas: "seek seek seek seek seek" "play time . mute full";
     padding-top: 20px;
   }
+  .video-player-time { overflow: hidden; text-overflow: ellipsis; }
   .video-player-middle { bottom: 76px; }
 }
 /* A small player, such as the composer's preview on a phone, keeps its big button clear of the bar. */
