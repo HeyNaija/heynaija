@@ -1180,6 +1180,7 @@ summary.menu::-webkit-details-marker {
 .emoji-btn { display: flex; min-height: var(--touch-target); align-items: center; justify-content: center; border-radius: var(--r-chip); font-size: 24px; line-height: 1; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
 .emoji-btn:hover { background: var(--panel); }
 .emoji-empty { padding: 12px 4px; color: var(--muted); font-size: 14px; }
+.composer-emoji-note { color: var(--muted); font-size: 11px; }
 .composer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
 .composer-toolbar .icon-btn { min-height: 36px; font-size: 11px; }
 .composer-audience { display: inline-flex; min-width: 0; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }

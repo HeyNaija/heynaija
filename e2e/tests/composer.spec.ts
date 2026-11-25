@@ -114,12 +114,14 @@ test('when the emoji picker cannot be downloaded it closes, the draft stays, and
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   await expect(page.getByRole('dialog', { name: 'Emoji' })).toBeHidden()
   await expect(page.getByRole('heading', { name: 'We could not load this page' })).toBeHidden()
+  await expect(page.getByRole('alert').filter({ hasText: 'Could not load emoji. Try again.' })).toBeVisible()
   await expect(box).toHaveValue(draft)
 
   await page.unroute(chunks)
   await toggle.click()
   const picker = page.getByRole('dialog', { name: 'Emoji' })
   await expect(picker).toBeVisible()
+  await expect(page.getByText('Could not load emoji. Try again.')).toBeHidden()
   await picker.getByRole('button', { name: 'grinning face', exact: true }).click()
   await expect(box).toHaveValue(`${draft}😀`)
   await context.close()
@@ -390,5 +392,25 @@ test('the Recently used row is there from the picker\'s first paint', async ({ b
   await expect(picker.getByRole('heading', { name: 'Recently used' })).toBeVisible()
   await expect(picker.getByRole('button', { name: 'party popper' }).first()).toBeVisible()
   expect(await page.evaluate(() => (window as unknown as { emojiSeen: { without: boolean } }).emojiSeen.without)).toBe(false)
+  await context.close()
+})
+
+test('the emoji picker says it is loading while it downloads', async ({ browser }) => {
+  const { page, context } = await newMember(browser, 'emojiwait')
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'New post' }).click()
+  let release = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  const chunks = /\/_next\/static\/chunks\//
+  await page.route(chunks, async (route) => {
+    await held
+    return route.continue()
+  })
+  await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+  await expect(page.getByText('Loading emoji…')).toBeVisible()
+  release()
+  await expect(page.getByRole('dialog', { name: 'Emoji' })).toBeVisible()
+  await expect(page.getByText('Loading emoji…')).toBeHidden()
+  await page.unroute(chunks)
   await context.close()
 })

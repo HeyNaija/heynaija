@@ -34,7 +34,10 @@ const LIMIT = POST_MAX
 // The emoji list is a separate chunk, fetched when the picker is first opened. A failed
 // fetch (a new deploy removed the chunk, or the connection dropped) is remembered by the
 // component dynamic() returns, so after one the composer makes a fresh one to try again.
-const emojiPicker = () => dynamic(() => retryOnce(() => import('./emoji-picker')), { ssr: false })
+const emojiPicker = () => dynamic(() => retryOnce(() => import('./emoji-picker')), {
+  ssr: false,
+  loading: () => <span role="status" className="composer-emoji-note">Loading emoji…</span>,
+})
 
 /** Keeps a picker that failed to load from taking the page, and the draft, down with it. */
 class PickerBoundary extends Component<{ onError: () => void; children: ReactNode }, { failed: boolean }> {
@@ -186,8 +189,10 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   // The emoji picker: its button, and whether the keyboard or a screen reader opened it (focus then moves in).
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [EmojiPicker, setEmojiPicker] = useState(emojiPicker)
+  const [emojiFailedToLoad, setEmojiFailedToLoad] = useState(false)
   const emojiFailed = () => {
     setEmojiOpen(false)
+    setEmojiFailedToLoad(true)
     setEmojiPicker(() => emojiPicker())
   }
   const [emojiByKeyboard, setEmojiByKeyboard] = useState(false)
@@ -670,6 +675,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
                 const pointer = emojiPressedBy.current
                 emojiPressedBy.current = null
                 if (emojiOpen) return closeEmoji()
+                setEmojiFailedToLoad(false)
                 setEmojiByKeyboard(pointer === null)
                 // Keeps the caret with the box when a mouse opens the picker. Not for touch:
                 // focusing the box would open the on-screen keyboard over the picker.
@@ -746,7 +752,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
         {announcing ? ' Every member of this community will be notified. A community can do this once a day.' : ''}
       </p>
       <p role="alert" className="mt-1 text-sm text-danger empty:hidden">
-        {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : state.error}
+        {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : emojiFailedToLoad ? 'Could not load emoji. Try again.' : state.error}
       </p>
       {/* An update shows up in the story right above the box, so this is only said aloud. */}
       {story && state.postId ? <p key={state.postedAt} role="status" className="sr-only">Update posted.</p> : null}
