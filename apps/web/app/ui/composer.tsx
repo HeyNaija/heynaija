@@ -220,8 +220,9 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const emojiButton = useRef<HTMLButtonElement>(null)
   const emojiPanel = useRef<HTMLDivElement>(null)
   const toolbar = useRef<HTMLDivElement>(null)
-  const closeEmoji = () => {
-    const inside = emojiPanel.current?.contains(document.activeElement)
+  // `focused` is what had focus in the picker; during a blur that is the event's target, as nothing has it then.
+  const closeEmoji = (focused: Node | null = document.activeElement) => {
+    const inside = emojiPanel.current?.contains(focused)
     setEmojiOpen(false)
     if (inside) emojiButton.current?.focus()
   }
@@ -393,7 +394,15 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       onBlur={(e) => {
         // Focus going elsewhere, or to nothing, closes the picker; the box and the picker are one place.
         const next = e.relatedTarget as Node | null
-        if (emojiOpen && !(next && (form.current?.contains(next) || emojiPanel.current?.contains(next)))) setEmojiOpen(false)
+        if (!emojiOpen || (next && (form.current?.contains(next) || emojiPanel.current?.contains(next)))) return
+        // Focus gone to nothing would leave a keyboard on the page itself; it goes back to the Emoji button.
+        if (next) setEmojiOpen(false)
+        else closeEmoji(e.target)
+      }}
+      // Sent posts take no more emoji: one picked now would not be in the post. The post's own error replaces the picker's.
+      onSubmit={() => {
+        setEmojiOpen(false)
+        setEmojiFailedToLoad(false)
       }}
       onKeyDown={(e) => {
         // Escape closes the GIF search from the box or from inside it; the mention list gets it first.
@@ -402,8 +411,6 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
           closeGiphy()
         }
       }}
-      // Sent posts take no more emoji: one picked now would not be in the post.
-      onSubmit={() => setEmojiOpen(false)}
     >
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
       {replyDepth ? <input type="hidden" name="threadDepth" value={replyDepth} /> : null}
@@ -451,6 +458,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               onChange={(e) => {
                 setText(e.target.value)
                 setCaret(e.target.selectionStart)
+                setEmojiFailedToLoad(false)
               }}
               onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
               onKeyDown={onMentionKey}

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { freeSpan, placeList } from '../lib/placement.ts'
+import { freeSpan, placeList, upperEdge } from '../lib/placement.ts'
 
 const view = { top: 0, bottom: 667 }
 
@@ -42,4 +42,26 @@ test('a list held to the side it opened on keeps that side as its content shrink
   assert.equal(placeList({ anchor, span, gap: 4, tallest: 360, content: 120 }).down, true)
   assert.deepEqual(placeList({ anchor, span, gap: 4, tallest: 360, content: 120, side: 'up' }), { down: false, maxHeight: 316 })
   assert.deepEqual(placeList({ anchor, span, gap: 4, tallest: 360, content: 500, side: 'down' }), { down: true, maxHeight: 200 })
+})
+
+test('a list goes up from above the box it writes into while that leaves room, on either side', () => {
+  const span = { top: 72, bottom: 596 }
+  // The box's top in view, room above it.
+  assert.equal(upperEdge({ anchor: { top: 500, bottom: 540 }, clear: 300, span, gap: 4, least: 168 }), 300)
+  // The box's top scrolled out of view, but room below the toolbar: the list goes down, clear of the box.
+  const edge = upperEdge({ anchor: { top: 200, bottom: 240 }, clear: -300, span, gap: 4, least: 168 })
+  assert.equal(edge, -300)
+  assert.deepEqual(placeList({ anchor: { top: edge, bottom: 240 }, span, gap: 4, tallest: 360, content: 500 }), { down: true, maxHeight: 352 })
+})
+
+test('a box taller than the screen, its top scrolled away and its toolbar at the bottom: the list goes up from the toolbar, full height', () => {
+  const span = { top: 72, bottom: 596 }
+  const anchor = { top: 560, bottom: 583 }
+  const edge = upperEdge({ anchor, clear: -200, span, gap: 4, least: 168 })
+  assert.equal(edge, 560)
+  assert.deepEqual(placeList({ anchor: { top: edge, bottom: anchor.bottom }, span, gap: 4, tallest: 360, content: 500 }), { down: false, maxHeight: 360 })
+})
+
+test('with nothing to keep clear the list goes up from its anchor', () => {
+  assert.equal(upperEdge({ anchor: { top: 400, bottom: 440 }, span: { top: 72, bottom: 596 }, gap: 4, least: 168 }), 400)
 })
