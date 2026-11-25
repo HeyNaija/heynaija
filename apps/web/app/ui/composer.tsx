@@ -183,7 +183,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     nextCaret.current = null
   }, [text])
 
-  // The emoji picker: its button, and whether the keyboard opened it (focus then moves in).
+  // The emoji picker: its button, and whether the keyboard or a screen reader opened it (focus then moves in).
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [EmojiPicker, setEmojiPicker] = useState(emojiPicker)
   const emojiFailed = () => {
@@ -191,6 +191,8 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     setEmojiPicker(() => emojiPicker())
   }
   const [emojiByKeyboard, setEmojiByKeyboard] = useState(false)
+  // The pointerType of the press on the Emoji button; none before the click means the keyboard or a screen reader.
+  const emojiPressedBy = useRef<string | null>(null)
   const emojiButton = useRef<HTMLButtonElement>(null)
   const emojiPanel = useRef<HTMLDivElement>(null)
   const toolbar = useRef<HTMLDivElement>(null)
@@ -207,9 +209,10 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     ;(next ?? emojiButton.current)?.focus()
   }
 
-  // Puts the emoji over the selection and the caret after it. A pointer pick keeps the
-  // box focused; a keyboard pick stays on the emoji in the picker so the next pick is a keypress away.
-  const pickEmoji = (emoji: string, byPointer: boolean) => {
+  // Puts the emoji over the selection and the caret after it. A mouse pick keeps the box
+  // focused. A touch pick leaves focus alone: focusing the box would open the on-screen
+  // keyboard over the picker. A keyboard pick stays on the emoji so the next is a keypress away.
+  const pickEmoji = (emoji: string, pointer: string | null) => {
     const box = input.current
     if (!box) return
     const next = insertAtSelection(text, box.selectionStart, box.selectionEnd, emoji)
@@ -218,7 +221,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     setText(next.value)
     setCaret(next.caret)
     setExpanded(true)
-    if (byPointer) box.focus({ preventScroll: true })
+    if (pointer === 'mouse') box.focus({ preventScroll: true })
   }
 
   const pickMention = (handle: string) => {
@@ -275,6 +278,17 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     document.addEventListener('pointerdown', outside)
     return () => document.removeEventListener('pointerdown', outside)
   }, [])
+  // Escape closes the picker wherever focus is, even on nothing; the mention list gets it first.
+  useEffect(() => {
+    if (!emojiOpen) return
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      e.preventDefault()
+      closeEmoji()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [emojiOpen])
   const [tooMany, setTooMany] = useState(false)
 
   // React resets the form when an action finishes, and a <select> then shows its
@@ -334,19 +348,12 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const content = (
     <form ref={form} id={formId} action={action} className={`${inline ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''}${answeringReply ? ' is-answering' : ''} scroll-mt-32`}
       onBlur={(e) => {
-        // Keyboard focus going elsewhere closes the picker; the box and the picker are one place.
+        // Focus going elsewhere, or to nothing, closes the picker; the box and the picker are one place.
         const next = e.relatedTarget as Node | null
-        if (emojiOpen && next && !form.current?.contains(next) && !emojiPanel.current?.contains(next)) setEmojiOpen(false)
+        if (emojiOpen && !(next && (form.current?.contains(next) || emojiPanel.current?.contains(next)))) setEmojiOpen(false)
       }}
       // Sent posts take no more emoji: one picked now would not be in the post.
       onSubmit={() => setEmojiOpen(false)}
-      onKeyDown={(e) => {
-        // Escape closes the picker from the box or from inside it; the mention list gets it first.
-        if (e.key === 'Escape' && emojiOpen && !e.defaultPrevented) {
-          e.preventDefault()
-          closeEmoji()
-        }
-      }}
     >
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
       {replyDepth ? <input type="hidden" name="threadDepth" value={replyDepth} /> : null}
@@ -653,11 +660,20 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               disabled={pending}
               // The press does not move focus off the box.
               onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => {
+              onPointerDown={(e) => {
+                emojiPressedBy.current = e.pointerType
+              }}
+              onKeyDown={() => {
+                emojiPressedBy.current = null
+              }}
+              onClick={() => {
+                const pointer = emojiPressedBy.current
+                emojiPressedBy.current = null
                 if (emojiOpen) return closeEmoji()
-                setEmojiByKeyboard(e.detail === 0)
-                // Keeps Escape and the caret with the box when a pointer opens the picker.
-                if (e.detail > 0) input.current?.focus({ preventScroll: true })
+                setEmojiByKeyboard(pointer === null)
+                // Keeps the caret with the box when a mouse opens the picker. Not for touch:
+                // focusing the box would open the on-screen keyboard over the picker.
+                if (pointer === 'mouse') input.current?.focus({ preventScroll: true })
                 // The list of members to mention gives way to the picker.
                 if (typing) setDismissed(typing.start)
                 setEmojiOpen(true)

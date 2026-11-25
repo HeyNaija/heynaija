@@ -43,9 +43,10 @@ export default function EmojiPicker({
   /** The box above the anchor: opening upward, the picker goes above it rather than over it. */
   clear: RefObject<HTMLElement | null>
   panel: RefObject<HTMLDivElement | null>
-  /** Opened from the keyboard: focus moves into the picker. Opened by pointer, the box keeps it. */
+  /** Opened without a mouse or touch press (the keyboard, a screen reader): focus moves into the picker. */
   focusSearch: boolean
-  onPick: (emoji: string, byPointer: boolean) => void
+  /** `pointer` is the pointerType of the press that picked, or null for the keyboard or a screen reader. */
+  onPick: (emoji: string, pointer: string | null) => void
   /** Tab went past the last stop (`next`) or before the first (`back`). */
   onExit: (to: 'next' | 'back') => void
 }) {
@@ -57,6 +58,8 @@ export default function EmojiPicker({
   const [recent, setRecent] = useState<string[]>([])
   const latest = useRef<string[]>([])
   const [active, setActive] = useState(0)
+  // How the last press in the picker was made; a click with none before it came from the keyboard or a screen reader.
+  const pressedBy = useRef<string | null>(null)
   useFixedPlacement(anchor, panel, true, { tallest: 360, widest: 340, clear, keepSide: true })
 
   useEffect(() => {
@@ -76,10 +79,12 @@ export default function EmojiPicker({
   const total = sections.reduce((sum, n) => sum + n, 0)
   const stop = active < total ? active : 0
 
-  const pick = (emoji: Emoji, byPointer: boolean) => {
+  const pick = (emoji: Emoji) => {
+    const pointer = pressedBy.current
+    pressedBy.current = null
     latest.current = remember(latest.current, emoji.char)
     saveRecent(latest.current)
-    onPick(emoji.char, byPointer)
+    onPick(emoji.char, pointer)
   }
 
   const onGridKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -105,7 +110,24 @@ export default function EmojiPicker({
 
   let cell = 0
   return createPortal(
-    <div ref={panel} role="dialog" aria-label="Emoji" aria-describedby={`${id}-hint`} className="emoji-picker" onKeyDown={onTab}>
+    <div
+      ref={panel}
+      role="dialog"
+      aria-label="Emoji"
+      aria-describedby={`${id}-hint`}
+      className="emoji-picker"
+      onKeyDown={(e) => {
+        pressedBy.current = null
+        onTab(e)
+      }}
+      onPointerDown={(e) => {
+        pressedBy.current = e.pointerType
+      }}
+      // A press on a heading or the padding leaves focus where it was, so Escape and Tab still reach the picker.
+      onMouseDown={(e) => {
+        if (e.target !== search.current) e.preventDefault()
+      }}
+    >
       <p id={`${id}-hint`} className="sr-only">Arrow keys move between emoji. Escape closes.</p>
       <label htmlFor={`${id}-search`} className="sr-only">Search emoji</label>
       <input
@@ -147,9 +169,7 @@ export default function EmojiPicker({
                       data-cell={at}
                       tabIndex={at === stop ? 0 : -1}
                       onFocus={() => setActive(at)}
-                      // Keeps focus (and the caret) where it is while the pointer picks.
-                      onMouseDown={(ev) => ev.preventDefault()}
-                      onClick={(ev) => pick(e, ev.detail > 0)}
+                      onClick={() => pick(e)}
                     >
                       <span aria-hidden="true">{e.char}</span>
                     </button>
