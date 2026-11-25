@@ -370,3 +370,25 @@ test('pressing a heading in the picker keeps it open for Escape, and pressing no
   await expect(picker).toBeHidden()
   await context.close()
 })
+
+test('the Recently used row is there from the picker\'s first paint', async ({ browser }) => {
+  const { page, context } = await newMember(browser, 'emojirecent')
+  await page.goto('/')
+  await page.evaluate(() => {
+    localStorage.setItem('emoji-recent', JSON.stringify(['🎉']))
+    // Notes any moment the picker is in the page without the row.
+    const seen = { without: false }
+    ;(window as unknown as { emojiSeen: typeof seen }).emojiSeen = seen
+    new MutationObserver(() => {
+      const picker = document.querySelector('[role="dialog"][aria-label="Emoji"]')
+      if (picker && !picker.textContent?.includes('Recently used')) seen.without = true
+    }).observe(document.body, { childList: true, subtree: true })
+  })
+  await page.getByRole('textbox', { name: 'New post' }).click()
+  await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await expect(picker.getByRole('heading', { name: 'Recently used' })).toBeVisible()
+  await expect(picker.getByRole('button', { name: 'party popper' }).first()).toBeVisible()
+  expect(await page.evaluate(() => (window as unknown as { emojiSeen: { without: boolean } }).emojiSeen.without)).toBe(false)
+  await context.close()
+})

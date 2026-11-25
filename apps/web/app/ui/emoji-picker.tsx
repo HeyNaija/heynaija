@@ -55,16 +55,15 @@ export default function EmojiPicker({
   const scroll = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState('')
   // What was used before, as of opening: the grid does not shift under the keys while picking.
-  const [recent, setRecent] = useState<string[]>([])
-  const latest = useRef<string[]>([])
+  // Read while drawing (the picker is never rendered on the server), so the row is there from the first paint.
+  const [recent] = useState(loadRecent)
+  const latest = useRef(recent)
   const [active, setActive] = useState(0)
   // How the last press in the picker was made; a click with none before it came from the keyboard or a screen reader.
   const pressedBy = useRef<string | null>(null)
   useFixedPlacement(anchor, panel, true, { tallest: 360, widest: 340, clear, keepSide: true })
 
   useEffect(() => {
-    latest.current = loadRecent()
-    setRecent(latest.current)
     if (focusSearch) search.current?.focus({ preventScroll: true })
   }, [focusSearch])
 
