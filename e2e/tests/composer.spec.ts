@@ -292,3 +292,19 @@ test('the emoji picker closes when the post is sent, not after it lands', async 
   await expect(page.locator('article', { hasText: `Sending ${handle}` }).first()).toBeVisible()
   await context.close()
 })
+
+test('on a touch screen the Emoji button is a full touch target, in the feed and in a reply @mobile', async ({ browser }) => {
+  test.skip(!test.info().project.use.hasTouch, 'touch screens only')
+  const { page, handle, context } = await newMember(browser, 'emojitarget')
+  await page.goto('/')
+  expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true)
+  await page.getByRole('textbox', { name: 'New post' }).click()
+  expect(await height(page.getByRole('button', { name: 'Emoji', exact: true }))).toBeGreaterThanOrEqual(44)
+
+  const article = await post(page, `Big targets ${handle}`)
+  const id = (await article.getAttribute('id'))!.replace('post-', '')
+  await page.goto(`/p/${id}`)
+  await (await replyBox(page)).click()
+  expect(await height(page.getByRole('button', { name: 'Emoji', exact: true }))).toBeGreaterThanOrEqual(44)
+  await context.close()
+})
