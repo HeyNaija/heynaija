@@ -665,7 +665,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               <SmileIcon size={20} />
               <span className="composer-photo-label">Emoji</span>
             </button>
-            {emojiOpen ? <PickerBoundary onError={emojiFailed}><EmojiPicker anchor={toolbar} panel={emojiPanel} focusSearch={emojiByKeyboard} onPick={pickEmoji} onExit={leaveEmoji} /></PickerBoundary> : null}
+            {emojiOpen ? <PickerBoundary onError={emojiFailed}><EmojiPicker anchor={toolbar} clear={writingRow} panel={emojiPanel} focusSearch={emojiByKeyboard} onPick={pickEmoji} onExit={leaveEmoji} /></PickerBoundary> : null}
           </>
         ) : null}
         {choices?.length ? (

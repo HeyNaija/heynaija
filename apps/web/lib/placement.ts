@@ -21,11 +21,12 @@ export function freeSpan(view: Span, bars: Span[], edge: number): Span {
 
 /**
  * Below its anchor if the list fits there (or there is more room below than above),
- * otherwise above, and how tall it may be on that side.
+ * otherwise above, and how tall it may be on that side. Given a `side`, the list
+ * stays there and only its height follows.
  */
-export function placeList({ anchor, span, gap, tallest, content }: { anchor: Span; span: Span; gap: number; tallest: number; content: number }): { down: boolean; maxHeight: number } {
+export function placeList({ anchor, span, gap, tallest, content, side }: { anchor: Span; span: Span; gap: number; tallest: number; content: number; side?: 'up' | 'down' }): { down: boolean; maxHeight: number } {
   const below = span.bottom - anchor.bottom - gap
   const above = anchor.top - span.top - gap
-  const down = below >= Math.min(tallest, content + 2) || below >= above
+  const down = side ? side === 'down' : below >= Math.min(tallest, content + 2) || below >= above
   return { down, maxHeight: Math.max(0, Math.min(tallest, down ? below : above)) }
 }

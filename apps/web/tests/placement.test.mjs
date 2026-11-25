@@ -32,3 +32,14 @@ test('a landscape phone with the reply bar open: the room above ends at the top 
   assert.equal(placed.down, false)
   assert.equal(placed.maxHeight, 250 - 72 - 4)
 })
+
+test('a list held to the side it opened on keeps that side as its content shrinks, and only its height follows', () => {
+  const span = { top: 72, bottom: 596 }
+  const anchor = { top: 392, bottom: 392 }
+  // 200px below, 316px above: a full picker opens above.
+  assert.deepEqual(placeList({ anchor, span, gap: 4, tallest: 360, content: 500 }), { down: false, maxHeight: 316 })
+  // Searching leaves one row: free to choose, it would jump below.
+  assert.equal(placeList({ anchor, span, gap: 4, tallest: 360, content: 120 }).down, true)
+  assert.deepEqual(placeList({ anchor, span, gap: 4, tallest: 360, content: 120, side: 'up' }), { down: false, maxHeight: 316 })
+  assert.deepEqual(placeList({ anchor, span, gap: 4, tallest: 360, content: 500, side: 'down' }), { down: true, maxHeight: 200 })
+})

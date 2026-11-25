@@ -33,12 +33,15 @@ function saveRecent(list: string[]) {
  */
 export default function EmojiPicker({
   anchor,
+  clear,
   panel,
   focusSearch,
   onPick,
   onExit,
 }: {
   anchor: RefObject<HTMLElement | null>
+  /** The box above the anchor: opening upward, the picker goes above it rather than over it. */
+  clear: RefObject<HTMLElement | null>
   panel: RefObject<HTMLDivElement | null>
   /** Opened from the keyboard: focus moves into the picker. Opened by pointer, the box keeps it. */
   focusSearch: boolean
@@ -54,7 +57,7 @@ export default function EmojiPicker({
   const [recent, setRecent] = useState<string[]>([])
   const latest = useRef<string[]>([])
   const [active, setActive] = useState(0)
-  useFixedPlacement(anchor, panel, true, 360, 340)
+  useFixedPlacement(anchor, panel, true, { tallest: 360, widest: 340, clear, keepSide: true })
 
   useEffect(() => {
     latest.current = loadRecent()

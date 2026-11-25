@@ -200,3 +200,68 @@ test('pressing inside the emoji picker keeps a reply box open around it, and Esc
   await expect(toggle).toBeFocused()
   await context.close()
 })
+
+const PHONE = { width: 375, height: 667 }
+const USABLE = 36 + 3 * 44
+const rect = (locator: import('@playwright/test').Locator) => locator.evaluate((el) => el.getBoundingClientRect().toJSON() as DOMRect)
+
+/** The picker is on screen, tall enough to use, and clear of the box it writes into. */
+async function expectClearOfBox(page: import('@playwright/test').Page, box: import('@playwright/test').Locator) {
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await expect(picker).toBeVisible()
+  const [p, t] = [await rect(picker), await rect(box)]
+  expect(p.bottom <= t.top || p.top >= t.bottom, `picker ${p.top}-${p.bottom} overlaps the box ${t.top}-${t.bottom}`).toBe(true)
+  expect(p.top).toBeGreaterThanOrEqual(0)
+  expect(p.bottom).toBeLessThanOrEqual(PHONE.height)
+  // Room for the search box and three rows of emoji at least.
+  expect(p.height).toBeGreaterThanOrEqual(USABLE)
+}
+
+test('the emoji picker never covers the box, in a tall feed draft or in the phone reply bar @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojiclear', { viewport: PHONE })
+  // A draft tall enough that the toolbar sits low, with more room above it than below.
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.click()
+  await box.fill(`${handle}\n${lines(8)}`)
+  await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+  await expectClearOfBox(page, box)
+  await box.press('Escape')
+
+  const article = await post(page, `Reply bar ${handle}`)
+  const id = (await article.getAttribute('id'))!.replace('post-', '')
+  await page.goto(`/p/${id}`)
+  const reply = await replyBox(page)
+  await reply.click()
+  await reply.fill('Nice one')
+  await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+  await expectClearOfBox(page, reply)
+  await context.close()
+})
+
+test('scrolling the emoji grid does not place the picker again on every scroll event', async ({ browser }) => {
+  const { page, context } = await newMember(browser, 'emojiscroll')
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'New post' }).click()
+  await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await expect(picker).toBeVisible()
+  const measured = await page.evaluate(async () => {
+    let count = 0
+    const original = Element.prototype.getBoundingClientRect
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      if (this.classList.contains('composer-toolbar')) count++
+      return original.call(this)
+    }
+    const grid = document.querySelector<HTMLElement>('.emoji-scroll')!
+    const scrolled = new Promise((resolve) => grid.addEventListener('scroll', resolve, { once: true }))
+    grid.scrollTop = 400
+    await scrolled
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    Element.prototype.getBoundingClientRect = original
+    return { count, top: grid.scrollTop }
+  })
+  expect(measured.top).toBeGreaterThan(0)
+  expect(measured.count).toBe(0)
+  await context.close()
+})
