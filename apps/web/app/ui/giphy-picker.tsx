@@ -45,7 +45,7 @@ export default function GiphyPicker({
   // Counts restarts of the list, so a "More" answer that comes after a new search is dropped.
   const run = useRef(0)
   const client = useMemo(() => new GiphyFetch(apiKey), [apiKey])
-  useFixedPlacement(anchor, panel, true, 440, 360)
+  useFixedPlacement(anchor, panel, true, { tallest: 440, widest: 360 })
 
   useEffect(() => {
     if (focusSearch) search.current?.focus({ preventScroll: true })
