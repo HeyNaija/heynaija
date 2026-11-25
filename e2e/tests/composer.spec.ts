@@ -127,6 +127,65 @@ test('when the emoji picker cannot be downloaded it closes, the draft stays, and
   await context.close()
 })
 
+/** Taps Emoji while the picker's code cannot be fetched, and waits for its error. */
+async function failEmojiLoad(page: import('@playwright/test').Page) {
+  const chunks = /\/_next\/static\/chunks\//
+  await page.route(chunks, (route) => route.abort('internetdisconnected'))
+  await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'Could not load emoji. Try again.' })).toBeVisible()
+  await page.unroute(chunks)
+}
+
+test('a post refused after the emoji picker failed to load says why it was refused, and a sent one leaves no error', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojirefused')
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Refused ${handle}`)
+  await failEmojiLoad(page)
+
+  // A community that does not exist: the server refuses the post.
+  await page.locator('form#compose').evaluate((form) => {
+    const field = Object.assign(document.createElement('input'), { type: 'hidden', name: 'community', value: 'no-such-community', id: 'bogus-community' })
+    form.append(field)
+  })
+  await page.getByRole('button', { name: 'Post', exact: true }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'That community is no longer available.' })).toBeVisible()
+  await expect(page.getByText('Could not load emoji. Try again.')).toBeHidden()
+
+  await page.locator('#bogus-community').evaluate((field) => field.remove())
+  await page.getByRole('button', { name: 'Post', exact: true }).click()
+  await expect(page.locator('article', { hasText: `Refused ${handle}` }).first()).toBeVisible()
+  await expect(page.getByText('Could not load emoji. Try again.')).toBeHidden()
+  await context.close()
+})
+
+test('typing after the emoji picker failed to load clears its error', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojitypeon')
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Typing on ${handle}`)
+  await failEmojiLoad(page)
+  await box.press('End')
+  await box.pressSequentially('!')
+  await expect(page.getByText('Could not load emoji. Try again.')).toBeHidden()
+  await context.close()
+})
+
+test('focus leaving the emoji picker for nothing closes it and puts focus back on its button', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojiblur')
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'New post' }).fill(`Blur ${handle}`)
+  const toggle = page.getByRole('button', { name: 'Emoji', exact: true })
+  await toggle.focus()
+  await page.keyboard.press('Enter')
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await expect(picker.getByRole('searchbox', { name: 'Search emoji' })).toBeFocused()
+  await page.evaluate(() => (document.activeElement as HTMLElement).blur())
+  await expect(picker).toBeHidden()
+  await expect(toggle).toBeFocused()
+  await context.close()
+})
+
 test('picking the emoji that is selected leaves the caret where the member next puts it', async ({ browser }) => {
   const { page, context } = await newMember(browser, 'emojisame')
   await page.goto('/')
