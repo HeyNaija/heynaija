@@ -414,3 +414,18 @@ test('the emoji picker says it is loading while it downloads', async ({ browser 
   await page.unroute(chunks)
   await context.close()
 })
+
+test('while searching, no emoji section is labelled by a heading that is not drawn', async ({ browser }) => {
+  const { page, context } = await newMember(browser, 'emojilabels')
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'New post' }).click()
+  await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await picker.getByRole('searchbox', { name: 'Search emoji' }).fill('heart')
+  await expect(picker.getByRole('button', { name: 'red heart' })).toBeVisible()
+  const dangling = await picker.locator('section').evaluateAll((sections) =>
+    sections.map((s) => s.getAttribute('aria-labelledby')).filter((id) => id !== null && !document.getElementById(id)),
+  )
+  expect(dangling).toEqual([])
+  await context.close()
+})

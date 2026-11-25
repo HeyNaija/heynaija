@@ -153,7 +153,7 @@ export default function EmojiPicker({
         {searching && found.length === 0 ? <p className="emoji-empty">No emoji match.</p> : null}
         {shown.map((g, i) =>
           g.emoji.length ? (
-            <section key={g.name} aria-labelledby={`${id}-group-${i}`}>
+            <section key={g.name} aria-labelledby={searching ? undefined : `${id}-group-${i}`}>
               {searching ? null : <h3 id={`${id}-group-${i}`} className="emoji-heading">{g.name}</h3>}
               <div className="emoji-grid" role={searching ? 'group' : undefined} aria-label={searching ? 'Results' : undefined}>
                 {g.emoji.map((e) => {
