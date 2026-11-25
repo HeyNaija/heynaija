@@ -338,6 +338,8 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
         const next = e.relatedTarget as Node | null
         if (emojiOpen && next && !form.current?.contains(next) && !emojiPanel.current?.contains(next)) setEmojiOpen(false)
       }}
+      // Sent posts take no more emoji: one picked now would not be in the post.
+      onSubmit={() => setEmojiOpen(false)}
       onKeyDown={(e) => {
         // Escape closes the picker from the box or from inside it; the mention list gets it first.
         if (e.key === 'Escape' && emojiOpen && !e.defaultPrevented) {

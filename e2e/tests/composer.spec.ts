@@ -265,3 +265,30 @@ test('scrolling the emoji grid does not place the picker again on every scroll e
   expect(measured.count).toBe(0)
   await context.close()
 })
+
+test('the emoji picker closes when the post is sent, not after it lands', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojisend')
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Sending ${handle}`)
+  const toggle = page.getByRole('button', { name: 'Emoji', exact: true })
+  await toggle.click()
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await expect(picker).toBeVisible()
+
+  // The post is held on its way until the picker has been checked.
+  let release = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/*', async (route) => {
+    if (route.request().method() !== 'POST' || !route.request().headers()['next-action']) return route.fallback()
+    await held
+    return route.continue()
+  })
+  await page.getByRole('button', { name: 'Post', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Posting…' })).toBeVisible()
+  await expect(picker).toBeHidden()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  release()
+  await expect(page.locator('article', { hasText: `Sending ${handle}` }).first()).toBeVisible()
+  await context.close()
+})
