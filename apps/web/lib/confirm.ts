@@ -1,10 +1,12 @@
 /**
  * The words of a confirmation. Call sites write one line, "Delete this post? This
  * cannot be undone.": the question is the dialog's title and the rest its message.
+ * It is split at the last "? ", so a name in the question may hold one; a question
+ * that ends in a name comes as `title` instead.
  */
 export function confirmCopy(message: string, title?: string): { title: string; message: string | null } {
-  if (title) return { title, message }
-  const end = message.indexOf('? ')
+  if (title) return { title, message: message.trim() || null }
+  const end = message.lastIndexOf('? ')
   if (end === -1) return { title: message, message: null }
   return { title: message.slice(0, end + 1), message: message.slice(end + 2).trim() || null }
 }

@@ -61,3 +61,12 @@ test('Tab goes round inside the dialog', () => {
   assert.equal(wrapFocus(2, -1, false), 0)
   assert.equal(wrapFocus(0, -1, false), null)
 })
+
+test('a question mark inside a name does not end the question', () => {
+  // A question that ends in a name cannot be told apart from a question and a reply, so it comes as the title.
+  assert.deepEqual(confirmCopy('', 'Stop @ada moderating Who? Me?'), { title: 'Stop @ada moderating Who? Me?', message: null })
+  assert.deepEqual(confirmCopy('Leave Who? Me? You can join again later.'), {
+    title: 'Leave Who? Me?',
+    message: 'You can join again later.',
+  })
+})

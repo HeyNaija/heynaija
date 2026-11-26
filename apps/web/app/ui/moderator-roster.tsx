@@ -27,7 +27,7 @@ export function ModeratorRoster({ roster }: { roster: Roster }) {
                 <span>@{m.handle}</span>
                 <SubmitButton
                   className="text-xs font-semibold text-danger hover:underline"
-                  confirmMessage={`Stop @${m.handle} moderating ${c.name}?`}
+                  confirmTitle={`Stop @${m.handle} moderating ${c.name}?`}
                   confirmLabel="Remove moderator"
                 >
                   Remove

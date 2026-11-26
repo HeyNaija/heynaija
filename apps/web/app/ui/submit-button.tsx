@@ -22,7 +22,8 @@ export function SubmitButton({
   className?: string
   /**
    * Ask before submitting (used for deletes): "Delete this post? This cannot be
-   * undone." The question becomes the dialog's title unless `confirmTitle` is given.
+   * undone." The question becomes the dialog's title unless `confirmTitle` is given,
+   * which a question ending in a name needs; `confirmTitle` alone asks just that.
    * Until the page's JavaScript has loaded the form is sent without asking.
    */
   confirmMessage?: string
@@ -40,6 +41,7 @@ export function SubmitButton({
   const { pending } = useFormStatus()
   const button = useRef<HTMLButtonElement>(null)
   const [asking, setAsking] = useState(false)
+  const asks = !!(confirmMessage || confirmTitle)
   return (
     <>
       <button
@@ -50,14 +52,14 @@ export function SubmitButton({
         disabled={pending}
         aria-label={label}
         aria-pressed={pressed}
-        onClick={confirmMessage ? (e) => { e.preventDefault(); setAsking(true) } : undefined}
+        onClick={asks ? (e) => { e.preventDefault(); setAsking(true) } : undefined}
         className={`${className ?? ''} disabled:opacity-50`}
       >
         {children}
       </button>
-      {confirmMessage && asking ? (
+      {asks && asking ? (
         <ConfirmDialog
-          {...confirmCopy(confirmMessage, confirmTitle)}
+          {...confirmCopy(confirmMessage ?? '', confirmTitle)}
           confirmLabel={confirmLabel}
           cancelLabel={cancelLabel}
           trigger={button}
