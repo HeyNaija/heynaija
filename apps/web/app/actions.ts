@@ -17,7 +17,7 @@ import { announcementWait } from '@/lib/announcements'
 import { DATA_COOKIE, DATA_COOKIE_MAX_AGE, dataMode } from '@/lib/low-data'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, AGE_REFUSED_COOKIE, INVITE_COOKIE } from '@/lib/invite'
 import { forgetEndedSession, reauthUrl, startAuthUrl } from '@/lib/auth/server'
-import { blockFlash, deleteFlash, pinFlash } from '@/lib/flash'
+import { blockFlash, deleteFlash, FLASH_COOKIE, pinFlash } from '@/lib/flash'
 import { flash } from '@/lib/flash-server'
 import { siteOrigin } from '@/lib/previews'
 import { preferencesFromForm } from '@/lib/notification-preferences'
@@ -1033,6 +1033,7 @@ export async function requestAccountDeletion(_prev: DeletionFormState, formData:
   await forgetEndedSession()
   const jar = await cookies()
   jar.delete(PUSH_COOKIE)
+  jar.delete(FLASH_COOKIE)
   jar.set(DELETION_COOKIE, answer.scheduledFor, {
     httpOnly: true,
     sameSite: 'lax',

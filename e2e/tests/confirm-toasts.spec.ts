@@ -187,3 +187,20 @@ test('on a touch screen, dismissing one toast lets the others go by themselves @
   await expect(toasts(page)).toHaveCount(0)
   await context.close()
 })
+
+test('signing out forgets a flash nobody has seen yet', async ({ browser }) => {
+  const { page, context } = await newMember(browser, 'leaver')
+  await page.goto('/')
+  await context.addCookies([{
+    name: 'hn_flash',
+    value: 'blocked.0b0e3c1e-6f0a-4f6e-9a57-0d7f0e2f9c11',
+    url: new URL('/', page.url()).href,
+    httpOnly: true,
+    expires: Math.floor(Date.now() / 1000) + 30,
+  }])
+  // Kratos's own logout is not followed: its redirect home goes to the configured web origin.
+  const out = await page.request.get('/logout?to=%2Fkratos%2Fself-service%2Flogout%3Ftoken%3De2e', { maxRedirects: 0 })
+  expect(out.status()).toBe(303)
+  expect((await context.cookies()).map((cookie) => cookie.name)).not.toContain('hn_flash')
+  await context.close()
+})
