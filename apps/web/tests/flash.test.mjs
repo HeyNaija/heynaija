@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { blockFlash, clearsFlash, decodeFlash, deleteFlash, encodeFlash, FLASH_MESSAGES, pinFlash } from '../lib/flash.ts'
+import { blockFlash, clearsFlash, shownFlashId, decodeFlash, deleteFlash, encodeFlash, FLASH_MESSAGES, pinFlash } from '../lib/flash.ts'
 
 const ID = '0b0e3c1e-6f0a-4f6e-9a57-0d7f0e2f9c11'
 
@@ -82,4 +82,34 @@ test('a shown flash clears the cookie only while the cookie still holds that fla
   assert.equal(clearsFlash(undefined, ID), false)
   assert.equal(clearsFlash(`nonsense.${ID}`, ID), false)
   assert.equal(clearsFlash(encodeFlash('post_deleted', ID), ''), false)
+})
+
+/** A body of `chunks` pieces of `size` bytes, counting how many were pulled. */
+function body(text, chunks = 1) {
+  const bytes = new TextEncoder().encode(text)
+  const counted = { pulled: 0 }
+  const stream = new ReadableStream({
+    pull(controller) {
+      if (counted.pulled === chunks) return controller.close()
+      counted.pulled++
+      controller.enqueue(bytes)
+    },
+  })
+  return { stream, counted }
+}
+
+test('/flash reads the shown id from the body', async () => {
+  const { stream } = body(ID)
+  assert.equal(await shownFlashId(stream, String(ID.length)), ID)
+  assert.equal(await shownFlashId(null, null), '')
+})
+
+test('/flash reads no more than its first piece of a long body, and nothing of one said to be long', async () => {
+  const long = body('x'.repeat(16_384), 1_000)
+  assert.equal(await shownFlashId(long.stream, null), 'x'.repeat(64))
+  assert.ok(long.counted.pulled <= 2, `pulled ${long.counted.pulled} pieces`)
+
+  const declared = body(ID, 1_000)
+  assert.equal(await shownFlashId(declared.stream, String(16_384_000)), '')
+  assert.equal(declared.counted.pulled <= 1, true, `pulled ${declared.counted.pulled} pieces`)
 })

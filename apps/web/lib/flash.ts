@@ -64,3 +64,20 @@ export function blockFlash(relation: 'block' | 'mute', on: boolean, status: numb
 export function clearsFlash(cookie: string | undefined, shown: string): boolean {
   return decodeFlash(cookie)?.id === shown
 }
+
+const SHOWN_MAX = 64
+
+/**
+ * The id the browser sends to /flash, from no more than the first piece of the
+ * body: a route handler has no size limit of its own, and an id is 36 characters.
+ */
+export async function shownFlashId(body: ReadableStream<Uint8Array> | null, length: string | null): Promise<string> {
+  if (!body || Number(length) > SHOWN_MAX) return ''
+  const reader = body.getReader()
+  try {
+    const { value } = await reader.read()
+    return value ? new TextDecoder().decode(value.subarray(0, SHOWN_MAX)) : ''
+  } finally {
+    void reader.cancel().catch(() => undefined)
+  }
+}
