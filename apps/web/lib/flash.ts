@@ -35,3 +35,32 @@ export function decodeFlash(value: string | undefined): ToastInput | null {
   if (dot === -1 || !Object.hasOwn(FLASH_MESSAGES, key) || !isUuid(id)) return null
   return { id, ...FLASH_MESSAGES[key as FlashKey] }
 }
+
+const ok = (status: number) => status >= 200 && status < 300
+
+/** After deleting a post. One that is already gone (a second press, another tab) is deleted all the same. */
+export function deleteFlash(status: number): FlashKey {
+  return ok(status) || status === 404 ? 'post_deleted' : 'action_failed'
+}
+
+/** After pinning (`on`) or unpinning a post. The feed looks the same either way, so it is said. */
+export function pinFlash(where: 'profile' | 'community', on: boolean, status: number): FlashKey {
+  if (!ok(status)) return 'action_failed'
+  if (where === 'profile') return on ? 'pinned_to_profile' : 'unpinned_from_profile'
+  return on ? 'pinned_in_community' : 'unpinned_in_community'
+}
+
+/**
+ * After a block or mute is set (`on`) or lifted. A blocked member's posts just vanish
+ * from the page, so that is said. Muting stays silent (DESIGN.md), and unblocking
+ * shows on the profile's own button.
+ */
+export function blockFlash(relation: 'block' | 'mute', on: boolean, status: number): FlashKey | null {
+  if (relation !== 'block' || !on) return null
+  return ok(status) ? 'blocked' : 'action_failed'
+}
+
+/** Whether the browser's word that it showed flash `shown` clears `cookie`: not when a newer one replaced it. */
+export function clearsFlash(cookie: string | undefined, shown: string): boolean {
+  return decodeFlash(cookie)?.id === shown
+}

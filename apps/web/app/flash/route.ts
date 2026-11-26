@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server'
-import { decodeFlash, FLASH_COOKIE } from '@/lib/flash'
+import { clearsFlash, FLASH_COOKIE } from '@/lib/flash'
 
 /**
  * The browser says it has shown flash `id`, so it is forgotten and no later page
@@ -11,6 +11,6 @@ import { decodeFlash, FLASH_COOKIE } from '@/lib/flash'
 export async function POST(request: NextRequest) {
   const id = (await request.text()).slice(0, 64)
   const response = new NextResponse(null, { status: 204, headers: { 'cache-control': 'no-store' } })
-  if (decodeFlash(request.cookies.get(FLASH_COOKIE)?.value)?.id === id) response.cookies.delete(FLASH_COOKIE)
+  if (clearsFlash(request.cookies.get(FLASH_COOKIE)?.value, id)) response.cookies.delete(FLASH_COOKIE)
   return response
 }
