@@ -51,11 +51,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const now = Date.now()
     setState((current) => resumeToasts(current, now))
   }
-  const dismiss = (toast: ToastInput, stack: Element | null) => {
+  const dismiss = (toast: ToastInput, stack: Element | null, pointerType: string | undefined) => {
     const now = Date.now()
     // A removed button sends no blur, so the keyboard's hold on the others ends here;
-    // a pointer still over them keeps it until it leaves.
-    const held = stack?.matches(':hover') ?? false
+    // a mouse still over them keeps it until it leaves. A tap leaves the stack
+    // matching :hover with no leave to come, so only a mouse counts.
+    const held = pointerType === 'mouse' && (stack?.matches(':hover') ?? false)
     setState((current) => {
       const next = dismissToast(current, toast.id)
       return held ? next : resumeToasts(next, now)
@@ -87,7 +88,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               {toast.kind === 'error' ? <AlertIcon size={18} /> : <CheckIcon size={18} />}
               {/* The live regions above have already said it. */}
               <p>{toast.message}</p>
-              <button type="button" className="icon-btn toast-close" aria-label="Dismiss" onClick={(event) => dismiss(toast, event.currentTarget.closest('.toast-stack'))}>
+              <button type="button" className="icon-btn toast-close" aria-label="Dismiss" onClick={(event) => dismiss(toast, event.currentTarget.closest('.toast-stack'), (event.nativeEvent as Partial<PointerEvent>).pointerType)}>
                 <CloseIcon size={18} />
               </button>
             </div>

@@ -161,3 +161,29 @@ test('a double click on Delete post leaves the question open', async ({ browser 
   await expect(article).toBeVisible()
   await context.close()
 })
+
+test('on a touch screen, dismissing one toast lets the others go by themselves @mobile', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'tapper')
+  test.skip(!test.info().project.use.hasTouch, 'a touch screen only')
+  const pinned = `Pinned, ${handle}`
+  const deleted = `Tapped away, ${handle}`
+  await post(page, pinned)
+  await post(page, deleted)
+  await page.clock.install()
+  // Held still, so the first toast is not gone before the second arrives.
+  await page.clock.pauseAt(Date.now() + 1_000)
+
+  const article = page.locator('article', { hasText: pinned }).first()
+  await article.getByLabel('Post options').click()
+  await article.getByRole('button', { name: 'Pin to your profile' }).click()
+  await expect(toasts(page).getByText('Pinned to your profile')).toBeVisible()
+  await askToDelete(page, deleted)
+  await question(page).getByRole('button', { name: 'Delete post' }).click()
+  await expect(toasts(page).getByText('Post deleted')).toBeVisible()
+
+  await toasts(page).getByRole('button', { name: 'Dismiss' }).first().tap()
+  await expect(toasts(page).getByText('Pinned to your profile')).toHaveCount(0)
+  await page.clock.runFor(6_000)
+  await expect(toasts(page)).toHaveCount(0)
+  await context.close()
+})
