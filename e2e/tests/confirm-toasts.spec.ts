@@ -146,3 +146,18 @@ test('a toast goes by itself, but not while the pointer or the keyboard is on it
   await expect(toasts(page)).toHaveCount(0)
   await context.close()
 })
+
+test('a double click on Delete post leaves the question open', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'doubler')
+  const text = `Pressed twice, ${handle}`
+  await post(page, text)
+
+  const article = page.locator('article', { hasText: text })
+  await article.getByLabel('Post options').click()
+  await article.getByRole('button', { name: 'Delete post' }).dblclick()
+  // The second click lands on the scrim of the question the first one opened.
+  await expect(question(page)).toBeVisible()
+  await question(page).getByRole('button', { name: 'Cancel' }).click()
+  await expect(article).toBeVisible()
+  await context.close()
+})

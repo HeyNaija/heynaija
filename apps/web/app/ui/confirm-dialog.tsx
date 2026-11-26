@@ -74,7 +74,9 @@ export function ConfirmDialog({
       onPointerDown={(event) => { scrimPress.current = event.target === event.currentTarget }}
       onClick={(event) => {
         event.stopPropagation()
-        if (scrimPress.current && event.target === event.currentTarget) step('dismiss')
+        // The second click of a double click on the button that opened it lands on the
+        // scrim; the browser's confirm() ignored it, and so does this.
+        if (scrimPress.current && event.target === event.currentTarget && event.detail <= 1) step('dismiss')
       }}
     >
       <div className="confirm-dialog-body">
