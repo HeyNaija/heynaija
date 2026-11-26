@@ -13,7 +13,7 @@ export default function PrivacyPage() {
       eyebrow="Your data"
       title="Privacy policy"
       summary="What HeyNaija collects, what is public and what is not, who helps us run the service, how long we keep things, and how you get your data or have it deleted. No ads, no selling data, no trackers."
-      updated="15 November 2026"
+      updated="27 November 2026"
       draft={false}
       sections={[
         {
@@ -161,9 +161,12 @@ export default function PrivacyPage() {
               <li><code>hn_session</code>: keeps you signed in, for up to 14 days.</li>
               <li><code>hn_invite</code>: holds your invite code while you sign up, for up to an hour.</li>
               <li><code>hn_age</code>: holds that you confirmed you are 18 or older while you sign up, until your account exists, and for up to an hour.</li>
+              <li><code>hn_age_refused</code>: that you were told you are too young to join, so sending another date of birth straight away is refused too, for a day.</li>
               <li>A security cookie from our sign-in service, which stops other sites submitting forms as you.</li>
               <li><code>hn_feed</code>: which tab you last chose on Home (Discover, Latest or Following), so Home opens on it, for up to a year.</li>
               <li><code>hn_deletion</code>: the date your account will be erased, shown to you once you ask for it to be deleted, for an hour.</li>
+              <li><code>hn_push</code>: if you turn on push notifications, which subscription is this browser's, so signing out stops them, for up to 400 days.</li>
+              <li><code>hn_flash</code>: the name of a short message to show on your next page, such as “Post deleted”, for up to 30 seconds.</li>
               <li><code>hn_data</code>: whether you chose to save data (Automatic, Save data or Always load), so pictures can be held back until you tap them, for up to a year.</li>
               <li>Your light or dark theme is saved in your browser, not sent to us.</li>
             </ul>
