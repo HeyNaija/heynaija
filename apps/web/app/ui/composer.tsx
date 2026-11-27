@@ -395,9 +395,11 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
         // Focus going elsewhere, or to nothing, closes the picker; the box and the picker are one place.
         const next = e.relatedTarget as Node | null
         if (!emojiOpen || (next && (form.current?.contains(next) || emojiPanel.current?.contains(next)))) return
-        // Focus gone to nothing would leave a keyboard on the page itself; it goes back to the Emoji button.
+        // Focus gone from the picker to nothing would leave a keyboard on the page itself; it goes back to
+        // the Emoji button. A window losing focus (tab or app switch) and the box losing it (an iPhone's
+        // Done) also blur to nothing, and leave the picker open.
         if (next) setEmojiOpen(false)
-        else closeEmoji(e.target)
+        else if (document.hasFocus() && emojiPanel.current?.contains(e.target)) closeEmoji(e.target)
       }}
       // Sent posts take no more emoji: one picked now would not be in the post. The post's own error replaces the picker's.
       onSubmit={() => {

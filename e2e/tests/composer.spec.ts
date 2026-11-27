@@ -187,6 +187,47 @@ test('focus leaving the emoji picker for nothing closes it and puts focus back o
   await context.close()
 })
 
+test('the emoji picker stays open when the window loses focus, and focus is still in it', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojiwindow')
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'New post' }).fill(`Window ${handle}`)
+  const toggle = page.getByRole('button', { name: 'Emoji', exact: true })
+  await toggle.focus()
+  await page.keyboard.press('Enter')
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  const search = picker.getByRole('searchbox', { name: 'Search emoji' })
+  await expect(search).toBeFocused()
+  // What a browser does on a tab or app switch: the focused element gets a blur with no
+  // relatedTarget and keeps focus, and the document no longer has focus.
+  await page.evaluate(() => {
+    document.hasFocus = () => false
+    const focused = document.activeElement!
+    focused.dispatchEvent(new FocusEvent('blur', { relatedTarget: null }))
+    focused.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }))
+  })
+  await expect(picker).toBeVisible()
+  await expect(search).toBeFocused()
+  await search.fill('grinning')
+  await expect(picker.getByRole('button', { name: 'grinning face', exact: true })).toBeVisible()
+  await context.close()
+})
+
+test('the emoji picker stays open when the box it writes into is blurred, as by an iPhone keyboard\'s Done', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojidone')
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Done ${handle}`)
+  await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await expect(picker).toBeVisible()
+  await expect(box).toBeFocused()
+  await box.evaluate((el: HTMLTextAreaElement) => el.blur())
+  await expect(picker).toBeVisible()
+  await picker.getByRole('button', { name: 'grinning face', exact: true }).click()
+  await expect(box).toHaveValue(`Done ${handle}😀`)
+  await context.close()
+})
+
 test('picking the emoji that is selected leaves the caret where the member next puts it', async ({ browser }) => {
   const { page, context } = await newMember(browser, 'emojisame')
   await page.goto('/')
