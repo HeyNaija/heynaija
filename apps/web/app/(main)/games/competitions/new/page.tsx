@@ -6,7 +6,6 @@ import { PostsSkeleton } from '@/app/ui/post-item'
 import { getCommunities, getModeration, getViewer } from '@/lib/api'
 import { CompetitionForm } from '../_form'
 import { lagosInput } from '../_bits'
-import { requireGames } from '../../_components/require-games'
 
 export const metadata: Metadata = { title: 'New competition', robots: { index: false } }
 
@@ -30,8 +29,7 @@ export default function NewCompetitionPage() {
 async function NewCompetition() {
   const [viewer, moderation] = await Promise.all([getViewer(), getModeration()])
   // Site moderators only (they alone get the roster).
-  requireGames(viewer, '/games/competitions/new')
-  if (!moderation?.roster) notFound()
+  if (viewer.state !== 'member' || !viewer.me.features.games || !moderation?.roster) notFound()
   const communities = (await getCommunities()).map((c) => ({ slug: c.slug, name: c.name }))
   // Tomorrow evening, Lagos time, for a week: a starting point to change.
   const day = 86_400_000

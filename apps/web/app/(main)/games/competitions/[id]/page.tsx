@@ -11,7 +11,6 @@ import { SubmitButton } from '@/app/ui/submit-button'
 import { type Competition, type CompetitionStanding, getCompetition, getViewer } from '@/lib/api'
 import { competitionAction } from '../actions'
 import { clockLabel, ELIGIBILITY, gameLabel, scoreLabel, STATUS, When } from '../_bits'
-import { requireGames } from '../../_components/require-games'
 
 export const metadata: Metadata = { title: 'Competition', robots: { index: false } }
 
@@ -28,8 +27,7 @@ export default function CompetitionPage({ params, searchParams }: PageProps<'/ga
 
 async function CompetitionView({ params, searchParams }: Pick<PageProps<'/games/competitions/[id]'>, 'params' | 'searchParams'>) {
   const [{ id }, query, viewer] = await Promise.all([params, searchParams, getViewer()])
-  requireGames(viewer, `/games/competitions/${id}`)
-  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound()
+  if (viewer.state !== 'member' || !viewer.me.features.games || !/^[0-9a-f-]{36}$/i.test(id)) notFound()
   const c = await getCompetition(id)
   if (!c) notFound()
   const error = typeof query.error === 'string' ? query.error.slice(0, 200) : null

@@ -636,17 +636,13 @@ export async function submitReport(_prev: FormState, formData: FormData): Promis
   const postId = String(formData.get('postId') ?? '') || undefined
   const handle = String(formData.get('handle') ?? '') || undefined
   const communitySlug = String(formData.get('community') ?? '') || undefined
-  // Report a safety concern names nothing: what happened is in the details, which it requires.
-  const concern = !postId && !handle && !communitySlug
-  const details = String(formData.get('details') ?? '')
-  if (concern && details.trim().length < 10) return { error: 'Tell us what happened (at least 10 characters).' }
-  const res = await api(concern ? '/v1/reports/concern' : '/v1/reports', {
+  const res = await api('/v1/reports', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      ...(concern ? {} : postId ? { postId } : communitySlug ? { communitySlug } : { handle }),
+      ...(postId ? { postId } : communitySlug ? { communitySlug } : { handle }),
       reason: String(formData.get('reason') ?? ''),
-      details,
+      details: String(formData.get('details') ?? ''),
     }),
   })
   if (res.status === 401) redirect('/login')

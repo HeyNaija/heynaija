@@ -60,12 +60,11 @@ export async function cleanTestData(log = (_: string) => {}) {
            where created_by in (select id from e2e_m)) or p.root_id in (select result_post_id from games.competitions
            where created_by in (select id from e2e_m)))
          and p.id not in (select id from e2e_p)`)
-      // The Arbiter's Trivia threads for rounds test members hosted (phase 7), the updates to their
-      // stories (a new time, the results), and the replies under any of them (answers, who was first).
-      await client.query(`with t as (select thread_post_id as id from games.trivia_rounds where host_id in (select id from e2e_m)
-           union select result_post_id from games.trivia_rounds where host_id in (select id from e2e_m)),
-         s as (select id from t union select p.id from posts p where p.story_id in (select id from t))
-         insert into e2e_p select p.id from posts p where (p.id in (select id from s) or p.root_id in (select id from s))
+      // The Arbiter's Trivia threads, answers and results for rounds test members hosted (phase 7), and replies under them.
+      await client.query(`insert into e2e_p select p.id from posts p where (p.id in (select thread_post_id from games.trivia_rounds
+           where host_id in (select id from e2e_m)) or p.id in (select result_post_id from games.trivia_rounds
+           where host_id in (select id from e2e_m)) or p.root_id in (select thread_post_id from games.trivia_rounds
+           where host_id in (select id from e2e_m)))
          and p.id not in (select id from e2e_p)`)
       const steps: [string, string][] = [
         ['notifications', `delete from notifications where recipient_id in (select id from e2e_m) or actor_id in (select id from e2e_m)

@@ -7,7 +7,6 @@ import { getKenoPlay, getViewer, type KenoPlay as KenoPlayView } from '@/lib/api
 import { type GameInfo, GameSection } from '../_components/game-section'
 import { gameTab, GameTabs } from '../_components/game-tabs'
 import { KenoPlay } from './_components/keno-play'
-import { requireGames } from '../_components/require-games'
 
 export const metadata: Metadata = { title: 'Keno', robots: { index: false } }
 
@@ -38,7 +37,7 @@ export default function KenoPage({ searchParams }: PageProps<'/games/keno'>) {
 
 async function Keno({ searchParams }: Pick<PageProps<'/games/keno'>, 'searchParams'>) {
   const [params, viewer] = await Promise.all([searchParams, getViewer()])
-  requireGames(viewer, '/games/keno')
+  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
   const tab = gameTab(params.tab)
   const tabs = <GameTabs slug="keno" name="Keno" tab={tab} />
   if (tab !== 'play') {

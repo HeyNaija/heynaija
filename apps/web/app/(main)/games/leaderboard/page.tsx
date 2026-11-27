@@ -5,7 +5,6 @@ import { Suspense } from 'react'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { getViewer } from '@/lib/api'
 import { BoardView } from '../_components/board-view'
-import { requireGames } from '../_components/require-games'
 
 export const metadata: Metadata = { title: 'Game Score leaderboard', robots: { index: false } }
 
@@ -32,7 +31,7 @@ export default function LeaderboardsPage({ searchParams }: PageProps<'/games/lea
 
 async function Boards({ searchParams }: Pick<PageProps<'/games/leaderboard'>, 'searchParams'>) {
   const [params, viewer] = await Promise.all([searchParams, getViewer()])
-  requireGames(viewer, '/games/leaderboard')
+  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
   // Old links to a game's board go to that game's Leaderboard tab, with the same choices.
   const { board, ...rest } = params
   if (board === 'chess' || board === 'keno' || board === 'trivia') {

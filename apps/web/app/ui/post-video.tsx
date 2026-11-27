@@ -1,6 +1,6 @@
 'use client'
 
-import { type CSSProperties, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { PostVideo as PostVideoData } from '@/lib/api'
 import { formatDuration, formatSize, videoFiles } from '@/lib/video'
 import { PlayIcon } from './icons'
@@ -32,9 +32,7 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
   const length = formatDuration(video.durationMs)
   const label = video.description.trim() ? `${video.description.trim()}, ${length}` : `Video, ${length}`
   // Reserve the box from the stored size so the page does not jump; very tall clips are cropped to a limit.
-  // Never narrower than 3:4 (240px wide at the phone height cap), so the player's play,
-  // time, sound and full-screen controls all fit; a taller clip is letterboxed inside it.
-  const ratio = Math.min(Math.max(video.width / video.height, 3 / 4), 2)
+  const ratio = Math.min(Math.max(video.width / video.height, 9 / 16), 2)
 
   // Starting another puts the poster back.
   const playing = useOneVideo(player, started, () => setStarted(false))
@@ -61,7 +59,7 @@ export function PostVideo({ video, held = false }: { video: PostVideoData; held?
   }
 
   return (
-    <div className="post-video" style={{ aspectRatio: ratio, '--ratio': ratio } as CSSProperties}>
+    <div className="post-video" style={{ aspectRatio: ratio }}>
       {started ? (
         // It replaces the poster's button, so focus moves to its own play button.
         <VideoPlayer player={player} length={video.durationMs / 1000} failed={hls.failed} autoFocus>

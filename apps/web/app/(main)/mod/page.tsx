@@ -26,7 +26,6 @@ const REASONS: Record<string, string> = {
   harassment: 'Harassment',
   hate: 'Hate speech',
   scam: 'Scam',
-  child_safety: 'Child sexual abuse or exploitation',
   illegal: 'Illegal content',
   needs_label: 'Not marked sensitive',
   other: 'Other',
@@ -47,7 +46,6 @@ const ACTIONS: Record<string, string> = {
   end_gist: 'ended the Gist',
   label_post: 'marked sensitive a post',
   unlabel_post: 'took the sensitive mark off a post',
-  close_report: 'closed a safety concern as dealt with',
 }
 
 const GIST_ROLES: Record<string, string> = { host: 'Host', cohost: 'Co-host', speaker: 'Speaker', listener: 'Listener' }
@@ -176,7 +174,6 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
         <span className="chip">
           {REASONS[item.reason] ?? item.reason}
         </span>
-        {item.concern ? <span className="chip">Safety concern</span> : null}
         <span className="text-muted">
           {item.reporterHandle ? `${isAppeal ? 'from' : 'reported by'} @${item.reporterHandle}` : 'flagged by the upload scanner'} · <LocalTime at={item.createdAt} now={now} />
           {item.reportCount > 1 ? ` · ${item.reportCount} reports` : ''}
@@ -250,12 +247,6 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
             {item.member.bio ? <p className="mt-1 whitespace-pre-wrap break-words">{item.member.bio}</p> : null}
           </div>
         </div>
-      ) : item.concern ? (
-        // Sent from Settings: no post or account is attached, so what they wrote is all there is.
-        <p className="rounded-lg bg-panel p-4 text-sm text-muted">
-          Sent with Report a safety concern, so it is not about one post or account. Act from the posts and accounts it names,
-          then close it here.
-        </p>
       ) : item.communityPhoto ? (
         <div className="flex items-center gap-3 rounded-lg bg-panel p-4 text-sm">
           <CommunityMark slug={item.communityPhoto.slug} photo={item.communityPhoto.photo} large />
@@ -290,10 +281,6 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
         {isAppeal ? (
           <SubmitButton name="resolution" value="reinstate_member" className={button}>
             Reinstate account
-          </SubmitButton>
-        ) : item.concern ? (
-          <SubmitButton name="resolution" value="handled" className={button}>
-            Dealt with
           </SubmitButton>
         ) : (
           <>
@@ -351,7 +338,7 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
           </>
         )}
         <SubmitButton name="resolution" value="dismiss" className={button}>
-          {isAppeal ? 'Reject appeal' : item.concern ? 'Nothing to do' : 'Dismiss'}
+          {isAppeal ? 'Reject appeal' : 'Dismiss'}
         </SubmitButton>
       </div>
     </form>

@@ -130,19 +130,9 @@ Anime is first; any topic works.
    appears on everyone's screen at the same moment.
 3. Answer before time runs out (usually 20 seconds). Some questions have choices
    to tap; others you type. Some come with a picture, which appears with the
-   question and not before. On a question with choices you can change your
-   choice until time is up: the last one counts, and its time is when you made
-   it. A typed answer is final.
+   question and not before. You get **one answer**, and it can't be changed.
 4. When time is up you see the right answer, how many got it, and who was
-   fastest.
-5. The Arbiter adds each answer to its post as an update, so the post becomes a
-   story of the round. Talk about a question in the replies to its answer.
-6. When the results are out, The Arbiter adds them as the last update.
-7. To be told of each update, tap **Follow story** on The Arbiter's post. The
-   button appears once the first update is added.
-
-If the host moves the start time, The Arbiter adds the new time as an update
-too.
+   fastest. Talk about it in the replies to The Arbiter's thread.
 
 ### Points
 
@@ -314,10 +304,9 @@ Games sits behind the `games` feature flag:
 - **Development and staging:** on.
 - **Production:** off until launch.
 
-When it is off for someone, they get no Games link, and the API answers "not
-found". If they open a link to a Games page anyway, the page says Games is not
-open to them yet. Someone signed out is asked to sign in first. Background jobs
-(draws, competitions, tournaments) do nothing while Games is off for everyone.
+When it is off for someone, Games doesn't exist for them: no link, no pages,
+and the API answers "not found". Background jobs (draws, competitions,
+tournaments) do nothing while Games is off for everyone.
 
 Trivia has a second switch, the `trivia` flag (on in development and staging,
 off in production). It needs `games` on as well. Trivia's background job (judging

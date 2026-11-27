@@ -73,10 +73,9 @@ export const LIMITS = {
   // (KENO_DAILY_TOKENS) are counted in Postgres, which decides.
   kenoTicket: [{ max: 30, windowMs: MINUTE }],
   kenoDaily: [{ max: 500, windowMs: 25 * HOUR }],
-  // Trivia (docs/adr/0028, phase 7): answers (a choice can be changed until time is
-  // up, so several a question; this only stops scripts), a host's actions (saving,
-  // opening, accepting) and new rounds a day.
-  triviaAnswer: [{ max: 60, windowMs: MINUTE }],
+  // Trivia (docs/adr/0028, phase 7): answers (one a question, so this only stops
+  // scripts), a host's actions (saving, opening, accepting) and new rounds a day.
+  triviaAnswer: [{ max: 20, windowMs: MINUTE }],
   triviaHost: [{ max: 120, windowMs: HOUR }],
   triviaRound: [{ max: 10, windowMs: 24 * HOUR }],
   // Questions Keke answers for one member (docs/adr/0030). Each costs a call to its

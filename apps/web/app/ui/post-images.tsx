@@ -1,6 +1,6 @@
 'use client'
 
-import { type CSSProperties, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import type { PostImage } from '@/lib/api'
 import { CloseIcon, NextIcon, PauseIcon, PlayIcon, PreviousIcon } from './icons'
@@ -46,16 +46,15 @@ export function PostImages({ images, compact = false, saver = false }: { images:
   if (images.length === 0) return null
   const single = images.length === 1
   const first = images[0]!
-  // One photo keeps its shape, narrower when tall (globals.css caps the height); only
-  // shapes beyond 9:16 or 2:1 are cropped to the middle.
-  const ratio = single ? Math.min(Math.max(first.width / first.height, 9 / 16), 2) : 16 / 9
+  // Very tall or very wide photos are cropped to the middle, not shown at full height.
+  const ratio = single ? Math.min(Math.max(first.width / first.height, 4 / 5), 2) : 16 / 9
 
   return (
     <>
       <div
         className={`post-images ${compact ? 'is-compact' : ''}`}
         data-count={images.length}
-        style={{ aspectRatio: ratio, '--ratio': ratio } as CSSProperties}
+        style={{ aspectRatio: ratio }}
       >
         {images.map((image, i) => (
           <Tile key={image.src} image={image} label={`View ${image.animated ? 'GIF' : 'image'} ${i + 1} of ${images.length}${image.alt.trim() ? `: ${image.alt.trim()}` : ''}`} sizes={single ? '(max-width: 640px) 100vw, 560px' : '(max-width: 640px) 50vw, 280px'} saver={saver} onOpen={() => setOpen(i)} />

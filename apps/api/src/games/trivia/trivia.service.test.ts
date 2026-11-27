@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { blocks, media, members, notifications, posts, seasonScores, triviaAnswers, triviaQuestions, triviaResults, triviaRounds, xpTotals } from '@heynaija/db'
+import { blocks, media, members, posts, seasonScores, triviaAnswers, triviaQuestions, triviaResults, triviaRounds, xpTotals } from '@heynaija/db'
 import { and, asc, eq, sql } from 'drizzle-orm'
 import { PostsService } from '../../posts/posts.service.js'
 import { db, giveBirthDates, migrate, pool, reset } from '../../test-db.js'
@@ -99,7 +99,7 @@ test('a draft is the host’s alone; publishing it puts The Arbiter’s thread i
   assert.match(thread!.text, /^Anime Trivia Night: Sunday, 24 November at 20:00 Lagos time\./)
   // After midnight the hour has two digits: "at 00:05".
   await trivia.update(sam, id, input({ startsAt: new Date('2030-11-24T23:05:00Z') }))
-  const [update] = await db.select().from(posts).where(eq(posts.storyId, round!.threadPostId!))
+  const [update] = await db.select().from(posts).where(eq(posts.replyParentId, round!.threadPostId!))
   assert.match(update!.text, /Monday, 25 November at 00:05 Lagos time/)
   assert.match(thread!.text, /https:\/\/heynaija\.test\/games\/trivia\/rounds\//)
   const list = await trivia.list(ada)
@@ -121,7 +121,6 @@ test('a start time that has passed is refused; changing a scheduled round reache
   const [before] = await db.select().from(triviaRounds).where(eq(triviaRounds.id, id))
   assert.equal(await refusal(() => trivia.update(sam, id, input({ startsAt: gone }))), 'invalid')
   const replies = () => db.select().from(posts).where(eq(posts.replyParentId, before!.threadPostId!))
-  const updates = () => db.select().from(posts).where(eq(posts.storyId, before!.threadPostId!))
 
   const later = new Date('2030-11-25T20:30:00Z')
   await trivia.update(sam, id, input({ startsAt: later }))
@@ -129,19 +128,13 @@ test('a start time that has passed is refused; changing a scheduled round reache
   assert.equal(moved!.startsAt.getTime(), later.getTime())
   assert.ok(moved!.version > before!.version, 'open pages are woken')
   assert.equal(new Date((await trivia.view(ada, id))!.startsAt).getTime(), later.getTime())
-  // Posts are never edited, so The Arbiter says what changed: a new time is an
-  // update to the announcement's story, so it reaches feeds and the story's followers.
-  assert.deepEqual((await updates()).map((p) => p.text), ['Update: Anime Trivia Night is now on Monday, 25 November at 21:30 Lagos time. 2 questions, 20 seconds each.'])
-  assert.equal((await replies()).length, 0)
+  // Posts are never edited, so The Arbiter says what changed under its announcement.
+  assert.deepEqual((await replies()).map((p) => p.text), ['Update: Anime Trivia Night is now on Monday, 25 November at 21:30 Lagos time. 2 questions, 20 seconds each.'])
 
   // Changing only a question's note tells nobody anything new.
   const [first, second] = input().questions
   await trivia.update(sam, id, input({ startsAt: later, questions: [{ ...first!, explanation: 'Light finds it in a schoolyard.' }, second!] }))
-  assert.equal((await updates()).length + (await replies()).length, 1)
-  // A new title at the same time is only a reply.
-  await trivia.update(sam, id, input({ title: 'Anime Trivia Night 2', startsAt: later }))
-  assert.deepEqual((await replies()).map((p) => p.text), ['Update: Anime Trivia Night 2 is now on Monday, 25 November at 21:30 Lagos time. 2 questions, 20 seconds each.'])
-  assert.equal((await updates()).length, 1)
+  assert.equal((await replies()).length, 1)
   // The thread is in Game Night, so the round stays there.
   assert.equal(await refusal(() => trivia.update(sam, id, input({ startsAt: later, community: 'chess-arena' }))), 'not_editable')
   // A draft can still go anywhere.
@@ -149,7 +142,7 @@ test('a start time that has passed is refused; changing a scheduled round reache
   await trivia.update(sam, draft, input({ community: 'chess-arena' }))
 })
 
-test('a question can have a picture: a ready one the host uploaded, hidden until it opens, then on The Arbiter’s update', async () => {
+test('a question can have a picture: a ready one the host uploaded, hidden until it opens, then on The Arbiter’s reply', async () => {
   const upload = async (owner: string, status: 'ready' | 'processing' = 'ready') =>
     (
       await db
@@ -181,7 +174,7 @@ test('a question can have a picture: a ready one the host uploaded, hidden until
   await closeNow(q1!.id)
   await trivia.judgeDue(id)
   assert.deepEqual((await trivia.view(ada, id))!.last!.image, picture)
-  // The Arbiter's update with the answer carries it, so the talk under it shows what was asked.
+  // The Arbiter's reply under the thread carries it, so the talk there shows what was asked.
   const [judged] = await questionsOf(id)
   const [file] = await db.select().from(media).where(eq(media.id, mine))
   assert.equal(file!.postId, judged!.revealPostId)
@@ -225,13 +218,7 @@ test('a question is never sent before it opens, and an answer counts only while 
   assert.equal(JSON.stringify(open).includes('"correctChoice"'), false, 'the right answer is not sent')
   const { ms } = await trivia.answer(ada, id, first!.id, { choice: 0 })
   assert.ok(ms >= 1000 && ms < 3000)
-  // A choice can be changed while the question is open; the change is the answer's time.
-  await new Promise((done) => setTimeout(done, 20))
-  const changed = await trivia.answer(ada, id, first!.id, { choice: 1 })
-  assert.ok(changed.ms > ms, 'the time moves to the change')
-  assert.equal((await trivia.view(ada, id))!.current!.yourAnswer!.choice, 1)
-  assert.equal((await trivia.answer(ada, id, first!.id, { choice: 1 })).ms, changed.ms, 'the same choice again keeps its time')
-  await trivia.answer(ada, id, first!.id, { choice: 0 })
+  assert.equal(await refusal(() => trivia.answer(ada, id, first!.id, { choice: 1 })), 'answered')
   assert.equal(await refusal(() => trivia.answer(sam, id, first!.id, { choice: 0 })), 'invalid', 'the host does not play')
   // Another adult site moderator could open the host's view, so does not play either; a moderator under 18 cannot, and does.
   const other = randomUUID()
@@ -246,7 +233,7 @@ test('a question is never sent before it opens, and an answer counts only while 
   assert.equal(await refusal(() => trivia.answer(bayo, id, first!.id, { choice: 0 })), 'closed')
 })
 
-test('judging: the first right answers by the server’s clock, points, the reveal and The Arbiter’s update', async () => {
+test('judging: the first right answers by the server’s clock, points, the reveal and The Arbiter’s reply', async () => {
   const { id, qs } = await running()
   await trivia.answer(bayo, id, qs[0]!.id, { choice: 2 }) // wrong
   await trivia.answer(ada, id, qs[0]!.id, { choice: 0 })
@@ -273,30 +260,6 @@ test('judging: the first right answers by the server’s clock, points, the reve
   const [reveal] = await db.select().from(posts).where(eq(posts.id, q!.revealPostId!))
   assert.match(reveal!.text, /Answer: Light/)
   assert.match(reveal!.text, /2 of 3 got it right/)
-  // An update to the thread's story, not a reply: the story shows the round question by question.
-  const [round] = await db.select().from(triviaRounds).where(eq(triviaRounds.id, id))
-  assert.deepEqual([reveal!.storyId, reveal!.replyParentId], [round!.threadPostId, null])
-})
-
-test('a changed choice counts as it was last left, at the time it was changed', async () => {
-  const { id, qs } = await running()
-  await trivia.answer(ada, id, qs[0]!.id, { choice: 0 }) // right, first
-  await trivia.answer(bayo, id, qs[0]!.id, { choice: 0 }) // right, second
-  await trivia.answer(chi, id, qs[0]!.id, { choice: 0 }) // right, then changed to wrong
-  await trivia.answer(ada, id, qs[0]!.id, { choice: 2 })
-  await trivia.answer(ada, id, qs[0]!.id, { choice: 0 }) // back to right, but now after bayo
-  await trivia.answer(chi, id, qs[0]!.id, { choice: 3 })
-  await closeNow(qs[0]!.id)
-  assert.equal(await refusal(() => trivia.answer(ada, id, qs[0]!.id, { choice: 1 })), 'closed', 'no changes once time is up')
-  await trivia.judgeDue(id)
-  const answers = await db.select().from(triviaAnswers).where(eq(triviaAnswers.questionId, qs[0]!.id))
-  const of = (m: string) => answers.find((a) => a.memberId === m)!
-  assert.deepEqual([of(bayo).place, of(bayo).points], [1, 15])
-  assert.deepEqual([of(ada).choice, of(ada).place, of(ada).points], [0, 2, 13])
-  assert.deepEqual([of(chi).choice, of(chi).correct, of(chi).points], [3, false, 0])
-  const view = (await trivia.view(chi, id))!
-  assert.equal(view.last?.you?.choice, 3)
-  assert.equal(view.last?.choices?.find((c) => c.id === 0)?.count, 2, 'each member counts once, for their last choice')
 })
 
 test('many answers at the same moment still give exactly one first', async () => {
@@ -317,7 +280,6 @@ test('typed answers: small typos count, the host accepts a spelling, a bad quest
   await trivia.open(sam, id)
   await openNow(qs[1]!.id)
   await trivia.answer(bayo, id, qs[1]!.id, { text: 'AOT' }) // not accepted (yet)
-  assert.equal(await refusal(() => trivia.answer(bayo, id, qs[1]!.id, { text: 'Attack on Titan' })), 'answered', 'a typed answer is final')
   await trivia.answer(ada, id, qs[1]!.id, { text: 'Atack on Titan' }) // one typo
   await closeNow(qs[1]!.id)
   await trivia.judgeDue(id)
@@ -346,9 +308,6 @@ test('publishing: places, season points, Game Score XP, and the results by name,
   await trivia.answer(ada, id, qs[0]!.id, { choice: 0 })
   await closeNow(qs[0]!.id)
   await trivia.judgeDue(id)
-  // The first answer makes the thread a story, which bayo, watching, follows.
-  const [{ threadPostId }] = (await db.select({ threadPostId: triviaRounds.threadPostId }).from(triviaRounds).where(eq(triviaRounds.id, id))) as [{ threadPostId: string }]
-  assert.equal(await postsService.followStory(bayo, threadPostId), true)
   await trivia.open(sam, id)
   await openNow(qs[1]!.id)
   await trivia.answer(ada, id, qs[1]!.id, { text: 'Shingeki no Kyojin' })
@@ -374,48 +333,12 @@ test('publishing: places, season points, Game Score XP, and the results by name,
   assert.match(result!.text, /1\. Ada · 28 points/)
   assert.match(result!.text, /2\. a member · 15 points/)
   assert.doesNotMatch(result!.text, /Chidi/)
-  // An update to the thread's story, not a reply: feeds show it in the announcement's place.
-  assert.deepEqual([result!.storyId, result!.replyParentId, result!.superseded], [round!.threadPostId, null, false])
-  const [thread] = await db.select().from(posts).where(eq(posts.id, round!.threadPostId!))
-  assert.equal(thread!.superseded, true)
-  // The story, in order: each question's answer, then the results.
-  const story = await db.select().from(posts).where(eq(posts.storyId, thread!.id)).orderBy(posts.createdAt)
-  const [q1, q2] = await questionsOf(id)
-  assert.deepEqual(story.map((p) => p.id), [q1!.revealPostId, q2!.revealPostId, result!.id])
-  // Game Night's feed shows the round once, as its results, with the announcement above them.
-  const feed = await postsService.inCommunity(bayo, thread!.communityId!, 20)
-  assert.deepEqual(
-    feed.posts.map((p) => [p.id, p.story?.number, p.story?.id]),
-    [[result!.id, 3, thread!.id]],
-  )
-  // bayo followed after the first answer, so is told of the second and of the results.
-  const told = await db.select().from(notifications).where(and(eq(notifications.recipientId, bayo), eq(notifications.kind, 'story_update')))
-  assert.deepEqual(told.map((n) => n.postId).sort(), [q2!.revealPostId, result!.id].sort())
-  // Who was first goes under the results, where they are talked about.
-  const firsts = await db.select().from(posts).where(and(eq(posts.replyParentId, result!.id), sql`text like 'First right answer%'`))
+  const firsts = await db.select().from(posts).where(and(eq(posts.replyParentId, round!.threadPostId!), sql`text like 'First right answer%'`))
   assert.match(firsts[0]!.text, /Q1: a member/)
   assert.match(firsts[0]!.text, /Q2: Ada/)
   const view = (await trivia.view(bayo, id))!
   assert.equal(view.final, true)
   assert.deepEqual(view.standings.map((s) => [s.handle, s.rank]), [['ada', 1], ['chi', 2]])
-})
-
-test('a round whose thread was taken down still gets its results, as a post of their own', async () => {
-  const { id, qs } = await running()
-  await trivia.answer(ada, id, qs[0]!.id, { choice: 0 })
-  await closeNow(qs[0]!.id)
-  await trivia.judgeDue(id)
-  await trivia.end(sam, id)
-  const [before] = await db.select().from(triviaRounds).where(eq(triviaRounds.id, id))
-  const [thread] = await db.update(posts).set({ removedAt: new Date() }).where(eq(posts.id, before!.threadPostId!)).returning()
-  await trivia.publishResults(sam, id)
-  const [round] = await db.select().from(triviaRounds).where(eq(triviaRounds.id, id))
-  const [result] = await db.select().from(posts).where(eq(posts.id, round!.resultPostId!))
-  assert.match(result!.text, /1\. Ada · 15 points/)
-  // In Game Night, where the thread was.
-  assert.deepEqual([result!.storyId, result!.replyParentId, result!.communityId], [null, null, thread!.communityId])
-  const [firsts] = await db.select().from(posts).where(eq(posts.replyParentId, result!.id))
-  assert.match(firsts!.text, /Q1: Ada/)
 })
 
 test('the background work: questions nobody watches are judged, an idle round ends, results publish themselves', async () => {

@@ -6,7 +6,6 @@ import { PostsSkeleton } from '@/app/ui/post-item'
 import { getCommunities, getTriviaHost, getViewer } from '@/lib/api'
 import { lagosInput } from '../../../../competitions/_bits'
 import { RoundForm } from '../../../_components/round-form'
-import { requireGames } from '../../../../_components/require-games'
 
 export const metadata: Metadata = { title: 'Edit trivia round', robots: { index: false } }
 
@@ -29,7 +28,7 @@ export default function EditTriviaPage({ params }: PageProps<'/games/trivia/roun
 
 async function EditRound({ params }: Pick<PageProps<'/games/trivia/rounds/[id]/edit'>, 'params'>) {
   const [{ id }, viewer] = await Promise.all([params, getViewer()])
-  requireGames(viewer, `/games/trivia/rounds/${id}/edit`)
+  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound()
   const round = await getTriviaHost(id)
   if (!round) notFound()

@@ -4,10 +4,8 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { LocalTime } from '@/app/ui/local-time'
 import type { TriviaHostQuestion, TriviaHostView, TriviaRound } from '@/lib/api'
-import { type FileQuestion, triviaFileName, writeTriviaFile } from '@/lib/trivia-file'
 import { TRIVIA_STATUS } from './bits'
 import { triviaCall } from './call'
-import { saveJsonFile } from './save-file'
 
 const RETRY_MAX_MS = 30_000
 
@@ -23,7 +21,6 @@ export function HostConsole({ initial }: { initial: TriviaHostView }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<string | null>(null)
-  const [downloaded, setDownloaded] = useState<string | null>(null)
   const latest = useRef(round)
   latest.current = round
 
@@ -102,22 +99,6 @@ export function HostConsole({ initial }: { initial: TriviaHostView }) {
   const serverNow = now + offset
   const editable = (round.status === 'draft' || round.status === 'scheduled') && round.questions.every((q) => !q.opensAt)
 
-  /** The round's questions as a file to import into another round; accepted spellings included. */
-  const download = () => {
-    const questions = round.questions.map((q): FileQuestion =>
-      q.kind === 'choice'
-        ? { kind: 'choice', prompt: q.prompt, choices: q.choices ?? [], correctChoice: q.correctChoice ?? 0, explanation: q.explanation ?? '' }
-        : { kind: 'typed', prompt: q.prompt, accepted: q.accepted ?? [], explanation: q.explanation ?? '' },
-    )
-    const name = triviaFileName(round.title)
-    saveJsonFile(name, writeTriviaFile(round.title, questions))
-    setDownloaded(
-      round.questions.some((q) => q.image)
-        ? `Downloaded ${name}. Pictures are not in the file. Add them again after you import it.`
-        : `Downloaded ${name}. Import it from the form when you host another round.`,
-    )
-  }
-
   const confirm = (key: string, label: string, run: () => void, tone: 'btn-secondary' | 'btn-primary' = 'btn-secondary') =>
     confirming === key ? (
       <span className="flex flex-wrap items-center gap-2">
@@ -163,7 +144,6 @@ export function HostConsole({ initial }: { initial: TriviaHostView }) {
             : null}
           {round.status !== 'draft' ? <Link href={`/games/trivia/rounds/${id}`} className="btn btn-secondary btn-sm">Players’ view</Link> : null}
           {round.threadPostId ? <Link href={`/p/${round.threadPostId}`} className="btn btn-secondary btn-sm">The thread</Link> : null}
-          <button type="button" className="btn btn-secondary btn-sm" onClick={download}>Download questions</button>
         </div>
 
         {round.status === 'draft' ? (
@@ -178,7 +158,6 @@ export function HostConsole({ initial }: { initial: TriviaHostView }) {
             themselves <LocalTime at={round.publishesAt} as="posted" /> if you have not.
           </p>
         ) : null}
-        {downloaded ? <p className="text-sm text-muted" role="status">{downloaded}</p> : null}
         {error ? (
           <p className="text-sm text-danger" role="alert">{error}</p>
         ) : null}

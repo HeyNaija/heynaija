@@ -11,7 +11,7 @@ const STATUS: Record<KekeNewsDraft['status'], string> = {
   skipped: 'Skipped: nothing will be posted today. You can still approve it until 08:00.',
   missed: 'Nobody approved it by 08:00, so nothing was posted today.',
   published: 'Posted in Naija Today.',
-  too_few: 'No news today: fewer than three headlines were carried by three or more outlets.',
+  too_few: 'No news today: fewer than three stories were carried by three or more outlets.',
   failed: 'No news yet: the model gave no usable answer. Keke tries again at 06:30 and 07:30; the reason is in the API’s log.',
   over_budget: 'No news today: Keke has reached this month’s spending cap (Keke this month, below).',
 }
@@ -40,10 +40,10 @@ export function KekeNewsPanel({ draft }: { draft: KekeNewsDraft | null }) {
             <li key={i} className="flex flex-col gap-2 border-t border-line pt-3 first:border-t-0 first:pt-0">
               <label className="flex items-center gap-2 text-sm font-semibold">
                 <input type="checkbox" name={`keep_${i}`} defaultChecked disabled={!draft.open} />
-                Headline {i + 1}: keep
+                Story {i + 1}: keep
               </label>
               <label htmlFor={`keke-news-${i}`} className="sr-only">
-                Sentence for headline {i + 1}
+                Sentence for story {i + 1}
               </label>
               <textarea id={`keke-news-${i}`} name={`sentence_${i}`} defaultValue={story.sentence} rows={2} maxLength={280} readOnly={!draft.open} className="field" />
               <p className="text-xs text-muted">

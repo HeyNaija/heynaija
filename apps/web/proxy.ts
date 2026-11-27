@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { gamesGate, gamesReturnPath } from './lib/games-gate'
+import { gamesGate } from './lib/games-gate'
 import { SESSION_COOKIE, gistReturnPath, gistsGate } from './lib/gists-gate'
 
 // Gists are dark for anyone not on the list (docs/adr/0017 section 4a): with the
@@ -20,26 +20,14 @@ const API_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000'
 const ask = (path: string, headers: HeadersInit = {}) =>
   fetch(`${API_URL}${path}`, { headers, cache: 'no-store', signal: AbortSignal.timeout(2000) })
 
-// Games (docs/adr/0028) runs first in the same way, for /games/*, but follows the
-// rule every link follows (docs/deployment/app-links.md): someone signed out is asked
-// to sign in at the same address and comes back to it after; a member Games is not
-// open to is told so there. Neither is shown "page not found".
+// Games (docs/adr/0028) is dark the same way, for /games/*, except that a visitor
+// with no session always gets the missing page: Games is for members on its list.
 
 export async function proxy(request: NextRequest) {
   const session = request.cookies.get(SESSION_COOKIE)?.value
-  const { pathname, search } = request.nextUrl
-  if (pathname === '/games' || pathname.startsWith('/games/')) {
+  if (request.nextUrl.pathname === '/games' || request.nextUrl.pathname.startsWith('/games/')) {
     const verdict = await gamesGate(session, (cookie) => ask('/v1/me', { cookie }))
-    if (verdict === 'allow') return NextResponse.next()
-    const to = gamesReturnPath(`${pathname}${search}`)
-    if (verdict === 'sign-in' && to) {
-      const prompt = new URL('/games-sign-in', request.url)
-      prompt.search = new URLSearchParams({ to }).toString()
-      return NextResponse.rewrite(prompt)
-    }
-    const closed = new URL('/games-not-open', request.url)
-    if (verdict === 'unavailable') closed.search = new URLSearchParams({ why: 'unavailable' }).toString()
-    return NextResponse.rewrite(closed)
+    return verdict === 'allow' ? NextResponse.next() : NextResponse.rewrite(new URL('/__not-found', request.url))
   }
   const verdict = await gistsGate(
     session,

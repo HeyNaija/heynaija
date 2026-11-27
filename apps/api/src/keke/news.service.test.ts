@@ -16,7 +16,7 @@ import { type KekeAlerts, KekeService } from './keke.service.js'
 import { parseFeed } from './news-feeds.js'
 import { chooseStories, lagosDay, lagosTime, NEWS_RULE, type NewsStory, outletList } from './news-rule.js'
 import type { NewsSource } from './news-sources.js'
-import { ensureNaijaToday, KekeNews, NAIJA_TODAY, NAIJA_TODAY_FIRST, NewsDecisionError } from './news.service.js'
+import { KekeNews, NewsDecisionError } from './news.service.js'
 
 // Keke's daily news (docs/adr/0030): feeds, the published rule, drafts a person
 // approves, and the post at 08:00, against the real database with a fake model.
@@ -337,8 +337,6 @@ test('08:00: one announcement in Naija Today and a reply per story; members repl
   const [main, ...replies] = made
   assert.equal(main!.communityId, community!.id)
   assert.match(main!.text, /^Naija today, \w+day \d+ \w+\n\n1\. Story 0\.\n2\. Story 1\.\n3\. Story 2\./)
-  // "Headline", not "story": a story is a member's post and its updates (ADR 0024).
-  assert.match(main!.text, /\n\nReply under a headline to talk about it\.$/)
   assert.equal(replies.length, 3)
   assert.ok(replies.every((r) => r.replyParentId === main!.id))
   assert.equal(replies[0]!.text, 'Story 0.\n\nCarried by Outlet A, Outlet B, Outlet C, Outlet D and Outlet E\n\nhttps://a.example/fuel')
@@ -395,17 +393,4 @@ test('with community announcements off, the news is posted and nobody is notifie
   assert.equal((await db.select().from(notifications).where(eq(notifications.recipientId, ada))).length, 0)
   const [after] = await db.select().from(communities).where(and(eq(communities.slug, NAIJA_TODAY_SLUG), isNull(communities.announcedAt)))
   assert.ok(after)
-})
-
-test('Naija Today made with the first wording takes the new one, except what a moderator has changed', async () => {
-  await db.insert(communities).values({ slug: NAIJA_TODAY_SLUG, name: 'Naija Today', ...NAIJA_TODAY_FIRST })
-  await ensureNaijaToday(db)
-  const read = async () => (await db.select().from(communities).where(eq(communities.slug, NAIJA_TODAY_SLUG)))[0]!
-  assert.deepEqual([(await read()).description, (await read()).rules], [NAIJA_TODAY.description, NAIJA_TODAY.rules])
-  assert.doesNotMatch(NAIJA_TODAY.description + NAIJA_TODAY.rules, /stor(y|ies)/i)
-
-  // A moderator's own description stays; rules still in the first wording are replaced.
-  await db.update(communities).set({ description: 'Our own words.', rules: NAIJA_TODAY_FIRST.rules }).where(eq(communities.slug, NAIJA_TODAY_SLUG))
-  await ensureNaijaToday(db)
-  assert.deepEqual([(await read()).description, (await read()).rules], ['Our own words.', NAIJA_TODAY.rules])
 })

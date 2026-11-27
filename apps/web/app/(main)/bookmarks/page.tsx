@@ -3,8 +3,6 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { PostList, PostsSkeleton } from '@/app/ui/post-item'
 import { getBookmarks, getViewer } from '@/lib/api'
-import { signInUrl } from '@/lib/auth/server'
-import { siteOrigin } from '@/lib/previews'
 
 export const metadata: Metadata = { title: 'Bookmarks' }
 
@@ -25,8 +23,6 @@ export default function BookmarksPage({ searchParams }: PageProps<'/bookmarks'>)
 
 async function Bookmarks({ searchParams }: Pick<PageProps<'/bookmarks'>, 'searchParams'>) {
   const viewer = await getViewer()
-  // Signed out: sign in, then back here (docs/deployment/app-links.md). Signed in but refused: /login says why.
-  if (viewer.state === 'anonymous') redirect(signInUrl(new URL('/bookmarks', siteOrigin).href))
   if (viewer.state !== 'member') redirect('/login')
 
   const { cursor } = await searchParams

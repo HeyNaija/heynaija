@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { DotsIcon, FlagIcon } from '@/app/ui/icons'
 import { ContactEmail, PolicyPage } from '@/app/ui/policy-page'
 
 export const metadata: Metadata = {
@@ -19,7 +18,7 @@ export default function ChildSafetyPage() {
       eyebrow="Keeping children safe"
       title="Child safety standards"
       summary="HeyNaija does not allow child sexual abuse and exploitation (CSAE) of any kind. This page sets out what is not allowed, how we find it and what we do about it, how to report it, and who to contact."
-      updated="20 November 2026"
+      updated="8 November 2026"
       draft={false}
       sections={[
         {
@@ -91,8 +90,7 @@ export default function ChildSafetyPage() {
                 Tool as they are delivered.
               </li>
               <li>
-                <strong>Reports from people.</strong> Anyone can report a post, an account or a Gist. They can also
-                report a safety concern from Settings. Both work without leaving the app. The safety team looks at
+                <strong>Reports from people.</strong> Anyone can report a post or an account, and moderators look at
                 every report.
               </li>
             </ul>
@@ -123,83 +121,26 @@ export default function ChildSafetyPage() {
           id: 'report',
           title: 'How to report it',
           body: (
-            <>
-              <p>
-                You can report from the HeyNaija app or the website. It works the same way in both, and you never have to
-                leave the app.
-              </p>
-
-              <h3>To report a post</h3>
-              <ol>
-                <li>
-                  Tap <MenuDots /> on the post.
-                </li>
-                <li>
-                  Choose <strong>Report post</strong>.
-                </li>
-                <li>
-                  Choose <strong>Child sexual abuse or exploitation</strong>, then send.
-                </li>
-              </ol>
-
-              <h3>To report an account</h3>
-              <ol>
-                <li>Open their profile.</li>
-                <li>
-                  Tap <MenuDots /> at the top.
-                </li>
-                <li>
-                  Choose <strong>Report</strong>.
-                </li>
-                <li>
-                  Choose <strong>Child sexual abuse or exploitation</strong>, then send.
-                </li>
-              </ol>
-
-              <h3>To report a Gist</h3>
-              <ol>
-                <li>
-                  In the Gist, tap the <GistFlag /> button.
-                </li>
-                <li>
-                  Choose <strong>Child sexual abuse or exploitation</strong>, then send.
-                </li>
-              </ol>
-
-              <h3>To report anything else</h3>
-              <p>Use this for something you saw, or something that happened to you or someone you know.</p>
-              <ol>
-                <li>
-                  Go to <strong>Settings</strong>.
-                </li>
-                <li>
-                  Choose <strong>Report a safety concern</strong>.
-                </li>
-                <li>Say what happened and where. Add links to any posts or accounts involved.</li>
-              </ol>
-
-              <h3>What happens next</h3>
-              <p>
-                Reports of child sexual abuse or exploitation reach the safety team straight away. Only moderators see
-                who made the report. The person you report is never told.
-              </p>
-
-              <h3>Not a member?</h3>
-              <p>
-                Write to <ContactEmail />. Send a link to the post or account. Do not send the picture or video itself.
-                Never send any image of a child. The link is enough for us to find it.
-              </p>
-              <p>Authorities can write to the same address.</p>
-
-              <h3>If a child is in danger now</h3>
-              <p>Call the police first. In Nigeria, call 112.</p>
-
-              <h3>Abuse material anywhere else online</h3>
-              <p>
-                You can also report it to the <a href="https://report.cybertip.org/">NCMEC CyberTipline</a> or the{' '}
+            <ul>
+              <li>
+                <strong>On HeyNaija:</strong> open the menu on the post or account, choose <strong>Report</strong>, then{' '}
+                <strong>Illegal content</strong>. This works the same in the apps and on the website. Reports of illegal
+                content alert the people who handle safety straight away, and only moderators see who made a report.
+              </li>
+              <li>
+                <strong>Not a member, or reporting for an authority?</strong> Write to <ContactEmail /> with a link to
+                the post or account. Never send the picture or video itself, and never send any image of a child: the
+                link is enough for us to find it.
+              </li>
+              <li>
+                <strong>If a child is in danger now,</strong> call the police first. In Nigeria, call 112.
+              </li>
+              <li>
+                You can also report child sexual abuse material found anywhere online to the{' '}
+                <a href="https://report.cybertip.org/">NCMEC CyberTipline</a> or the{' '}
                 <a href="https://report.iwf.org.uk/">Internet Watch Foundation</a>.
-              </p>
-            </>
+              </li>
+            </ul>
           ),
         },
         {
@@ -215,25 +156,5 @@ export default function ChildSafetyPage() {
         },
       ]}
     />
-  )
-}
-
-/** The ⋯ menu button, drawn as the app and the website draw it; screen readers hear its name instead. */
-function MenuDots() {
-  return (
-    <span className="inline-flex align-[-0.25em] font-semibold text-ink">
-      <DotsIcon size={20} />
-      <span className="sr-only">the three dots button</span>
-    </span>
-  )
-}
-
-/** The flag that reports a Gist, as the app and the website draw it. */
-function GistFlag() {
-  return (
-    <span className="inline-flex items-center gap-1 align-[-0.2em] font-semibold text-ink">
-      <FlagIcon size={17} />
-      flag
-    </span>
   )
 }

@@ -55,20 +55,9 @@ const CALL_MIN_MS = 60_000
 /** How long publishing waits for Naija Today's daily announcement to come free, at most. */
 const ANNOUNCEMENT_WAIT_MAX_MS = 15 * 60 * 1000
 
-// Each item is a "headline" on screen: a "story" is one member's post and its updates (ADR 0024).
-export const NAIJA_TODAY = {
+const NAIJA_TODAY = {
   slug: NAIJA_TODAY_SLUG,
   name: 'Naija Today',
-  description: 'Each morning, the Nigerian headlines carried by three or more outlets, in one neutral line each. A person checks every one before it is posted. Reply under a headline to talk about it.',
-  rules: [
-    'Posts here are Keke’s daily news, started only by Keke once a site moderator has approved them. Reply under a headline to talk about it.',
-    'Disagree with the news, not with each other. HeyNaija’s rules apply here as everywhere.',
-    'How the headlines are chosen, and from which outlets, is on /about/keke.',
-  ].join('\n'),
-}
-
-/** The first wording, which called each headline a story. Where it is still unchanged, the wording above replaces it. */
-export const NAIJA_TODAY_FIRST = {
   description: 'Each morning, the Nigerian stories carried by three or more outlets, in one neutral line each. A person checks every one before it is posted. Reply under a story to talk about it.',
   rules: [
     'Posts here are Keke’s daily news, started only by Keke once a site moderator has approved them. Reply under a story to talk about it.',
@@ -77,16 +66,10 @@ export const NAIJA_TODAY_FIRST = {
   ].join('\n'),
 }
 
-/**
- * Makes Naija Today with Keke as its moderator, if it is not there yet. Made with the first draft, never before.
- * A description or rules still in the first wording take the new one; any a moderator has edited are left alone.
- */
+/** Makes Naija Today with Keke as its moderator, if it is not there yet. Made with the first draft, never before. */
 export async function ensureNaijaToday(db: Db): Promise<void> {
   await db.insert(communities).values(NAIJA_TODAY).onConflictDoNothing({ target: communities.slug })
-  const here = eq(communities.slug, NAIJA_TODAY_SLUG)
-  await db.update(communities).set({ description: NAIJA_TODAY.description }).where(and(here, eq(communities.description, NAIJA_TODAY_FIRST.description)))
-  await db.update(communities).set({ rules: NAIJA_TODAY.rules }).where(and(here, eq(communities.rules, NAIJA_TODAY_FIRST.rules)))
-  const [made] = await db.select({ id: communities.id }).from(communities).where(here)
+  const [made] = await db.select({ id: communities.id }).from(communities).where(eq(communities.slug, NAIJA_TODAY_SLUG))
   await db.insert(communityMemberships).values({ communityId: made!.id, memberId: KEKE_ID, role: 'moderator' }).onConflictDoNothing()
 }
 
