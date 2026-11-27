@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, beforeEach, test } from 'node:test'
-import { members, posts } from '@heynaija/db'
+import { media, members, posts } from '@heynaija/db'
 import { BadRequestException } from '@nestjs/common'
 import { eq, sql } from 'drizzle-orm'
 import type { z } from 'zod'
@@ -139,6 +139,28 @@ test('a deleted ancestor stands in as a placeholder without its GIF', async () =
   const ancestor = thread!.ancestors[0]!
   assert.equal(ancestor.deleted, true)
   assert.equal(ancestor.gif, null)
+})
+
+test('a quote of a post with a GIF carries the GIF, and a quote of a post with no GIF or video says so', async () => {
+  const gifPost = await service().create(ada, '', { gif: giphy(ID, 'a dancing cat') })
+  const quoting = await service().create(bayo, 'look', { quote: gifPost.id })
+  const quote = (await service().post(null, quoting.id))!.quote
+  assert.ok(quote && !quote.unavailable)
+  assert.deepEqual([quote.gif, quote.hasVideo], [{ provider: 'giphy', id: ID, alt: 'a dancing cat' }, false])
+  const plain = await service().create(ada, 'words only')
+  const quotingPlain = await service().create(bayo, 'and this', { quote: plain.id })
+  const plainQuote = (await service().post(null, quotingPlain.id))!.quote
+  assert.ok(plainQuote && !plainQuote.unavailable)
+  assert.deepEqual([plainQuote.gif, plainQuote.hasVideo], [null, false])
+})
+
+test('a quote of a post whose ready video is its only content says it has a video', async () => {
+  const [videoPost] = await db.insert(posts).values({ authorId: ada, text: '' }).returning({ id: posts.id })
+  await db.insert(media).values({ ownerId: ada, kind: 'post_video', status: 'ready', contentType: 'video/mp4', bytes: 1000, width: 640, height: 360, readyAt: new Date(), postId: videoPost!.id, position: 0 })
+  const quoting = await service().create(bayo, 'watch', { quote: videoPost!.id })
+  const quote = (await service().post(null, quoting.id))!.quote
+  assert.ok(quote && !quote.unavailable)
+  assert.equal(quote.hasVideo, true)
 })
 
 test('a deleted post gives its GIF to no one', async () => {

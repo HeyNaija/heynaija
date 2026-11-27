@@ -52,7 +52,7 @@ async function QuoteView({ params }: Props) {
         sensitiveLabels={composerOffersMark(viewer.me)}
         placeholder="Add your thoughts…"
         submitAction={createQuote}
-        quote={{ id: post.id, preview: <QuotedPostCard quote={post} now={Date.now()} saver={saver} /> }}
+        quote={{ id: post.id, preview: <QuotedPostCard quote={{ ...post, hasVideo: post.video !== null }} now={Date.now()} saver={saver} /> }}
       />
       <Link prefetch={false} href={`/p/${post.id}`} className="self-start text-sm font-medium text-muted hover:text-ink hover:underline">
         Cancel

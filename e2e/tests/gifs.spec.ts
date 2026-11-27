@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { gif } from '../lib/gif.ts'
 import { expectOnScreen } from '../lib/layout.ts'
-import { seedGifPost } from '../lib/db.ts'
+import { seedGifPost, seedQuotePost } from '../lib/db.ts'
 import { newMember } from '../lib/members.ts'
 
 /** Writes a post with one GIF attached and waits for it to appear in the feed. */
@@ -103,8 +103,11 @@ test('GIFs have a button of their own, which offers only GIFs, apart from the ph
   await page.getByRole('textbox', { name: 'New post' }).click()
   const picker = page.locator('#compose input[type="file"]:not([accept*="video"])')
 
+  // Built with a GIF search, the GIF button opens it and the file comes through its "Upload a GIF file instead".
+  const searches = !!process.env.NEXT_PUBLIC_GIPHY_API_KEY
+  await context.route(/^https:\/\/api\.giphy\.com\//, (route) => route.abort())
   const photo = page.getByRole('button', { name: /^Add images/ })
-  const gifButton = page.getByRole('button', { name: /^Add a GIF/ })
+  const gifButton = page.getByRole('button', { name: searches ? 'Search GIFs' : /^Add a GIF/ })
   await expect(photo).toBeVisible()
   await expect(gifButton).toBeVisible()
   await expectOnScreen(gifButton)
@@ -120,6 +123,7 @@ test('GIFs have a button of their own, which offers only GIFs, apart from the ph
 
   const gifs = page.waitForEvent('filechooser')
   await gifButton.click()
+  if (searches) await page.getByRole('dialog', { name: 'Search GIFs' }).getByRole('button', { name: 'Upload a GIF file instead' }).click()
   const chooser = await gifs
   expect(await picker.getAttribute('accept')).toBe('image/gif')
   await chooser.setFiles({ name: 'dance.gif', mimeType: 'image/gif', buffer: gif() })
@@ -158,5 +162,19 @@ test('a GIF from a provider this app does not know says "GIF unavailable" and as
   await expect(article.getByText(text)).toBeVisible()
   await expect(page.getByRole('heading', { name: 'We could not load this page' })).toBeHidden()
   expect(asked).toEqual([])
+  await context.close()
+})
+
+test("a quote of a post with a GIPHY GIF shows the GIF's first frame, which never moves", async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'quotegiphy')
+  const id = `e2e${crypto.randomUUID().replaceAll('-', '').slice(0, 20)}`
+  await context.route(/^https:\/\/media1\.giphy\.com\//, (route) => route.fulfill({ contentType: 'image/gif', body: gif() }))
+  const quoted = await seedGifPost(handle, '', { provider: 'giphy', id, alt: 'A cat waving' })
+  const text = `Look at this, from ${handle}`
+  const quoting = await seedQuotePost(handle, text, quoted)
+  await page.goto(`/p/${quoting}`)
+  const card = page.locator('article', { hasText: text }).first().locator('.quoted-post')
+  await expect(card.getByRole('img', { name: 'A cat waving' })).toHaveAttribute('src', `https://media1.giphy.com/media/${id}/giphy_s.gif`)
+  await expect(card.getByRole('button', { name: /GIF/ })).toHaveCount(0)
   await context.close()
 })

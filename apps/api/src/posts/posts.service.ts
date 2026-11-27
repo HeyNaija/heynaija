@@ -188,7 +188,11 @@ export type QuotedPost =
       authorFounder: boolean
       text: string
       images: PostImage[]
-      /** Its images wait behind a cover (see `PostView.coverMedia`). */
+      /** Its GIF from a provider, if any: the card shows its first frame. */
+      gif: PostGif | null
+      /** It has a ready video: the card says so rather than play it. */
+      hasVideo: boolean
+      /** Its images, GIF and video wait behind a cover (see `PostView.coverMedia`). */
       coverMedia: boolean
       createdAt: Date
       replyParentId: string | null
@@ -550,6 +554,7 @@ type QuoteRow =
 const quoteOf = (viewerId: string | null, quotePostId: SQL) => sql<QuoteRow | null>`case when ${quotePostId} is null then null else coalesce((
   select json_build_object('id', q.id, 'authorId', q.author_id, 'authorHandle', qa.handle, 'authorName', qa.display_name,
     'authorAvatarId', qa.avatar_media_id, 'authorFounder', ${isFounder(sql`q.author_id`)}, 'text', q.text, 'images', ${imagesOf(sql`q.id`)},
+    'gif', ${gifOf('q')}, 'hasVideo', exists(select 1 from media qv where qv.post_id = q.id and qv.kind = 'post_video' and qv.status = 'ready'),
     'coverMedia', ${coverMediaFor(viewerId, sql`q.adult_label`, sql`q.author_id`)},
     'createdAt', q.created_at, 'replyParentId', q.reply_parent_id)
   from posts q join members qa on qa.id = q.author_id

@@ -102,7 +102,11 @@ export type QuotedPost =
       authorFounder: boolean
       text: string
       images: PostImage[]
-      /** Its images wait behind a cover (see `Post.coverMedia`). */
+      /** Its GIF, if any: the card shows its first frame. */
+      gif: GifTag | null
+      /** It has a ready video: the card says so. */
+      hasVideo: boolean
+      /** Its images, GIF and video wait behind a cover (see `Post.coverMedia`). */
       coverMedia: boolean
       createdAt: string
       replyParentId: string | null
