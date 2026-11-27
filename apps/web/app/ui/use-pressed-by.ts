@@ -24,3 +24,13 @@ export function usePressedBy() {
     },
   }
 }
+
+/**
+ * Where focus goes when a picker opens from a button pressed by `pointer`: into the picker for the
+ * keyboard or a screen reader, back to the box for a mouse (the caret stays where it was), and
+ * nowhere for touch or a pen, as focusing the box would raise the on-screen keyboard over the picker.
+ */
+export function focusOnOpen(pointer: string | null): 'picker' | 'box' | 'none' {
+  if (pointer === null) return 'picker'
+  return pointer === 'mouse' ? 'box' : 'none'
+}

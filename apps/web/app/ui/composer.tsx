@@ -21,7 +21,7 @@ import { useAutoGrow } from './use-auto-grow'
 import { type VideoDraft, useVideoDraft } from './use-video-draft'
 import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
 import { type PickerPlace, useFixedPlacement } from './use-fixed-placement'
-import { usePressedBy } from './use-pressed-by'
+import { focusOnOpen, usePressedBy } from './use-pressed-by'
 import { useMentionSuggestions } from './use-mention-suggestions'
 import { PostVideo } from './post-video'
 import { composerOffers } from '@/lib/composer-offers'
@@ -245,8 +245,10 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     setGiphyPicker(() => giphyPicker())
   }
   const [giphyByKeyboard, setGiphyByKeyboard] = useState(false)
+  const gifPressedBy = usePressedBy()
   const gifButton = useRef<HTMLButtonElement>(null)
   const giphyPanel = useRef<HTMLSpanElement>(null)
+  const giphyDialog = useRef<HTMLDivElement>(null)
   const closeGiphy = () => {
     const inside = giphyPanel.current?.contains(document.activeElement)
     setGiphyOpen(false)
@@ -331,17 +333,18 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     document.addEventListener('pointerdown', outside)
     return () => document.removeEventListener('pointerdown', outside)
   }, [])
-  // Escape closes the picker wherever focus is, even on nothing; the mention list gets it first.
+  // Escape closes a picker wherever focus is, even on nothing; the mention list gets it first.
   useEffect(() => {
-    if (!emojiOpen) return
+    if (!emojiOpen && !giphyOpen) return
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return
       e.preventDefault()
-      closeEmoji()
+      if (emojiOpen) closeEmoji()
+      if (giphyOpen) closeGiphy()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [emojiOpen])
+  }, [emojiOpen, giphyOpen])
   const [tooMany, setTooMany] = useState(false)
 
   // React resets the form when an action finishes, and a <select> then shows its
@@ -403,22 +406,20 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const content = (
     <form ref={form} id={formId} action={action} className={`${inline ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''}${answeringReply ? ' is-answering' : ''} scroll-mt-32`}
       onBlur={(e) => {
-        // Focus going elsewhere closes the picker; the box and the picker are one place. Focus going to
+        // Focus going elsewhere closes a picker; the box and the picker are one place. Focus going to
         // nothing leaves it open: a phone keyboard closed from the search or the box, a tab or app switch.
         const next = e.relatedTarget as Node | null
-        if (emojiOpen && next && !form.current?.contains(next) && !emojiPanel.current?.contains(next)) setEmojiOpen(false)
+        if (!next) return
+        const away = !form.current?.contains(next) && !emojiPanel.current?.contains(next)
+        if (emojiOpen && away) setEmojiOpen(false)
+        // The GIF search sits in the form's tab order: Tab or Shift+Tab out of it to anything but the box closes it.
+        const leftSearch = giphyDialog.current?.contains(e.target) && !giphyDialog.current.contains(next) && next !== input.current
+        if (giphyOpen && (away || leftSearch)) setGiphyOpen(false)
       }}
       // Sent posts take no more emoji: one picked now would not be in the post. The post's own error replaces the picker's.
       onSubmit={() => {
         setEmojiOpen(false)
         setEmojiFailedToLoad(false)
-      }}
-      onKeyDown={(e) => {
-        // Escape closes the GIF search from the box or from inside it; the mention list gets it first.
-        if (e.key === 'Escape' && giphyOpen && !e.defaultPrevented) {
-          e.preventDefault()
-          closeGiphy()
-        }
       }}
     >
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
@@ -663,11 +664,14 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
                 disabled={images.drafts.length >= MAX_IMAGES || !!video.draft || !offers.pictureFiles}
                 // The press does not move focus off the box.
                 onMouseDown={offers.giphy ? (e) => e.preventDefault() : undefined}
-                onClick={(e) => {
+                onPointerDown={gifPressedBy.onPointerDown}
+                onKeyDown={gifPressedBy.onKeyDown}
+                onClick={() => {
+                  const focus = focusOnOpen(gifPressedBy.take())
                   if (!offers.giphy) return choose(['image/gif'])
                   if (giphyOpen) return closeGiphy()
-                  setGiphyByKeyboard(e.detail === 0)
-                  if (e.detail > 0) input.current?.focus({ preventScroll: true })
+                  setGiphyByKeyboard(focus === 'picker')
+                  if (focus === 'box') input.current?.focus({ preventScroll: true })
                   if (typing) setDismissed(typing.start)
                   setEmojiOpen(false)
                   setGiphyOpen(true)
@@ -680,13 +684,14 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               {giphyOpen && offers.giphy && GIPHY_API_KEY ? (
                 <PickerBoundary onError={giphyFailed}>
                   <GiphyPicker
-                    anchor={toolbar}
+                    place={pickerPlace}
+                    panel={giphyDialog}
                     apiKey={GIPHY_API_KEY}
                     focusSearch={giphyByKeyboard}
-                    onPick={(picked) => {
+                    onPick={(picked, pointer) => {
                       setGif({ id: picked.id, description: picked.title })
                       setGiphyOpen(false)
-                      input.current?.focus({ preventScroll: true })
+                      if (focusOnOpen(pointer) !== 'none') input.current?.focus({ preventScroll: true })
                     }}
                     onUpload={() => {
                       setGiphyOpen(false)
@@ -770,13 +775,11 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               onPointerDown={emojiPressedBy.onPointerDown}
               onKeyDown={emojiPressedBy.onKeyDown}
               onClick={() => {
-                const pointer = emojiPressedBy.take()
+                const focus = focusOnOpen(emojiPressedBy.take())
                 if (emojiOpen) return closeEmoji()
                 setEmojiFailedToLoad(false)
-                setEmojiByKeyboard(pointer === null)
-                // Keeps the caret with the box when a mouse opens the picker. Not for touch:
-                // focusing the box would open the on-screen keyboard over the picker.
-                if (pointer === 'mouse') input.current?.focus({ preventScroll: true })
+                setEmojiByKeyboard(focus === 'picker')
+                if (focus === 'box') input.current?.focus({ preventScroll: true })
                 // The list of members to mention gives way to the picker.
                 if (typing) setDismissed(typing.start)
                 setGiphyOpen(false)

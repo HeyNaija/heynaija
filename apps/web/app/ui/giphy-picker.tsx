@@ -3,7 +3,8 @@
 import { GiphyFetch } from '@giphy/js-fetch-api'
 import { type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { GIPHY_ID } from '@/lib/giphy'
-import { useFixedPlacement } from './use-fixed-placement'
+import { type PickerPlace, usePickerPlacement } from './use-fixed-placement'
+import { usePressedBy } from './use-pressed-by'
 
 const PAGE = 12
 
@@ -18,22 +19,25 @@ type Page = { found: Found[]; next: number | null }
  * Enter, so a few keystrokes do not spend a key's hourly allowance.
  */
 export default function GiphyPicker({
-  anchor,
+  place,
+  panel,
   apiKey,
   focusSearch,
   onPick,
   onUpload,
 }: {
-  anchor: RefObject<HTMLElement | null>
+  place: PickerPlace
+  panel: RefObject<HTMLDivElement | null>
   apiKey: string
   /** Opened from the keyboard: focus moves into the picker. Opened by pointer, the box keeps it. */
   focusSearch: boolean
-  onPick: (gif: { id: string; title: string }) => void
+  /** `pointer` is the pointerType of the press that picked, or null for the keyboard or a screen reader. */
+  onPick: (gif: { id: string; title: string }, pointer: string | null) => void
   /** The member would rather add a GIF file of their own. */
   onUpload: () => void
 }) {
   const id = useId()
-  const panel = useRef<HTMLDivElement>(null)
+  const pressedBy = usePressedBy()
   const search = useRef<HTMLInputElement>(null)
   const [draft, setDraft] = useState('')
   const [term, setTerm] = useState('')
@@ -44,8 +48,11 @@ export default function GiphyPicker({
   const [attempt, setAttempt] = useState(0)
   // Counts restarts of the list, so a "More" answer that comes after a new search is dropped.
   const run = useRef(0)
+  // Counts Try again presses. The fetch library answers a URL that failed in the last 6 seconds from its
+  // cache without asking GIPHY, so a retry adds this to its URL to be a request of its own.
+  const retries = useRef(0)
   const client = useMemo(() => new GiphyFetch(apiKey), [apiKey])
-  useFixedPlacement(anchor, panel, true, { tallest: 440, widest: 360 })
+  usePickerPlacement(place, panel, { tallest: 440, widest: 360 })
 
   useEffect(() => {
     if (focusSearch) search.current?.focus({ preventScroll: true })
@@ -53,7 +60,7 @@ export default function GiphyPicker({
 
   const fetchPage = useCallback(
     async (offset: number): Promise<Page> => {
-      const options = { limit: PAGE, offset, rating: 'pg' as const }
+      const options = { limit: PAGE, offset, rating: 'pg' as const, ...(retries.current ? { retry: String(retries.current) } : {}) }
       const result = term ? await client.search(term, options) : await client.trending(options)
       const found: Found[] = []
       for (const gif of result.data) {
@@ -122,7 +129,7 @@ export default function GiphyPicker({
         : `${found.length} GIFs${term ? ` for ${term}` : ', trending now'}`
 
   return (
-    <div ref={panel} role="dialog" aria-label="Search GIFs" className="emoji-picker giphy-picker">
+    <div ref={panel} role="dialog" aria-label="Search GIFs" className="emoji-picker giphy-picker" onPointerDown={pressedBy.onPointerDown} onKeyDown={pressedBy.onKeyDown}>
       <label htmlFor={`${id}-search`} className="sr-only">Search GIFs</label>
       <input
         ref={search}
@@ -146,7 +153,17 @@ export default function GiphyPicker({
         {failed ? (
           <p role="alert" className="giphy-error">
             Could not load GIFs from GIPHY. Check your connection.{' '}
-            <button type="button" className="underline" onClick={() => (found.length ? more() : setAttempt((n) => n + 1))}>Try again</button>
+            <button
+              type="button"
+              className="underline"
+              onClick={() => {
+                retries.current += 1
+                if (found.length) more()
+                else setAttempt((n) => n + 1)
+              }}
+            >
+              Try again
+            </button>
           </p>
         ) : null}
         <div className="giphy-grid">
@@ -157,7 +174,7 @@ export default function GiphyPicker({
               className="giphy-btn"
               aria-label={gif.title}
               title={gif.title}
-              onClick={() => onPick({ id: gif.id, title: gif.title })}
+              onClick={() => onPick({ id: gif.id, title: gif.title }, pressedBy.take())}
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- Giphy's own small rendition, loaded by the member's browser */}
               <img src={gif.src} alt="" loading="lazy" decoding="async" />
