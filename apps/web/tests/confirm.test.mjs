@@ -83,6 +83,11 @@ test('a second tap near the first, straight after it, is part of the same press'
   assert.equal(continuesPress(closedAt, { x: 700, y: 430, at: 1_200, detail: 1, pointerType: 'pen' }), true)
 })
 
+test("a mouse button pressed again in the same place straight after is the double click's second press, before the browser counts it", () => {
+  assert.equal(continuesPress(closedAt, { x: 702, y: 432, at: 1_150, detail: 0, pointerType: 'mouse' }), true)
+  assert.equal(continuesPress(closedAt, { x: 300, y: 432, at: 1_150, detail: 0, pointerType: 'mouse' }), false)
+})
+
 test('a click the browser does not count as a double click goes through', () => {
   assert.equal(continuesPress(closedAt, { x: 700, y: 430, at: 1_150, detail: 1, pointerType: 'mouse' }), false)
   // Keyboard clicks have no pointer and no count.

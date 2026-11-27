@@ -201,6 +201,49 @@ test('a double click on Cancel, the scrim or the confirm button answers once and
   await context.close()
 })
 
+/** Records the presses that reach the page outside the dialog, as `window.behind`. */
+async function recordPressesBehind(page: Page) {
+  await page.evaluate(() => {
+    const seen: string[] = []
+    Object.assign(window, { behind: seen })
+    for (const kind of ['pointerdown', 'mousedown', 'click']) {
+      document.addEventListener(kind, (event) => {
+        if (!(event.target as Element).closest('dialog')) seen.push(kind)
+      })
+    }
+  })
+}
+const pressesBehind = (page: Page) => page.evaluate(() => (window as unknown as { behind: string[] }).behind)
+
+test('no part of the second click of a double click on the confirm button reaches what is behind', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'dbldown', { viewport: { width: 1280, height: 800 } })
+  const text = `Deleted with a double click, ${handle}`
+  await post(page, text)
+  await askToDelete(page, text)
+  await recordPressesBehind(page)
+  const point = await confirmPoint(page)
+  await page.mouse.dblclick(point.x, point.y)
+  await expect(question(page)).toBeHidden()
+  await expect(page.locator('article', { hasText: text })).toHaveCount(0)
+  expect(await pressesBehind(page)).toEqual([])
+  await context.close()
+})
+
+test('a double click straight after confirming with Enter goes through whole', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'enterdbl', { viewport: { width: 1280, height: 800 } })
+  const text = `Deleted with Enter, ${handle}`
+  await post(page, text)
+  await askToDelete(page, text)
+  await recordPressesBehind(page)
+  const heading = (await page.locator('h1').first().boundingBox())!
+  await question(page).getByRole('button', { name: 'Delete post' }).focus()
+  await page.keyboard.press('Enter')
+  await page.mouse.dblclick(heading.x + 4, heading.y + heading.height / 2)
+  await expect(question(page)).toBeHidden()
+  expect((await pressesBehind(page)).filter((kind) => kind === 'click')).toEqual(['click', 'click'])
+  await context.close()
+})
+
 test('a double tap on the confirm button over the phone tab bar does not open the tab, and a later tap does', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'dbltapper', {
     viewport: { width: 375, height: 667 },

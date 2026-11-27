@@ -39,12 +39,14 @@ const TAP_SLOP_PX = 30
  * Whether a click that arrives after a press closed the dialog is the rest of that
  * same press (the second click of a double click, the second tap of a double tap),
  * which would otherwise land on whatever the dialog was covering. A mouse says so
- * itself in `detail`; a finger or pen is judged by time and place.
+ * itself in `detail`, except on pointerdown, which carries no count; that, and a
+ * finger or pen, is judged by time and place.
  */
 export function continuesPress(first: Press, next: Press & { detail: number; pointerType: string }): boolean {
   if (next.at - first.at > FOLLOW_UP_MS) return false
   if (next.detail > 1) return true
-  if (next.pointerType !== 'touch' && next.pointerType !== 'pen') return false
+  const uncounted = next.pointerType === 'mouse' && next.detail === 0
+  if (next.pointerType !== 'touch' && next.pointerType !== 'pen' && !uncounted) return false
   return Math.hypot(next.x - first.x, next.y - first.y) <= TAP_SLOP_PX
 }
 

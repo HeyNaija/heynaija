@@ -4,25 +4,29 @@ import { type MouseEvent, type RefObject, useEffect, useId, useRef } from 'react
 import { createPortal } from 'react-dom'
 import { type ConfirmEvent, type ConfirmFlow, confirmStep, continuesPress, FOLLOW_UP_MS, type Press, wrapFocus } from '@/lib/confirm'
 
+const FOLLOW_UP_EVENTS = ['pointerdown', 'mousedown', 'click', 'dblclick'] as const
+
 /**
  * Once a click or tap has closed the dialog, the rest of that press (the second click
  * of a double click) would land on whatever the dialog covered: the post it deleted,
- * or the phone's tab bar under the sheet. Those clicks are stopped before anything
- * sees them; any other click goes through.
+ * or the phone's tab bar under the sheet. Those presses (and their pointerdown and
+ * mousedown, which would move focus) are stopped before anything sees them; any other
+ * press goes through. A click from the keyboard (Enter or Space, `detail` 0) has no
+ * second press, so it stops nothing.
  */
 function swallowRestOfPress(event: MouseEvent) {
   const first: Press = { x: event.clientX, y: event.clientY, at: event.timeStamp }
-  const swallow = (next: globalThis.MouseEvent) => {
+  const swallow = (next: Event) => {
+    if (!(next instanceof globalThis.MouseEvent)) return
     const pointerType = next instanceof PointerEvent ? next.pointerType : ''
     if (!continuesPress(first, { x: next.clientX, y: next.clientY, at: next.timeStamp, detail: next.detail, pointerType })) return
-    next.preventDefault()
+    // Cancelling pointerdown would also stop mousedown, whose default (moving focus) is the one to cancel.
+    if (next.type !== 'pointerdown') next.preventDefault()
     next.stopImmediatePropagation()
   }
-  window.addEventListener('click', swallow, true)
-  window.addEventListener('dblclick', swallow, true)
+  for (const kind of FOLLOW_UP_EVENTS) window.addEventListener(kind, swallow, true)
   setTimeout(() => {
-    window.removeEventListener('click', swallow, true)
-    window.removeEventListener('dblclick', swallow, true)
+    for (const kind of FOLLOW_UP_EVENTS) window.removeEventListener(kind, swallow, true)
   }, FOLLOW_UP_MS)
 }
 
@@ -68,7 +72,7 @@ export function ConfirmDialog({
     const next = confirmStep(flow.current, event)
     flow.current = next.flow
     if (next.close) {
-      if (press) swallowRestOfPress(press)
+      if (press && press.detail > 0) swallowRestOfPress(press)
       dialog.current?.close()
     }
     if (!next.answer) return
