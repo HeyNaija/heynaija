@@ -67,6 +67,15 @@ test('a GIF is stored on the post and read back in feeds, the post and its repli
   assert.equal((await service().post(null, reply.id))!.giphy?.id, 'abc123')
 })
 
+test("a post or reply with a GIF is on its author's Media tab, and one without is not", async () => {
+  const root = await service().create(bayo, 'root')
+  await service().create(ada, 'plain')
+  await service().create(ada, 'gif post', { giphy: { id: ID, description: '' } })
+  await service().create(ada, 'gif reply', { replyTo: root.id, giphy: { id: ID, description: '' } })
+  const media = await service().byAuthor(null, ada, 10, undefined, 'media')
+  assert.deepEqual(media.posts.map((p) => p.text), ['gif reply', 'gif post'])
+})
+
 test('a post with no GIF says null', async () => {
   const { id } = await service().create(ada, 'plain')
   assert.equal((await service().post(null, id))!.giphy, null)

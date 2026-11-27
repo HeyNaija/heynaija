@@ -513,8 +513,8 @@ export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
 // Written out so the outer post is unambiguous inside subqueries.
 const outerId = sql`"posts"."id"`
 
-// Has at least one image, or its video, that a reader can see.
-const withMedia = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.kind in ('post_image', 'post_video') and m.status = 'ready')`
+// Has at least one image, or its video, that a reader can see, or a Giphy GIF.
+const withMedia = sql`(exists(select 1 from media m where m.post_id = ${outerId} and m.kind in ('post_image', 'post_video') and m.status = 'ready') or "posts"."giphy_id" is not null)`
 
 const profileFilter: Record<ProfileFilter, SQL> = {
   posts: inFeeds,
