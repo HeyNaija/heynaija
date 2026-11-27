@@ -236,6 +236,9 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
 
   // The Giphy search: its button, and whether the keyboard opened it (focus then moves in).
   const [giphyOpen, setGiphyOpen] = useState(false)
+  // A poll, picture or video that takes the search's place closes it, so taking them away does not
+  // open it again (and fetch trending GIFs) or leave the form's Escape handler waiting for it.
+  if (giphyOpen && !offers.giphy) setGiphyOpen(false)
   const [GiphyPicker, setGiphyPicker] = useState(giphyPicker)
   const giphyFailed = () => {
     setGiphyOpen(false)

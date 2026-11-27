@@ -381,6 +381,44 @@ test('when the GIF search cannot be downloaded it closes, the draft stays, and t
   await context.close()
 })
 
+test('a poll or a picture that hides the GIF search closes it, so taking them away does not open it again', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, 'needs a web app built with a Giphy key; see the comment above the test before this one')
+  const { page, handle, context } = await newMember(browser, 'gifhidden')
+  let searches = 0
+  await context.route(/^https:\/\/[a-z0-9.-]*\bgiphy\.com\//, (route) => {
+    if (new URL(route.request().url()).hostname === 'api.giphy.com') searches++
+    return route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: { data: [], pagination: { total_count: 0, count: 0, offset: 0 }, meta: { status: 200, msg: 'OK', response_id: 'e2e' } },
+    })
+  })
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Hidden ${handle}`)
+  const toggle = page.getByRole('button', { name: 'Search GIFs' })
+  const search = page.getByRole('dialog', { name: 'Search GIFs' })
+  await toggle.click()
+  await expect(search).toBeVisible()
+  await expect.poll(() => searches).toBe(1)
+
+  const poll = page.getByRole('button', { name: 'Poll' })
+  await poll.click()
+  await expect(search).toBeHidden()
+  await poll.click()
+  await expect(poll).toHaveAttribute('aria-pressed', 'false')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(search).toBeHidden()
+
+  await toggle.click()
+  await expect(search).toBeVisible()
+  await page.locator('#compose input[type="file"]:not([accept*="video"])').setInputFiles({ name: 'dance.gif', mimeType: 'image/gif', buffer: gif() })
+  await expect(search).toBeHidden()
+  await page.getByRole('button', { name: 'Remove GIF 1' }).click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(search).toBeHidden()
+  await context.close()
+})
+
 const PHONE = { width: 375, height: 667 }
 const USABLE = 36 + 3 * 44
 const rect = (locator: import('@playwright/test').Locator) => locator.evaluate((el) => el.getBoundingClientRect().toJSON() as DOMRect)
