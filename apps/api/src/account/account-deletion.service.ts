@@ -432,7 +432,7 @@ export class AccountDeletionService {
       await run(sql`delete from games.trivia_answers where member_id = ${memberId}`)
       await run(sql`delete from games.trivia_results where member_id = ${memberId}`)
       await run(sql`
-        update games.trivia_rounds set status = 'cancelled', ended_at = coalesce(ended_at, now()), version = version + 1
+        update games.trivia_rounds set status = 'cancelled', ended_at = coalesce(ended_at, ${now}::timestamptz), version = version + 1
         where host_id = ${memberId} and status in ('draft', 'scheduled', 'live', 'reviewing')`)
       await run(sql`update games.trivia_rounds set title = '' where host_id = ${memberId}`)
       await run(sql`
@@ -458,8 +458,9 @@ export class AccountDeletionService {
       // Handles: old holds that have run out go; the one they have now is held for
       // HANDLE_HOLD_DAYS, so nobody can take it straight away (docs/adr/0004).
       // Renames are refused while a deletion is pending, so it is the one Kratos has.
+      // A hold has run out by the erase's own `now`, as in RetentionService.sweep.
       await run(sql`delete from released_handles
-        where member_id = ${memberId} and released_at <= now() - make_interval(days => ${HANDLE_HOLD_DAYS})`)
+        where member_id = ${memberId} and released_at <= ${now}::timestamptz - make_interval(days => ${HANDLE_HOLD_DAYS})`)
       if (member.handle !== tombstoneHandle(memberId)) await this.memberships.holdHandle(memberId, member.handle, tx)
 
       // The age record goes; the audit log keeps that an 18+ declaration was made,
