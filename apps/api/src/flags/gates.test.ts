@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm'
 import { AuthController } from '../auth/auth.controller.js'
 import { type AuthedRequest, SessionGuard } from '../auth/session.guard.js'
 import { GistsGate } from '../gists/gists-enabled.guard.js'
+import { GifProviders } from '../gifs/gif-providers.js'
 import { InvitesService } from '../invites/invites.service.js'
 import { OnboardingController } from '../onboarding/onboarding.controller.js'
 import { PostsController } from '../posts/posts.controller.js'
@@ -50,6 +51,7 @@ const posts = (flags: FeatureFlags, requested: string[] = []) =>
     { request: async (url: string) => void requested.push(url) } as never,
     new MemoryRateLimiter(),
     flags,
+    new GifProviders(['giphy']),
   )
 
 const status = async (run: () => Promise<unknown>) => {

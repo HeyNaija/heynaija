@@ -344,7 +344,7 @@ export class AccountDeletionService {
       // reports, likes and notifications point at. The author is inactive, so
       // setting deleted_at changes no reply count.
       await run(sql`update posts set deleted_at = coalesce(deleted_at, ${now}::timestamptz) where author_id = ${memberId} and id in ${evidence}`)
-      await run(sql`update posts set deleted_at = coalesce(deleted_at, ${now}::timestamptz), text = '', link_url = null, quote_post_id = null, giphy_id = null, giphy_alt = null
+      await run(sql`update posts set deleted_at = coalesce(deleted_at, ${now}::timestamptz), text = '', link_url = null, quote_post_id = null, gif_provider = null, gif_id = null, gif_alt = null
         where author_id = ${memberId} and id not in ${evidence}`)
       await run(sql`delete from post_mentions where member_id = ${memberId} or post_id in ${ordinary}`)
       await run(sql`delete from post_hashtags where post_id in ${ordinary}`)

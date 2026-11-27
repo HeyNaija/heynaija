@@ -155,9 +155,9 @@ test('a privacy request is kept two years after it was closed; open ones stay ho
 })
 
 test('the sweep blanks a deleted post\'s GIF with its text, and counts a post that had only a GIF', async () => {
-  const { id } = await postsService.create(ada, '', { giphy: { id: 'gifOnly1', description: 'a cat' } })
+  const { id } = await postsService.create(ada, '', { gif: { provider: 'giphy', id: 'gifOnly1', description: 'a cat' } })
   await deletedDaysAgo(id, 91)
   assert.deepEqual(await sweep(), { posts: 1, ...nothingElse })
   const row = await post(id)
-  assert.deepEqual([row.text, row.giphyId, row.giphyAlt], ['', null, null])
+  assert.deepEqual([row.text, row.gifProvider, row.gifId, row.gifAlt], ['', null, null, null])
 })

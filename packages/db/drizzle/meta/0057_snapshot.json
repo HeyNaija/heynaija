@@ -1,5 +1,5 @@
 {
-  "id": "f602d4e1-a1fa-4d7e-93fc-d8f7731dd7dc",
+  "id": "524f8ca3-9c29-4ad3-b17c-13a518b75909",
   "prevId": "14c44468-498a-41bc-8387-0d10536167f2",
   "version": "7",
   "dialect": "postgresql",
@@ -5884,14 +5884,20 @@
           "primaryKey": false,
           "notNull": false
         },
-        "giphy_id": {
-          "name": "giphy_id",
+        "gif_provider": {
+          "name": "gif_provider",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "giphy_alt": {
-          "name": "giphy_alt",
+        "gif_id": {
+          "name": "gif_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gif_alt": {
+          "name": "gif_alt",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -6216,6 +6222,10 @@
         "posts_adult_label_check": {
           "name": "posts_adult_label_check",
           "value": "adult_label in ('author', 'moderator', 'community')"
+        },
+        "posts_gif_check": {
+          "name": "posts_gif_check",
+          "value": "(gif_provider is null) = (gif_id is null) and (gif_alt is null or gif_id is not null) and (gif_provider is null or (gif_provider ~ '^[a-z][a-z0-9]{0,19}$' and gif_id ~ '^[A-Za-z0-9_-]{1,64}$'))"
         }
       },
       "isRLSEnabled": false

@@ -34,6 +34,14 @@ export const ADULT_LABELS = ['author', 'moderator'] as const
 // takes off, so a post there is never unmarked (ADR 0020, question 8).
 export const POST_ADULT_LABELS = [...ADULT_LABELS, 'community'] as const
 
+/**
+ * The shapes every GIF provider's name and id must fit (posts_gif_check). Each provider's own
+ * id rule (apps/api/src/gifs/gif-providers.ts) is narrower. The id goes into a media URL, so
+ * nothing that could change a URL's path or host fits.
+ */
+export const GIF_PROVIDER_PATTERN = '^[a-z][a-z0-9]{0,19}$'
+export const GIF_ID_PATTERN = '^[A-Za-z0-9_-]{1,64}$'
+
 // A member of the network. `id` is the Ory Kratos identity ID: Kratos owns the
 // email, password and sessions; this table holds only what the app itself needs.
 export const members = pgTable(
@@ -318,11 +326,13 @@ export const posts = pgTable(
     // The first web address in the text, without its #fragment: the one that gets a
     // preview card. Matches link_previews.url; null when the text has no address.
     linkUrl: text('link_url'),
-    // A GIF the member picked from Giphy in their browser: only its id is kept, and
-    // readers' browsers load it from Giphy. Null when the post has none. The
-    // description is the author's alt text.
-    giphyId: text('giphy_id'),
-    giphyAlt: text('giphy_alt'),
+    // A GIF the member picked in their browser from a GIF provider (GIPHY today): only
+    // the provider's name and its id for the GIF are kept, and readers' browsers load it
+    // from that provider. All three null when the post has none; gif_alt is the author's
+    // description.
+    gifProvider: text('gif_provider'),
+    gifId: text('gif_id'),
+    gifAlt: text('gif_alt'),
     // At most one community per post. Replies inherit their parent's.
     communityId: uuid('community_id').references(() => communities.id),
     // A reply in a Gist's comment section, inherited by the replies under it. Read only through the Gist's routes.
@@ -367,6 +377,12 @@ export const posts = pgTable(
     check('posts_gist_reply_check', sql`${t.gistId} is null or ${t.quotePostId} is null`),
     check('posts_reply_audience_check', sql.raw(`reply_audience in (${REPLY_AUDIENCES.map((value) => `'${value}'`).join(', ')})`)),
     check('posts_adult_label_check', sql.raw(`adult_label in (${POST_ADULT_LABELS.map((value) => `'${value}'`).join(', ')})`)),
+    check(
+      'posts_gif_check',
+      sql.raw(
+        `(gif_provider is null) = (gif_id is null) and (gif_alt is null or gif_id is not null) and (gif_provider is null or (gif_provider ~ '${GIF_PROVIDER_PATTERN}' and gif_id ~ '${GIF_ID_PATTERN}'))`,
+      ),
+    ),
     // Full-text search. 'simple' (no stemming) suits mixed English, Pidgin and names.
     index('posts_text_search_idx').using('gin', sql`to_tsvector('simple', ${t.text})`),
   ],

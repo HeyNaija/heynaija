@@ -231,3 +231,12 @@ test('the Apple key is its .p8 file in base64, with its team and key IDs, all th
   assert.throws(() => loadEnv({ ...base, ...apple, APPLE_PRIVATE_KEY: p8 }), /\.p8/)
   assert.throws(() => loadEnv({ ...base, ...apple, APPLE_KEY_ID: 'key' }), /APPLE_KEY_ID/)
 })
+
+test('GIF_PROVIDERS names the providers that take new GIFs: GIPHY when unset or empty, and an unknown name stops the API', () => {
+  assert.deepEqual(loadEnv(base).GIF_PROVIDERS, ['giphy'])
+  assert.deepEqual(loadEnv({ ...base, GIF_PROVIDERS: '' }).GIF_PROVIDERS, ['giphy'])
+  assert.deepEqual(loadEnv({ ...base, GIF_PROVIDERS: ' giphy , giphy ' }).GIF_PROVIDERS, ['giphy'])
+  assert.deepEqual(loadEnv({ ...base, GIF_PROVIDERS: 'none' }).GIF_PROVIDERS, [])
+  assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: 'giphy,klipy' }), /klipy is not a GIF provider HeyNaija knows/)
+  assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: 'tenor' }), /tenor is not a GIF provider HeyNaija knows/)
+})
