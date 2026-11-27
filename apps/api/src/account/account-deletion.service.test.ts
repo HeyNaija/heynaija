@@ -488,11 +488,11 @@ test('the erase removes what is personal and keeps what is evidence', async () =
   await db.insert(pushSubscriptions).values({ memberId: xena, endpoint: 'https://push.example/x', p256dh: 'k', auth: 'a' })
   await db.insert(pushDevices).values({ memberId: xena, service: 'fcm', token: 'xena-android:APA91b', key: 'k' })
   await membersService.setFounder('xena', true)
-  // Handle holds run on the database clock, not on the `now` this test passes in.
-  const released = (daysAgo: number) => new Date(Date.now() - daysAgo * DAY)
+  // The erase below runs at days(14). A hold is judged by that time, not the real clock:
+  // one released 29 days before it is still running, one released 31 days before has run out.
   await db.insert(releasedHandles).values([
-    { handle: 'xena_old', memberId: xena, releasedAt: released(5) },
-    { handle: 'xena_older', memberId: xena, releasedAt: released(60) },
+    { handle: 'xena_old', memberId: xena, releasedAt: days(14 - 29) },
+    { handle: 'xena_older', memberId: xena, releasedAt: days(14 - 31) },
   ])
   await db.insert(invites).values({ codeHash: 'hash', note: 'for xena' })
   await db.insert(inviteRedemptions).values({ identityId: xena, codeHash: 'hash' })
@@ -1032,6 +1032,7 @@ test('Trivia: their answers and results go; a round they host is called off and 
   assert.equal(await count(triviaResults, eq(triviaResults.memberId, yemi)), 1, 'other players keep their places and points')
   const [theirs] = await db.select().from(triviaRounds).where(eq(triviaRounds.id, hosted!.id))
   assert.equal(theirs!.status, 'cancelled')
+  assert.deepEqual(theirs!.endedAt, days(14), 'it ended when the erase ran')
   assert.equal(theirs!.title, '')
   const [blank] = await db.select().from(triviaQuestions).where(eq(triviaQuestions.roundId, hosted!.id))
   assert.deepEqual([blank!.prompt, blank!.accepted, blank!.explanation], ['', null, null])
