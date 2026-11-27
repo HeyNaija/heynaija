@@ -162,6 +162,80 @@ test('a double click on Delete post leaves the question open', async ({ browser 
   await context.close()
 })
 
+/** The middle of the dialog's confirm button, where a second click or tap would land. */
+async function confirmPoint(page: Page) {
+  const box = (await question(page).getByRole('button', { name: 'Delete post' }).boundingBox())!
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+}
+
+test('a double click on Cancel, the scrim or the confirm button answers once and the second click reaches nothing behind', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'dbldeleter', { viewport: { width: 1280, height: 800 } })
+  const behind = `Stays put, ${handle}`
+  const text = `Deleted with a double click, ${handle}`
+  await post(page, behind)
+  await post(page, text)
+  const before = page.url()
+
+  // Behind the dialog is the post's own card, which opens the post when clicked.
+  await askToDelete(page, text)
+  const cancel = (await question(page).getByRole('button', { name: 'Cancel' }).boundingBox())!
+  await page.mouse.dblclick(cancel.x + cancel.width / 2, cancel.y + cancel.height / 2)
+  await expect(question(page)).toBeHidden()
+  await askToDelete(page, text)
+  const sheet = (await question(page).boundingBox())!
+  await page.mouse.dblclick(sheet.x + sheet.width / 2, sheet.y + sheet.height + 30)
+  await expect(question(page)).toBeHidden()
+  await page.waitForTimeout(1_000)
+  expect(page.url()).toBe(before)
+  await expect(page.locator('article', { hasText: text })).toBeVisible()
+
+  await askToDelete(page, text)
+  const point = await confirmPoint(page)
+  await page.mouse.dblclick(point.x, point.y)
+  await expect(question(page)).toBeHidden()
+  await page.waitForTimeout(1_000)
+  expect(page.url()).toBe(before)
+  await expect(page.locator('article', { hasText: text })).toHaveCount(0)
+  await expect(page.locator('article', { hasText: behind })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Post deleted' })).toHaveCount(1)
+  await context.close()
+})
+
+test('a double tap on the confirm button over the phone tab bar does not open the tab, and a later tap does', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'dbltapper', {
+    viewport: { width: 375, height: 667 },
+    hasTouch: true,
+    isMobile: true,
+  })
+  const text = `Deleted with a double tap, ${handle}`
+  await post(page, text)
+  const before = page.url()
+
+  await askToDelete(page, text)
+  const button = (await question(page).getByRole('button', { name: 'Delete post' }).boundingBox())!
+  const alerts = (await page.getByRole('link', { name: 'Alerts (Notifications)' }).boundingBox())!
+  // The confirm button sits over the Alerts tab, so a stray second tap would open it.
+  const left = Math.max(button.x, alerts.x)
+  const right = Math.min(button.x + button.width, alerts.x + alerts.width)
+  const top = Math.max(button.y, alerts.y)
+  const bottom = Math.min(button.y + button.height, alerts.y + alerts.height)
+  expect(right).toBeGreaterThan(left)
+  expect(bottom).toBeGreaterThan(top)
+  const point = { x: (left + right) / 2, y: (top + bottom) / 2 }
+
+  await page.touchscreen.tap(point.x, point.y)
+  await page.touchscreen.tap(point.x, point.y)
+  await expect(question(page)).toBeHidden()
+  await page.waitForTimeout(1_000)
+  expect(page.url()).toBe(before)
+  await expect(page.locator('article', { hasText: text })).toHaveCount(0)
+  await expect(page.getByRole('status').filter({ hasText: 'Post deleted' })).toHaveCount(1)
+
+  await page.touchscreen.tap(point.x, point.y)
+  await expect(page).toHaveURL(/\/notifications$/)
+  await context.close()
+})
+
 test('on a touch screen, dismissing one toast lets the others go by themselves @mobile', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'tapper')
   test.skip(!test.info().project.use.hasTouch, 'a touch screen only')
