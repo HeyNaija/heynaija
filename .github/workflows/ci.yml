@@ -105,6 +105,9 @@ jobs:
       # Kratos runs in a container and calls the API's invite webhooks through
       # host.docker.internal, which on Linux only reaches ports bound beyond loopback.
       API_HOST: 0.0.0.0
+      # Builds the GIF search into the web app so its tests run; GIPHY itself is answered
+      # by the tests and never reached, so this is not a key.
+      NEXT_PUBLIC_GIPHY_API_KEY: stand-in
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
