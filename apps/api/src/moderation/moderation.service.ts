@@ -11,9 +11,10 @@ import {
   posts,
   REPORT_REASONS,
   reports,
+  URGENT_REPORT_REASONS,
 } from '@heynaija/db'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
-import { and, desc, eq, isNull, ne, or, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, notInArray, or, sql } from 'drizzle-orm'
 import { managesPhoto } from '../communities/photo-managers.js'
 import { countsAsAdult } from '../governance/adult-content.js'
 import { GistsService } from '../gists/gists.service.js'
@@ -26,8 +27,21 @@ import { DB } from '../tokens.js'
 import { SAFETY_ALERTS, type SafetyAlerts } from './safety-alerts.js'
 
 export type ReportReason = Exclude<(typeof REPORT_REASONS)[number], 'appeal'>
+
+/** Whether a report needs a person soon: child sexual abuse or exploitation, or other illegal content. */
+export const isUrgent = (reason: string): boolean => (URGENT_REPORT_REASONS as readonly string[]).includes(reason)
+
+/** How an urgent reason reads in a safety alert. */
+const URGENT_WORDS: Record<(typeof URGENT_REPORT_REASONS)[number], string> = {
+  child_safety: 'child sexual abuse or exploitation',
+  illegal: 'illegal content',
+}
+const urgentWords = (reason: string) => URGENT_WORDS[reason as keyof typeof URGENT_WORDS] ?? reason
+
 export const RESOLUTIONS = [
   'dismiss',
+  // A safety concern (Settings), dealt with: it names nothing to act on here, so closing it is the decision.
+  'handled',
   'remove_post',
   'label_post',
   'suspend_member',
@@ -56,6 +70,11 @@ export type QueueItem = {
   createdAt: Date
   /** Null when the upload scanner filed it. */
   reporterHandle: string | null
+  /**
+   * Sent from Settings (Report a safety concern): about no one post, account, Gist or
+   * photo, so the details are all there is. Only site moderators see these.
+   */
+  concern: boolean
   /** How many open reports there are about the same post or account. */
   reportCount: number
   post: {
@@ -222,9 +241,9 @@ export class ModerationService {
         ),
       )
     if (existing) {
-      // The same report again changes nothing, except one now saying the content is illegal: that is
-      // decided apart and hides a post's video at once, so the open report becomes an illegal one.
-      if (reason !== 'illegal' || existing.reason === 'illegal') return
+      // The same report again changes nothing, except one now saying the content is illegal or child abuse:
+      // that is decided apart and hides a post's video at once, so the open report becomes an urgent one.
+      if (!isUrgent(reason) || isUrgent(existing.reason)) return
       await this.db
         .update(reports)
         .set({ reason, ...(details ? { details } : {}) })
@@ -232,18 +251,36 @@ export class ModerationService {
     } else {
       await this.db.insert(reports).values({ reporterId, postId, memberId, communityId, photoMediaId, reason, details })
     }
-    // Illegal content may need taking down and reporting quickly, so a person
-    // hears about it rather than waiting for a moderator to open the queue.
-    if (reason === 'illegal') {
+    // Illegal content and child abuse may need taking down and reporting quickly,
+    // so a person hears about it rather than waiting for a moderator to open the queue.
+    if (isUrgent(reason)) {
       // Unlike an image, a video reported as illegal is hidden at once, pending review (ADR 0019 open question 6).
       if (postId) await this.afterwards(`hiding the video of reported post ${postId}`, async () => void (await this.videos?.hideReportedVideos(postId)))
-      await this.alerts?.alert('A member reported illegal content', [
+      await this.alerts?.alert(`A member reported ${urgentWords(reason)}`, [
         postId
-          ? `A post (${postId}) was reported as illegal.`
+          ? `A post (${postId}) was reported for ${urgentWords(reason)}.`
           : communityId
-            ? `A community photo (community ${communityId}) was reported as illegal.`
-            : `An account (${memberId}) was reported as illegal.`,
-        'Illegal-content reports are at the top of the moderation queue.',
+            ? `A community photo (community ${communityId}) was reported for ${urgentWords(reason)}.`
+            : `An account (${memberId}) was reported for ${urgentWords(reason)}.`,
+        'Reports like this are at the top of the moderation queue.',
+      ])
+    }
+  }
+
+  /**
+   * Report a safety concern, from Settings: about no one post, account or Gist, so a
+   * member can tell us what they saw or what happened to them, and anything else
+   * that is wrong, without leaving the app (Google Play's Child Safety Standards
+   * ask for this). Only site moderators see it. A child-safety or illegal-content
+   * one alerts whoever handles safety, like any other report of it.
+   */
+  async reportConcern(reporterId: string, reason: ReportReason, details: string): Promise<void> {
+    if (reason === 'needs_label') throw new ModerationTargetError('only a post can be reported as not marked sensitive')
+    await this.db.insert(reports).values({ reporterId, reason, details })
+    if (isUrgent(reason)) {
+      await this.alerts?.alert(`A member reported ${urgentWords(reason)}`, [
+        `A member reported ${urgentWords(reason)} through Report a safety concern, not about one post or account. What they wrote is in the moderation queue.`,
+        'Reports like this are at the top of the moderation queue.',
       ])
     }
   }
@@ -276,10 +313,10 @@ export class ModerationService {
         select ${report!.id}, gm.member_id, gm.role from ${gistMembers} gm
         where gm.gist_id = ${gistId} and gm.joined_at is not null and gm.left_at is null and gm.removed_at is null`)
     })
-    if (reason === 'illegal') {
-      await this.alerts?.alert('A member reported illegal content', [
-        `A Gist (${gistId}) was reported as illegal.`,
-        'Illegal-content reports are at the top of the moderation queue.',
+    if (isUrgent(reason)) {
+      await this.alerts?.alert(`A member reported ${urgentWords(reason)}`, [
+        `A Gist (${gistId}) was reported for ${urgentWords(reason)}.`,
+        'Reports like this are at the top of the moderation queue.',
       ])
     }
   }
@@ -322,7 +359,7 @@ export class ModerationService {
     await this.db.insert(reports).values({ reporterId: memberId, memberId, reason: 'appeal', details: message })
   }
 
-  /** Open reports this moderator may act on: illegal content first, then oldest first. */
+  /** Open reports this moderator may act on: child abuse and illegal content first, then oldest first. */
   async queue(moderatorId: string): Promise<QueueItem[]> {
     const scope = await this.requireModerator(moderatorId)
     const rows = await this.db.execute<{
@@ -360,7 +397,8 @@ export class ModerationService {
     }>(sql`
       select r.id, r.reason, r.details, r.created_at, rep.handle as reporter_handle,
         (select count(*)::int from reports o where o.status = 'open'
-          and ((r.post_id is not null and o.post_id = r.post_id)
+          and (o.id = r.id
+            or (r.post_id is not null and o.post_id = r.post_id)
             or (r.gist_id is not null and o.gist_id = r.gist_id)
             or (r.community_id is not null and o.community_id = r.community_id and o.photo_media_id = r.photo_media_id)
             or (r.post_id is null and r.gist_id is null and r.community_id is null and o.post_id is null and o.gist_id is null
@@ -391,7 +429,7 @@ export class ModerationService {
       left join media ph on ph.id = r.photo_media_id
       where r.status = 'open'
         and (${scope.siteWide} or coalesce(p.community_id, g.community_id) in ${scope.communityIds.length ? sql`(${sql.join(scope.communityIds.map((id) => sql`${id}`), sql`, `)})` : sql`(null)`})
-      order by r.reason = 'illegal' desc, r.created_at asc
+      order by r.reason in (${sql.join(URGENT_REPORT_REASONS.map((r) => sql`${r}`), sql`, `)}) desc, r.created_at asc
       limit 200`)
 
     return rows.rows.map((r) => ({
@@ -400,6 +438,7 @@ export class ModerationService {
       details: r.details,
       createdAt: new Date(r.created_at),
       reporterHandle: r.reporter_handle,
+      concern: !r.post_id && !r.member_handle && !r.gist_id && !r.community_slug,
       reportCount: r.report_count,
       post: r.post_id
         ? { id: r.post_id, text: r.post_text!, images: toPostImages(r.post_images, this.urls), hasVideo: r.post_has_video === true, giphy: r.post_giphy_id ? { id: r.post_giphy_id, alt: r.post_giphy_alt ?? '' } : null, authorHandle: r.post_author!, communityName: r.community_name, markable: r.post_author_adult === true }
@@ -476,10 +515,16 @@ export class ModerationService {
       const targetMemberId = report.memberId ?? report.postAuthorId
       let action: (typeof moderationActions.$inferInsert)['action']
 
+      // Sent from Settings (Report a safety concern): nothing here to act on, only to close once dealt with.
+      const concern = !report.postId && !report.memberId && !report.gistId && !report.communityId
+
       if (resolution === 'dismiss') {
         action = 'dismiss_report'
         dismissedCommunityPhoto = report.photoMediaId
         dismissedPost = report.postId
+      } else if (resolution === 'handled') {
+        if (!concern) throw new ModerationTargetError('only a safety concern report is closed as handled; decide this one by what it is about')
+        action = 'close_report'
       } else if (resolution === 'end_gist') {
         // Ended already, by endReportedGist.
         if (!report.gistId) throw new ModerationTargetError('this report is not about a Gist')
@@ -551,13 +596,16 @@ export class ModerationService {
         action = suspend ? 'suspend_member' : 'reinstate_member'
       }
 
-      const sameTarget = report.postId
-        ? eq(reports.postId, report.postId)
-        : report.gistId
-          ? eq(reports.gistId, report.gistId)
-          : report.communityId
-            ? and(eq(reports.communityId, report.communityId), eq(reports.photoMediaId, report.photoMediaId!))
-            : and(isNull(reports.postId), isNull(reports.gistId), isNull(reports.communityId), eq(reports.memberId, report.memberId!))
+      // A safety concern is about nothing another report could share, so it closes alone.
+      const sameTarget = concern
+        ? eq(reports.id, report.id)
+        : report.postId
+          ? eq(reports.postId, report.postId)
+          : report.gistId
+            ? eq(reports.gistId, report.gistId)
+            : report.communityId
+              ? and(eq(reports.communityId, report.communityId), eq(reports.photoMediaId, report.photoMediaId!))
+              : and(isNull(reports.postId), isNull(reports.gistId), isNull(reports.communityId), eq(reports.memberId, report.memberId!))
       const closed = await tx
         .update(reports)
         .set({ status: resolution === 'dismiss' ? 'dismissed' : 'actioned', resolvedAt: new Date(), resolvedBy: moderatorId })
@@ -566,9 +614,11 @@ export class ModerationService {
             eq(reports.status, 'open'),
             or(
               eq(reports.id, report.id),
-              // Dismissing a report that is not about illegal content must not close an illegal report on the
-              // same post: that one is decided on its own, and the video it hid stays hidden until then.
-              resolution === 'dismiss' && report.reason !== 'illegal' ? and(sameTarget, ne(reports.reason, 'illegal')) : sameTarget,
+              // Dismissing a report that is not about illegal content or child abuse must not close such a report
+              // on the same post: that one is decided on its own, and the video it hid stays hidden until then.
+              resolution === 'dismiss' && !isUrgent(report.reason)
+                ? and(sameTarget, notInArray(reports.reason, [...URGENT_REPORT_REASONS]))
+                : sameTarget,
             ),
           ),
         )
@@ -599,8 +649,8 @@ export class ModerationService {
           postId: report.postId,
           subjectId: report.postId ? null : report.memberId,
           communityId: report.communityId,
-          // A Gist report names no post or member, so the wording needs telling apart.
-          detail: `${report.gistId ? 'gist_' : ''}${resolution === 'dismiss' ? 'dismissed' : 'actioned'}`,
+          // A Gist report or a safety concern names no post or member, so the wording needs telling apart.
+          detail: `${report.gistId ? 'gist_' : concern ? 'concern_' : ''}${resolution === 'dismiss' ? 'dismissed' : 'actioned'}`,
         })
       }
       await notify(tx, told)

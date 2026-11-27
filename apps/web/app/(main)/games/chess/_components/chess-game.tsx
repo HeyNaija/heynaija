@@ -5,14 +5,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Key } from 'chessground/types'
 import { Avatar } from '@/app/ui/avatar'
 import type { ChessGame, ChessPlayer } from '@/lib/api'
+import { LATE_MS, retryPause, waitLimit } from '@/lib/chess-wait'
 import type { Board } from './board'
 
 type BoardModule = typeof import('./board')
 
 const SPEED_NAMES = { blitz: 'Blitz', rapid: 'Rapid', classical: 'Classical', correspondence: 'Correspondence' } as const
 const HOW: Record<string, string> = { mate: 'by checkmate', resign: 'by resignation', outoftime: 'on time', timeout: 'as the other player left' }
-/** After a failed request the page waits a little longer each time, up to this. */
-const RETRY_MAX_MS = 30_000
 
 const nameOf = (p: ChessPlayer) => p.displayName ?? `@${p.handle}`
 
@@ -39,7 +38,8 @@ function formatClock(ms: number): string {
  * A game, played or watched (docs/adr/0028). The board code is fetched only now,
  * on this page. The page asks the API for the next change and the API answers as
  * soon as there is one (or after about 25 seconds with none): no stream to hold
- * open, so it works through every proxy on the way.
+ * open, so it works through every proxy on the way. A reply that is late was lost
+ * on the way, and the page asks again (lib/chess-wait.ts).
  */
 export function ChessGameView({ initial }: { initial: ChessGame }) {
   const [game, setGame] = useState(initial)
@@ -54,6 +54,8 @@ export function ChessGameView({ initial }: { initial: ChessGame }) {
   const lib = useRef<BoardModule | null>(null)
   const latest = useRef(game)
   latest.current = game
+  // Gives up on the request on its way and asks again (set by the loop below while it runs).
+  const askAgain = useRef<(() => void) | null>(null)
 
   const turn: 'white' | 'black' = game.moves.length % 2 === 0 ? 'white' : 'black'
   const yourTurn = !game.finished && game.you === turn
@@ -62,13 +64,20 @@ export function ChessGameView({ initial }: { initial: ChessGame }) {
   const act = useCallback(async (path: string, body?: object) => {
     setBusy(true)
     setError(null)
+    const before = latest.current.version
     const res = await fetch(`/api/v1/games/chess/games/${latest.current.id}/${path}`, {
       method: 'POST',
       headers: body ? { 'content-type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     }).catch(() => null)
     setBusy(false)
-    if (res?.ok) return true
+    if (res?.ok) {
+      // Lichess sends it back within a moment. If no reply has brought it by then, that reply was lost on the way: ask again.
+      setTimeout(() => {
+        if (latest.current.version === before) askAgain.current?.()
+      }, LATE_MS)
+      return true
+    }
     const answer = (await res?.json().catch(() => null)) as { message?: string } | null
     setError(answer?.message ?? (res?.status === 429 ? 'That was a lot of moves at once. Wait a moment.' : 'That did not go through. Try again.'))
     board.current?.show(latest.current.moves, true)
@@ -117,32 +126,63 @@ export function ChessGameView({ initial }: { initial: ChessGame }) {
   // Waits for each change, for as long as the game goes on and the page is in view.
   useEffect(() => {
     let stopped = false
+    // One loop at a time: coming back to the page must not start a second one beside it.
+    let running = false
     let failures = 0
     let controller: AbortController | null = null
+    let cutShort: (() => void) | null = null
     const loop = async () => {
-      while (!stopped && !latest.current.finished) {
-        if (document.visibilityState !== 'visible') return
-        controller = new AbortController()
-        const res = await fetch(`/api/v1/games/chess/games/${latest.current.id}?after=${latest.current.version}`, { cache: 'no-store', signal: controller.signal }).catch(() => null)
-        if (stopped) return
-        if (res?.ok) {
-          failures = 0
-          const next = (await res.json()) as ChessGame
-          if (next.version !== latest.current.version) setGame(next)
-          continue
+      if (running) return
+      running = true
+      try {
+        while (!stopped && !latest.current.finished) {
+          if (document.visibilityState !== 'visible') return
+          const have = latest.current
+          const ask = new AbortController()
+          controller = ask
+          let cut = false
+          cutShort = () => {
+            cut = true
+            ask.abort()
+          }
+          // A reply that is late was lost on the way (patchy data drops them): give up on it and ask again (lib/chess-wait.ts).
+          const timer = setTimeout(cutShort, waitLimit(have))
+          const reply = await fetch(`/api/v1/games/chess/games/${have.id}?after=${have.version}`, { cache: 'no-store', signal: ask.signal })
+            .then(async (res) => (res.ok ? ((await res.json()) as ChessGame) : res.status))
+            .catch(() => null)
+          clearTimeout(timer)
+          cutShort = null
+          if (stopped) return
+          if (reply !== null && typeof reply === 'object') {
+            failures = 0
+            if (reply.version !== latest.current.version) {
+              // Now, not at the next render: the loop asks again straight away, and must ask after this version.
+              latest.current = reply
+              setGame(reply)
+            }
+            continue
+          }
+          if (cut) continue
+          if (reply === 404) return
+          failures += 1
+          await new Promise((done) => setTimeout(done, retryPause(latest.current, failures)))
         }
-        if (res?.status === 404) return
-        failures += 1
-        await new Promise((done) => setTimeout(done, Math.min(1000 * 2 ** failures, RETRY_MAX_MS)))
+      } finally {
+        running = false
       }
     }
+    askAgain.current = () => cutShort?.()
     void loop()
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void loop()
+      if (document.visibilityState !== 'visible') return
+      // A request from before the page was hidden may have died with its connection: ask again now.
+      if (running) cutShort?.()
+      else void loop()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       stopped = true
+      askAgain.current = null
       controller?.abort()
       document.removeEventListener('visibilitychange', onVisible)
     }

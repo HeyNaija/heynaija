@@ -5,6 +5,7 @@ import { Suspense } from 'react'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { getTriviaRound, getViewer } from '@/lib/api'
 import { TriviaRound } from '../../_components/trivia-round'
+import { requireGames } from '../../../_components/require-games'
 
 export const metadata: Metadata = { title: 'Trivia round', robots: { index: false } }
 
@@ -21,7 +22,7 @@ export default function TriviaRoundPage({ params }: PageProps<'/games/trivia/rou
 
 async function RoundPage({ params }: Pick<PageProps<'/games/trivia/rounds/[id]'>, 'params'>) {
   const [{ id }, viewer] = await Promise.all([params, getViewer()])
-  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  requireGames(viewer, `/games/trivia/rounds/${id}`)
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound()
   const round = await getTriviaRound(id)
   if (!round) notFound()

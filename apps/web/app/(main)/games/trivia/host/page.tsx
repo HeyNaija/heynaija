@@ -7,6 +7,7 @@ import { getCommunities, getTriviaList, getViewer } from '@/lib/api'
 import { lagosInput } from '../../competitions/_bits'
 import { RoundForm } from '../_components/round-form'
 import { blankQuestion } from '../_components/round-draft'
+import { requireGames } from '../../_components/require-games'
 
 export const metadata: Metadata = { title: 'Host a trivia round', robots: { index: false } }
 
@@ -29,7 +30,7 @@ export default function HostTriviaPage() {
 
 async function NewRound() {
   const viewer = await getViewer()
-  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  requireGames(viewer, '/games/trivia/host')
   const list = await getTriviaList()
   if (!list?.mayHost) notFound()
   // Game Night is the default; Chess Arena is chess's own.

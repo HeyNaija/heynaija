@@ -5,9 +5,10 @@ import { PostsSkeleton } from '@/app/ui/post-item'
 import { getGameBoard, getGames, getViewer } from '@/lib/api'
 import { GameCard } from './_components/game-card'
 import { ScoreCard } from './_components/home-sections'
+import { requireGames } from './_components/require-games'
 
-// Dark while Games is being built (docs/adr/0028): proxy.ts answers 404 for anyone
-// not on the list, so this is not indexed either.
+// Hidden while Games is being built (docs/adr/0028): proxy.ts shows anyone it is
+// not open to a sign-in or "not open to you yet" page instead, so this is not indexed either.
 export const metadata: Metadata = { title: 'Games', robots: { index: false } }
 
 /** The games homepage (docs/games/GAMES.md): your score, then every game; each game's page has its leaderboard, competitions and posts. */
@@ -31,8 +32,8 @@ export default function GamesPage() {
 
 async function GamesHome() {
   const viewer = await getViewer()
-  // With Games off, or for anyone not on its list (or signed out), this page does not exist.
-  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  // With Games off, or for anyone not on its list (or signed out), the rule in require-games.ts.
+  requireGames(viewer, '/games')
   const [registry, season, allTime] = await Promise.all([
     getGames(),
     getGameBoard({ board: 'score', limit: 1 }),

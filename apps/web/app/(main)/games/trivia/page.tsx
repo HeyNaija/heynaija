@@ -9,6 +9,7 @@ import { getGameScoring, getTriviaList, getViewer } from '@/lib/api'
 import { type GameInfo, GameSection } from '../_components/game-section'
 import { gameTab, GameTabs } from '../_components/game-tabs'
 import { RoundSection } from './_components/bits'
+import { requireGames } from '../_components/require-games'
 
 export const metadata: Metadata = { title: 'Trivia', robots: { index: false } }
 
@@ -43,7 +44,7 @@ export default function TriviaPage({ searchParams }: PageProps<'/games/trivia'>)
 
 async function Trivia({ searchParams }: Pick<PageProps<'/games/trivia'>, 'searchParams'>) {
   const [params, viewer] = await Promise.all([searchParams, getViewer()])
-  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  requireGames(viewer, '/games/trivia')
   const tab = gameTab(params.tab)
   const tabs = <GameTabs slug="trivia" name="Trivia" tab={tab} />
   if (tab !== 'play') {
@@ -85,7 +86,10 @@ async function Trivia({ searchParams }: Pick<PageProps<'/games/trivia'>, 'search
             A right answer scores {points.right} points. The first three right answers score {points.order.map((n) => `${n}`).join(', ')}{' '}
             more, decided by HeyNaija’s server as each answer arrives, not by your phone’s clock.
           </li>
-          <li>You get one answer a question, and it cannot be changed. Answers stay hidden until time is up.</li>
+          <li>
+            On a question with choices you can change your choice until time is up: the last one counts, at the time you made it. A typed
+            answer cannot be changed. Answers stay hidden until time is up.
+          </li>
           <li>Typed answers ignore capitals, accents and punctuation, and forgive a small typo in a longer answer.</li>
           <li>The round’s winner has the most points; on equal points, whoever spent less time on their right answers.</li>
           <li>

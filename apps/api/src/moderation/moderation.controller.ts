@@ -33,6 +33,8 @@ const reportBody = z.union([
   z.object({ gistId: z.uuid(), reason: z.enum(unlabellable), details }),
   z.object({ communitySlug: slugParam, reason: z.enum(unlabellable), details }),
 ])
+// Report a safety concern, from Settings: about no one post or account, so what happened is required.
+const concernBody = z.object({ reason: z.enum(unlabellable), details: z.string().trim().min(10).max(1000) })
 const appealBody = z.object({ message: z.string().trim().min(10).max(1000) })
 const resolveBody = note.extend({ resolution: z.enum(RESOLUTIONS) })
 
@@ -65,6 +67,16 @@ export class ModerationController {
     }
     await this.limits.hit('report', req.member.id)
     await guarded(() => this.moderation.report(req.member.id, input, input.reason, input.details))
+  }
+
+  /** Report a safety concern (Settings): what a member saw or what happened to them, not tied to one post or account. */
+  @Post('reports/concern')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async reportConcern(@Req() req: AuthedRequest, @Body() body: unknown) {
+    const { reason, details } = parse(concernBody, body)
+    await this.limits.hit('report', req.member.id)
+    await guarded(() => this.moderation.reportConcern(req.member.id, reason, details))
   }
 
   @Post('appeals')

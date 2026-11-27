@@ -6,6 +6,7 @@ import { PostsSkeleton } from '@/app/ui/post-item'
 import { getCommunities, getCompetition, getViewer } from '@/lib/api'
 import { lagosInput } from '../../_bits'
 import { CompetitionForm } from '../../_form'
+import { requireGames } from '../../../_components/require-games'
 
 export const metadata: Metadata = { title: 'Change competition', robots: { index: false } }
 
@@ -28,7 +29,8 @@ export default function EditCompetitionPage({ params }: PageProps<'/games/compet
 
 async function Edit({ params }: Pick<PageProps<'/games/competitions/[id]/edit'>, 'params'>) {
   const [{ id }, viewer] = await Promise.all([params, getViewer()])
-  if (viewer.state !== 'member' || !viewer.me.features.games || !/^[0-9a-f-]{36}$/i.test(id)) notFound()
+  requireGames(viewer, `/games/competitions/${id}/edit`)
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound()
   const c = await getCompetition(id)
   if (!c?.you.moderator) notFound()
   const communities = (await getCommunities()).map((x) => ({ slug: x.slug, name: x.name }))

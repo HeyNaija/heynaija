@@ -1162,6 +1162,8 @@ export type QueueItem = {
   createdAt: string
   /** Null when the upload scanner filed it. */
   reporterHandle: string | null
+  /** Sent with Report a safety concern (Settings): about no one post, account, Gist or photo. Site moderators only. */
+  concern: boolean
   reportCount: number
   /** `markable`: its author counts as an adult; a minor's post that needs a mark is removed instead. */
   post: { id: string; text: string; images: PostImage[]; hasVideo: boolean; giphy: { id: string; alt: string } | null; authorHandle: string; communityName: string | null; markable: boolean } | null
@@ -1258,7 +1260,7 @@ export type Notification = {
   subjectHandle: string | null
   /** moderator_granted, moderator_revoked, community_announcement: which community. */
   community: { slug: string; name: string } | null
-  /** report_resolved: 'actioned' or 'dismissed' ('gist_actioned', 'gist_dismissed' for a Gist). post_removed: the report reason. idea_status: the new status. */
+  /** report_resolved: 'actioned' or 'dismissed' ('gist_actioned', 'gist_dismissed' for a Gist; 'concern_actioned', 'concern_dismissed' for Report a safety concern). post_removed: the report reason. idea_status: the new status. */
   detail: string | null
   /** idea_status: an idea or a problem, and whether the reader sent it (or only voted for it). */
   idea?: { kind: IdeaKind; yours: boolean } | null
