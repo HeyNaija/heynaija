@@ -221,7 +221,7 @@ async function HomeFeed({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) 
           avatar={me.avatar}
           choices={joined}
           polls={me.features?.polls ?? false}
-          giphy={me.features?.giphyGifs ?? false}
+          gifs={me.features?.giphyGifs ?? false}
           replyControls={me.features?.replyControls ?? false}
           replyAudiences={me.replyAudiences}
           videoLimits={me.videoLimits ?? null}

@@ -2,9 +2,9 @@ export type ComposerOffers = {
   pictures: boolean
   video: boolean
   poll: boolean
-  /** The Giphy search is offered: no other attachment is on the post yet. */
-  giphy: boolean
-  /** Picture files (photos, or a GIF file) can be added: a Giphy GIF takes the post's one attachment. */
+  /** The GIF search is offered: no other attachment is on the post yet. */
+  gifSearch: boolean
+  /** Picture files (photos, or a GIF file) can be added: a picked GIF takes the post's one attachment. */
   pictureFiles: boolean
 }
 
@@ -15,8 +15,8 @@ export function composerOffers({
   replyTo,
   pollOpen,
   videoDrafted,
-  giphyAvailable = false,
-  giphyDrafted = false,
+  gifAvailable = false,
+  gifDrafted = false,
   imagesDrafted = false,
 }: {
   media: boolean
@@ -25,16 +25,16 @@ export function composerOffers({
   replyTo: string | undefined
   pollOpen: boolean
   videoDrafted: boolean
-  /** The giphyGifs flag is on and a Giphy key is built in. */
-  giphyAvailable?: boolean
-  giphyDrafted?: boolean
+  /** The giphyGifs flag is on and the configured GIF provider has a key built in. */
+  gifAvailable?: boolean
+  gifDrafted?: boolean
   imagesDrafted?: boolean
 }): ComposerOffers {
   return {
     pictures: media,
-    video: media && videoAvailable && !replyTo && !pollOpen && !giphyDrafted,
-    poll: polls && !replyTo && !videoDrafted && !giphyDrafted,
-    giphy: media && giphyAvailable && !giphyDrafted && !imagesDrafted && !videoDrafted && !pollOpen,
-    pictureFiles: media && !giphyDrafted,
+    video: media && videoAvailable && !replyTo && !pollOpen && !gifDrafted,
+    poll: polls && !replyTo && !videoDrafted && !gifDrafted,
+    gifSearch: media && gifAvailable && !gifDrafted && !imagesDrafted && !videoDrafted && !pollOpen,
+    pictureFiles: media && !gifDrafted,
   }
 }

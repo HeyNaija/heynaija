@@ -25,7 +25,7 @@ import { MorePosts } from './more-posts'
 import { ComposeLink } from './new-post-link'
 import { PollCard } from './poll-card'
 import { MediaCover } from './media-cover'
-import { PostGiphy } from './post-giphy'
+import { PostGif } from './post-gif'
 import { PostImages } from './post-images'
 import { PostVideo } from './post-video'
 import { PostPermalink } from './post-permalink'
@@ -68,8 +68,8 @@ async function SaverImages({ images }: { images: Post['images'] }) {
 async function SaverVideo({ video }: { video: NonNullable<Post['video']> }) {
   return <PostVideo video={video} held={await currentDataSaver()} />
 }
-async function SaverGiphy({ giphy }: { giphy: NonNullable<Post['giphy']> }) {
-  return <PostGiphy giphy={giphy} held={await currentDataSaver()} />
+async function SaverGif({ gif }: { gif: NonNullable<Post['gif']> }) {
+  return <PostGif gif={gif} held={await currentDataSaver()} />
 }
 async function SaverQuote({ quote, now }: { quote: NonNullable<Post['quote']>; now: number }) {
   return <QuotedPostCard quote={quote} now={now} saver={await currentDataSaver()} />
@@ -426,10 +426,10 @@ export function PostItem({
           </MediaCover>
         </div>
       ) : null}
-      {post.giphy ? (
+      {post.gif ? (
         <div className="mt-3">
           <MediaCover covered={post.coverMedia}>
-            <SaverGiphy giphy={post.giphy} />
+            <SaverGif gif={post.gif} />
           </MediaCover>
         </div>
       ) : null}
@@ -439,7 +439,7 @@ export function PostItem({
         </div>
       ) : null}
       {/* A card for the first address, unless the post already has pictures or a quote to show. */}
-      {post.linkPreview && !post.images.length && !post.video && !post.giphy && !post.quote ? (
+      {post.linkPreview && !post.images.length && !post.video && !post.gif && !post.quote ? (
         <div className="mt-3">
           <SaverLinkCard preview={post.linkPreview} />
         </div>

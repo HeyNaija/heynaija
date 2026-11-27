@@ -59,8 +59,10 @@ jobs:
           context: .
           target: web
           push: true
-          # A repository variable, not a secret: the key is public once it is in the bundle.
-          build-args: NEXT_PUBLIC_GIPHY_API_KEY=${{ vars.NEXT_PUBLIC_GIPHY_API_KEY }}
+          # Repository variables, not secrets: both are public once they are in the bundle.
+          build-args: |
+            NEXT_PUBLIC_GIF_PROVIDER=${{ vars.NEXT_PUBLIC_GIF_PROVIDER }}
+            NEXT_PUBLIC_GIPHY_API_KEY=${{ vars.NEXT_PUBLIC_GIPHY_API_KEY }}
           tags: ${{ steps.prefix.outputs.value }}-web:${{ github.sha }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max

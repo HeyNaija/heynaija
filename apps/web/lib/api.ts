@@ -2,6 +2,7 @@ import 'server-only'
 import { headers } from 'next/headers'
 import { cache } from 'react'
 import { getApiAuthHeaders, hasSessionCredentials } from './auth/server'
+import type { GifTag } from './gif/types.ts'
 import type { GistView } from './gists'
 import type { NotificationPreferences } from './notification-preferences'
 import type { ReplyAudience } from './reply-audience'
@@ -160,8 +161,11 @@ export type Post = {
   images: PostImage[]
   /** The post's video once it is ready; a held or unfinished one is never sent. */
   video: PostVideo | null
-  /** A GIF from Giphy: its id and the author's description. The reader's browser loads it from Giphy. */
-  giphy: { id: string; alt: string } | null
+  /**
+   * A GIF by its provider's name and id there, with the author's description. The reader's browser
+   * loads it from that provider; a provider this app does not know shows "GIF unavailable".
+   */
+  gif: GifTag | null
   /**
    * Marked sensitive (ADR 0020), by its author, a moderator or its community (one
    * marked sensitive as a whole). Only adults and its author are sent such a post,
@@ -1166,7 +1170,7 @@ export type QueueItem = {
   concern: boolean
   reportCount: number
   /** `markable`: its author counts as an adult; a minor's post that needs a mark is removed instead. */
-  post: { id: string; text: string; images: PostImage[]; hasVideo: boolean; giphy: { id: string; alt: string } | null; authorHandle: string; communityName: string | null; markable: boolean } | null
+  post: { id: string; text: string; images: PostImage[]; hasVideo: boolean; gif: GifTag | null; authorHandle: string; communityName: string | null; markable: boolean } | null
   member: { handle: string; active: boolean; displayName: string | null; bio: string; avatar: string | null } | null
   /** A reported community photo; `photo` is null if the community no longer has one. */
   communityPhoto: { slug: string; name: string; photo: string | null } | null

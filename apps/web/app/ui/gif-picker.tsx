@@ -1,26 +1,22 @@
 'use client'
 
-import { GiphyFetch } from '@giphy/js-fetch-api'
-import { type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import { GIPHY_ID } from '@/lib/giphy'
+import { type RefObject, useCallback, useEffect, useId, useRef, useState } from 'react'
+import type { GifHit, GifProvider, GifSearch } from '@/lib/gif/types'
 import { type PickerPlace, usePickerPlacement } from './use-fixed-placement'
 import { usePressedBy } from './use-pressed-by'
 
 const PAGE = 12
 
-type Found = { id: string; title: string; src: string }
-
-type Page = { found: Found[]; next: number | null }
-
 /**
- * The GIF search of the composer, in its own chunk with Giphy's fetch library, so the box
- * carries neither until someone opens it. The member's browser talks to Giphy directly
- * (Giphy asks that calls and media are not proxied), limited to G and PG. Searching waits for
- * Enter, so a few keystrokes do not spend a key's hourly allowance.
+ * The GIF search of the composer, the same for every provider, in its own chunk; the provider's
+ * search (and any client library it uses) is loaded when this opens. The member's browser talks to
+ * the provider directly. Searching waits for Enter, so a few keystrokes do not spend a key's
+ * hourly allowance.
  */
-export default function GiphyPicker({
+export default function GifPicker({
   place,
   panel,
+  provider,
   apiKey,
   focusSearch,
   onPick,
@@ -28,11 +24,12 @@ export default function GiphyPicker({
 }: {
   place: PickerPlace
   panel: RefObject<HTMLDivElement | null>
+  provider: GifProvider
   apiKey: string
   /** Opened from the keyboard: focus moves into the picker. Opened by pointer, the box keeps it. */
   focusSearch: boolean
   /** `pointer` is the pointerType of the press that picked, or null for the keyboard or a screen reader. */
-  onPick: (gif: { id: string; title: string }, pointer: string | null) => void
+  onPick: (gif: { id: string; title: string }, pointer: string | null, provider: GifProvider) => void
   /** The member would rather add a GIF file of their own. */
   onUpload: () => void
 }) {
@@ -41,17 +38,24 @@ export default function GiphyPicker({
   const search = useRef<HTMLInputElement>(null)
   const [draft, setDraft] = useState('')
   const [term, setTerm] = useState('')
-  const [found, setFound] = useState<Found[]>([])
+  const [found, setFound] = useState<GifHit[]>([])
   const [next, setNext] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
   // Counts restarts of the list, so a "More" answer that comes after a new search is dropped.
   const run = useRef(0)
-  // Counts Try again presses. The fetch library answers a URL that failed in the last 6 seconds from its
-  // cache without asking GIPHY, so a retry adds this to its URL to be a request of its own.
+  // Counts Try again presses, for the provider's search (lib/gif/types.ts).
   const retries = useRef(0)
-  const client = useMemo(() => new GiphyFetch(apiKey), [apiKey])
+  // The provider's search, loaded once; a failed load is forgotten so Try again loads it again.
+  const client = useRef<Promise<GifSearch> | null>(null)
+  const searcher = useCallback(() => {
+    client.current ??= provider.search(apiKey).catch((err: unknown) => {
+      client.current = null
+      throw err
+    })
+    return client.current
+  }, [provider, apiKey])
   usePickerPlacement(place, panel, { tallest: 440, widest: 360 })
 
   useEffect(() => {
@@ -59,20 +63,13 @@ export default function GiphyPicker({
   }, [focusSearch])
 
   const fetchPage = useCallback(
-    async (offset: number): Promise<Page> => {
-      const options = { limit: PAGE, offset, rating: 'pg' as const, ...(retries.current ? { retry: String(retries.current) } : {}) }
-      const result = term ? await client.search(term, options) : await client.trending(options)
-      const found: Found[] = []
-      for (const gif of result.data) {
-        const small = gif.images.fixed_width_small ?? gif.images.fixed_width
-        const src = (small as { webp?: string; url: string }).webp ?? small.url
-        // An id that is not letters and digits could not be posted, so it is not offered.
-        if (GIPHY_ID.test(String(gif.id)) && src) found.push({ id: String(gif.id), title: gif.title || 'GIF', src })
-      }
-      const { offset: at, count, total_count: total } = result.pagination
-      return { found, next: at + count < total ? at + count : null }
+    async (offset: number) => {
+      const search = await searcher()
+      const page = await search({ term, offset, limit: PAGE, retry: retries.current })
+      // An id the provider's own rule refuses could not be posted, so it is not offered.
+      return { ...page, found: page.found.filter((gif) => provider.idPattern.test(gif.id)) }
     },
-    [client, term],
+    [searcher, provider, term],
   )
 
   // A new term (or a retry) starts the list again; an answer to an earlier one is dropped.
@@ -129,14 +126,14 @@ export default function GiphyPicker({
         : `${found.length} GIFs${term ? ` for ${term}` : ', trending now'}`
 
   return (
-    <div ref={panel} role="dialog" aria-label="Search GIFs" className="emoji-picker giphy-picker" onPointerDown={pressedBy.onPointerDown} onKeyDown={pressedBy.onKeyDown}>
+    <div ref={panel} role="dialog" aria-label="Search GIFs" className="emoji-picker gif-picker" onPointerDown={pressedBy.onPointerDown} onKeyDown={pressedBy.onKeyDown}>
       <label htmlFor={`${id}-search`} className="sr-only">Search GIFs</label>
       <input
         ref={search}
         id={`${id}-search`}
         type="search"
         value={draft}
-        placeholder="Search GIPHY"
+        placeholder={provider.searchPlaceholder}
         enterKeyHint="search"
         autoComplete="off"
         className="field field-sm"
@@ -149,10 +146,10 @@ export default function GiphyPicker({
         }}
       />
       <div className="emoji-scroll">
-        <p role="status" className="giphy-status">{status}</p>
+        <p role="status" className="gif-status">{status}</p>
         {failed ? (
-          <p role="alert" className="giphy-error">
-            Could not load GIFs from GIPHY. Check your connection.{' '}
+          <p role="alert" className="gif-error">
+            Could not load GIFs from {provider.label}. Check your connection.{' '}
             <button
               type="button"
               className="underline"
@@ -166,28 +163,28 @@ export default function GiphyPicker({
             </button>
           </p>
         ) : null}
-        <div className="giphy-grid">
+        <div className="gif-grid">
           {found.map((gif) => (
             <button
               key={gif.id}
               type="button"
-              className="giphy-btn"
+              className="gif-btn"
               aria-label={gif.title}
               title={gif.title}
-              onClick={() => onPick({ id: gif.id, title: gif.title }, pressedBy.take())}
+              onClick={() => onPick({ id: gif.id, title: gif.title }, pressedBy.take(), provider)}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element -- Giphy's own small rendition, loaded by the member's browser */}
+              {/* eslint-disable-next-line @next/next/no-img-element -- the provider's own small rendition, loaded by the member's browser */}
               <img src={gif.src} alt="" loading="lazy" decoding="async" />
             </button>
           ))}
         </div>
         {next !== null && !failed ? (
-          <button type="button" className="btn btn-sm giphy-more" disabled={loading} onClick={more}>More GIFs</button>
+          <button type="button" className="btn btn-sm gif-more" disabled={loading} onClick={more}>More GIFs</button>
         ) : null}
       </div>
-      <div className="giphy-footer">
+      <div className="gif-footer">
         <button type="button" className="underline" onClick={onUpload}>Upload a GIF file instead</button>
-        <span className="giphy-attrib">Powered by GIPHY</span>
+        <span className="gif-attrib">{provider.attribution}</span>
       </div>
     </div>
   )

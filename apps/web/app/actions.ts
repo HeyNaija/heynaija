@@ -65,13 +65,13 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
   // One video, named by its upload, with its description in `videoDescription`.
   const videoId = String(formData.get('video') ?? '')
   const video = videoId ? { id: videoId, description: String(formData.get('videoDescription') ?? '') } : undefined
-  // One GIF picked from Giphy: its id, with its description in `giphyDescription`.
-  const giphyId = String(formData.get('giphy') ?? '')
-  const giphy = giphyId ? { id: giphyId, description: String(formData.get('giphyDescription') ?? '') } : undefined
+  // One GIF picked from a provider: `gifProvider` and `gif` (its id there), with its description in `gifDescription`.
+  const gifId = String(formData.get('gif') ?? '')
+  const gif = gifId ? { provider: String(formData.get('gifProvider') ?? ''), id: gifId, description: String(formData.get('gifDescription') ?? '') } : undefined
   const res = await api('/v1/posts', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, replyTo, community, images, video, giphy, quote, poll, replyAudience, sensitive, storyOf, announce }),
+    body: JSON.stringify({ text, replyTo, community, images, video, gif, quote, poll, replyAudience, sensitive, storyOf, announce }),
   }).catch(() => null)
 
   if (!res) return { error: 'Could not post. Check your connection and try again.' }
@@ -105,7 +105,7 @@ export async function createPost(_prev: ComposeState, formData: FormData, refres
     if (body.code === 'video_not_ready') return { error: 'Your video is no longer available. Remove it and add it again.' }
     if (video && body.code === 'too_many_videos') return { error: VIDEO_REFUSALS.too_many_videos! }
     if (video && !text.trim()) return { error: 'Could not post that video. Try again.' }
-    if (giphy && !text.trim()) return { error: 'Could not post that GIF. Try again.' }
+    if (gif && !text.trim()) return { error: 'Could not post that GIF. Try again.' }
     if (poll) return { error: `Check the poll question and its choices. Use 2 to ${POLL_OPTIONS_MAX} different options.` }
     if (text.trim()) return { error: `That post is too long, or an image description is. The post limit is ${POST_MAX.toLocaleString('en-NG')} characters.` }
     return { error: images.length ? 'Could not post those images. Try again.' : 'Write something first.' }

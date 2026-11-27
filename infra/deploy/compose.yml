@@ -72,6 +72,8 @@ x-api-env: &api-env
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
   KEKE_MONTHLY_BUDGET_USD: ${KEKE_MONTHLY_BUDGET_USD:-}
   KEKE_ALERT_EMAIL: ${KEKE_ALERT_EMAIL:-}
+  # Which GIF providers new posts may name (docs/deployment/gifs.md). Empty means giphy.
+  GIF_PROVIDERS: ${GIF_PROVIDERS:-}
   # Safety (docs/safety/abuse-material-scanning.md): where alerts are emailed, the
   # upload scanners' logins (Arachnid Shield, PhotoDNA once approved), and what
   # purging Cloudflare's cache needs. Each is optional; without them alerts are
@@ -110,9 +112,11 @@ services:
     build:
       context: ../..
       target: web
-      # Fixed into the bundle at build time; the images the servers pull get it from the
-      # repository variable of the same name (docs/deployment/giphy.md). Empty hides the GIF search.
+      # Fixed into the bundle at build time; the images the servers pull get them from the
+      # repository variables of the same names (docs/deployment/gifs.md). An empty provider
+      # means giphy; an empty key hides the GIF search.
       args:
+        NEXT_PUBLIC_GIF_PROVIDER: ${NEXT_PUBLIC_GIF_PROVIDER:-}
         NEXT_PUBLIC_GIPHY_API_KEY: ${NEXT_PUBLIC_GIPHY_API_KEY:-}
     ports:
       # Loopback only: nginx on the host is the way in.

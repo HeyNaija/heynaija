@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { defaultPreviewImage, postPreview } from '../lib/previews.ts'
 
 const picture = { src: '/media/posts/m1', alt: 'The market at dusk', width: 1600, height: 1200, animated: false }
-const post = { text: 'Evening in Balogun', authorHandle: 'ada', sensitive: null, images: [picture], video: null, giphy: null }
+const post = { text: 'Evening in Balogun', authorHandle: 'ada', sensitive: null, images: [picture], video: null, gif: null }
 
 test("a post's link shows its text and its first picture at 640px", () => {
   assert.deepEqual(postPreview(post), {
@@ -20,11 +20,13 @@ test("a GIF's link shows its first frame, and a post of pictures alone says how 
   })
 })
 
-test('a post of a GIPHY GIF alone says it shared a GIF, with the default picture', () => {
-  assert.deepEqual(postPreview({ ...post, text: '', images: [], giphy: { id: 'xT9IgG50Fb7Mi0prBC', alt: 'A cat waving' } }), {
-    description: '@ada shared a GIF.',
-    image: defaultPreviewImage,
-  })
+test('a post of a GIF alone says it shared a GIF, with the default picture, whatever its provider', () => {
+  for (const provider of ['giphy', 'testgif']) {
+    assert.deepEqual(postPreview({ ...post, text: '', images: [], gif: { provider, id: 'xT9IgG50Fb7Mi0prBC', alt: 'A cat waving' } }), {
+      description: '@ada shared a GIF.',
+      image: defaultPreviewImage,
+    })
+  }
 })
 
 test('a post of a video alone says it shared a video, with the default picture', () => {

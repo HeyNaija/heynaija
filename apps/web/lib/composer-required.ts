@@ -19,7 +19,7 @@ export function composerContent({
   text: string
   images: number
   video: boolean
-  /** A GIF picked from Giphy; a GIF file is one of `images`. */
+  /** A GIF picked from a GIF provider; a GIF file is one of `images`. */
   gif: boolean
   pollOpen: boolean
 }): ComposerContent {

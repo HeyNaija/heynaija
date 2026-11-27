@@ -117,9 +117,9 @@ or still has to look at. Their other posts are **ordinary posts**.
 
 | Data | At request | At erase | Class |
 | --- | --- | --- | --- |
-| Ordinary posts (`posts`) | hidden | `deleted_at` set if not already; `text` `''`, `link_url`, `quote_post_id`, `giphy_id` and `giphy_alt` (a GIF picked from Giphy, with its description) null | blank; the row stays as the parent of others' replies and the target of their likes, reports and notifications |
+| Ordinary posts (`posts`) | hidden | `deleted_at` set if not already; `text` `''`, `link_url`, `quote_post_id`, `gif_provider`, `gif_id` and `gif_alt` (a GIF picked from a provider such as GIPHY, with its description) null | blank; the row stays as the parent of others' replies and the target of their likes, reports and notifications |
 | Mentions and hashtags in ordinary posts (`post_mentions`, `post_hashtags` by `post_id`) | hidden | deleted | delete |
-| Evidence posts | hidden | `deleted_at` set; text, link, Giphy GIF, mentions and hashtags kept until the retention sweep | keep until sweep |
+| Evidence posts | hidden | `deleted_at` set; text, link, GIF, mentions and hashtags kept until the retention sweep | keep until sweep |
 | Mentions of them in other people's posts (`post_mentions.member_id`) | — | deleted, so the `@handle` stays plain text | delete |
 | Titles of their ideas (`ideas.title`) | hidden (off the board) | `''` for ordinary posts, kept for evidence posts | blank / keep until sweep |
 | Where their problem reports happened (`problem_details`) | hidden | deleted | delete |

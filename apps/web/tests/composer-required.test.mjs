@@ -21,7 +21,7 @@ test('a video alone makes a post, with no words needed', () => {
   assert.deepEqual(composerContent({ ...bare, video: true }), { empty: false, textRequired: false })
 })
 
-test('a Giphy GIF alone makes a post, with no words needed', () => {
+test('a picked GIF alone makes a post, with no words needed', () => {
   assert.deepEqual(composerContent({ ...bare, gif: true }), { empty: false, textRequired: false })
 })
 

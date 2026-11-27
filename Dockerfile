@@ -19,10 +19,12 @@ COPY . .
 # are addresses on the deployment's private Docker network.
 ARG API_INTERNAL_URL=http://api:4000
 ARG KRATOS_INTERNAL_URL=http://kratos:4433
-# The Giphy key is public (it ends up in the browser) and is fixed into the web bundle when it
-# builds, so the image carries it; empty hides the GIF search (docs/deployment/giphy.md).
+# The GIF provider the composer searches, and its key: public (they end up in the browser) and
+# fixed into the web bundle when it builds, so the image carries them. An empty provider means
+# giphy; an empty key hides the GIF search (docs/deployment/gifs.md).
+ARG NEXT_PUBLIC_GIF_PROVIDER=
 ARG NEXT_PUBLIC_GIPHY_API_KEY=
-ENV API_INTERNAL_URL=$API_INTERNAL_URL KRATOS_INTERNAL_URL=$KRATOS_INTERNAL_URL NEXT_PUBLIC_GIPHY_API_KEY=$NEXT_PUBLIC_GIPHY_API_KEY NEXT_TELEMETRY_DISABLED=1
+ENV API_INTERNAL_URL=$API_INTERNAL_URL KRATOS_INTERNAL_URL=$KRATOS_INTERNAL_URL NEXT_PUBLIC_GIF_PROVIDER=$NEXT_PUBLIC_GIF_PROVIDER NEXT_PUBLIC_GIPHY_API_KEY=$NEXT_PUBLIC_GIPHY_API_KEY NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 
 # The API with only its production dependencies (the db package included).

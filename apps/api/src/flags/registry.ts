@@ -75,7 +75,7 @@ export const FLAGS = {
   },
   giphyGifs: {
     description:
-      'Picking a GIF from Giphy for a new post. Members\' browsers contact Giphy to search and to show it; we store only its id and do not scan it (docs/safety/giphy.md). Gating creation only: GIFs already posted keep showing.',
+      'Picking a GIF from a GIF provider (GIPHY today) for a new post. Members\' browsers contact the provider to search and to show it; we store only its name and id and do not scan it (docs/safety/gifs.md). Gating creation only: GIFs already posted keep showing.',
     owner: 'media',
     defaults: { development: true, staging: true, production: false }, // not in main yet; LIVE_IN_MAIN is false
   },

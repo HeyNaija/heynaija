@@ -9,7 +9,8 @@ import { EmptyState } from '@/app/ui/empty-state'
 import { ShieldIcon } from '@/app/ui/icons'
 import { LocalTime } from '@/app/ui/local-time'
 import { ModeratorRoster } from '@/app/ui/moderator-roster'
-import { PostGiphy } from '@/app/ui/post-giphy'
+import { PostGif } from '@/app/ui/post-gif'
+import { gifProvider } from '@/lib/gif/providers'
 import { PostImages } from '@/app/ui/post-images'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { SubmitButton } from '@/app/ui/submit-button'
@@ -166,6 +167,14 @@ async function Moderation() {
 const button = 'btn btn-secondary btn-sm'
 const danger = 'btn btn-danger btn-sm'
 
+/** What the queue says over a reported GIF. A provider this app does not know is named as stored: it is one of ours, checked by the API and the database. */
+function gifNote(name: string) {
+  const provider = gifProvider(name)
+  return provider
+    ? `GIF from ${provider.label}, not scanned by us. It loads from ${provider.label}.`
+    : `GIF from a provider this app cannot show (${name}), not scanned by us. Remove the post if its words or description break the rules.`
+}
+
 function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWide: boolean }) {
   const isAppeal = item.reason === 'appeal'
   // Every button submits the same form; its value is the decision.
@@ -196,10 +205,10 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
               <PostImages images={item.post.images} compact />
             </div>
           ) : null}
-          {item.post.giphy ? (
+          {item.post.gif ? (
             <div className="mt-2">
-              <p className="font-medium">GIF from GIPHY, not scanned by us. It loads from GIPHY.</p>
-              <PostGiphy giphy={item.post.giphy} />
+              <p className="font-medium">{gifNote(item.post.gif.provider)}</p>
+              <PostGif gif={item.post.gif} />
             </div>
           ) : null}
           {item.post.hasVideo ? (
