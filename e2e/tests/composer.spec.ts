@@ -336,7 +336,7 @@ test('pressing inside the emoji picker keeps a reply box open around it, and Esc
 
 // The Giphy controls exist only in a web app built with a key (NEXT_PUBLIC_GIPHY_API_KEY, any
 // value: Giphy itself is answered here, never reached), so this runs only when the run is told
-// the app has one:
+// the app has one. CI builds and runs with the stand-in; here:
 //
 //   NEXT_PUBLIC_GIPHY_API_KEY=stand-in pnpm dev:web
 //   NEXT_PUBLIC_GIPHY_API_KEY=stand-in pnpm e2e composer
@@ -363,8 +363,11 @@ test('a GIF from Giphy with no words can be posted', async ({ browser }) => {
   const box = page.getByRole('textbox', { name: 'New post' })
   await box.click()
   await page.getByRole('button', { name: 'Search GIFs' }).click()
+  // Neither the results nor the picked GIF tell the provider which page they are on.
+  await expect(page.getByRole('dialog', { name: 'Search GIFs' }).getByRole('button', { name: title }).locator('img')).toHaveAttribute('referrerpolicy', 'no-referrer')
   await page.getByRole('dialog', { name: 'Search GIFs' }).getByRole('button', { name: title }).click()
   await expect(page.getByLabel('Description of GIF')).toHaveValue(title)
+  await expect(page.locator('#compose .composer-thumb')).toHaveAttribute('referrerpolicy', 'no-referrer')
 
   await expect(box).toHaveValue('')
   // The browser's own check of the form, which runs before a press on Post reaches the app.
@@ -775,6 +778,36 @@ async function answerGiphy(context: import('@playwright/test').BrowserContext, {
   })
   return calls
 }
+
+test('the GIF search closes when the post is sent, and its button waits until the post lands', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, NEEDS_KEY)
+  const { page, handle, context } = await newMember(browser, 'gifsend')
+  await answerGiphy(context)
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Sending ${handle}`)
+  const toggle = page.getByRole('button', { name: 'Search GIFs' })
+  await toggle.click()
+  const picker = page.getByRole('dialog', { name: 'Search GIFs' })
+  await expect(picker.getByRole('button', { name: 'Wave 1' })).toBeVisible()
+
+  let release = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/*', async (route) => {
+    if (route.request().method() !== 'POST' || !route.request().headers()['next-action']) return route.fallback()
+    await held
+    return route.continue()
+  })
+  await page.getByRole('button', { name: 'Post', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Posting…' })).toBeVisible()
+  await expect(picker).toBeHidden()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(toggle).toBeDisabled()
+  release()
+  await expect(page.locator('article', { hasText: `Sending ${handle}` }).first()).toBeVisible()
+  await expect(toggle).toBeEnabled()
+  await context.close()
+})
 
 const PICKERS = [
   { what: 'emoji picker', button: 'Emoji', dialog: 'Emoji', giphy: false },

@@ -174,7 +174,7 @@ export default function GifPicker({
               onClick={() => onPick({ id: gif.id, title: gif.title }, pressedBy.take(), provider)}
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- the provider's own small rendition, loaded by the member's browser */}
-              <img src={gif.src} alt="" loading="lazy" decoding="async" />
+              <img src={gif.src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" />
             </button>
           ))}
         </div>

@@ -416,9 +416,10 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
         const leftSearch = gifDialog.current?.contains(e.target) && !gifDialog.current.contains(next) && next !== input.current
         if (gifOpen && (away || leftSearch)) setGifOpen(false)
       }}
-      // Sent posts take no more emoji: one picked now would not be in the post. The post's own error replaces the picker's.
+      // Sent posts take no more emoji or GIFs: one picked now would not be in the post. The post's own error replaces the picker's.
       onSubmit={() => {
         setEmojiOpen(false)
+        setGifOpen(false)
         setEmojiFailedToLoad(false)
       }}
     >
@@ -662,7 +663,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
                 aria-haspopup={offers.gifSearch ? 'dialog' : undefined}
                 aria-expanded={offers.gifSearch ? gifOpen : undefined}
                 title={offers.gifSearch ? 'Search for a GIF' : 'Add a GIF'}
-                disabled={images.drafts.length >= MAX_IMAGES || !!video.draft || !offers.pictureFiles}
+                disabled={pending || images.drafts.length >= MAX_IMAGES || !!video.draft || !offers.pictureFiles}
                 // The press does not move focus off the box.
                 onMouseDown={offers.gifSearch ? (e) => e.preventDefault() : undefined}
                 onPointerDown={gifPressedBy.onPointerDown}
@@ -1042,7 +1043,7 @@ function GifRow({ gif, onRemove, onDescribe }: { gif: { provider: GifProvider; i
   return (
     <li className="composer-image">
       {/* eslint-disable-next-line @next/next/no-img-element -- the member's pick, loaded from the provider by their browser */}
-      {url ? <img src={url} alt="" className="composer-thumb" /> : null}
+      {url ? <img src={url} alt="" className="composer-thumb" referrerPolicy="no-referrer" /> : null}
       <div className="min-w-0 flex-1">
         <label htmlFor={id} className="sr-only">Description of GIF</label>
         <input
