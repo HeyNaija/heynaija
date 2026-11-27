@@ -38,14 +38,21 @@ test('a visitor copies a post link from the custom popup without opening the pos
     await expect(popup.getByRole('status')).toBeEmpty()
 
     await popup.getByRole('button', { name: 'Copy link', exact: true }).click()
-    await expect(popup.getByRole('status')).toHaveText('Link copied')
-    await expect(popup.getByRole('button', { name: 'Copied', exact: true })).toBeVisible()
+    // Copied: the popup closes, and a toast says so over the page.
+    await expect(popup).toBeHidden()
+    await expect(share).toBeFocused()
+    await expect(page.getByRole('region', { name: 'Notifications' })).toContainText('Link copied')
+    await expect(page.getByRole('status').filter({ hasText: 'Link copied' })).toHaveCount(1)
     await expect(page).toHaveURL((url) => url.pathname === `/u/${author.handle}`)
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(new URL(`/p/${id}`, page.url()).href)
-    await expect(popup.getByRole('status')).toBeEmpty()
+
+    // Closing it without copying says nothing.
+    await page.getByRole('region', { name: 'Notifications' }).getByRole('button', { name: 'Dismiss' }).click()
+    await share.click()
     await popup.getByRole('button', { name: 'Close share popup' }).click()
     await expect(popup).toBeHidden()
     await expect(share).toBeFocused()
+    await expect(page.getByRole('region', { name: 'Notifications' })).toHaveCount(0)
   } finally {
     await context.close()
   }
@@ -190,8 +197,11 @@ for (const fallbackWorks of [true, false]) {
       expect(await page.evaluate(() => (window as unknown as { fallbackInsideModal: boolean }).fallbackInsideModal)).toBe(true)
       expect(await page.evaluate(() => (window as unknown as { fallbackText: string }).fallbackText)).toBe(new URL(`/p/${id}`, page.url()).href)
       if (fallbackWorks) {
-        await expect(popup.getByRole('status')).toHaveText('Link copied')
+        await expect(popup).toBeHidden()
+        await expect(page.getByRole('region', { name: 'Notifications' })).toContainText('Link copied')
       } else {
+        // A failure stays in the popup, beside the link to copy by hand: no toast.
+        await expect(page.getByRole('region', { name: 'Notifications' })).toHaveCount(0)
         await expect(popup.getByRole('status')).toContainText('Could not copy')
         const field = popup.getByRole('textbox', { name: 'Post link' })
         await expect(field).toBeFocused()

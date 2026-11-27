@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { api } from '@/lib/api'
 import { isLogoutUrl } from '@/lib/auth/server'
+import { FLASH_COOKIE } from '@/lib/flash'
 import { PUSH_COOKIE } from '@/lib/push'
 
 /**
@@ -24,6 +25,8 @@ export async function GET(request: NextRequest) {
   await api('/v1/logout', { method: 'POST', cache: 'no-store' }).catch(() => undefined)
   const response = seeOther(to)
   if (push) response.cookies.delete(PUSH_COOKIE)
+  // A flash this browser never showed would greet the next member to sign in here.
+  response.cookies.delete(FLASH_COOKIE)
   return response
 }
 

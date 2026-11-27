@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { grantModerator } from '../lib/cli.ts'
 import { makeMinor } from '../lib/db.ts'
-import { newMember, post } from '../lib/members.ts'
+import { confirmWith, newMember, post } from '../lib/members.ts'
 
 test('a reported post is removed by a moderator and its author is told', async ({ browser }) => {
   const author = await newMember(browser, 'offender')
@@ -80,8 +80,8 @@ test('a suspended member appeals and the moderator sees the appeal', async ({ br
   await reporter.page.getByRole('button', { name: 'Send report' }).click()
 
   await moderator.page.goto('/mod')
-  moderator.page.once('dialog', (dialog) => dialog.accept())
   await moderator.page.locator('form', { hasText: text }).getByRole('button', { name: 'Suspend account' }).click()
+  await confirmWith(moderator.page, 'Suspend account')
   await expect(moderator.page.locator('form', { hasText: text })).toHaveCount(0)
 
   // The author now sees the suspension, and appeals.

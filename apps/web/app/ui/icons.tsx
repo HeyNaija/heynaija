@@ -14,6 +14,7 @@ import {
   ChevronRight,
   ChevronUp,
   ChessKnight,
+  CircleAlert,
   CircleCheck,
   CircleDashed,
   CircleDot,
@@ -108,6 +109,7 @@ export const RepostIcon = icon(Repeat2)
 export const QuoteIcon = icon(Quote)
 export const MentionIcon = icon(AtSign)
 export const CheckIcon = icon(Check)
+export const AlertIcon = icon(CircleAlert)
 export const PlusIcon = icon(Plus)
 export const UserIcon = icon(User)
 export const DotsIcon = icon(Ellipsis)

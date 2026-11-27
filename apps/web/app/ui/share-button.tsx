@@ -2,8 +2,10 @@
 
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { wrapFocus } from '@/lib/confirm'
 import { Avatar } from './avatar'
-import { CheckIcon, CloseIcon, FacebookIcon, LinkIcon, ShareIcon, TelegramIcon, WhatsAppIcon, XBrandIcon } from './icons'
+import { CloseIcon, FacebookIcon, LinkIcon, ShareIcon, TelegramIcon, WhatsAppIcon, XBrandIcon } from './icons'
+import { useToast } from './toasts'
 
 /** Some in-app browsers refuse the Clipboard API. Keep focus inside the popup. */
 function copyTheOldWay(text: string, container: HTMLElement) {
@@ -74,9 +76,9 @@ function ShareDialog({ id, url, handle, text, name, avatar, onClose }: Omit<Shar
   const dialog = useRef<HTMLDialogElement>(null)
   const link = useRef<HTMLInputElement>(null)
   const backdropPress = useRef(false)
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const [status, setStatus] = useState('')
   const [copying, setCopying] = useState(false)
+  const { show } = useToast()
   const shareText = text ? `${text}\n\n@${handle} on HeyNaija` : `A post by @${handle} on HeyNaija`
   const destinations = [
     { name: 'WhatsApp', icon: WhatsAppIcon, href: `https://wa.me/?${new URLSearchParams({ text: `${shareText}\n${url}` })}` },
@@ -89,13 +91,11 @@ function ShareDialog({ id, url, handle, text, name, avatar, onClose }: Omit<Shar
   // Unmounting closes it; calling close() in cleanup would race Strict Mode.
   useEffect(() => {
     if (!dialog.current?.open) dialog.current?.showModal()
-    return () => clearTimeout(timer.current)
   }, [])
 
   async function copyLink() {
     if (copying) return
     setCopying(true)
-    clearTimeout(timer.current)
     let copied = false
     try {
       await navigator.clipboard.writeText(url)
@@ -105,14 +105,18 @@ function ShareDialog({ id, url, handle, text, name, avatar, onClose }: Omit<Shar
       if (dialog.current?.open) copied = copyTheOldWay(url, dialog.current)
     }
     if (!dialog.current?.open) return
-    setCopying(false)
-    setStatus(copied ? 'Link copied' : 'Could not copy. Select and copy the post link.')
     if (copied) {
-      timer.current = setTimeout(() => setStatus(''), 3000)
-    } else {
-      link.current?.focus()
-      link.current?.select()
+      // The link is what they came for, so the popup closes and a toast says it
+      // worked. A toast cannot show over an open dialog, and a failure needs the
+      // link field, so that stays here.
+      dialog.current?.close()
+      show({ kind: 'success', message: 'Link copied' })
+      return
     }
+    setCopying(false)
+    setStatus('Could not copy. Select and copy the post link.')
+    link.current?.focus()
+    link.current?.select()
   }
 
   return (
@@ -125,16 +129,11 @@ function ShareDialog({ id, url, handle, text, name, avatar, onClose }: Omit<Shar
       onClose={onClose}
       onKeyDown={(event) => {
         if (event.key !== 'Tab') return
-        const controls = event.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not(:disabled), input')
-        const first = controls[0]
-        const last = controls[controls.length - 1]
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault()
-          last?.focus()
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault()
-          first?.focus()
-        }
+        const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not(:disabled), input')]
+        const to = wrapFocus(controls.length, controls.indexOf(document.activeElement as HTMLElement), event.shiftKey)
+        if (to === null) return
+        event.preventDefault()
+        controls[to]?.focus()
       }}
       onPointerDown={(event) => { backdropPress.current = event.target === event.currentTarget }}
       onClick={(event) => {
@@ -178,10 +177,10 @@ function ShareDialog({ id, url, handle, text, name, avatar, onClose }: Omit<Shar
             <LinkIcon size={18} />
             <input ref={link} id={`${id}-link`} aria-label="Post link" type="text" value={url} readOnly onFocus={(event) => event.currentTarget.select()} />
             <button type="button" className="btn btn-primary" disabled={copying} onClick={copyLink}>
-              {status === 'Link copied' ? <><CheckIcon size={16} />Copied</> : 'Copy link'}
+              Copy link
             </button>
           </div>
-          <p role="status" className={`share-copy-status${status && status !== 'Link copied' ? ' is-error' : ''}`}>{status}</p>
+          <p role="status" className="share-copy-status is-error">{status}</p>
         </div>
       </div>
     </dialog>

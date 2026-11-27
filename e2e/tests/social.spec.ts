@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { newMember, post } from '../lib/members.ts'
+import { confirmWith, newMember, post } from '../lib/members.ts'
 
 test('a followed member’s post shows in Following, saying why', async ({ browser }) => {
   const author = await newMember(browser, 'author')
@@ -48,11 +48,14 @@ test('blocking hides posts both ways', async ({ browser }) => {
   await post(victim.page, victimText)
 
   await victim.page.goto('/?feed=latest')
-  victim.page.once('dialog', (dialog) => dialog.accept())
   const article = victim.page.locator('article', { hasText: rudeText })
   await article.getByLabel('Post options').click()
   await article.getByRole('button', { name: `Block @${rude.handle}` }).click()
+  await expect(victim.page.getByRole('alertdialog', { name: `Block @${rude.handle}?` })).toContainText("You will stop seeing each other's posts.")
+  await confirmWith(victim.page, `Block @${rude.handle}`)
   await expect(victim.page.locator('article', { hasText: rudeText })).toHaveCount(0)
+  // The post just vanishes, so a toast says why.
+  await expect(victim.page.getByRole('region', { name: 'Notifications' })).toContainText('Blocked.')
 
   // The blocked member no longer sees the blocker's posts either.
   await rude.page.goto('/?feed=latest')

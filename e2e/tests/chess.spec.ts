@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
-import { newMember } from '../lib/members.ts'
+import { confirmWith, newMember } from '../lib/members.ts'
 
 // Chess on Lichess (docs/adr/0028), against the stand-in in lib/fake-lichess.ts.
 // It needs the API started with LICHESS_URL pointing at that stand-in and a
@@ -116,8 +116,9 @@ test('two members connect, play a game watched by a third, and The Arbiter posts
 
   // Bayo resigns; the result shows, and the thread opens up to the players.
   await bayo.page.goto(gameUrl)
-  bayo.page.once('dialog', (dialog) => dialog.accept())
   await bayo.page.getByRole('button', { name: 'Resign' }).click()
+  await expect(bayo.page.getByRole('alertdialog', { name: 'Resign this game?' })).toContainText('It counts as a loss.')
+  await confirmWith(bayo.page, 'Resign')
   await expect(bayo.page.locator('.chess-status')).toHaveText(`@${ada.handle} won by resignation`)
   // And it is said for screen readers.
   await expect(bayo.page.locator('[aria-live="polite"]').filter({ hasText: 'won by resignation' })).toHaveCount(1)
@@ -132,8 +133,8 @@ test('two members connect, play a game watched by a third, and The Arbiter posts
 
   // Disconnecting gives the key back.
   await ada.page.goto('/games/chess')
-  ada.page.once('dialog', (dialog) => dialog.accept())
   await ada.page.getByRole('button', { name: 'Disconnect' }).click()
+  await confirmWith(ada.page, 'Disconnect')
   await expect(ada.page.getByText('Your Lichess account is disconnected.')).toBeVisible()
 
   for (const m of [ada, bayo, chi]) await m.context.close()

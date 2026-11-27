@@ -91,7 +91,7 @@ async function CommunityChess({ params, searchParams }: Pick<PageProps<'/games/c
             {you.canUnlink ? (
               <form action={unlinkTeam}>
                 <input type="hidden" name="slug" value={community.slug} />
-                <SubmitButton className="btn btn-secondary" confirmMessage="Unlink this Lichess team? Tournaments already made still finish here.">
+                <SubmitButton className="btn btn-secondary" confirmMessage="Unlink this Lichess team? Tournaments already made still finish here." confirmLabel="Unlink team">
                   Unlink
                 </SubmitButton>
               </form>

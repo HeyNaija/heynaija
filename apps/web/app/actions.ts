@@ -17,6 +17,8 @@ import { announcementWait } from '@/lib/announcements'
 import { DATA_COOKIE, DATA_COOKIE_MAX_AGE, dataMode } from '@/lib/low-data'
 import { AGE_COOKIE, AGE_COOKIE_VALUE, AGE_REFUSED_COOKIE, INVITE_COOKIE } from '@/lib/invite'
 import { forgetEndedSession, reauthUrl, startAuthUrl } from '@/lib/auth/server'
+import { blockFlash, deleteFlash, FLASH_COOKIE, pinFlash } from '@/lib/flash'
+import { flash } from '@/lib/flash-server'
 import { siteOrigin } from '@/lib/previews'
 import { preferencesFromForm } from '@/lib/notification-preferences'
 import { PUSH_COOKIE } from '@/lib/push'
@@ -131,6 +133,7 @@ export async function deletePost(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '')
   const res = await api(`/v1/posts/${encodeURIComponent(id)}`, { method: 'DELETE' })
   if (res.status === 401) redirect('/login')
+  await flash(deleteFlash(res.status))
   refresh()
 }
 
@@ -201,6 +204,7 @@ export async function setProfilePin(formData: FormData): Promise<void> {
   const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
   const res = await api(`/v1/posts/${encodeURIComponent(id)}/pin`, { method })
   if (res.status === 401) redirect('/login')
+  await flash(pinFlash('profile', method === 'PUT', res.status))
   refresh()
 }
 
@@ -210,6 +214,7 @@ export async function setCommunityPin(formData: FormData): Promise<void> {
   const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
   const res = await api(`/v1/posts/${encodeURIComponent(id)}/community-pin`, { method })
   if (res.status === 401) redirect('/login')
+  await flash(pinFlash('community', method === 'PUT', res.status))
   refresh()
 }
 
@@ -313,6 +318,8 @@ async function setRelation(formData: FormData, relation: 'block' | 'mute'): Prom
   const method = formData.get('on') === '1' ? 'PUT' : 'DELETE'
   const res = await api(`/v1/members/${encodeURIComponent(handle)}/${relation}`, { method })
   if (res.status === 401) redirect('/login')
+  const said = blockFlash(relation, method === 'PUT', res.status)
+  if (said) await flash(said)
   refresh()
 }
 
@@ -1026,6 +1033,7 @@ export async function requestAccountDeletion(_prev: DeletionFormState, formData:
   await forgetEndedSession()
   const jar = await cookies()
   jar.delete(PUSH_COOKIE)
+  jar.delete(FLASH_COOKIE)
   jar.set(DELETION_COOKIE, answer.scheduledFor, {
     httpOnly: true,
     sameSite: 'lax',

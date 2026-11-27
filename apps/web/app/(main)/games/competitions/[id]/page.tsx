@@ -87,7 +87,7 @@ async function CompetitionView({ params, searchParams }: Pick<PageProps<'/games/
             <SubmitButton className="btn btn-primary" name="action" value="enter">Enter</SubmitButton>
           ) : null}
           {c.you.canWithdraw ? (
-            <SubmitButton className="btn btn-secondary" name="action" value="withdraw" confirmMessage="Withdraw from this competition? Points you scored in it go too.">
+            <SubmitButton className="btn btn-secondary" name="action" value="withdraw" confirmMessage="Withdraw from this competition? Points you scored in it go too." confirmLabel="Withdraw">
               Withdraw
             </SubmitButton>
           ) : null}
@@ -104,7 +104,7 @@ async function CompetitionView({ params, searchParams }: Pick<PageProps<'/games/
             <input type="hidden" name="id" value={c.id} />
             {c.status === 'draft' ? <SubmitButton className="btn btn-primary" name="action" value="publish">Publish</SubmitButton> : null}
             {editable ? <Link href={`/games/competitions/${c.id}/edit`} className="btn btn-secondary">Change</Link> : null}
-            <SubmitButton className="btn btn-danger" name="action" value="cancel" confirmMessage="Cancel this competition? It cannot be undone.">
+            <SubmitButton className="btn btn-danger" name="action" value="cancel" confirmMessage="Cancel this competition? It cannot be undone." confirmLabel="Cancel competition" cancelLabel="Keep it">
               Cancel competition
             </SubmitButton>
           </form>
@@ -206,7 +206,7 @@ function TournamentRules({ c, t, error }: { c: Competition; t: NonNullable<Compe
       {c.you.canCancel ? (
         <form action={competitionAction} className="mt-3 flex flex-wrap gap-2 border-t border-[var(--line)] pt-3">
           <input type="hidden" name="id" value={c.id} />
-          <SubmitButton className="btn btn-danger" name="action" value="cancel_tournament" confirmMessage="Cancel this tournament? It ends on Lichess too, and cannot be undone.">
+          <SubmitButton className="btn btn-danger" name="action" value="cancel_tournament" confirmMessage="Cancel this tournament? It ends on Lichess too, and cannot be undone." confirmLabel="Cancel tournament" cancelLabel="Keep it">
             Cancel tournament
           </SubmitButton>
         </form>

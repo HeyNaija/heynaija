@@ -175,6 +175,7 @@ function LichessCard({ chess, now }: { chess: ChessOverview; now: number }) {
               <SubmitButton
                 className="btn btn-ghost btn-sm"
                 confirmMessage="Disconnect your Lichess account? HeyNaija gives back its key, and challenges to you can no longer be accepted until you connect again."
+                confirmLabel="Disconnect"
               >
                 Disconnect
               </SubmitButton>
