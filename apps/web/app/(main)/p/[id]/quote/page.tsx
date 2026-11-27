@@ -46,6 +46,7 @@ async function QuoteView({ params }: Props) {
         avatar={viewer.me.avatar}
         choices={joined}
         polls={viewer.me.features?.polls ?? false}
+        giphy={viewer.me.features?.giphyGifs ?? false}
         replyControls={viewer.me.features?.replyControls ?? false}
         replyAudiences={viewer.me.replyAudiences}
         sensitiveLabels={composerOffersMark(viewer.me)}

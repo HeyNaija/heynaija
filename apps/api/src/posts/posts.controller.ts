@@ -188,11 +188,12 @@ export class PostsController {
   @Post('posts')
   @UseGuards(SessionGuard)
   async create(@Req() req: AuthedRequest, @Body() body: unknown) {
-    const { text, replyTo, community, images, video, quote, poll, replyAudience, sensitive, storyOf, announce } = parse(createPostBody, body)
+    const { text, replyTo, community, images, video, giphy, quote, poll, replyAudience, sensitive, storyOf, announce } = parse(createPostBody, body)
     if (video && !(await this.videoGate?.isOpen(req.member.id))) {
       throw new BadRequestException({ code: 'feature_unavailable', message: 'Videos are not available yet' })
     }
     if (poll) await this.requireFeature(req, 'polls', 'Polls')
+    if (giphy) await this.requireFeature(req, 'giphyGifs', 'GIFs')
     if (replyAudience && replyAudience !== 'everyone') await this.requireFeature(req, 'replyControls', 'Reply controls')
     if (quote) await this.requireFeature(req, 'quotePosts', 'Quote posts')
     if (sensitive) await this.requireFeature(req, 'adultLabels', 'Content warnings')
@@ -204,6 +205,7 @@ export class PostsController {
         communitySlug: community,
         images,
         video,
+        giphy,
         quote,
         poll,
         replyAudience,

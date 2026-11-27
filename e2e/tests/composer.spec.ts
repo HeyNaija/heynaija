@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { gif } from '../lib/gif.ts'
 import { newMember, post, replyBox } from '../lib/members.ts'
 
 const lines = (count: number) => Array.from({ length: count }, (_, i) => `line ${i + 1}`).join('\n')
@@ -300,6 +301,121 @@ test('pressing inside the emoji picker keeps a reply box open around it, and Esc
   await page.keyboard.press('Escape')
   await expect(picker).toBeHidden()
   await expect(toggle).toBeFocused()
+  await context.close()
+})
+
+// The Giphy controls exist only in a web app built with a key (NEXT_PUBLIC_GIPHY_API_KEY, any
+// value: Giphy itself is answered here, never reached), so this runs only when the run is told
+// the app has one:
+//
+//   NEXT_PUBLIC_GIPHY_API_KEY=stand-in pnpm dev:web
+//   NEXT_PUBLIC_GIPHY_API_KEY=stand-in pnpm e2e composer
+test('a GIF from Giphy with no words can be posted', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, 'needs a web app built with a Giphy key; see the comment above this test')
+  const { page, handle, context } = await newMember(browser, 'gifonly')
+  const id = `e2e${crypto.randomUUID().replaceAll('-', '').slice(0, 20)}`
+  const title = `Waving for ${handle}`
+  const rendition = { url: `https://media1.giphy.com/media/${id}/100w.gif`, width: '100', height: '100' }
+  await context.route(/^https:\/\/[a-z0-9.-]*\bgiphy\.com\//, (route) => {
+    const url = new URL(route.request().url())
+    if (url.hostname !== 'api.giphy.com') return route.fulfill({ contentType: 'image/gif', body: gif() })
+    return route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: {
+        data: [{ id, title, type: 'gif', images: { fixed_width_small: rendition, fixed_width: rendition } }],
+        pagination: { total_count: 1, count: 1, offset: 0 },
+        meta: { status: 200, msg: 'OK', response_id: 'e2e' },
+      },
+    })
+  })
+
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.click()
+  await page.getByRole('button', { name: 'Search GIFs' }).click()
+  await page.getByRole('dialog', { name: 'Search GIFs' }).getByRole('button', { name: title }).click()
+  await expect(page.getByLabel('Description of GIF')).toHaveValue(title)
+
+  await expect(box).toHaveValue('')
+  // The browser's own check of the form, which runs before a press on Post reaches the app.
+  expect(await page.locator('#compose').evaluate((form: HTMLFormElement) => form.checkValidity())).toBe(true)
+  await page.getByRole('button', { name: 'Post', exact: true }).click()
+
+  await expect(page.locator('article').filter({ has: page.locator(`img[src*="/media/${id}/"]`) }).first()).toBeVisible()
+  await expect(page.getByLabel('Description of GIF')).toBeHidden()
+  await context.close()
+})
+
+test('when the GIF search cannot be downloaded it closes, the draft stays, and the next open tries again', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, 'needs a web app built with a Giphy key; see the comment above the test before this one')
+  const { page, handle, context } = await newMember(browser, 'gifoffline')
+  await context.route(/^https:\/\/[a-z0-9.-]*\bgiphy\.com\//, (route) =>
+    route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: { data: [], pagination: { total_count: 0, count: 0, offset: 0 }, meta: { status: 200, msg: 'OK', response_id: 'e2e' } },
+    }),
+  )
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  const draft = `A long draft ${handle}`
+  await box.fill(draft)
+
+  const chunks = /\/_next\/static\/chunks\//
+  let refused = 0
+  await page.route(chunks, (route) => {
+    refused++
+    return route.abort('internetdisconnected')
+  })
+  const toggle = page.getByRole('button', { name: 'Search GIFs' })
+  await toggle.click()
+  await expect.poll(() => refused).toBeGreaterThan(0)
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByRole('dialog', { name: 'Search GIFs' })).toBeHidden()
+  await expect(page.getByRole('heading', { name: 'We could not load this page' })).toBeHidden()
+  await expect(box).toHaveValue(draft)
+
+  await page.unroute(chunks)
+  await toggle.click()
+  await expect(page.getByRole('dialog', { name: 'Search GIFs' })).toBeVisible()
+  await expect(box).toHaveValue(draft)
+  await context.close()
+})
+
+test('a poll or a picture that hides the GIF search closes it, so taking them away does not open it again', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, 'needs a web app built with a Giphy key; see the comment above the test before this one')
+  const { page, handle, context } = await newMember(browser, 'gifhidden')
+  let searches = 0
+  await context.route(/^https:\/\/[a-z0-9.-]*\bgiphy\.com\//, (route) => {
+    if (new URL(route.request().url()).hostname === 'api.giphy.com') searches++
+    return route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: { data: [], pagination: { total_count: 0, count: 0, offset: 0 }, meta: { status: 200, msg: 'OK', response_id: 'e2e' } },
+    })
+  })
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Hidden ${handle}`)
+  const toggle = page.getByRole('button', { name: 'Search GIFs' })
+  const search = page.getByRole('dialog', { name: 'Search GIFs' })
+  await toggle.click()
+  await expect(search).toBeVisible()
+  await expect.poll(() => searches).toBe(1)
+
+  const poll = page.getByRole('button', { name: 'Poll' })
+  await poll.click()
+  await expect(search).toBeHidden()
+  await poll.click()
+  await expect(poll).toHaveAttribute('aria-pressed', 'false')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(search).toBeHidden()
+
+  await toggle.click()
+  await expect(search).toBeVisible()
+  await page.locator('#compose input[type="file"]:not([accept*="video"])').setInputFiles({ name: 'dance.gif', mimeType: 'image/gif', buffer: gif() })
+  await expect(search).toBeHidden()
+  await page.getByRole('button', { name: 'Remove GIF 1' }).click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(search).toBeHidden()
   await context.close()
 })
 

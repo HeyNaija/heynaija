@@ -51,7 +51,7 @@ import { describeTime } from '../games/chess/time-controls.js'
 import { DB } from '../tokens.js'
 
 /** Bumped whenever the shape below changes, so people and tools can tell exports apart. */
-export const EXPORT_FORMAT = 'heynaija-export/22'
+export const EXPORT_FORMAT = 'heynaija-export/23'
 
 /**
  * Everything HeyNaija holds about one member, for them to download (PLAN.md §1:
@@ -121,6 +121,8 @@ export class ExportService {
           hiddenByHostAt: posts.hiddenByHostAt,
           // Marked sensitive (ADR 0020): 'author' or 'moderator', or null.
           markedSensitive: posts.adultLabel,
+          giphyId: posts.giphyId,
+          giphyAlt: posts.giphyAlt,
         })
         .from(posts)
         .leftJoin(communities, eq(communities.id, posts.communityId))
@@ -370,8 +372,10 @@ export class ExportService {
       age: ageRecords,
       identityVerifications: verifications,
       votingMembership: membership ?? null,
-      posts: ownPosts.map((p) => ({
+      posts: ownPosts.map(({ giphyId, giphyAlt, ...p }) => ({
         ...p,
+        // A GIF from Giphy: only its id is ours, with the description the member wrote.
+        giphy: giphyId ? { id: giphyId, description: giphyAlt ?? '' } : null,
         images: imagesByPost.get(p.id) ?? [],
         videos: videosByPost.get(p.id) ?? [],
         mentions: mentionsByPost.get(p.id) ?? [],

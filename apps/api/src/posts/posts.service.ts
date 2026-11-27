@@ -86,6 +86,16 @@ export type PostImageInput = z.infer<typeof postImagesInput>[number]
 export const postVideoInput = z.object({ id: z.uuid(), description: z.string().trim().max(ALT_MAX).default('') })
 export type PostVideoInput = z.infer<typeof postVideoInput>
 
+/** What a Giphy id looks like: it goes into a media URL, so nothing else may pass. */
+export const GIPHY_ID = /^[A-Za-z0-9]{1,32}$/
+
+/** One GIF picked from Giphy in the member's browser: its id, with an optional description. We never contact Giphy. */
+export const postGiphyInput = z.object({
+  id: z.string().regex(GIPHY_ID, 'a Giphy id is letters and digits only, up to 32'),
+  description: z.string().trim().max(ALT_MAX).default(''),
+})
+export type PostGiphyInput = z.infer<typeof postGiphyInput>
+
 const pollOption = z.string().trim().min(1, 'poll options cannot be empty').refine(
   (option) => option.length <= POLL_OPTION_MAX_GRAPHEMES * 16 && graphemes(option) <= POLL_OPTION_MAX_GRAPHEMES,
   `poll options can have at most ${POLL_OPTION_MAX_GRAPHEMES} characters`,
@@ -115,6 +125,7 @@ export const newPost = (slug: z.ZodType<string>) =>
       community: slug.optional(),
       images: postImagesInput,
       video: postVideoInput.optional(),
+      giphy: postGiphyInput.optional(),
       poll: pollInput.optional(),
       /** Left out: everyone, or for an update the story's first post's setting. */
       replyAudience: z.enum(REPLY_AUDIENCES).optional(),
@@ -125,7 +136,11 @@ export const newPost = (slug: z.ZodType<string>) =>
       /** Notify every member of `community` (docs/adr/0029). Only its moderators, once a day, while the communityAnnouncements flag is on. */
       announce: z.boolean().default(false),
     })
-    .refine((p) => p.text.length > 0 || p.images.length > 0 || p.video, { message: 'post is empty', path: ['text'] })
+    .refine((p) => p.text.length > 0 || p.images.length > 0 || p.video || p.giphy, { message: 'post is empty', path: ['text'] })
+    .refine((p) => !p.giphy || (p.images.length === 0 && !p.video && !p.poll), {
+      message: 'a post with a Giphy GIF cannot also have images, a video or a poll',
+      path: ['giphy'],
+    })
     // One video, and nothing else of that kind beside it; and, to start with, not in replies (ADR 0019 section 1).
     .refine((p) => !p.video || p.images.length === 0, { message: 'a post with a video cannot also have images', path: ['video'] })
     .refine((p) => !p.video || !p.replyTo, { message: 'a video cannot be added to a reply', path: ['video'] })
@@ -260,6 +275,8 @@ export type PostView = {
    * the post. Null when there is none yet, and when `deleted`.
    */
   linkPreview: LinkPreview | null
+  /** A GIF from Giphy, by its id, with the author's description; the reader's browser loads it from Giphy. Null when none. */
+  giphy: { id: string; alt: string } | null
   createdAt: Date
   replyParentId: string | null
   /** The root post's effective conversation boundary. */
@@ -496,14 +513,17 @@ export const blockedEitherWay = (a: SQL | string, b: SQL | string) =>
 // Written out so the outer post is unambiguous inside subqueries.
 const outerId = sql`"posts"."id"`
 
-// Has at least one image, or its video, that a reader can see.
-const withMedia = sql`exists(select 1 from media m where m.post_id = ${outerId} and m.kind in ('post_image', 'post_video') and m.status = 'ready')`
+// Has at least one image, or its video, that a reader can see, or a Giphy GIF.
+const withMedia = sql`(exists(select 1 from media m where m.post_id = ${outerId} and m.kind in ('post_image', 'post_video') and m.status = 'ready') or "posts"."giphy_id" is not null)`
 
 const profileFilter: Record<ProfileFilter, SQL> = {
   posts: inFeeds,
   replies: isNotNull(posts.replyParentId),
   media: withMedia,
 }
+
+/** A post's Giphy GIF as JSON, for any query with `posts` in scope; null when it has none. */
+const giphyOf = (id: SQL, alt: SQL) => sql`case when ${id} is null then null else json_build_object('id', ${id}, 'alt', coalesce(${alt}, '')) end`
 
 /** A post's ready images in order, as JSON, for any query with `posts` in scope. */
 export const imagesOf = (postId: SQL) =>
@@ -790,6 +810,7 @@ export class PostsService {
         mentions: sql<PostMention[]>`case when ${shownTo} then ${mentionsOf(viewerId, outerId)} else '[]'::json end`,
         hashtags: sql<PostHashtag[]>`case when ${shownTo} then ${hashtagsOf(outerId)} else '[]'::json end`,
         linkPreview: sql<LinkPreviewRow | null>`case when ${shownTo} then ${linkPreviewOf(sql`"posts"."link_url"`)} end`,
+        giphy: sql<PostView['giphy']>`case when ${shownTo} then ${giphyOf(sql`"posts"."giphy_id"`, sql`"posts"."giphy_alt"`)} end`,
         createdAt: posts.createdAt,
         replyParentId: posts.replyParentId,
         replyAudience: replyAudienceOf(outerId, sql`"posts"."root_id"`),
@@ -1690,6 +1711,7 @@ export class PostsService {
           'sensitive', p.adult_label, 'coverMedia', ${coverMediaFor(viewerId, sql`p.adult_label`, sql`p.author_id`)},
           'hashtags', ${hashtagsOf(sql`p.id`)},
           'linkPreview', ${linkPreviewOf(sql`p.link_url`)},
+          'giphy', ${giphyOf(sql`p.giphy_id`, sql`p.giphy_alt`)},
           'createdAt', p.created_at, 'replyParentId', p.reply_parent_id, 'replyTo', null,
           'replyAudience', ${replyAudienceOf(sql`p.id`, sql`p.root_id`)},
           'viewerCanReply', ${canReplyTo(viewerId, sql`p.id`, sql`p.root_id`, sql`p.gist_id`)},
@@ -1765,6 +1787,7 @@ export class PostsService {
       communitySlug,
       images = [],
       video,
+      giphy,
       quote,
       poll,
       replyAudience,
@@ -1780,6 +1803,7 @@ export class PostsService {
       communitySlug?: string
       images?: PostImageInput[]
       video?: PostVideoInput
+      giphy?: PostGiphyInput
       quote?: string
       poll?: PollInput
       replyAudience?: ReplyAudience
@@ -1944,6 +1968,8 @@ export class PostsService {
           authorId,
           text,
           linkUrl,
+          giphyId: giphy?.id ?? null,
+          giphyAlt: giphy ? giphy.description : null,
           communityId,
           gistId: gist ?? null,
           replyParentId: parent?.id ?? null,

@@ -114,6 +114,7 @@ async function ThreadView({ params, searchParams }: Props) {
       handle={me.handle}
       avatar={me.avatar}
       polls={me.features?.polls ?? false}
+      giphy={me.features?.giphyGifs ?? false}
       // An update starts with the first post's reply setting; it is changed from the post's menu.
       replyControls={false}
       videoLimits={me.videoLimits ?? null}
@@ -197,7 +198,7 @@ async function ThreadView({ params, searchParams }: Props) {
       <ThreadConversation
         key={`${viewerId ?? 'visitor'}:${id}:${order}`}
         focus={{ id, parentId: thread.post.replyParentId, handle: thread.post.authorHandle, depth: 0 }}
-        member={viewer.state === 'member' && thread.post.viewerCanReply ? { handle: viewer.me.handle, avatar: viewer.me.avatar, sensitiveLabels: composerOffersMark(viewer.me) } : null}
+        member={viewer.state === 'member' && thread.post.viewerCanReply ? { handle: viewer.me.handle, avatar: viewer.me.avatar, sensitiveLabels: composerOffersMark(viewer.me), giphy: viewer.me.features?.giphyGifs ?? false } : null}
         limited={viewer.state === 'member' && !thread.post.viewerCanReply}
         initialRows={replies.map((post) => renderThreadRow(post, viewerId, now, 1, thread.post.authorHandle))}
         cursor={cursor}
