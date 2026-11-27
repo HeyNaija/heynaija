@@ -20,7 +20,8 @@ import { IMAGE_TYPES } from './shrink-image'
 import { useAutoGrow } from './use-auto-grow'
 import { type VideoDraft, useVideoDraft } from './use-video-draft'
 import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
-import { useFixedPlacement } from './use-fixed-placement'
+import { type PickerPlace, useFixedPlacement } from './use-fixed-placement'
+import { usePressedBy } from './use-pressed-by'
 import { useMentionSuggestions } from './use-mention-suggestions'
 import { PostVideo } from './post-video'
 import { composerOffers } from '@/lib/composer-offers'
@@ -215,14 +216,13 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     setEmojiPicker(() => emojiPicker())
   }
   const [emojiByKeyboard, setEmojiByKeyboard] = useState(false)
-  // The pointerType of the press on the Emoji button; none before the click means the keyboard or a screen reader.
-  const emojiPressedBy = useRef<string | null>(null)
+  const emojiPressedBy = usePressedBy()
   const emojiButton = useRef<HTMLButtonElement>(null)
   const emojiPanel = useRef<HTMLDivElement>(null)
   const toolbar = useRef<HTMLDivElement>(null)
-  // `focused` is what had focus in the picker; during a blur that is the event's target, as nothing has it then.
-  const closeEmoji = (focused: Node | null = document.activeElement) => {
-    const inside = emojiPanel.current?.contains(focused)
+  const pickerPlace: PickerPlace = { anchor: toolbar, clear: writingRow, frame: form, box: input }
+  const closeEmoji = () => {
+    const inside = emojiPanel.current?.contains(document.activeElement)
     setEmojiOpen(false)
     if (inside) emojiButton.current?.focus()
   }
@@ -314,8 +314,16 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   useEffect(() => {
     const outside = (e: PointerEvent) => {
       // The @mention list and the pickers are drawn outside the form, but belong to it.
-      const target = e.target as Node
-      if (form.current?.contains(target) || emojiPanel.current?.contains(target) || giphyPanel.current?.contains(target)) return
+      const target = e.target as Element
+      if (emojiPanel.current?.contains(target) || giphyPanel.current?.contains(target)) return
+      if (form.current?.contains(target)) {
+        // A press on the form around its controls is a press on nothing, which closes the pickers.
+        if (!target.closest('button, input, select, textarea, label, a[href], video')) {
+          setEmojiOpen(false)
+          setGiphyOpen(false)
+        }
+        return
+      }
       if (!mentionList.current?.contains(target)) setExpanded(false)
       setEmojiOpen(false)
       setGiphyOpen(false)
@@ -395,14 +403,10 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const content = (
     <form ref={form} id={formId} action={action} className={`${inline ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''}${answeringReply ? ' is-answering' : ''} scroll-mt-32`}
       onBlur={(e) => {
-        // Focus going elsewhere, or to nothing, closes the picker; the box and the picker are one place.
+        // Focus going elsewhere closes the picker; the box and the picker are one place. Focus going to
+        // nothing leaves it open: a phone keyboard closed from the search or the box, a tab or app switch.
         const next = e.relatedTarget as Node | null
-        if (!emojiOpen || (next && (form.current?.contains(next) || emojiPanel.current?.contains(next)))) return
-        // Focus gone from the picker to nothing would leave a keyboard on the page itself; it goes back to
-        // the Emoji button. A window losing focus (tab or app switch) and the box losing it (an iPhone's
-        // Done) also blur to nothing, and leave the picker open.
-        if (next) setEmojiOpen(false)
-        else if (document.hasFocus() && emojiPanel.current?.contains(e.target)) closeEmoji(e.target)
+        if (emojiOpen && next && !form.current?.contains(next) && !emojiPanel.current?.contains(next)) setEmojiOpen(false)
       }}
       // Sent posts take no more emoji: one picked now would not be in the post. The post's own error replaces the picker's.
       onSubmit={() => {
@@ -763,15 +767,10 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               disabled={pending}
               // The press does not move focus off the box.
               onMouseDown={(e) => e.preventDefault()}
-              onPointerDown={(e) => {
-                emojiPressedBy.current = e.pointerType
-              }}
-              onKeyDown={() => {
-                emojiPressedBy.current = null
-              }}
+              onPointerDown={emojiPressedBy.onPointerDown}
+              onKeyDown={emojiPressedBy.onKeyDown}
               onClick={() => {
-                const pointer = emojiPressedBy.current
-                emojiPressedBy.current = null
+                const pointer = emojiPressedBy.take()
                 if (emojiOpen) return closeEmoji()
                 setEmojiFailedToLoad(false)
                 setEmojiByKeyboard(pointer === null)
@@ -788,7 +787,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               <SmileIcon size={20} />
               <span className="composer-photo-label">Emoji</span>
             </button>
-            {emojiOpen ? <PickerBoundary onError={emojiFailed}><EmojiPicker anchor={toolbar} clear={writingRow} panel={emojiPanel} focusSearch={emojiByKeyboard} onPick={pickEmoji} onExit={leaveEmoji} /></PickerBoundary> : null}
+            {emojiOpen ? <PickerBoundary onError={emojiFailed}><EmojiPicker place={pickerPlace} panel={emojiPanel} focusSearch={emojiByKeyboard} onPick={pickEmoji} onExit={leaveEmoji} /></PickerBoundary> : null}
           </>
         ) : null}
         {choices?.length ? (

@@ -5,7 +5,8 @@ import { createPortal } from 'react-dom'
 import { EMOJI_GROUPS, type Emoji, emojiFor, searchEmoji } from '@/lib/emoji-data'
 import { moveInGrid } from '@/lib/emoji-grid'
 import { readRecent, remember } from '@/lib/emoji-recent'
-import { useFixedPlacement } from './use-fixed-placement'
+import { type PickerPlace, usePickerPlacement } from './use-fixed-placement'
+import { usePressedBy } from './use-pressed-by'
 
 const STORAGE_KEY = 'emoji-recent'
 
@@ -32,16 +33,13 @@ function saveRecent(list: string[]) {
  * with the arrow keys inside it, so Tab is three presses: search, grid, away (`onExit`).
  */
 export default function EmojiPicker({
-  anchor,
-  clear,
+  place,
   panel,
   focusSearch,
   onPick,
   onExit,
 }: {
-  anchor: RefObject<HTMLElement | null>
-  /** The box above the anchor: opening upward, the picker goes above it rather than over it. */
-  clear: RefObject<HTMLElement | null>
+  place: PickerPlace
   panel: RefObject<HTMLDivElement | null>
   /** Opened without a mouse or touch press (the keyboard, a screen reader): focus moves into the picker. */
   focusSearch: boolean
@@ -59,9 +57,8 @@ export default function EmojiPicker({
   const [recent] = useState(loadRecent)
   const latest = useRef(recent)
   const [active, setActive] = useState(0)
-  // How the last press in the picker was made; a click with none before it came from the keyboard or a screen reader.
-  const pressedBy = useRef<string | null>(null)
-  useFixedPlacement(anchor, panel, true, { tallest: 360, widest: 340, clear, keepSide: true })
+  const pressedBy = usePressedBy()
+  usePickerPlacement(place, panel, { tallest: 360, widest: 340 })
 
   useEffect(() => {
     if (focusSearch) search.current?.focus({ preventScroll: true })
@@ -79,8 +76,7 @@ export default function EmojiPicker({
   const stop = active < total ? active : 0
 
   const pick = (emoji: Emoji) => {
-    const pointer = pressedBy.current
-    pressedBy.current = null
+    const pointer = pressedBy.take()
     latest.current = remember(latest.current, emoji.char)
     saveRecent(latest.current)
     onPick(emoji.char, pointer)
@@ -116,12 +112,10 @@ export default function EmojiPicker({
       aria-describedby={`${id}-hint`}
       className="emoji-picker"
       onKeyDown={(e) => {
-        pressedBy.current = null
+        pressedBy.onKeyDown()
         onTab(e)
       }}
-      onPointerDown={(e) => {
-        pressedBy.current = e.pointerType
-      }}
+      onPointerDown={pressedBy.onPointerDown}
       // A press on a heading or the padding leaves focus where it was, so Escape and Tab still reach the picker.
       onMouseDown={(e) => {
         if (e.target !== search.current) e.preventDefault()
