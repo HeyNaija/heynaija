@@ -20,4 +20,4 @@ export const KEKE_BIO =
 export const NAIJA_TODAY_SLUG = 'naija-today'
 
 /** What anyone else trying to start a post there is told. */
-export const NAIJA_TODAY_REFUSAL = 'Naija Today posts are Keke’s daily news; reply under a story instead.'
+export const NAIJA_TODAY_REFUSAL = 'Naija Today posts are Keke’s daily news; reply under a headline instead.'

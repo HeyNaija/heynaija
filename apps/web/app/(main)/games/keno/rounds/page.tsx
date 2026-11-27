@@ -7,6 +7,7 @@ import { KenoIcon } from '@/app/ui/icons'
 import { LocalTime } from '@/app/ui/local-time'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { getKenoRounds, getViewer } from '@/lib/api'
+import { requireGames } from '../../_components/require-games'
 
 export const metadata: Metadata = { title: 'Past Keno draws', robots: { index: false } }
 
@@ -30,7 +31,7 @@ export default function KenoRoundsPage({ searchParams }: PageProps<'/games/keno/
 
 async function Rounds({ searchParams }: Pick<PageProps<'/games/keno/rounds'>, 'searchParams'>) {
   const [params, viewer] = await Promise.all([searchParams, getViewer()])
-  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  requireGames(viewer, '/games/keno/rounds')
   const before = typeof params.before === 'string' && /^\d{1,9}$/.test(params.before) ? Number(params.before) : undefined
   const page = await getKenoRounds(before)
   if (!page) notFound()

@@ -5,17 +5,20 @@ import { type FormEvent, startTransition, useRef, useState, useSyncExternalStore
 import { finishPostImageUpload, postImageStatus, startPostImageUpload } from '@/app/actions'
 import { isGif, POST_IMAGE_TYPES, shrinkImage } from '@/app/ui/shrink-image'
 import { formatTime, HOME_ZONE } from '@/app/ui/time'
+import { EXAMPLE_FILE, MAX_QUESTIONS, readTriviaFile } from '@/lib/trivia-file'
 import { triviaCall } from './call'
-import { blankQuestion, type PictureDraft, type QuestionDraft, type RoundDraft } from './round-draft'
+import { blankQuestion, draftFromFile, isBlankQuestion, type PictureDraft, type QuestionDraft, type RoundDraft } from './round-draft'
+import { saveJsonFile } from './save-file'
 
 // A host writes a round (docs/adr/0028, phase 7): its title, when, where The
 // Arbiter posts it, and its questions. The API checks everything again.
 
-const MAX_QUESTIONS = 30
 // As for a post's pictures (app/ui/use-image-drafts.ts): sharp enough full screen, small enough to send from a phone.
 const PICTURE_MAX_BYTES = 10 * 1024 * 1024
 const PICTURE_LONGEST_EDGE = 2048
 const ALT_MAX = 1000
+/** Far more than 30 questions need; a larger file is not a trivia file. */
+const FILE_MAX_BYTES = 1024 * 1024
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
 const unchanging = () => () => {}
@@ -50,7 +53,19 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
       ;[qs[i], qs[j]] = [qs[j]!, qs[i]!]
       return { ...d, questions: qs }
     })
-  const remove = (i: number) => setDraft((d) => ({ ...d, questions: d.questions.filter((_, j) => j !== i) }))
+  // A round always keeps one question in the form, so removing the last one empties it instead.
+  const remove = (i: number) =>
+    setDraft((d) => ({ ...d, questions: d.questions.length === 1 ? [blankQuestion(d.questions[0]!.kind)] : d.questions.filter((_, j) => j !== i) }))
+  // Starts again from an empty form: the title and every question go; the start time and settings stay.
+  const [clearing, setClearing] = useState(false)
+  const clear = () => {
+    setDraft((d) => ({ ...d, title: '', questions: [blankQuestion('choice')] }))
+    setClearing(false)
+  }
+  // Imported questions go after those already written; an empty one, like the one a new round starts with, makes way.
+  const written = draft.questions.filter((q) => !isBlankQuestion(q)).length
+  const addImported = (title: string, imported: QuestionDraft[]) =>
+    setDraft((d) => ({ ...d, title: d.title.trim() ? d.title : title, questions: [...d.questions.filter((q) => !isBlankQuestion(q)), ...imported] }))
 
   // A picture is found again by its local preview, so moving or removing questions while it uploads is fine.
   const setPicture = (preview: string, change: Partial<PictureDraft>) =>
@@ -185,6 +200,24 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
         </span>
       </label>
 
+      <ImportQuestions room={MAX_QUESTIONS - written} onImport={addImported} />
+
+      {written > 0 || draft.title.trim() ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {clearing ? (
+            <>
+              <button type="button" className="btn btn-primary btn-sm" onClick={clear}>
+                Yes, clear the title and {written} {written === 1 ? 'question' : 'questions'}
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setClearing(false)}>Keep them</button>
+              <span className="text-sm text-muted">The start time and settings stay.</span>
+            </>
+          ) : (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setClearing(true)}>Clear the form</button>
+          )}
+        </div>
+      ) : null}
+
       <ol className="flex flex-col gap-3">
         {draft.questions.map((q, i) => (
           <li key={i} className="trivia-edit">
@@ -246,7 +279,7 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
               <div className="flex flex-wrap gap-2">
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => move(i, -1)} disabled={i === 0}>Move up</button>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => move(i, 1)} disabled={i === draft.questions.length - 1}>Move down</button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => remove(i)} disabled={draft.questions.length === 1}>Remove</button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => remove(i)} disabled={draft.questions.length === 1 && isBlankQuestion(q)}>Remove</button>
               </div>
             </fieldset>
           </li>
@@ -273,6 +306,85 @@ export function RoundForm({ defaults, communities }: { defaults: RoundDraft; com
         <button type="submit" className="btn btn-primary" disabled={busy}>{draft.id ? 'Save changes' : 'Save draft'}</button>
       </div>
     </form>
+  )
+}
+
+/**
+ * Fills the form from a JSON file of questions, so a host need not type each one.
+ * The file is read here in the browser; nothing is saved until the host saves.
+ */
+function ImportQuestions({ room, onImport }: { room: number; onImport: (title: string, questions: QuestionDraft[]) => void }) {
+  const input = useRef<HTMLInputElement>(null)
+  // False in the server's HTML and until hydration: a file chosen before then would go nowhere.
+  const ready = useSyncExternalStore(unchanging, () => true, () => false)
+  const [errors, setErrors] = useState<string[]>([])
+  const [added, setAdded] = useState<string | null>(null)
+
+  const read = async (file: File) => {
+    setErrors([])
+    setAdded(null)
+    if (file.size > FILE_MAX_BYTES) return setErrors(['That file is too large to be a list of questions. The limit is 1 MB.'])
+    const source = await file.text().catch(() => null)
+    if (source === null) return setErrors(['That file could not be opened. Try again.'])
+    const result = readTriviaFile(source, room)
+    if (!result.ok) return setErrors(result.errors)
+    onImport(result.title, result.questions.map(draftFromFile))
+    const n = result.questions.length
+    setAdded(`Added ${n} ${n === 1 ? 'question' : 'questions'} from ${file.name}. Check them, then save.`)
+  }
+
+  return (
+    <div className="trivia-edit flex flex-col gap-2">
+      <span className="field-label">Import questions</span>
+      <p className="field-hint">
+        Add many questions at once from a JSON file. They go after any questions already in the form.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="btn btn-secondary btn-sm" disabled={!ready || room <= 0} onClick={() => input.current?.click()}>
+          Choose a file
+        </button>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={!ready} onClick={() => saveJsonFile('trivia-example.json', `${EXAMPLE_FILE}\n`)}>
+          Download an example
+        </button>
+        <input
+          ref={input}
+          type="file"
+          accept=".json,application/json"
+          className="sr-only"
+          tabIndex={-1}
+          aria-label="Questions file"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (file) void read(file)
+          }}
+        />
+      </div>
+      {room <= 0 ? <p className="field-hint">The round has {MAX_QUESTIONS} questions, the most it can have.</p> : null}
+      <details className="text-sm">
+        <summary className="field-hint">How to write the file</summary>
+        <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-muted">
+          <li>Each question has a <code>&quot;question&quot;</code>.</li>
+          <li>A question with choices has 2 to 4 <code>&quot;choices&quot;</code> and one <code>&quot;answer&quot;</code>. The answer is the right choice, written the same way.</li>
+          <li>A typed question has <code>&quot;answers&quot;</code> instead: every answer that counts.</li>
+          <li>A <code>&quot;note&quot;</code> is optional. Players see it with the answer.</li>
+          <li>A <code>&quot;title&quot;</code> is optional. It fills the Title box if that is empty.</li>
+          <li>Pictures cannot go in the file. Add them in the form after you import.</li>
+        </ul>
+        <pre className="trivia-file-example">{EXAMPLE_FILE}</pre>
+      </details>
+      {added ? <p className="text-sm" role="status">{added}</p> : null}
+      {errors.length ? (
+        <div className="text-sm text-danger" role="alert">
+          <p>The file was not imported:</p>
+          <ul className="list-disc pl-5">
+            {errors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   )
 }
 

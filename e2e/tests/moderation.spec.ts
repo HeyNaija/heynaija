@@ -104,3 +104,38 @@ test('a suspended member appeals and the moderator sees the appeal', async ({ br
 
   await Promise.all([author, reporter, moderator].map((m) => m.context.close()))
 })
+
+test('a member reports a safety concern from Settings, and a moderator closes it as dealt with', async ({ browser }) => {
+  const reporter = await newMember(browser, 'concern')
+  const moderator = await newMember(browser, 'mod')
+  grantModerator(moderator.handle)
+
+  // Settings sends the browser on to Kratos and back with ?flow= for its sign-in form; a click before then is lost.
+  await reporter.page.goto('/settings')
+  await reporter.page.waitForURL((url) => url.searchParams.has('flow'))
+  await reporter.page.getByRole('link', { name: 'Report a safety concern' }).click()
+  await reporter.page.waitForURL((url) => url.pathname === '/report')
+  await expect(reporter.page.getByRole('heading', { level: 1 })).toHaveText('Report a safety concern')
+
+  // What happened is required: it is about no one post or account.
+  const details = `Someone keeps asking teenagers for photos, says ${reporter.handle}`
+  await reporter.page.getByLabel('Child sexual abuse or exploitation').check()
+  await reporter.page.getByLabel('What happened?').fill(details)
+  await reporter.page.getByRole('button', { name: 'Send report' }).click()
+  await expect(reporter.page.getByText('The people who handle safety read every one of these')).toBeVisible()
+
+  // It comes first in the queue, with nothing to remove or suspend: only closing it.
+  await moderator.page.goto('/mod')
+  const item = moderator.page.locator('form', { hasText: details })
+  await expect(item).toContainText('Child sexual abuse or exploitation')
+  await expect(item).toContainText('Report a safety concern')
+  await expect(item).toContainText(`reported by @${reporter.handle}`)
+  await expect(item.getByRole('button', { name: 'Suspend account' })).toHaveCount(0)
+  await item.getByRole('button', { name: 'Dealt with' }).click()
+  await expect(moderator.page.locator('form', { hasText: details })).toHaveCount(0)
+
+  await reporter.page.goto('/notifications')
+  await expect(reporter.page.getByText('Thanks for reporting a safety concern. The people who handle safety looked into it and took action.')).toBeVisible()
+
+  await Promise.all([reporter, moderator].map((m) => m.context.close()))
+})

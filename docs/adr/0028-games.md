@@ -16,7 +16,10 @@ a folder in the web app and an entry in the registry, and nothing else.
 All of it sits behind the **`games` feature flag** (docs/feature-flags.md): on in
 development and staging, off in production until the team launches it. While the
 flag is off for a member, or they are not on its allow-list, every `/v1/games` route
-and `/games` answer 404 like an address that does not exist.
+answers 404 like an address that does not exist. So did the web's `/games` pages
+until 20 November 2026. Since then they follow the rule for every link
+(docs/deployment/app-links.md): someone signed out is asked to sign in and comes
+back, and a member Games is not open to is told so.
 
 ## Why
 
@@ -212,6 +215,19 @@ seconds, and the web app compresses what it passes on. So the browser **long-pol
 changed since that version, and otherwise waits up to 25 seconds for the next
 change. One plain answer at a time; nginx, Cloudflare and the web app need nothing
 new.
+
+On patchy mobile data a reply can be lost on the way while the client still
+thinks the request is open (a Trivia player on 3G missed whole questions that way,
+22 November 2026). A move has no set time to come, so the game page and the app
+give up on a request and ask again (`apps/web/lib/chess-wait.ts`, the app's
+`ChessWait.kt`): after 10 seconds in a game with a clock, and after 30 seconds in
+a correspondence game. The server answers at once if the game moved on meanwhile.
+A player's own move, draw offer, resignation or abort comes back from Lichess
+within a moment, so if no reply has brought it 3 seconds after Lichess took it,
+the client asks again then. While a game goes on, a failed request is tried again
+within 2 seconds. The app sets its socket limit on purpose: OkHttp's default of 10
+seconds had cut every Android wait short, and each cut was then treated as an
+error with a growing pause.
 
 The streaming happens between servers. For each game being played, one BullMQ job
 (`GameWatcher`, with the game's id as the job id, so one per game however many API
@@ -506,10 +522,16 @@ apps.
 ### Who was first
 
 The answer insert carries its own check: `insert ... select ... where opens_at <=
-clock_timestamp() and closes_at > clock_timestamp() on conflict do nothing`, with
+clock_timestamp() and closes_at > clock_timestamp() for share on conflict ...`, with
 `answered_at` defaulting to `clock_timestamp()` and an identity `seq` breaking an
 exact tie. An answer that arrives a microsecond late is refused by the same
-statement that would have written it; the phone's clock and the order requests
+statement that would have written it. A typed answer is final (`on conflict` does
+nothing); a choice can be changed while the question is open (owner, 19 November
+2026): the conflict updates the choice with a new `answered_at` and `seq`, so the
+last choice counts at the time it was made, and the same choice again changes
+nothing. `for share` holds the question row while the answer is written, so judging
+(`for update skip locked`) leaves it to the next caller instead of reading a choice
+that is being replaced; the phone's clock and the order requests
 arrive in never count. Answers are rows, not posts, so nobody reads them before the
 question closes; a question's text is sent only once `opens_at` has passed by the
 database's clock (the round view returns `serverTime` for the countdown), and each
@@ -522,8 +544,9 @@ member gets the choices in their own order (seeded by question and member) so
   long-poll, the host's next action, or the `trivia-tick` job scheduler (every 30
   seconds). `select ... for update skip locked` makes it once only across API
   processes. Judging marks every answer, places the right ones by `answered_at`
-  then `seq`, gives `10 + 5/3/2` points, and The Arbiter replies under the thread
-  with the question, the answer and how many got it.
+  then `seq`, gives `10 + 5/3/2` points, and The Arbiter adds an update to the
+  thread's story with the question, the answer and how many got it (20 November;
+  at first it was a reply).
 - Typed answers are normalised (NFKD, accents off, lower case, a leading "the"
   dropped, letters and digits only) and match an accepted answer exactly, or within
   one edit from 6 letters and two from 12 (Damerau-Levenshtein).
@@ -539,17 +562,18 @@ member gets the choices in their own order (seeded by question and member) so
 Publishing writes `trivia_results` (places by points, then by less time on right
 answers, ties shared), adds each member's points to the season's `trivia` scores
 and `game_profiles` stats, and records a `trivia_round_played` game event: XP 2,
-+1 a right answer, +2 a first, at most +20. The Arbiter replies with the top ten
-and with the first right answer on each question and its time, by display name;
-a member under 18 or a deleted account is "a member". Once only: the publish takes
-the round's row with `skip locked` and needs it to be `reviewing`.
++1 a right answer, +2 a first, at most +20. The Arbiter posts the top ten as an
+update to its thread (below, 19 November), and replies under that with the first
+right answer on each question and its time, by display name; a member under 18 or
+a deleted account is "a member". Once only: the publish takes the round's row with
+`skip locked` and needs it to be `reviewing`.
 
 ### Flags, limits and safety
 
 - `trivia` flag (on in development and staging, off in production), on top of
   `games`. A game's manifest may now name its own flag; `/api/v1/games` leaves the
   game out while it is off for the member.
-- Rate limits: `triviaAnswer` 20 a minute, `triviaHost` 120 an hour,
+- Rate limits: `triviaAnswer` 60 a minute (choices can be changed), `triviaHost` 120 an hour,
   `triviaRound` 10 rounds a day.
 - A member blocked by the host, or who blocked them, does not see the round and
   cannot answer. A round whose host does nothing for 10 minutes ends by itself.
@@ -572,10 +596,69 @@ text only), on the web and in the apps.
   the 640 version only, so a slow phone is not also fetching a large file against
   the clock.
 - The abandoned-upload sweep leaves an image alone while a question has it. When
-  the question closes, the image goes on The Arbiter's reply in the thread, so
-  the talk there shows what was asked; from then on it is that post's, reported,
+  the question closes, the image goes on The Arbiter's update with the answer, so
+  the talk under it shows what was asked; from then on it is that post's, reported,
   removed and erased with it like any post's image. A question voided before it
-  closes has no reply, so its picture is shown nowhere.
+  closes has no answer posted, so its picture is shown nowhere.
+
+### Results as a story update (19 November 2026)
+
+At first the results were a reply in the round's thread. Feeds list top-level
+posts only, so they reached nobody who did not open the thread again, and the
+round left feeds once it had been announced. The results are now an update to
+the thread's story ([ADR 0024](0024-stories.md)):
+
+- The top ten is posted with `storyOf` the thread. The round comes back to the
+  top of Latest, Following and its community at that time, as the newest update
+  under a box of the announcement, and the story's followers are told
+  (`story_update`). The first right answer on each question is a reply under the
+  results, so talk about them goes there, apart from the answers' replies.
+- A new start time is an update too, since people planning to play need it.
+  Other changes (title, seconds, how many questions) stay replies.
+- A round with no thread, or whose thread has been taken down or deleted (an
+  update needs its first post live), gets its results as a post of its own in
+  the round's community or Game Night, as before.
+- Members are not made to follow a round's story by playing it: players are on
+  the round's page when the results come out.
+
+**Each question's answer too (20 November 2026).** With only the results as an
+update, the owner found the story showed one thing, while its point is to show
+how something went. Each question's answer is now an update as well, so the
+story reads as the round did: a new time if there was one, each question with
+its answer, then the results.
+
+- Talk about a question goes in the replies to its own answer, not all together
+  under the announcement. The announcement says so.
+- Followers are told of every update, answers included. The owner's call: a
+  member who taps Follow story has asked for each one. A round of ten questions
+  can mean ten notifications in a few minutes.
+- The feed shows the round once, at its newest update, so it stays one card that
+  moves up as the round goes on.
+- On the story page, more than four updates fold: the announcement, "Updates 1
+  to N" folded, then the newest three (ADR 0024).
+
+### Questions from a file (20 November 2026)
+
+At the owner's request a host can bring questions in from a JSON file instead of
+typing each one, and take a round's questions out again.
+
+- **Import** is in the round form, new or edit. The browser reads the file; the
+  API is unchanged and checks the round on save as before. The file's questions go
+  after those already in the form, and an empty question makes way. A title in the
+  file fills an empty Title box. The file is checked against the API's limits
+  first, and every problem is listed by question number, so nothing is cut or
+  guessed. A choice question's `answer` is the right choice's text, not its
+  number, so it cannot point at the wrong one.
+- **Download questions** is on the host's console, for a round in any state, so a
+  finished round can be used again. It includes spellings the host accepted
+  during review.
+- **Pictures are not in the file.** Each uploaded picture can be on one question
+  only, so a file cannot carry it to another round. The host adds pictures in the
+  form after importing.
+- The format is `{ "format": "heynaija-trivia", "version": 1, "title", "questions":
+  [{ "question", "choices" + "answer" | "answers", "note" }] }`. Import also takes
+  a file without `format` and `version`, or a plain list of questions, since hosts
+  write these by hand. `apps/web/lib/trivia-file.ts` reads and writes it.
 
 ## Data export and account deletion
 
@@ -633,6 +716,16 @@ text only), on the web and in the apps.
   question appearing is not a new version, so pages send `has` (the open question
   they show) with `after`; without it, a request arriving just after a question
   appeared waited until it closed (seen on a phone, 16 November 2026).
+- Trivia: on patchy mobile data a long-poll's reply can be lost on the way while
+  the client still thinks the request is open. On 22 November 2026 a player on 3G
+  missed two whole questions that way: the server sent each reply on time, and the
+  app waited out its 45-second limit. So the page and the app give up on a reply
+  that is 2 seconds late for a question opening or closing, and ask again
+  (`apps/web/lib/trivia-wait.ts`, the app's `TriviaWait.kt`): at least 4 seconds a
+  request, doubled for each one given up on in a row; 10 seconds before the host
+  starts the round; never past 30 seconds. While a round is on, a failed request
+  is tried again within 2 seconds. The app sets its socket limit on purpose, since
+  OkHttp's default of 10 seconds cut every Android wait short.
 - Keno: the operator could read a sealed seed before its draw (see Phase 4); the
   hash only proves the numbers were not changed afterwards. At every draw each open
   Keno page asks for it within a few seconds of the others.

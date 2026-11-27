@@ -1691,7 +1691,12 @@ a.notification-row:hover {
 }
 
 /* Images on a post: one keeps its shape, two to four tile a 16:9 frame. The
-   frame is sized before the images load, so nothing jumps. */
+   frame is sized before the images load, so nothing jumps. As on Threads and X,
+   media never takes more than --media-max-h of the screen's height: a tall
+   picture or video is narrower instead of taller, and the viewer shows it large. */
+:root { --media-max-h: 320px; }
+/* A computer's screen has room for more: still under half its height. */
+@media (min-width: 720px) and (min-height: 760px) { :root { --media-max-h: 420px; } }
 .post-images {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1699,16 +1704,17 @@ a.notification-row:hover {
   overflow: hidden;
   gap: 2px;
   width: 100%;
-  max-height: 520px;
+  max-width: calc(var(--media-max-h) * 16 / 9);
   border: 1px solid var(--line);
   border-radius: var(--r-panel);
   background: var(--line);
 }
-.post-images.is-compact {
-  max-width: 360px;
+.post-images[data-count="1"] {
+  width: min(100%, calc(var(--media-max-h) * var(--ratio)));
+  max-width: none;
 }
-.post-list .post-images {
-  max-height: 360px;
+.post-images.is-compact {
+  --media-max-h: 200px;
 }
 .post-card .post-images {
   border-radius: var(--r-control);
@@ -1981,11 +1987,11 @@ html:has(.image-viewer[open]) {
   color: var(--accent-strong);
 }
 .composer-sensitive:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-/* A post's video: a poster to tap, then our own player (below). */
+/* A post's video: a poster to tap, then our own player (below). Like a picture,
+   it keeps its shape and is never taller than --media-max-h. */
 .post-video {
   position: relative;
-  width: 100%;
-  max-height: 520px;
+  width: min(100%, calc(var(--media-max-h) * var(--ratio)));
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--r-control);
@@ -2151,10 +2157,14 @@ html:has(.video-player:fullscreen) { scrollbar-gutter: auto; }
   text-align: center;
 }
 @container (max-width: 419px) {
+  /* The buttons keep their size; the time takes what is left and is cut short
+     rather than pushing the full-screen button out of the frame. */
   .video-player-bar {
+    grid-template-columns: auto minmax(0, auto) minmax(0, 1fr) auto auto;
     grid-template-areas: "seek seek seek seek seek" "play time . mute full";
     padding-top: 20px;
   }
+  .video-player-time { overflow: hidden; text-overflow: ellipsis; }
   .video-player-middle { bottom: 76px; }
 }
 /* A small player, such as the composer's preview on a phone, keeps its big button clear of the bar. */
@@ -2788,11 +2798,15 @@ button.trivia-choice:hover:not(:disabled) { border-color: var(--accent); }
 .trivia-choice.is-shown[data-yours]:not([data-right]) { border-color: var(--danger); }
 .trivia-typed { border: 1px solid var(--accent); border-radius: var(--r-control); padding: 10px 14px; font-weight: 600; }
 .trivia-edit { border: 1px solid var(--line); border-radius: var(--r-control); padding: 12px; }
+.trivia-file-example { margin-top: 8px; overflow-x: auto; border-radius: var(--r-control); padding: 12px; background: var(--panel); color: var(--ink); font-size: 12px; line-height: 1.6; }
 /* As wide as the panel, up to most of the screen's height: players answer from it. Small uploads are scaled up. */
 .trivia-picture {
-  display: block; width: 100%; height: auto; max-height: min(36rem, 60vh);
+  /* Under half the screen, so the question and its choices fit beside it on a phone. */
+  display: block; width: 100%; height: auto; max-height: min(36rem, 40vh); max-height: min(36rem, 40svh);
   border-radius: var(--r-control); background: var(--panel); object-fit: contain;
 }
+/* Clear of the top bar when a new question scrolls into view. */
+.trivia-stage { scroll-margin-top: 88px; }
 .trivia-picture-thumb { width: 96px; height: 96px; border-radius: var(--r-control); background: var(--panel); object-fit: cover; }
 .trivia-picture-edit { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
 .trivia-picture-edit > img { flex: none; width: 112px; height: 112px; border-radius: var(--r-control); background: var(--panel); object-fit: cover; }

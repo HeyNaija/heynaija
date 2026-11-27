@@ -7,6 +7,7 @@ import { TrophyIcon } from '@/app/ui/icons'
 import { PostsSkeleton } from '@/app/ui/post-item'
 import { getCompetitions, getViewer } from '@/lib/api'
 import { CompetitionSection } from './_bits'
+import { requireGames } from '../_components/require-games'
 
 export const metadata: Metadata = { title: 'Competitions', robots: { index: false } }
 
@@ -33,7 +34,7 @@ export default function CompetitionsPage() {
 
 async function Competitions() {
   const viewer = await getViewer()
-  if (viewer.state !== 'member' || !viewer.me.features.games) notFound()
+  requireGames(viewer, '/games/competitions')
   const list = await getCompetitions()
   if (!list) notFound()
   return (

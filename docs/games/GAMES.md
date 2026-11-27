@@ -226,11 +226,16 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
   Night when it has none, and nothing about the round can change once a question
   has opened. Any host may run another host's round (if theirs goes quiet), so no
   host answers in any round: they can all see the answers.
+- **Questions from a file:** the round form imports questions from a JSON file,
+  and the host's console downloads a round's questions in the same format, to use
+  them again. Pictures are not in the file (ADR 0028, 20 November 2026).
 - **Live, one question at a time.** The host opens each question (or lets the
   round go on by itself, 8 seconds after each reveal). Its text appears 3 seconds
   later on every screen at once, by the database's clock, and is never sent before
-  then. Answers are not posts: one per member per question, final, and kept on the
-  server until the question closes. The host does not play.
+  then. Answers are not posts: one per member per question, kept on the server
+  until the question closes. A choice can be changed while the question is open,
+  and the change is the answer's time (owner, 19 November 2026), so switching late
+  to the right choice is not first; a typed answer is final. The host does not play.
 - **Who was first** is decided by `clock_timestamp()` as the answer is written,
   inside the same insert that checks the question is open, so neither the phone's
   clock nor the network's order counts. Exact ties go to the order the database
@@ -244,9 +249,12 @@ Lichess owns chess, ratings and anti-cheat. HeyNaija owns the social layer.
   last question the host has 15 minutes to accept spellings the matcher missed
   (which can change who was first) or void a bad question; then the results
   publish themselves.
-- **The Arbiter** replies under the thread as each question closes (the question,
-  the answer, how many got it) and with the results: the top ten, and who was
-  first on each question with their time. A member under 18, or a deleted account,
+- **The Arbiter** adds an update to the thread's story (ADR 0024) as each question
+  closes: the question, the answer, how many got it. The results are the last
+  update: the top ten, with a reply under it saying who was first on each question
+  and their time. A new start time is an update too; other changes are replies.
+  The story shows how the round went, the feed shows it once at its newest update,
+  and followers are told of each update. A member under 18, or a deleted account,
   is "a member" in these posts; in the app, the round's standings show members as
   they are shown everywhere else.
 - **Safety:** a member blocked by the host, or who blocked them, does not see the
@@ -270,10 +278,12 @@ posts in Game Night.
 - **Feature flag:** the whole Games module sits behind the `games` feature flag
   (docs/feature-flags.md): on in development and staging, off in production until
   launch, and a site moderator can keep it to named members from Moderation,
-  Feature flags. Off means invisible: every Games route uses
-  `@Feature('games')` and answers 404, the web proxy serves the missing page, and
-  the Games link (last in the sidebar, and in the account menu on phones) is
-  hidden. New Games routes and jobs check the same flag.
+  Feature flags. Off means hidden: every Games route uses
+  `@Feature('games')` and answers 404, and the Games link (last in the sidebar,
+  and in the account menu on phones) is hidden. A Games address still says why
+  (docs/deployment/app-links.md): the web proxy asks someone signed out to sign in
+  and come back, and tells a member Games is not open to them yet. New Games
+  routes and jobs check the same flag.
 - **Roadmap:** Games entries live in `docs/feature-roadmap.json` as P2. After
   edits, run pnpm roadmap:generate, roadmap:check and roadmap:test.
 - **ADR:** one ADR records the games architecture, the Lichess dependency, keno

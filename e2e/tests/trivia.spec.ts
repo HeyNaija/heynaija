@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
 import { grantModerator } from '../lib/cli.ts'
 import { newMember } from '../lib/members.ts'
@@ -45,12 +46,15 @@ test('a moderator hosts a live Trivia round; a member answers, sees each answer 
   await q.waitForURL(round)
   await expect(q.getByText(/^Starts /)).toBeVisible()
 
-  // Question 1: the text appears only once it opens; one tap, final.
+  // Question 1: the text appears only once it opens; the choice can be changed until time is up, and the last one counts.
   await p.getByRole('button', { name: 'Start: open question 1' }).click()
   await expect(q.getByText('Who first writes a name in the Death Note?', { exact: true })).toBeVisible({ timeout: 20_000 })
+  await q.getByRole('button', { name: 'Ryuk' }).click()
+  await expect(q.getByText(/^Answered in \d+\.\d\d s\. You can change it until time is up/)).toBeVisible()
   await q.getByRole('button', { name: 'Light Yagami' }).click()
-  await expect(q.getByText(/^Answered in \d+\.\d\d s/)).toBeVisible()
-  await expect(q.getByRole('button', { name: 'Ryuk' })).toBeDisabled()
+  await expect(q.getByRole('button', { name: 'Light Yagami' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(q.getByRole('button', { name: 'Ryuk' })).toHaveAttribute('aria-pressed', 'false')
+  await expect(q.getByRole('button', { name: 'Ryuk' })).toBeEnabled()
   // When time is up: right, and first.
   await expect(q.getByText('Right, and 1st: +15 points')).toBeVisible({ timeout: 25_000 })
 
@@ -60,7 +64,9 @@ test('a moderator hosts a live Trivia round; a member answers, sees each answer 
   await expect(answer).toBeVisible({ timeout: 20_000 })
   await answer.fill('attack on titan')
   await answer.press('Enter')
-  await expect(q.getByText(/^Answered in /)).toBeVisible()
+  // A typed answer is final: the field goes.
+  await expect(q.getByText(/^Answered in .* You see whether it was right when time is up\./)).toBeVisible()
+  await expect(answer).toBeHidden()
   await expect(q.getByText('Right, and 1st: +15 points')).toBeVisible({ timeout: 25_000 })
   await expect(q.getByText(/^That was the last question/)).toBeVisible()
 
@@ -79,4 +85,47 @@ test('a moderator hosts a live Trivia round; a member answers, sees each answer 
 
   await host.context.close()
   await player.context.close()
+})
+
+test('a moderator imports questions from a file, and downloads a saved round’s questions again', async ({ browser }) => {
+  const host = await newMember(browser, 'trivia_import')
+  grantModerator(host.handle)
+  const p = host.page
+  await p.goto('/games/trivia/host')
+  // The button waits for the page to be ready; a file chosen before then goes nowhere.
+  await expect(p.getByRole('button', { name: 'Choose a file' })).toBeEnabled()
+  const pick = (name: string, data: unknown) =>
+    p.getByLabel('Questions file').setInputFiles({ name, mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(data)) })
+
+  // A file with a mistake is not imported, and the mistake is named.
+  await pick('broken.json', { questions: [{ question: 'Q', choices: ['A', 'B'], answer: 'C' }] })
+  await expect(p.getByText('Question 1’s answer "C" is not one of its choices.')).toBeVisible()
+  await expect(p.getByRole('textbox', { name: 'Question 1' })).toHaveValue('')
+
+  const title = `E2E Import ${Date.now().toString(36)}`
+  const questions = [
+    { question: 'Which city is Burna Boy from?', choices: ['Lagos', 'Port Harcourt', 'Abuja'], answer: 'Port Harcourt', note: 'He was born there.' },
+    { question: 'Name the anime with the Survey Corps.', answers: ['Attack on Titan', 'Shingeki no Kyojin'] },
+  ]
+  await pick('music.json', { title, questions })
+  await expect(p.getByText('Added 2 questions from music.json. Check them, then save.')).toBeVisible()
+  // The empty question the form started with made way, and the empty Title box took the file's title.
+  await expect(p.getByLabel('Title')).toHaveValue(title)
+  await expect(p.getByRole('textbox', { name: 'Question 1' })).toHaveValue('Which city is Burna Boy from?')
+  await expect(p.getByRole('textbox', { name: 'Choice 2', exact: true })).toHaveValue('Port Harcourt')
+  await expect(p.getByRole('radio', { name: 'Choice 2 is right' })).toBeChecked()
+  await expect(p.getByRole('textbox', { name: 'Question 2' })).toHaveValue('Name the anime with the Survey Corps.')
+  await expect(p.getByRole('textbox', { name: /Accepted answers/ })).toHaveValue('Attack on Titan\nShingeki no Kyojin')
+  await expect(p.getByRole('textbox', { name: 'Question 3' })).toHaveCount(0)
+  await p.getByRole('button', { name: 'Save draft' }).click()
+  await p.waitForURL(/\/games\/trivia\/rounds\/[0-9a-f-]{36}\/host$/)
+
+  // The console hands back the saved questions as a file that imports again.
+  const [download] = await Promise.all([p.waitForEvent('download'), p.getByRole('button', { name: 'Download questions' }).click()])
+  expect(download.suggestedFilename()).toBe(`${title.toLowerCase().replace(/ /g, '-')}.json`)
+  const data = JSON.parse(await readFile((await download.path())!, 'utf8'))
+  expect(data).toEqual({ format: 'heynaija-trivia', version: 1, title, questions })
+  await expect(p.getByText(/^Downloaded e2e-import-.*\.json\. Import it from the form/)).toBeVisible()
+
+  await host.context.close()
 })
