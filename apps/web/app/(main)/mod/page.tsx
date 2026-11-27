@@ -325,6 +325,7 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
                 value="end_gist"
                 className={danger}
                 confirmMessage="End this Gist now? Everyone in it is disconnected and its link stops working."
+                confirmLabel="End the Gist"
               >
                 End the Gist
               </SubmitButton>
@@ -351,6 +352,7 @@ function Report({ item, now, siteWide }: { item: QueueItem; now: number; siteWid
                 value="suspend_member"
                 className={danger}
                 confirmMessage="Suspend this account? They will not be able to post until reinstated."
+                confirmLabel="Suspend account"
               >
                 Suspend account
               </SubmitButton>

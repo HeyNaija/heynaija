@@ -139,6 +139,7 @@ async function ProfileView({ params, searchParams }: Props) {
                     <SubmitButton
                       className="menu-item menu-item-danger"
                       confirmMessage={`Block @${profile.handle}? You will stop seeing each other's posts.`}
+                      confirmLabel={`Block @${profile.handle}`}
                     >
                       Block
                     </SubmitButton>

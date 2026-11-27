@@ -196,6 +196,15 @@ export async function post(page: Page, text: string, community?: string, find = 
 }
 
 /**
+ * Answers the app's confirmation dialog (app/ui/confirm-dialog.tsx) by pressing its
+ * button named `label`, the action's own verb. The browser's confirm() is not used
+ * any more, so there is no `dialog` event to accept.
+ */
+export async function confirmWith(page: Page, label: string) {
+  await page.getByRole('alertdialog').getByRole('button', { name: label, exact: true }).click()
+}
+
+/**
  * A thread page's reply box, once it sits under the post it replies to (any
  * post, unless `postId` is given). It is drawn under the post in focus; choosing
  * another post to reply to moves it there, and the move replaces the textarea,

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { newMember, post, replyBox } from '../lib/members.ts'
+import { confirmWith, newMember, post, replyBox } from '../lib/members.ts'
 
 test('posts to everyone and the post shows in Latest', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'poster')
@@ -95,9 +95,9 @@ test('deletes its own post after confirming', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'deleter')
   const text = `Posted by mistake, ${handle}`
   const article = await post(page, text)
-  page.once('dialog', (dialog) => dialog.accept())
   await article.getByLabel('Post options').click()
   await article.getByRole('button', { name: 'Delete post' }).click()
+  await confirmWith(page, 'Delete post')
   await expect(page.locator('article', { hasText: text })).toHaveCount(0)
   await context.close()
 })

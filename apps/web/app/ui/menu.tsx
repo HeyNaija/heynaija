@@ -46,11 +46,18 @@ export function Menu({
       panel.current.style.translate = `${x}px ${y}px`
     }
     const close = () => ref.current?.removeAttribute('open')
+    // A dialog opened from an item (a confirmation) is drawn outside the menu. Presses
+    // and Escape in it are the dialog's, and the menu stays open behind it, so that
+    // cancelling puts focus back on the item. A dialog the menu itself sits in is not one.
+    const inDialog = (e: Event) => {
+      const dialog = e.target instanceof Element ? e.target.closest('dialog[open]') : null
+      return !!dialog && !dialog.contains(ref.current)
+    }
     const onPointer = (e: PointerEvent) => {
-      if (ref.current?.open && !ref.current.contains(e.target as Node)) close()
+      if (ref.current?.open && !ref.current.contains(e.target as Node) && !inDialog(e)) close()
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && ref.current?.open) {
+      if (e.key === 'Escape' && ref.current?.open && !inDialog(e)) {
         close()
         ref.current.querySelector('summary')?.focus()
       }

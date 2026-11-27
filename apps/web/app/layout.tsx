@@ -1,8 +1,13 @@
 import type { Metadata, Viewport } from 'next'
 import localFont from 'next/font/local'
+import { cookies } from 'next/headers'
+import { Suspense } from 'react'
+import { decodeFlash, FLASH_COOKIE } from '@/lib/flash'
 import { siteOpenGraph, siteOrigin } from '@/lib/previews'
 import { installScript } from '@/lib/install'
 import { themeScript } from '@/lib/theme'
+import { FlashToast } from './ui/flash-toast'
+import { ToastProvider } from './ui/toasts'
 import './globals.css'
 
 // Served from our own origin: no request to Google from a member's browser, and
@@ -58,7 +63,21 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
           dangerouslySetInnerHTML={{ __html: installScript }}
         />
       </head>
-      <body className="min-h-full font-sans">{children}</body>
+      <body className="min-h-full font-sans">
+        <ToastProvider>
+          {children}
+          {/* The cookie is known only per request, so this part is not prerendered. */}
+          <Suspense fallback={null}>
+            <Flash />
+          </Suspense>
+        </ToastProvider>
+      </body>
     </html>
   )
+}
+
+/** What a server action left to be said on this page (lib/flash.ts), if anything. */
+async function Flash() {
+  const flash = decodeFlash((await cookies()).get(FLASH_COOKIE)?.value)
+  return flash ? <FlashToast {...flash} /> : null
 }
