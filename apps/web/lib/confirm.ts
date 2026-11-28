@@ -29,6 +29,27 @@ export function confirmStep(flow: ConfirmFlow, event: ConfirmEvent): ConfirmStep
   return { flow: event === 'confirm' ? 'confirmed' : 'asking', close: true, answer: null }
 }
 
+export type Press = { x: number; y: number; at: number }
+
+/** How long after the dialog closes the rest of a double click or double tap can still arrive. */
+export const FOLLOW_UP_MS = 500
+const TAP_SLOP_PX = 30
+
+/**
+ * Whether a click that arrives after a press closed the dialog is the rest of that
+ * same press (the second click of a double click, the second tap of a double tap),
+ * which would otherwise land on whatever the dialog was covering. A mouse says so
+ * itself in `detail`, except on pointerdown, which carries no count; that, and a
+ * finger or pen, is judged by time and place.
+ */
+export function continuesPress(first: Press, next: Press & { detail: number; pointerType: string }): boolean {
+  if (next.at - first.at > FOLLOW_UP_MS) return false
+  if (next.detail > 1) return true
+  const uncounted = next.pointerType === 'mouse' && next.detail === 0
+  if (next.pointerType !== 'touch' && next.pointerType !== 'pen' && !uncounted) return false
+  return Math.hypot(next.x - first.x, next.y - first.y) <= TAP_SLOP_PX
+}
+
 /**
  * Where Tab should land to stay inside a dialog of `count` controls when focus is
  * on control `index` (-1: on none of them), or null to let the browser move it.

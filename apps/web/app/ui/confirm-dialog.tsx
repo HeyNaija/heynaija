@@ -1,8 +1,34 @@
 'use client'
 
-import { type RefObject, useEffect, useId, useRef } from 'react'
+import { type MouseEvent, type RefObject, useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { type ConfirmEvent, type ConfirmFlow, confirmStep, wrapFocus } from '@/lib/confirm'
+import { type ConfirmEvent, type ConfirmFlow, confirmStep, continuesPress, FOLLOW_UP_MS, type Press, wrapFocus } from '@/lib/confirm'
+
+const FOLLOW_UP_EVENTS = ['pointerdown', 'mousedown', 'click', 'dblclick'] as const
+
+/**
+ * Once a click or tap has closed the dialog, the rest of that press (the second click
+ * of a double click) would land on whatever the dialog covered: the post it deleted,
+ * or the phone's tab bar under the sheet. Those presses (and their pointerdown and
+ * mousedown, which would move focus) are stopped before anything sees them; any other
+ * press goes through. A click from the keyboard (Enter or Space, `detail` 0) has no
+ * second press, so it stops nothing.
+ */
+function swallowRestOfPress(event: MouseEvent) {
+  const first: Press = { x: event.clientX, y: event.clientY, at: event.timeStamp }
+  const swallow = (next: Event) => {
+    if (!(next instanceof globalThis.MouseEvent)) return
+    const pointerType = next instanceof PointerEvent ? next.pointerType : ''
+    if (!continuesPress(first, { x: next.clientX, y: next.clientY, at: next.timeStamp, detail: next.detail, pointerType })) return
+    // Cancelling pointerdown would also stop mousedown, whose default (moving focus) is the one to cancel.
+    if (next.type !== 'pointerdown') next.preventDefault()
+    next.stopImmediatePropagation()
+  }
+  for (const kind of FOLLOW_UP_EVENTS) window.addEventListener(kind, swallow, true)
+  setTimeout(() => {
+    for (const kind of FOLLOW_UP_EVENTS) window.removeEventListener(kind, swallow, true)
+  }, FOLLOW_UP_MS)
+}
 
 /**
  * Asks before something that cannot be taken back, in place of the browser's own
@@ -42,10 +68,13 @@ export function ConfirmDialog({
     if (!dialog.current?.open) dialog.current?.showModal()
   }, [])
 
-  function step(event: ConfirmEvent) {
+  function step(event: ConfirmEvent, press?: MouseEvent) {
     const next = confirmStep(flow.current, event)
     flow.current = next.flow
-    if (next.close) dialog.current?.close()
+    if (next.close) {
+      if (press && press.detail > 0) swallowRestOfPress(press)
+      dialog.current?.close()
+    }
     if (!next.answer) return
     // Safari does not focus a button on click, so the browser has nothing to return focus to.
     trigger.current?.focus({ preventScroll: true })
@@ -75,18 +104,18 @@ export function ConfirmDialog({
       onClick={(event) => {
         event.stopPropagation()
         // The second click of a double click on the button that opened it lands on the
-        // scrim; the browser's confirm() ignored it, and so does this.
-        if (scrimPress.current && event.target === event.currentTarget && event.detail <= 1) step('dismiss')
+        // scrim while it is open; the browser's confirm() ignored it, and so does this.
+        if (scrimPress.current && event.target === event.currentTarget && event.detail <= 1) step('dismiss', event)
       }}
     >
       <div className="confirm-dialog-body">
         <h2 id={`${id}-title`} className="confirm-dialog-title">{title}</h2>
         {message ? <p id={`${id}-message`} className="confirm-dialog-message">{message}</p> : null}
         <div className="confirm-dialog-actions">
-          <button type="button" className="btn btn-secondary" onClick={() => step('dismiss')}>
+          <button type="button" className="btn btn-secondary" onClick={(event) => step('dismiss', event)}>
             {cancelLabel}
           </button>
-          <button type="button" className={`btn ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}`} onClick={() => step('confirm')}>
+          <button type="button" className={`btn ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}`} onClick={(event) => step('confirm', event)}>
             {confirmLabel}
           </button>
         </div>

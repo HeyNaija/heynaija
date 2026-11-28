@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { confirmCopy, confirmStep, wrapFocus } from '../lib/confirm.ts'
+import { confirmCopy, confirmStep, continuesPress, wrapFocus } from '../lib/confirm.ts'
 
 test('a question and its consequence become the title and the message', () => {
   assert.deepEqual(confirmCopy('Delete this post? This cannot be undone.'), {
@@ -69,4 +69,37 @@ test('a question mark inside a name does not end the question', () => {
     title: 'Leave Who? Me?',
     message: 'You can join again later.',
   })
+})
+
+const closedAt = { x: 700, y: 430, at: 1_000 }
+
+test('the second click of a double click that closed the dialog is part of the same press', () => {
+  assert.equal(continuesPress(closedAt, { x: 700, y: 430, at: 1_150, detail: 2, pointerType: 'mouse' }), true)
+  assert.equal(continuesPress(closedAt, { x: 712, y: 436, at: 1_400, detail: 3, pointerType: 'mouse' }), true)
+})
+
+test('a second tap near the first, straight after it, is part of the same press', () => {
+  assert.equal(continuesPress(closedAt, { x: 710, y: 440, at: 1_200, detail: 1, pointerType: 'touch' }), true)
+  assert.equal(continuesPress(closedAt, { x: 700, y: 430, at: 1_200, detail: 1, pointerType: 'pen' }), true)
+})
+
+test("a mouse button pressed again in the same place straight after is the double click's second press, before the browser counts it", () => {
+  assert.equal(continuesPress(closedAt, { x: 702, y: 432, at: 1_150, detail: 0, pointerType: 'mouse' }), true)
+  assert.equal(continuesPress(closedAt, { x: 300, y: 432, at: 1_150, detail: 0, pointerType: 'mouse' }), false)
+})
+
+test('a click the browser does not count as a double click goes through', () => {
+  assert.equal(continuesPress(closedAt, { x: 700, y: 430, at: 1_150, detail: 1, pointerType: 'mouse' }), false)
+  // Keyboard clicks have no pointer and no count.
+  assert.equal(continuesPress(closedAt, { x: 0, y: 0, at: 1_100, detail: 0, pointerType: '' }), false)
+})
+
+test('a tap somewhere else goes through at once', () => {
+  assert.equal(continuesPress(closedAt, { x: 300, y: 430, at: 1_100, detail: 1, pointerType: 'touch' }), false)
+  assert.equal(continuesPress(closedAt, { x: 700, y: 600, at: 1_100, detail: 1, pointerType: 'touch' }), false)
+})
+
+test('a deliberate press 600ms later goes through', () => {
+  assert.equal(continuesPress(closedAt, { x: 700, y: 430, at: 1_600, detail: 1, pointerType: 'touch' }), false)
+  assert.equal(continuesPress(closedAt, { x: 700, y: 430, at: 1_600, detail: 2, pointerType: 'mouse' }), false)
 })
