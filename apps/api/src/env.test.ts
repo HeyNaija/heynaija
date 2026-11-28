@@ -243,6 +243,13 @@ test('GIF_PROVIDERS names the providers that take new GIFs: GIPHY when unset or 
   assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: 'tenor' }), /tenor is not a GIF provider HeyNaija knows/)
 })
 
+test('GIF_PROVIDERS with none beside a provider stops the API and says none goes alone', () => {
+  for (const mixed of ['none,giphy', 'giphy, none', 'none,none,giphy']) {
+    assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: mixed }), /none turns GIFs off, so it cannot be listed with providers/)
+  }
+  assert.deepEqual(loadEnv({ ...base, GIF_PROVIDERS: 'none, none' }).GIF_PROVIDERS, [])
+})
+
 test('GIF_PROVIDERS refuses the names every object inherits', () => {
   for (const name of ['toString', '__proto__', 'constructor', 'hasOwnProperty', 'valueOf']) {
     assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: name }), new RegExp(`${name} is not a GIF provider HeyNaija knows`))
