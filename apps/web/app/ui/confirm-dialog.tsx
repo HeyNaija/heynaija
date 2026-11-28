@@ -2,7 +2,7 @@
 
 import { type MouseEvent, type RefObject, useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { type ConfirmEvent, type ConfirmFlow, confirmStep, continuesPress, FOLLOW_UP_MS, type Press, wrapFocus } from '@/lib/confirm'
+import { type ConfirmEvent, type ConfirmFlow, confirmStep, continuesPress, FOLLOW_UP_MS, type Press, pressedWith, wrapFocus } from '@/lib/confirm'
 
 const FOLLOW_UP_EVENTS = ['pointerdown', 'mousedown', 'click', 'dblclick'] as const
 
@@ -61,8 +61,7 @@ export function ConfirmDialog({
   const dialog = useRef<HTMLDialogElement>(null)
   const flow = useRef<ConfirmFlow>('asking')
   const scrimPress = useRef(false)
-  // Safari's click is a plain MouseEvent, so the pointer that pressed comes from its pointerdown.
-  const pressedWith = useRef('')
+  const pointerDown = useRef('')
   const id = useId()
 
   // Unmounting closes it; calling close() in cleanup would race Strict Mode.
@@ -76,7 +75,7 @@ export function ConfirmDialog({
     if (next.close) {
       if (press && press.detail > 0) {
         const own = press.nativeEvent instanceof PointerEvent ? press.nativeEvent.pointerType : ''
-        swallowRestOfPress(press, own || pressedWith.current)
+        swallowRestOfPress(press, pressedWith(pointerDown.current, own))
       }
       dialog.current?.close()
     }
@@ -107,7 +106,7 @@ export function ConfirmDialog({
       }}
       onPointerDown={(event) => {
         scrimPress.current = event.target === event.currentTarget
-        pressedWith.current = event.pointerType
+        pointerDown.current = event.pointerType
       }}
       onClick={(event) => {
         event.stopPropagation()

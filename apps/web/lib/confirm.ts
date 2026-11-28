@@ -38,20 +38,23 @@ const TAP_SLOP_PX = 30
 
 const byTouch = (pointerType: string) => pointerType === 'touch' || pointerType === 'pen'
 
+/** The pointer a press came from: the one its pointerdown named, since Safari's click after a tap says 'mouse' or nothing. */
+export const pressedWith = (down: string, click: string) => down || click
+
 /**
  * Whether a click that arrives after a press closed the dialog is the rest of that
  * same press (the second click of a double click, the second tap of a double tap),
  * which would otherwise land on whatever the dialog was covering. A mouse says so
  * itself in `detail`, except on pointerdown, which carries no count; that, and a
- * finger or pen, is judged by time and place. Safari sends a tap's mousedown and
- * click as plain mouse events, with no pointer type and a count of 1, so after a
- * tap closed the dialog those are judged like the tap.
+ * finger or pen, is judged by time and place. Safari follows a tap with a mousedown
+ * and click counted 1, with no pointer type or 'mouse', so after a tap closed the
+ * dialog any counted press is judged like the tap.
  */
 export function continuesPress(first: Press, next: Press & { detail: number }): boolean {
   if (next.at - first.at > FOLLOW_UP_MS) return false
   if (next.detail > 1) return true
   const uncounted = next.pointerType === 'mouse' && next.detail === 0
-  const afterTap = next.pointerType === '' && next.detail > 0 && byTouch(first.pointerType)
+  const afterTap = byTouch(first.pointerType) && next.detail > 0
   if (!byTouch(next.pointerType) && !uncounted && !afterTap) return false
   return Math.hypot(next.x - first.x, next.y - first.y) <= TAP_SLOP_PX
 }

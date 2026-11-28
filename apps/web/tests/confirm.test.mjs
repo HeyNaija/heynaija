@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { confirmCopy, confirmStep, continuesPress, wrapFocus } from '../lib/confirm.ts'
+import { confirmCopy, confirmStep, continuesPress, pressedWith, wrapFocus } from '../lib/confirm.ts'
 
 test('a question and its consequence become the title and the message', () => {
   assert.deepEqual(confirmCopy('Delete this post? This cannot be undone.'), {
@@ -106,8 +106,9 @@ test('a deliberate press 600ms later goes through', () => {
 
 const tappedAt = { x: 180, y: 620, at: 1_000, pointerType: 'touch' }
 
-test("after a tap closed it, the next tap's mousedown and click, which Safari sends uncounted and with no pointer type, are the same press", () => {
+test("after a tap closed it, the next tap's mousedown and click, which Safari counts 1 and gives no pointer type or 'mouse', are the same press", () => {
   assert.equal(continuesPress(tappedAt, { x: 182, y: 618, at: 1_180, detail: 1, pointerType: '' }), true)
+  assert.equal(continuesPress(tappedAt, { x: 182, y: 618, at: 1_180, detail: 1, pointerType: 'mouse' }), true)
   assert.equal(continuesPress({ ...tappedAt, pointerType: 'pen' }, { x: 180, y: 620, at: 1_180, detail: 1, pointerType: '' }), true)
 })
 
@@ -115,8 +116,16 @@ test('after a tap closed it, an uncounted mouse event somewhere else, later, or 
   assert.equal(continuesPress(tappedAt, { x: 40, y: 620, at: 1_180, detail: 1, pointerType: '' }), false)
   assert.equal(continuesPress(tappedAt, { x: 180, y: 620, at: 1_600, detail: 1, pointerType: '' }), false)
   assert.equal(continuesPress(tappedAt, { x: 180, y: 620, at: 1_100, detail: 0, pointerType: '' }), false)
+  assert.equal(continuesPress(tappedAt, { x: 40, y: 620, at: 1_180, detail: 1, pointerType: 'mouse' }), false)
 })
 
 test('after a mouse click closed it, a click with no pointer type is not taken for a tap', () => {
   assert.equal(continuesPress(closedAt, { x: 700, y: 430, at: 1_150, detail: 1, pointerType: '' }), false)
+})
+
+test('the pointer that closed the dialog is the one its pointerdown named, since Safari calls a tap\'s click a mouse click', () => {
+  assert.equal(pressedWith('touch', 'mouse'), 'touch')
+  assert.equal(pressedWith('pen', ''), 'pen')
+  assert.equal(pressedWith('', 'mouse'), 'mouse')
+  assert.equal(pressedWith('', ''), '')
 })
