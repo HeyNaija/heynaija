@@ -45,7 +45,10 @@ const emojiPicker = () => dynamic(() => retryOnce(() => import('./emoji-picker')
   loading: () => <span role="status" className="composer-emoji-note">Loading emoji…</span>,
 })
 // The GIF search is one more, fetched the same way when someone first opens it; it loads the provider's search itself.
-const gifPicker = () => dynamic(() => retryOnce(() => import('./gif-picker')), { ssr: false })
+const gifPicker = () => dynamic(() => retryOnce(() => import('./gif-picker')), {
+  ssr: false,
+  loading: () => <span role="status" className="composer-emoji-note">Loading GIFs…</span>,
+})
 
 /** Keeps a picker that failed to load from taking the page, and the draft, down with it. */
 class PickerBoundary extends Component<{ onError: () => void; children: ReactNode }, { failed: boolean }> {
@@ -211,10 +214,11 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   // The emoji picker: its button, and whether the keyboard or a screen reader opened it (focus then moves in).
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [EmojiPicker, setEmojiPicker] = useState(emojiPicker)
-  const [emojiFailedToLoad, setEmojiFailedToLoad] = useState(false)
+  // Which picker's code could not be downloaded, said under the box until the member does something else.
+  const [pickerFailed, setPickerFailed] = useState<'emoji' | 'gif' | null>(null)
   const emojiFailed = () => {
     setEmojiOpen(false)
-    setEmojiFailedToLoad(true)
+    setPickerFailed('emoji')
     setEmojiPicker(() => emojiPicker())
   }
   const [emojiByKeyboard, setEmojiByKeyboard] = useState(false)
@@ -244,6 +248,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const [GifPicker, setGifPicker] = useState(gifPicker)
   const gifFailed = () => {
     setGifOpen(false)
+    setPickerFailed('gif')
     setGifPicker(() => gifPicker())
   }
   const [gifByKeyboard, setGifByKeyboard] = useState(false)
@@ -422,7 +427,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       onSubmit={() => {
         setEmojiOpen(false)
         setGifOpen(false)
-        setEmojiFailedToLoad(false)
+        setPickerFailed(null)
       }}
     >
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
@@ -472,7 +477,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               onChange={(e) => {
                 setText(e.target.value)
                 setCaret(e.target.selectionStart)
-                setEmojiFailedToLoad(false)
+                setPickerFailed(null)
               }}
               onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
               onKeyDown={onMentionKey}
@@ -674,6 +679,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
                   const focus = focusOnOpen(gifPressedBy.take())
                   if (!offers.gifSearch) return choose(['image/gif'])
                   if (gifOpen) return closeGifSearch()
+                  setPickerFailed(null)
                   setGifByKeyboard(focus === 'picker')
                   if (focus === 'box') input.current?.focus({ preventScroll: true })
                   if (typing) setDismissed(typing.start)
@@ -782,7 +788,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               onClick={() => {
                 const focus = focusOnOpen(emojiPressedBy.take())
                 if (emojiOpen) return closeEmoji()
-                setEmojiFailedToLoad(false)
+                setPickerFailed(null)
                 setEmojiByKeyboard(focus === 'picker')
                 if (focus === 'box') input.current?.focus({ preventScroll: true })
                 // The list of members to mention gives way to the picker.
@@ -858,7 +864,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
         {announcing ? ' Every member of this community will be notified. A community can do this once a day.' : ''}
       </p>
       <p role="alert" className="mt-1 text-sm text-danger empty:hidden">
-        {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : emojiFailedToLoad ? 'Could not load emoji. Try again.' : state.error}
+        {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : pickerFailed ? `Could not load ${pickerFailed === 'gif' ? 'GIFs' : 'emoji'}. Try again.` : state.error}
       </p>
       {/* An update shows up in the story right above the box, so this is only said aloud. */}
       {story && state.postId ? <p key={state.postedAt} role="status" className="sr-only">Update posted.</p> : null}

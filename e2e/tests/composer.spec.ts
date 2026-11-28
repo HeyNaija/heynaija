@@ -414,7 +414,7 @@ test('a device that asks for less motion sees still GIFs in the search and the p
   await context.close()
 })
 
-test('when the GIF search cannot be downloaded it closes, the draft stays, and the next open tries again', async ({ browser }) => {
+test('when the GIF search cannot be downloaded it closes and says so, the draft stays, and the next open tries again', async ({ browser }) => {
   test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, 'needs a web app built with a Giphy key; see the comment above the test before this one')
   const { page, handle, context } = await newMember(browser, 'gifoffline')
   await context.route(/^https:\/\/[a-z0-9.-]*\bgiphy\.com\//, (route) =>
@@ -440,11 +440,13 @@ test('when the GIF search cannot be downloaded it closes, the draft stays, and t
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   await expect(page.getByRole('dialog', { name: 'Search GIFs' })).toBeHidden()
   await expect(page.getByRole('heading', { name: 'We could not load this page' })).toBeHidden()
+  await expect(page.getByRole('alert').filter({ hasText: 'Could not load GIFs. Try again.' })).toBeVisible()
   await expect(box).toHaveValue(draft)
 
   await page.unroute(chunks)
   await toggle.click()
   await expect(page.getByRole('dialog', { name: 'Search GIFs' })).toBeVisible()
+  await expect(page.getByText('Could not load GIFs. Try again.')).toBeHidden()
   await expect(box).toHaveValue(draft)
   await context.close()
 })
@@ -841,6 +843,45 @@ test('the GIF search closes when the post is sent, and its button waits until th
   release()
   await expect(page.locator('article', { hasText: `Sending ${handle}` }).first()).toBeVisible()
   await expect(toggle).toBeEnabled()
+  await context.close()
+})
+
+test('typing after the GIF search failed to load clears its error', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, NEEDS_KEY)
+  const { page, handle, context } = await newMember(browser, 'giftypeon')
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Typing on ${handle}`)
+  const chunks = /\/_next\/static\/chunks\//
+  await page.route(chunks, (route) => route.abort('internetdisconnected'))
+  await page.getByRole('button', { name: 'Search GIFs' }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'Could not load GIFs. Try again.' })).toBeVisible()
+  await page.unroute(chunks)
+  await box.press('End')
+  await box.pressSequentially('!')
+  await expect(page.getByText('Could not load GIFs. Try again.')).toBeHidden()
+  await context.close()
+})
+
+test('the GIF search says it is loading while it downloads', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, NEEDS_KEY)
+  const { page, context } = await newMember(browser, 'gifwait')
+  await answerGiphy(context)
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'New post' }).click()
+  let release = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  const chunks = /\/_next\/static\/chunks\//
+  await page.route(chunks, async (route) => {
+    await held
+    return route.continue()
+  })
+  await page.getByRole('button', { name: 'Search GIFs' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Loading GIFs…' })).toBeVisible()
+  release()
+  await expect(page.getByRole('dialog', { name: 'Search GIFs' })).toBeVisible()
+  await expect(page.getByText('Loading GIFs…')).toBeHidden()
+  await page.unroute(chunks)
   await context.close()
 })
 
