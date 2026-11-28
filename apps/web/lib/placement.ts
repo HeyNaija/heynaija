@@ -19,26 +19,32 @@ export function freeSpan(view: Span, bars: Span[], edge: number): Span {
   return { top, bottom }
 }
 
+/** The room beside `part` within `span`: the larger of what is above it and below it, less `gap`. */
+export function roomBeside(part: Span, span: Span, gap: number): number {
+  return Math.max(part.top - span.top, span.bottom - part.bottom) - gap
+}
+
 /**
- * The top a list going up sits above: the top of `clear`, what sits above the anchor
- * and must stay in view, unless neither above it nor below the anchor leaves `least`
- * room. That is a box taller than the screen with its top scrolled away; the list then
- * goes up from the anchor itself, over the box, rather than shrink to a sliver.
+ * The height the box a list writes into may keep while the list is open beside `part` (the
+ * box and its toolbar, or the box alone), or null when it needs no cap: `room` is the room
+ * beside the part with the box at `height`, `roomAtSmallest` with the box at `smallest`.
+ * Undefined when even the smallest box leaves the list less than `least`.
  */
-export function upperEdge({ anchor, clear, span, gap, least }: { anchor: Span; clear?: number; span: Span; gap: number; least: number }): number {
-  const top = Math.min(anchor.top, clear ?? anchor.top)
-  if (top - span.top - gap >= least || span.bottom - anchor.bottom - gap >= least) return top
-  return anchor.top
+export function boxCap({ least, height, smallest, room, roomAtSmallest }: { least: number; height: number; smallest: number; room: number; roomAtSmallest: number }): number | null | undefined {
+  if (room >= least) return null
+  if (roomAtSmallest < least) return undefined
+  return Math.min(height, smallest + roomAtSmallest - least)
 }
 
 /**
  * Below its anchor if the list fits there (or there is more room below than above),
  * otherwise above, and how tall it may be on that side. Given a `side`, the list
- * stays there and only its height follows.
+ * stays there and only its height follows, while that side leaves it `least`.
  */
-export function placeList({ anchor, span, gap, tallest, content, side }: { anchor: Span; span: Span; gap: number; tallest: number; content: number; side?: 'up' | 'down' }): { down: boolean; maxHeight: number } {
+export function placeList({ anchor, span, gap, tallest, content, side, least = 0 }: { anchor: Span; span: Span; gap: number; tallest: number; content: number; side?: 'up' | 'down'; least?: number }): { down: boolean; maxHeight: number } {
   const below = span.bottom - anchor.bottom - gap
   const above = anchor.top - span.top - gap
-  const down = side ? side === 'down' : below >= Math.min(tallest, content + 2) || below >= above
+  const kept = side && (side === 'down' ? below : above) >= least ? side : undefined
+  const down = kept ? kept === 'down' : below >= Math.min(tallest, content + 2) || below >= above
   return { down, maxHeight: Math.max(0, Math.min(tallest, down ? below : above)) }
 }
