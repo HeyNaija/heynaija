@@ -2,9 +2,23 @@
 
 import { type MouseEvent, type RefObject, useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { type ConfirmEvent, type ConfirmFlow, confirmStep, continuesPress, FOLLOW_UP_MS, type Press, pressedWith, wrapFocus } from '@/lib/confirm'
+import {
+  type ConfirmEvent,
+  type ConfirmFlow,
+  confirmStep,
+  continuesPress,
+  FOLLOW_UP_MS,
+  type HeldPress,
+  type Press,
+  pressedWith,
+  restOfHeldPress,
+  wrapFocus,
+} from '@/lib/confirm'
 
 const FOLLOW_UP_EVENTS = ['pointerdown', 'mousedown', 'click', 'dblclick'] as const
+const LIFT_EVENTS = ['pointerup', 'pointercancel'] as const
+/** The longest a held follow-up press is waited for before its listeners go. */
+const HELD_PRESS_MS = 10_000
 
 /**
  * Once a click or tap has closed the dialog, the rest of that press (the second click
@@ -12,22 +26,51 @@ const FOLLOW_UP_EVENTS = ['pointerdown', 'mousedown', 'click', 'dblclick'] as co
  * or the phone's tab bar under the sheet. Those presses (and their pointerdown and
  * mousedown, which would move focus) are stopped before anything sees them; any other
  * press goes through. A click from the keyboard (Enter or Space, `detail` 0) has no
- * second press, so it stops nothing.
+ * second press, so it stops nothing. A press that goes down in time but is held past
+ * it (a slow second click, a long second tap) is stopped whole: its mousedown and
+ * click come after the window.
  */
 function swallowRestOfPress(event: MouseEvent, pointerType: string) {
   const first: Press = { x: event.clientX, y: event.clientY, at: event.timeStamp, pointerType }
-  const swallow = (next: Event) => {
-    if (!(next instanceof globalThis.MouseEvent)) return
-    const type = next instanceof PointerEvent ? next.pointerType : ''
-    if (!continuesPress(first, { x: next.clientX, y: next.clientY, at: next.timeStamp, detail: next.detail, pointerType: type })) return
+  let held: (HeldPress & { id: number }) | null = null
+  let listening = true
+  const stop = (next: Event) => {
     // Cancelling pointerdown would also stop mousedown, whose default (moving focus) is the one to cancel.
     if (next.type !== 'pointerdown') next.preventDefault()
     next.stopImmediatePropagation()
   }
-  for (const kind of FOLLOW_UP_EVENTS) window.addEventListener(kind, swallow, true)
-  setTimeout(() => {
+  const swallow = (next: Event) => {
+    if (!(next instanceof globalThis.MouseEvent)) return
+    const at = { x: next.clientX, y: next.clientY, at: next.timeStamp, detail: next.detail }
+    // A new pointerdown starts a new press, so a held one is over.
+    if (next.type === 'pointerdown') held = null
+    else if (held) {
+      if (restOfHeldPress(held, at)) stop(next)
+      return
+    }
+    const type = next instanceof PointerEvent ? next.pointerType : ''
+    if (!continuesPress(first, { ...at, pointerType: type })) return
+    if (next instanceof PointerEvent && next.type === 'pointerdown') held = { x: at.x, y: at.y, liftedAt: null, id: next.pointerId }
+    stop(next)
+  }
+  const lift = (next: Event) => {
+    if (!held || held.liftedAt !== null || !(next instanceof PointerEvent) || next.pointerId !== held.id) return
+    held.liftedAt = next.timeStamp
+    setTimeout(stopListening, FOLLOW_UP_MS)
+  }
+  const stopListening = () => {
+    if (!listening) return
+    listening = false
     for (const kind of FOLLOW_UP_EVENTS) window.removeEventListener(kind, swallow, true)
+    for (const kind of LIFT_EVENTS) window.removeEventListener(kind, lift, true)
+  }
+  for (const kind of FOLLOW_UP_EVENTS) window.addEventListener(kind, swallow, true)
+  for (const kind of LIFT_EVENTS) window.addEventListener(kind, lift, true)
+  // Without a held press the window ends as before; a held one keeps it until it is lifted.
+  setTimeout(() => {
+    if (!held) stopListening()
   }, FOLLOW_UP_MS)
+  setTimeout(stopListening, HELD_PRESS_MS)
 }
 
 /**

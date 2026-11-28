@@ -60,6 +60,24 @@ export function continuesPress(first: Press, next: Press & { detail: number }): 
 }
 
 /**
+ * A follow-up press whose pointerdown was stopped: where it went down, and when it was
+ * lifted (null while it is still held).
+ */
+export type HeldPress = { x: number; y: number; liftedAt: number | null }
+
+/**
+ * Whether a mousedown, click or dblclick is the rest of a held press. A slow second
+ * click or a long second tap goes down in time but ends after FOLLOW_UP_MS, so its
+ * mousedown and click are judged by place: until FOLLOW_UP_MS after it is lifted. A
+ * click from the keyboard (`detail` 0) is never part of it.
+ */
+export function restOfHeldPress(held: HeldPress, next: Omit<Press, 'pointerType'> & { detail: number }): boolean {
+  if (next.detail === 0) return false
+  if (held.liftedAt !== null && next.at - held.liftedAt > FOLLOW_UP_MS) return false
+  return Math.hypot(next.x - held.x, next.y - held.y) <= TAP_SLOP_PX
+}
+
+/**
  * Where Tab should land to stay inside a dialog of `count` controls when focus is
  * on control `index` (-1: on none of them), or null to let the browser move it.
  */
