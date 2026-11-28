@@ -104,12 +104,13 @@ test('GIFs have a button of their own, which offers only GIFs, apart from the ph
   const picker = page.locator('#compose input[type="file"]:not([accept*="video"])')
 
   // Built with a GIF search, the GIF button opens it and the file comes through its "Upload a GIF file instead".
-  const searches = !!process.env.NEXT_PUBLIC_GIPHY_API_KEY
+  // The page says which it was built with; the key may be in apps/web/.env.local rather than this shell.
   await context.route(/^https:\/\/api\.giphy\.com\//, (route) => route.abort())
   const photo = page.getByRole('button', { name: /^Add images/ })
-  const gifButton = page.getByRole('button', { name: searches ? 'Search GIFs' : /^Add a GIF/ })
+  const gifButton = page.getByRole('button', { name: /^(Search GIFs$|Add a GIF)/ })
   await expect(photo).toBeVisible()
   await expect(gifButton).toBeVisible()
+  const searches = (await gifButton.getAttribute('aria-label')) === 'Search GIFs'
   await expectOnScreen(gifButton)
   // On a phone the words are dropped and only the icons stay: both must still be there.
   await expect(gifButton.locator('.gif-glyph')).toBeVisible()
