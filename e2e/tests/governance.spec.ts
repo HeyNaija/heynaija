@@ -4,7 +4,7 @@ import { newMember, post } from '../lib/members.ts'
 
 const documents = [
   { path: '/terms', heading: 'Terms of use', draft: false },
-  { path: '/rules', heading: 'HeyNaija rules', draft: true },
+  { path: '/rules', heading: 'HeyNaija rules', draft: false },
   { path: '/privacy', heading: 'Privacy policy', draft: false },
   { path: '/child-safety', heading: 'Child safety standards', draft: false },
   { path: '/charter', heading: 'HeyNaija Community Governance Charter', draft: true },
