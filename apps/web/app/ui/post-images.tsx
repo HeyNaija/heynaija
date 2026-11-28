@@ -1,6 +1,6 @@
 'use client'
 
-import { type CSSProperties, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { type CSSProperties, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PostImage } from '@/lib/api'
 import { CloseIcon, NextIcon, PreviousIcon } from './icons'
