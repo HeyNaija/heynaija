@@ -171,7 +171,7 @@ test('typing after the emoji picker failed to load clears its error', async ({ b
   await context.close()
 })
 
-test('focus leaving the emoji picker for nothing closes it and puts focus back on its button', async ({ browser }) => {
+test('focus leaving the emoji search for nothing on a focused page keeps the picker open and the search', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'emojiblur')
   await page.goto('/')
   await page.getByRole('textbox', { name: 'New post' }).fill(`Blur ${handle}`)
@@ -179,10 +179,40 @@ test('focus leaving the emoji picker for nothing closes it and puts focus back o
   await toggle.focus()
   await page.keyboard.press('Enter')
   const picker = page.getByRole('dialog', { name: 'Emoji' })
-  await expect(picker.getByRole('searchbox', { name: 'Search emoji' })).toBeFocused()
-  await page.evaluate(() => (document.activeElement as HTMLElement).blur())
+  const search = picker.getByRole('searchbox', { name: 'Search emoji' })
+  await expect(search).toBeFocused()
+  await search.fill('heart')
+  await search.evaluate((el: HTMLInputElement) => el.blur())
+  await expect(picker).toBeVisible()
+  await expect(search).toHaveValue('heart')
+  await expect(toggle).not.toBeFocused()
+  // Nothing has focus now; Escape still closes it.
+  await page.keyboard.press('Escape')
   await expect(picker).toBeHidden()
-  await expect(toggle).toBeFocused()
+  await context.close()
+})
+
+test('on a touch screen, closing the on-screen keyboard from the emoji search keeps the picker and what was typed', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojikbd', { viewport: { width: 375, height: 667 }, hasTouch: true, isMobile: true })
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Keyboard ${handle}`)
+  await box.evaluate((el: HTMLTextAreaElement) => el.blur())
+  const toggle = page.getByRole('button', { name: 'Emoji', exact: true })
+  await toggle.tap()
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  const search = picker.getByRole('searchbox', { name: 'Search emoji' })
+  await search.tap()
+  await expect(search).toBeFocused()
+  await search.pressSequentially('heart')
+  // The keyboard's own close key blurs the field to nothing; the page keeps its focus.
+  await search.evaluate((el: HTMLInputElement) => el.blur())
+  expect(await page.evaluate(() => document.hasFocus())).toBe(true)
+  await expect(picker).toBeVisible()
+  await expect(search).toHaveValue('heart')
+  await expect(toggle).not.toBeFocused()
+  await picker.getByRole('button', { name: 'red heart', exact: true }).tap()
+  await expect(box).toHaveValue(`Keyboard ${handle}❤️`)
   await context.close()
 })
 
@@ -529,3 +559,111 @@ test('while searching, no emoji section is labelled by a heading that is not dra
   expect(dangling).toEqual([])
   await context.close()
 })
+
+type Rect = { top: number; bottom: number; left: number; right: number }
+const overlaps = (a: Rect, b: Rect) => a.top < b.bottom && b.top < a.bottom && a.left < b.right && b.left < a.right
+
+/** The picker overlaps none of `parts`, each named for the failure message. */
+async function expectPickerClearOf(picker: import('@playwright/test').Locator, parts: Record<string, import('@playwright/test').Locator>) {
+  await expect(picker).toBeVisible()
+  // Placement follows the composer on its next layout; let it settle.
+  await picker.page().evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  const p = await rect(picker)
+  for (const [name, part] of Object.entries(parts)) {
+    for (const r of await part.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON() as DOMRect))) {
+      expect(overlaps(p, r), `picker ${Math.round(p.top)}-${Math.round(p.bottom)} overlaps ${name} ${Math.round(r.top)}-${Math.round(r.bottom)}`).toBe(false)
+    }
+  }
+}
+
+/** Scrolls the feed so the composer sits right under the top bar, as it does once the page has been read a little. */
+async function scrollComposerToTop(page: import('@playwright/test').Page) {
+  await page.evaluate(() => {
+    const bar = document.querySelector('.square-topbar')?.getBoundingClientRect().bottom ?? 0
+    window.scrollBy(0, document.querySelector('#compose')!.getBoundingClientRect().top - Math.max(0, bar))
+  })
+}
+
+const composerParts = (page: import('@playwright/test').Page) => ({
+  'the box': page.getByRole('textbox', { name: 'New post' }),
+  'a poll choice': page.locator('#compose .composer-poll input'),
+  'a toolbar button': page.locator('#compose .composer-toolbar button'),
+  'an attached picture': page.locator('#compose .composer-images'),
+})
+
+test('the emoji picker moves when the composer grows under it: a poll or a photo added while it is open', async ({ browser }) => {
+  const { page, context } = await newMember(browser, 'emojigrow', { viewport: { width: 1280, height: 800 } })
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.click()
+  await box.fill(`${'A long draft that wraps over many lines of the box. '.repeat(21)}end`)
+  await scrollComposerToTop(page)
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+  await expectPickerClearOf(picker, composerParts(page))
+  expect((await rect(picker)).top).toBeGreaterThanOrEqual((await rect(page.locator('#compose .composer-toolbar'))).bottom)
+
+  await page.getByRole('button', { name: 'Poll' }).click()
+  await expect(page.getByPlaceholder('Choice 2')).toBeVisible()
+  await expect(picker).toBeVisible()
+  await expectPickerClearOf(picker, composerParts(page))
+
+  await box.press('Escape')
+  await expect(picker).toBeHidden()
+  await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+  await expectPickerClearOf(picker, composerParts(page))
+  await page.locator('#compose input[type="file"]:not([accept*="video"])').setInputFiles({ name: 'dot.png', mimeType: 'image/png', buffer: PNG })
+  await expect(page.getByRole('list', { name: 'Images' })).toBeVisible()
+  await expect(picker).toBeVisible()
+  await expectPickerClearOf(picker, composerParts(page))
+  await context.close()
+})
+
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+
+/** Where the caret's row is on screen, by laying out the text before the caret in a copy of the box. */
+function caretRow(box: import('@playwright/test').Locator) {
+  return box.evaluate((el: HTMLTextAreaElement) => {
+    const copy = el.cloneNode() as HTMLTextAreaElement
+    copy.style.cssText = `position:absolute;visibility:hidden;height:0;min-height:0;max-height:none;width:${el.offsetWidth}px`
+    copy.value = el.value.slice(0, el.selectionEnd)
+    el.parentNode!.appendChild(copy)
+    const end = copy.scrollHeight - parseFloat(getComputedStyle(el).paddingBottom)
+    copy.remove()
+    const line = parseFloat(getComputedStyle(el).lineHeight)
+    const r = el.getBoundingClientRect()
+    const bottom = r.top + el.clientTop + end - el.scrollTop
+    return { top: bottom - line, bottom, left: r.left, right: r.right, boxTop: r.top + el.clientTop, boxBottom: r.top + el.clientTop + el.clientHeight }
+  })
+}
+
+for (const size of [{ width: 375, height: 667 }, { width: 375, height: 400 }]) {
+  test(`on a ${size.width}x${size.height} touch screen the emoji picker leaves the caret's row of a long draft in view`, async ({ browser }) => {
+    const { page, handle, context } = await newMember(browser, 'emojicaret', { viewport: size, hasTouch: true, isMobile: true })
+    await page.goto('/')
+    const box = page.getByRole('textbox', { name: 'New post' })
+    await box.fill(`${handle}\n${lines(9)}`)
+    await box.evaluate((el: HTMLTextAreaElement) => {
+      el.setSelectionRange(el.value.length, el.value.length)
+      el.blur()
+    })
+    await scrollComposerToTop(page)
+    const before = await height(box)
+    await page.getByRole('button', { name: 'Emoji', exact: true }).tap()
+    const picker = page.getByRole('dialog', { name: 'Emoji' })
+    await expect(picker).toBeVisible()
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    const [p, row] = [await rect(picker), await caretRow(box)]
+    expect(overlaps(p, row), `picker ${Math.round(p.top)}-${Math.round(p.bottom)} covers the caret row ${Math.round(row.top)}-${Math.round(row.bottom)}`).toBe(false)
+    expect(row.top).toBeGreaterThanOrEqual(row.boxTop - 1)
+    expect(row.bottom).toBeLessThanOrEqual(row.boxBottom + 1)
+    expect(row.top).toBeGreaterThanOrEqual(0)
+    expect(row.bottom).toBeLessThanOrEqual(size.height)
+    expect(p.height).toBeGreaterThanOrEqual(USABLE)
+
+    await page.keyboard.press('Escape')
+    await expect(picker).toBeHidden()
+    expect(await height(box)).toBe(before)
+    await context.close()
+  })
+}
