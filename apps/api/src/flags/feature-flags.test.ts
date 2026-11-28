@@ -61,6 +61,7 @@ const LIVE_IN_MAIN: Record<FlagKey, boolean> = {
   kekeDeepSeek: false,
   kekeNews: false,
   trivia: false,
+  giphyGifs: false,
 }
 
 /** The real registry, except that `polls` is not launched in production: for tests of that case. */

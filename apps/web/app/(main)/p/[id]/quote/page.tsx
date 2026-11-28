@@ -46,12 +46,13 @@ async function QuoteView({ params }: Props) {
         avatar={viewer.me.avatar}
         choices={joined}
         polls={viewer.me.features?.polls ?? false}
+        gifs={viewer.me.features?.giphyGifs ?? false}
         replyControls={viewer.me.features?.replyControls ?? false}
         replyAudiences={viewer.me.replyAudiences}
         sensitiveLabels={composerOffersMark(viewer.me)}
         placeholder="Add your thoughts…"
         submitAction={createQuote}
-        quote={{ id: post.id, preview: <QuotedPostCard quote={post} now={Date.now()} saver={saver} /> }}
+        quote={{ id: post.id, preview: <QuotedPostCard quote={{ ...post, hasVideo: post.video !== null }} now={Date.now()} saver={saver} /> }}
       />
       <Link prefetch={false} href={`/p/${post.id}`} className="self-start text-sm font-medium text-muted hover:text-ink hover:underline">
         Cancel

@@ -201,6 +201,39 @@ export async function seedPosts(handle: string, count: number): Promise<string[]
 }
 
 /**
+ * A post by `handle` carrying a GIF from `provider`, written straight to the database: the way to
+ * make one from a provider the app no longer offers (or never knew), which no composer can.
+ */
+export async function seedGifPost(handle: string, text: string, gif: { provider: string; id: string; alt: string }): Promise<string> {
+  const db = pool()
+  try {
+    const { rows } = await db.query<{ id: string }>(
+      `insert into posts (author_id, text, gif_provider, gif_id, gif_alt) select id, $2, $3, $4, $5 from members where handle = $1 returning id`,
+      [handle, text, gif.provider, gif.id, gif.alt],
+    )
+    if (!rows[0]) throw new Error(`no member @${handle} to seed a post for`)
+    return rows[0].id
+  } finally {
+    await db.end()
+  }
+}
+
+/** A post by `handle` quoting `quoteId`, written straight to the database. */
+export async function seedQuotePost(handle: string, text: string, quoteId: string): Promise<string> {
+  const db = pool()
+  try {
+    const { rows } = await db.query<{ id: string }>(
+      `insert into posts (author_id, text, quote_post_id) select id, $2, $3 from members where handle = $1 returning id`,
+      [handle, text, quoteId],
+    )
+    if (!rows[0]) throw new Error(`no member @${handle} to seed a post for`)
+    return rows[0].id
+  } finally {
+    await db.end()
+  }
+}
+
+/**
  * Takes a member's age away: with `ticked`, any date of birth goes and their "I
  * am 18 or older" statement stays; otherwise no age record is left at all.
  */

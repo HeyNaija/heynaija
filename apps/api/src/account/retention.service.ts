@@ -53,8 +53,8 @@ export class RetentionService {
         with expired as (select p.id from posts p
             where p.deleted_at <= ${now}::timestamptz - make_interval(days => ${days})
               and not exists(select 1 from reports r where r.post_id = p.id and r.status = 'open')),
-          blanked as (update posts set text = '', link_url = null, quote_post_id = null
-            where id in (select id from expired) and (text <> '' or link_url is not null or quote_post_id is not null)
+          blanked as (update posts set text = '', link_url = null, quote_post_id = null, gif_provider = null, gif_id = null, gif_alt = null
+            where id in (select id from expired) and (text <> '' or link_url is not null or quote_post_id is not null or gif_id is not null)
             returning 1),
           mentions as (delete from post_mentions where post_id in (select id from expired)),
           hashtags as (delete from post_hashtags where post_id in (select id from expired)),

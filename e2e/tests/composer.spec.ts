@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { gif } from '../lib/gif.ts'
 import { newMember, post, replyBox } from '../lib/members.ts'
 
 const lines = (count: number) => Array.from({ length: count }, (_, i) => `line ${i + 1}`).join('\n')
@@ -171,7 +172,7 @@ test('typing after the emoji picker failed to load clears its error', async ({ b
   await context.close()
 })
 
-test('focus leaving the emoji picker for nothing closes it and puts focus back on its button', async ({ browser }) => {
+test('focus leaving the emoji search for nothing on a focused page keeps the picker open and the search', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'emojiblur')
   await page.goto('/')
   await page.getByRole('textbox', { name: 'New post' }).fill(`Blur ${handle}`)
@@ -179,10 +180,40 @@ test('focus leaving the emoji picker for nothing closes it and puts focus back o
   await toggle.focus()
   await page.keyboard.press('Enter')
   const picker = page.getByRole('dialog', { name: 'Emoji' })
-  await expect(picker.getByRole('searchbox', { name: 'Search emoji' })).toBeFocused()
-  await page.evaluate(() => (document.activeElement as HTMLElement).blur())
+  const search = picker.getByRole('searchbox', { name: 'Search emoji' })
+  await expect(search).toBeFocused()
+  await search.fill('heart')
+  await search.evaluate((el: HTMLInputElement) => el.blur())
+  await expect(picker).toBeVisible()
+  await expect(search).toHaveValue('heart')
+  await expect(toggle).not.toBeFocused()
+  // Nothing has focus now; Escape still closes it.
+  await page.keyboard.press('Escape')
   await expect(picker).toBeHidden()
-  await expect(toggle).toBeFocused()
+  await context.close()
+})
+
+test('on a touch screen, closing the on-screen keyboard from the emoji search keeps the picker and what was typed', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'emojikbd', { viewport: { width: 375, height: 667 }, hasTouch: true, isMobile: true })
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Keyboard ${handle}`)
+  await box.evaluate((el: HTMLTextAreaElement) => el.blur())
+  const toggle = page.getByRole('button', { name: 'Emoji', exact: true })
+  await toggle.tap()
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  const search = picker.getByRole('searchbox', { name: 'Search emoji' })
+  await search.tap()
+  await expect(search).toBeFocused()
+  await search.pressSequentially('heart')
+  // The keyboard's own close key blurs the field to nothing; the page keeps its focus.
+  await search.evaluate((el: HTMLInputElement) => el.blur())
+  expect(await page.evaluate(() => document.hasFocus())).toBe(true)
+  await expect(picker).toBeVisible()
+  await expect(search).toHaveValue('heart')
+  await expect(toggle).not.toBeFocused()
+  await picker.getByRole('button', { name: 'red heart', exact: true }).tap()
+  await expect(box).toHaveValue(`Keyboard ${handle}❤️`)
   await context.close()
 })
 
@@ -300,6 +331,161 @@ test('pressing inside the emoji picker keeps a reply box open around it, and Esc
   await page.keyboard.press('Escape')
   await expect(picker).toBeHidden()
   await expect(toggle).toBeFocused()
+  await context.close()
+})
+
+// The Giphy controls exist only in a web app built with a key (NEXT_PUBLIC_GIPHY_API_KEY, any
+// value: Giphy itself is answered here, never reached), so this runs only when the run is told
+// the app has one. CI builds and runs with the stand-in; here:
+//
+//   NEXT_PUBLIC_GIPHY_API_KEY=stand-in pnpm dev:web
+//   NEXT_PUBLIC_GIPHY_API_KEY=stand-in pnpm e2e composer
+test('a GIF from Giphy with no words can be posted', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, 'needs a web app built with a Giphy key; see the comment above this test')
+  const { page, handle, context } = await newMember(browser, 'gifonly')
+  const id = `e2e${crypto.randomUUID().replaceAll('-', '').slice(0, 20)}`
+  const title = `Waving for ${handle}`
+  const rendition = { url: `https://media1.giphy.com/media/${id}/100w.gif`, width: '100', height: '100' }
+  await context.route(/^https:\/\/[a-z0-9.-]*\bgiphy\.com\//, (route) => {
+    const url = new URL(route.request().url())
+    if (url.hostname !== 'api.giphy.com') return route.fulfill({ contentType: 'image/gif', body: gif() })
+    return route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: {
+        data: [{ id, title, type: 'gif', images: { fixed_width_small: rendition, fixed_width: rendition } }],
+        pagination: { total_count: 1, count: 1, offset: 0 },
+        meta: { status: 200, msg: 'OK', response_id: 'e2e' },
+      },
+    })
+  })
+
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.click()
+  await page.getByRole('button', { name: 'Search GIFs' }).click()
+  // Neither the results nor the picked GIF tell the provider which page they are on.
+  await expect(page.getByRole('dialog', { name: 'Search GIFs' }).getByRole('button', { name: title }).locator('img')).toHaveAttribute('referrerpolicy', 'no-referrer')
+  await page.getByRole('dialog', { name: 'Search GIFs' }).getByRole('button', { name: title }).click()
+  await expect(page.getByLabel('Description of GIF')).toHaveValue(title)
+  await expect(page.locator('#compose .composer-thumb')).toHaveAttribute('referrerpolicy', 'no-referrer')
+
+  await expect(box).toHaveValue('')
+  // The browser's own check of the form, which runs before a press on Post reaches the app.
+  expect(await page.locator('#compose').evaluate((form: HTMLFormElement) => form.checkValidity())).toBe(true)
+  await page.getByRole('button', { name: 'Post', exact: true }).click()
+
+  await expect(page.locator('article').filter({ has: page.locator(`img[src*="/media/${id}/"]`) }).first()).toBeVisible()
+  await expect(page.getByLabel('Description of GIF')).toBeHidden()
+  await context.close()
+})
+
+test('a device that asks for less motion sees still GIFs in the search and the picked preview, until Play', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, 'needs a web app built with a Giphy key; see the comment above the test before this one')
+  const { page, context } = await newMember(browser, 'gifstill')
+  const id = `e2e${crypto.randomUUID().replaceAll('-', '').slice(0, 20)}`
+  const moving = { url: `https://media1.giphy.com/media/${id}/100w.gif`, width: '100', height: '100' }
+  const still = { url: `https://media1.giphy.com/media/${id}/100w_s.gif`, width: '100', height: '100' }
+  await context.route(/^https:\/\/[a-z0-9.-]*\bgiphy\.com\//, (route) => {
+    const url = new URL(route.request().url())
+    if (url.hostname !== 'api.giphy.com') return route.fulfill({ contentType: 'image/gif', body: gif() })
+    return route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: {
+        data: [{ id, title: 'Still wave', type: 'gif', images: { fixed_width_small: moving, fixed_width: moving, fixed_width_small_still: still, fixed_width_still: still } }],
+        pagination: { total_count: 1, count: 1, offset: 0 },
+        meta: { status: 200, msg: 'OK', response_id: 'e2e' },
+      },
+    })
+  })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'New post' }).click()
+  await page.getByRole('button', { name: 'Search GIFs' }).click()
+  const result = page.getByRole('dialog', { name: 'Search GIFs' }).getByRole('button', { name: 'Still wave' })
+  await expect(result.locator('img')).toHaveAttribute('src', still.url)
+  await result.click()
+
+  const preview = page.locator('#compose .composer-thumb')
+  await expect(preview).toHaveAttribute('src', `https://media1.giphy.com/media/${id}/giphy_s.gif`)
+  await page.locator('#compose').getByRole('button', { name: 'Play GIF' }).click()
+  await expect(preview).toHaveAttribute('src', `https://media1.giphy.com/media/${id}/giphy.webp`)
+  await expect(page.locator('#compose').getByRole('button', { name: 'Pause GIF' })).toBeVisible()
+  await context.close()
+})
+
+test('when the GIF search cannot be downloaded it closes and says so, the draft stays, and the next open tries again', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, 'needs a web app built with a Giphy key; see the comment above the test before this one')
+  const { page, handle, context } = await newMember(browser, 'gifoffline')
+  await context.route(/^https:\/\/[a-z0-9.-]*\bgiphy\.com\//, (route) =>
+    route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: { data: [], pagination: { total_count: 0, count: 0, offset: 0 }, meta: { status: 200, msg: 'OK', response_id: 'e2e' } },
+    }),
+  )
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  const draft = `A long draft ${handle}`
+  await box.fill(draft)
+
+  const chunks = /\/_next\/static\/chunks\//
+  let refused = 0
+  await page.route(chunks, (route) => {
+    refused++
+    return route.abort('internetdisconnected')
+  })
+  const toggle = page.getByRole('button', { name: 'Search GIFs' })
+  await toggle.click()
+  await expect.poll(() => refused).toBeGreaterThan(0)
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByRole('dialog', { name: 'Search GIFs' })).toBeHidden()
+  await expect(page.getByRole('heading', { name: 'We could not load this page' })).toBeHidden()
+  await expect(page.getByRole('alert').filter({ hasText: 'Could not load GIFs. Try again.' })).toBeVisible()
+  await expect(box).toHaveValue(draft)
+
+  await page.unroute(chunks)
+  await toggle.click()
+  await expect(page.getByRole('dialog', { name: 'Search GIFs' })).toBeVisible()
+  await expect(page.getByText('Could not load GIFs. Try again.')).toBeHidden()
+  await expect(box).toHaveValue(draft)
+  await context.close()
+})
+
+test('a poll or a picture that hides the GIF search closes it, so taking them away does not open it again', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, 'needs a web app built with a Giphy key; see the comment above the test before this one')
+  const { page, handle, context } = await newMember(browser, 'gifhidden')
+  let searches = 0
+  await context.route(/^https:\/\/[a-z0-9.-]*\bgiphy\.com\//, (route) => {
+    if (new URL(route.request().url()).hostname === 'api.giphy.com') searches++
+    return route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: { data: [], pagination: { total_count: 0, count: 0, offset: 0 }, meta: { status: 200, msg: 'OK', response_id: 'e2e' } },
+    })
+  })
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Hidden ${handle}`)
+  const toggle = page.getByRole('button', { name: 'Search GIFs' })
+  const search = page.getByRole('dialog', { name: 'Search GIFs' })
+  await toggle.click()
+  await expect(search).toBeVisible()
+  await expect.poll(() => searches).toBe(1)
+
+  const poll = page.getByRole('button', { name: 'Poll' })
+  await poll.click()
+  await expect(search).toBeHidden()
+  await poll.click()
+  await expect(poll).toHaveAttribute('aria-pressed', 'false')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(search).toBeHidden()
+
+  await toggle.click()
+  await expect(search).toBeVisible()
+  await page.locator('#compose input[type="file"]:not([accept*="video"])').setInputFiles({ name: 'dance.gif', mimeType: 'image/gif', buffer: gif() })
+  await expect(search).toBeHidden()
+  await page.getByRole('button', { name: 'Remove GIF 1' }).click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(search).toBeHidden()
   await context.close()
 })
 
@@ -527,5 +713,297 @@ test('while searching, no emoji section is labelled by a heading that is not dra
     sections.map((s) => s.getAttribute('aria-labelledby')).filter((id) => id !== null && !document.getElementById(id)),
   )
   expect(dangling).toEqual([])
+  await context.close()
+})
+
+type Rect = { top: number; bottom: number; left: number; right: number }
+const overlaps = (a: Rect, b: Rect) => a.top < b.bottom && b.top < a.bottom && a.left < b.right && b.left < a.right
+
+/** The picker overlaps none of `parts`, each named for the failure message. */
+async function expectPickerClearOf(picker: import('@playwright/test').Locator, parts: Record<string, import('@playwright/test').Locator>) {
+  await expect(picker).toBeVisible()
+  // Placement follows the composer on its next layout; let it settle.
+  await picker.page().evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  const p = await rect(picker)
+  for (const [name, part] of Object.entries(parts)) {
+    for (const r of await part.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON() as DOMRect))) {
+      expect(overlaps(p, r), `picker ${Math.round(p.top)}-${Math.round(p.bottom)} overlaps ${name} ${Math.round(r.top)}-${Math.round(r.bottom)}`).toBe(false)
+    }
+  }
+}
+
+/** Scrolls the feed so the composer sits right under the top bar, as it does once the page has been read a little. */
+async function scrollComposerToTop(page: import('@playwright/test').Page) {
+  await page.evaluate(() => {
+    const bar = document.querySelector('.square-topbar')?.getBoundingClientRect().bottom ?? 0
+    window.scrollBy(0, document.querySelector('#compose')!.getBoundingClientRect().top - Math.max(0, bar))
+  })
+}
+
+const composerParts = (page: import('@playwright/test').Page) => ({
+  'the box': page.getByRole('textbox', { name: 'New post' }),
+  'a poll choice': page.locator('#compose .composer-poll input'),
+  'a toolbar button': page.locator('#compose .composer-toolbar button:not([role="dialog"] *)'),
+  'an attached picture': page.locator('#compose .composer-images'),
+})
+
+test('the emoji picker moves when the composer grows under it: a poll or a photo added while it is open', async ({ browser }) => {
+  const { page, context } = await newMember(browser, 'emojigrow', { viewport: { width: 1280, height: 800 } })
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.click()
+  await box.fill(`${'A long draft that wraps over many lines of the box. '.repeat(21)}end`)
+  await scrollComposerToTop(page)
+  const picker = page.getByRole('dialog', { name: 'Emoji' })
+  await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+  await expectPickerClearOf(picker, composerParts(page))
+  expect((await rect(picker)).top).toBeGreaterThanOrEqual((await rect(page.locator('#compose .composer-toolbar'))).bottom)
+
+  await page.getByRole('button', { name: 'Poll' }).click()
+  await expect(page.getByPlaceholder('Choice 2')).toBeVisible()
+  await expect(picker).toBeVisible()
+  await expectPickerClearOf(picker, composerParts(page))
+
+  await box.press('Escape')
+  await expect(picker).toBeHidden()
+  await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+  await expectPickerClearOf(picker, composerParts(page))
+  await page.locator('#compose input[type="file"]:not([accept*="video"])').setInputFiles({ name: 'dot.png', mimeType: 'image/png', buffer: PNG })
+  await expect(page.getByRole('list', { name: 'Images' })).toBeVisible()
+  await expect(picker).toBeVisible()
+  await expectPickerClearOf(picker, composerParts(page))
+  await context.close()
+})
+
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+
+/** Where the caret's row is on screen, by laying out the text before the caret in a copy of the box. */
+function caretRow(box: import('@playwright/test').Locator) {
+  return box.evaluate((el: HTMLTextAreaElement) => {
+    const copy = el.cloneNode() as HTMLTextAreaElement
+    copy.style.cssText = `position:absolute;visibility:hidden;height:0;min-height:0;max-height:none;width:${el.offsetWidth}px`
+    copy.value = el.value.slice(0, el.selectionEnd)
+    el.parentNode!.appendChild(copy)
+    const end = copy.scrollHeight - parseFloat(getComputedStyle(el).paddingBottom)
+    copy.remove()
+    const line = parseFloat(getComputedStyle(el).lineHeight)
+    const r = el.getBoundingClientRect()
+    const bottom = r.top + el.clientTop + end - el.scrollTop
+    return { top: bottom - line, bottom, left: r.left, right: r.right, boxTop: r.top + el.clientTop, boxBottom: r.top + el.clientTop + el.clientHeight }
+  })
+}
+
+const NEEDS_KEY = 'needs a web app built with a Giphy key; see the comment above "a GIF from Giphy with no words can be posted"'
+
+/** Answers Giphy for `context`: `count` GIFs for any search, or a 500 for the first `failing` calls. Returns the call count. */
+async function answerGiphy(context: import('@playwright/test').BrowserContext, { count = 6, failing = 0 } = {}) {
+  const calls = { api: 0 }
+  await context.route(/^https:\/\/[a-z0-9.-]*\bgiphy\.com\//, (route) => {
+    const url = new URL(route.request().url())
+    if (url.hostname !== 'api.giphy.com') return route.fulfill({ contentType: 'image/gif', body: gif() })
+    calls.api++
+    if (calls.api <= failing) return route.fulfill({ status: 500, headers: { 'access-control-allow-origin': '*' }, json: { meta: { status: 500, msg: 'down' } } })
+    const data = Array.from({ length: count }, (_, i) => {
+      const id = `e2e${i}${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`
+      const rendition = { url: `https://media1.giphy.com/media/${id}/100w.gif`, width: '100', height: '100' }
+      return { id, title: `Wave ${i + 1}`, type: 'gif', images: { fixed_width_small: rendition, fixed_width: rendition } }
+    })
+    return route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: { data, pagination: { total_count: count, count, offset: 0 }, meta: { status: 200, msg: 'OK', response_id: 'e2e' } },
+    })
+  })
+  return calls
+}
+
+test('the GIF search closes when the post is sent, and its button waits until the post lands', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, NEEDS_KEY)
+  const { page, handle, context } = await newMember(browser, 'gifsend')
+  await answerGiphy(context)
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Sending ${handle}`)
+  const toggle = page.getByRole('button', { name: 'Search GIFs' })
+  await toggle.click()
+  const picker = page.getByRole('dialog', { name: 'Search GIFs' })
+  await expect(picker.getByRole('button', { name: 'Wave 1' })).toBeVisible()
+
+  let release = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/*', async (route) => {
+    if (route.request().method() !== 'POST' || !route.request().headers()['next-action']) return route.fallback()
+    await held
+    return route.continue()
+  })
+  await page.getByRole('button', { name: 'Post', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Posting…' })).toBeVisible()
+  await expect(picker).toBeHidden()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(toggle).toBeDisabled()
+  release()
+  await expect(page.locator('article', { hasText: `Sending ${handle}` }).first()).toBeVisible()
+  await expect(toggle).toBeEnabled()
+  await context.close()
+})
+
+test('typing after the GIF search failed to load clears its error', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, NEEDS_KEY)
+  const { page, handle, context } = await newMember(browser, 'giftypeon')
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Typing on ${handle}`)
+  const chunks = /\/_next\/static\/chunks\//
+  await page.route(chunks, (route) => route.abort('internetdisconnected'))
+  await page.getByRole('button', { name: 'Search GIFs' }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'Could not load GIFs. Try again.' })).toBeVisible()
+  await page.unroute(chunks)
+  await box.press('End')
+  await box.pressSequentially('!')
+  await expect(page.getByText('Could not load GIFs. Try again.')).toBeHidden()
+  await context.close()
+})
+
+test('the GIF search says it is loading while it downloads', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, NEEDS_KEY)
+  const { page, context } = await newMember(browser, 'gifwait')
+  await answerGiphy(context)
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'New post' }).click()
+  let release = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  const chunks = /\/_next\/static\/chunks\//
+  await page.route(chunks, async (route) => {
+    await held
+    return route.continue()
+  })
+  await page.getByRole('button', { name: 'Search GIFs' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Loading GIFs…' })).toBeVisible()
+  release()
+  await expect(page.getByRole('dialog', { name: 'Search GIFs' })).toBeVisible()
+  await expect(page.getByText('Loading GIFs…')).toBeHidden()
+  await page.unroute(chunks)
+  await context.close()
+})
+
+const PICKERS = [
+  { what: 'emoji picker', button: 'Emoji', dialog: 'Emoji', giphy: false },
+  { what: 'GIF search', button: 'Search GIFs', dialog: 'Search GIFs', giphy: true },
+]
+
+for (const kind of PICKERS) for (const size of [{ width: 375, height: 667 }, { width: 375, height: 400 }]) {
+  test(`on a ${size.width}x${size.height} touch screen the ${kind.what} leaves the caret's row of a long draft in view`, async ({ browser }) => {
+    test.skip(kind.giphy && !process.env.NEXT_PUBLIC_GIPHY_API_KEY, NEEDS_KEY)
+    const { page, handle, context } = await newMember(browser, 'pickcaret', { viewport: size, hasTouch: true, isMobile: true })
+    if (kind.giphy) await answerGiphy(context)
+    await page.goto('/')
+    const box = page.getByRole('textbox', { name: 'New post' })
+    await box.fill(`${handle}\n${lines(9)}`)
+    await box.evaluate((el: HTMLTextAreaElement) => {
+      el.setSelectionRange(el.value.length, el.value.length)
+      el.blur()
+    })
+    await scrollComposerToTop(page)
+    const before = await height(box)
+    await page.getByRole('button', { name: kind.button, exact: true }).tap()
+    const picker = page.getByRole('dialog', { name: kind.dialog })
+    await expect(picker).toBeVisible()
+    if (kind.giphy) await expect(picker.getByRole('button', { name: 'Wave 6' })).toBeAttached()
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    const [p, row] = [await rect(picker), await caretRow(box)]
+    expect(overlaps(p, row), `picker ${Math.round(p.top)}-${Math.round(p.bottom)} covers the caret row ${Math.round(row.top)}-${Math.round(row.bottom)}`).toBe(false)
+    expect(row.top).toBeGreaterThanOrEqual(row.boxTop - 1)
+    expect(row.bottom).toBeLessThanOrEqual(row.boxBottom + 1)
+    expect(row.top).toBeGreaterThanOrEqual(0)
+    expect(row.bottom).toBeLessThanOrEqual(size.height)
+    expect(p.height).toBeGreaterThanOrEqual(USABLE)
+
+    await page.keyboard.press('Escape')
+    await expect(picker).toBeHidden()
+    expect(await height(box)).toBe(before)
+    await context.close()
+  })
+}
+
+test('a GIF search that opens upward goes above the box, not over it', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, NEEDS_KEY)
+  const { page, context } = await newMember(browser, 'gifabove', { viewport: { width: 1280, height: 800 } })
+  await answerGiphy(context)
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.click()
+  await box.fill(lines(12))
+  const picker = page.getByRole('dialog', { name: 'Search GIFs' })
+  await page.getByRole('button', { name: 'Search GIFs', exact: true }).click()
+  await expect(picker.getByRole('button', { name: 'Wave 6' })).toBeAttached()
+  await expectPickerClearOf(picker, composerParts(page))
+  expect((await rect(picker)).bottom).toBeLessThanOrEqual((await rect(box)).top)
+  await context.close()
+})
+
+test('tapping Search GIFs and a GIF on a touch screen leaves the box unfocused, so no on-screen keyboard opens', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, NEEDS_KEY)
+  const { page, handle, context } = await newMember(browser, 'giftap', { viewport: PHONE, hasTouch: true, isMobile: true })
+  await answerGiphy(context)
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Tap ${handle}`)
+  await box.evaluate((el: HTMLTextAreaElement) => el.blur())
+  await page.getByRole('button', { name: 'Search GIFs', exact: true }).tap()
+  const picker = page.getByRole('dialog', { name: 'Search GIFs' })
+  await expect(picker).toBeVisible()
+  await expect(box).not.toBeFocused()
+  await picker.getByRole('button', { name: 'Wave 1' }).tap()
+  await expect(page.getByLabel('Description of GIF')).toHaveValue('Wave 1')
+  await expect(box).not.toBeFocused()
+  await context.close()
+})
+
+test('Try again right after GIPHY fails asks GIPHY again', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, NEEDS_KEY)
+  const { page, context } = await newMember(browser, 'gifretry')
+  const calls = await answerGiphy(context, { failing: 1 })
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'New post' }).click()
+  await page.getByRole('button', { name: 'Search GIFs', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: 'Search GIFs' })
+  await expect(picker.getByRole('alert')).toContainText('Could not load GIFs from GIPHY')
+  expect(calls.api).toBe(1)
+  await picker.getByRole('button', { name: 'Try again' }).click()
+  await expect(picker.getByRole('button', { name: 'Wave 1' })).toBeVisible()
+  expect(calls.api).toBe(2)
+  await context.close()
+})
+
+test('the GIF search closes on Escape with focus on nothing, stays open when focus goes to nothing, and closes when Tab leaves it', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, NEEDS_KEY)
+  const { page, handle, context } = await newMember(browser, 'gifkeys')
+  await answerGiphy(context, { count: 2 })
+  await page.goto('/')
+  const box = page.getByRole('textbox', { name: 'New post' })
+  await box.fill(`Keys ${handle}`)
+  const toggle = page.getByRole('button', { name: 'Search GIFs', exact: true })
+  const picker = page.getByRole('dialog', { name: 'Search GIFs' })
+  const search = picker.getByRole('searchbox', { name: 'Search GIFs' })
+
+  await toggle.click()
+  await expect(picker).toBeVisible()
+  await box.evaluate((el: HTMLTextAreaElement) => el.blur())
+  await page.keyboard.press('Escape')
+  await expect(picker).toBeHidden()
+
+  await toggle.focus()
+  await page.keyboard.press('Enter')
+  await expect(search).toBeFocused()
+  await search.fill('wave')
+  await search.evaluate((el: HTMLInputElement) => el.blur())
+  await expect(picker).toBeVisible()
+  await expect(search).toHaveValue('wave')
+
+  await search.focus()
+  await expect(picker.getByRole('button', { name: 'Wave 2' })).toBeVisible()
+  const inSearch = () => page.evaluate(() => !!document.activeElement?.closest('[role="dialog"][aria-label="Search GIFs"]'))
+  for (let i = 0; i < 10 && (await inSearch()); i++) await page.keyboard.press('Tab')
+  await expect(picker).toBeHidden()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   await context.close()
 })

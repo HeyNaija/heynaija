@@ -55,6 +55,18 @@ and the other locked-off settings in `apps/api/src/env.ts`) are deliberately not
 they cannot be turned on from the database, only by building the feature and changing
 the code in review.
 
+## `giphyGifs`
+
+Off in production, on in staging and development. Gates creating a post with a GIF from
+any provider (the API refuses `gif` with `feature_unavailable`; the web hides the search from
+`me.features.giphyGifs`). The name is from when GIPHY was the only provider; it was kept
+because flag overrides are stored by name. The search also needs the build-time provider and
+its key (`NEXT_PUBLIC_GIF_PROVIDER`, `NEXT_PUBLIC_GIPHY_API_KEY`), and the API takes only the
+providers in `GIF_PROVIDERS`, so on means "offered where a key is built in" (without one the
+search is not shown at all). Posts with a GIF keep showing while it is off. These GIFs are
+not scanned by us and members' browsers contact the provider: [safety/gifs.md](safety/gifs.md),
+[deployment/gifs.md](deployment/gifs.md).
+
 ## Flags with a code rule on top: `videoPosts`
 
 `videoPosts` (off in production, on in staging and development) is also gated in code,

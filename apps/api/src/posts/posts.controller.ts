@@ -57,6 +57,7 @@ import { LabelNotAllowedError } from '../governance/adult-content.js'
 import { ReplyAudienceNotAllowedError } from '../governance/minors.js'
 import { DISCOVER_RULES, discoverPageQuery } from './discover.js'
 import { parseHashtag } from './hashtags.js'
+import { GifProviders } from '../gifs/gif-providers.js'
 import { replyOrderQuery, replyPageQuery } from './reply-cursor.js'
 
 const createPostBody = newPost(slugParam)
@@ -87,6 +88,7 @@ export class PostsController {
     @Inject(LinksService) private readonly links: LinksService,
     @Inject(RateLimiter) private readonly limits: RateLimiter,
     @Inject(FeatureFlags) private readonly flags: FeatureFlags,
+    @Inject(GifProviders) private readonly gifs: GifProviders,
     // Video (ADR 0019). Without the gate video is closed: a post cannot be made with one.
     @Optional() @Inject(VideoGate) private readonly videoGate?: VideoGate,
     @Optional() @Inject(VideoService) private readonly videos?: VideoService,
@@ -188,11 +190,17 @@ export class PostsController {
   @Post('posts')
   @UseGuards(SessionGuard)
   async create(@Req() req: AuthedRequest, @Body() body: unknown) {
-    const { text, replyTo, community, images, video, quote, poll, replyAudience, sensitive, storyOf, announce } = parse(createPostBody, body)
+    const { text, replyTo, community, images, video, gif, quote, poll, replyAudience, sensitive, storyOf, announce } = parse(createPostBody, body)
     if (video && !(await this.videoGate?.isOpen(req.member.id))) {
       throw new BadRequestException({ code: 'feature_unavailable', message: 'Videos are not available yet' })
     }
     if (poll) await this.requireFeature(req, 'polls', 'Polls')
+    if (gif) {
+      await this.requireFeature(req, 'giphyGifs', 'GIFs')
+      if (!this.gifs.acceptsNew(gif.provider)) {
+        throw new BadRequestException({ code: 'feature_unavailable', message: `GIFs from ${this.gifs.label(gif.provider)} are not available` })
+      }
+    }
     if (replyAudience && replyAudience !== 'everyone') await this.requireFeature(req, 'replyControls', 'Reply controls')
     if (quote) await this.requireFeature(req, 'quotePosts', 'Quote posts')
     if (sensitive) await this.requireFeature(req, 'adultLabels', 'Content warnings')
@@ -204,6 +212,7 @@ export class PostsController {
         communitySlug: community,
         images,
         video,
+        gif,
         quote,
         poll,
         replyAudience,

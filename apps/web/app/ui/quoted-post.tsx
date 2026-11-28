@@ -1,17 +1,20 @@
 import Link from 'next/link'
 import type { QuotedPost } from '@/lib/api'
+import { quoteMedia } from '@/lib/quote-media'
 import { Avatar } from './avatar'
 import { FounderBadge } from './founder-badge'
 import { LocalTime } from './local-time'
 
 /**
  * The post a quote post quotes, shown inside it as one link to that post. Its
- * images are small previews here; they open full size on the post itself.
+ * images are small previews here; they open full size on the post itself. A GIF
+ * shows its first frame and a video is named (lib/quote-media.ts).
  */
 export function QuotedPostCard({ quote, now, saver = false, label = 'Quoted post' }: { quote: QuotedPost; now: number; saver?: boolean; label?: string }) {
   if (quote.unavailable) {
     return <p className="quoted-post is-unavailable">This post is no longer available.</p>
   }
+  const media = quoteMedia(quote, saver)
   return (
     <Link prefetch={false} href={`/p/${quote.id}`} className="quoted-post">
       <span className="quoted-post-label">{label}</span>
@@ -28,11 +31,14 @@ export function QuotedPostCard({ quote, now, saver = false, label = 'Quoted post
       </span>
       {quote.replyParentId ? <span className="quoted-post-note">Replying to a post</span> : null}
       {quote.text ? <span className="quoted-post-text">{quote.text}</span> : null}
-      {quote.images.length && quote.coverMedia ? (
-        <span className="quoted-post-note">Sensitive content. Open the post to see it.</span>
-      ) : quote.images.length && saver ? (
-        <span className="quoted-post-note">{quote.images.length === 1 ? '1 image' : `${quote.images.length} images`} not loaded. Open the post to load.</span>
-      ) : quote.images.length ? (
+      {media?.kind === 'note' ? (
+        <span className="quoted-post-note">{media.text}</span>
+      ) : media?.kind === 'gif' ? (
+        <span className="quoted-post-images" data-count={1}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- the provider's own first frame, loaded from them directly */}
+          <img src={media.src} alt={media.alt} loading="lazy" decoding="async" referrerPolicy="no-referrer" />
+        </span>
+      ) : media?.kind === 'images' ? (
         <span className="quoted-post-images" data-count={quote.images.length}>
           {quote.images.map((image) => (
             // eslint-disable-next-line @next/next/no-img-element -- already resized; next/image would resize again

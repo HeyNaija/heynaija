@@ -21,7 +21,7 @@ import { GistsService } from '../gists/gists.service.js'
 import { avatarPath, communityPhotoPath, MEDIA_JOBS, MediaService, type PlacementJobs } from '../media/media.service.js'
 import { localMediaUrls, MEDIA_URLS, type MediaUrls } from '../media/media-urls.js'
 import { type NewNotification, notify } from '../notifications/notifications.service.js'
-import { communityMark, type ImageRow, imagesOf, type PostImage, toPostImages } from '../posts/posts.service.js'
+import { communityMark, gifOf, type ImageRow, imagesOf, type PostGif, type PostImage, toPostImages } from '../posts/posts.service.js'
 import { VideoService } from '../video/video.service.js'
 import { DB } from '../tokens.js'
 import { SAFETY_ALERTS, type SafetyAlerts } from './safety-alerts.js'
@@ -83,6 +83,8 @@ export type QueueItem = {
     images: PostImage[]
     /** Has a video, shown or held: the queue shows a label, not the video (phase 3). */
     hasVideo: boolean
+    /** A GIF by its provider and id: not scanned by us, loaded from the provider, so the queue shows it for the moderator to judge. */
+    gif: PostGif | null
     authorHandle: string
     communityName: string | null
     /** Its author counts as an adult, so it can be marked sensitive; a minor's post that needs a mark is removed instead (ADR 0020). */
@@ -371,6 +373,7 @@ export class ModerationService {
       post_text: string | null
       post_images: ImageRow[]
       post_has_video: boolean | null
+      post_gif: PostGif | null
       post_author: string | null
       post_author_adult: boolean | null
       community_name: string | null
@@ -400,7 +403,7 @@ export class ModerationService {
             or (r.post_id is null and r.gist_id is null and r.community_id is null and o.post_id is null and o.gist_id is null
               and o.community_id is null and o.member_id = r.member_id))) as report_count,
         p.id as post_id, p.text as post_text, ${imagesOf(sql`p.id`)} as post_images,
-        exists(select 1 from media vm where vm.post_id = p.id and vm.kind = 'post_video' and vm.status in ('ready', 'quarantined')) as post_has_video, pa.handle as post_author,
+        exists(select 1 from media vm where vm.post_id = p.id and vm.kind = 'post_video' and vm.status in ('ready', 'quarantined')) as post_has_video, ${gifOf('p')} as post_gif, pa.handle as post_author,
         case when p.id is null then null else ${countsAsAdult(sql`p.author_id`)} end as post_author_adult, c.name as community_name,
         tm.handle as member_handle, tm.active as member_active, tm.display_name as member_name,
         tm.bio as member_bio, tm.avatar_media_id as member_avatar,
@@ -437,7 +440,7 @@ export class ModerationService {
       concern: !r.post_id && !r.member_handle && !r.gist_id && !r.community_slug,
       reportCount: r.report_count,
       post: r.post_id
-        ? { id: r.post_id, text: r.post_text!, images: toPostImages(r.post_images, this.urls), hasVideo: r.post_has_video === true, authorHandle: r.post_author!, communityName: r.community_name, markable: r.post_author_adult === true }
+        ? { id: r.post_id, text: r.post_text!, images: toPostImages(r.post_images, this.urls), hasVideo: r.post_has_video === true, gif: r.post_gif, authorHandle: r.post_author!, communityName: r.community_name, markable: r.post_author_adult === true }
         : null,
       member: r.member_handle
         ? {

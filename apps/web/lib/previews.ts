@@ -38,6 +38,15 @@ type PreviewedPost = {
   authorHandle: string
   sensitive: 'author' | 'moderator' | 'community' | null
   images: { src: string; alt: string; width: number; height: number; animated: boolean }[]
+  video: object | null
+  gif: object | null
+}
+
+function shared(post: PreviewedPost) {
+  if (post.images.length > 0) return post.images.length === 1 ? 'a photo' : `${post.images.length} photos`
+  if (post.gif) return 'a GIF'
+  // A video that is not ready yet is not sent, so a post of one alone has nothing to name.
+  return post.video ? 'a video' : 'a post'
 }
 
 /**
@@ -50,9 +59,7 @@ type PreviewedPost = {
  */
 export function postPreview(post: PreviewedPost): { description: string | undefined; image: { url: string; width: number; height: number; alt: string } } {
   if (post.sensitive) return { description: undefined, image: defaultPreviewImage }
-  // A post always has text, images or both.
-  const photos = post.images.length === 1 ? 'a photo' : `${post.images.length} photos`
-  const description = post.text ? excerpt(post.text) : `@${post.authorHandle} shared ${photos}.`
+  const description = post.text ? excerpt(post.text) : `@${post.authorHandle} shared ${shared(post)}.`
   const first = post.images[0]
   if (!first) return { description, image: defaultPreviewImage }
   const scale = Math.min(1, 640 / Math.max(first.width, first.height))

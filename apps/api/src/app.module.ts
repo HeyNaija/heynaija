@@ -76,6 +76,7 @@ import { appPushSender } from './push/app-push-sender.js'
 import { APP_PUSH_SENDER, PUSH_SENDER, webPushSender } from './push/push-sender.js'
 import { SearchController } from './search/search.controller.js'
 import { ENV } from './tokens.js'
+import { GifProviders } from './gifs/gif-providers.js'
 import { TopicsController } from './topics/topics.controller.js'
 import { TopicsService } from './topics/topics.service.js'
 import { VideoGate, VideoPostsGuard } from './video/video-gate.js'
@@ -97,6 +98,7 @@ class HealthController {
   controllers: [HealthController, AuthController, AppleController, PostsController, MembersController, OwnProfileController, OwnSensitiveSettingsController, CommunitiesController, SearchController, ModerationController, MediaController, PostImagesController, CommunityPhotoController, PrivateMediaController, NotificationsController, EmailController, PushController, HighlightsController, ExportController, GovernanceController, OnboardingController, TopicsController, IdeasController, GistsController, GistRepliesController, LiveKitWebhookController, AccountController, FlagsController, VideosController, KekeController],
   providers: [
     ModerationService,
+    { provide: GifProviders, useFactory: (env: Env) => new GifProviders(env.GIF_PROVIDERS), inject: [ENV] },
     { provide: OBJECT_STORE, useFactory: (env: Env) => new S3ObjectStore(s3Config(env)), inject: [ENV] },
     // Arachnid Shield and PhotoDNA, each once its key is set; with neither every image
     // passes and every video is held (docs/safety/abuse-material-scanning.md).

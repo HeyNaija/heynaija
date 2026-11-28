@@ -20,12 +20,18 @@ import { IMAGE_TYPES } from './shrink-image'
 import { useAutoGrow } from './use-auto-grow'
 import { type VideoDraft, useVideoDraft } from './use-video-draft'
 import { type ImageDraft, MAX_IMAGES, useImageDrafts } from './use-image-drafts'
-import { useFixedPlacement } from './use-fixed-placement'
+import { type PickerPlace, useFixedPlacement } from './use-fixed-placement'
+import { focusOnOpen, usePressedBy } from './use-pressed-by'
 import { useMentionSuggestions } from './use-mention-suggestions'
 import { PostVideo } from './post-video'
 import { composerOffers } from '@/lib/composer-offers'
+import { composerContent } from '@/lib/composer-required'
+import { COMPOSER_GIF } from '@/lib/gif/composer'
+import type { GifProvider } from '@/lib/gif/types'
+import { gifSource } from '@/lib/gif/providers'
 import { postedReplyHref } from '@/lib/posted-href'
 import { useOneVideo } from './use-one-video'
+import { GifToggle, useGif } from './use-gif'
 import { VideoPlayer } from './video-player'
 import { graphemes, POST_MAX } from '@/lib/post-length'
 
@@ -37,6 +43,11 @@ const LIMIT = POST_MAX
 const emojiPicker = () => dynamic(() => retryOnce(() => import('./emoji-picker')), {
   ssr: false,
   loading: () => <span role="status" className="composer-emoji-note">Loading emoji…</span>,
+})
+// The GIF search is one more, fetched the same way when someone first opens it; it loads the provider's search itself.
+const gifPicker = () => dynamic(() => retryOnce(() => import('./gif-picker')), {
+  ssr: false,
+  loading: () => <span role="status" className="composer-emoji-note">Loading GIFs…</span>,
 })
 
 /** Keeps a picker that failed to load from taking the page, and the draft, down with it. */
@@ -94,6 +105,8 @@ type Props = {
   replyControls?: boolean
   /** Who the member may let reply, the default first (`Me.replyAudiences`): a minor's never include everyone. */
   replyAudiences?: readonly ReplyAudience[]
+  /** From `me.features.giphyGifs`: the GIF search is offered, if the configured provider's key is built in (lib/gif/composer.ts). */
+  gifs?: boolean
   /** False for a text-only box: no pictures, GIFs or video to attach. */
   media?: boolean
   /**
@@ -116,7 +129,7 @@ const REPLY_AUDIENCE_CHOICE = {
   mentioned: 'Only people mentioned',
 } satisfies Record<ReplyAudience, string>
 
-export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, announcements = null, choices, quote, story, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, replyControls = true, replyAudiences = REPLY_AUDIENCES, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
+export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, replyDepth, answeringReply, placeholder, community, announcements = null, choices, quote, story, submitAction, postedHref = postedReplyHref.bind(null, null), onPosted, onPendingChange, portalTarget, focusRequest = 0, polls = true, gifs = false, replyControls = true, replyAudiences = REPLY_AUDIENCES, media = true, videoLimits = null, sensitiveLabels = false }: Props) {
   const inputId = useId()
   const privacyId = `${inputId}-privacy`
   const recipientId = `${inputId}-recipient`
@@ -148,14 +161,26 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   }, [clearImages, clearVideo])
   const videoPicker = useRef<HTMLInputElement>(null)
   const picker = useRef<HTMLInputElement>(null)
-  const offers = composerOffers({ media, polls, videoAvailable: videoLimits !== null, replyTo, pollOpen, videoDrafted: video.draft !== null })
+  // The one GIF picked from a provider, with the description that goes with it.
+  const [gif, setGif] = useState<{ provider: GifProvider; id: string; description: string } | null>(null)
+  const offers = composerOffers({
+    media,
+    polls,
+    videoAvailable: videoLimits !== null,
+    replyTo,
+    pollOpen,
+    videoDrafted: video.draft !== null,
+    gifAvailable: gifs && COMPOSER_GIF !== null,
+    gifDrafted: gif !== null,
+    imagesDrafted: images.drafts.length > 0,
+  })
   const form = useRef<HTMLFormElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   // A reply or an update is the small box, in place under what it follows.
   const inline = !!replyTo || !!story
   const formId = story ? 'add-update' : 'compose'
   // A quote keeps the box open: the post being quoted is shown under it.
-  const active = expanded || text.length > 0 || images.drafts.length > 0 || !!video.draft || !!quote || pollOpen
+  const active = expanded || text.length > 0 || images.drafts.length > 0 || !!video.draft || !!gif || !!quote || pollOpen
   const rows = active ? (inline ? 2 : 3) : 1
   useAutoGrow(input, text, rows)
 
@@ -189,21 +214,21 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   // The emoji picker: its button, and whether the keyboard or a screen reader opened it (focus then moves in).
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [EmojiPicker, setEmojiPicker] = useState(emojiPicker)
-  const [emojiFailedToLoad, setEmojiFailedToLoad] = useState(false)
+  // Which picker's code could not be downloaded, said under the box until the member does something else.
+  const [pickerFailed, setPickerFailed] = useState<'emoji' | 'gif' | null>(null)
   const emojiFailed = () => {
     setEmojiOpen(false)
-    setEmojiFailedToLoad(true)
+    setPickerFailed('emoji')
     setEmojiPicker(() => emojiPicker())
   }
   const [emojiByKeyboard, setEmojiByKeyboard] = useState(false)
-  // The pointerType of the press on the Emoji button; none before the click means the keyboard or a screen reader.
-  const emojiPressedBy = useRef<string | null>(null)
+  const emojiPressedBy = usePressedBy()
   const emojiButton = useRef<HTMLButtonElement>(null)
   const emojiPanel = useRef<HTMLDivElement>(null)
   const toolbar = useRef<HTMLDivElement>(null)
-  // `focused` is what had focus in the picker; during a blur that is the event's target, as nothing has it then.
-  const closeEmoji = (focused: Node | null = document.activeElement) => {
-    const inside = emojiPanel.current?.contains(focused)
+  const pickerPlace: PickerPlace = { anchor: toolbar, clear: writingRow, frame: form, box: input }
+  const closeEmoji = () => {
+    const inside = emojiPanel.current?.contains(document.activeElement)
     setEmojiOpen(false)
     if (inside) emojiButton.current?.focus()
   }
@@ -213,6 +238,28 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
     const next = to === 'next' ? stops[stops.indexOf(emojiButton.current!) + 1] : emojiButton.current
     setEmojiOpen(false)
     ;(next ?? emojiButton.current)?.focus()
+  }
+
+  // The GIF search: its button, and whether the keyboard opened it (focus then moves in).
+  const [gifOpen, setGifOpen] = useState(false)
+  // A poll, picture or video that takes the search's place closes it, so taking them away does not
+  // open it again (and fetch trending GIFs) or leave the form's Escape handler waiting for it.
+  if (gifOpen && !offers.gifSearch) setGifOpen(false)
+  const [GifPicker, setGifPicker] = useState(gifPicker)
+  const gifFailed = () => {
+    setGifOpen(false)
+    setPickerFailed('gif')
+    setGifPicker(() => gifPicker())
+  }
+  const [gifByKeyboard, setGifByKeyboard] = useState(false)
+  const gifPressedBy = usePressedBy()
+  const gifButton = useRef<HTMLButtonElement>(null)
+  const gifPanel = useRef<HTMLSpanElement>(null)
+  const gifDialog = useRef<HTMLDivElement>(null)
+  const closeGifSearch = () => {
+    const inside = gifPanel.current?.contains(document.activeElement)
+    setGifOpen(false)
+    if (inside) gifButton.current?.focus()
   }
 
   // Puts the emoji over the selection and the caret after it. A mouse pick keeps the box
@@ -275,26 +322,36 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   // the pointer and swallow a click on the image button.
   useEffect(() => {
     const outside = (e: PointerEvent) => {
-      // The @mention list and the emoji picker are drawn outside the form, but belong to it.
-      const target = e.target as Node
-      if (form.current?.contains(target) || emojiPanel.current?.contains(target)) return
+      // The @mention list and the pickers are drawn outside the form, but belong to it.
+      const target = e.target as Element
+      if (emojiPanel.current?.contains(target) || gifPanel.current?.contains(target)) return
+      if (form.current?.contains(target)) {
+        // A press on the form around its controls is a press on nothing, which closes the pickers.
+        if (!target.closest('button, input, select, textarea, label, a[href], video')) {
+          setEmojiOpen(false)
+          setGifOpen(false)
+        }
+        return
+      }
       if (!mentionList.current?.contains(target)) setExpanded(false)
       setEmojiOpen(false)
+      setGifOpen(false)
     }
     document.addEventListener('pointerdown', outside)
     return () => document.removeEventListener('pointerdown', outside)
   }, [])
-  // Escape closes the picker wherever focus is, even on nothing; the mention list gets it first.
+  // Escape closes a picker wherever focus is, even on nothing; the mention list gets it first.
   useEffect(() => {
-    if (!emojiOpen) return
+    if (!emojiOpen && !gifOpen) return
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return
       e.preventDefault()
-      closeEmoji()
+      if (emojiOpen) closeEmoji()
+      if (gifOpen) closeGifSearch()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [emojiOpen])
+  }, [emojiOpen, gifOpen])
   const [tooMany, setTooMany] = useState(false)
 
   // React resets the form when an action finishes, and a <select> then shows its
@@ -319,8 +376,10 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       setSensitive(false)
       setAnnounce(false)
       clear()
+      setGif(null)
       setExpanded(false)
       setEmojiOpen(false)
+      setGifOpen(false)
       onPosted?.(state)
     }
   }, [state, clear, onPosted])
@@ -345,28 +404,30 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
   const announcing = announce && announceOffer !== null && announceWait === null
   const left = LIMIT - graphemes(text.trim())
   // The mark goes with pictures and video; with none attached there is nothing to offer.
-  const markable = sensitiveLabels && (images.drafts.length > 0 || video.draft !== null)
+  const markable = sensitiveLabels && (images.drafts.length > 0 || video.draft !== null || gif !== null)
   // A video that is held, rejected or failed blocks the post until it is removed: only a ready one can go.
   const waiting = images.drafts.some((d) => d.status !== 'ready') || (video.draft !== null && video.draft.status !== 'ready')
-  const empty = left === LIMIT && images.drafts.length === 0 && !video.draft
+  const { empty, textRequired } = composerContent({ text, images: images.drafts.length, video: video.draft !== null, gif: gif !== null, pollOpen })
   const pollReady = !pollOpen || (text.trim().length > 0 && pollOptions.length >= 2 && pollOptions.every((option) => option.trim().length > 0))
 
   const content = (
     <form ref={form} id={formId} action={action} className={`${inline ? 'reply-composer is-reply' : 'square-composer square-card'} ${active ? 'is-expanded' : ''}${answeringReply ? ' is-answering' : ''} scroll-mt-32`}
       onBlur={(e) => {
-        // Focus going elsewhere, or to nothing, closes the picker; the box and the picker are one place.
+        // Focus going elsewhere closes a picker; the box and the picker are one place. Focus going to
+        // nothing leaves it open: a phone keyboard closed from the search or the box, a tab or app switch.
         const next = e.relatedTarget as Node | null
-        if (!emojiOpen || (next && (form.current?.contains(next) || emojiPanel.current?.contains(next)))) return
-        // Focus gone from the picker to nothing would leave a keyboard on the page itself; it goes back to
-        // the Emoji button. A window losing focus (tab or app switch) and the box losing it (an iPhone's
-        // Done) also blur to nothing, and leave the picker open.
-        if (next) setEmojiOpen(false)
-        else if (document.hasFocus() && emojiPanel.current?.contains(e.target)) closeEmoji(e.target)
+        if (!next) return
+        const away = !form.current?.contains(next) && !emojiPanel.current?.contains(next)
+        if (emojiOpen && away) setEmojiOpen(false)
+        // The GIF search sits in the form's tab order: Tab or Shift+Tab out of it to anything but the box closes it.
+        const leftSearch = gifDialog.current?.contains(e.target) && !gifDialog.current.contains(next) && next !== input.current
+        if (gifOpen && (away || leftSearch)) setGifOpen(false)
       }}
-      // Sent posts take no more emoji: one picked now would not be in the post. The post's own error replaces the picker's.
+      // Sent posts take no more emoji or GIFs: one picked now would not be in the post. The post's own error replaces the picker's.
       onSubmit={() => {
         setEmojiOpen(false)
-        setEmojiFailedToLoad(false)
+        setGifOpen(false)
+        setPickerFailed(null)
       }}
     >
       {replyTo ? <input type="hidden" name="replyTo" value={replyTo} /> : null}
@@ -377,6 +438,8 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
       {story ? <input type="hidden" name="storyOf" value={story.id} /> : null}
       {!replyTo && replyControls ? <input type="hidden" name="replyAudience" value={replyAudience} /> : null}
       {pollOpen ? <input type="hidden" name="poll" value="1" /> : null}
+      {gif ? <input type="hidden" name="gifProvider" value={gif.provider.id} /> : null}
+      {gif ? <input type="hidden" name="gif" value={gif.id} /> : null}
       {markable && sensitive ? <input type="hidden" name="sensitive" value="1" /> : null}
       {announcing ? <input type="hidden" name="announce" value="1" /> : null}
 
@@ -408,13 +471,13 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
                 const next = e.relatedTarget as Node | null
                 if (next && !form.current?.contains(next) && !emojiPanel.current?.contains(next)) setExpanded(false)
               }}
-              required={images.drafts.length === 0 && !video.draft}
+              required={textRequired}
               disabled={pending}
               value={text}
               onChange={(e) => {
                 setText(e.target.value)
                 setCaret(e.target.selectionStart)
-                setEmojiFailedToLoad(false)
+                setPickerFailed(null)
               }}
               onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
               onKeyDown={onMentionKey}
@@ -488,6 +551,11 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
                   onDescribe={(alt) => images.describe(draft.key, alt)}
                 />
               ))}
+            </ul>
+          ) : null}
+          {gif ? (
+            <ul className="composer-images" aria-label="GIF">
+              <GifRow gif={gif} onRemove={() => setGif(null)} onDescribe={(description) => setGif({ ...gif, description })} />
             </ul>
           ) : null}
           {video.draft ? (
@@ -587,23 +655,63 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               className="icon-btn composer-photo"
               aria-label={`Add images (up to ${MAX_IMAGES})`}
               title="Add images"
-              disabled={images.drafts.length >= MAX_IMAGES || !!video.draft}
+              disabled={images.drafts.length >= MAX_IMAGES || !!video.draft || !offers.pictureFiles}
               onClick={() => choose(IMAGE_TYPES)}
             >
               <ImageIcon size={20} />
               <span className="composer-photo-label">Photo</span>
             </button>
-            <button
-              type="button"
-              className="icon-btn composer-photo"
-              aria-label={`Add a GIF (the post can have up to ${MAX_IMAGES} pictures in all)`}
-              title="Add a GIF"
-              disabled={images.drafts.length >= MAX_IMAGES || !!video.draft}
-              onClick={() => choose(['image/gif'])}
-            >
-              <GifIcon size={20} />
-              <span className="composer-photo-label">GIF</span>
-            </button>
+            <span ref={gifPanel} className="contents">
+              <button
+                ref={gifButton}
+                type="button"
+                className="icon-btn composer-photo"
+                aria-label={offers.gifSearch ? 'Search GIFs' : `Add a GIF (the post can have up to ${MAX_IMAGES} pictures in all)`}
+                aria-haspopup={offers.gifSearch ? 'dialog' : undefined}
+                aria-expanded={offers.gifSearch ? gifOpen : undefined}
+                title={offers.gifSearch ? 'Search for a GIF' : 'Add a GIF'}
+                disabled={pending || images.drafts.length >= MAX_IMAGES || !!video.draft || !offers.pictureFiles}
+                // The press does not move focus off the box.
+                onMouseDown={offers.gifSearch ? (e) => e.preventDefault() : undefined}
+                onPointerDown={gifPressedBy.onPointerDown}
+                onKeyDown={gifPressedBy.onKeyDown}
+                onClick={() => {
+                  const focus = focusOnOpen(gifPressedBy.take())
+                  if (!offers.gifSearch) return choose(['image/gif'])
+                  if (gifOpen) return closeGifSearch()
+                  setPickerFailed(null)
+                  setGifByKeyboard(focus === 'picker')
+                  if (focus === 'box') input.current?.focus({ preventScroll: true })
+                  if (typing) setDismissed(typing.start)
+                  setEmojiOpen(false)
+                  setGifOpen(true)
+                  setExpanded(true)
+                }}
+              >
+                <GifIcon size={20} />
+                <span className="composer-photo-label">GIF</span>
+              </button>
+              {gifOpen && offers.gifSearch && COMPOSER_GIF ? (
+                <PickerBoundary onError={gifFailed}>
+                  <GifPicker
+                    place={pickerPlace}
+                    panel={gifDialog}
+                    provider={COMPOSER_GIF.provider}
+                    apiKey={COMPOSER_GIF.apiKey}
+                    focusSearch={gifByKeyboard}
+                    onPick={(picked, pointer, provider) => {
+                      setGif({ provider, id: picked.id, description: picked.title })
+                      setGifOpen(false)
+                      if (focusOnOpen(pointer) !== 'none') input.current?.focus({ preventScroll: true })
+                    }}
+                    onUpload={() => {
+                      setGifOpen(false)
+                      choose(['image/gif'])
+                    }}
+                  />
+                </PickerBoundary>
+              ) : null}
+            </span>
             {/* One hidden picker for both buttons; each says what it will offer before it opens. */}
             <input
               ref={picker}
@@ -675,23 +783,17 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               disabled={pending}
               // The press does not move focus off the box.
               onMouseDown={(e) => e.preventDefault()}
-              onPointerDown={(e) => {
-                emojiPressedBy.current = e.pointerType
-              }}
-              onKeyDown={() => {
-                emojiPressedBy.current = null
-              }}
+              onPointerDown={emojiPressedBy.onPointerDown}
+              onKeyDown={emojiPressedBy.onKeyDown}
               onClick={() => {
-                const pointer = emojiPressedBy.current
-                emojiPressedBy.current = null
+                const focus = focusOnOpen(emojiPressedBy.take())
                 if (emojiOpen) return closeEmoji()
-                setEmojiFailedToLoad(false)
-                setEmojiByKeyboard(pointer === null)
-                // Keeps the caret with the box when a mouse opens the picker. Not for touch:
-                // focusing the box would open the on-screen keyboard over the picker.
-                if (pointer === 'mouse') input.current?.focus({ preventScroll: true })
+                setPickerFailed(null)
+                setEmojiByKeyboard(focus === 'picker')
+                if (focus === 'box') input.current?.focus({ preventScroll: true })
                 // The list of members to mention gives way to the picker.
                 if (typing) setDismissed(typing.start)
+                setGifOpen(false)
                 setEmojiOpen(true)
                 setExpanded(true)
               }}
@@ -699,7 +801,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
               <SmileIcon size={20} />
               <span className="composer-photo-label">Emoji</span>
             </button>
-            {emojiOpen ? <PickerBoundary onError={emojiFailed}><EmojiPicker anchor={toolbar} clear={writingRow} panel={emojiPanel} focusSearch={emojiByKeyboard} onPick={pickEmoji} onExit={leaveEmoji} /></PickerBoundary> : null}
+            {emojiOpen ? <PickerBoundary onError={emojiFailed}><EmojiPicker place={pickerPlace} panel={emojiPanel} focusSearch={emojiByKeyboard} onPick={pickEmoji} onExit={leaveEmoji} /></PickerBoundary> : null}
           </>
         ) : null}
         {choices?.length ? (
@@ -762,7 +864,7 @@ export function Composer({ handle, avatar, replyTo, replyHandle, replyLabel, rep
         {announcing ? ' Every member of this community will be notified. A community can do this once a day.' : ''}
       </p>
       <p role="alert" className="mt-1 text-sm text-danger empty:hidden">
-        {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : emojiFailedToLoad ? 'Could not load emoji. Try again.' : state.error}
+        {tooMany ? `A post can have up to ${MAX_IMAGES} images. The rest were left out.` : pickerFailed ? `Could not load ${pickerFailed === 'gif' ? 'GIFs' : 'emoji'}. Try again.` : state.error}
       </p>
       {/* An update shows up in the story right above the box, so this is only said aloud. */}
       {story && state.postId ? <p key={state.postedAt} role="status" className="sr-only">Update posted.</p> : null}
@@ -936,6 +1038,38 @@ function DraftRow({
         )}
       </div>
       <button type="button" className="icon-btn -mr-1" aria-label={`Remove ${draft.gif ? 'GIF' : 'image'} ${index + 1}`} onClick={onRemove}>
+        <CloseIcon size={18} />
+      </button>
+    </li>
+  )
+}
+
+/** The GIF picked from a provider: a preview from the provider, its description, and a way to take it off. */
+function GifRow({ gif, onRemove, onDescribe }: { gif: { provider: GifProvider; id: string; description: string }; onRemove: () => void; onDescribe: (description: string) => void }) {
+  const id = useId()
+  const { playing, toggle } = useGif()
+  const media = gif.provider.media(gif.id)
+  return (
+    <li className="composer-image">
+      {/* eslint-disable-next-line @next/next/no-img-element -- the member's pick, loaded from the provider by their browser */}
+      {media ? <img src={gifSource(media, playing)} alt="" className="composer-thumb" referrerPolicy="no-referrer" /> : null}
+      <div className="min-w-0 flex-1">
+        <label htmlFor={id} className="sr-only">Description of GIF</label>
+        <input
+          id={id}
+          name="gifDescription"
+          value={gif.description}
+          onChange={(e) => onDescribe(e.target.value)}
+          maxLength={1000}
+          placeholder="Describe this GIF (optional)"
+          className="field field-sm"
+        />
+        <div className="mt-1 flex items-center gap-2">
+          {media ? <GifToggle playing={playing} onToggle={toggle} className="composer-gif-toggle" /> : null}
+          <p className="gif-attrib">{gif.provider.attribution}</p>
+        </div>
+      </div>
+      <button type="button" className="icon-btn -mr-1" aria-label="Remove GIF" onClick={onRemove}>
         <CloseIcon size={18} />
       </button>
     </li>

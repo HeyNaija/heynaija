@@ -162,6 +162,222 @@ test('a double click on Delete post leaves the question open', async ({ browser 
   await context.close()
 })
 
+/** The middle of the dialog's confirm button, where a second click or tap would land. */
+async function confirmPoint(page: Page) {
+  const box = (await question(page).getByRole('button', { name: 'Delete post' }).boundingBox())!
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+}
+
+test('a double click on Cancel, the scrim or the confirm button answers once and the second click reaches nothing behind', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'dbldeleter', { viewport: { width: 1280, height: 800 } })
+  const behind = `Stays put, ${handle}`
+  const text = `Deleted with a double click, ${handle}`
+  await post(page, behind)
+  await post(page, text)
+  const before = page.url()
+
+  // Behind the dialog is the post's own card, which opens the post when clicked.
+  await askToDelete(page, text)
+  const cancel = (await question(page).getByRole('button', { name: 'Cancel' }).boundingBox())!
+  await page.mouse.dblclick(cancel.x + cancel.width / 2, cancel.y + cancel.height / 2)
+  await expect(question(page)).toBeHidden()
+  await askToDelete(page, text)
+  const sheet = (await question(page).boundingBox())!
+  await page.mouse.dblclick(sheet.x + sheet.width / 2, sheet.y + sheet.height + 30)
+  await expect(question(page)).toBeHidden()
+  await page.waitForTimeout(1_000)
+  expect(page.url()).toBe(before)
+  await expect(page.locator('article', { hasText: text })).toBeVisible()
+
+  await askToDelete(page, text)
+  const point = await confirmPoint(page)
+  await page.mouse.dblclick(point.x, point.y)
+  await expect(question(page)).toBeHidden()
+  await page.waitForTimeout(1_000)
+  expect(page.url()).toBe(before)
+  await expect(page.locator('article', { hasText: text })).toHaveCount(0)
+  await expect(page.locator('article', { hasText: behind })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Post deleted' })).toHaveCount(1)
+  await context.close()
+})
+
+/** Records the presses that reach the page outside the dialog, as `window.behind`. */
+async function recordPressesBehind(page: Page) {
+  await page.evaluate(() => {
+    const seen: string[] = []
+    Object.assign(window, { behind: seen })
+    for (const kind of ['pointerdown', 'mousedown', 'click']) {
+      document.addEventListener(kind, (event) => {
+        if (!(event.target as Element).closest('dialog')) seen.push(kind)
+      })
+    }
+  })
+}
+const pressesBehind = (page: Page) => page.evaluate(() => (window as unknown as { behind: string[] }).behind)
+
+test('no part of the second click of a double click on the confirm button reaches what is behind', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'dbldown', { viewport: { width: 1280, height: 800 } })
+  const text = `Deleted with a double click, ${handle}`
+  await post(page, text)
+  await askToDelete(page, text)
+  await recordPressesBehind(page)
+  const point = await confirmPoint(page)
+  await page.mouse.dblclick(point.x, point.y)
+  await expect(question(page)).toBeHidden()
+  await expect(page.locator('article', { hasText: text })).toHaveCount(0)
+  expect(await pressesBehind(page)).toEqual([])
+  await context.close()
+})
+
+test('a double click straight after confirming with Enter goes through whole', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'enterdbl', { viewport: { width: 1280, height: 800 } })
+  const text = `Deleted with Enter, ${handle}`
+  await post(page, text)
+  await askToDelete(page, text)
+  await recordPressesBehind(page)
+  const heading = (await page.locator('h1').first().boundingBox())!
+  await question(page).getByRole('button', { name: 'Delete post' }).focus()
+  await page.keyboard.press('Enter')
+  await page.mouse.dblclick(heading.x + 4, heading.y + heading.height / 2)
+  await expect(question(page)).toBeHidden()
+  expect((await pressesBehind(page)).filter((kind) => kind === 'click')).toEqual(['click', 'click'])
+  await context.close()
+})
+
+const phone = { viewport: { width: 375, height: 667 }, hasTouch: true, isMobile: true }
+
+/** The middle of where the open question's confirm button covers the phone's Alerts tab. */
+async function confirmOverAlerts(page: Page) {
+  const button = (await question(page).getByRole('button', { name: 'Delete post' }).boundingBox())!
+  const alerts = (await page.getByRole('link', { name: 'Alerts (Notifications)' }).boundingBox())!
+  // The confirm button sits over the Alerts tab, so a stray second tap would open it.
+  const left = Math.max(button.x, alerts.x)
+  const right = Math.min(button.x + button.width, alerts.x + alerts.width)
+  const top = Math.max(button.y, alerts.y)
+  const bottom = Math.min(button.y + button.height, alerts.y + alerts.height)
+  expect(right).toBeGreaterThan(left)
+  expect(bottom).toBeGreaterThan(top)
+  return { x: (left + right) / 2, y: (top + bottom) / 2 }
+}
+
+test('a double tap on the confirm button over the phone tab bar does not open the tab, and a later tap does', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'dbltapper', phone)
+  const text = `Deleted with a double tap, ${handle}`
+  await post(page, text)
+  const before = page.url()
+
+  await askToDelete(page, text)
+  const point = await confirmOverAlerts(page)
+  await page.touchscreen.tap(point.x, point.y)
+  await page.touchscreen.tap(point.x, point.y)
+  await expect(question(page)).toBeHidden()
+  await page.waitForTimeout(1_000)
+  expect(page.url()).toBe(before)
+  await expect(page.locator('article', { hasText: text })).toHaveCount(0)
+  await expect(page.getByRole('status').filter({ hasText: 'Post deleted' })).toHaveCount(1)
+
+  await page.touchscreen.tap(point.x, point.y)
+  await expect(page).toHaveURL(/\/notifications$/)
+  await context.close()
+})
+
+/**
+ * Quick taps as WebKit sends them: a touch pointerdown and the touches, then a
+ * mousedown and mouseup that are plain MouseEvents with no pointer type, and a
+ * click, all counted 1. WebKit's click is a PointerEvent that says 'mouse'; older
+ * Safari's is a plain MouseEvent. `holdLastMs` keeps the finger down on the last tap.
+ */
+async function webkitTaps(page: Page, point: { x: number; y: number }, taps: number, click: 'pointer' | 'plain', holdLastMs = 0) {
+  await page.evaluate(async ({ x, y, taps, click, holdLastMs }) => {
+    const tap = async (holdMs: number) => {
+      const at = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y }
+      const target = document.elementFromPoint(x, y)!
+      const touch = new Touch({ identifier: 1, target, clientX: x, clientY: y })
+      target.dispatchEvent(new PointerEvent('pointerdown', { ...at, pointerType: 'touch', isPrimary: true }))
+      target.dispatchEvent(new TouchEvent('touchstart', { ...at, touches: [touch], targetTouches: [touch], changedTouches: [touch] }))
+      if (holdMs) await new Promise((done) => setTimeout(done, holdMs))
+      target.dispatchEvent(new PointerEvent('pointerup', { ...at, pointerType: 'touch', isPrimary: true }))
+      target.dispatchEvent(new TouchEvent('touchend', { ...at, changedTouches: [touch] }))
+      target.dispatchEvent(new MouseEvent('mousedown', { ...at, detail: 1 }))
+      target.dispatchEvent(new MouseEvent('mouseup', { ...at, detail: 1 }))
+      target.dispatchEvent(click === 'pointer' ? new PointerEvent('click', { ...at, detail: 1, pointerType: 'mouse' }) : new MouseEvent('click', { ...at, detail: 1 }))
+    }
+    for (let n = 0; n < taps; n++) {
+      if (n) await new Promise((done) => setTimeout(done, 120))
+      await tap(n === taps - 1 ? holdLastMs : 0)
+    }
+  }, { ...point, taps, click, holdLastMs })
+}
+
+for (const click of ['pointer', 'plain'] as const) {
+  test(`a double tap as WebKit sends it (click a ${click === 'pointer' ? "PointerEvent saying 'mouse'" : 'plain MouseEvent'}, every mouse event counted 1) reaches nothing behind, and a later tap does`, async ({ browser }) => {
+    const { page, handle, context } = await newMember(browser, 'webkittapper', phone)
+    const text = `Deleted with a WebKit double tap, ${handle}`
+    await post(page, text)
+    const before = page.url()
+
+    await askToDelete(page, text)
+    const point = await confirmOverAlerts(page)
+    await recordPressesBehind(page)
+    await webkitTaps(page, point, 2, click)
+    await expect(question(page)).toBeHidden()
+    await expect(page.locator('article', { hasText: text })).toHaveCount(0)
+    await page.waitForTimeout(1_000)
+    expect(await pressesBehind(page)).toEqual([])
+    expect(page.url()).toBe(before)
+    await expect(page.getByRole('status').filter({ hasText: 'Post deleted' })).toHaveCount(1)
+
+    await webkitTaps(page, point, 1, click)
+    await expect(page).toHaveURL(/\/notifications$/)
+    await context.close()
+  })
+}
+
+test('a second tap that goes down in time but is held past the window reaches nothing behind, and a later tap does', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'longtapper', phone)
+  const text = `Deleted with a long second tap, ${handle}`
+  await post(page, text)
+  const before = page.url()
+
+  await askToDelete(page, text)
+  const point = await confirmOverAlerts(page)
+  await recordPressesBehind(page)
+  // The second tap goes down 120 ms after the first and is lifted 700 ms later.
+  await webkitTaps(page, point, 2, 'pointer', 700)
+  await expect(question(page)).toBeHidden()
+  await expect(page.locator('article', { hasText: text })).toHaveCount(0)
+  await page.waitForTimeout(1_000)
+  expect(await pressesBehind(page)).toEqual([])
+  expect(page.url()).toBe(before)
+
+  await webkitTaps(page, point, 1, 'pointer')
+  await expect(page).toHaveURL(/\/notifications$/)
+  await context.close()
+})
+
+test('a second click that goes down in time but is let go of late reaches nothing behind', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'slowclicker', { viewport: { width: 1280, height: 800 } })
+  const text = `Deleted with a slow double click, ${handle}`
+  await post(page, text)
+  const before = page.url()
+
+  await askToDelete(page, text)
+  await recordPressesBehind(page)
+  const point = await confirmPoint(page)
+  await page.mouse.move(point.x, point.y)
+  await page.mouse.down()
+  await page.mouse.up()
+  await page.mouse.down({ clickCount: 2 })
+  await page.waitForTimeout(700)
+  await page.mouse.up({ clickCount: 2 })
+  await expect(question(page)).toBeHidden()
+  await expect(page.locator('article', { hasText: text })).toHaveCount(0)
+  await page.waitForTimeout(1_000)
+  expect(await pressesBehind(page)).toEqual([])
+  expect(page.url()).toBe(before)
+  await context.close()
+})
+
 test('on a touch screen, dismissing one toast lets the others go by themselves @mobile', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'tapper')
   test.skip(!test.info().project.use.hasTouch, 'a touch screen only')

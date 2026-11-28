@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { freeSpan, placeList, upperEdge } from '../lib/placement.ts'
+import { boxCap, freeSpan, placeList, roomBeside } from '../lib/placement.ts'
 
 const view = { top: 0, bottom: 667 }
 
@@ -44,24 +44,27 @@ test('a list held to the side it opened on keeps that side as its content shrink
   assert.deepEqual(placeList({ anchor, span, gap: 4, tallest: 360, content: 500, side: 'down' }), { down: true, maxHeight: 200 })
 })
 
-test('a list goes up from above the box it writes into while that leaves room, on either side', () => {
-  const span = { top: 72, bottom: 596 }
-  // The box's top in view, room above it.
-  assert.equal(upperEdge({ anchor: { top: 500, bottom: 540 }, clear: 300, span, gap: 4, least: 168 }), 300)
-  // The box's top scrolled out of view, but room below the toolbar: the list goes down, clear of the box.
-  const edge = upperEdge({ anchor: { top: 200, bottom: 240 }, clear: -300, span, gap: 4, least: 168 })
-  assert.equal(edge, -300)
-  assert.deepEqual(placeList({ anchor: { top: edge, bottom: 240 }, span, gap: 4, tallest: 360, content: 500 }), { down: true, maxHeight: 352 })
+test('a list held to a side that no longer leaves room for it (the composer grew under it) chooses again', () => {
+  const span = { top: 72, bottom: 796 }
+  // Opened below; a poll opened above the toolbar and pushed it down to 700: 92px are left below.
+  const anchor = { top: 300, bottom: 700 }
+  assert.deepEqual(placeList({ anchor, span, gap: 4, tallest: 360, content: 500, side: 'down', least: 168 }), { down: false, maxHeight: 224 })
+  assert.equal(placeList({ anchor: { top: 300, bottom: 500 }, span, gap: 4, tallest: 360, content: 500, side: 'down', least: 168 }).down, true)
 })
 
-test('a box taller than the screen, its top scrolled away and its toolbar at the bottom: the list goes up from the toolbar, full height', () => {
-  const span = { top: 72, bottom: 596 }
-  const anchor = { top: 560, bottom: 583 }
-  const edge = upperEdge({ anchor, clear: -200, span, gap: 4, least: 168 })
-  assert.equal(edge, 560)
-  assert.deepEqual(placeList({ anchor: { top: edge, bottom: anchor.bottom }, span, gap: 4, tallest: 360, content: 500 }), { down: false, maxHeight: 360 })
+test('the room beside a part is the larger side less the gap', () => {
+  assert.equal(roomBeside({ top: 100, bottom: 400 }, { top: 72, bottom: 596 }, 4), 192)
+  assert.equal(roomBeside({ top: 300, bottom: 400 }, { top: 72, bottom: 596 }, 4), 224)
 })
 
-test('with nothing to keep clear the list goes up from its anchor', () => {
-  assert.equal(upperEdge({ anchor: { top: 400, bottom: 440 }, span: { top: 72, bottom: 596 }, gap: 4, least: 168 }), 400)
+test('a box that leaves a list too little room is capped by what is missing, measured at its smallest', () => {
+  // 150px beside the box at 265px, 168 needed; at 40px it would leave 375: it keeps 247.
+  assert.equal(boxCap({ least: 168, height: 265, smallest: 40, room: 150, roomAtSmallest: 375 }), 247)
+  // The phone reply bar grows upward: the room is gained above, and the same sum holds.
+  assert.equal(boxCap({ least: 168, height: 120, smallest: 40, room: 100, roomAtSmallest: 180 }), 52)
+})
+
+test('a box with room enough is not capped, and one that cannot make room even at its smallest says so', () => {
+  assert.equal(boxCap({ least: 168, height: 265, smallest: 40, room: 168, roomAtSmallest: 393 }), null)
+  assert.equal(boxCap({ least: 168, height: 200, smallest: 40, room: 3, roomAtSmallest: 114 }), undefined)
 })

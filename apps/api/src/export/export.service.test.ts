@@ -96,6 +96,16 @@ test('another member’s posts and reports about the member stay out', async () 
   assert.ok(!JSON.stringify(data).includes('bayo'))
 })
 
+test('a post with a GIF exports its provider, id and description; one without says null', async () => {
+  const withGif = await postsService.create(ada, '', { gif: { provider: 'giphy', id: 'danceHall1', description: 'a man dancing' } })
+  const plain = await postsService.create(ada, 'plain')
+  const data = (await service.export(ada, null))!
+  assert.deepEqual(data.posts.map((p) => [p.id, p.gif]), [
+    [withGif.id, { provider: 'giphy', id: 'danceHall1', description: 'a man dancing' }],
+    [plain.id, null],
+  ])
+})
+
 test('each post lists the members it mentions, once each, by the handle they have now', async () => {
   const { id } = await postsService.create(ada, 'thanks @bayo, @chi and @bayo again')
   const plain = await postsService.create(ada, 'no one in particular')

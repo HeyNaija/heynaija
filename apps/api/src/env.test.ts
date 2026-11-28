@@ -231,3 +231,27 @@ test('the Apple key is its .p8 file in base64, with its team and key IDs, all th
   assert.throws(() => loadEnv({ ...base, ...apple, APPLE_PRIVATE_KEY: p8 }), /\.p8/)
   assert.throws(() => loadEnv({ ...base, ...apple, APPLE_KEY_ID: 'key' }), /APPLE_KEY_ID/)
 })
+
+test('GIF_PROVIDERS names the providers that take new GIFs: GIPHY when unset or empty, and an unknown name stops the API', () => {
+  assert.deepEqual(loadEnv(base).GIF_PROVIDERS, ['giphy'])
+  assert.deepEqual(loadEnv({ ...base, GIF_PROVIDERS: '' }).GIF_PROVIDERS, ['giphy'])
+  assert.deepEqual(loadEnv({ ...base, GIF_PROVIDERS: ' giphy , giphy ' }).GIF_PROVIDERS, ['giphy'])
+  assert.deepEqual(loadEnv({ ...base, GIF_PROVIDERS: 'none' }).GIF_PROVIDERS, [])
+  // A list with no names in it is empty, not `none`: only `none` turns GIFs off.
+  for (const blank of [' ', ',', ' , ,', '\t']) assert.deepEqual(loadEnv({ ...base, GIF_PROVIDERS: blank }).GIF_PROVIDERS, ['giphy'])
+  assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: 'giphy,klipy' }), /klipy is not a GIF provider HeyNaija knows/)
+  assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: 'tenor' }), /tenor is not a GIF provider HeyNaija knows/)
+})
+
+test('GIF_PROVIDERS with none beside a provider stops the API and says none goes alone', () => {
+  for (const mixed of ['none,giphy', 'giphy, none', 'none,none,giphy']) {
+    assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: mixed }), /none turns GIFs off, so it cannot be listed with providers/)
+  }
+  assert.deepEqual(loadEnv({ ...base, GIF_PROVIDERS: 'none, none' }).GIF_PROVIDERS, [])
+})
+
+test('GIF_PROVIDERS refuses the names every object inherits', () => {
+  for (const name of ['toString', '__proto__', 'constructor', 'hasOwnProperty', 'valueOf']) {
+    assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: name }), new RegExp(`${name} is not a GIF provider HeyNaija knows`))
+  }
+})

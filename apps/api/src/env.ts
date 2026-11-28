@@ -1,5 +1,6 @@
 import { createPrivateKey } from 'node:crypto'
 import { z } from 'zod'
+import { gifProvidersSetting } from './gifs/registry.js'
 import { videoEnvShape } from './video/video-config.js'
 
 /**
@@ -275,6 +276,9 @@ const schema = z.object({
   // Who is emailed when Keke reaches its cap. Without it, SAFETY_ALERT_EMAIL; without
   // either it is only logged. Needs the SMTP settings above.
   KEKE_ALERT_EMAIL: optional(z.email()),
+  // Which GIF providers new posts may name (docs/deployment/gifs.md): comma-separated, or
+  // `none`. Unset or empty is giphy. GIFs already posted keep showing whatever this says.
+  GIF_PROVIDERS: gifProvidersSetting,
   // Lets browsers subscribe with an http://127.0.0.1 address, for the end-to-end
   // tests' stand-in push service. Only allowed while WEB_PUBLIC_URL is on this machine.
   PUSH_ALLOW_LOOPBACK: z

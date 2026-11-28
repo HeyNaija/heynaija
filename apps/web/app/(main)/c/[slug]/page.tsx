@@ -154,6 +154,7 @@ async function CommunityView({ params, searchParams }: Props) {
           community={community.slug}
           announcements={community.viewerCanAnnounce ? { nextAt: community.nextAnnouncementAt ?? null } : null}
           polls={viewer.me.features?.polls ?? false}
+          gifs={viewer.me.features?.giphyGifs ?? false}
           replyControls={viewer.me.features?.replyControls ?? false}
           replyAudiences={viewer.me.replyAudiences}
           videoLimits={viewer.me.videoLimits ?? null}
