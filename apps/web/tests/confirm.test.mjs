@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { confirmCopy, confirmStep, continuesPress, pressedWith, wrapFocus } from '../lib/confirm.ts'
+import { confirmCopy, confirmStep, continuesPress, pressedWith, restOfHeldPress, wrapFocus } from '../lib/confirm.ts'
 
 test('a question and its consequence become the title and the message', () => {
   assert.deepEqual(confirmCopy('Delete this post? This cannot be undone.'), {
@@ -128,4 +128,18 @@ test('the pointer that closed the dialog is the one its pointerdown named, since
   assert.equal(pressedWith('pen', ''), 'pen')
   assert.equal(pressedWith('', 'mouse'), 'mouse')
   assert.equal(pressedWith('', ''), '')
+})
+
+const heldAt = { x: 180, y: 620, liftedAt: null }
+
+test('a follow-up press held past the window is stopped whole, near where it went down, while held and just after', () => {
+  assert.equal(restOfHeldPress(heldAt, { x: 182, y: 618, at: 1_700, detail: 1 }), true)
+  assert.equal(restOfHeldPress(heldAt, { x: 180, y: 620, at: 9_000, detail: 2 }), true)
+  assert.equal(restOfHeldPress({ ...heldAt, liftedAt: 1_600 }, { x: 182, y: 618, at: 1_620, detail: 1 }), true)
+})
+
+test('a held press stops nothing far away, from the keyboard, or long after it was lifted', () => {
+  assert.equal(restOfHeldPress(heldAt, { x: 40, y: 620, at: 1_700, detail: 1 }), false)
+  assert.equal(restOfHeldPress(heldAt, { x: 180, y: 620, at: 1_700, detail: 0 }), false)
+  assert.equal(restOfHeldPress({ ...heldAt, liftedAt: 1_600 }, { x: 180, y: 620, at: 2_200, detail: 1 }), false)
 })

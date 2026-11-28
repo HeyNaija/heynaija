@@ -285,16 +285,17 @@ test('a double tap on the confirm button over the phone tab bar does not open th
  * Quick taps as WebKit sends them: a touch pointerdown and the touches, then a
  * mousedown and mouseup that are plain MouseEvents with no pointer type, and a
  * click, all counted 1. WebKit's click is a PointerEvent that says 'mouse'; older
- * Safari's is a plain MouseEvent.
+ * Safari's is a plain MouseEvent. `holdLastMs` keeps the finger down on the last tap.
  */
-async function webkitTaps(page: Page, point: { x: number; y: number }, taps: number, click: 'pointer' | 'plain') {
-  await page.evaluate(async ({ x, y, taps, click }) => {
-    const tap = () => {
+async function webkitTaps(page: Page, point: { x: number; y: number }, taps: number, click: 'pointer' | 'plain', holdLastMs = 0) {
+  await page.evaluate(async ({ x, y, taps, click, holdLastMs }) => {
+    const tap = async (holdMs: number) => {
       const at = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y }
       const target = document.elementFromPoint(x, y)!
       const touch = new Touch({ identifier: 1, target, clientX: x, clientY: y })
       target.dispatchEvent(new PointerEvent('pointerdown', { ...at, pointerType: 'touch', isPrimary: true }))
       target.dispatchEvent(new TouchEvent('touchstart', { ...at, touches: [touch], targetTouches: [touch], changedTouches: [touch] }))
+      if (holdMs) await new Promise((done) => setTimeout(done, holdMs))
       target.dispatchEvent(new PointerEvent('pointerup', { ...at, pointerType: 'touch', isPrimary: true }))
       target.dispatchEvent(new TouchEvent('touchend', { ...at, changedTouches: [touch] }))
       target.dispatchEvent(new MouseEvent('mousedown', { ...at, detail: 1 }))
@@ -303,9 +304,9 @@ async function webkitTaps(page: Page, point: { x: number; y: number }, taps: num
     }
     for (let n = 0; n < taps; n++) {
       if (n) await new Promise((done) => setTimeout(done, 120))
-      tap()
+      await tap(n === taps - 1 ? holdLastMs : 0)
     }
-  }, { ...point, taps, click })
+  }, { ...point, taps, click, holdLastMs })
 }
 
 for (const click of ['pointer', 'plain'] as const) {
@@ -331,6 +332,51 @@ for (const click of ['pointer', 'plain'] as const) {
     await context.close()
   })
 }
+
+test('a second tap that goes down in time but is held past the window reaches nothing behind, and a later tap does', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'longtapper', phone)
+  const text = `Deleted with a long second tap, ${handle}`
+  await post(page, text)
+  const before = page.url()
+
+  await askToDelete(page, text)
+  const point = await confirmOverAlerts(page)
+  await recordPressesBehind(page)
+  // The second tap goes down 120 ms after the first and is lifted 700 ms later.
+  await webkitTaps(page, point, 2, 'pointer', 700)
+  await expect(question(page)).toBeHidden()
+  await expect(page.locator('article', { hasText: text })).toHaveCount(0)
+  await page.waitForTimeout(1_000)
+  expect(await pressesBehind(page)).toEqual([])
+  expect(page.url()).toBe(before)
+
+  await webkitTaps(page, point, 1, 'pointer')
+  await expect(page).toHaveURL(/\/notifications$/)
+  await context.close()
+})
+
+test('a second click that goes down in time but is let go of late reaches nothing behind', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'slowclicker', { viewport: { width: 1280, height: 800 } })
+  const text = `Deleted with a slow double click, ${handle}`
+  await post(page, text)
+  const before = page.url()
+
+  await askToDelete(page, text)
+  await recordPressesBehind(page)
+  const point = await confirmPoint(page)
+  await page.mouse.move(point.x, point.y)
+  await page.mouse.down()
+  await page.mouse.up()
+  await page.mouse.down({ clickCount: 2 })
+  await page.waitForTimeout(700)
+  await page.mouse.up({ clickCount: 2 })
+  await expect(question(page)).toBeHidden()
+  await expect(page.locator('article', { hasText: text })).toHaveCount(0)
+  await page.waitForTimeout(1_000)
+  expect(await pressesBehind(page)).toEqual([])
+  expect(page.url()).toBe(before)
+  await context.close()
+})
 
 test('on a touch screen, dismissing one toast lets the others go by themselves @mobile', async ({ browser }) => {
   const { page, handle, context } = await newMember(browser, 'tapper')
