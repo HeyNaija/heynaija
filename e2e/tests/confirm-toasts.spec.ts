@@ -244,17 +244,10 @@ test('a double click straight after confirming with Enter goes through whole', a
   await context.close()
 })
 
-test('a double tap on the confirm button over the phone tab bar does not open the tab, and a later tap does', async ({ browser }) => {
-  const { page, handle, context } = await newMember(browser, 'dbltapper', {
-    viewport: { width: 375, height: 667 },
-    hasTouch: true,
-    isMobile: true,
-  })
-  const text = `Deleted with a double tap, ${handle}`
-  await post(page, text)
-  const before = page.url()
+const phone = { viewport: { width: 375, height: 667 }, hasTouch: true, isMobile: true }
 
-  await askToDelete(page, text)
+/** The middle of where the open question's confirm button covers the phone's Alerts tab. */
+async function confirmOverAlerts(page: Page) {
   const button = (await question(page).getByRole('button', { name: 'Delete post' }).boundingBox())!
   const alerts = (await page.getByRole('link', { name: 'Alerts (Notifications)' }).boundingBox())!
   // The confirm button sits over the Alerts tab, so a stray second tap would open it.
@@ -264,8 +257,17 @@ test('a double tap on the confirm button over the phone tab bar does not open th
   const bottom = Math.min(button.y + button.height, alerts.y + alerts.height)
   expect(right).toBeGreaterThan(left)
   expect(bottom).toBeGreaterThan(top)
-  const point = { x: (left + right) / 2, y: (top + bottom) / 2 }
+  return { x: (left + right) / 2, y: (top + bottom) / 2 }
+}
 
+test('a double tap on the confirm button over the phone tab bar does not open the tab, and a later tap does', async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'dbltapper', phone)
+  const text = `Deleted with a double tap, ${handle}`
+  await post(page, text)
+  const before = page.url()
+
+  await askToDelete(page, text)
+  const point = await confirmOverAlerts(page)
   await page.touchscreen.tap(point.x, point.y)
   await page.touchscreen.tap(point.x, point.y)
   await expect(question(page)).toBeHidden()
@@ -275,6 +277,52 @@ test('a double tap on the confirm button over the phone tab bar does not open th
   await expect(page.getByRole('status').filter({ hasText: 'Post deleted' })).toHaveCount(1)
 
   await page.touchscreen.tap(point.x, point.y)
+  await expect(page).toHaveURL(/\/notifications$/)
+  await context.close()
+})
+
+/**
+ * Quick taps as iPhone Safari sends them: a touch pointerdown and the touches,
+ * then a mousedown, mouseup and click that are plain MouseEvents with no pointer
+ * type, each counted 1.
+ */
+async function safariTaps(page: Page, point: { x: number; y: number }, taps: number) {
+  await page.evaluate(async ({ x, y, taps }) => {
+    const tap = () => {
+      const at = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y }
+      const target = document.elementFromPoint(x, y)!
+      const touch = new Touch({ identifier: 1, target, clientX: x, clientY: y })
+      target.dispatchEvent(new PointerEvent('pointerdown', { ...at, pointerType: 'touch', isPrimary: true }))
+      target.dispatchEvent(new TouchEvent('touchstart', { ...at, touches: [touch], targetTouches: [touch], changedTouches: [touch] }))
+      target.dispatchEvent(new PointerEvent('pointerup', { ...at, pointerType: 'touch', isPrimary: true }))
+      target.dispatchEvent(new TouchEvent('touchend', { ...at, changedTouches: [touch] }))
+      for (const kind of ['mousedown', 'mouseup', 'click']) target.dispatchEvent(new MouseEvent(kind, { ...at, detail: 1 }))
+    }
+    for (let n = 0; n < taps; n++) {
+      if (n) await new Promise((done) => setTimeout(done, 120))
+      tap()
+    }
+  }, { ...point, taps })
+}
+
+test("a double tap as iPhone Safari sends it, with the taps' mouse events uncounted, reaches nothing behind, and a later tap does", async ({ browser }) => {
+  const { page, handle, context } = await newMember(browser, 'safaritapper', phone)
+  const text = `Deleted with a Safari double tap, ${handle}`
+  await post(page, text)
+  const before = page.url()
+
+  await askToDelete(page, text)
+  const point = await confirmOverAlerts(page)
+  await recordPressesBehind(page)
+  await safariTaps(page, point, 2)
+  await expect(question(page)).toBeHidden()
+  await expect(page.locator('article', { hasText: text })).toHaveCount(0)
+  await page.waitForTimeout(1_000)
+  expect(await pressesBehind(page)).toEqual([])
+  expect(page.url()).toBe(before)
+  await expect(page.getByRole('status').filter({ hasText: 'Post deleted' })).toHaveCount(1)
+
+  await safariTaps(page, point, 1)
   await expect(page).toHaveURL(/\/notifications$/)
   await context.close()
 })

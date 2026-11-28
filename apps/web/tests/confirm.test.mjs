@@ -71,7 +71,7 @@ test('a question mark inside a name does not end the question', () => {
   })
 })
 
-const closedAt = { x: 700, y: 430, at: 1_000 }
+const closedAt = { x: 700, y: 430, at: 1_000, pointerType: 'mouse' }
 
 test('the second click of a double click that closed the dialog is part of the same press', () => {
   assert.equal(continuesPress(closedAt, { x: 700, y: 430, at: 1_150, detail: 2, pointerType: 'mouse' }), true)
@@ -102,4 +102,21 @@ test('a tap somewhere else goes through at once', () => {
 test('a deliberate press 600ms later goes through', () => {
   assert.equal(continuesPress(closedAt, { x: 700, y: 430, at: 1_600, detail: 1, pointerType: 'touch' }), false)
   assert.equal(continuesPress(closedAt, { x: 700, y: 430, at: 1_600, detail: 2, pointerType: 'mouse' }), false)
+})
+
+const tappedAt = { x: 180, y: 620, at: 1_000, pointerType: 'touch' }
+
+test("after a tap closed it, the next tap's mousedown and click, which Safari sends uncounted and with no pointer type, are the same press", () => {
+  assert.equal(continuesPress(tappedAt, { x: 182, y: 618, at: 1_180, detail: 1, pointerType: '' }), true)
+  assert.equal(continuesPress({ ...tappedAt, pointerType: 'pen' }, { x: 180, y: 620, at: 1_180, detail: 1, pointerType: '' }), true)
+})
+
+test('after a tap closed it, an uncounted mouse event somewhere else, later, or from the keyboard goes through', () => {
+  assert.equal(continuesPress(tappedAt, { x: 40, y: 620, at: 1_180, detail: 1, pointerType: '' }), false)
+  assert.equal(continuesPress(tappedAt, { x: 180, y: 620, at: 1_600, detail: 1, pointerType: '' }), false)
+  assert.equal(continuesPress(tappedAt, { x: 180, y: 620, at: 1_100, detail: 0, pointerType: '' }), false)
+})
+
+test('after a mouse click closed it, a click with no pointer type is not taken for a tap', () => {
+  assert.equal(continuesPress(closedAt, { x: 700, y: 430, at: 1_150, detail: 1, pointerType: '' }), false)
 })
