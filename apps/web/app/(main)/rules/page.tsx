@@ -10,42 +10,49 @@ export default function RulesPage() {
       eyebrow="How we treat each other"
       title="HeyNaija rules"
       summary="HeyNaija is for real conversations between Nigerians, at home and abroad. These rules apply everywhere on the site. Every post is public, so write as you would in a town square."
-      updated="8 November 2026"
+      updated="28 November 2026"
+      draft={false}
       sections={[
         {
           id: 'rules',
           title: 'The rules',
           body: (
-            <ol>
-              <li>
-                <strong>Be yourself.</strong> One account per person. Do not pretend to be someone else, or
-                to speak for an organisation you do not represent.
-              </li>
-              <li>
-                <strong>No harassment or bullying.</strong> No threats, no targeting or piling on a person,
-                and no sharing someone’s private details (phone number, address, workplace) without their
-                consent.
-              </li>
-              <li>
-                <strong>No hate.</strong> Do not attack people for their ethnic group, tribe, religion,
-                gender, sexuality, disability, or where they come from. Disagree with ideas, not with who
-                people are.
-              </li>
-              <li>
-                <strong>No spam or scams.</strong> No repeated promotion, fake giveaways, schemes to take
-                people’s money, or buying and selling followers or accounts.
-              </li>
-              <li>
-                <strong>Nothing illegal.</strong> No calls to violence, no selling illegal goods or
-                services, and nothing else that breaks Nigerian law.
-              </li>
-              <li>
-                <strong>Never any sexual content involving children.</strong> It is removed at once, the
-                account is suspended without warning, and it is reported to the authorities. Images are
-                checked against lists of known abuse material. Our{' '}
-                <Link href="/child-safety">child safety standards</Link> say more.
-              </li>
-            </ol>
+            <>
+              <p>
+                <strong>HeyNaija has no tolerance for objectionable content or abusive users.</strong> Posts that break
+                these rules are removed, and the accounts behind them are suspended.
+              </p>
+              <ol>
+                <li>
+                  <strong>Be yourself.</strong> One account per person. Do not pretend to be someone else, or
+                  to speak for an organisation you do not represent.
+                </li>
+                <li>
+                  <strong>No harassment or bullying.</strong> No threats, no targeting or piling on a person,
+                  and no sharing someone’s private details (phone number, address, workplace) without their
+                  consent.
+                </li>
+                <li>
+                  <strong>No hate.</strong> Do not attack people for their ethnic group, tribe, religion,
+                  gender, sexuality, disability, or where they come from. Disagree with ideas, not with who
+                  people are.
+                </li>
+                <li>
+                  <strong>No spam or scams.</strong> No repeated promotion, fake giveaways, schemes to take
+                  people’s money, or buying and selling followers or accounts.
+                </li>
+                <li>
+                  <strong>Nothing illegal.</strong> No calls to violence, no selling illegal goods or
+                  services, and nothing else that breaks Nigerian law.
+                </li>
+                <li>
+                  <strong>Never any sexual content involving children.</strong> It is removed at once, the
+                  account is suspended without warning, and it is reported to the authorities. Images are
+                  checked against lists of known abuse material. Our{' '}
+                  <Link href="/child-safety">child safety standards</Link> say more.
+                </li>
+              </ol>
+            </>
           ),
         },
         {

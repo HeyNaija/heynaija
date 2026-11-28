@@ -10,7 +10,7 @@ export default function TermsPage() {
       eyebrow="Using HeyNaija"
       title="Terms of use"
       summary="The agreement between you and HeyNaija’s founders when you use HeyNaija: who can use it, what you post and what we may do with it, how accounts end, and the limits of what we promise. It goes with the rules and the privacy policy."
-      updated="8 November 2026"
+      updated="28 November 2026"
       draft={false}
       sections={[
         {
@@ -27,6 +27,10 @@ export default function TermsPage() {
                 <Link href="/rules">rules</Link>, which say how members treat each other and what moderators do, and to
                 the way the <Link href="/privacy">privacy policy</Link> says we handle your data. If you do not agree,
                 do not use HeyNaija.
+              </p>
+              <p>
+                In the HeyNaija apps, these terms are the end user licence agreement (EULA). You agree to them, and to
+                the rules, when you sign in or join.
               </p>
             </>
           ),
@@ -50,7 +54,7 @@ export default function TermsPage() {
           title: 'Your account',
           body: (
             <p>
-              You sign in with a code we email you, or with Google. Whoever controls your email account can sign in as
+              You sign in with a code we email you, or with Google or Apple. Whoever controls your email account can sign in as
               you, so keep it safe. You are responsible for what is done from your account. If you think someone else
               has used it, write to <ContactEmail />.
             </p>
@@ -80,12 +84,23 @@ export default function TermsPage() {
           id: 'moderation',
           title: 'The rules and moderation',
           body: (
-            <p>
-              Follow the <Link href="/rules">rules</Link> and the law. Moderators may mark posts as sensitive, remove
-              posts, photos, names and bios, and suspend accounts that break them, as the rules describe, and you can
-              appeal. We also remove what the law requires us to, and report sexual content involving children to the
-              authorities.
-            </p>
+            <>
+              <p>
+                <strong>HeyNaija has no tolerance for objectionable content or abusive users.</strong> That means
+                harassment, hate, threats, scams, sexual content involving children, and anything else the{' '}
+                <Link href="/rules">rules</Link> forbid. Posts like that are removed. Accounts that post them, or that
+                abuse other members, are suspended.
+              </p>
+              <p>
+                You can report any post or account from its menu, and block anyone. Moderators look at every report.
+              </p>
+              <p>
+                Follow the <Link href="/rules">rules</Link> and the law. Moderators may mark posts as sensitive, remove
+                posts, photos, names and bios, and suspend accounts that break them, as the rules describe, and you can
+                appeal. We also remove what the law requires us to, and report sexual content involving children to the
+                authorities.
+              </p>
+            </>
           ),
         },
         {
