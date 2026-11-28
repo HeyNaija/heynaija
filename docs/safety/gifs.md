@@ -21,7 +21,8 @@
   every request, trending included) and to show a GIF (their IP address, the GIF asked for).
   Readers' browsers do the same for every post with a GIF, without a referrer. A reader
   saving data gets a tap-to-load placeholder first. Every GIF has Pause and Play, and one
-  who asks for less motion starts on the first frame. This differs from link previews, which
+  who asks for less motion starts on the first frame; for them the search results and the
+  GIF picked in the composer are first frames too. This differs from link previews, which
   our server fetches so readers' browsers never contact the linked site (ADR 0008).
 - **Moderation.** The report queue (site-wide and community moderators alike) shows a
   reported GIF, loaded from its provider, with its description and the label "GIF from

@@ -4,6 +4,7 @@ import { type RefObject, useCallback, useEffect, useId, useRef, useState } from 
 import type { GifHit, GifProvider, GifSearch } from '@/lib/gif/types'
 import { type PickerPlace, usePickerPlacement } from './use-fixed-placement'
 import { usePressedBy } from './use-pressed-by'
+import { useReducedMotion } from './use-gif'
 
 const PAGE = 12
 
@@ -35,6 +36,7 @@ export default function GifPicker({
 }) {
   const id = useId()
   const pressedBy = usePressedBy()
+  const reducedMotion = useReducedMotion()
   const search = useRef<HTMLInputElement>(null)
   const [draft, setDraft] = useState('')
   const [term, setTerm] = useState('')
@@ -174,7 +176,7 @@ export default function GifPicker({
               onClick={() => onPick({ id: gif.id, title: gif.title }, pressedBy.take(), provider)}
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- the provider's own small rendition, loaded by the member's browser */}
-              <img src={gif.src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" />
+              <img src={reducedMotion ? gif.still : gif.src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" />
             </button>
           ))}
         </div>

@@ -28,8 +28,10 @@ import { composerOffers } from '@/lib/composer-offers'
 import { composerContent } from '@/lib/composer-required'
 import { COMPOSER_GIF } from '@/lib/gif/composer'
 import type { GifProvider } from '@/lib/gif/types'
+import { gifSource } from '@/lib/gif/providers'
 import { postedReplyHref } from '@/lib/posted-href'
 import { useOneVideo } from './use-one-video'
+import { GifToggle, useGif } from './use-gif'
 import { VideoPlayer } from './video-player'
 import { graphemes, POST_MAX } from '@/lib/post-length'
 
@@ -1039,11 +1041,12 @@ function DraftRow({
 /** The GIF picked from a provider: a preview from the provider, its description, and a way to take it off. */
 function GifRow({ gif, onRemove, onDescribe }: { gif: { provider: GifProvider; id: string; description: string }; onRemove: () => void; onDescribe: (description: string) => void }) {
   const id = useId()
-  const url = gif.provider.media(gif.id)?.animatedUrl
+  const { playing, toggle } = useGif()
+  const media = gif.provider.media(gif.id)
   return (
     <li className="composer-image">
       {/* eslint-disable-next-line @next/next/no-img-element -- the member's pick, loaded from the provider by their browser */}
-      {url ? <img src={url} alt="" className="composer-thumb" referrerPolicy="no-referrer" /> : null}
+      {media ? <img src={gifSource(media, playing)} alt="" className="composer-thumb" referrerPolicy="no-referrer" /> : null}
       <div className="min-w-0 flex-1">
         <label htmlFor={id} className="sr-only">Description of GIF</label>
         <input
@@ -1055,7 +1058,10 @@ function GifRow({ gif, onRemove, onDescribe }: { gif: { provider: GifProvider; i
           placeholder="Describe this GIF (optional)"
           className="field field-sm"
         />
-        <p className="gif-attrib mt-1">{gif.provider.attribution}</p>
+        <div className="mt-1 flex items-center gap-2">
+          {media ? <GifToggle playing={playing} onToggle={toggle} className="composer-gif-toggle" /> : null}
+          <p className="gif-attrib">{gif.provider.attribution}</p>
+        </div>
       </div>
       <button type="button" className="icon-btn -mr-1" aria-label="Remove GIF" onClick={onRemove}>
         <CloseIcon size={18} />

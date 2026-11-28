@@ -1,8 +1,8 @@
 /** A post's GIF as the API sends it: which provider, its id there, and the author's description. */
 export type GifTag = { provider: string; id: string; alt: string }
 
-/** One result in the search: the provider's id, a title for its label, and a small rendition to show. */
-export type GifHit = { id: string; title: string; src: string }
+/** One result in the search: the provider's id, a title for its label, and a small rendition to show, moving and still. */
+export type GifHit = { id: string; title: string; src: string; still: string }
 
 export type GifPage = { found: GifHit[]; next: number | null }
 

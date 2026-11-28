@@ -379,6 +379,41 @@ test('a GIF from Giphy with no words can be posted', async ({ browser }) => {
   await context.close()
 })
 
+test('a device that asks for less motion sees still GIFs in the search and the picked preview, until Play', async ({ browser }) => {
+  test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, 'needs a web app built with a Giphy key; see the comment above the test before this one')
+  const { page, context } = await newMember(browser, 'gifstill')
+  const id = `e2e${crypto.randomUUID().replaceAll('-', '').slice(0, 20)}`
+  const moving = { url: `https://media1.giphy.com/media/${id}/100w.gif`, width: '100', height: '100' }
+  const still = { url: `https://media1.giphy.com/media/${id}/100w_s.gif`, width: '100', height: '100' }
+  await context.route(/^https:\/\/[a-z0-9.-]*\bgiphy\.com\//, (route) => {
+    const url = new URL(route.request().url())
+    if (url.hostname !== 'api.giphy.com') return route.fulfill({ contentType: 'image/gif', body: gif() })
+    return route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: {
+        data: [{ id, title: 'Still wave', type: 'gif', images: { fixed_width_small: moving, fixed_width: moving, fixed_width_small_still: still, fixed_width_still: still } }],
+        pagination: { total_count: 1, count: 1, offset: 0 },
+        meta: { status: 200, msg: 'OK', response_id: 'e2e' },
+      },
+    })
+  })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'New post' }).click()
+  await page.getByRole('button', { name: 'Search GIFs' }).click()
+  const result = page.getByRole('dialog', { name: 'Search GIFs' }).getByRole('button', { name: 'Still wave' })
+  await expect(result.locator('img')).toHaveAttribute('src', still.url)
+  await result.click()
+
+  const preview = page.locator('#compose .composer-thumb')
+  await expect(preview).toHaveAttribute('src', `https://media1.giphy.com/media/${id}/giphy_s.gif`)
+  await page.locator('#compose').getByRole('button', { name: 'Play GIF' }).click()
+  await expect(preview).toHaveAttribute('src', `https://media1.giphy.com/media/${id}/giphy.webp`)
+  await expect(page.locator('#compose').getByRole('button', { name: 'Pause GIF' })).toBeVisible()
+  await context.close()
+})
+
 test('when the GIF search cannot be downloaded it closes, the draft stays, and the next open tries again', async ({ browser }) => {
   test.skip(!process.env.NEXT_PUBLIC_GIPHY_API_KEY, 'needs a web app built with a Giphy key; see the comment above the test before this one')
   const { page, handle, context } = await newMember(browser, 'gifoffline')

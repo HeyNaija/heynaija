@@ -1895,6 +1895,19 @@ a.notification-row:hover {
   position: static;
   pointer-events: auto;
 }
+.gif-toggle.composer-gif-toggle {
+  position: static;
+  min-height: 44px;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.gif-toggle.composer-gif-toggle:hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
 /* In a clickable post card every link and button is lifted above the card's own link with
    position: relative; a GIF's tile needs these two to stay laid over the picture. */
 .post-card.is-clickable .post-image.is-animated > .post-image-link,

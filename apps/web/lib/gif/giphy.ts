@@ -30,8 +30,9 @@ export const giphy: GifProvider = {
       for (const gif of result.data) {
         const small = gif.images.fixed_width_small ?? gif.images.fixed_width
         const src = (small as { webp?: string; url: string }).webp ?? small.url
+        const still = (gif.images.fixed_width_small_still ?? gif.images.fixed_width_still)?.url ?? mediaUrl(String(gif.id), 'giphy_s.gif')
         // An id that is not letters and digits could not be posted, so it is not offered.
-        if (ID.test(String(gif.id)) && src) found.push({ id: String(gif.id), title: gif.title || 'GIF', src })
+        if (ID.test(String(gif.id)) && src) found.push({ id: String(gif.id), title: gif.title || 'GIF', src, still })
       }
       const { offset: at, count, total_count: total } = result.pagination
       return { found, next: at + count < total ? at + count : null }
