@@ -29,24 +29,30 @@ export function confirmStep(flow: ConfirmFlow, event: ConfirmEvent): ConfirmStep
   return { flow: event === 'confirm' ? 'confirmed' : 'asking', close: true, answer: null }
 }
 
-export type Press = { x: number; y: number; at: number }
+/** A press: where and when, and the pointer it came from ('' when the browser does not say). */
+export type Press = { x: number; y: number; at: number; pointerType: string }
 
 /** How long after the dialog closes the rest of a double click or double tap can still arrive. */
 export const FOLLOW_UP_MS = 500
 const TAP_SLOP_PX = 30
+
+const byTouch = (pointerType: string) => pointerType === 'touch' || pointerType === 'pen'
 
 /**
  * Whether a click that arrives after a press closed the dialog is the rest of that
  * same press (the second click of a double click, the second tap of a double tap),
  * which would otherwise land on whatever the dialog was covering. A mouse says so
  * itself in `detail`, except on pointerdown, which carries no count; that, and a
- * finger or pen, is judged by time and place.
+ * finger or pen, is judged by time and place. Safari sends a tap's mousedown and
+ * click as plain mouse events, with no pointer type and a count of 1, so after a
+ * tap closed the dialog those are judged like the tap.
  */
-export function continuesPress(first: Press, next: Press & { detail: number; pointerType: string }): boolean {
+export function continuesPress(first: Press, next: Press & { detail: number }): boolean {
   if (next.at - first.at > FOLLOW_UP_MS) return false
   if (next.detail > 1) return true
   const uncounted = next.pointerType === 'mouse' && next.detail === 0
-  if (next.pointerType !== 'touch' && next.pointerType !== 'pen' && !uncounted) return false
+  const afterTap = next.pointerType === '' && next.detail > 0 && byTouch(first.pointerType)
+  if (!byTouch(next.pointerType) && !uncounted && !afterTap) return false
   return Math.hypot(next.x - first.x, next.y - first.y) <= TAP_SLOP_PX
 }
 

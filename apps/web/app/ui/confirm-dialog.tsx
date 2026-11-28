@@ -14,12 +14,12 @@ const FOLLOW_UP_EVENTS = ['pointerdown', 'mousedown', 'click', 'dblclick'] as co
  * press goes through. A click from the keyboard (Enter or Space, `detail` 0) has no
  * second press, so it stops nothing.
  */
-function swallowRestOfPress(event: MouseEvent) {
-  const first: Press = { x: event.clientX, y: event.clientY, at: event.timeStamp }
+function swallowRestOfPress(event: MouseEvent, pointerType: string) {
+  const first: Press = { x: event.clientX, y: event.clientY, at: event.timeStamp, pointerType }
   const swallow = (next: Event) => {
     if (!(next instanceof globalThis.MouseEvent)) return
-    const pointerType = next instanceof PointerEvent ? next.pointerType : ''
-    if (!continuesPress(first, { x: next.clientX, y: next.clientY, at: next.timeStamp, detail: next.detail, pointerType })) return
+    const type = next instanceof PointerEvent ? next.pointerType : ''
+    if (!continuesPress(first, { x: next.clientX, y: next.clientY, at: next.timeStamp, detail: next.detail, pointerType: type })) return
     // Cancelling pointerdown would also stop mousedown, whose default (moving focus) is the one to cancel.
     if (next.type !== 'pointerdown') next.preventDefault()
     next.stopImmediatePropagation()
@@ -61,6 +61,8 @@ export function ConfirmDialog({
   const dialog = useRef<HTMLDialogElement>(null)
   const flow = useRef<ConfirmFlow>('asking')
   const scrimPress = useRef(false)
+  // Safari's click is a plain MouseEvent, so the pointer that pressed comes from its pointerdown.
+  const pressedWith = useRef('')
   const id = useId()
 
   // Unmounting closes it; calling close() in cleanup would race Strict Mode.
@@ -72,7 +74,10 @@ export function ConfirmDialog({
     const next = confirmStep(flow.current, event)
     flow.current = next.flow
     if (next.close) {
-      if (press && press.detail > 0) swallowRestOfPress(press)
+      if (press && press.detail > 0) {
+        const own = press.nativeEvent instanceof PointerEvent ? press.nativeEvent.pointerType : ''
+        swallowRestOfPress(press, own || pressedWith.current)
+      }
       dialog.current?.close()
     }
     if (!next.answer) return
@@ -100,7 +105,10 @@ export function ConfirmDialog({
         event.preventDefault()
         controls[to]?.focus()
       }}
-      onPointerDown={(event) => { scrimPress.current = event.target === event.currentTarget }}
+      onPointerDown={(event) => {
+        scrimPress.current = event.target === event.currentTarget
+        pressedWith.current = event.pointerType
+      }}
       onClick={(event) => {
         event.stopPropagation()
         // The second click of a double click on the button that opened it lands on the
