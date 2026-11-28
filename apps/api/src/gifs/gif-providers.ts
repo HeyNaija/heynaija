@@ -11,11 +11,17 @@ const idShape = new RegExp(GIF_ID_PATTERN)
 /** The `gif` of a new post, checked against `providers`: the provider must be one of them and the id must fit its rule. */
 export const gifInputFor = (providers: Record<string, GifProvider>) =>
   z
-    .object({
-      provider: z.string(),
-      id: z.string(),
-      description: z.string().trim().max(ALT_MAX).default(''),
-    })
+    .strictObject(
+      {
+        provider: z.string(),
+        id: z.string(),
+        description: z.string().trim().max(ALT_MAX).default(''),
+      },
+      {
+        error: (issue) =>
+          issue.code === 'unrecognized_keys' ? `a GIF takes provider, id and description, not ${issue.keys.join(', ')}` : undefined,
+      },
+    )
     .superRefine((gif, ctx) => {
       const provider = providerShape.test(gif.provider) && Object.hasOwn(providers, gif.provider) ? providers[gif.provider] : undefined
       if (!provider) return ctx.addIssue({ code: 'custom', path: ['provider'], message: UNKNOWN_GIF_PROVIDER })

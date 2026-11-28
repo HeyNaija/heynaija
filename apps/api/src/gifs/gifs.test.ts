@@ -66,6 +66,12 @@ test('a second provider is one more entry: its own id rule applies to it, and Gi
   assert.deepEqual(issues({ provider: 'giphy', id: 'tg-42' }, both), ['id: a GIPHY id is letters and digits only, up to 32'])
 })
 
+test('a GIF in the read shape, with `alt` for its description, is refused rather than stored without it', () => {
+  const message = 'gif: a GIF takes provider, id and description, not alt'
+  assert.deepEqual(issues({ gif: { provider: 'giphy', id: ID, alt: 'a dancing cat' } }), [message])
+  assert.deepEqual(issues({ gif: { ...giphy(), url: 'https://evil.example/x.gif', width: 1 } }), ['gif: a GIF takes provider, id and description, not url, width'])
+})
+
 test('the old `giphy` field is not read: a body with only it is an empty post', () => {
   assert.deepEqual(issues({ giphy: { id: ID } }), ['text: post is empty'])
 })
@@ -199,6 +205,15 @@ test('with giphyGifs off (production default) a post with a GIF is refused, not 
 
 test('a GIF from a provider not taking new posts is refused, though the flag is on', async () => {
   await assert.rejects(controller('staging', new GifProviders([])).create(req, { gif: giphy() }), refusedWith('GIFs from GIPHY are not available'))
+  assert.equal((await db.select().from(posts)).length, 0)
+})
+
+test('POST with the read shape of a GIF is a 400 naming the key, and nothing is stored', async () => {
+  await assert.rejects(controller('staging').create(req, { gif: { provider: 'giphy', id: ID, alt: 'a dancing cat' } }), (err: unknown) => {
+    assert.ok(err instanceof BadRequestException)
+    assert.match(String((err.getResponse() as { message: unknown }).message), /a GIF takes provider, id and description, not alt/)
+    return true
+  })
   assert.equal((await db.select().from(posts)).length, 0)
 })
 

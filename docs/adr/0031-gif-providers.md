@@ -20,6 +20,10 @@ shipped (migration 0057 was only on the branch), so the shape could still change
 
 **A post's GIF is a provider's name and that provider's id: `gif: { provider, id }`.**
 The media is never stored; readers' browsers load it from the provider, as before.
+A new post sends `gif: { provider, id, description }` and posts read back as
+`gif: { provider, id, alt } | null`. Any other key in a new post's `gif`, `alt` included,
+is a 400 naming it, so a client that sends the read shape is told rather than losing the
+description.
 
 - **Database.** `posts.gif_provider`, `posts.gif_id` and `posts.gif_alt` (the author's
   description), under one check, `posts_gif_check`: provider and id both set or both null,
