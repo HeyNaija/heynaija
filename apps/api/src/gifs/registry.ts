@@ -23,14 +23,19 @@ export const UNKNOWN_GIF_PROVIDER = 'not a GIF provider HeyNaija knows'
 
 export const isGifProviderName = (name: string): name is GifProviderName => Object.hasOwn(GIF_PROVIDERS, name)
 
-/** GIF_PROVIDERS from the environment: a comma-separated list of names, or `none`. Empty or unset is GIPHY. */
+const listedNames = (raw: string) => [...new Set(raw.split(',').map((name) => name.trim()).filter(Boolean))]
+
+/**
+ * GIF_PROVIDERS from the environment: a comma-separated list of names, or `none`. Empty,
+ * unset, or a list with no names in it (`,`, spaces) is GIPHY; only `none` turns GIFs off.
+ */
 export const gifProvidersSetting = z.preprocess(
-  (value) => (value === '' ? undefined : value),
+  (value) => (typeof value === 'string' && !listedNames(value).length ? undefined : value),
   z
     .string()
     .default('giphy')
     .transform((raw, ctx) => {
-      const names = [...new Set(raw.split(',').map((name) => name.trim()).filter(Boolean))]
+      const names = listedNames(raw)
       if (names.length === 1 && names[0] === 'none') return []
       for (const name of names) {
         if (!isGifProviderName(name)) ctx.addIssue({ code: 'custom', message: `${name} is ${UNKNOWN_GIF_PROVIDER}` })

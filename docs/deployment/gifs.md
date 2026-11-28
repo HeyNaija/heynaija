@@ -12,7 +12,7 @@ way, and how a second provider is added: [ADR 0031](../adr/0031-gif-providers.md
 |---|---|---|---|
 | `NEXT_PUBLIC_GIF_PROVIDER` | web, build time | `giphy` | The provider the composer searches. A name the web app does not know offers no search (the "Add a GIF" button adds a GIF file). |
 | `NEXT_PUBLIC_GIPHY_API_KEY` | web, build time | no search | GIPHY's **client** key. |
-| `GIF_PROVIDERS` | API, runtime | `giphy` | Providers new posts may name, comma-separated, or `none`. A name the API does not know stops it at boot. |
+| `GIF_PROVIDERS` | API, runtime | `giphy` | Providers new posts may name, comma-separated, or `none`. A list with no names in it (`,` or spaces) counts as empty, so it is `giphy` too: only `none` turns GIFs off. A name the API does not know stops it at boot. |
 
 GIFs already posted are drawn by the provider named on each post, whatever these say: a
 provider can be switched off for new posts and its old GIFs keep showing. A post naming a

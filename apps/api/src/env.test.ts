@@ -237,6 +237,8 @@ test('GIF_PROVIDERS names the providers that take new GIFs: GIPHY when unset or 
   assert.deepEqual(loadEnv({ ...base, GIF_PROVIDERS: '' }).GIF_PROVIDERS, ['giphy'])
   assert.deepEqual(loadEnv({ ...base, GIF_PROVIDERS: ' giphy , giphy ' }).GIF_PROVIDERS, ['giphy'])
   assert.deepEqual(loadEnv({ ...base, GIF_PROVIDERS: 'none' }).GIF_PROVIDERS, [])
+  // A list with no names in it is empty, not `none`: only `none` turns GIFs off.
+  for (const blank of [' ', ',', ' , ,', '\t']) assert.deepEqual(loadEnv({ ...base, GIF_PROVIDERS: blank }).GIF_PROVIDERS, ['giphy'])
   assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: 'giphy,klipy' }), /klipy is not a GIF provider HeyNaija knows/)
   assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: 'tenor' }), /tenor is not a GIF provider HeyNaija knows/)
 })
