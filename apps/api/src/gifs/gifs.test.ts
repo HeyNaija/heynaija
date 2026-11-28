@@ -11,6 +11,7 @@ import { db, migrate, pool, reset } from '../test-db.js'
 import { PostsController } from '../posts/posts.controller.js'
 import { PostsService, newPost } from '../posts/posts.service.js'
 import { GIF_PROVIDERS, GifProviders, gifInputFor } from './gif-providers.js'
+import { isGifProviderName } from './registry.js'
 
 // A GIF is a provider and an id on the post, picked in the member's browser: the API never calls the provider.
 
@@ -179,6 +180,15 @@ test('the providers that take new GIFs come from settings, and only known ones',
   assert.equal(new GifProviders(['giphy']).acceptsNew('giphy'), true)
   assert.equal(new GifProviders([]).acceptsNew('giphy'), false)
   assert.equal(new GifProviders(['giphy']).acceptsNew('testgif'), false)
+})
+
+test('the registry knows none of the names every object inherits', () => {
+  const providers = new GifProviders(['giphy'])
+  for (const name of ['toString', '__proto__', 'constructor', 'hasOwnProperty', 'valueOf']) {
+    assert.equal(isGifProviderName(name), false, name)
+    assert.equal(providers.acceptsNew(name), false, name)
+    assert.equal(providers.label(name), name, name)
+  }
 })
 
 const controller = (appEnv: 'production' | 'staging', providers = new GifProviders(['giphy'])) =>

@@ -240,3 +240,9 @@ test('GIF_PROVIDERS names the providers that take new GIFs: GIPHY when unset or 
   assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: 'giphy,klipy' }), /klipy is not a GIF provider HeyNaija knows/)
   assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: 'tenor' }), /tenor is not a GIF provider HeyNaija knows/)
 })
+
+test('GIF_PROVIDERS refuses the names every object inherits', () => {
+  for (const name of ['toString', '__proto__', 'constructor', 'hasOwnProperty', 'valueOf']) {
+    assert.throws(() => loadEnv({ ...base, GIF_PROVIDERS: name }), new RegExp(`${name} is not a GIF provider HeyNaija knows`))
+  }
+})
